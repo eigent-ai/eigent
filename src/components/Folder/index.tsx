@@ -308,6 +308,7 @@ interface FileTreeNode {
   name: string;
   path: string;
   type?: string;
+  projectId?: string;
   isFolder?: boolean;
   icon?: React.ElementType;
   children?: FileTreeNode[];
@@ -370,12 +371,18 @@ interface FileInfo {
   name: string;
   path: string;
   type: string;
+  projectId?: string;
   isFolder?: boolean;
   icon?: React.ElementType;
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
 }
+
+type ProjectFetchTarget = {
+  id: string;
+  name: string;
+};
 
 function getNormalizedTreeRelativePath(file: FileInfo): string {
   const rel = (file.relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -498,6 +505,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
           name: child.name,
           path: child.path,
           type: child.type || '',
+          projectId: child.projectId,
           isFolder: child.isFolder,
           icon: child.icon,
           isRemote: child.isRemote,
@@ -522,14 +530,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile(fileInfo);
                 }
               }}
-              className={`mb-1 min-w-0 gap-2 rounded-lg px-2 py-1.5 hover:bg-ds-bg-neutral-subtle-hover flex w-full flex-row items-center justify-start text-left transition-colors ${
+              className={`mb-1 flex w-full min-w-0 flex-row items-center justify-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ds-bg-neutral-subtle-hover ${
                 isRowSelected
                   ? 'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                  : 'text-ds-text-neutral-muted-default bg-transparent'
+                  : 'bg-transparent text-ds-text-neutral-muted-default'
               }`}
             >
               {child.isFolder ? (
-                <span className="w-4 inline-flex shrink-0 items-center justify-start">
+                <span className="inline-flex w-4 shrink-0 items-center justify-start">
                   {isExpanded ? (
                     <ChevronDown className={rowIconClass} />
                   ) : (
@@ -548,13 +556,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 )
               )}
 
-              <span className="min-w-0 text-body-sm font-medium leading-normal flex-1 truncate text-left">
+              <span className="min-w-0 flex-1 truncate text-left text-body-sm font-medium leading-normal">
                 {child.name}
               </span>
             </button>
 
             {hasNested ? (
-              <div className="ml-4 border-ds-border-neutral-subtle-default pl-1 border-y-0 border-r-0 border-l border-solid">
+              <div className="ml-4 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
                 <FileTree
                   node={child}
                   level={level + 1}
@@ -812,6 +820,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       files: [],
     },
   ]);
+  const fileListRef = useRef<FileInfo[]>([]);
   const hasFetchedRemote = useRef(false);
   const lastFetchKey = useRef<string>('');
   const priorFilePathsSnapshotRef = useRef<Set<string>>(new Set());
@@ -1069,6 +1078,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         name: fileName || file.name,
         path: file.path,
         type: file.type,
+        projectId: file.projectId,
         isFolder: file.isFolder,
         icon: file.icon,
         children: file.isFolder ? [] : undefined,
@@ -1107,13 +1117,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   };
 
   const activeTaskId = selectedTurn.taskId ?? undefined;
-  const activeWorkspace = selectedTurn.task?.activeWorkspace;
   const taskAssigning = selectedTurn.task?.taskAssigning;
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
   const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
   const useSpaceScopedRemoteFiles = !isLocalWorkspaceSpace(activeSpace);
-  const projectFetchTargets = useMemo(() => {
+  const projectFetchTargets: ProjectFetchTarget[] = useMemo(() => {
     if (useSpaceScopedRemoteFiles && fileSpaceId) {
       const targets = spaceProjects.length
         ? spaceProjects
@@ -1148,6 +1157,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const projectFetchKey = projectFetchTargets
     .map((project) => project.id)
     .join(',');
+  const projectFetchTargetsRef =
+    useRef<ProjectFetchTarget[]>(projectFetchTargets);
   const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}`;
   const fileContextResetKey =
     useSpaceScopedRemoteFiles || useBrainWorkspaceFiles
@@ -1165,11 +1176,16 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     setSelectedFile(null);
     setFileTree({ name: 'root', path: '', children: [], isFolder: true });
     setFileGroups([{ folder: 'Reports', files: [] }]);
+    fileListRef.current = [];
     setExpandedFolders(new Set());
     priorFilePathsSnapshotRef.current = new Set();
     setNewFilePathsAccumulated(new Set());
     setFileTreeScope('all');
   }, [fileContextResetKey]);
+
+  useEffect(() => {
+    projectFetchTargetsRef.current = projectFetchTargets;
+  }, [projectFetchTargets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1227,15 +1243,29 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   useEffect(() => {
     if (
       (!chatStore && !useSpaceScopedRemoteFiles && !useBrainWorkspaceFiles) ||
-      !projectFetchTargets.length ||
+      !projectFetchTargetsRef.current.length ||
       !authStore.email
     ) {
       return;
     }
 
-    const setFileList = async () => {
+    let cancelled = false;
+
+    const setFileList = async (
+      options: {
+        targets?: ProjectFetchTarget[];
+        signal?: AbortSignal;
+        merge?: boolean;
+      } = {}
+    ): Promise<boolean> => {
+      const fetchTargets = options.targets ?? projectFetchTargetsRef.current;
+      const signal = options.signal;
+      if (cancelled || signal?.aborted || fetchTargets.length === 0) {
+        return false;
+      }
+
       let res: FileInfo[] = [];
-      const primaryProjectId = projectFetchTargets[0]?.id || projectId;
+      const primaryProjectId = fetchTargets[0]?.id || projectId;
 
       if (
         ipcRenderer &&
@@ -1248,8 +1278,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             authStore.email,
             primaryProjectId
           );
+          if (cancelled || signal?.aborted) return false;
           if (Array.isArray(localFiles)) {
-            res = localFiles;
+            res = localFiles.map((file: FileInfo) => ({
+              ...file,
+              projectId: file.projectId || primaryProjectId,
+            }));
           }
         } catch (error) {
           console.warn('[Folder] Failed to fetch local project files:', error);
@@ -1269,18 +1303,24 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             console.warn('[Folder] Brain not connected, cannot fetch files');
           } else {
             const lists = await Promise.all(
-              projectFetchTargets.map(async (target) => {
-                const listRes = await fetchGet('/files', {
-                  project_id: target.id,
-                  email: authStore.email,
-                  ...(fileSpaceId ? { space_id: fileSpaceId } : {}),
-                  ...(authStore.user_id != null
-                    ? { user_id: String(authStore.user_id) }
-                    : {}),
-                });
+              fetchTargets.map(async (target) => {
+                const listRes = await fetchGet(
+                  '/files',
+                  {
+                    project_id: target.id,
+                    email: authStore.email,
+                    ...(fileSpaceId ? { space_id: fileSpaceId } : {}),
+                    ...(authStore.user_id != null
+                      ? { user_id: String(authStore.user_id) }
+                      : {}),
+                  },
+                  undefined,
+                  { signal }
+                );
                 return { target, listRes };
               })
             );
+            if (cancelled || signal?.aborted) return false;
 
             res = lists.flatMap(({ target, listRes }) => {
               if (!Array.isArray(listRes)) return [];
@@ -1294,6 +1334,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   name: filename,
                   type: filename.split('.').pop() || '',
                   path: url,
+                  projectId: target.id,
                   relativePath: useSpaceScopedRemoteFiles
                     ? `${target.name}/${relativePath}`
                     : relativePath,
@@ -1302,15 +1343,41 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               });
             });
           }
-        } catch (error) {
+        } catch (error: any) {
+          if (cancelled || signal?.aborted || error?.name === 'AbortError') {
+            return false;
+          }
           console.warn('[Folder] Failed to fetch files from Brain:', error);
         }
       }
 
+      if (cancelled || signal?.aborted) return false;
       const visibleFiles = filterVisibleAgentFiles(res);
-      const tree = buildFileTree(visibleFiles);
-      if (visibleFiles && Array.isArray(visibleFiles)) {
-        const currentPaths = pathsFromFileList(visibleFiles);
+      const fetchedTargetIds = new Set(fetchTargets.map((target) => target.id));
+      const fetchedTargetNames = new Set(
+        fetchTargets.map((target) => target.name)
+      );
+      const shouldRemoveForTargets = (file: FileInfo) => {
+        if (!options.merge) return false;
+        if (!useSpaceScopedRemoteFiles && !useBrainWorkspaceFiles) return true;
+        if (file.projectId && fetchedTargetIds.has(file.projectId)) return true;
+        const rootSegment = getNormalizedTreeRelativePath(file)
+          .split('/')
+          .filter(Boolean)[0];
+        return Boolean(rootSegment && fetchedTargetNames.has(rootSegment));
+      };
+      const nextVisibleFiles = options.merge
+        ? [
+            ...fileListRef.current.filter(
+              (file) => !shouldRemoveForTargets(file)
+            ),
+            ...visibleFiles,
+          ]
+        : visibleFiles;
+      fileListRef.current = nextVisibleFiles;
+      const tree = buildFileTree(nextVisibleFiles);
+      if (nextVisibleFiles && Array.isArray(nextVisibleFiles)) {
+        const currentPaths = pathsFromFileList(nextVisibleFiles);
         const prior = priorFilePathsSnapshotRef.current;
         const isFirstPopulate = prior.size === 0 && currentPaths.size > 0;
         if (isFirstPopulate) {
@@ -1335,7 +1402,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setFileGroups((prev) => {
         const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
         if (chatStoreSelectedFile) {
-          const file = findMatchingFile(visibleFiles, chatStoreSelectedFile);
+          const file = findMatchingFile(
+            nextVisibleFiles,
+            chatStoreSelectedFile
+          );
           if (file) {
             setFileTreeScope('all');
             setIsFileSidebarOpen(true);
@@ -1348,43 +1418,85 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         return [
           {
             ...prev[0],
-            files: visibleFiles || [],
+            files: nextVisibleFiles || [],
           },
         ];
       });
+      return true;
     };
 
     const shouldFetch =
-      lastFetchKey.current !== fetchKey ||
-      (taskRunning && !hasFetchedRemote.current);
+      lastFetchKey.current !== fetchKey || !hasFetchedRemote.current;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let inFlightController: AbortController | null = null;
+    let inFlightMode: 'full' | 'merge' | null = null;
+
+    const activeProjectFetchTargets = () => {
+      const targets = projectFetchTargetsRef.current;
+      if (!taskRunning) return targets;
+      const activeTargets = targets.filter((target) => target.id === projectId);
+      return activeTargets.length ? activeTargets : targets.slice(0, 1);
+    };
+
+    const runFileList = (
+      targets = projectFetchTargetsRef.current,
+      options: { merge?: boolean } = {}
+    ) => {
+      const mode = options.merge ? 'merge' : 'full';
+      if (mode === 'merge' && inFlightMode === 'full') return;
+      inFlightController?.abort();
+      const controller = new AbortController();
+      inFlightController = controller;
+      inFlightMode = mode;
+      void setFileList({
+        targets,
+        signal: controller.signal,
+        merge: options.merge,
+      })
+        .then((applied) => {
+          if (applied && mode === 'full') {
+            hasFetchedRemote.current = true;
+          }
+        })
+        .finally(() => {
+          if (inFlightController === controller) {
+            inFlightController = null;
+            inFlightMode = null;
+          }
+        });
+    };
+
     if (shouldFetch) {
-      lastFetchKey.current = fetchKey;
-      hasFetchedRemote.current = true;
-      void setFileList();
+      debounceTimer = setTimeout(() => {
+        lastFetchKey.current = fetchKey;
+        runFileList(projectFetchTargetsRef.current, { merge: false });
+      }, 120);
     }
 
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-    if (taskRunning) {
+    if (taskRunning && isFileSidebarOpen) {
       pollTimer = setInterval(() => {
-        void setFileList();
+        runFileList(activeProjectFetchTargets(), { merge: true });
       }, 5000);
     }
 
     return () => {
+      cancelled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (pollTimer) clearInterval(pollTimer);
+      inFlightController?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     fetchKey,
     taskRunning,
-    taskAssigning,
-    activeWorkspace,
     projectId,
     fileSpaceId,
     activeTaskId,
     authStore.email,
     authStore.user_id,
-    projectFetchTargets,
+    isFileSidebarOpen,
+    projectFetchKey,
     useBrainWorkspaceFiles,
     useSpaceScopedRemoteFiles,
   ]);
@@ -1486,15 +1598,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="gap-2 border-ds-border-neutral-subtle-default p-2 flex w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
-        <div className="min-w-0 flex max-w-[min(20rem,45%)] items-center">
+      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default p-2">
+        <div className="flex min-w-0 max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
             aria-pressed={isFileSidebarOpen}
-            className="text-ds-icon-neutral-default-default shrink-0"
+            className="shrink-0 text-ds-icon-neutral-default-default"
             aria-label={
               isFileSidebarOpen
                 ? t('chat.hide-file-sidebar', {
@@ -1522,21 +1634,21 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             )}
           </Button>
           <span
-            className="min-w-0 text-body-sm font-semibold text-ds-text-neutral-default-default truncate leading-none"
+            className="min-w-0 truncate text-body-sm font-semibold leading-none text-ds-text-neutral-default-default"
             title={folderHeaderTitle}
           >
             {folderHeaderTitle}
           </span>
         </div>
-        <div className="min-w-0 gap-2 ml-auto flex items-center">
-          <div className="h-7 w-32 max-w-xs rounded-lg relative min-w-[10rem] shrink-0">
-            <Search className="left-2 h-3.5 w-3.5 text-ds-text-brand-default-default pointer-events-none absolute top-1/2 -translate-y-1/2" />
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="relative h-7 w-32 min-w-[10rem] max-w-xs shrink-0 rounded-lg">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ds-text-brand-default-default" />
             <input
               type="text"
               value={fileSearchQuery}
               onChange={(e) => setFileSearchQuery(e.target.value)}
               placeholder={t('chat.search')}
-              className="h-7 rounded-lg border-ds-border-neutral-subtle-default py-0 pl-7 pr-2 text-sm focus:ring-ds-ring-brand-default-focus w-full border border-solid leading-none focus:ring-2 focus:ring-offset-0 focus:outline-none"
+              className="h-7 w-full rounded-lg border border-solid border-ds-border-neutral-subtle-default py-0 pl-7 pr-2 text-sm leading-none focus:outline-none focus:ring-2 focus:ring-ds-ring-brand-default-focus focus:ring-offset-0"
               aria-label={t('chat.search')}
             />
           </div>
@@ -1557,18 +1669,18 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50"
+                className="z-50 border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
               >
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('system')}
-                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
                 >
                   <FolderIcon className="size-4 shrink-0" aria-hidden />
                   {t('chat.open-in-file-manager')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('cursor')}
-                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
                 >
                   <img
                     src={cursorIcon}
@@ -1580,7 +1692,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleOpenInIDE('vscode')}
-                  className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                  className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
                 >
                   <img
                     src={vsCodeIcon}
@@ -1596,11 +1708,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         </div>
       </div>
 
-      <div className="min-h-0 flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* sidebar */}
         {isFileSidebarOpen ? (
-          <div className="w-64 border-ds-border-neutral-subtle-default flex h-full flex-shrink-0 flex-col border-y-0 border-r border-l-0 border-solid">
-            <div className="h-8 px-1 flex items-center">
+          <div className="flex h-full w-64 flex-shrink-0 flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default">
+            <div className="flex h-8 items-center px-1">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1609,7 +1721,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     size="sm"
                     buttonContent="text"
                   >
-                    <span className="min-w-0 font-bold truncate text-left">
+                    <span className="min-w-0 truncate text-left font-bold">
                       {t('chat.files')}
                     </span>
                     <ChevronDown className="size-3.5 shrink-0 opacity-70" />
@@ -1618,7 +1730,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                 <DropdownMenuContent
                   side="bottom"
                   align="start"
-                  className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default z-50 min-w-[10rem]"
+                  className="z-50 min-w-[10rem] border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
                 >
                   <DropdownMenuRadioGroup
                     value={fileTreeScope}
@@ -1628,7 +1740,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   >
                     <DropdownMenuRadioItem
                       value="all"
-                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                      className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
                     >
                       {t('folder.files-scope-all', {
                         defaultValue: 'All files',
@@ -1636,7 +1748,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem
                       value="new"
-                      className="bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover cursor-pointer"
+                      className="cursor-pointer bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
                     >
                       {t('folder.files-scope-new', {
                         defaultValue: 'New files',
@@ -1647,7 +1759,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
               </DropdownMenu>
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
-              <div className="pl-1.5 h-full">
+              <div className="h-full pl-1.5">
                 <FileTree
                   node={sidebarFileTree}
                   selectedFile={selectedFile}
@@ -1664,10 +1776,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         ) : null}
 
         {/* content */}
-        <div className="min-w-0 bg-ds-bg-neutral-subtle-default flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ds-bg-neutral-subtle-default">
           {/* head */}
           {selectedFile && (
-            <div className="h-8 gap-2 pl-3 pr-2 flex flex-shrink-0 items-center justify-between">
+            <div className="flex h-8 flex-shrink-0 items-center justify-between gap-2 pl-3 pr-2">
               <div
                 onClick={() => {
                   // if file is remote, don't call reveal-in-folder
@@ -1677,10 +1789,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   }
                   ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
                 }}
-                className="min-w-0 flex flex-1 cursor-pointer items-center overflow-hidden"
+                className="flex min-w-0 flex-1 cursor-pointer items-center overflow-hidden"
               >
                 <nav
-                  className="scrollbar-always-visible min-w-0 gap-1 text-body-sm text-ds-text-neutral-muted-default flex max-w-full items-center overflow-x-auto"
+                  className="scrollbar-always-visible flex min-w-0 max-w-full items-center gap-1 overflow-x-auto text-body-sm text-ds-text-neutral-muted-default"
                   aria-label={t('folder.file-path-breadcrumb', {
                     defaultValue: 'File path',
                   })}
@@ -1691,15 +1803,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       <Fragment key={`${index}-${segment}`}>
                         {index > 0 ? (
                           <ChevronRight
-                            className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default shrink-0"
+                            className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
                             aria-hidden
                           />
                         ) : null}
                         <span
                           className={
                             isLast
-                              ? 'font-bold text-ds-text-neutral-default-default shrink-0'
-                              : 'font-normal shrink-0'
+                              ? 'shrink-0 font-bold text-ds-text-neutral-default-default'
+                              : 'shrink-0 font-normal'
                           }
                         >
                           {segment}
@@ -1709,7 +1821,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   })}
                 </nav>
               </div>
-              <div className="gap-0.5 flex flex-shrink-0 items-center">
+              <div className="flex flex-shrink-0 items-center gap-0.5">
                 <Button
                   size="icon"
                   variant="ghost"
@@ -1738,7 +1850,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
           {/* content */}
           <div
-            className={`min-h-0 flex flex-1 flex-col ${
+            className={`flex min-h-0 flex-1 flex-col ${
               selectedFile?.type === 'html' && !isShowSourceCode
                 ? 'overflow-hidden'
                 : 'scrollbar-always-visible overflow-y-auto'
@@ -1747,8 +1859,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             <div
               className={`flex flex-col ${
                 selectedFile?.type === 'html' && !isShowSourceCode
-                  ? 'min-h-0 h-full'
-                  : 'py-2 pl-4 pr-2 min-h-full'
+                  ? 'h-full min-h-0'
+                  : 'min-h-full py-2 pl-4 pr-2'
               } file-viewer-content`}
             >
               {selectedFile ? (
@@ -1785,9 +1897,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       />
                     )
                   ) : selectedFile.type === 'zip' ? (
-                    <div className="text-ds-text-neutral-muted-default flex h-full w-full items-center justify-center">
+                    <div className="flex h-full w-full items-center justify-center text-ds-text-neutral-muted-default">
                       <div className="text-center">
-                        <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
+                        <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
                         <p className="text-sm">
                           {t('folder.zip-file-is-not-supported-yet')}
                         </p>
@@ -1806,14 +1918,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                       <ImageLoader selectedFile={selectedFile} />
                     </div>
                   ) : (
-                    <pre className="font-mono text-sm text-ds-text-neutral-default-default overflow-auto break-words whitespace-pre-wrap">
+                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
                       {selectedFile.content}
                     </pre>
                   )
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <div className="text-center">
-                      <div className="mb-4 h-8 w-8 animate-spin mx-auto rounded-full"></div>
+                      <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full"></div>
                       <p className="text-body-sm text-ds-text-neutral-muted-default">
                         {t('chat.loading')}
                       </p>
@@ -1821,9 +1933,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                   </div>
                 )
               ) : (
-                <div className="text-ds-text-neutral-muted-default flex h-full w-full flex-1 items-center justify-center">
+                <div className="flex h-full w-full flex-1 items-center justify-center text-ds-text-neutral-muted-default">
                   <div className="text-center">
-                    <FileText className="mb-4 h-12 w-12 text-ds-text-neutral-muted-default mx-auto" />
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
                     <p className="text-sm">
                       {t('chat.select-a-file-to-view-its-contents')}
                     </p>
@@ -1917,7 +2029,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   if (!src) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin mx-auto rounded-full" />
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full" />
       </div>
     );
   }
@@ -1946,7 +2058,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
   }, [selectedFile]);
 
   return (
-    <div className="gap-4 px-8 flex w-full flex-col items-center">
+    <div className="flex w-full flex-col items-center gap-4 px-8">
       <p className="text-sm font-medium text-ds-text-neutral-default-default">
         {selectedFile.name}
       </p>
@@ -2787,7 +2899,7 @@ function HtmlRenderer({
   if (selectedFile.content && !processedHtml) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className="mb-4 h-8 w-8 animate-spin mx-auto rounded-full" />
+        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full" />
       </div>
     );
   }
@@ -2804,7 +2916,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 bg-code-surface flex-1 overflow-hidden"
+        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
         onWheel={handleWheel}
       >
         <div

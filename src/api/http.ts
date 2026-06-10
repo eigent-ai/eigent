@@ -110,11 +110,16 @@ export async function getBaseURL() {
   return '';
 }
 
+type FetchRequestOptions = {
+  signal?: AbortSignal;
+};
+
 async function fetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
-  customHeaders: Record<string, string> = {}
+  customHeaders: Record<string, string> = {},
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
@@ -123,6 +128,7 @@ async function fetchRequest(
   const options: RequestInit = {
     method,
     headers,
+    signal: requestOptions.signal,
   };
 
   if (method === 'GET') {
@@ -228,6 +234,10 @@ async function handleResponse(
 
     return resData;
   } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw err;
+    }
+
     // Only show traffic toast for cloud model requests
     const isCloudRequest = requestData?.api_url === 'cloud';
     if (isCloudRequest) {
@@ -247,8 +257,12 @@ async function handleResponse(
 }
 
 // Encapsulate common methods
-export const fetchGet = (url: string, params?: any, headers?: any) =>
-  fetchRequest('GET', url, params, headers);
+export const fetchGet = (
+  url: string,
+  params?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('GET', url, params, headers, options);
 
 export const fetchPost = (url: string, data?: any, headers?: any) =>
   fetchRequest('POST', url, data, headers);
