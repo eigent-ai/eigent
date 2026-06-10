@@ -24,7 +24,7 @@ import {
   SessionMode,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -657,21 +657,21 @@ const ToolDetailRow = memo(function ToolDetailRow({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex w-full min-w-0 flex-col items-start">
+    <div className="min-w-0 flex w-full flex-col items-start">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+        className="group min-w-0 gap-1 px-0 py-0.5 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
       >
         {status === 'running' ? (
           <ShinyText
             text={rowTitle}
             speed={2.5}
-            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default"
+            className="min-w-0 !text-label-sm font-normal text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap"
           />
         ) : (
-          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default">
+          <span className="min-w-0 !text-label-sm font-normal text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
             {rowTitle}
           </span>
         )}
@@ -679,7 +679,7 @@ const ToolDetailRow = memo(function ToolDetailRow({
           size={16}
           aria-hidden
           className={cn(
-            'shrink-0 text-ds-icon-neutral-subtle-default transition-[opacity,transform] duration-200',
+            'text-ds-icon-neutral-subtle-default shrink-0 transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
               : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
@@ -694,10 +694,10 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="w-full min-w-0 overflow-hidden"
+            className="min-w-0 w-full overflow-hidden"
           >
             {detail ? (
-              <div className="mt-1 w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60">
+              <div className="mt-1 rounded-md bg-ds-bg-neutral-muted-default p-2 w-full opacity-60">
                 <MarkDown
                   content={detail}
                   enableTypewriter={false}
@@ -735,20 +735,20 @@ const InlineMessageRow = memo(function InlineMessageRow({
       ? 'text-ds-text-neutral-subtle-default'
       : 'text-ds-text-neutral-default-default';
   return (
-    <div className="w-full min-w-0">
+    <div className="min-w-0 w-full">
       {running ? (
         <ShinyText
           text={display}
           speed={2.5}
           className={cn(
-            'whitespace-pre-wrap break-words !text-label-sm font-normal',
+            '!text-label-sm font-normal break-words whitespace-pre-wrap',
             colorClass
           )}
         />
       ) : (
         <span
           className={cn(
-            'm-0 whitespace-pre-wrap break-words !text-label-sm font-medium',
+            'm-0 !text-label-sm font-medium break-words whitespace-pre-wrap',
             colorClass
           )}
         >
@@ -781,19 +781,19 @@ const AgentBlockRow = memo(function AgentBlockRow({
   const headerText = detail ? `${agentLabel} · ${detail}` : agentLabel;
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
+    <div className="min-w-0 flex w-full flex-col">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="my-1 flex w-fit min-w-0 max-w-full items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
+        className="my-1 min-w-0 gap-2 px-0 py-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
       >
-        <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate">
+        <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
           {headerRunning ? (
             <ShinyText
               text={headerText}
               speed={2.5}
-              className="truncate !text-label-sm font-normal"
+              className="!text-label-sm font-normal truncate"
             />
           ) : (
             <>
@@ -805,7 +805,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
                   <span className="text-label-sm text-ds-text-neutral-subtle-default">
                     ·
                   </span>
-                  <span className="truncate text-label-sm font-normal text-ds-text-neutral-subtle-default">
+                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
                     {detail}
                   </span>
                 </>
@@ -817,13 +817,13 @@ const AgentBlockRow = memo(function AgentBlockRow({
           <ChevronDown
             size={16}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-subtle-default"
+            className="text-ds-icon-neutral-subtle-default shrink-0"
           />
         ) : (
           <ChevronRight
             size={16}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-subtle-default"
+            className="text-ds-icon-neutral-subtle-default shrink-0"
           />
         )}
       </button>
@@ -838,7 +838,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
             transition={HEIGHT_MOTION}
             className="min-w-0 overflow-hidden"
           >
-            <div className="flex flex-col gap-2 py-1">
+            <div className="gap-2 py-1 flex flex-col">
               {block.items.map((item) =>
                 item.kind === 'message' ? (
                   <InlineMessageRow
@@ -865,7 +865,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
               {block.items.length === 0 &&
                 taskRunning &&
                 block.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <p className="m-0 !text-label-sm text-ds-text-neutral-subtle-default italic">
                     Waiting for tool calls…
                   </p>
                 )}
@@ -917,23 +917,31 @@ function getGroupHeaderParts(group: AgentGroup): GroupHeaderParts {
   };
 }
 
+const DEFAULT_BOT_ICON = (
+  <Bot size={16} className="text-ds-text-neutral-default-default" />
+);
+
 const AgentGroupRow = memo(function AgentGroupRow({
   group,
   taskRunning,
   open,
   onToggle,
+  isSingleAgent,
 }: {
   group: AgentGroup;
   taskRunning: boolean;
   open: boolean;
   onToggle: () => void;
+  isSingleAgent: boolean;
 }) {
   const { agentLabel, progressLabel, latestToolTitle, latestToolRunning } =
     getGroupHeaderParts(group);
 
   const headerRunning = taskRunning && group.status === 'running';
   const agentDisplay = agentMap[group.agentType as WorkflowAgentType];
-  const icon = agentDisplay?.icon ?? null;
+  const icon = isSingleAgent
+    ? DEFAULT_BOT_ICON
+    : (agentDisplay?.icon ?? DEFAULT_BOT_ICON);
 
   const headerParts: string[] = [agentLabel];
   if (progressLabel) headerParts.push(`(${progressLabel})`);
@@ -941,23 +949,23 @@ const AgentGroupRow = memo(function AgentGroupRow({
   const headerText = headerParts.join(' ');
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
+    <div className="min-w-0 flex w-full flex-col">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="my-1 flex w-fit min-w-0 max-w-full items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
+        className="my-1 min-w-0 gap-2 px-0 py-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
       >
         {icon ? (
           <span className="flex shrink-0 items-center">{icon}</span>
         ) : null}
 
-        <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate">
+        <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
           {headerRunning ? (
             <ShinyText
               text={headerText}
               speed={2.5}
-              className="truncate !text-label-sm font-normal"
+              className="!text-label-sm font-normal truncate"
             />
           ) : (
             <>
@@ -974,7 +982,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
                   <span className="text-label-sm text-ds-text-neutral-subtle-default">
                     ·
                   </span>
-                  <span className="truncate text-label-sm font-normal text-ds-text-neutral-subtle-default">
+                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
                     {latestToolTitle}
                   </span>
                 </>
@@ -987,13 +995,13 @@ const AgentGroupRow = memo(function AgentGroupRow({
           <ChevronDown
             size={16}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-subtle-default"
+            className="text-ds-icon-neutral-subtle-default shrink-0"
           />
         ) : (
           <ChevronRight
             size={16}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-subtle-default"
+            className="text-ds-icon-neutral-subtle-default shrink-0"
           />
         )}
       </button>
@@ -1008,7 +1016,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
             transition={HEIGHT_MOTION}
             className="min-w-0 overflow-hidden"
           >
-            <div className="flex flex-col gap-2 py-1 pl-6">
+            <div className="gap-2 py-1 pl-6 flex flex-col">
               {group.items.map((item) =>
                 item.kind === 'message' ? (
                   <InlineMessageRow
@@ -1035,7 +1043,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
               {group.items.length === 0 &&
                 taskRunning &&
                 group.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <p className="m-0 !text-label-sm text-ds-text-neutral-subtle-default italic">
                     Waiting for tool calls…
                   </p>
                 )}
@@ -1139,6 +1147,7 @@ export function TaskWorkLogAccordion({
   const status = task?.status;
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
   const taskRunning = status === ChatTaskStatus.RUNNING;
+  const isSingleAgent = task?.sessionMode === SessionMode.SINGLE_AGENT;
 
   // Normalize status with task-level context — once the task stops,
   // every entry (and any running message/tool) is done regardless of whether
@@ -1192,12 +1201,12 @@ export function TaskWorkLogAccordion({
   const timeLabel = formatSplittingElapsed(elapsedMs);
 
   return (
-    <div className={cn('my-2 flex w-full min-w-0 flex-col', className)}>
+    <div className={cn('my-2 min-w-0 flex w-full flex-col', className)}>
       <button
         type="button"
         aria-expanded={outerOpen}
         onClick={() => setOuterOpen((v) => !v)}
-        className="flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left"
+        className="min-w-0 gap-1 px-0 py-2 flex w-full items-center justify-start text-left"
       >
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
           {status === ChatTaskStatus.RUNNING ||
@@ -1207,7 +1216,7 @@ export function TaskWorkLogAccordion({
               values={{ time: timeLabel }}
               components={{
                 elapsed: (
-                  <span className="tabular-nums text-ds-text-neutral-subtle-default" />
+                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
                 ),
               }}
             />
@@ -1217,7 +1226,7 @@ export function TaskWorkLogAccordion({
               values={{ time: timeLabel }}
               components={{
                 elapsed: (
-                  <span className="tabular-nums text-ds-text-neutral-subtle-default" />
+                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
                 ),
               }}
             />
@@ -1228,14 +1237,14 @@ export function TaskWorkLogAccordion({
             size={16}
             strokeWidth={2}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-muted-default"
+            className="text-ds-icon-neutral-muted-default shrink-0"
           />
         ) : (
           <ChevronRight
             size={16}
             strokeWidth={2}
             aria-hidden
-            className="shrink-0 text-ds-icon-neutral-muted-default"
+            className="text-ds-icon-neutral-muted-default shrink-0"
           />
         )}
       </button>
@@ -1250,7 +1259,7 @@ export function TaskWorkLogAccordion({
             transition={HEIGHT_MOTION}
             className="overflow-hidden"
           >
-            <div className="flex min-w-0 flex-col gap-1 pb-1">
+            <div className="min-w-0 gap-1 pb-1 flex flex-col">
               {effectiveGroups.map((entry) =>
                 entry.kind === 'agent-group' ? (
                   <AgentGroupRow
@@ -1259,6 +1268,7 @@ export function TaskWorkLogAccordion({
                     taskRunning={taskRunning}
                     open={isOpen(entry)}
                     onToggle={() => toggle(entry.id)}
+                    isSingleAgent={isSingleAgent}
                   />
                 ) : (
                   <AgentBlockRow
