@@ -15,7 +15,10 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
-import { buildTaskQuestionsById } from '@/lib/replay';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
 import {
   canCreateProjectInSpace,
   isLegacySpace,
@@ -164,7 +167,8 @@ export default function SpacesHub() {
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name || project.name,
           spaceId,
-          taskQuestionsById
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
         );
         setActiveWorkspaceTab('project');
       } catch (error) {

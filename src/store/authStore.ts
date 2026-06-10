@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
   getRecommendedContrast,
@@ -207,7 +208,14 @@ const authStore = create<AuthState>()(
         hydrateSpacesForUser(user_id);
       },
 
-      logout: () =>
+      logout: () => {
+        const previousUserId = get().user_id;
+        if (previousUserId != null) {
+          // Drop this account's IDB-backed project cache so signing in as a
+          // different user later doesn't see stale conversations. Fire-and-
+          // forget — clearAllCachedProjects swallows its own errors.
+          void clearAllCachedProjects(previousUserId);
+        }
         set({
           token: null,
           username: null,
@@ -215,7 +223,8 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
-        }),
+        });
+      },
 
       // set related methods
       setAppearance: (appearance) =>
