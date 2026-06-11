@@ -39,6 +39,13 @@ export function parseStreamingTasks(text: string): {
       isStreaming = true;
     }
   }
+  if (tasks.length === 0) {
+    const fallback = text.trim();
+    if (fallback) {
+      tasks.push(fallback);
+      isStreaming = true;
+    }
+  }
   return { tasks, isStreaming };
 }
 
