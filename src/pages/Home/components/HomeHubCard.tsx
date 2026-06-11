@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Input } from '@/components/ui/input';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -347,11 +346,6 @@ function ProjectItemContent({
                 align: 'right',
               },
               {
-                id: 'tokens',
-                content: formatTokenCount(tokenCount),
-                align: 'right',
-              },
-              {
                 id: 'updated',
                 content: formatHubCreatedTime(project.latest_task_date) || '—',
                 align: 'right',
@@ -433,11 +427,6 @@ function TaskItemContent({
           nameIcon={<ListChecks className="h-4 w-4" />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
-            {
-              id: 'tokens',
-              content: formatTokenCount(task.tokens || 0),
-              align: 'right',
-            },
             {
               id: 'created',
               content:

@@ -17,10 +17,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -35,19 +31,15 @@ import type { TriggerInput } from '@/types';
 import type { SessionModeType } from '@/types/constants';
 import {
   ArrowRight,
-  Compass,
   FileText,
-  Hammer,
   Image,
   Paperclip,
   Plus,
   UploadCloud,
-  Wand2,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ChatInputModelDropdown } from './ChatInputModelDropdown';
 import { RichChatInput } from './RichChatInput';
@@ -167,7 +159,6 @@ export const Inputbox = ({
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
@@ -319,7 +310,7 @@ export const Inputbox = ({
   return (
     <div
       className={cn(
-        'relative flex w-full flex-col items-start rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 shadow-lg transition-colors',
+        'rounded-3xl border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 shadow-lg relative flex w-full flex-col items-start border border-solid transition-colors',
         (isFocused || hasContent) &&
           'border-ds-border-information-default-default',
         isDragging &&
@@ -332,7 +323,7 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm">
+        <div className="inset-0 gap-2 rounded-2xl border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm pointer-events-none absolute z-20 flex flex-col items-center justify-center border-2 border-dashed">
           <UploadCloud className="h-8 w-8" />
           <div className="text-sm font-semibold">
             {t('chat.drop-files-to-attach')}
@@ -341,14 +332,14 @@ export const Inputbox = ({
       )}
       {/* Layer 2: File attachments (only show if has files) */}
       {files.length > 0 && (
-        <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">
+        <div className="gap-1 pb-2 relative box-border flex w-full flex-wrap items-start">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
             return (
               <div
                 key={file.filePath}
                 className={cn(
-                  'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-md bg-ds-bg-neutral-default-default pr-1'
+                  'max-w-24 gap-0.5 rounded-md bg-ds-bg-neutral-default-default pr-1 relative box-border flex h-auto items-center'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -361,7 +352,7 @@ export const Inputbox = ({
                 <a
                   href="#"
                   className={cn(
-                    'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                    'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                   )}
                   onClick={(e) => {
                     e.preventDefault();
@@ -380,7 +371,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <p
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                    "my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default relative min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] overflow-ellipsis whitespace-nowrap"
                   )}
                   title={file.fileName}
                 >
@@ -399,14 +390,14 @@ export const Inputbox = ({
                   buttonContent="text"
                   textWeight="bold"
                   buttonRadius="full"
-                  className="relative box-border flex h-auto items-center rounded-lg bg-ds-bg-neutral-strong-default"
+                  className="rounded-lg bg-ds-bg-neutral-strong-default relative box-border flex h-auto items-center"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                  <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default font-['Inter'] whitespace-nowrap">
                     {remainingCount}+
                   </p>
                 </Button>
@@ -415,17 +406,17 @@ export const Inputbox = ({
                 align="end"
                 side="right"
                 sideOffset={4}
-                className="!w-auto max-w-40 rounded-lg border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect"
+                className="max-w-40 rounded-lg border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect !w-auto border-solid"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
-                <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
+                <div className="scrollbar-hide gap-1 flex max-h-[176px] flex-col overflow-auto">
                   {files.slice(maxVisibleFiles).map((file) => {
                     const isHovered = hoveredFilePath === file.filePath;
                     return (
                       <div
                         key={file.filePath}
-                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default px-1 py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                        className="gap-1 rounded-lg bg-ds-bg-neutral-strong-default px-1 py-0.5 hover:bg-ds-bg-neutral-default-hover flex cursor-pointer items-center transition-colors duration-300"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -436,7 +427,7 @@ export const Inputbox = ({
                         <a
                           href="#"
                           className={cn(
-                            'flex h-6 w-6 cursor-pointer items-center justify-center rounded-md'
+                            'h-6 w-6 rounded-md flex cursor-pointer items-center justify-center'
                           )}
                           onClick={(e) => {
                             e.preventDefault();
@@ -454,7 +445,7 @@ export const Inputbox = ({
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                        <p className="my-0 text-xs font-bold leading-tight text-ds-text-neutral-default-default flex-1 overflow-hidden font-['Inter'] text-ellipsis whitespace-nowrap">
                           {file.fileName}
                         </p>
                       </div>
@@ -468,7 +459,7 @@ export const Inputbox = ({
       )}
 
       {/* Layer 3: Text input area */}
-      <div className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3">
+      <div className="gap-2.5 pb-3 relative flex w-full flex-1 items-start justify-center">
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
           value={value}
@@ -500,7 +491,7 @@ export const Inputbox = ({
       {/* Layer 4: Action buttons */}
       <div className="flex w-full items-center justify-between">
         {/* Left: Add File Button and Add Trigger Button */}
-        <div className="flex items-center gap-2">
+        <div className="gap-2 flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -538,93 +529,6 @@ export const Inputbox = ({
                 />
                 {t('chat.input-attach-add-files-or-photos')}
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="-mx-1 my-1 bg-ds-border-neutral-default-default" />
-              {/* Submenus use alignOffset: Radix SubContent is fixed top-aligned; negative offset bottom-aligns panel to trigger row */}
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Wand2
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('chat.input-attach-skills')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate(
-                        '/history?tab=agents&section=skills&skillAction=upload'
-                      )
-                    }
-                  >
-                    {t('chat.input-attach-upload-new-skill')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=agents&section=skills')
-                    }
-                  >
-                    {t('chat.input-attach-manage-skills')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Hammer
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('layout.connectors')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=connectors&connectorAction=add')
-                    }
-                  >
-                    {t('chat.input-attach-add-mcp')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => navigate('/history?tab=connectors')}
-                  >
-                    {t('chat.input-attach-manage-connectors')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Compass
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('layout.browser')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=browser&browserAction=launch')
-                    }
-                  >
-                    {t('chat.input-attach-open-browser')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => navigate('/history?tab=browser')}
-                  >
-                    {t('chat.input-attach-manage-browsers')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
           <ChatInputModelDropdown
@@ -637,7 +541,7 @@ export const Inputbox = ({
         </div>
 
         {/* Right: Session mode (workspace: full toggle; session: current mode only) + send */}
-        <div className="flex items-center gap-2">
+        <div className="gap-2 flex items-center">
           {sessionMode !== undefined && (
             <ProjectModeToggle
               value={sessionMode}
