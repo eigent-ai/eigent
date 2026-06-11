@@ -18,7 +18,6 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -140,6 +139,17 @@ export default function ProjectPageSidebar({
   const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
   const [achieveProjectLoading, setAchieveProjectLoading] = useState(false);
   const [achieveDialogOpen, setAchieveDialogOpen] = useState(false);
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<Set<string>>(() => {
+    try {
+      return new Set(
+        JSON.parse(
+          localStorage.getItem('eigent-pinned-projects') ?? '[]'
+        ) as string[]
+      );
+    } catch {
+      return new Set();
+    }
+  });
 
   const scheduledTabLabel = t('layout.scheduled-tab');
   const triggersTabTooltip = scheduledTabLabel;
@@ -387,12 +397,14 @@ export default function ProjectPageSidebar({
               isAchieved: isProjectAchieved(project.metadata),
             }),
             achieved: isProjectAchieved(project.metadata),
+            pinned: pinnedProjectIds.has(project.id),
             source: activeTask?.source,
           };
         }),
     [
       historyLoadingProjectIds,
       navLeadByProjectId,
+      pinnedProjectIds,
       projectMetasForActiveSpace,
       projectStore,
       shouldShowProjectInNavList,
@@ -450,6 +462,26 @@ export default function ProjectPageSidebar({
     setActiveWorkspaceTab,
     t,
   ]);
+
+  const handlePinProject = useCallback((projectId: string) => {
+    setPinnedProjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      try {
+        localStorage.setItem(
+          'eigent-pinned-projects',
+          JSON.stringify([...next])
+        );
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  }, []);
 
   const requestDeleteProject = useCallback((projectId: string) => {
     setDeleteProjectId(projectId);
@@ -816,26 +848,31 @@ export default function ProjectPageSidebar({
         confirmDisabled={deleteProjectLoading}
       />
 
-      <EndNoticeDialog
-        open={achieveDialogOpen}
-        onOpenChange={(open) => {
+      <AlertDialog
+        isOpen={achieveDialogOpen}
+        onClose={() => {
           if (achieveProjectLoading) return;
-          setAchieveDialogOpen(open);
-          if (!open) setAchieveProjectId(null);
+          setAchieveDialogOpen(false);
+          setAchieveProjectId(null);
         }}
         onConfirm={() => void confirmAchieveProject()}
-        loading={achieveProjectLoading}
+        title={t('layout.end-project')}
+        message={t('layout.ending-this-project-will-stop')}
+        confirmText={t('layout.yes-end-project')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="caution"
+        confirmDisabled={achieveProjectLoading}
       />
 
       <aside
         className={cn(
-          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden py-1.5',
+          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
           className
         )}
       >
-        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div className="flex w-full shrink-0 flex-col gap-2">
+        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
+          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="gap-2 flex w-full shrink-0 flex-col">
               <SpaceSwitchDropdown
                 triggerTooltip="Spaces"
                 triggerTooltipEnabled={projectSidebarFolded}
@@ -846,7 +883,7 @@ export default function ProjectPageSidebar({
                     aria-label={t('layout.spaces-switch-space')}
                   >
                     <FolderIcon
-                      className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                      className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
                       aria-hidden
                     />
                     <span
@@ -859,7 +896,7 @@ export default function ProjectPageSidebar({
                     </span>
                     <ChevronsUpDown
                       className={cn(
-                        'ml-auto h-4 w-4 shrink-0 text-ds-icon-neutral-subtle-default',
+                        'h-4 w-4 text-ds-icon-neutral-subtle-default ml-auto shrink-0',
                         projectSidebarFolded && 'hidden'
                       )}
                       aria-hidden
@@ -878,7 +915,7 @@ export default function ProjectPageSidebar({
                 onSpaceSelect={handleSpaceSelect}
               />
 
-              <div className="flex w-full min-w-0 flex-col gap-2">
+              <div className="min-w-0 gap-2 flex w-full flex-col">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -897,11 +934,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="relative inline-flex h-4 w-4 shrink-0">
+                    <span className="h-4 w-4 relative inline-flex shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
+                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
                           aria-hidden
                         />
                       ) : null}
@@ -912,7 +949,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
+                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -987,8 +1024,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
-                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
+                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
+                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -1029,9 +1066,13 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="border-t-1 mt-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-default-default pt-2">
+            <div className="px-3 my-2">
+              <div className="bg-ds-border-neutral-default-default h-px w-full" />
+            </div>
+
+            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="flex min-h-0 flex-1 flex-col"
+                className="min-h-0 flex flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
@@ -1039,6 +1080,7 @@ export default function ProjectPageSidebar({
                 onProjectClick={selectProject}
                 onDeleteProject={requestDeleteProject}
                 onAchieveProject={requestAchieveProject}
+                onPinProject={handlePinProject}
                 onNewProject={handleNewProject}
                 newProjectActive={activeWorkspaceTab === 'new-project'}
                 folded={projectSidebarFolded}

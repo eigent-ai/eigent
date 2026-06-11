@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -553,9 +552,6 @@ export function HomeHubProjectCardBody({
   const statItems = [
     t('layout.home-space-stat-tasks', { count: taskCount }),
     t('layout.home-space-stat-triggers', { count: triggerCount }),
-    t('layout.home-project-stat-tokens', {
-      value: formatTokenCount(tokenCount),
-    }),
   ];
 
   return (
@@ -596,10 +592,6 @@ export function HomeHubProjectBoardCardBody({
       statRows={[
         { label: t('layout.tasks'), value: taskCount },
         { label: t('layout.triggers'), value: triggerCount },
-        {
-          label: t('layout.home-list-tokens'),
-          value: formatTokenCount(tokenCount),
-        },
       ]}
       otherContent={
         <>
@@ -635,12 +627,7 @@ export function HomeHubTaskCardBody({
   menuItems,
 }: HomeHubTaskCardBodyProps) {
   const { t } = useTranslation();
-  const statItems = [
-    t('layout.home-project-stat-tokens', {
-      value: formatTokenCount(tokenCount),
-    }),
-    ...(projectName?.trim() ? [projectName.trim()] : []),
-  ];
+  const statItems = [...(projectName?.trim() ? [projectName.trim()] : [])];
 
   return (
     <HomeHubHubCardBody
@@ -662,12 +649,7 @@ export function HomeHubTaskBoardCardBody({
   menuItems,
 }: Omit<HomeHubTaskCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
-  const statRows: HomeHubBoardStatRow[] = [
-    {
-      label: t('layout.home-list-tokens'),
-      value: formatTokenCount(tokenCount),
-    },
-  ];
+  const statRows: HomeHubBoardStatRow[] = [];
 
   if (projectName?.trim()) {
     statRows.push({

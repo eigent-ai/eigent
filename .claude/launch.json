@@ -5,7 +5,8 @@
       "name": "web-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:web"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": false
     },
     {
       "name": "animation-preview",

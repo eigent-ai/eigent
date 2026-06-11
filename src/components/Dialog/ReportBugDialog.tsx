@@ -21,28 +21,12 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useHost } from '@/host';
-import { Download } from 'lucide-react';
+import { ExternalLink, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-const INFO_EMAIL = 'info@eigent.ai';
-
-function buildMailtoUrl(
-  subject: string,
-  body: string
-): { url: string; truncated: boolean } {
-  const maxLen = 1800;
-  const tail = '\n\n[…]';
-  let b = body;
-  let truncated = false;
-  if (b.length > maxLen) {
-    b = b.slice(0, maxLen - tail.length) + tail;
-    truncated = true;
-  }
-  const url = `mailto:${INFO_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(b)}`;
-  return { url, truncated };
-}
+const GITHUB_ISSUES_URL = 'https://github.com/eigent-ai/eigent/issues/new';
 
 /** Matches `getDiagnosticsInfo` in preload / `ElectronAPI` */
 type DiagnosticsInfo = {
@@ -66,45 +50,13 @@ export default function ReportBugDialog({
   const [steps, setSteps] = useState('');
   const [meta, setMeta] = useState<DiagnosticsInfo | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [downloadingLog, setDownloadingLog] = useState(false);
 
-  const handleDownloadLog = useCallback(async () => {
-    const exportLog = host?.electronAPI?.exportLog;
-    if (!exportLog) {
-      toast.error(t('layout.general-error'));
-      return;
-    }
-    setDownloadingLog(true);
-    try {
-      const response = await exportLog();
-      if (!response?.success) {
-        if (response?.error) {
-          toast.error(response.error);
-        }
-        return;
-      }
-      if (response.savedPath) {
-        toast.success(`${t('layout.log-saved')} ${response.savedPath}`);
-        return;
-      }
-      if (response.data === 'log file is empty') {
-        toast.info(t('layout.log-file-empty'));
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('layout.general-error'));
-    } finally {
-      setDownloadingLog(false);
-    }
-  }, [host?.electronAPI, t]);
+  const hasElectron = Boolean(host?.electronAPI?.exportDiagnosticsZip);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
     const api = host?.electronAPI;
-    if (!api?.getDiagnosticsInfo) {
-      return;
-    }
+    if (!api?.getDiagnosticsInfo) return;
     void api
       .getDiagnosticsInfo()
       .then((info: DiagnosticsInfo) => {
@@ -116,9 +68,7 @@ export default function ReportBugDialog({
           });
         }
       })
-      .catch(() => {
-        setMeta(null);
-      });
+      .catch(() => setMeta(null));
   }, [open, host?.electronAPI]);
 
   useEffect(() => {
@@ -129,77 +79,67 @@ export default function ReportBugDialog({
   }, [open]);
 
   const onSubmit = useCallback(async () => {
-    const api = host?.electronAPI;
-    if (!api?.exportDiagnosticsZip || !api?.openMailto) {
-      toast.error(t('layout.general-error'));
-      return;
-    }
     const trimmed = description.trim();
     if (!trimmed) {
       toast.error(t('layout.report-bug-description-required'));
       return;
     }
+
+    const bodyParts: string[] = [trimmed];
+    if (steps.trim()) {
+      bodyParts.push(`\n**Steps to reproduce:**\n${steps.trim()}`);
+    }
+    if (meta) {
+      bodyParts.push(
+        `\n**Environment:** v${meta.version} · ${meta.platform} · ${meta.arch}`
+      );
+    }
+    if (hasElectron) {
+      bodyParts.push('\n*Diagnostics zip attached.*');
+    }
+
+    const url =
+      GITHUB_ISSUES_URL +
+      '?title=' +
+      encodeURIComponent(
+        t('layout.report-bug-dialog-title', { defaultValue: 'Bug Report' })
+      ) +
+      '&body=' +
+      encodeURIComponent(bodyParts.join('\n'));
+
     setSubmitting(true);
     try {
-      const response = await api.exportDiagnosticsZip({
-        description: trimmed,
-        steps: steps.trim() || undefined,
-      });
-      if (!response?.success) {
-        if (response?.error === '') {
-          return;
+      // Export diagnostics zip first (Electron only) — shows a native save dialog
+      const api = host?.electronAPI;
+      if (api?.exportDiagnosticsZip) {
+        const result = await api.exportDiagnosticsZip({
+          description: trimmed,
+          steps: steps.trim() || undefined,
+        });
+        if (result?.success && result.savedPath) {
+          toast.success(
+            t('layout.report-bug-zip-saved', {
+              defaultValue:
+                'Diagnostics saved — attach the zip file to the GitHub issue.',
+            })
+          );
         }
-        if (response?.error) {
-          toast.error(response.error);
-        } else {
-          toast.error(t('layout.general-error'));
-        }
-        return;
-      }
-      if (!response.savedPath) {
-        return;
       }
 
-      const subject = t('layout.report-bug-mail-subject');
-      const v = meta?.version ?? '—';
-      const p = meta?.platform ?? '—';
-      const a = meta?.arch ?? '—';
-      const body = [
-        t('layout.report-bug-mail-body-intro'),
-        '',
-        t('layout.report-bug-mail-body-path', { path: response.savedPath }),
-        '',
-        '—',
-        t('layout.report-bug-mail-body-meta', { version: v, os: p, arch: a }),
-        '',
-        t('layout.report-bug-mail-body-desc'),
-        trimmed,
-        '',
-        ...(steps.trim()
-          ? [t('layout.report-bug-mail-body-steps'), steps.trim(), '']
-          : []),
-      ].join('\n');
-
-      const { url, truncated } = buildMailtoUrl(subject, body);
-      if (truncated) {
-        toast.info(t('layout.report-bug-mail-body-truncated'));
-      }
-
-      const mail = await api.openMailto(url);
-      if (!mail?.success) {
-        if (mail?.error) {
-          toast.error(mail.error);
-        }
-        return;
-      }
+      window.open(url, '_blank', 'noopener,noreferrer');
       onOpenChange(false);
-      toast.success(t('layout.report-bug-diagnostics-saved'));
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('layout.general-error'));
     } finally {
       setSubmitting(false);
     }
-  }, [host?.electronAPI, description, steps, meta, onOpenChange, t]);
+  }, [
+    description,
+    steps,
+    meta,
+    hasElectron,
+    host?.electronAPI,
+    onOpenChange,
+    t,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -222,9 +162,6 @@ export default function ReportBugDialog({
               })}
             </p>
           )}
-          <p className="text-body-sm text-ds-text-neutral-subtle-default m-0">
-            {t('layout.report-bug-footer-hint')}
-          </p>
           <label
             className="text-body-sm font-medium text-ds-text-neutral-default-default"
             htmlFor="report-bug-description"
@@ -237,7 +174,6 @@ export default function ReportBugDialog({
             onChange={(e) => setDescription(e.target.value)}
             placeholder={t('layout.report-bug-field-description-placeholder')}
             className="min-h-[88px] resize-y"
-            disabled={submitting}
           />
           <label
             className="text-body-sm font-medium text-ds-text-neutral-default-default"
@@ -251,23 +187,17 @@ export default function ReportBugDialog({
             onChange={(e) => setSteps(e.target.value)}
             placeholder={t('layout.report-bug-field-steps-placeholder')}
             className="min-h-[72px] resize-y"
-            disabled={submitting}
           />
-          <div className="pt-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="text"
-              onClick={() => void handleDownloadLog()}
-              disabled={submitting || downloadingLog}
-            >
-              <Download className="h-4 w-4 shrink-0" aria-hidden />
-              {t('layout.download-logs')}
-            </Button>
-          </div>
         </div>
         <DialogFooter className="!rounded-b-xl p-md gap-sm sm:!flex-col flex !flex-col !border-0 !border-t-0 bg-transparent shadow-none">
+          {hasElectron && (
+            <p className="text-body-xs text-ds-text-neutral-subtle-default m-0 w-full text-right">
+              {t('layout.report-bug-zip-hint', {
+                defaultValue:
+                  'A diagnostics zip will be saved — attach it to the issue.',
+              })}
+            </p>
+          )}
           <div className="gap-sm flex w-full flex-row justify-end">
             <Button
               variant="ghost"
@@ -281,9 +211,19 @@ export default function ReportBugDialog({
               size="md"
               variant="primary"
               onClick={() => void onSubmit()}
-              disabled={submitting || !description.trim()}
+              disabled={!description.trim() || submitting}
             >
-              {t('layout.report-bug-submit')}
+              {submitting ? (
+                <Loader2
+                  className="h-4 w-4 animate-spin shrink-0"
+                  aria-hidden
+                />
+              ) : (
+                <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {t('layout.report-bug-open-github', {
+                defaultValue: 'Open on GitHub',
+              })}
             </Button>
           </div>
         </DialogFooter>

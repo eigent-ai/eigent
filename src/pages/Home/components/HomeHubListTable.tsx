@@ -38,13 +38,11 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'space', labelKey: 'layout.home-list-space' },
     { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
-    { id: 'tokens', labelKey: 'layout.home-list-tokens', align: 'right' },
     { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
   ],
   task: [
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
-    { id: 'tokens', labelKey: 'layout.home-list-tokens', align: 'right' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
   ],
   trigger: [

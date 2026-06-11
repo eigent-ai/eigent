@@ -57,14 +57,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -313,56 +306,20 @@ export function ChatInputModelDropdown({
     ]
   );
 
-  /** Radix submenu forces align=start (tops align); use alignOffset so sub bottom aligns with the SubTrigger row bottom. */
   const activeSubTriggerRef = useRef<HTMLElement | null>(null);
-  const subMenuContentRef = useRef<HTMLDivElement | null>(null);
-  const [subMenuAlignOffset, setSubMenuAlignOffset] = useState(0);
-  /** Bumped only when a submenu opens — never from ref callbacks (Radix composed refs re-fire and would loop). */
-  const [subAlignSyncEpoch, setSubAlignSyncEpoch] = useState(0);
 
-  const syncSubMenuAlignOffset = useCallback(() => {
+  // Bottom-align the sub content with the trigger row purely imperatively:
+  // shift the content up by (subHeight - triggerHeight) via marginTop.
+  // No React state is touched, so this can never cause a re-render loop.
+  const subContentCallbackRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
     const trigger = activeSubTriggerRef.current;
-    const sub = subMenuContentRef.current;
-    if (!trigger || !sub) return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const subH = sub.offsetHeight;
-
-    const desiredTop = triggerRect.bottom - subH;
-    const next = Math.round(desiredTop - triggerRect.top);
-
-    setSubMenuAlignOffset((prev) => (prev === next ? prev : next));
+    if (!trigger) return;
+    const subH = el.offsetHeight;
+    const trigH = trigger.offsetHeight;
+    if (subH <= 0 || trigH <= 0) return;
+    el.style.marginTop = `${trigH - subH}px`;
   }, []);
-
-  useLayoutEffect(() => {
-    if (subAlignSyncEpoch === 0) return;
-    let cancelled = false;
-    let raf1 = 0;
-    let raf2 = 0;
-    let raf3 = 0;
-    let raf4 = 0;
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        if (cancelled) return;
-        syncSubMenuAlignOffset();
-        raf3 = requestAnimationFrame(() => {
-          raf4 = requestAnimationFrame(() => {
-            if (cancelled) return;
-            syncSubMenuAlignOffset();
-          });
-        });
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      cancelAnimationFrame(raf3);
-      cancelAnimationFrame(raf4);
-    };
-  }, [subAlignSyncEpoch, syncSubMenuAlignOffset]);
 
   if (readOnly) {
     return (
@@ -389,11 +346,7 @@ export function ChatInputModelDropdown({
   }
 
   return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (!open) setSubMenuAlignOffset(0);
-      }}
-    >
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -431,17 +384,12 @@ export function ChatInputModelDropdown({
         align="start"
         side="top"
         sideOffset={4}
-        alignOffset={0}
         collisionPadding={12}
         avoidCollisions
         className="w-[180px]"
       >
         {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
-          <DropdownMenuSub
-            onOpenChange={(open) => {
-              if (open) setSubAlignSyncEpoch((e) => e + 1);
-            }}
-          >
+          <DropdownMenuSub>
             <DropdownMenuSubTrigger
               className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
               onPointerEnter={(e) => {
@@ -459,11 +407,8 @@ export function ChatInputModelDropdown({
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
-              ref={subMenuContentRef}
-              alignOffset={subMenuAlignOffset}
+              ref={subContentCallbackRef}
               className="max-h-[300px] w-[200px] overflow-y-auto"
-              collisionPadding={12}
-              avoidCollisions
             >
               {cloudModelOptions.map((model) => (
                 <DropdownMenuItem
@@ -483,11 +428,7 @@ export function ChatInputModelDropdown({
           </DropdownMenuSub>
         )}
 
-        <DropdownMenuSub
-          onOpenChange={(open) => {
-            if (open) setSubAlignSyncEpoch((e) => e + 1);
-          }}
-        >
+        <DropdownMenuSub>
           <DropdownMenuSubTrigger
             className="min-w-0 gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
@@ -503,11 +444,8 @@ export function ChatInputModelDropdown({
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
-            ref={subMenuContentRef}
-            alignOffset={subMenuAlignOffset}
+            ref={subContentCallbackRef}
             className="max-h-[440px] w-[220px] overflow-y-auto"
-            collisionPadding={12}
-            avoidCollisions
           >
             {items.map((item, idx) => {
               const isConfigured = !!form[idx]?.provider_id;
@@ -560,11 +498,7 @@ export function ChatInputModelDropdown({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
-        <DropdownMenuSub
-          onOpenChange={(open) => {
-            if (open) setSubAlignSyncEpoch((e) => e + 1);
-          }}
-        >
+        <DropdownMenuSub>
           <DropdownMenuSubTrigger
             className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
@@ -580,11 +514,8 @@ export function ChatInputModelDropdown({
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
-            ref={subMenuContentRef}
-            alignOffset={subMenuAlignOffset}
+            ref={subContentCallbackRef}
             className="w-[200px]"
-            collisionPadding={12}
-            avoidCollisions
           >
             {LOCAL_MODEL_OPTIONS.map((model) => {
               const isConfigured = !!localProviderIds[model.id];
