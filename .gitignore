@@ -42,6 +42,7 @@ yarn.lock
 .env.local
 .env.production
 .env.development
+client_secret_*.json
 
 .cursor
 
