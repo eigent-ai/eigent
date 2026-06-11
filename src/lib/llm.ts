@@ -54,6 +54,17 @@ export const INIT_PROVODERS: Provider[] = [
     websiteUrl: 'https://www.orcarouter.ai',
   },
   {
+    id: 'nebius',
+    name: 'Nebius Token Factory',
+    apiKey: '',
+    apiHost: 'https://api.tokenfactory.nebius.com/v1',
+    description: 'Nebius Token Factory model configuration.',
+    is_valid: false,
+    model_type: '',
+    modelsEndpoint: '/models',
+    websiteUrl: 'https://docs.tokenfactory.nebius.com/quickstart',
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     apiKey: '',

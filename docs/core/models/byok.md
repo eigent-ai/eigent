@@ -75,6 +75,7 @@ Eigent supports the following BYOK providers:
 | **Anthropic**             | `https://api.anthropic.com`                                | [Anthropic API Docs](https://docs.anthropic.com/en/api/getting-started)                       |
 | **OrcaRouter**            | `https://api.orcarouter.ai/v1`                             | [OrcaRouter Docs](https://docs.orcarouter.ai/)                                                |
 | **OpenRouter**            | `https://openrouter.ai/api/v1`                             | [OpenRouter Docs](https://openrouter.ai/docs)                                                 |
+| **Nebius Token Factory**  | `https://api.tokenfactory.nebius.com/v1`                   | [Nebius Token Factory Docs](https://docs.tokenfactory.nebius.com/quickstart)                  |
 | **Qwen (Alibaba)**        | `https://dashscope.aliyuncs.com/compatible-mode/v1`        | [Qwen API Docs](https://help.aliyun.com/zh/dashscope/developer-reference/api-details)         |
 | **DeepSeek**              | `https://api.deepseek.com`                                 | [DeepSeek API Docs](https://platform.deepseek.com/api-docs)                                   |
 | **MiniMax**               | `https://api.minimax.io/v1`                                | [MiniMax API Docs](https://platform.minimax.io/docs/api-reference/api-overview)               |
