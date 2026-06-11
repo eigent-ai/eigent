@@ -30,4 +30,15 @@ describe('parseStreamingTasks', () => {
       isStreaming: true,
     });
   });
+
+  it('does not display internal streaming chunk objects as raw text', () => {
+    expect(
+      parseStreamingTasks(
+        "msgs=[BaseMessage(role_name='System', meta_dict={}, reasoning_content='We')] stream_accumulate_mode='accumulate'"
+      )
+    ).toEqual({
+      tasks: [],
+      isStreaming: false,
+    });
+  });
 });

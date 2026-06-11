@@ -17,6 +17,20 @@ import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { useEffect, useMemo, useState } from 'react';
 
 /** Parse `<task>...</task>` tokens out of a streaming decompose blob. */
+function isDisplayableRawStreamingText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  return ![
+    /^msgs=\[/,
+    /BaseMessage\(/,
+    /\brole_name=/,
+    /\bmeta_dict=/,
+    /\breasoning_content=/,
+    /\bstream_accumulate_mode=/,
+  ].some((pattern) => pattern.test(trimmed));
+}
+
 export function parseStreamingTasks(text: string): {
   tasks: string[];
   isStreaming: boolean;
@@ -41,7 +55,7 @@ export function parseStreamingTasks(text: string): {
   }
   if (tasks.length === 0) {
     const fallback = text.trim();
-    if (fallback) {
+    if (isDisplayableRawStreamingText(fallback)) {
       tasks.push(fallback);
       isStreaming = true;
     }
