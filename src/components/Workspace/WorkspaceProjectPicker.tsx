@@ -22,9 +22,11 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
   getActiveSpaceTriggerLabel,
   getDefaultNewSpaceName,
+  isLocalWorkspaceSpace,
 } from '@/lib/spaceLabel';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
@@ -134,7 +136,7 @@ export function WorkspaceProjectPicker({
     activeProjectMeta?.workdirMode || activeProject?.workdirMode || null;
   const activeProjectDirectWrite =
     activeProjectWorkdirMode === 'direct-write' ||
-    (!activeProjectWorkdirMode && activeProjectSpace?.sourceType === 'folder');
+    (!activeProjectWorkdirMode && isLocalWorkspaceSpace(activeProjectSpace));
   const activeProjectServerBacked = Boolean(
     activeProjectMeta?.metadata?.serverSynced ||
     activeProjectMeta?.metadata?.historyId ||
@@ -275,6 +277,11 @@ export function WorkspaceProjectPicker({
           autoCreatedPlaceholder: true,
         },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
       navigate('/');
@@ -283,7 +290,15 @@ export function WorkspaceProjectPicker({
       console.error('Failed to create Space:', error);
       toast.error(t('layout.spaces-create-failed'));
     }
-  }, [createSpaceOnServer, navigate, projectStore, setActiveSpace, t]);
+  }, [
+    createSpaceOnServer,
+    email,
+    navigate,
+    projectStore,
+    setActiveSpace,
+    t,
+    userId,
+  ]);
 
   const openRenameDialog = () => {
     if (!canRenameActiveSpace || !activeSpace) return;

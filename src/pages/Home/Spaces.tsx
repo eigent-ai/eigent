@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { isLegacySpace } from '@/lib/spaceLabel';
+import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   getVisibleProjectMetasForSpace,
   isDisposableBlankSpace,
@@ -95,7 +95,7 @@ export default function Spaces() {
 
   const getSubtitle = useCallback(
     (space: Space) => {
-      if (space.sourceType === 'folder') {
+      if (isLocalWorkspaceSpace(space)) {
         return pathBasename(space.rootPath) || space.rootPath || '';
       }
       if (isLegacySpace(space)) {
@@ -232,17 +232,17 @@ export default function Spaces() {
   ]);
 
   return (
-    <div className="min-w-0 flex w-full flex-col">
-      <div className="mb-12 min-w-0 w-full">
+    <div className="flex w-full min-w-0 flex-col">
+      <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <FolderKanban className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.spaces-hub-empty-title')}
             </div>
           </div>
         ) : filteredSpaceSections.length === 0 ? (
-          <div className="p-8 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.search-no-results')}
             </div>

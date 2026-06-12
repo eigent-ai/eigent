@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Input } from '@/components/ui/input';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -326,7 +325,7 @@ function ProjectItemContent({
         className="relative"
       >
         {loading ? (
-          <div className="inset-0 absolute z-10 flex items-center justify-center">
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
           </div>
         ) : null}
@@ -344,11 +343,6 @@ function ProjectItemContent({
               {
                 id: 'triggers',
                 content: formatCompactCount(project.total_triggers),
-                align: 'right',
-              },
-              {
-                id: 'tokens',
-                content: formatTokenCount(tokenCount),
                 align: 'right',
               },
               {
@@ -423,7 +417,7 @@ function TaskItemContent({
       className={loading ? 'relative' : undefined}
     >
       {loading ? (
-        <div className="inset-0 absolute z-10 flex items-center justify-center">
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
         </div>
       ) : null}
@@ -433,11 +427,6 @@ function TaskItemContent({
           nameIcon={<ListChecks className="h-4 w-4" />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
-            {
-              id: 'tokens',
-              content: formatTokenCount(task.tokens || 0),
-              align: 'right',
-            },
             {
               id: 'created',
               content:

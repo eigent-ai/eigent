@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import tokenDarkIcon from '@/assets/token-dark.svg';
-import tokenLightIcon from '@/assets/token-light.svg';
+import tokenDarkIcon from '@/assets/custom/token-dark.svg';
+import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';

@@ -12,16 +12,19 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import logging
 import mimetypes
 import re
 import time
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
@@ -35,6 +38,8 @@ MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 MAX_FILES_PER_SESSION = 20
 WORKSPACE_ROOT = env("EIGENT_WORKSPACE", "~/.eigent/workspace")
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+FILE_LIST_SEMAPHORE = asyncio.Semaphore(4)
+SLOW_FILE_LIST_LOG_MS = 300
 
 
 def _get_eigent_root() -> Path:
@@ -76,6 +81,11 @@ def _count_session_uploads(session_id: str) -> int:
     if not uploads_dir.exists():
         return 0
     return len(list(uploads_dir.iterdir()))
+
+
+def _redacted_path_suffix(path: Path) -> str:
+    parts = path.parts[-2:]
+    return (".../" + "/".join(parts)) if parts else "..."
 
 
 @router.post("/files")
@@ -242,11 +252,41 @@ async def list_project_files(
         )
         return []
     base_path = str(project_root.resolve())
+    stats: dict[str, float | int] = {}
+    started = time.perf_counter()
     try:
-        paths = list_files(list_dir, base=base_path, max_entries=500)
+        async with FILE_LIST_SEMAPHORE:
+            paths = await run_in_threadpool(
+                partial(
+                    list_files,
+                    list_dir,
+                    base=base_path,
+                    max_entries=500,
+                    stats=stats,
+                )
+            )
     except Exception as e:
         file_logger.warning("list_project_files failed: %s", e)
         return []
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    log = (
+        file_logger.info
+        if elapsed_ms >= SLOW_FILE_LIST_LOG_MS
+        else file_logger.debug
+    )
+    log(
+        "list_project_files: project_id=%s space_id=%s task_id=%s count=%d "
+        "elapsed_ms=%.1f scan_ms=%.1f realpath_ms=%.1f symlinks=%d root=%s",
+        project_id,
+        space_id,
+        task_id,
+        len(paths),
+        elapsed_ms,
+        float(stats.get("scan_elapsed_ms", 0)),
+        float(stats.get("realpath_elapsed_ms", 0)),
+        int(stats.get("symlink_count", 0)),
+        _redacted_path_suffix(project_root),
+    )
     result: list[dict] = []
     for abs_path in paths:
         try:

@@ -43,6 +43,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   openai: openaiImage,
   anthropic: anthropicImage,
   gemini: geminiImage,
+  nebius: PROVIDER_AVATAR_URLS.nebius,
   openrouter: openrouterImage,
   orcarouter: orcarouterImage,
   'tongyi-qianwen': qwenImage,

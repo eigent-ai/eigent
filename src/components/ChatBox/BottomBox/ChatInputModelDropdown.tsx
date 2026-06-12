@@ -18,7 +18,7 @@
  */
 
 import { proxyFetchGet } from '@/api/http';
-import folderIcon from '@/assets/Folder.svg';
+import folderIcon from '@/assets/logo/eigent_icon_rich.svg';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +35,7 @@ import {
   type DefaultModelCategory,
 } from '@/lib/applyDefaultModelSelection';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getProviderValid } from '@/lib/providerStatus';
 import { cn } from '@/lib/utils';
 import {
   getLocalPlatformName,
@@ -45,6 +46,7 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import type { Provider } from '@/types';
 
 import {
@@ -57,31 +59,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-
-const cloudModelOptions = [
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-  { id: 'gpt-5.4', name: 'GPT-5.4' },
-  { id: 'gpt-5.5', name: 'GPT-5.5' },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-  { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
-  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-  { id: 'minimax_m2_7', name: 'Minimax M2.7' },
-] as const;
 
 export interface ChatInputModelDropdownProps {
   disabled?: boolean;
@@ -112,6 +92,24 @@ export function ChatInputModelDropdown({
     setModelType,
     setCloudModelType,
   } = useAuthStore();
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const getCloudModelDisplayName = useCloudModelStore(
+    (state) => state.getModelDisplayName
+  );
+  const effectiveCloudModelId = useCloudModelStore((state) =>
+    state.getEffectiveModelId(cloud_model_type)
+  );
+  const cloudModelOptions = useMemo(
+    () =>
+      cloudModels.map((model) => ({
+        id: model.id,
+        name: model.display_name,
+      })),
+    [cloudModels]
+  );
 
   const [items] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
@@ -138,6 +136,11 @@ export function ChatInputModelDropdown({
   >({});
 
   useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
+    void fetchCloudModels();
+  }, [fetchCloudModels]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
@@ -155,7 +158,7 @@ export function ChatInputModelDropdown({
                 provider_id: found.id,
                 apiKey: found.api_key || '',
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -233,14 +236,7 @@ export function ChatInputModelDropdown({
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
     if (cloudPrefer) {
-      const cloudModel = cloudModelOptions.find(
-        (m) => m.id === cloud_model_type
-      );
-      return cloudModel
-        ? cloudModel.name
-        : String(cloud_model_type)
-            .replace(/-/g, ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+      return getCloudModelDisplayName(cloud_model_type);
     }
 
     const preferredIdx = form.findIndex((f) => f.prefer);
@@ -261,6 +257,7 @@ export function ChatInputModelDropdown({
     cloudPrefer,
     cloud_model_type,
     form,
+    getCloudModelDisplayName,
     items,
     localPrefer,
     localPlatform,
@@ -296,7 +293,7 @@ export function ChatInputModelDropdown({
         localPlatform,
         setModelType,
         setCloudModelType: (id: string) => {
-          setCloudModelType(id as never);
+          setCloudModelType(id);
         },
         t,
       });
@@ -313,56 +310,20 @@ export function ChatInputModelDropdown({
     ]
   );
 
-  /** Radix submenu forces align=start (tops align); use alignOffset so sub bottom aligns with the SubTrigger row bottom. */
   const activeSubTriggerRef = useRef<HTMLElement | null>(null);
-  const subMenuContentRef = useRef<HTMLDivElement | null>(null);
-  const [subMenuAlignOffset, setSubMenuAlignOffset] = useState(0);
-  /** Bumped only when a submenu opens — never from ref callbacks (Radix composed refs re-fire and would loop). */
-  const [subAlignSyncEpoch, setSubAlignSyncEpoch] = useState(0);
 
-  const syncSubMenuAlignOffset = useCallback(() => {
+  // Bottom-align the sub content with the trigger row purely imperatively:
+  // shift the content up by (subHeight - triggerHeight) via marginTop.
+  // No React state is touched, so this can never cause a re-render loop.
+  const subContentCallbackRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
     const trigger = activeSubTriggerRef.current;
-    const sub = subMenuContentRef.current;
-    if (!trigger || !sub) return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const subH = sub.offsetHeight;
-
-    const desiredTop = triggerRect.bottom - subH;
-    const next = Math.round(desiredTop - triggerRect.top);
-
-    setSubMenuAlignOffset((prev) => (prev === next ? prev : next));
+    if (!trigger) return;
+    const subH = el.offsetHeight;
+    const trigH = trigger.offsetHeight;
+    if (subH <= 0 || trigH <= 0) return;
+    el.style.marginTop = `${trigH - subH}px`;
   }, []);
-
-  useLayoutEffect(() => {
-    if (subAlignSyncEpoch === 0) return;
-    let cancelled = false;
-    let raf1 = 0;
-    let raf2 = 0;
-    let raf3 = 0;
-    let raf4 = 0;
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        if (cancelled) return;
-        syncSubMenuAlignOffset();
-        raf3 = requestAnimationFrame(() => {
-          raf4 = requestAnimationFrame(() => {
-            if (cancelled) return;
-            syncSubMenuAlignOffset();
-          });
-        });
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      cancelAnimationFrame(raf3);
-      cancelAnimationFrame(raf4);
-    };
-  }, [subAlignSyncEpoch, syncSubMenuAlignOffset]);
 
   if (readOnly) {
     return (
@@ -391,7 +352,7 @@ export function ChatInputModelDropdown({
   return (
     <DropdownMenu
       onOpenChange={(open) => {
-        if (!open) setSubMenuAlignOffset(0);
+        if (open) void fetchCloudModels();
       }}
     >
       <DropdownMenuTrigger asChild>
@@ -431,17 +392,12 @@ export function ChatInputModelDropdown({
         align="start"
         side="top"
         sideOffset={4}
-        alignOffset={0}
         collisionPadding={12}
         avoidCollisions
         className="w-[180px]"
       >
         {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
-          <DropdownMenuSub
-            onOpenChange={(open) => {
-              if (open) setSubAlignSyncEpoch((e) => e + 1);
-            }}
-          >
+          <DropdownMenuSub>
             <DropdownMenuSubTrigger
               className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
               onPointerEnter={(e) => {
@@ -459,11 +415,8 @@ export function ChatInputModelDropdown({
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
-              ref={subMenuContentRef}
-              alignOffset={subMenuAlignOffset}
+              ref={subContentCallbackRef}
               className="max-h-[300px] w-[200px] overflow-y-auto"
-              collisionPadding={12}
-              avoidCollisions
             >
               {cloudModelOptions.map((model) => (
                 <DropdownMenuItem
@@ -474,7 +427,7 @@ export function ChatInputModelDropdown({
                   className="flex items-center justify-between"
                 >
                   <span className="text-body-sm">{model.name}</span>
-                  {cloudPrefer && cloud_model_type === model.id && (
+                  {cloudPrefer && effectiveCloudModelId === model.id && (
                     <Check className="h-4 w-4 text-ds-text-success-default-default" />
                   )}
                 </DropdownMenuItem>
@@ -483,11 +436,7 @@ export function ChatInputModelDropdown({
           </DropdownMenuSub>
         )}
 
-        <DropdownMenuSub
-          onOpenChange={(open) => {
-            if (open) setSubAlignSyncEpoch((e) => e + 1);
-          }}
-        >
+        <DropdownMenuSub>
           <DropdownMenuSubTrigger
             className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
             onPointerEnter={(e) => {
@@ -503,11 +452,8 @@ export function ChatInputModelDropdown({
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
-            ref={subMenuContentRef}
-            alignOffset={subMenuAlignOffset}
+            ref={subContentCallbackRef}
             className="max-h-[440px] w-[220px] overflow-y-auto"
-            collisionPadding={12}
-            avoidCollisions
           >
             {items.map((item, idx) => {
               const isConfigured = !!form[idx]?.provider_id;
@@ -560,11 +506,7 @@ export function ChatInputModelDropdown({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
-        <DropdownMenuSub
-          onOpenChange={(open) => {
-            if (open) setSubAlignSyncEpoch((e) => e + 1);
-          }}
-        >
+        <DropdownMenuSub>
           <DropdownMenuSubTrigger
             className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
             onPointerEnter={(e) => {
@@ -580,11 +522,8 @@ export function ChatInputModelDropdown({
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent
-            ref={subMenuContentRef}
-            alignOffset={subMenuAlignOffset}
+            ref={subContentCallbackRef}
             className="w-[200px]"
-            collisionPadding={12}
-            avoidCollisions
           >
             {LOCAL_MODEL_OPTIONS.map((model) => {
               const isConfigured = !!localProviderIds[model.id];

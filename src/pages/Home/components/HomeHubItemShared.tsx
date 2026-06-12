@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -93,7 +92,7 @@ export function HomeHubHeaderTag({
       emphasis={emphasis}
       variant="primary"
       text={label}
-      className="rounded-md w-fit max-w-[12rem] shrink-0 truncate"
+      className="w-fit max-w-[12rem] shrink-0 truncate rounded-md"
     />
   );
 }
@@ -139,7 +138,7 @@ export function HomeHubToneTag({
       emphasis={emphasis}
       variant="primary"
       text={label}
-      className="rounded-md w-fit shrink-0 truncate"
+      className="w-fit shrink-0 truncate rounded-md"
     />
   );
 }
@@ -177,7 +176,7 @@ export function HomeHubRuntimeStatusTag({
 function HomeHubCardStatsLine({ items }: { items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="gap-2 text-body-xs text-ds-text-neutral-muted-default flex flex-wrap items-center">
+    <div className="flex flex-wrap items-center gap-2 text-body-xs text-ds-text-neutral-muted-default">
       {items.map((item, index) => (
         <Fragment key={index}>
           {index > 0 ? (
@@ -200,13 +199,13 @@ export type HomeHubBoardStatRow = {
 function HomeHubBoardStats({ rows }: { rows: HomeHubBoardStatRow[] }) {
   if (rows.length === 0) return null;
   return (
-    <div className="mt-4 gap-2 flex w-fit flex-col items-start">
+    <div className="mt-4 flex w-fit flex-col items-start gap-2">
       {rows.map((row) => (
-        <div key={row.label} className="gap-x-2 flex w-fit items-baseline">
+        <div key={row.label} className="flex w-fit items-baseline gap-x-2">
           <span className="text-body-xs text-ds-text-neutral-muted-default">
             {row.label}
           </span>
-          <span className="text-body-xs text-ds-text-neutral-default-default tabular-nums">
+          <span className="text-body-xs tabular-nums text-ds-text-neutral-default-default">
             {row.value}
           </span>
         </div>
@@ -233,15 +232,15 @@ export function HomeHubBoardCardBody({
   titleClassName,
 }: HomeHubBoardCardBodyProps) {
   return (
-    <div className="min-w-0 flex w-full flex-col items-start">
-      <div className="gap-2 min-w-0 flex w-full items-start justify-between">
-        <div className="min-w-0 gap-1 flex flex-1 flex-col items-start">
-          <span className="h-4 w-4 text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4 inline-flex shrink-0 items-center justify-center">
+    <div className="flex w-full min-w-0 flex-col items-start">
+      <div className="flex w-full min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
           <span
             className={cn(
-              'min-w-0 text-body-md font-semibold text-ds-text-neutral-default-default w-full break-words whitespace-normal',
+              'w-full min-w-0 whitespace-normal break-words text-body-md font-semibold text-ds-text-neutral-default-default',
               titleClassName
             )}
           >
@@ -256,7 +255,7 @@ export function HomeHubBoardCardBody({
       <HomeHubBoardStats rows={statRows} />
 
       {otherContent ? (
-        <div className="mt-4 gap-1.5 flex w-fit flex-wrap items-center">
+        <div className="mt-4 flex w-fit flex-wrap items-center gap-1.5">
           {otherContent}
         </div>
       ) : null}
@@ -288,14 +287,14 @@ export function HomeHubHubCardBody({
 
   return (
     <>
-      <div className="gap-2 flex items-center justify-between">
-        <div className="min-w-0 gap-2 flex flex-1 items-center">
-          <span className="h-4 w-4 text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4 inline-flex shrink-0 items-center justify-center">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
           <span
             className={cn(
-              'min-w-0 text-body-md font-semibold text-ds-text-neutral-default-default truncate',
+              'min-w-0 truncate text-body-md font-semibold text-ds-text-neutral-default-default',
               titleClassName
             )}
           >
@@ -306,17 +305,17 @@ export function HomeHubHubCardBody({
       </div>
 
       {statItems.length > 0 ? (
-        <div className="mt-4 min-h-0 flex flex-1 flex-col">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col">
           <HomeHubCardStatsLine items={statItems} />
         </div>
       ) : null}
 
-      <div className="gap-3 pt-4 mt-auto flex items-center justify-between">
-        <div className="min-w-0 gap-1.5 flex flex-wrap items-center">
+      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {footerTags}
         </div>
         {lastUpdated ? (
-          <span className="text-body-xs text-ds-text-neutral-subtle-default shrink-0">
+          <span className="shrink-0 text-body-xs text-ds-text-neutral-subtle-default">
             {t('layout.home-space-last-updated', { time: lastUpdated })}
           </span>
         ) : null}
@@ -422,9 +421,9 @@ export function HomeHubItemBody({
 }: HomeHubItemBodyProps) {
   return (
     <>
-      <div className="min-w-0 gap-2 flex items-center">
+      <div className="flex min-w-0 items-center gap-2">
         {nameIcon ? (
-          <span className="h-4 w-4 text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4 inline-flex shrink-0 items-center justify-center">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {nameIcon}
           </span>
         ) : null}
@@ -434,7 +433,7 @@ export function HomeHubItemBody({
         <span
           key={cell.id}
           className={cn(
-            'font-normal text-ds-text-neutral-muted-default truncate leading-none',
+            'truncate font-normal leading-none text-ds-text-neutral-muted-default',
             cell.textSize === 'xs' ? '!text-label-xs' : '!text-label-sm',
             cell.align === 'right' ? 'text-right tabular-nums' : 'text-left'
           )}
@@ -553,9 +552,6 @@ export function HomeHubProjectCardBody({
   const statItems = [
     t('layout.home-space-stat-tasks', { count: taskCount }),
     t('layout.home-space-stat-triggers', { count: triggerCount }),
-    t('layout.home-project-stat-tokens', {
-      value: formatTokenCount(tokenCount),
-    }),
   ];
 
   return (
@@ -596,10 +592,6 @@ export function HomeHubProjectBoardCardBody({
       statRows={[
         { label: t('layout.tasks'), value: taskCount },
         { label: t('layout.triggers'), value: triggerCount },
-        {
-          label: t('layout.home-list-tokens'),
-          value: formatTokenCount(tokenCount),
-        },
       ]}
       otherContent={
         <>
@@ -635,12 +627,7 @@ export function HomeHubTaskCardBody({
   menuItems,
 }: HomeHubTaskCardBodyProps) {
   const { t } = useTranslation();
-  const statItems = [
-    t('layout.home-project-stat-tokens', {
-      value: formatTokenCount(tokenCount),
-    }),
-    ...(projectName?.trim() ? [projectName.trim()] : []),
-  ];
+  const statItems = [...(projectName?.trim() ? [projectName.trim()] : [])];
 
   return (
     <HomeHubHubCardBody
@@ -662,12 +649,7 @@ export function HomeHubTaskBoardCardBody({
   menuItems,
 }: Omit<HomeHubTaskCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
-  const statRows: HomeHubBoardStatRow[] = [
-    {
-      label: t('layout.home-list-tokens'),
-      value: formatTokenCount(tokenCount),
-    },
-  ];
+  const statRows: HomeHubBoardStatRow[] = [];
 
   if (projectName?.trim()) {
     statRows.push({
@@ -832,10 +814,10 @@ export function HomeHubItemShell({
           layout === 'board' && homeHubBoardSurfaceClass,
           layout === 'card' && 'relative flex h-full min-h-[11rem] flex-col',
           layout === 'board' &&
-            'min-w-0 relative flex h-auto w-full flex-col items-start overflow-hidden',
+            'relative flex h-auto w-full min-w-0 flex-col items-start overflow-hidden',
           layout === 'list' &&
             cn(
-              'gap-x-4 rounded-xl bg-ds-bg-neutral-default-default px-3 py-2.5 hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-subtle-default grid w-full cursor-pointer items-center border border-solid border-transparent text-left transition-colors duration-150',
+              'grid w-full cursor-pointer items-center gap-x-4 rounded-xl border border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-border-neutral-subtle-default hover:bg-ds-bg-neutral-default-hover',
               kind ? HOME_HUB_LIST_GRID_CLASS[kind] : undefined
             ),
           className

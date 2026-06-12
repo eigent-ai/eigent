@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
   getRecommendedContrast,
@@ -26,6 +27,7 @@ type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type AppearanceMode = Mode | 'system';
+const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
@@ -35,21 +37,7 @@ export type WorkspaceMainBackground =
   | 'ruled'
   | 'dotted'
   | 'dashed';
-export type CloudModelType =
-  | 'gemini-3.1-pro-preview'
-  | 'gemini-3.5-flash'
-  | 'gemini-3-pro-preview'
-  | 'gemini-3-flash-preview'
-  | 'claude-haiku-4-5'
-  | 'claude-sonnet-4-5'
-  | 'claude-sonnet-4-6'
-  | 'claude-opus-4-6'
-  | 'claude-opus-4-7'
-  | 'gpt-5.4'
-  | 'gpt-5.5'
-  | 'gpt-5-mini'
-  | 'deepseek-v4-pro'
-  | 'minimax_m2_7';
+export type CloudModelType = string;
 
 // auth info interface
 interface AuthInfo {
@@ -76,6 +64,7 @@ interface AuthState {
   themeContrast: number;
   language: string;
   isFirstLaunch: boolean;
+  onboardingCompleted: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
   /**
@@ -124,6 +113,7 @@ interface AuthState {
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
+  setOnboardingCompleted: (completed: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
@@ -134,30 +124,8 @@ interface AuthState {
 
 // random default model selection
 const getRandomDefaultModel = (): CloudModelType => {
-  const models: CloudModelType[] = ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini'];
-  return models[Math.floor(Math.random() * models.length)];
+  return LEGACY_DEFAULT_CLOUD_MODEL_ID;
 };
-
-const SUPPORTED_CLOUD_MODEL_TYPES: ReadonlySet<CloudModelType> =
-  new Set<CloudModelType>([
-    'gemini-3.1-pro-preview',
-    'gemini-3-pro-preview',
-    'gemini-3-flash-preview',
-    'claude-haiku-4-5',
-    'claude-sonnet-4-5',
-    'claude-sonnet-4-6',
-    'claude-opus-4-6',
-    'claude-opus-4-7',
-    'gpt-5.4',
-    'gpt-5.5',
-    'gpt-5-mini',
-    'deepseek-v4-pro',
-    'minimax_m2_7',
-  ]);
-
-const isSupportedCloudModelType = (value: unknown): value is CloudModelType =>
-  typeof value === 'string' &&
-  SUPPORTED_CLOUD_MODEL_TYPES.has(value as CloudModelType);
 
 const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
   if (userId === null || userId === undefined || userId === '') {
@@ -188,6 +156,7 @@ const authStore = create<AuthState>()(
       themeContrast: getRecommendedContrast(),
       language: 'system',
       isFirstLaunch: true,
+      onboardingCompleted: false,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       hasModelConfigured: false,
@@ -204,7 +173,14 @@ const authStore = create<AuthState>()(
         hydrateSpacesForUser(user_id);
       },
 
-      logout: () =>
+      logout: () => {
+        const previousUserId = get().user_id;
+        if (previousUserId != null) {
+          // Drop this account's IDB-backed project cache so signing in as a
+          // different user later doesn't see stale conversations. Fire-and-
+          // forget — clearAllCachedProjects swallows its own errors.
+          void clearAllCachedProjects(previousUserId);
+        }
         set({
           token: null,
           username: null,
@@ -212,7 +188,8 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
-        }),
+        });
+      },
 
       // set related methods
       setAppearance: (appearance) =>
@@ -290,6 +267,9 @@ const authStore = create<AuthState>()(
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
+      setOnboardingCompleted: (onboardingCompleted) =>
+        set({ onboardingCompleted }),
+
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
 
       setWorkspaceMainBackground: (workspaceMainBackground) =>
@@ -340,7 +320,7 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 7,
+      version: 8,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -353,11 +333,9 @@ const authStore = create<AuthState>()(
           | undefined;
         if (!s) return persistedState as typeof persistedState;
 
-        // Drop unsupported cloud model ids so stale values like 'gpt-5.2'
-        // (removed from the chat input dropdown) don't keep submitting an
-        // empty model_platform and triggering 422 on /chat.
         const sanitizedCloudModelType: CloudModelType =
-          isSupportedCloudModelType(s.cloud_model_type)
+          typeof s.cloud_model_type === 'string' &&
+          s.cloud_model_type.length > 0
             ? s.cloud_model_type
             : getRandomDefaultModel();
 
@@ -423,6 +401,7 @@ const authStore = create<AuthState>()(
         cloud_model_type: state.cloud_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
+        onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,

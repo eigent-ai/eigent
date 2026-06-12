@@ -164,7 +164,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     (callback) => chatStore.subscribe(callback),
     () => {
       const state = chatStore.getState();
-      const taskId = state.activeTaskId;
+      const taskId = activeTaskId;
       if (!taskId || !state.tasks[taskId]) return '';
       return state.tasks[taskId].streamingDecomposeText || '';
     }
@@ -217,6 +217,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     activeTask?.messages.some(
       (m: any) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
     )
+  );
+  const isInitialTaskPreparation = Boolean(
+    isLastUserQuery &&
+    activeTask?.isPending &&
+    streamingDecomposeText.length === 0 &&
+    !activeTask.messages.some((m: any) => m.step === AgentStep.TO_SUB_TASKS)
   );
   // Single agent has no task-splitting/confirm step — it runs directly — so it
   // never has a planning phase. Skipping this avoids the splitting card
@@ -288,11 +294,18 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // show the live splitting UI; abandoned turns fall through to taskCardVisible
   // and the conditional below renders nothing instead of a stale spinner.
   const isSkeletonPhase =
-    task && !isSingleAgentTask && isPlanSplittingPhase(task) && isLastUserQuery;
+    task &&
+    !isSingleAgentTask &&
+    isPlanSplittingPhase(task) &&
+    isLastUserQuery &&
+    !isInitialTaskPreparation;
 
   /** Task card visible (user message is sticky alone in this mode). */
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
-  const showTaskPlanCard = taskCardVisible && !shouldShowSingleAgentWorkLog;
+  const showTaskPlanCard =
+    taskCardVisible &&
+    !shouldShowSingleAgentWorkLog &&
+    !isInitialTaskPreparation;
 
   const hasConfirmedSubTasks = Boolean(
     task?.messages.some(
@@ -302,10 +315,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const showPreparingExecute =
     Boolean(activeTaskId && task) &&
     task!.status === ChatTaskStatus.PENDING &&
-    // Workforce: after the user confirms the plan, before the work log.
-    ((showTaskPlanCard && hasConfirmedSubTasks) ||
+    (isInitialTaskPreparation ||
+      // Workforce: after the user confirms the plan, before the work log.
+      (showTaskPlanCard && hasConfirmedSubTasks) ||
       // Single agent: from submit until the first `todo_state` arrives.
       shouldShowSingleAgentWorkLog);
+  const shouldShowPlanTaskBox = Boolean(
+    !hasConfirmedSubTasks && (isLastUserQuery || queryGroup.taskMessage)
+  );
 
   return (
     <motion.div
@@ -359,6 +376,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 <TaskCard
                   key={`task-${activeTaskId}-${queryGroup.queryId}`}
                   chatId={chatId}
+                  taskId={activeTaskId}
                   taskInfo={task?.taskInfo || []}
                   taskType={queryGroup.taskMessage?.taskType || 1}
                   taskAssigning={task?.taskAssigning || []}
@@ -379,8 +397,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   }}
                   clickable={true}
                 />
-              ) : isLastUserQuery ? (
-                // Live planning UI: only on the most recent turn.
+              ) : shouldShowPlanTaskBox ? (
+                // Live planning UI: latest splitting turn or the group that
+                // owns an unconfirmed to_sub_tasks message.
                 <PlanTaskBox
                   chatStore={chatStore}
                   taskId={activeTaskId}

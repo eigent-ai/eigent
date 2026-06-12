@@ -100,6 +100,7 @@ export const ProjectSection = React.forwardRef<
     return (
       <motion.div
         ref={ref}
+        data-turn-id={activeTaskId}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}

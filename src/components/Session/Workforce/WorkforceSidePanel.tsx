@@ -24,6 +24,7 @@ import { ProgressSection } from '@/components/Session/SidePanelSections/Progress
 import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
 import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSkillsStore } from '@/store/skillsStore';
@@ -51,25 +52,30 @@ export function WorkforceSidePanel({
   isSidePanelVisible,
   onToggleSidePanel,
   isExpandedOverlayOpen,
-  onToggleExpandedOverlay,
+  onToggleExpandedOverlay: _onToggleExpandedOverlay,
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const activeTask = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]
-    : undefined;
 
-  const agents = activeTask?.taskAssigning ?? [];
+  const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
+  const selectedTask = selectedTurn.task;
+  const selectedTaskId = selectedTurn.taskId;
+
+  const agents = useMemo(
+    () => selectedTask?.taskAssigning ?? [],
+    [selectedTask?.taskAssigning]
+  );
   const projectFiles = useProjectOutputFiles(
     projectStore.activeProjectId,
-    activeTask
+    selectedTask,
+    selectedTaskId
   );
   /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
   const subtasks = useMemo(() => {
-    const taskInfo = activeTask?.taskInfo ?? [];
-    const taskRunning = activeTask?.taskRunning ?? [];
+    const taskInfo = selectedTask?.taskInfo ?? [];
+    const taskRunning = selectedTask?.taskRunning ?? [];
     if (taskRunning.length === 0) return taskInfo;
     const runById = new Map(
       taskRunning.map((r) => [r.id, r] as [string, TaskInfo])
@@ -79,22 +85,22 @@ export function WorkforceSidePanel({
       if (!live) return t;
       return { ...t, ...live, content: t.content || live.content };
     });
-  }, [activeTask?.taskInfo, activeTask?.taskRunning]);
+  }, [selectedTask?.taskInfo, selectedTask?.taskRunning]);
   const files = useMemo(
     () =>
       mergeSidePanelOutputFiles(
-        collectSidePanelOutputFiles(activeTask),
+        collectSidePanelOutputFiles(selectedTask),
         projectFiles
       ),
-    [activeTask, projectFiles]
+    [selectedTask, projectFiles]
   );
   const uploadedFiles = useMemo(() => {
-    if (!activeTask) return [];
+    if (!selectedTask) return [];
     const all = [
-      ...(activeTask.messages ?? [])
+      ...(selectedTask.messages ?? [])
         .filter((m) => m.role === 'user')
         .flatMap((m) => m.attaches ?? []),
-      ...(activeTask.attaches ?? []),
+      ...(selectedTask.attaches ?? []),
     ];
     const seen = new Set<string>();
     return all.filter((file) => {
@@ -103,23 +109,33 @@ export function WorkforceSidePanel({
       seen.add(key);
       return true;
     });
-  }, [activeTask]);
+  }, [selectedTask]);
   const skills = useSkillsStore((s) => s.skills);
   const contextItems = useMemo(
     () =>
-      buildContextItems(agents, activeTask?.taskRunning, uploadedFiles, skills),
-    [agents, activeTask?.taskRunning, uploadedFiles, skills]
+      buildContextItems(
+        agents,
+        selectedTask?.taskRunning,
+        uploadedFiles,
+        skills
+      ),
+    [agents, selectedTask?.taskRunning, uploadedFiles, skills]
   );
 
   const handleOpenAgentFile = useCallback(
     (file: FileInfo) => {
-      if (!chatStore?.activeTaskId) return;
-      chatStore.setSelectedFile(chatStore.activeTaskId, file);
+      if (!selectedTaskId || !selectedTurn.chatStore) return;
+      selectedTurn.chatStore.getState().setSelectedFile(selectedTaskId, file);
       setActiveWorkspaceTab('inbox', {
         clearInboxForProjectId: projectStore.activeProjectId ?? null,
       });
     },
-    [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
+    [
+      projectStore.activeProjectId,
+      selectedTaskId,
+      selectedTurn.chatStore,
+      setActiveWorkspaceTab,
+    ]
   );
 
   return (
@@ -137,6 +153,8 @@ export function WorkforceSidePanel({
               defaultValue: 'Progress',
             })}
             subtasks={subtasks}
+            projectId={projectStore.activeProjectId}
+            taskId={selectedTaskId}
           />
           <ExecutionContextSection
             title={t('layout.execution-context', {
@@ -160,6 +178,7 @@ export function WorkforceSidePanel({
         workforcePanelKey={workforcePanelKey}
         onToggleSidePanel={onToggleSidePanel}
         isSidePanelVisible={isSidePanelVisible}
+        selectedTurn={selectedTurn}
       />
     </>
   );

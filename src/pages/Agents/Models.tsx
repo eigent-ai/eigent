@@ -46,7 +46,9 @@ import {
 } from '@/components/ui/select';
 import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { useAuthStore } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Provider } from '@/types';
 import {
   Check,
@@ -135,6 +137,20 @@ export default function SettingModels() {
   const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const getCloudModelDisplayName = useCloudModelStore(
+    (state) => state.getModelDisplayName
+  );
+  const effectiveCloudModelId = useCloudModelStore((state) =>
+    state.getEffectiveModelId(cloud_model_type)
+  );
+  const cloudModelOptions = cloudModels.map((model) => ({
+    id: model.id,
+    name: model.display_name,
+  }));
   const [form, setForm] = useState(() =>
     INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => ({
       apiKey: p.apiKey,
@@ -223,7 +239,7 @@ export default function SettingModels() {
 
   // Per-cloud-provider model list state: { groups, loading, error } keyed by
   // provider id. Populated for providers whose `INIT_PROVODERS` entry declares
-  // a `modelsEndpoint` (today: only OrcaRouter).
+  // a `modelsEndpoint`.
   const [cloudModelsState, setCloudModelsState] = useState<
     Record<
       string,
@@ -376,7 +392,7 @@ export default function SettingModels() {
                 apiKey: found.api_key || '',
                 // Fall back to provider's default API host if endpoint_url is empty
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -475,17 +491,15 @@ export default function SettingModels() {
     []
   );
 
+  useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
+    void fetchCloudModels();
+  }, [fetchCloudModels]);
+
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
     if (cloudPrefer) {
-      const cloudModel = cloudModelOptions.find(
-        (m) => m.id === cloud_model_type
-      );
-      const modelName = cloudModel
-        ? cloudModel.name
-        : cloud_model_type
-            .replace(/-/g, ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+      const modelName = getCloudModelDisplayName(cloud_model_type);
       return `${t('setting.eigent-cloud')} / ${modelName}`;
     }
 
@@ -567,7 +581,7 @@ export default function SettingModels() {
       setCloudPrefer(true);
       setModelType('cloud');
       if (modelId !== 'cloud') {
-        setCloudModelType(modelId as any);
+        setCloudModelType(modelId);
       }
     } else if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
@@ -584,23 +598,6 @@ export default function SettingModels() {
     }
     setPendingDefaultModel(null);
   };
-
-  // Cloud model options
-  const cloudModelOptions = [
-    { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-    { id: 'gpt-5.4', name: 'GPT-5.4' },
-    { id: 'gpt-5.5', name: 'GPT-5.5' },
-    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
-    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-    { id: 'minimax_m2_7', name: 'Minimax M2.7' },
-  ];
 
   const handleVerify = async (idx: number) => {
     const { apiKey, apiHost, externalConfig, model_type, provider_id } =
@@ -692,7 +689,7 @@ export default function SettingModels() {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_valid: toProviderValidStatus(true),
       model_type: form[idx].model_type,
     };
     if (externalConfig) {
@@ -723,8 +720,9 @@ export default function SettingModels() {
               apiKey: found.api_key || '',
               // Fall back to provider's default API host if endpoint_url is empty
               apiHost: found.endpoint_url || item.apiHost,
-              is_valid: !!found.is_valid,
+              is_valid: getProviderValid(found),
               prefer: found.prefer ?? false,
+              model_type: found.model_type ?? fi.model_type ?? '',
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -897,7 +895,7 @@ export default function SettingModels() {
         provider_name: localPlatform,
         api_key: 'not-required',
         endpoint_url: currentEndpoint, // Save base URL without specific endpoints
-        is_valid: true,
+        is_valid: toProviderValidStatus(true),
         model_type: currentType,
         encrypted_config: {
           model_platform: localPlatform,
@@ -1463,52 +1461,18 @@ export default function SettingModels() {
             </div>
             <div className="ml-4 flex-shrink-0">
               <Select
-                value={cloud_model_type}
+                value={effectiveCloudModelId ?? cloud_model_type}
                 onValueChange={setCloudModelType}
               >
                 <SelectTrigger size="sm">
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gemini-3.5-flash">
-                    {t('setting.gemini-3.5-flash-name')}
-                  </SelectItem>
-                  <SelectItem value="gemini-3.1-pro-preview">
-                    {t('setting.gemini-3.1-pro-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gemini-3-pro-preview">
-                    {t('setting.gemini-3-pro-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gemini-3-flash-preview">
-                    {t('setting.gemini-3-flash-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.4">
-                    {t('setting.gpt-5.4-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.5">
-                    {t('setting.gpt-5.5-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-haiku-4-5">
-                    {t('setting.claude-haiku-4-5-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-sonnet-4-5">
-                    {t('setting.claude-sonnet-4-5-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-sonnet-4-6">
-                    {t('setting.claude-sonnet-4-6-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-opus-4-6">
-                    {t('setting.claude-opus-4-6-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-opus-4-7">
-                    {t('setting.claude-opus-4-7-name')}
-                  </SelectItem>
-                  <SelectItem value="deepseek-v4-pro">
-                    {t('setting.deepseek-v4-pro-name')}
-                  </SelectItem>
-                  <SelectItem value="minimax_m2_7">
-                    {t('setting.minimax-m2-7-name')}
-                  </SelectItem>
+                  {cloudModelOptions.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -2096,7 +2060,11 @@ export default function SettingModels() {
               {t('setting.models-default-setting-description')}
             </div>
           </div>
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) void fetchCloudModels();
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <button className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default outline-none transition-colors hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active">
                 <span className="whitespace-nowrap text-body-sm leading-none">
@@ -2125,7 +2093,7 @@ export default function SettingModels() {
                         className="flex items-center justify-between"
                       >
                         <span className="text-body-sm">{model.name}</span>
-                        {cloudPrefer && cloud_model_type === model.id && (
+                        {cloudPrefer && effectiveCloudModelId === model.id && (
                           <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                         )}
                       </DropdownMenuItem>

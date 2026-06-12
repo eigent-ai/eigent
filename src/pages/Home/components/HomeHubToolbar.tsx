@@ -27,6 +27,7 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getDefaultNewSpaceName } from '@/lib/spaceLabel';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -135,6 +136,11 @@ export default function HomeHubToolbar({
           autoCreatedPlaceholder: true,
         },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
       goToWorkspace();
@@ -144,7 +150,15 @@ export default function HomeHubToolbar({
         closeButton: true,
       });
     }
-  }, [createSpaceOnServer, goToWorkspace, projectStore, setActiveSpace, t]);
+  }, [
+    createSpaceOnServer,
+    email,
+    goToWorkspace,
+    projectStore,
+    setActiveSpace,
+    t,
+    userId,
+  ]);
 
   const handleCreateSpaceFromFolder = useCallback(async () => {
     try {

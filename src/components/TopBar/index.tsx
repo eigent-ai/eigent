@@ -13,8 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import giftWhiteIcon from '@/assets/gift-white.svg';
-import giftIcon from '@/assets/gift.svg';
+import giftWhiteIcon from '@/assets/custom/gift-white.svg';
+import giftIcon from '@/assets/custom/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
@@ -22,6 +22,13 @@ import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
+import { Blocks } from '@/components/ui/animate-ui/icons/blocks';
+import { Bot } from '@/components/ui/animate-ui/icons/bot';
+import { Compass } from '@/components/ui/animate-ui/icons/compass';
+import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
+import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
+import { Radio } from '@/components/ui/animate-ui/icons/radio';
+import { Settings as AnimateSettings } from '@/components/ui/animate-ui/icons/settings';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -36,7 +43,11 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
-import { buildTaskQuestionsById } from '@/lib/replay';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
 import {
   getActiveSpaceTriggerLabel,
@@ -64,7 +75,14 @@ import {
   Square,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   NavigationType,
@@ -135,13 +153,17 @@ const topBarCrossfade = {
   ease: [0.4, 0, 0.2, 1] as const,
 };
 
-const HOME_NAV_HISTORY_MENU: { id: HistoryTabId; labelKey: string }[] = [
-  { id: 'home', labelKey: 'layout.spaces' },
-  { id: 'agents', labelKey: 'layout.agents' },
-  { id: 'channels', labelKey: 'layout.channels' },
-  { id: 'connectors', labelKey: 'layout.connectors' },
-  { id: 'browser', labelKey: 'layout.browser' },
-  { id: 'settings', labelKey: 'layout.settings' },
+const HOME_NAV_HISTORY_MENU: {
+  id: HistoryTabId;
+  labelKey: string;
+  icon: ReactNode;
+}[] = [
+  { id: 'home', labelKey: 'layout.spaces', icon: <Blocks /> },
+  { id: 'agents', labelKey: 'layout.agents', icon: <Bot /> },
+  { id: 'channels', labelKey: 'layout.channels', icon: <Radio /> },
+  { id: 'connectors', labelKey: 'layout.connectors', icon: <Hammer /> },
+  { id: 'browser', labelKey: 'layout.browser', icon: <Compass /> },
+  { id: 'settings', labelKey: 'layout.settings', icon: <AnimateSettings /> },
 ];
 
 function HeaderWin() {
@@ -284,12 +306,20 @@ function HeaderWin() {
     (tab: HistoryTabId) => {
       setHomeNavMenuOpen(false);
       if (tab === 'home') {
+        // The Home/Spaces hub is a project-independent surface and may
+        // re-select the same project the user just left. Clearing
+        // activeProjectId routes through `setActiveProject(null)`, which
+        // runs the stale-eviction hook on the outgoing project. Without
+        // this, returning to a stale-marked project from the hub would
+        // short-circuit on `setActiveProject(id)`'s same-id no-op and
+        // keep serving the cached state for the rest of the session.
+        projectStore.setActiveProject(null);
         navigate('/history?tab=home&section=spaces');
         return;
       }
       navigate(`/history?tab=${tab}`);
     },
-    [navigate]
+    [navigate, projectStore]
   );
 
   const ensureProjectLoaded = useCallback(
@@ -328,7 +358,8 @@ function HeaderWin() {
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name,
           undefined,
-          taskQuestionsById
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
         );
       } catch (error) {
         console.error(
@@ -354,6 +385,11 @@ function HeaderWin() {
           autoCreatedPlaceholder: true,
         },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
       setActiveWorkspaceTab('workforce');
@@ -366,11 +402,13 @@ function HeaderWin() {
     }
   }, [
     createSpaceOnServer,
+    email,
     projectStore,
     requestWorkspaceChatFocus,
     setActiveSpace,
     setActiveWorkspaceTab,
     t,
+    userId,
   ]);
 
   const handleCreateSpaceFromFolder = useCallback(async () => {
@@ -593,6 +631,11 @@ function HeaderWin() {
                 className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold !text-ds-text-neutral-default-default outline-none hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px] active:bg-ds-bg-neutral-default-active"
                 aria-label={t('layout.home')}
                 aria-haspopup="menu"
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  setHomeNavMenuOpen(false);
+                  navigateToHistoryTab('home');
+                }}
               >
                 <img
                   src={
@@ -614,14 +657,18 @@ function HeaderWin() {
               sideOffset={6}
               className="min-w-32 duration-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
             >
-              {HOME_NAV_HISTORY_MENU.map(({ id, labelKey }) => (
-                <DropdownMenuItem
-                  key={id}
-                  className="cursor-pointer"
-                  onClick={() => navigateToHistoryTab(id)}
-                >
-                  <span>{t(labelKey)}</span>
-                </DropdownMenuItem>
+              {HOME_NAV_HISTORY_MENU.map(({ id, labelKey, icon }) => (
+                <AnimateIcon key={id} animateOnHover="default" asChild>
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2"
+                    onClick={() => navigateToHistoryTab(id)}
+                  >
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4">
+                      {icon}
+                    </span>
+                    <span>{t(labelKey)}</span>
+                  </DropdownMenuItem>
+                </AnimateIcon>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>

@@ -188,8 +188,12 @@ export function resolveProjectNavLeadPresentation(options: {
   activeTask?: TaskRow;
   cachedLead?: SessionNavLeadPresentation;
   isHistoryLoading?: boolean;
+  isAchieved?: boolean;
 }): SessionNavLeadPresentation {
-  const { activeTask, cachedLead, isHistoryLoading } = options;
+  const { activeTask, cachedLead, isHistoryLoading, isAchieved } = options;
+  if (isAchieved) {
+    return SESSION_NAV_IDLE_LEAD;
+  }
   if (isHistoryLoading && cachedLead) {
     return cachedLead;
   }

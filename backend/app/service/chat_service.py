@@ -115,6 +115,43 @@ def normalize_summary_task(
     return f"{name or 'Task'}|{summary or name or 'Task'}"
 
 
+def _extract_stream_chunk_content(chunk: Any) -> str:
+    """Return user-visible text from a streaming chunk.
+
+    Some CAMEL streaming chunks carry planning text in ``reasoning_content``.
+    Falling back to ``str(chunk)`` leaks internal ``BaseMessage(...)``
+    representations to the UI, so only explicit text fields are displayable.
+    """
+    if chunk is None:
+        return ""
+    if isinstance(chunk, str):
+        return chunk
+
+    def message_text(message: Any) -> str:
+        for attr in ("content", "reasoning_content"):
+            value = getattr(message, attr, None)
+            if isinstance(value, str) and value:
+                return value
+        return ""
+
+    msg = getattr(chunk, "msg", None)
+    content = message_text(msg)
+    if content:
+        return content
+
+    msgs = getattr(chunk, "msgs", None)
+    if msgs:
+        contents = [
+            item_content
+            for item in msgs
+            if (item_content := message_text(item))
+        ]
+        if contents:
+            return "".join(contents)
+
+    return ""
+
+
 def format_task_context(
     task_data: dict, seen_files: set | None = None, skip_files: bool = False
 ) -> str:
@@ -838,10 +875,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     def on_stream_text(chunk):
                         try:
                             accumulated_content = (
-                                chunk.msg.content
-                                if hasattr(chunk, "msg") and chunk.msg
-                                else str(chunk)
+                                _extract_stream_chunk_content(chunk)
                             )
+                            if not accumulated_content:
+                                return
                             last_content = stream_state["last_content"]
 
                             # Calculate delta: new content
@@ -1516,12 +1553,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                         def on_stream_text(chunk):
                             try:
-                                has_msg = hasattr(chunk, "msg") and chunk.msg
                                 accumulated_content = (
-                                    chunk.msg.content
-                                    if has_msg
-                                    else str(chunk)
+                                    _extract_stream_chunk_content(chunk)
                                 )
+                                if not accumulated_content:
+                                    return
                                 last_content = stream_state["last_content"]
 
                                 if accumulated_content.startswith(

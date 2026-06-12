@@ -21,13 +21,17 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, overload
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from fastapi import APIRouter, FastAPI
 
 logger = logging.getLogger("env")
 
 # Thread-local storage for user-specific environment
 _thread_local = threading.local()
+
+# Keys present before dotenv files are loaded remain authoritative. Values
+# loaded from dotenv files can be refreshed from disk by env().
+_process_env_keys = set(os.environ.keys())
 
 # Safe base directory for user environment files
 env_base_dir = os.path.join(os.path.expanduser("~"), ".eigent")
@@ -58,6 +62,8 @@ def _load_initial_env_files(paths: Iterable[Path]) -> list[Path]:
     3. Earlier files in `paths`.
     """
     original_env = dict(os.environ)
+    global _process_env_keys
+    _process_env_keys = set(original_env.keys())
     loaded_paths: list[Path] = []
     seen: set[str] = set()
 
@@ -82,6 +88,26 @@ def _load_initial_env_files(paths: Iterable[Path]) -> list[Path]:
             ", ".join(str(path) for path in loaded_paths),
         )
     return loaded_paths
+
+
+def _load_live_env_values(paths: Iterable[Path]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    seen: set[str] = set()
+
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        resolved_key = str(resolved)
+        if resolved_key in seen:
+            continue
+        seen.add(resolved_key)
+        if not resolved.exists():
+            continue
+
+        for key, value in dotenv_values(resolved).items():
+            if value is not None:
+                values[key] = value
+
+    return values
 
 
 _load_initial_env_files(_resolve_initial_env_paths())
@@ -258,8 +284,27 @@ def env(key: str, default=None):
             )
             delattr(_thread_local, "env_path")
 
-    # Fall back to global environment
-    value = os.getenv(key, default)
+    # Keep real process / service-manager env vars authoritative, but allow
+    # dotenv-backed values to be refreshed after Electron writes them.
+    if key in _process_env_keys and key in os.environ:
+        value = os.environ[key]
+        logger.debug(
+            f"Environment variable retrieved from process env: key={key}, "
+            f"has_value={value is not None}"
+        )
+        return value
+
+    live_env_values = _load_live_env_values(_resolve_initial_env_paths())
+    if key in live_env_values:
+        value = live_env_values[key]
+        logger.debug(
+            f"Environment variable retrieved from live dotenv config: "
+            f"key={key}, has_value={value is not None}"
+        )
+        return value
+
+    # Fall back to any value set programmatically after startup.
+    value = os.environ.get(key, default)
     logger.debug(
         f"Environment variable retrieved from global config: key={key}, "
         f"has_value={value is not None}, using_default={value == default}"

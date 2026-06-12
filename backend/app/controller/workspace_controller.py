@@ -23,6 +23,11 @@ from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
 from app.service.task import get_task_lock_if_exists
 from app.utils.space_overlay_client import overlay_sync_failure_count
+from app.utils.workspace_paths import (
+    get_eigent_root,
+    runtime_owner_key,
+    sanitize_identity,
+)
 from app.utils.workspace_resolver import (
     _same_workspace_path,
     get_workspace_resolver,
@@ -44,6 +49,12 @@ class WorkspaceReconcileRequest(BaseModel):
     email: str
     user_id: str | int | None = None
     active_space_ids: list[str]
+
+
+class WorkspaceScratchRequest(BaseModel):
+    space_id: str
+    email: str
+    user_id: str | int | None = None
 
 
 class WorkspaceProjectRefreshRequest(BaseModel):
@@ -167,6 +178,17 @@ def _effective_space_id(payload: WorkspaceBindRequest) -> str:
     return space_id
 
 
+def _scratch_space_root(
+    email: str, space_id: str, user_id: str | int | None = None
+) -> Path:
+    safe_space_id = sanitize_identity(space_id).removeprefix("space_")
+    return (
+        get_eigent_root()
+        / runtime_owner_key(email, user_id)
+        / f"space_{safe_space_id or 'scratch'}"
+    )
+
+
 @router.get("/workspace/capabilities")
 async def workspace_capabilities(request: Request) -> dict[str, Any]:
     return _capability_payload(_manifest_from_request(request))
@@ -200,6 +222,59 @@ async def workspace_current(
         "bound": binding_active,
         "workspace_root": None if binding is None else binding.workspace_root,
         "binding": None if binding is None else binding.__dict__.copy(),
+    }
+
+
+@router.post("/workspace/scratch")
+async def workspace_scratch(
+    payload: WorkspaceScratchRequest, request: Request
+) -> dict[str, Any]:
+    # Creates a Brain-owned local folder for a blank Space. This keeps
+    # frontend/backend separation intact: renderers ask Brain for a workspace
+    # root instead of relying on Electron-only filesystem IPC.
+    manifest = _manifest_from_request(request)
+    if not _binding_enabled(manifest):
+        raise HTTPException(
+            status_code=412,
+            detail={
+                "code": "workspace_binding_disabled",
+                "capabilities": _capability_payload(manifest),
+            },
+        )
+
+    resolver = get_workspace_resolver()
+    existing = resolver.store.get_binding(
+        payload.email, payload.space_id, payload.user_id
+    )
+    if existing is not None:
+        existing_path = Path(existing.workspace_root).expanduser()
+        existing_path.mkdir(parents=True, exist_ok=True)
+        return {
+            "space_id": payload.space_id,
+            "email": payload.email,
+            "user_id": payload.user_id,
+            "bound": existing_path.is_dir(),
+            "workspace_root": existing.workspace_root,
+            "binding": existing.__dict__.copy(),
+        }
+
+    root = _scratch_space_root(
+        payload.email, payload.space_id, payload.user_id
+    ).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    binding = resolver.ensure_space_binding(
+        payload.email,
+        payload.space_id,
+        str(root),
+        user_id=payload.user_id,
+    )
+    return {
+        "space_id": payload.space_id,
+        "email": payload.email,
+        "user_id": payload.user_id,
+        "bound": True,
+        "workspace_root": binding.workspace_root,
+        "binding": binding.__dict__.copy(),
     }
 
 

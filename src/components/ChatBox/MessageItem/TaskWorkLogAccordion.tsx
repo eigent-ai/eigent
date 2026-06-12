@@ -24,7 +24,7 @@ import {
   SessionMode,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -177,6 +177,26 @@ export type AgentBlock = {
    */
   kind: 'preparation' | 'action';
 };
+
+/**
+ * All action blocks for the same agent merged into a single collapsible
+ * group. Items from every constituent block are concatenated in their
+ * original chronological order.
+ */
+export type AgentGroup = {
+  kind: 'agent-group';
+  id: string;
+  agentId: string;
+  agentType: string;
+  agentName: string;
+  items: TimelineItem[];
+  status: 'running' | 'done';
+  doneToolCount: number;
+  totalToolCount: number;
+};
+
+/** Union for the grouped render list. */
+export type GroupedEntry = AgentGroup | AgentBlock;
 
 const PREPARATION_BLOCK_ID = 'b-prep';
 const PREPARATION_BLOCK_LABEL = 'Preparing agents';
@@ -444,6 +464,58 @@ export function buildAgentBlocks(
   return blocks;
 }
 
+/**
+ * Post-processes the flat `AgentBlock[]` from `buildAgentBlocks` into a
+ * grouped list: preparation blocks pass through, and all action blocks
+ * for the same `agentId` are merged into a single `AgentGroup`.
+ *
+ * Groups are ordered by first appearance (the position of the agent's
+ * earliest block in the original array).
+ *
+ * Exported for unit tests.
+ */
+export function groupBlocksByAgent(blocks: AgentBlock[]): GroupedEntry[] {
+  const result: GroupedEntry[] = [];
+  const groupMap = new Map<string, AgentGroup>();
+
+  for (const block of blocks) {
+    if (block.kind === 'preparation') {
+      result.push(block);
+      continue;
+    }
+
+    const existing = groupMap.get(block.agentId);
+    if (existing) {
+      existing.items.push(...block.items);
+      if (block.status === 'running') {
+        existing.status = 'running';
+      }
+    } else {
+      const group: AgentGroup = {
+        kind: 'agent-group',
+        id: `group-${block.agentId}`,
+        agentId: block.agentId,
+        agentType: block.agentType,
+        agentName: block.agentName,
+        items: [...block.items],
+        status: block.status,
+        doneToolCount: 0,
+        totalToolCount: 0,
+      };
+      groupMap.set(block.agentId, group);
+      result.push(group);
+    }
+  }
+
+  for (const group of groupMap.values()) {
+    const tools = group.items.filter((i): i is ToolItem => i.kind === 'tool');
+    group.totalToolCount = tools.length;
+    group.doneToolCount = tools.filter((t) => t.status === 'done').length;
+  }
+
+  return result;
+}
+
 type BlockHeaderParts = {
   /** Static agent label, e.g. "Browser Agent" or "Preparing agents". */
   agentLabel: string;
@@ -542,13 +614,14 @@ function useTaskWorkLogData(
 ) {
   void _snapshot;
   if (!taskId) {
-    return { task: undefined, blocks: [] as AgentBlock[] };
+    return { task: undefined, groups: [] as GroupedEntry[] };
   }
   const t = chatStore.getState().tasks[taskId];
   const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
   const isSingleAgent = t?.sessionMode === SessionMode.SINGLE_AGENT;
   const blocks = buildAgentBlocks(tagged, isSingleAgent);
-  return { task: t, blocks };
+  const groups = groupBlocksByAgent(blocks);
+  return { task: t, groups };
 }
 
 function useWorkLogElapsedMs(
@@ -584,21 +657,21 @@ const ToolDetailRow = memo(function ToolDetailRow({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="min-w-0 flex w-full flex-col items-start">
+    <div className="flex w-full min-w-0 flex-col items-start">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="group min-w-0 gap-1 px-0 py-0.5 inline-flex max-w-full items-center self-start text-left transition-opacity hover:opacity-80"
+        className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
       >
         {status === 'running' ? (
           <ShinyText
             text={rowTitle}
             speed={2.5}
-            className="!text-label-sm font-normal min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap"
+            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default"
           />
         ) : (
-          <span className="!text-label-sm font-normal min-w-0 text-ds-text-neutral-subtle-default shrink overflow-hidden text-ellipsis whitespace-nowrap">
+          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default">
             {rowTitle}
           </span>
         )}
@@ -606,7 +679,7 @@ const ToolDetailRow = memo(function ToolDetailRow({
           size={16}
           aria-hidden
           className={cn(
-            'text-ds-icon-neutral-subtle-default shrink-0 transition-[opacity,transform] duration-200',
+            'shrink-0 text-ds-icon-neutral-subtle-default transition-[opacity,transform] duration-200',
             open
               ? 'rotate-90 opacity-100'
               : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
@@ -621,10 +694,10 @@ const ToolDetailRow = memo(function ToolDetailRow({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={HEIGHT_MOTION}
-            className="min-w-0 w-full overflow-hidden"
+            className="w-full min-w-0 overflow-hidden"
           >
             {detail ? (
-              <div className="mt-1 p-2 bg-ds-bg-neutral-muted-default rounded-md w-full opacity-60">
+              <div className="mt-1 w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60">
                 <MarkDown
                   content={detail}
                   enableTypewriter={false}
@@ -662,20 +735,20 @@ const InlineMessageRow = memo(function InlineMessageRow({
       ? 'text-ds-text-neutral-subtle-default'
       : 'text-ds-text-neutral-default-default';
   return (
-    <div className="min-w-0 w-full">
+    <div className="w-full min-w-0">
       {running ? (
         <ShinyText
           text={display}
           speed={2.5}
           className={cn(
-            '!text-label-sm font-normal break-words whitespace-pre-wrap',
+            'whitespace-pre-wrap break-words !text-label-sm font-normal',
             colorClass
           )}
         />
       ) : (
         <span
           className={cn(
-            '!text-label-sm m-0 font-medium break-words whitespace-pre-wrap',
+            'm-0 whitespace-pre-wrap break-words !text-label-sm font-medium',
             colorClass
           )}
         >
@@ -708,19 +781,19 @@ const AgentBlockRow = memo(function AgentBlockRow({
   const headerText = detail ? `${agentLabel} · ${detail}` : agentLabel;
 
   return (
-    <div className="min-w-0 flex w-full flex-col">
+    <div className="flex w-full min-w-0 flex-col">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="min-w-0 gap-2 py-1 px-0 my-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
+        className="my-1 flex w-fit min-w-0 max-w-full items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
       >
-        <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
+        <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate">
           {headerRunning ? (
             <ShinyText
               text={headerText}
               speed={2.5}
-              className="!text-label-sm font-normal truncate"
+              className="truncate !text-label-sm font-normal"
             />
           ) : (
             <>
@@ -732,7 +805,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
                   <span className="text-label-sm text-ds-text-neutral-subtle-default">
                     ·
                   </span>
-                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
+                  <span className="truncate text-label-sm font-normal text-ds-text-neutral-subtle-default">
                     {detail}
                   </span>
                 </>
@@ -744,13 +817,13 @@ const AgentBlockRow = memo(function AgentBlockRow({
           <ChevronDown
             size={16}
             aria-hidden
-            className="text-ds-icon-neutral-subtle-default shrink-0"
+            className="shrink-0 text-ds-icon-neutral-subtle-default"
           />
         ) : (
           <ChevronRight
             size={16}
             aria-hidden
-            className="text-ds-icon-neutral-subtle-default shrink-0"
+            className="shrink-0 text-ds-icon-neutral-subtle-default"
           />
         )}
       </button>
@@ -765,7 +838,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
             transition={HEIGHT_MOTION}
             className="min-w-0 overflow-hidden"
           >
-            <div className="py-1 gap-2 flex flex-col">
+            <div className="flex flex-col gap-2 py-1">
               {block.items.map((item) =>
                 item.kind === 'message' ? (
                   <InlineMessageRow
@@ -792,7 +865,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
               {block.items.length === 0 &&
                 taskRunning &&
                 block.status === 'running' && (
-                  <p className="!text-label-sm text-ds-text-neutral-subtle-default m-0 italic">
+                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
                     Waiting for tool calls…
                   </p>
                 )}
@@ -805,31 +878,208 @@ const AgentBlockRow = memo(function AgentBlockRow({
 });
 AgentBlockRow.displayName = 'AgentBlockRow';
 
+type GroupHeaderParts = {
+  agentLabel: string;
+  progressLabel: string;
+  latestToolTitle: string | null;
+  latestToolRunning: boolean;
+};
+
+function getGroupHeaderParts(group: AgentGroup): GroupHeaderParts {
+  const { doneToolCount, totalToolCount, items, status } = group;
+
+  let latestTool: ToolItem | null = null;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind === 'tool') {
+      latestTool = item as ToolItem;
+      break;
+    }
+  }
+
+  const progressLabel =
+    totalToolCount > 0
+      ? `${doneToolCount}/${totalToolCount} done`
+      : status === 'running'
+        ? 'Thinking…'
+        : '';
+
+  return {
+    agentLabel: group.agentName,
+    progressLabel,
+    latestToolTitle: latestTool
+      ? toolRowTitle(latestTool.toolkitName, latestTool.method)
+      : status === 'running' && totalToolCount === 0
+        ? null
+        : null,
+    latestToolRunning:
+      !!latestTool && latestTool.status === 'running' && status === 'running',
+  };
+}
+
+const DEFAULT_BOT_ICON = (
+  <Bot size={16} className="text-ds-text-neutral-default-default" />
+);
+
+const AgentGroupRow = memo(function AgentGroupRow({
+  group,
+  taskRunning,
+  open,
+  onToggle,
+  isSingleAgent,
+}: {
+  group: AgentGroup;
+  taskRunning: boolean;
+  open: boolean;
+  onToggle: () => void;
+  isSingleAgent: boolean;
+}) {
+  const { agentLabel, progressLabel, latestToolTitle, latestToolRunning } =
+    getGroupHeaderParts(group);
+
+  const headerRunning = taskRunning && group.status === 'running';
+  const agentDisplay = agentMap[group.agentType as WorkflowAgentType];
+  const icon = isSingleAgent
+    ? DEFAULT_BOT_ICON
+    : (agentDisplay?.icon ?? DEFAULT_BOT_ICON);
+
+  const headerParts: string[] = [agentLabel];
+  if (progressLabel) headerParts.push(`(${progressLabel})`);
+  if (latestToolTitle) headerParts.push(`· ${latestToolTitle}`);
+  const headerText = headerParts.join(' ');
+
+  return (
+    <div className="flex w-full min-w-0 flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="my-1 flex w-fit min-w-0 max-w-full items-center gap-2 px-0 py-1 text-left transition-opacity hover:opacity-80"
+      >
+        {icon ? (
+          <span className="flex shrink-0 items-center">{icon}</span>
+        ) : null}
+
+        <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 truncate">
+          {headerRunning ? (
+            <ShinyText
+              text={headerText}
+              speed={2.5}
+              className="truncate !text-label-sm font-normal"
+            />
+          ) : (
+            <>
+              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
+                {agentLabel}
+              </span>
+              {progressLabel ? (
+                <span className="text-label-sm text-ds-text-neutral-subtle-default">
+                  ({progressLabel})
+                </span>
+              ) : null}
+              {latestToolTitle ? (
+                <>
+                  <span className="text-label-sm text-ds-text-neutral-subtle-default">
+                    ·
+                  </span>
+                  <span className="truncate text-label-sm font-normal text-ds-text-neutral-subtle-default">
+                    {latestToolTitle}
+                  </span>
+                </>
+              ) : null}
+            </>
+          )}
+        </span>
+
+        {open ? (
+          <ChevronDown
+            size={16}
+            aria-hidden
+            className="shrink-0 text-ds-icon-neutral-subtle-default"
+          />
+        ) : (
+          <ChevronRight
+            size={16}
+            aria-hidden
+            className="shrink-0 text-ds-icon-neutral-subtle-default"
+          />
+        )}
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="group-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="min-w-0 overflow-hidden"
+          >
+            <div className="flex flex-col gap-2 py-1 pl-6">
+              {group.items.map((item) =>
+                item.kind === 'message' ? (
+                  <InlineMessageRow
+                    key={item.id}
+                    text={item.text}
+                    source={item.source}
+                    running={item.running && taskRunning}
+                  />
+                ) : (
+                  <ToolDetailRow
+                    key={item.id}
+                    rowTitle={item.rowTitle}
+                    detail={item.detail}
+                    status={
+                      taskRunning &&
+                      group.status === 'running' &&
+                      item.status === 'running'
+                        ? 'running'
+                        : 'done'
+                    }
+                  />
+                )
+              )}
+              {group.items.length === 0 &&
+                taskRunning &&
+                group.status === 'running' && (
+                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                    Waiting for tool calls…
+                  </p>
+                )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+});
+AgentGroupRow.displayName = 'AgentGroupRow';
+
 /**
- * Per-block open state with user override.
- * - Default: running blocks are open (so the live timeline is visible),
- *   finished blocks are closed.
- * - User clicks set an override for the current phase only. When a block
+ * Per-entry open state with user override.
+ * - Default: running agent groups are open (so the live timeline is visible),
+ *   finished groups and preparation blocks are closed.
+ * - User clicks set an override for the current phase only. When an entry
  *   transitions running → done, its override is cleared so the auto-default
  *   wins again unless the user toggles after the transition.
  */
-function useBlockOpenState(blocks: AgentBlock[]): {
-  isOpen: (block: AgentBlock) => boolean;
+function useGroupOpenState(entries: GroupedEntry[]): {
+  isOpen: (entry: GroupedEntry) => boolean;
   toggle: (id: string) => void;
 } {
-  // key → open flag. Key is `${id}:${phase}` so each phase owns its override.
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
   const prevStatusRef = useRef<Map<string, 'running' | 'done'>>(new Map());
 
   useEffect(() => {
     const prev = prevStatusRef.current;
     const next = new Map<string, 'running' | 'done'>();
-    for (const b of blocks) next.set(b.id, b.status);
+    for (const e of entries) next.set(e.id, e.status);
     prevStatusRef.current = next;
 
     setOverrides((current) => {
       if (current.size === 0) return current;
-      const live = new Set(blocks.map((b) => b.id));
+      const live = new Set(entries.map((e) => e.id));
       let changed = false;
       const updated = new Map(current);
       for (const key of current.keys()) {
@@ -847,16 +1097,16 @@ function useBlockOpenState(blocks: AgentBlock[]): {
       void prev;
       return changed ? updated : current;
     });
-  }, [blocks]);
+  }, [entries]);
 
-  const phaseKey = (block: AgentBlock) => `${block.id}:${block.status}`;
+  const phaseKey = (entry: GroupedEntry) => `${entry.id}:${entry.status}`;
 
   const isOpen = useCallback(
-    (block: AgentBlock) => {
-      const override = overrides.get(phaseKey(block));
+    (entry: GroupedEntry) => {
+      const override = overrides.get(phaseKey(entry));
       if (override !== undefined) return override;
-      // Auto: open the running action block; closed for everything else.
-      return block.kind === 'action' && block.status === 'running';
+      // Auto: open running agent groups; closed for preparation and done.
+      return entry.kind === 'agent-group' && entry.status === 'running';
     },
     [overrides]
   );
@@ -864,17 +1114,17 @@ function useBlockOpenState(blocks: AgentBlock[]): {
   const toggle = useCallback(
     (id: string) => {
       setOverrides((prev) => {
-        const block = blocks.find((b) => b.id === id);
-        if (!block) return prev;
-        const key = `${block.id}:${block.status}`;
-        const auto = block.kind === 'action' && block.status === 'running';
+        const entry = entries.find((e) => e.id === id);
+        if (!entry) return prev;
+        const key = `${entry.id}:${entry.status}`;
+        const auto = entry.kind === 'agent-group' && entry.status === 'running';
         const currentlyOpen = prev.has(key) ? (prev.get(key) as boolean) : auto;
         const next = new Map(prev);
         next.set(key, !currentlyOpen);
         return next;
       });
     },
-    [blocks]
+    [entries]
   );
 
   return { isOpen, toggle };
@@ -893,28 +1143,40 @@ export function TaskWorkLogAccordion({
 }: TaskWorkLogAccordionProps) {
   const { t: _t } = useTranslation();
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
-  const { task, blocks } = useTaskWorkLogData(chatStore, taskId, snapshot);
+  const { task, groups } = useTaskWorkLogData(chatStore, taskId, snapshot);
   const status = task?.status;
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
   const taskRunning = status === ChatTaskStatus.RUNNING;
+  const isSingleAgent = task?.sessionMode === SessionMode.SINGLE_AGENT;
 
-  // Normalize block status with task-level context — once the task stops,
-  // every block (and any running message/tool) is done regardless of whether
+  // Normalize status with task-level context — once the task stops,
+  // every entry (and any running message/tool) is done regardless of whether
   // DEACTIVATE_AGENT / DEACTIVATE_TOOLKIT actually arrived.
-  const effectiveBlocks = useMemo(() => {
-    if (taskRunning) return blocks;
-    return blocks.map((b) => ({
-      ...b,
-      status: 'done' as const,
-      items: b.items.map((it) =>
+  const effectiveGroups = useMemo(() => {
+    if (taskRunning) return groups;
+    return groups.map((entry): GroupedEntry => {
+      const settledItems = entry.items.map((it) =>
         it.kind === 'tool'
           ? { ...it, status: 'done' as const }
           : { ...it, running: false }
-      ),
-    }));
-  }, [blocks, taskRunning]);
+      );
+      if (entry.kind === 'agent-group') {
+        return {
+          ...entry,
+          status: 'done' as const,
+          items: settledItems,
+          doneToolCount: entry.totalToolCount,
+        };
+      }
+      return {
+        ...entry,
+        status: 'done' as const,
+        items: settledItems,
+      };
+    });
+  }, [groups, taskRunning]);
 
-  const { isOpen, toggle } = useBlockOpenState(effectiveBlocks);
+  const { isOpen, toggle } = useGroupOpenState(effectiveGroups);
 
   const [outerOpen, setOuterOpen] = useState(() => taskRunning);
 
@@ -934,17 +1196,17 @@ export function TaskWorkLogAccordion({
     status === ChatTaskStatus.PAUSE;
 
   if (!allowed) return null;
-  if (!taskRunning && effectiveBlocks.length === 0) return null;
+  if (!taskRunning && effectiveGroups.length === 0) return null;
 
   const timeLabel = formatSplittingElapsed(elapsedMs);
 
   return (
-    <div className={cn('min-w-0 my-2 flex w-full flex-col', className)}>
+    <div className={cn('my-2 flex w-full min-w-0 flex-col', className)}>
       <button
         type="button"
         aria-expanded={outerOpen}
         onClick={() => setOuterOpen((v) => !v)}
-        className="gap-1 py-2 px-0 min-w-0 flex w-full items-center justify-start text-left"
+        className="flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left"
       >
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
           {status === ChatTaskStatus.RUNNING ||
@@ -954,7 +1216,7 @@ export function TaskWorkLogAccordion({
               values={{ time: timeLabel }}
               components={{
                 elapsed: (
-                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
+                  <span className="tabular-nums text-ds-text-neutral-subtle-default" />
                 ),
               }}
             />
@@ -964,7 +1226,7 @@ export function TaskWorkLogAccordion({
               values={{ time: timeLabel }}
               components={{
                 elapsed: (
-                  <span className="text-ds-text-neutral-subtle-default tabular-nums" />
+                  <span className="tabular-nums text-ds-text-neutral-subtle-default" />
                 ),
               }}
             />
@@ -975,14 +1237,14 @@ export function TaskWorkLogAccordion({
             size={16}
             strokeWidth={2}
             aria-hidden
-            className="text-ds-icon-neutral-muted-default shrink-0"
+            className="shrink-0 text-ds-icon-neutral-muted-default"
           />
         ) : (
           <ChevronRight
             size={16}
             strokeWidth={2}
             aria-hidden
-            className="text-ds-icon-neutral-muted-default shrink-0"
+            className="shrink-0 text-ds-icon-neutral-muted-default"
           />
         )}
       </button>
@@ -997,16 +1259,27 @@ export function TaskWorkLogAccordion({
             transition={HEIGHT_MOTION}
             className="overflow-hidden"
           >
-            <div className="gap-1 pb-1 min-w-0 flex flex-col">
-              {effectiveBlocks.map((block) => (
-                <AgentBlockRow
-                  key={block.id}
-                  block={block}
-                  taskRunning={taskRunning}
-                  open={isOpen(block)}
-                  onToggle={() => toggle(block.id)}
-                />
-              ))}
+            <div className="flex min-w-0 flex-col gap-1 pb-1">
+              {effectiveGroups.map((entry) =>
+                entry.kind === 'agent-group' ? (
+                  <AgentGroupRow
+                    key={entry.id}
+                    group={entry}
+                    taskRunning={taskRunning}
+                    open={isOpen(entry)}
+                    onToggle={() => toggle(entry.id)}
+                    isSingleAgent={isSingleAgent}
+                  />
+                ) : (
+                  <AgentBlockRow
+                    key={entry.id}
+                    block={entry}
+                    taskRunning={taskRunning}
+                    open={isOpen(entry)}
+                    onToggle={() => toggle(entry.id)}
+                  />
+                )
+              )}
             </div>
           </motion.div>
         ) : null}

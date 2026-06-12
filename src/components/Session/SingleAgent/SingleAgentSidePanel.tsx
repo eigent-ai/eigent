@@ -22,6 +22,7 @@ import {
 } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
 import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSkillsStore } from '@/store/skillsStore';
@@ -30,44 +31,48 @@ import { useTranslation } from 'react-i18next';
 
 export function SingleAgentSidePanel() {
   const { t } = useTranslation();
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
 
-  const activeTask = chatStore?.activeTaskId
-    ? chatStore.tasks[chatStore.activeTaskId]
-    : undefined;
+  const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
+  const selectedTask = selectedTurn.task;
+  const selectedTaskId = selectedTurn.taskId;
 
-  const agents = activeTask?.taskAssigning ?? [];
+  const agents = useMemo(
+    () => selectedTask?.taskAssigning ?? [],
+    [selectedTask?.taskAssigning]
+  );
   const projectFiles = useProjectOutputFiles(
     projectStore.activeProjectId,
-    activeTask
+    selectedTask,
+    selectedTaskId
   );
   /** Prefer live `taskRunning` status (updated on TASK_STATE), keep plan order/text from agent tasks or taskInfo. */
   const subtasks = useMemo(() => {
-    const base = agents[0]?.tasks ?? activeTask?.taskInfo ?? [];
-    const taskRunning = activeTask?.taskRunning ?? [];
+    const base = agents[0]?.tasks ?? selectedTask?.taskInfo ?? [];
+    const taskRunning = selectedTask?.taskRunning ?? [];
     if (taskRunning.length === 0) return base;
     return base.map((t) => {
       const live = taskRunning.find((r) => r.id === t.id);
       if (!live) return t;
       return { ...t, ...live, content: t.content || live.content };
     });
-  }, [agents, activeTask?.taskInfo, activeTask?.taskRunning]);
+  }, [agents, selectedTask?.taskInfo, selectedTask?.taskRunning]);
   const files = useMemo(
     () =>
       mergeSidePanelOutputFiles(
-        collectSidePanelOutputFiles(activeTask),
+        collectSidePanelOutputFiles(selectedTask),
         projectFiles
       ),
-    [activeTask, projectFiles]
+    [selectedTask, projectFiles]
   );
   const uploadedFiles = useMemo(() => {
-    if (!activeTask) return [];
+    if (!selectedTask) return [];
     const all = [
-      ...(activeTask.messages ?? [])
+      ...(selectedTask.messages ?? [])
         .filter((m) => m.role === 'user')
         .flatMap((m) => m.attaches ?? []),
-      ...(activeTask.attaches ?? []),
+      ...(selectedTask.attaches ?? []),
     ];
     const seen = new Set<string>();
     return all.filter((file) => {
@@ -76,23 +81,33 @@ export function SingleAgentSidePanel() {
       seen.add(key);
       return true;
     });
-  }, [activeTask]);
+  }, [selectedTask]);
   const skills = useSkillsStore((s) => s.skills);
   const contextItems = useMemo(
     () =>
-      buildContextItems(agents, activeTask?.taskRunning, uploadedFiles, skills),
-    [agents, activeTask?.taskRunning, uploadedFiles, skills]
+      buildContextItems(
+        agents,
+        selectedTask?.taskRunning,
+        uploadedFiles,
+        skills
+      ),
+    [agents, selectedTask?.taskRunning, uploadedFiles, skills]
   );
 
   const handleOpenAgentFile = useCallback(
     (file: FileInfo) => {
-      if (!chatStore?.activeTaskId) return;
-      chatStore.setSelectedFile(chatStore.activeTaskId, file);
+      if (!selectedTaskId || !selectedTurn.chatStore) return;
+      selectedTurn.chatStore.getState().setSelectedFile(selectedTaskId, file);
       setActiveWorkspaceTab('inbox', {
         clearInboxForProjectId: projectStore.activeProjectId ?? null,
       });
     },
-    [chatStore, projectStore.activeProjectId, setActiveWorkspaceTab]
+    [
+      projectStore.activeProjectId,
+      selectedTaskId,
+      selectedTurn.chatStore,
+      setActiveWorkspaceTab,
+    ]
   );
 
   return (
@@ -106,6 +121,8 @@ export function SingleAgentSidePanel() {
         <ProgressSection
           title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
           subtasks={subtasks}
+          projectId={projectStore.activeProjectId}
+          taskId={selectedTaskId}
         />
         <ExecutionContextSection
           title={t('layout.execution-context', {

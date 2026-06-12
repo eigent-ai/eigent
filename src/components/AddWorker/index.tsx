@@ -14,7 +14,7 @@
 
 import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost, proxyFetchGet } from '@/api/http';
-import githubIcon from '@/assets/github.svg';
+import githubIcon from '@/assets/icon/github.svg';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,6 +41,7 @@ import {
   LOCAL_MODEL_OPTIONS,
 } from '@/pages/Agents/localModels';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -76,99 +77,6 @@ interface WorkerModelOption {
   model_platform: string;
   model_type: string;
 }
-
-const EIGENT_MODEL_OPTIONS: ReadonlyArray<WorkerModelOption> = [
-  {
-    value: 'gemini-3.1-pro-preview',
-    label: 'Gemini 3.1 Pro Preview',
-    model_platform: 'gemini',
-    model_type: 'gemini-3.1-pro-preview',
-  },
-  {
-    value: 'gemini-3-pro-preview',
-    label: 'Gemini 3 Pro Preview',
-    model_platform: 'gemini',
-    model_type: 'gemini-3-pro-preview',
-  },
-  {
-    value: 'gemini-3-flash-preview',
-    label: 'Gemini 3 Flash Preview',
-    model_platform: 'gemini',
-    model_type: 'gemini-3-flash-preview',
-  },
-  {
-    value: 'gpt-4.1-mini',
-    label: 'GPT-4.1 Mini',
-    model_platform: 'openai',
-    model_type: 'gpt-4.1-mini',
-  },
-  {
-    value: 'gpt-4.1',
-    label: 'GPT-4.1',
-    model_platform: 'openai',
-    model_type: 'gpt-4.1',
-  },
-  {
-    value: 'gpt-5',
-    label: 'GPT-5',
-    model_platform: 'openai',
-    model_type: 'gpt-5',
-  },
-  {
-    value: 'gpt-5.1',
-    label: 'GPT-5.1',
-    model_platform: 'openai',
-    model_type: 'gpt-5.1',
-  },
-  {
-    value: 'gpt-5.2',
-    label: 'GPT-5.2',
-    model_platform: 'openai',
-    model_type: 'gpt-5.2',
-  },
-  {
-    value: 'gpt-5.4',
-    label: 'GPT-5.4',
-    model_platform: 'openai',
-    model_type: 'gpt-5.4',
-  },
-  {
-    value: 'gpt-5-mini',
-    label: 'GPT-5 Mini',
-    model_platform: 'openai',
-    model_type: 'gpt-5-mini',
-  },
-  {
-    value: 'claude-haiku-4-5',
-    label: 'Claude Haiku 4.5',
-    model_platform: 'aws-bedrock-converse',
-    model_type: 'claude-haiku-4-5',
-  },
-  {
-    value: 'claude-sonnet-4-5',
-    label: 'Claude Sonnet 4.5',
-    model_platform: 'aws-bedrock-converse',
-    model_type: 'claude-sonnet-4-5',
-  },
-  {
-    value: 'claude-sonnet-4-6',
-    label: 'Claude Sonnet 4.6',
-    model_platform: 'aws-bedrock-converse',
-    model_type: 'claude-sonnet-4-6',
-  },
-  {
-    value: 'claude-opus-4-6',
-    label: 'Claude Opus 4.6',
-    model_platform: 'aws-bedrock-converse',
-    model_type: 'claude-opus-4-6',
-  },
-  {
-    value: 'minimax_m2_5',
-    label: 'Minimax M2.5',
-    model_platform: 'openai-compatible-model',
-    model_type: 'minimax_m2_5',
-  },
-];
 
 export function AddWorker({
   edit = false,
@@ -223,6 +131,20 @@ export function AddWorker({
   const [localModelOptions, setLocalModelOptions] = useState<
     WorkerModelOption[]
   >([]);
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const eigentModelOptions = useMemo<WorkerModelOption[]>(
+    () =>
+      cloudModels.map((model) => ({
+        value: model.id,
+        label: model.display_name,
+        model_platform: model.model_platform,
+        model_type: model.model_type,
+      })),
+    [cloudModels]
+  );
 
   const activeProjectId = projectStore?.activeProjectId;
   const activeTaskId = chatStore?.activeTaskId ?? null;
@@ -386,11 +308,11 @@ export function AddWorker({
     Record<WorkerModelMode, WorkerModelOption[]>
   >(
     () => ({
-      eigent: [...EIGENT_MODEL_OPTIONS],
+      eigent: eigentModelOptions,
       custom: customModelOptions,
       local: localModelOptions,
     }),
-    [customModelOptions, localModelOptions]
+    [customModelOptions, eigentModelOptions, localModelOptions]
   );
 
   const activeWorkerModelOptions = workerModelOptions[workerModelMode];
@@ -416,6 +338,9 @@ export function AddWorker({
 
   useEffect(() => {
     if (!showModelConfig) return;
+    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+      void fetchCloudModels();
+    }
     (async () => {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
@@ -474,7 +399,7 @@ export function AddWorker({
         setLocalModelOptions([]);
       }
     })();
-  }, [showModelConfig]);
+  }, [fetchCloudModels, showModelConfig]);
 
   // tool function
   const getCategoryIcon = (categoryName?: string) => {

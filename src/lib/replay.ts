@@ -54,7 +54,8 @@ export const loadProjectFromHistory = async (
   taskIdsList?: string[],
   projectName?: string,
   spaceId?: string | null,
-  taskQuestionsById?: Record<string, string>
+  taskQuestionsById?: Record<string, string>,
+  serverUpdatedAt?: number | null
 ) => {
   await activateHistorySpace(spaceId);
   const taskIds = taskIdsList || [projectId];
@@ -65,9 +66,54 @@ export const loadProjectFromHistory = async (
     historyId,
     projectName,
     spaceId ?? undefined,
-    taskQuestionsById
+    taskQuestionsById,
+    serverUpdatedAt
   );
   navigate({ pathname: '/' });
+};
+
+/**
+ * Compute a freshness anchor for the project chat cache.
+ *
+ * We prefer `max(updated_at || created_at)` across the project's tasks so
+ * that any change to an existing task — new SSE steps, status flip, etc. —
+ * moves the anchor and invalidates the cache on the next open. The
+ * project-level `latest_task_date` is a backstop because the cloud server
+ * has historically derived it from `created_at` only, which would miss
+ * in-place task updates. See `docs/PROJECT_CHAT_CACHE_DESIGN_2026-06-10.md`.
+ *
+ * Returns null when no usable timestamp is present — callers should treat
+ * null as "no freshness signal" and avoid both reading from and writing
+ * to the cache for that project.
+ */
+type FreshnessTask = {
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+type FreshnessProject = {
+  latest_task_date?: string | null;
+  tasks?: FreshnessTask[] | null;
+};
+
+export const computeProjectFreshnessAnchor = (
+  project: FreshnessProject | null | undefined
+): number | null => {
+  const parseMs = (value: string | null | undefined): number | null => {
+    if (!value) return null;
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  let max: number | null = null;
+  for (const task of project?.tasks ?? []) {
+    const ms = parseMs(task?.updated_at) ?? parseMs(task?.created_at);
+    if (ms !== null && (max === null || ms > max)) {
+      max = ms;
+    }
+  }
+  if (max !== null) return max;
+
+  return parseMs(project?.latest_task_date);
 };
 
 /**

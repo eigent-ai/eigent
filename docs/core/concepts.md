@@ -10,7 +10,7 @@ Autonomous agents tailored to specific roles that run tasks independently or tog
 
 Each Worker is designed with specific capabilities and can be customized to handle particular types of tasks efficiently.
 
-![Workers concept illustration](/docs/images/concepts_worker.png)
+> **Screenshot placeholder:** Add a current screenshot for “Workers concept illustration”.
 
 ## Workforce
 
@@ -18,7 +18,7 @@ A coordinated team of Workers that collaborate to complete complex workflows. Th
 
 The Workforce orchestrates multiple Workers, ensuring they work together seamlessly to achieve your goals.
 
-![Workforce collaboration illustration](/docs/images/concepts_workforce.gif)
+> **Video placeholder:** Add a current video walkthrough for “Workforce collaboration illustration”. Include captions.
 
 ## Workspace
 
@@ -26,7 +26,7 @@ A live window into a Worker's process where you can watch or take control. For e
 
 Workspaces provide real-time visibility into what your Workers are doing, allowing you to monitor progress and intervene when needed.
 
-![Workspace interface illustration](/docs/images/concepts_workspace.gif)
+> **Video placeholder:** Add a current video walkthrough for “Workspace interface illustration”. Include captions.
 
 ## Tasks & Subtasks
 
@@ -34,7 +34,7 @@ You define a mission (task), the Workforce breaks it into components (subtasks),
 
 This hierarchical approach ensures complex projects are broken down into manageable pieces and executed efficiently.
 
-![Tasks and subtasks breakdown illustration](/docs/images/concepts_tasks_subtasks.gif)
+> **Video placeholder:** Add a current video walkthrough for “Tasks and subtasks breakdown illustration”. Include captions.
 
 ## Chat
 
@@ -42,7 +42,7 @@ Your primary interface for communicating with your Workforce. You use it to defi
 
 The Chat interface serves as your command center, where you can give instructions, ask questions, and receive updates from your AI team.
 
-![Chat interface illustration](/docs/images/concepts_chat.png)
+> **Screenshot placeholder:** Add a current screenshot for “Chat interface illustration”.
 
 ## MCP
 
@@ -50,7 +50,7 @@ Model Context Protocol that allows Workers to use external tools. It connects yo
 
 MCP extends your Workers' capabilities by providing access to real-world data and tools, making them more powerful and versatile.
 
-![MCP protocol illustration](/docs/images/concepts_mcp.png)
+> **Screenshot placeholder:** Add a current screenshot for “MCP protocol illustration”.
 
 ## Models
 
@@ -58,4 +58,4 @@ Different AI "brains" that power your Workers. Eigent allows you to choose from 
 
 Choose the right model for each task based on your specific needs for performance, accuracy, or cost efficiency.
 
-![AI models illustration](/docs/images/concepts_models.png)
+> **Screenshot placeholder:** Add a current screenshot for “AI models illustration”.

@@ -21,6 +21,8 @@ export interface SessionSidePanelHeaderProps {
   mode: SessionModeType;
   isSidePanelVisible: boolean;
   onToggle: () => void;
+  /** Optional content rendered immediately after the fold button (left side). */
+  start?: ReactNode;
   /** Optional right-side content (e.g. workforce expand overlay) */
   end?: ReactNode;
 }
@@ -30,25 +32,26 @@ export function SessionSidePanelHeader({
   mode,
   isSidePanelVisible,
   onToggle,
+  start,
   end,
 }: SessionSidePanelHeaderProps) {
   return (
-    <div className="py-2 pl-2 pr-4 min-w-0 relative z-50 flex w-full shrink-0 items-center">
-      <div className="min-w-0 flex flex-1 items-center justify-start">
+    <div className="relative z-50 flex w-full min-w-0 shrink-0 items-center p-2">
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
         <SessionSidePanelFoldButton
           sessionSidePanelMode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggle}
         />
-      </div>
-      <div className="min-w-0 px-1 flex flex-1 items-center justify-center">
-        <span className="text-ds-text-neutral-default-default min-w-0 text-body-md font-semibold max-w-full truncate text-center">
+        <span className="min-w-0 max-w-full truncate text-center text-body-md font-semibold text-ds-text-neutral-default-default">
           {title}
         </span>
       </div>
-      <div className="min-w-0 flex flex-1 items-center justify-end">
+
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+        {start}
         {end != null ? (
-          <div className="gap-1 flex items-center">{end}</div>
+          <div className="flex items-center gap-1">{end}</div>
         ) : null}
       </div>
     </div>

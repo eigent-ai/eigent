@@ -55,7 +55,9 @@ function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
 
 export function useProjectOutputFiles(
   projectId: string | null | undefined,
-  activeTask: SidePanelTask | undefined
+  activeTask: SidePanelTask | undefined,
+  /** Optional task ID — when it changes, triggers an immediate re-fetch. */
+  taskId?: string | null
 ): FileInfo[] {
   const host = useHost();
   const email = useAuthStore((s) => s.email);
@@ -120,9 +122,14 @@ export function useProjectOutputFiles(
     };
 
     void loadFiles();
+
     if (!live) {
+      // One deferred fetch 5 s after the task finishes to catch async writes
+      // (summaries, JSON outputs) that flush after the FINISHED status event.
+      const deferred = setTimeout(() => void loadFiles(), 5000);
       return () => {
         cancelled = true;
+        clearTimeout(deferred);
       };
     }
 
@@ -134,7 +141,7 @@ export function useProjectOutputFiles(
       cancelled = true;
       clearInterval(timer);
     };
-  }, [email, host?.ipcRenderer, live, projectId]);
+  }, [email, host?.ipcRenderer, live, projectId, taskId]);
 
   return files;
 }

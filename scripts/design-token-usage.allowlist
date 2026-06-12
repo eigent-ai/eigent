@@ -17,3 +17,10 @@ src/components/ui/colorPicker.tsx
 electron/main/index.ts
 electron/main/fileReader.ts
 electron/preload/index.ts
+#
+# Animation assets — demo/preview components use hardcoded colors intentionally for visual fidelity.
+src/assets/animation/project/ProjectWorkspaceDisplay.tsx
+src/assets/animation/workspace/WorkspaceDisplay.tsx
+#
+# OnboardingSteps — theme accent swatches must reference exact brand hex values from the theme catalog.
+src/components/InstallStep/OnboardingSteps.tsx

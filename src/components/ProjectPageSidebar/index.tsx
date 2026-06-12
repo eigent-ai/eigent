@@ -18,7 +18,6 @@ import {
   proxyFetchDelete,
   proxyFetchGet,
 } from '@/api/http';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -29,7 +28,15 @@ import {
   createSpaceFromFolderPicker,
   getFolderSpaceErrorMessage,
 } from '@/lib/createSpaceFromFolder';
-import { buildTaskQuestionsById } from '@/lib/replay';
+import {
+  isProjectAchieved,
+  setProjectAchievedState,
+} from '@/lib/projectAchievement';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
   getSessionNavLeadFromHistoryProject,
   resolveProjectNavLeadPresentation,
@@ -132,6 +139,17 @@ export default function ProjectPageSidebar({
   const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
   const [achieveProjectLoading, setAchieveProjectLoading] = useState(false);
   const [achieveDialogOpen, setAchieveDialogOpen] = useState(false);
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<Set<string>>(() => {
+    try {
+      return new Set(
+        JSON.parse(
+          localStorage.getItem('eigent-pinned-projects') ?? '[]'
+        ) as string[]
+      );
+    } catch {
+      return new Set();
+    }
+  });
 
   const scheduledTabLabel = t('layout.scheduled-tab');
   const triggersTabTooltip = scheduledTabLabel;
@@ -197,6 +215,28 @@ export default function ProjectPageSidebar({
     () => getContextTabBindingLabel(activeSpace, t),
     [activeSpace, t]
   );
+
+  useEffect(() => {
+    if (
+      !activeSpace ||
+      activeSpace.sourceType !== 'blank' ||
+      activeSpace.rootPath
+    ) {
+      return;
+    }
+    void ensureScratchSpaceWorkspaceBinding({
+      email,
+      userId,
+      space: activeSpace,
+    });
+  }, [
+    activeSpace,
+    activeSpace?.id,
+    activeSpace?.rootPath,
+    activeSpace?.sourceType,
+    email,
+    userId,
+  ]);
 
   const projectHasStarted = useCallback(
     (projectId: string) => {
@@ -277,7 +317,8 @@ export default function ProjectPageSidebar({
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name,
           undefined,
-          taskQuestionsById
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
         );
       } catch (error) {
         console.error(
@@ -307,8 +348,20 @@ export default function ProjectPageSidebar({
       // to 'workforce', producing a flicker on slow loads).
       await ensureProjectLoaded(projectId);
 
+      // History-loaded projects are known to have content. Trust the project
+      // type tag (set by createProject(REPLAY)) over `projectHasStarted`,
+      // which can read a transiently-empty chatStore during the brief
+      // window between loadProjectFromHistory's remove+create rebuild.
+      const meta = useSpaceStore.getState().getProjectMeta(projectId);
+      const projectInStore = projectStore.getProjectById(projectId);
+      const isReplayProject = Boolean(
+        meta?.metadata?.tags?.includes('replay') ||
+        projectInStore?.metadata?.tags?.includes('replay')
+      );
       setActiveWorkspaceTab(
-        projectHasStarted(projectId) ? 'project' : 'new-project'
+        isReplayProject || projectHasStarted(projectId)
+          ? 'project'
+          : 'new-project'
       );
     },
     [
@@ -341,13 +394,17 @@ export default function ProjectPageSidebar({
             sessionLead: resolveProjectNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),
+              isAchieved: isProjectAchieved(project.metadata),
             }),
+            achieved: isProjectAchieved(project.metadata),
+            pinned: pinnedProjectIds.has(project.id),
             source: activeTask?.source,
           };
         }),
     [
       historyLoadingProjectIds,
       navLeadByProjectId,
+      pinnedProjectIds,
       projectMetasForActiveSpace,
       projectStore,
       shouldShowProjectInNavList,
@@ -405,6 +462,26 @@ export default function ProjectPageSidebar({
     setActiveWorkspaceTab,
     t,
   ]);
+
+  const handlePinProject = useCallback((projectId: string) => {
+    setPinnedProjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      try {
+        localStorage.setItem(
+          'eigent-pinned-projects',
+          JSON.stringify([...next])
+        );
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  }, []);
 
   const requestDeleteProject = useCallback((projectId: string) => {
     setDeleteProjectId(projectId);
@@ -531,7 +608,7 @@ export default function ProjectPageSidebar({
 
   const confirmAchieveProject = useCallback(async () => {
     const projectId = achieveProjectId;
-    if (!projectId || !activeSpaceId) return;
+    if (!projectId) return;
 
     setAchieveProjectLoading(true);
     try {
@@ -542,39 +619,22 @@ export default function ProjectPageSidebar({
       const taskId = projectChatState?.activeTaskId;
       const task = taskId ? projectChatState?.tasks[taskId] : undefined;
 
-      if (taskId && task?.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, { action: 'stop' });
-      }
-
-      try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch {
-        /* Backend may already have removed the chat */
-      }
-
-      const historyId = projectStore.getHistoryId(projectId);
-      if (
-        historyId &&
-        taskId &&
+      const hasActiveRun =
         task &&
-        task.status !== ChatTaskStatus.FINISHED
-      ) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          projectChatStore?.getState().removeTask(taskId);
-        } catch {
-          /* History may already be deleted */
-        }
+        (task.status === ChatTaskStatus.RUNNING ||
+          task.status === ChatTaskStatus.PAUSE ||
+          task.isPending);
+      if (taskId && hasActiveRun) {
+        await fetchPut(`/task/${taskId}/take-control`, { action: 'stop' });
+        projectChatStore?.getState().stopTask(taskId);
+        projectChatStore?.getState().setIsPending(taskId, false);
       }
 
-      const { proxyUpdateSpaceProject } = await import('@/service/spaceApi');
-      const archived = await proxyUpdateSpaceProject(activeSpaceId, projectId, {
-        status: 'archived',
+      await setProjectAchievedState({
+        projectStore,
+        projectId,
+        achieved: true,
       });
-      useSpaceStore.getState().updateProjectMeta(projectId, {
-        status: archived.status,
-      });
-      projectStore.removeProject(projectId);
       if (wasActive) {
         setActiveWorkspaceTab('workforce');
         requestWorkspaceChatFocus();
@@ -594,7 +654,6 @@ export default function ProjectPageSidebar({
     }
   }, [
     achieveProjectId,
-    activeSpaceId,
     ensureProjectLoaded,
     projectStore,
     requestWorkspaceChatFocus,
@@ -665,6 +724,11 @@ export default function ProjectPageSidebar({
           autoCreatedPlaceholder: true,
         },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
       setActiveWorkspaceTab('workforce');
@@ -677,11 +741,13 @@ export default function ProjectPageSidebar({
     }
   }, [
     createSpaceOnServer,
+    email,
     projectStore,
     requestWorkspaceChatFocus,
     setActiveSpace,
     setActiveWorkspaceTab,
     t,
+    userId,
   ]);
 
   const handleCreateSpaceFromFolder = useCallback(async () => {
@@ -782,15 +848,20 @@ export default function ProjectPageSidebar({
         confirmDisabled={deleteProjectLoading}
       />
 
-      <EndNoticeDialog
-        open={achieveDialogOpen}
-        onOpenChange={(open) => {
+      <AlertDialog
+        isOpen={achieveDialogOpen}
+        onClose={() => {
           if (achieveProjectLoading) return;
-          setAchieveDialogOpen(open);
-          if (!open) setAchieveProjectId(null);
+          setAchieveDialogOpen(false);
+          setAchieveProjectId(null);
         }}
         onConfirm={() => void confirmAchieveProject()}
-        loading={achieveProjectLoading}
+        title={t('layout.end-project')}
+        message={t('layout.ending-this-project-will-stop')}
+        confirmText={t('layout.yes-end-project')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="caution"
+        confirmDisabled={achieveProjectLoading}
       />
 
       <aside
@@ -995,9 +1066,13 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
+            <div className="my-2 px-3">
+              <div className="h-px w-full bg-ds-border-neutral-default-default" />
+            </div>
+
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="mt-6 flex min-h-0 flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
@@ -1005,6 +1080,7 @@ export default function ProjectPageSidebar({
                 onProjectClick={selectProject}
                 onDeleteProject={requestDeleteProject}
                 onAchieveProject={requestAchieveProject}
+                onPinProject={handlePinProject}
                 onNewProject={handleNewProject}
                 newProjectActive={activeWorkspaceTab === 'new-project'}
                 folded={projectSidebarFolded}

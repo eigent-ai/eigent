@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib/replay';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+  loadProjectFromHistory,
+} from '@/lib/replay';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -77,7 +81,8 @@ export function useHomeHubNavigation() {
             taskIdsList,
             project.project_name,
             project.space_id,
-            buildTaskQuestionsById(project.tasks)
+            buildTaskQuestionsById(project.tasks),
+            computeProjectFreshnessAnchor(project)
           );
           setActiveWorkspaceTab('project');
           return;
@@ -138,7 +143,8 @@ export function useHomeHubNavigation() {
           project?.space_id || task.space_id,
           project
             ? buildTaskQuestionsById(project.tasks)
-            : { [taskIdsList[0]]: question }
+            : { [taskIdsList[0]]: question },
+          computeProjectFreshnessAnchor(project)
         );
         setActiveWorkspaceTab('project');
       } catch (error) {

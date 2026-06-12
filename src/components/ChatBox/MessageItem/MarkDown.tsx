@@ -82,6 +82,9 @@ export const MarkDown = memo(
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const lastContentRef = useRef<string | null>(null);
+    /** Tracks how many characters have been typed so far — lets streaming
+     *  appends continue from the current position instead of restarting. */
+    const typingIndexRef = useRef(0);
     const typingCallbackRef = useRef(onTyping);
     const renderCompleteRef = useRef(onMarkdownRenderComplete);
 
@@ -97,6 +100,7 @@ export const MarkDown = memo(
     useEffect(() => {
       if (!enableTypewriter) {
         lastContentRef.current = content;
+        typingIndexRef.current = content.length;
         setDisplayedContent(content);
         if (typingCallbackRef.current) {
           typingCallbackRef.current();
@@ -107,15 +111,25 @@ export const MarkDown = memo(
       if (lastContentRef.current === content) {
         return;
       }
+
+      const prevContent = lastContentRef.current ?? '';
       lastContentRef.current = content;
 
-      setDisplayedContent('');
-      let index = 0;
+      // When content is a streaming append of the previous value, continue
+      // typing from the current position instead of restarting from zero.
+      // This prevents the displayed text from blanking out on every SSE chunk.
+      const isAppend = content.startsWith(prevContent);
+      if (!isAppend) {
+        setDisplayedContent('');
+        typingIndexRef.current = 0;
+      }
+      let index = isAppend ? typingIndexRef.current : 0;
 
       const timer = setInterval(() => {
         if (index < content.length) {
           setDisplayedContent(content.slice(0, index + 1));
           index++;
+          typingIndexRef.current = index;
         } else {
           clearInterval(timer);
           if (typingCallbackRef.current) {
@@ -206,8 +220,11 @@ export const MarkDown = memo(
           }
         }
 
-        // Sanitize HTML
-        const sanitized = DOMPurify.sanitize(rawHtml);
+        // Sanitize HTML — explicitly allow class so syntax-highlighted code
+        // blocks keep their language-* className after sanitization.
+        const sanitized = DOMPurify.sanitize(rawHtml, {
+          ADD_ATTR: ['class'],
+        });
         setHtml(sanitized);
         if (displayedContent === content && renderCompleteRef.current) {
           renderCompleteRef.current();
@@ -255,14 +272,14 @@ export const MarkDown = memo(
         >
           <DialogContent
             size="lg"
-            className="p-2 flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center"
+            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
             showCloseButton
           >
             {previewImage && (
               <img
                 src={previewImage}
                 alt="Preview"
-                className="rounded h-auto max-h-[90vh] w-auto max-w-full object-contain"
+                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
               />
             )}
           </DialogContent>

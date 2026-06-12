@@ -75,6 +75,7 @@ interface TaskCardProps {
   onDeleteTask: (taskIndex: number) => void;
   clickable?: boolean;
   chatId?: string;
+  taskId?: string;
 }
 
 export function TaskCard({
@@ -89,6 +90,7 @@ export function TaskCard({
   onDeleteTask,
   clickable = true,
   chatId,
+  taskId,
 }: TaskCardProps) {
   const host = useHost();
   const electronAPI = host?.electronAPI;
@@ -101,7 +103,7 @@ export function TaskCard({
   const { chatStore, projectStore } = useChatStoreAdapter();
 
   // Extract values for dependency arrays (must be before any conditional returns)
-  const activeTaskId = chatStore?.activeTaskId as string;
+  const activeTaskId = taskId ?? (chatStore?.activeTaskId as string);
   const activeTask = chatStore?.tasks?.[activeTaskId];
   const activeTaskStatus = activeTask?.status;
   const expandStorageKey = getTaskCardExpandStorageKey(chatId, activeTaskId);
@@ -124,13 +126,17 @@ export function TaskCard({
   // bump of the counter forces the card open; ProjectChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
   const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
   const lastSeenFocusRef = useRef(taskBoxFocusRequestId);
   useEffect(() => {
-    if (taskBoxFocusRequestId !== lastSeenFocusRef.current) {
+    if (
+      taskBoxFocusRequestId !== lastSeenFocusRef.current &&
+      (!taskBoxFocusTaskId || taskBoxFocusTaskId === activeTaskId)
+    ) {
       lastSeenFocusRef.current = taskBoxFocusRequestId;
       setIsExpanded(true);
     }
-  }, [taskBoxFocusRequestId]);
+  }, [activeTaskId, taskBoxFocusRequestId, taskBoxFocusTaskId]);
 
   useEffect(() => {
     const tasks = taskRunning || [];
@@ -232,9 +238,9 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="gap-2 px-sm py-2 flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl py-sm bg-ds-bg-neutral-default-default relative h-auto w-full overflow-hidden">
-          <div className="left-0 top-0 absolute w-full bg-transparent">
+      <div className="flex h-auto w-full flex-col gap-2 px-sm py-2 transition-all duration-300">
+        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-bg-neutral-default-default py-sm">
+          <div className="absolute left-0 top-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
@@ -244,8 +250,8 @@ export function TaskCard({
           )}
 
           {summaryTask && (
-            <div className={`gap-2 px-sm flex items-center justify-between`}>
-              <div className="gap-2 flex items-center">
+            <div className={`flex items-center justify-between gap-2 px-sm`}>
+              <div className="flex items-center gap-2">
                 {taskType === 1 && (
                   <TaskState
                     all={
@@ -337,14 +343,14 @@ export function TaskCard({
                 )}
               </div>
 
-              <div className="ease-in-out transition-all duration-300">
+              <div className="transition-all duration-300 ease-in-out">
                 {taskType === 1 && (
                   <Button variant="ghost" size="icon" onClick={onAddTask}>
                     <Plus size={16} />
                   </Button>
                 )}
                 {taskType === 2 && (
-                  <div className="gap-2 animate-in fade-in-0 slide-in-from-right-2 flex items-center duration-300">
+                  <div className="flex items-center gap-2 duration-300 animate-in fade-in-0 slide-in-from-right-2">
                     {isExpanded && (
                       <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
                         {taskRunning?.filter(
@@ -375,11 +381,11 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="mt-sm px-sm ease-out animate-in fade-in-0 slide-in-from-bottom-4 flex flex-col duration-500">
+              <div className="mt-sm flex flex-col px-sm duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
-                    className="animate-in fade-in-0 slide-in-from-left-2 duration-300"
+                    className="duration-300 animate-in fade-in-0 slide-in-from-left-2"
                   >
                     <TaskItem
                       taskInfo={task}
@@ -395,13 +401,13 @@ export function TaskCard({
             {taskType === 2 && (
               <div
                 ref={contentRef}
-                className="ease-in-out overflow-hidden transition-all duration-300"
+                className="overflow-hidden transition-all duration-300 ease-in-out"
                 style={{
                   height: isExpanded ? contentHeight : 0,
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm gap-2 px-2 flex flex-col">
+                <div className="mt-sm flex flex-col gap-2 px-2">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
@@ -446,7 +452,7 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`gap-2 rounded-lg px-sm py-sm ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex transition-all duration-300 ${
+                        className={`flex gap-2 rounded-lg px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${
                           task.status === TaskStatus.COMPLETED
                             ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED
@@ -518,9 +524,9 @@ export function TaskCard({
                             />
                           )}
                         </div>
-                        <div className="min-w-0 flex flex-1 flex-col items-start justify-center">
+                        <div className="flex min-w-0 flex-1 flex-col items-start justify-center">
                           <div
-                            className={`min-w-0 w-full [overflow-wrap:anywhere] whitespace-pre-line ${
+                            className={`w-full min-w-0 whitespace-pre-line [overflow-wrap:anywhere] ${
                               task.status === TaskStatus.FAILED
                                 ? 'text-ds-text-caution-default-default'
                                 : task.status === TaskStatus.BLOCKED

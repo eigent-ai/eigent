@@ -64,13 +64,13 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   const getTriggerTypeIcon = () => {
     switch (trigger.trigger_type) {
       case TriggerType.Schedule:
-        return <AlarmClockIcon className="w-3.5 h-3.5" />;
+        return <AlarmClockIcon className="h-3.5 w-3.5" />;
       case TriggerType.Webhook:
-        return <WebhookIcon className="w-3.5 h-3.5" />;
+        return <WebhookIcon className="h-3.5 w-3.5" />;
       case TriggerType.Slack:
-        return <MessageSquare className="w-3.5 h-3.5" />;
+        return <MessageSquare className="h-3.5 w-3.5" />;
       default:
-        return <Clock className="w-3.5 h-3.5" />;
+        return <Clock className="h-3.5 w-3.5" />;
     }
   };
 
@@ -95,34 +95,34 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   return (
     <div
       onClick={() => onSelect(trigger.id)}
-      className={`group gap-3 p-3 !bg-ds-bg-neutral-default-default rounded-xl flex cursor-pointer items-center border transition-all duration-200 ${
+      className={`group flex cursor-pointer items-center gap-3 rounded-xl border border-solid border-transparent !bg-ds-bg-neutral-default-default p-3 transition-all duration-200 ${
         isSelected
-          ? 'border-ds-border-brand-default-default'
+          ? '!border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default'
           : needsAuth
-            ? 'border-ds-border-warning-default-default hover:border-ds-border-warning-default-hover hover:bg-ds-bg-neutral-strong-default'
-            : 'border-ds-border-neutral-subtle-default hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-strong-default'
+            ? 'hover:!bg-ds-bg-neutral-strong-default'
+            : 'hover:!bg-ds-bg-neutral-strong-default'
       }`}
     >
       {/* 1. Zap Icon */}
-      <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex flex-shrink-0 items-center justify-center">
-        <Zap className="w-5 h-5 text-ds-icon-neutral-default-default" />
+      <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
+        <Zap className="h-5 w-5 text-ds-icon-neutral-default-default" />
       </div>
 
       {/* 2. Trigger Name + Task Prompt */}
       <div className="min-w-0 flex-1">
-        <div className="gap-2 flex items-center">
-          <div className="text-sm font-semibold text-ds-text-neutral-default-default group-hover:text-ds-text-brand-default-hover truncate transition-colors">
+        <div className="flex items-center gap-2">
+          <div className="truncate text-sm font-semibold text-ds-text-neutral-default-default transition-colors group-hover:text-ds-text-brand-default-hover">
             {trigger.name}
           </div>
           {needsAuth && (
             <TooltipSimple content={t('triggers.verification-required')}>
-              <div className="p-1 bg-yellow-100 flex items-center justify-center rounded-full">
-                <AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />
+              <div className="flex items-center justify-center rounded-full bg-yellow-100 p-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />
               </div>
             </TooltipSimple>
           )}
         </div>
-        <div className="text-xs text-ds-text-neutral-muted-default mt-0.5 truncate">
+        <div className="mt-0.5 truncate text-xs text-ds-text-neutral-muted-default">
           {trigger.task_prompt ||
             trigger.description ||
             t('triggers.no-task-prompt')}
@@ -130,7 +130,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
       </div>
 
       {/* 3. Trigger Type */}
-      <div className="gap-1.5 text-xs text-ds-text-neutral-muted-default flex min-w-[80px] items-center">
+      <div className="flex min-w-[80px] items-center gap-1.5 text-xs text-ds-text-neutral-muted-default">
         {getTriggerTypeIcon()}
         <span>{getTriggerTypeLabel()}</span>
       </div>
@@ -159,7 +159,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             buttonContent="icon-only"
             onClick={(e) => e.stopPropagation()}
           >
-            <MoreHorizontal className="w-4 h-4" />
+            <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>

@@ -12,55 +12,97 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { CarouselStep } from '@/components/InstallStep/Carousel';
+import { OnboardingSteps } from '@/components/InstallStep/OnboardingSteps';
 import { ProgressInstall } from '@/components/ui/progress-install';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { CheckCircle2 } from 'lucide-react';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const InstallDependencies: React.FC = () => {
+  const { t } = useTranslation();
   const { progress, latestLog, isInstalling, installationState } =
     useInstallationUI();
+  const {
+    isFirstLaunch,
+    onboardingCompleted,
+    setOnboardingCompleted,
+    setIsFirstLaunch,
+  } = useAuthStore();
+
+  // Show onboarding panel when it's first launch and user hasn't completed setup
+  const showOnboarding = isFirstLaunch && !onboardingCompleted;
+
+  const installDone =
+    !isInstalling &&
+    installationState !== 'waiting-backend' &&
+    installationState !== 'idle';
+
+  const displayProgress =
+    isInstalling || installationState === 'waiting-backend' ? progress : 100;
+
+  const handleOnboardingComplete = () => {
+    setOnboardingCompleted(true);
+    setIsFirstLaunch(false);
+  };
 
   return (
-    <div className="inset-0 px-1 pb-1 pt-10 fixed !z-[100] flex h-full w-full items-center justify-center overflow-hidden">
-      <div className="gap-lg rounded-2xl bg-ds-bg-neutral-subtle-default p-4 flex h-full w-full flex-row justify-center">
-        <div className="pt-6 flex h-full w-1/3">
-          {/* {isInstalling.toString()} */}
-          <div className="flex w-full flex-col">
-            <ProgressInstall
-              value={
-                isInstalling || installationState === 'waiting-backend'
-                  ? progress
-                  : 100
-              }
-              className="mb-4 w-full"
-            />
-            <div className="mt-2 gap-4 flex w-full flex-col items-start justify-between">
-              <div className="flex w-full flex-row items-start justify-between">
-                <div className="text-body-sm font-medium leading-normal text-ds-text-neutral-default-default">
-                  {isInstalling
-                    ? 'System Installing ...'
-                    : installationState === 'waiting-backend'
-                      ? 'Starting up... First launch may take a minute.'
+    <div className="absolute inset-0 flex min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row gap-2 rounded-2xl bg-ds-bg-neutral-default-default p-1">
+        {/* ── Left: installation progress ───────────────────── */}
+        <div
+          className={cn(
+            'flex flex-col px-6 py-8 transition-all duration-500',
+            showOnboarding ? 'w-1/3' : 'w-full'
+          )}
+        >
+          <div className="flex w-full flex-col gap-4">
+            <ProgressInstall value={displayProgress} className="w-full" />
+
+            <div className="flex w-full flex-row items-start justify-between">
+              <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                {isInstalling
+                  ? t('layout.install-system-installing')
+                  : installationState === 'waiting-backend'
+                    ? t('layout.install-starting-up')
+                    : installDone
+                      ? t('layout.install-ready')
                       : ''}
-                </div>
-                <div className="text-body-sm font-medium leading-normal text-ds-text-neutral-default-default">
-                  {Math.round(
-                    (isInstalling || installationState === 'waiting-backend'
-                      ? progress
-                      : 100) ?? 0
-                  )}
-                  %
-                </div>
               </div>
-              <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default w-full">
-                {latestLog?.data}
+              <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                {Math.round(displayProgress ?? 0)}%
               </div>
             </div>
+
+            {/* Latest log line */}
+            {latestLog?.data && (
+              <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default">
+                {latestLog.data}
+              </div>
+            )}
+
+            {/* Done state */}
+            {installDone && !isInstalling && (
+              <div className="flex items-center gap-2 text-body-sm font-medium text-ds-text-neutral-muted-default">
+                <CheckCircle2 size={15} className="text-green-500" />
+                {t('layout.install-complete')}
+              </div>
+            )}
           </div>
         </div>
-        <div className="rounded-2xl bg-ds-bg-neutral-default-default p-md flex h-full w-2/3">
-          <CarouselStep />
+
+        {/* ── Right: onboarding steps (first launch only) ────── */}
+        <div
+          className={cn(
+            'min-w-0 overflow-hidden transition-all duration-500',
+            showOnboarding ? 'w-2/3 opacity-100' : 'w-0 opacity-0'
+          )}
+        >
+          {showOnboarding && (
+            <OnboardingSteps onComplete={handleOnboardingComplete} />
+          )}
         </div>
       </div>
     </div>

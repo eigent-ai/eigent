@@ -55,10 +55,11 @@ from app.model.space.apply import SpaceOverlayListResponse
 from app.domains.remote_control.service.remote_control_service import (
     COMMAND_ACKNOWLEDGED,
     COMMAND_FAILED,
+    COMMAND_PENDING,
     RemoteControlRedis,
     RemoteControlService,
 )
-from app.model.remote_control import RemoteControlSession
+from app.model.remote_control import RemoteControlCommand, RemoteControlSession
 from app.model.user.user import User
 from app.shared.auth import auth_must
 from app.shared.auth.token_blacklist import BLACKLIST_PUBSUB_PREFIX, is_blacklisted
@@ -376,6 +377,97 @@ async def _auth_token(token: str | None, db: Session) -> V1UserAuth:
     return auth
 
 
+def _pending_bridge_commands(
+    desktop_instance_id: str,
+    user_id: int,
+    db: Session,
+    *,
+    limit: int = 50,
+) -> list[tuple[RemoteControlSession, RemoteControlCommand]]:
+    sessions = db.exec(
+        select(RemoteControlSession).where(
+            RemoteControlSession.user_id == user_id,
+            RemoteControlSession.desktop_instance_id == desktop_instance_id,
+            RemoteControlSession.status == "active",
+        )
+    ).all()
+    if not sessions:
+        return []
+
+    sessions_by_id = {rc_session.id: rc_session for rc_session in sessions}
+    commands = db.exec(
+        select(RemoteControlCommand)
+        .where(
+            RemoteControlCommand.session_id.in_(sessions_by_id.keys()),
+            RemoteControlCommand.status == COMMAND_PENDING,
+        )
+        .order_by(RemoteControlCommand.created_at)
+        .limit(limit)
+    ).all()
+    return [
+        (sessions_by_id[command.session_id], command)
+        for command in commands
+        if command.session_id in sessions_by_id
+    ]
+
+
+async def _send_bridge_command(
+    websocket: WebSocket,
+    rc_session: RemoteControlSession,
+    command: RemoteControlCommand,
+) -> bool:
+    try:
+        await websocket.send_json(RemoteControlService.command_payload(rc_session, command))
+        return True
+    except Exception as exc:
+        logger.warning(
+            "Failed to send remote-control command to desktop bridge",
+            extra={
+                "desktop_instance_id": rc_session.desktop_instance_id,
+                "command_id": command.id,
+                "error": str(exc),
+            },
+        )
+        return False
+
+
+async def _flush_pending_bridge_commands(
+    desktop_instance_id: str,
+    user_id: int,
+    db: Session,
+    *,
+    websocket: WebSocket | None = None,
+) -> int:
+    target_ws = websocket or bridge_websockets.get(desktop_instance_id)
+    if target_ws is None:
+        return 0
+    if websocket is None and bridge_users.get(desktop_instance_id) != user_id:
+        return 0
+
+    delivered_count = 0
+    for rc_session, command in _pending_bridge_commands(desktop_instance_id, user_id, db):
+        if await _send_bridge_command(target_ws, rc_session, command):
+            delivered_count += 1
+    return delivered_count
+
+
+async def _flush_pending_for_session(rc_session: RemoteControlSession, db: Session) -> None:
+    delivered_count = await _flush_pending_bridge_commands(
+        rc_session.desktop_instance_id,
+        rc_session.user_id,
+        db,
+    )
+    if delivered_count:
+        logger.info(
+            "Flushed pending remote-control commands to local bridge",
+            extra={
+                "session_id": rc_session.id,
+                "desktop_instance_id": rc_session.desktop_instance_id,
+                "delivered_count": delivered_count,
+            },
+        )
+
+
 @router.post(
     "/sessions",
     response_model=RemoteControlCreateSessionOut,
@@ -478,7 +570,7 @@ def extend_session(
 
 
 @router.patch("/sessions/{session_id}/target", response_model=RemoteControlPatchTargetOut)
-def patch_target(
+async def patch_target(
     session_id: str,
     data: RemoteControlPatchTargetIn,
     t: str | None = Query(None),
@@ -494,12 +586,14 @@ def patch_target(
         None,
         db_session,
     )
-    return RemoteControlService.patch_target(
+    result = RemoteControlService.patch_target(
         session_id,
         rc_session.user_id,
         data,
         db_session,
     )
+    await _flush_pending_for_session(rc_session, db_session)
+    return result
 
 
 @router.delete("/sessions/{session_id}")
@@ -528,7 +622,7 @@ def revoke_session(
     response_model_exclude_none=True,
     dependencies=[remote_command_burst_rate_limiter, remote_command_minute_rate_limiter],
 )
-def send_command(
+async def send_command(
     session_id: str,
     data: RemoteControlCommandIn,
     t: str | None = Query(None),
@@ -544,12 +638,14 @@ def send_command(
         None,
         db_session,
     )
-    return RemoteControlService.send_command(
+    result = RemoteControlService.send_command(
         session_id,
         rc_session.user_id,
         data,
         db_session,
     )
+    await _flush_pending_for_session(rc_session, db_session)
+    return result
 
 
 @router.get(
@@ -625,7 +721,7 @@ def list_session_project_overlays(
     response_model=RemoteControlFolderOperationOut,
     dependencies=[remote_command_burst_rate_limiter, remote_command_minute_rate_limiter],
 )
-def apply_session_project_run(
+async def apply_session_project_run(
     session_id: str,
     project_id: str,
     data: RemoteControlFolderApplyIn,
@@ -642,13 +738,15 @@ def apply_session_project_run(
         None,
         db_session,
     )
-    return RemoteControlService.enqueue_apply_project(
+    result = RemoteControlService.enqueue_apply_project(
         session_id,
         rc_session.user_id,
         project_id,
         data,
         db_session,
     )
+    await _flush_pending_for_session(rc_session, db_session)
+    return result
 
 
 @router.post(
@@ -656,7 +754,7 @@ def apply_session_project_run(
     response_model=RemoteControlFolderOperationOut,
     dependencies=[remote_command_burst_rate_limiter, remote_command_minute_rate_limiter],
 )
-def discard_session_project_overlays(
+async def discard_session_project_overlays(
     session_id: str,
     project_id: str,
     data: RemoteControlFolderDiscardIn,
@@ -673,13 +771,15 @@ def discard_session_project_overlays(
         None,
         db_session,
     )
-    return RemoteControlService.enqueue_discard_project_overlays(
+    result = RemoteControlService.enqueue_discard_project_overlays(
         session_id,
         rc_session.user_id,
         project_id,
         data,
         db_session,
     )
+    await _flush_pending_for_session(rc_session, db_session)
+    return result
 
 
 @router.post(
@@ -687,7 +787,7 @@ def discard_session_project_overlays(
     response_model=RemoteControlFolderOperationOut,
     dependencies=[remote_command_burst_rate_limiter, remote_command_minute_rate_limiter],
 )
-def refresh_session_project(
+async def refresh_session_project(
     session_id: str,
     project_id: str,
     data: RemoteControlFolderRefreshIn,
@@ -704,13 +804,15 @@ def refresh_session_project(
         None,
         db_session,
     )
-    return RemoteControlService.enqueue_refresh_project(
+    result = RemoteControlService.enqueue_refresh_project(
         session_id,
         rc_session.user_id,
         project_id,
         data,
         db_session,
     )
+    await _flush_pending_for_session(rc_session, db_session)
+    return result
 
 
 async def _validate_bridge_token(
@@ -813,6 +915,12 @@ async def bridge_subscribe(websocket: WebSocket):
         db.commit()
 
         await websocket.send_json({"type": "connected", "desktop_instance_id": desktop_instance_id})
+        await _flush_pending_bridge_commands(
+            desktop_instance_id,
+            user_id,
+            db,
+            websocket=websocket,
+        )
 
         while True:
             msg = await websocket.receive_json()
@@ -855,6 +963,12 @@ async def bridge_subscribe(websocket: WebSocket):
                         return
                     next_blacklist_check_at = now + timedelta(seconds=blacklist_check_interval)
                 RemoteControlRedis.refresh_bridge(desktop_instance_id, user_id, worker_id)
+                await _flush_pending_bridge_commands(
+                    desktop_instance_id,
+                    user_id,
+                    db,
+                    websocket=websocket,
+                )
                 await websocket.send_json({"type": "pong", "timestamp": datetime.utcnow().isoformat()})
             elif msg_type == "reauth" and msg.get("auth_token"):
                 try:
@@ -1113,6 +1227,14 @@ async def _handle_pubsub_message(channel: str, payload: dict[str, Any]) -> None:
         ws = bridge_websockets.get(desktop_instance_id)
         if ws:
             await ws.send_json(payload)
+        else:
+            logger.warning(
+                "Remote-control command pub/sub arrived without a local bridge websocket",
+                extra={
+                    "desktop_instance_id": desktop_instance_id,
+                    "command_id": payload.get("command", {}).get("id"),
+                },
+            )
         return
 
     if channel.startswith("rc:ack:"):

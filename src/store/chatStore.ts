@@ -33,6 +33,7 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -48,7 +49,8 @@ import {
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList, type CloudModelType } from './authStore';
+import { getAuthStore, getWorkerList } from './authStore';
+import { getCloudModelStore } from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
@@ -294,6 +296,8 @@ interface Task {
   // Trigger execution ID for tracking trigger task completion
   executionId?: string;
   nextExecutionId?: string;
+  /** Unix ms timestamp when this task was created — used for TurnTabs ordering. */
+  createdAt: number;
 }
 
 type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
@@ -478,37 +482,6 @@ export function collectTaskUploadFiles(
   return Array.from(uniqueCandidates.values());
 }
 
-type CloudModelPlatform =
-  | 'azure'
-  | 'aws-bedrock-converse'
-  | 'gemini'
-  | 'deepseek'
-  | 'minimax';
-
-// prettier-ignore
-const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
-  'gemini-3.1-pro-preview': 'gemini',
-  'gemini-3.5-flash': 'gemini',
-  'gemini-3-pro-preview': 'gemini',
-  'gemini-3-flash-preview': 'gemini',
-  'claude-haiku-4-5': 'aws-bedrock-converse',
-  'claude-sonnet-4-5': 'aws-bedrock-converse',
-  'claude-sonnet-4-6': 'aws-bedrock-converse',
-  'claude-opus-4-6': 'aws-bedrock-converse',
-  'claude-opus-4-7': 'aws-bedrock-converse',
-  'gpt-5.4': 'azure',
-  'gpt-5.5': 'azure',
-  'gpt-5-mini': 'azure',
-  'deepseek-v4-pro': 'deepseek',
-  'minimax_m2_7': 'minimax',
-};
-
-export function getCloudModelPlatform(
-  cloudModelType: CloudModelType
-): CloudModelPlatform {
-  return CLOUD_MODEL_PLATFORM_MAP[cloudModelType];
-}
-
 async function uploadTaskFiles(
   files: UploadCandidate[],
   uploadTargetId: string
@@ -579,6 +552,13 @@ export interface ChatStore {
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
   create: (id?: string, type?: any) => string;
+  /**
+   * Replace a task's full state in one commit — used by the IDB-backed
+   * project cache to skip the SSE replay path when we already have a
+   * reconstructed final state from a previous session. Volatile fields
+   * (pending/streaming/timers) are forced to safe defaults.
+   */
+  hydrateTask: (taskId: string, state: Task) => void;
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
@@ -1047,6 +1027,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
     updateCount: 0,
+    hydrateTask(taskId: string, state: Task) {
+      set((s) => ({
+        activeTaskId: taskId,
+        tasks: {
+          ...s.tasks,
+          [taskId]: {
+            ...state,
+            // Never resurrect a task as pending / awaiting confirmation
+            // from a cached snapshot — those are in-flight flags only.
+            isPending: false,
+            autoConfirmDeadline: null,
+            streamingDecomposeText: '',
+            // File handles can't round-trip through JSON, so cached
+            // attaches always come back empty.
+            attaches: [],
+          },
+        },
+      }));
+    },
     create(id?: string, type?: any) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
@@ -1089,6 +1088,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             autoConfirmDeadline: null,
             streamingDecomposeText: '',
             executionId: undefined,
+            createdAt: Date.now(),
           },
         },
       }));
@@ -1231,43 +1231,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       sessionMode?: SessionModeType,
       options?: StartTaskOptions
     ) => {
-      // ✅ Wait for backend to be ready before starting task (except for replay/share)
-      if (!type || type === 'normal') {
-        console.log('[startTask] Checking if backend is ready...');
-        const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
-
-        if (!isBackendReady) {
-          console.error('[startTask] Backend is not ready, cannot start task');
-          const { addMessages } = get();
-          addMessages(taskId, {
-            id: generateUniqueId(),
-            role: 'agent',
-            content:
-              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
-          });
-          return;
-        }
-        console.log('[startTask] Backend is ready, proceeding with task...');
-      }
-
-      const { token, language, modelType, cloud_model_type, email } =
-        getAuthStore();
-      const workerList = getWorkerList();
-      const {
-        getLastUserMessage: _getLastUserMessage,
-        setDelayTime,
-        setType,
-      } = get();
-      let systemLanguage = language;
-      if (language === 'system') {
-        try {
-          systemLanguage =
-            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
-            'en';
-        } catch {
-          systemLanguage = 'en';
-        }
-      }
+      const { setDelayTime, setType } = get();
       if (type === 'replay') {
         setDelayTime(taskId, delayTime as number);
         setType(taskId, type);
@@ -1283,9 +1247,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         throw new Error('No active Project selected.');
       }
       const startOptions = options || {};
-      const project = project_id
-        ? projectStore.getProjectById(project_id)
-        : null;
+      const project =
+        isLiveTask && project_id
+          ? projectStore.getProjectById(project_id)
+          : null;
       if (isLiveTask && !project) {
         throw new Error('Selected Project is not available.');
       }
@@ -1345,6 +1310,64 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           .setTaskSessionMode(newTaskId, sessionModeForRequest);
       }
 
+      const finishStartupFailure = () => {
+        if (!isLiveTask) return;
+        const targetState = targetChatStore.getState();
+        const task = targetState.tasks[newTaskId];
+        if (!task) return;
+        if (activeSSEControllers[newTaskId]) {
+          try {
+            activeSSEControllers[newTaskId].abort();
+          } catch {
+            // Ignore abort errors while cleaning up a failed startup.
+          }
+          delete activeSSEControllers[newTaskId];
+        }
+        if (task.isPending) {
+          targetState.setIsPending(newTaskId, false);
+        }
+        if (task.status !== ChatTaskStatus.FINISHED) {
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+        }
+      };
+
+      // Render the new turn before waiting for Brain. This keeps the project
+      // page responsive and locks the composer through the task's pending state.
+      if (!type || type === 'normal') {
+        console.log('[startTask] Checking if backend is ready...');
+        const isBackendReady = await waitForBackendReady(60000, 500);
+
+        if (!isBackendReady) {
+          console.error('[startTask] Backend is not ready, cannot start task');
+          const targetState = targetChatStore.getState();
+          targetState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content:
+              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+          });
+          targetState.setIsPending(newTaskId, false);
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+          return;
+        }
+        console.log('[startTask] Backend is ready, proceeding with task...');
+      }
+
+      const { token, language, modelType, cloud_model_type, email } =
+        getAuthStore();
+      const workerList = getWorkerList();
+      const { getLastUserMessage: _getLastUserMessage } = get();
+      let systemLanguage = language;
+      if (language === 'system') {
+        try {
+          systemLanguage =
+            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
+            'en';
+        } catch {
+          systemLanguage = 'en';
+        }
+      }
+
       // Replay/share APIs live on the server side, not Brain.
       const serverBaseUrl = import.meta.env.DEV
         ? window.location.origin
@@ -1399,6 +1422,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const provider = providerList[0];
 
         if (!provider) {
+          finishStartupFailure();
           throw new Error(
             'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
           );
@@ -1412,15 +1436,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           extra_params: provider.encrypted_config,
         };
       } else if (modelType === 'cloud') {
-        // get current model
-        const res = await proxyFetchGet('/api/v1/user/key');
+        const cloudModelStore = getCloudModelStore();
+        let resolvedCloudModel =
+          cloudModelStore.resolveCloudModel(cloud_model_type);
+        if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
+          await cloudModelStore.fetchCloudModels(true);
+          resolvedCloudModel =
+            getCloudModelStore().resolveCloudModel(cloud_model_type);
+        }
+        if (!resolvedCloudModel) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to resolve cloud model. Please try again or choose another model in Agents > Models.'
+          );
+        }
+        if (
+          resolvedCloudModel.source === 'default' &&
+          resolvedCloudModel.requestedModelId
+        ) {
+          const message = `Model ${resolvedCloudModel.requestedModelId} is no longer available; switched to ${resolvedCloudModel.model.display_name}.`;
+          console.warn(message);
+          toast.warning(message);
+        }
+        if (resolvedCloudModel.model.id !== cloud_model_type) {
+          getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
+        }
+
+        let res: any;
+        try {
+          res = await proxyFetchGet('/api/v1/user/key');
+        } catch (error: any) {
+          finishStartupFailure();
+          const responseData = error?.response?.data;
+          if (
+            hasApiCode(responseData, API_CODE_TRIAL_LIMIT) ||
+            hasApiCode(error, API_CODE_TRIAL_LIMIT)
+          ) {
+            throw new Error(
+              responseData?.text ||
+                error?.message ||
+                'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+            );
+          }
+          throw error;
+        }
         if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+          finishStartupFailure();
           throw new Error(
             res.text ||
               'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
           );
         }
         if (!res.value) {
+          finishStartupFailure();
           throw new Error(
             res.text ||
               'Failed to get cloud model key. Please check your account or model settings.'
@@ -1431,8 +1499,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         apiModel = {
           api_key: res.value,
-          model_type: cloud_model_type,
-          model_platform: getCloudModelPlatform(cloud_model_type),
+          model_type: resolvedCloudModel.model.model_type,
+          model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
           extra_params: {},
         };
@@ -1513,10 +1581,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const requestSpace = spaceId
         ? useSpaceStore.getState().getSpaceById(spaceId)
         : null;
-      const spaceRootPath =
-        requestSpace?.sourceType === 'folder'
-          ? requestSpace.rootPath || undefined
-          : undefined;
+      const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
+        ? requestSpace?.rootPath || undefined
+        : undefined;
       if (!type && !startOptions.skipHistoryCreate) {
         const authStore = getAuthStore();
 
@@ -1885,7 +1952,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     // `question` / closure `messageContent` if the new task
                     // somehow has no user message yet.
                     question:
-                      (targetChatStore.getState().tasks[newTaskId]?.messages[0]
+                      (newChatStore.getState().tasks[newTaskId]?.messages[0]
                         ?.content as string) ||
                       userMessageContent ||
                       '',
@@ -3532,7 +3599,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       task.id === agentMessages.data.process_task_id
                   )
               );
-              const task = taskAssigning[assigneeAgentIndex].tasks.find(
+              // Single-agent runs never emit `assign_task`, so no agent
+              // ever owns this notice's process_task_id and the findIndex
+              // above returns -1. Optional chaining keeps the access safe;
+              // the existing guard at the bottom of this block already
+              // skips the toolkit push when the index is -1.
+              const task = taskAssigning[assigneeAgentIndex]?.tasks.find(
                 (task: TaskInfo) =>
                   task.id === agentMessages.data.process_task_id
               );
@@ -4125,33 +4197,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
     },
     setIsPending(taskId: string, isPending: boolean) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            isPending,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              isPending,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveWorkspace(taskId: string, activeWorkspace: string) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            activeWorkspace,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              activeWorkspace,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveAgent(taskId: string, agent_id: string) {
       console.log('setActiveAgent', taskId, agent_id);
 
       set((state) => {
+        if (!state.tasks[taskId]) return state;
         if (state.tasks[taskId]?.activeAgent === agent_id) {
           return state;
         }
@@ -4360,16 +4439,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       return tasks[taskId]?.tokens ?? 0;
     },
     setSelectedFile(taskId: string, selectedFile: FileInfo | null) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            selectedFile: selectedFile,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              selectedFile: selectedFile,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setSnapshots(taskId: string, snapshots: any[]) {
       set((state) => ({

@@ -27,7 +27,11 @@ import {
 } from '@/components/ui/command';
 import { DialogTitle } from '@/components/ui/dialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+  loadProjectFromHistory,
+} from '@/lib';
 import { fetchHistoryTasks } from '@/service/historyApi';
 import { useGlobalStore } from '@/store/globalStore';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
@@ -50,9 +54,15 @@ export function SearchHistoryDialog() {
     question: string,
     historyId: string,
     project?: {
-      tasks: { task_id: string; question?: string | null }[];
+      tasks: {
+        task_id: string;
+        question?: string | null;
+        updated_at?: string | null;
+        created_at?: string | null;
+      }[];
       project_name?: string;
       space_id?: string;
+      latest_task_date?: string;
     }
   ) => {
     const existingProject = projectStore.getProjectById(projectId);
@@ -77,7 +87,8 @@ export function SearchHistoryDialog() {
         project?.space_id,
         project
           ? buildTaskQuestionsById(project.tasks)
-          : { [taskIdsList[0]]: question }
+          : { [taskIdsList[0]]: question },
+        computeProjectFreshnessAnchor(project)
       );
     }
   };

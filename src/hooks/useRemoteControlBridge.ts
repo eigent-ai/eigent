@@ -377,6 +377,50 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   });
 }
 
+function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
+  const projectId = getCommandProjectId(command);
+  const nextTaskId = command.next_task_id;
+  const content = String(
+    command.payload?.content || command.payload?.question || ''
+  );
+  if (!projectId || !nextTaskId || !content) {
+    return;
+  }
+
+  ensureRemoteProjectLoaded(command);
+
+  const projectStore = useProjectStore.getState();
+  const chatStore = projectStore.getChatStore(projectId);
+  const chatState = chatStore?.getState();
+  const activeTaskId = chatState?.activeTaskId;
+  if (
+    !chatStore ||
+    !chatState ||
+    !activeTaskId ||
+    !chatState.tasks[activeTaskId]
+  ) {
+    return;
+  }
+
+  const messageId = `remote-command:${command.id}`;
+  const alreadySeeded = chatState.tasks[activeTaskId].messages.some(
+    (message) => message.id === messageId
+  );
+  if (alreadySeeded) {
+    return;
+  }
+
+  chatState.setNextTaskId(nextTaskId);
+  chatState.setIsPending(activeTaskId, true);
+  chatState.addMessages(activeTaskId, {
+    id: messageId,
+    role: 'user',
+    content,
+    attaches: [],
+  });
+  chatState.setHasMessages(activeTaskId, true);
+}
+
 function commandErrorAck(commandId: string, error: any): BridgeAck {
   return {
     type: 'command_ack',
@@ -406,6 +450,7 @@ async function executeRemoteCommand(
         `/chat/${projectId}/status`
       );
       if (status?.has_lock) {
+        seedRemoteFollowUpPrompt(command);
         await requestBrain(command, token, 'POST', `/chat/${projectId}`, {
           question: command.payload.content || command.payload.question || '',
           task_id: command.next_task_id,
@@ -706,28 +751,33 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       return true;
     };
 
-    const handleCommand = (command: RemoteCommand) => {
+    const executeCommand = (command: RemoteCommand): Promise<BridgeAck> => {
       if (
         command.type === 'switch_project_view' ||
         command.type === 'space_project_upsert' ||
         command.type.startsWith('space_')
       ) {
-        send({
-          type: 'command_delivered',
-          command_id: command.id,
-        });
-        const localCommand =
-          command.type === 'switch_project_view'
-            ? executeSwitchProjectView(command)
-            : command.type === 'space_project_upsert'
-              ? executeSpaceProjectUpsert(command)
-              : executeSpaceCommand(command, token);
-        localCommand
-          .then(sendAck)
-          .catch((error) => sendAck(commandErrorAck(command.id, error)));
-        return;
+        return command.type === 'switch_project_view'
+          ? executeSwitchProjectView(command)
+          : command.type === 'space_project_upsert'
+            ? executeSpaceProjectUpsert(command)
+            : executeSpaceCommand(command, token);
       }
 
+      if (!checkRateLimit()) {
+        return Promise.resolve({
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'BRIDGE_RATE_LIMIT',
+          error: 'Too many remote commands in a short time',
+        });
+      }
+
+      return executeRemoteCommand(command, token);
+    };
+
+    const handleCommand = (command: RemoteCommand) => {
       const cache = cacheRef.current;
       const existing = cache.get(command.id);
       if (existing?.state === 'done') {
@@ -737,16 +787,6 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       if (existing?.state === 'in_progress') {
         existing.promise.then(sendAck).catch((error) => {
           sendAck(commandErrorAck(command.id, error));
-        });
-        return;
-      }
-      if (!checkRateLimit()) {
-        sendAck({
-          type: 'command_ack',
-          command_id: command.id,
-          status: 'failed',
-          error_code: 'BRIDGE_RATE_LIMIT',
-          error: 'Too many remote commands in a short time',
         });
         return;
       }
@@ -763,7 +803,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         command_id: command.id,
       });
 
-      executeRemoteCommand(command, token)
+      executeCommand(command)
         .then(resolveAck!)
         .catch((error) => resolveAck!(commandErrorAck(command.id, error)));
 

@@ -17,10 +17,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -35,19 +31,15 @@ import type { TriggerInput } from '@/types';
 import type { SessionModeType } from '@/types/constants';
 import {
   ArrowRight,
-  Compass,
   FileText,
-  Hammer,
   Image,
   Paperclip,
   Plus,
   UploadCloud,
-  Wand2,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ChatInputModelDropdown } from './ChatInputModelDropdown';
 import { RichChatInput } from './RichChatInput';
@@ -167,7 +159,6 @@ export const Inputbox = ({
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const internalTextareaRef = useRef<HTMLDivElement>(null);
   const textareaRef = externalTextareaRef || internalTextareaRef;
   const [isFocused, setIsFocused] = useState(false);
@@ -538,93 +529,6 @@ export const Inputbox = ({
                 />
                 {t('chat.input-attach-add-files-or-photos')}
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="-mx-1 my-1 bg-ds-border-neutral-default-default" />
-              {/* Submenus use alignOffset: Radix SubContent is fixed top-aligned; negative offset bottom-aligns panel to trigger row */}
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Wand2
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('chat.input-attach-skills')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate(
-                        '/history?tab=agents&section=skills&skillAction=upload'
-                      )
-                    }
-                  >
-                    {t('chat.input-attach-upload-new-skill')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=agents&section=skills')
-                    }
-                  >
-                    {t('chat.input-attach-manage-skills')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Hammer
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('layout.connectors')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=connectors&connectorAction=add')
-                    }
-                  >
-                    {t('chat.input-attach-add-mcp')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => navigate('/history?tab=connectors')}
-                  >
-                    {t('chat.input-attach-manage-connectors')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-2">
-                  <Compass
-                    className="text-ds-icon-neutral-default-default"
-                    aria-hidden
-                  />
-                  {t('layout.browser')}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  sideOffset={6}
-                  alignOffset={-36}
-                  className="min-w-[13.5rem]"
-                >
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      navigate('/history?tab=browser&browserAction=launch')
-                    }
-                  >
-                    {t('chat.input-attach-open-browser')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => navigate('/history?tab=browser')}
-                  >
-                    {t('chat.input-attach-manage-browsers')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
           <ChatInputModelDropdown

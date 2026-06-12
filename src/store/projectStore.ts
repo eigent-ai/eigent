@@ -14,6 +14,12 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import {
+  deleteCachedProject,
+  getCachedProject,
+  putCachedProject,
+  type CachedTask,
+} from '@/lib/projectCache';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
@@ -24,6 +30,7 @@ import {
   type TaskStatusType,
 } from '@/types/constants';
 import { create } from 'zustand';
+import { getAuthStore } from './authStore';
 import { createChatStoreInstance, VanillaChatStore } from './chatStore';
 import {
   projectMetaFromServer,
@@ -131,6 +138,7 @@ interface ProjectMetadata {
   tags?: string[];
   priority?: 'low' | 'medium' | 'high';
   status?: 'active' | 'completed' | 'archived';
+  achievedAt?: number | null;
   legacyRootPath?: string | null;
   baseSnapshotId?: string | null;
   legacyAlias?: string;
@@ -205,7 +213,7 @@ const projectShellFromMeta = (meta: SpaceProjectMeta): Project => ({
   queuedMessages: [],
   metadata: {
     ...meta.metadata,
-    status: meta.status,
+    status: meta.metadata?.status ?? meta.status,
     serverSynced: true,
   },
 });
@@ -229,7 +237,7 @@ const mergeProjectMeta = (
     metadata: {
       ...existing.metadata,
       ...meta.metadata,
-      status: meta.status,
+      status: meta.metadata?.status ?? meta.status,
       serverSynced: true,
     },
     updatedAt: meta.updatedAt,
@@ -274,6 +282,31 @@ interface ProjectStore {
   navLeadByProjectId: Record<string, SessionNavLeadPresentation>;
   /** Projects currently replaying history at delay 0 — sidebar uses cached lead. */
   historyLoadingProjectIds: Record<string, true>;
+  /**
+   * Projects whose IDB cache was just detected stale during this session.
+   * The in-memory hydrated state keeps rendering (so the current view is
+   * not interrupted), but every active-project transition evicts the
+   * entry so the next selection falls through to a fresh history load.
+   */
+  staleProjectIds: Set<string>;
+  /**
+   * Drop a project's runtime state (chatStores + nav lead) **without**
+   * removing its SpaceProjectMeta. Used by the stale-cache eviction path:
+   * we want the project to keep showing up in the sidebar and Spaces Hub,
+   * just with no in-memory state, so the next selection re-runs the
+   * history load. Distinct from `removeProject`, which also tears down
+   * the Space metadata and is intended for genuine project deletion.
+   */
+  _evictProjectRuntime: (projectId: string) => void;
+  /**
+   * If `activeProjectId` is currently in `staleProjectIds` and we are
+   * transitioning to a different project (or to null), evict the runtime
+   * state of the outgoing one. Call this immediately before any direct
+   * write to `activeProjectId` so all transition paths (`setActiveProject`,
+   * `createProject`, `replayProject`, `loadProjectFromHistory`) honour
+   * the stale-eviction contract.
+   */
+  _evictStaleOnTransition: (nextProjectId: string | null) => void;
 
   // Project management
   /**
@@ -310,7 +343,13 @@ interface ProjectStore {
     projectId?: string,
     historyId?: string
   ) => string;
-  /** Load project from history with final state (no animation). Resolves when loading completes. */
+  /**
+   * Load project from history. Tries an IDB-backed cache first (skip-replay
+   * fast path); falls back to SSE replay on miss. Resolves when loading
+   * completes. `serverUpdatedAt` is the project's last-activity timestamp
+   * (ms) from the history API — used to invalidate stale cache entries in
+   * the background after rehydration.
+   */
   loadProjectFromHistory: (
     taskIds: string[],
     question: string,
@@ -318,7 +357,8 @@ interface ProjectStore {
     historyId?: string,
     projectName?: string,
     spaceId?: string,
-    taskQuestionsById?: Record<string, string>
+    taskQuestionsById?: Record<string, string>,
+    serverUpdatedAt?: number | null
   ) => Promise<string>;
   setProjectNavLead: (
     projectId: string,
@@ -455,6 +495,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   projects: {},
   navLeadByProjectId: {},
   historyLoadingProjectIds: {},
+  staleProjectIds: new Set<string>(),
 
   setProjectNavLead: (projectId, lead) =>
     set((state) => ({
@@ -560,6 +601,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     };
 
     console.log('[store] Creating a new project');
+    // Evict stale runtime state of the outgoing active project before we
+    // overwrite activeProjectId — `setActiveProject` is bypassed here so
+    // we must invoke the eviction contract ourselves.
+    if (setActive) {
+      get()._evictStaleOnTransition(targetProjectId);
+    }
     set((state) => ({
       projects: {
         ...state.projects,
@@ -573,6 +620,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   },
 
   setActiveProject: (projectId: string | null) => {
+    // Stale-cache eviction: if the outgoing active project was a stale-
+    // hydrated entry, drop its runtime state so the next selection forces
+    // a fresh history load. Keeps the Space metadata intact so the
+    // project still shows up in the sidebar.
+    get()._evictStaleOnTransition(projectId);
+
     if (!projectId) {
       set({ activeProjectId: null });
       return;
@@ -744,12 +797,28 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       useSpaceStore.getState().removeProjectMeta(projectId);
     }
 
-    set({
-      projects: nextProjects,
-      activeProjectId:
-        activeProjectId && removedIds.has(activeProjectId)
-          ? null
-          : activeProjectId,
+    set((state) => {
+      // Drop any leftover stale flags for ids that just disappeared.
+      // Auto-created blank projects don't normally end up in
+      // staleProjectIds, but staying defensive keeps the lifecycle rule
+      // ("permanent runtime removal clears the stale flag") consistent.
+      let nextStale = state.staleProjectIds;
+      for (const projectId of removedIds) {
+        if (nextStale.has(projectId)) {
+          if (nextStale === state.staleProjectIds) {
+            nextStale = new Set(nextStale);
+          }
+          nextStale.delete(projectId);
+        }
+      }
+      return {
+        projects: nextProjects,
+        activeProjectId:
+          activeProjectId && removedIds.has(activeProjectId)
+            ? null
+            : activeProjectId,
+        staleProjectIds: nextStale,
+      };
     });
 
     console.warn(
@@ -933,6 +1002,50 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     });
   },
 
+  _evictProjectRuntime: (projectId: string) => {
+    set((state) => {
+      const hasProject = !!state.projects[projectId];
+      const hasStaleFlag = state.staleProjectIds.has(projectId);
+      if (!hasProject && !hasStaleFlag) return state;
+
+      const update: Partial<ProjectStore> = {};
+      if (hasProject) {
+        const nextProjects = { ...state.projects };
+        delete nextProjects[projectId];
+        update.projects = nextProjects;
+        const nextNavLeadByProjectId = { ...state.navLeadByProjectId };
+        delete nextNavLeadByProjectId[projectId];
+        update.navLeadByProjectId = nextNavLeadByProjectId;
+      }
+      // Clearing the stale flag belongs to this helper, not the caller —
+      // if the same project id is re-created later (e.g. loadProjectFromHistory
+      // calls removeProject(id) then createProject(id, …)), a leftover entry
+      // in staleProjectIds would cause the *fresh* runtime to be incorrectly
+      // evicted on the next transition.
+      if (hasStaleFlag) {
+        const nextStale = new Set(state.staleProjectIds);
+        nextStale.delete(projectId);
+        update.staleProjectIds = nextStale;
+      }
+      // Deliberately leave activeProjectId alone — every caller of this
+      // helper is in the middle of a transition and will overwrite it.
+      return update;
+    });
+  },
+
+  _evictStaleOnTransition: (nextProjectId: string | null) => {
+    const previousProjectId = get().activeProjectId;
+    if (
+      !previousProjectId ||
+      previousProjectId === nextProjectId ||
+      !get().staleProjectIds.has(previousProjectId)
+    ) {
+      return;
+    }
+    // _evictProjectRuntime handles staleProjectIds cleanup itself.
+    get()._evictProjectRuntime(previousProjectId);
+  },
+
   removeProject: (projectId: string) => {
     const { activeProjectId, projects } = get();
 
@@ -948,11 +1061,19 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       delete newProjects[projectId];
       const nextNavLeadByProjectId = { ...state.navLeadByProjectId };
       delete nextNavLeadByProjectId[projectId];
+      // Drop any leftover stale flag for this id so a future recreation
+      // (same id, different runtime) does not inherit the eviction signal.
+      let nextStale = state.staleProjectIds;
+      if (nextStale.has(projectId)) {
+        nextStale = new Set(nextStale);
+        nextStale.delete(projectId);
+      }
 
       return {
         projects: newProjects,
         activeProjectId: newActiveId,
         navLeadByProjectId: nextNavLeadByProjectId,
+        staleProjectIds: nextStale,
       };
     });
     useSpaceStore.getState().removeProjectMeta(projectId);
@@ -1047,6 +1168,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
     // For each taskId, create a chat store within the project and call replay
     (async () => {
+      get()._evictStaleOnTransition(replayProjectId);
       set({ activeProjectId: replayProjectId });
       let cancelled = false;
       for (let index = 0; index < taskIds.length; index++) {
@@ -1099,7 +1221,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     historyId?: string,
     projectName?: string,
     spaceId?: string,
-    taskQuestionsById?: Record<string, string>
+    taskQuestionsById?: Record<string, string>,
+    serverUpdatedAt?: number | null
   ) => {
     const { projects, removeProject, createProject, createChatStore } = get();
     const existingProject = projects[projectId];
@@ -1147,15 +1270,120 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       }
     );
 
+    // The createProject call above already runs the stale-eviction hook
+    // (setActive=true). Re-asserting here is a cheap no-op in the common
+    // case but keeps the "every direct write to activeProjectId honours
+    // the eviction contract" invariant readable at every write site.
+    get()._evictStaleOnTransition(loadProjectId);
     set({ activeProjectId: loadProjectId });
     get().setHistoryLoadingProject(loadProjectId, true);
     console.log(
       `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
     );
 
-    let cancelled = false;
-    const loadedChatStoresByTaskId = new Map<string, VanillaChatStore>();
+    const cacheUserId = getAuthStore().user_id;
+    // Cache usage requires both an authenticated user (to scope per-account)
+    // AND a non-null server freshness anchor. Without the latter we cannot
+    // detect staleness, so we neither read from nor write to the cache —
+    // better to pay the SSE replay cost than serve un-validatable data.
+    const cacheScope =
+      cacheUserId != null && serverUpdatedAt != null
+        ? { userId: cacheUserId, projectId: loadProjectId }
+        : null;
+
     try {
+      // SWR fast path: if we have a cached snapshot, rehydrate every task
+      // synchronously and skip the SSE replay entirely. Server freshness is
+      // checked after rehydration; a stale entry is invalidated so the next
+      // open replays from scratch (we never block the current open on it).
+      //
+      // Concurrency: the `await getCachedProject` yields control. The user
+      // might switch to a different project before it resolves. We bail
+      // before mutating state if the active project no longer matches.
+      if (cacheScope) {
+        try {
+          const cached = await getCachedProject(cacheScope);
+          if (get().activeProjectId !== loadProjectId) {
+            return loadProjectId;
+          }
+          if (cached && cached.taskIds.length > 0) {
+            const rehydratedStores = new Map<string, VanillaChatStore>();
+            for (const cachedTaskId of cached.taskIds) {
+              const cachedTask = cached.tasks[cachedTaskId];
+              if (!cachedTask) continue;
+              const chatId = createChatStore(
+                loadProjectId,
+                `Task ${cachedTaskId}`
+              );
+              if (!chatId) continue;
+              const project = get().projects[loadProjectId];
+              const chatStore = project?.chatStores[chatId];
+              if (!chatStore) continue;
+              chatStore
+                .getState()
+                .hydrateTask(cachedTaskId, cachedTask.taskState as any);
+              rehydratedStores.set(cachedTaskId, chatStore);
+            }
+
+            if (rehydratedStores.size > 0) {
+              // Re-check after sync rehydration — `createChatStore` could
+              // have intermixed with a setActiveProject from another caller.
+              if (get().activeProjectId !== loadProjectId) {
+                return loadProjectId;
+              }
+              const lastTaskId = cached.taskIds[cached.taskIds.length - 1];
+              const lastStore = rehydratedStores.get(lastTaskId);
+              const activeTask = lastStore?.getState().tasks[lastTaskId];
+              if (activeTask) {
+                get().setProjectNavLead(
+                  loadProjectId,
+                  getSessionNavLeadPresentation(activeTask)
+                );
+              }
+              console.log(
+                `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
+              );
+
+              // Background freshness check: if the server has newer activity
+              // than what we cached — OR the cached entry has no anchor at
+              // all (legacy/unknown) — drop it so the *next* open re-runs
+              // the replay. We deliberately do not block or interrupt the
+              // current open; the user already sees the cached final state.
+              // `serverUpdatedAt` is guaranteed non-null here because
+              // `cacheScope` is null otherwise.
+              //
+              // We also mark the in-memory hydrated project as stale so
+              // `setActiveProject` evicts it on transition-away. Without
+              // this, intra-session re-selection of the same project would
+              // short-circuit on the in-memory entry (peekActiveChatStore
+              // / getProjectById) and never replay from the server until
+              // the page reloads.
+              const liveAnchor = serverUpdatedAt as number;
+              const cacheIsStale =
+                cached.serverUpdatedAt == null ||
+                liveAnchor > cached.serverUpdatedAt;
+              if (cacheIsStale) {
+                void deleteCachedProject(cacheScope).catch(() => undefined);
+                set((state) => {
+                  if (state.staleProjectIds.has(loadProjectId)) return state;
+                  const next = new Set(state.staleProjectIds);
+                  next.add(loadProjectId);
+                  return { staleProjectIds: next };
+                });
+              }
+              return loadProjectId;
+            }
+          }
+        } catch (cacheReadError) {
+          console.warn(
+            '[ProjectStore] Cache rehydrate failed, falling back to replay:',
+            cacheReadError
+          );
+        }
+      }
+
+      let cancelled = false;
+      const loadedChatStoresByTaskId = new Map<string, VanillaChatStore>();
       for (let index = 0; index < taskIds.length; index++) {
         if (get().activeProjectId !== loadProjectId) {
           console.log(
@@ -1246,6 +1474,72 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         console.log(
           `[ProjectStore] Completed loading project ${loadProjectId}`
         );
+
+        // Persist the freshly-reconstructed state so the next session can
+        // skip the SSE replay entirely. Best-effort — IDB failures (quota,
+        // private mode) are logged inside the wrapper and never block.
+        //
+        // Skip the write when:
+        // 1. `cacheScope` is null — caller had no userId, no serverUpdatedAt,
+        //    or both. We cannot anchor a freshness check, so writing would
+        //    create un-evictable entries.
+        // 2. The user logged out (or switched accounts) during the replay.
+        //    cacheScope.userId was captured at function start; if it no
+        //    longer matches the live session, writing would leak this
+        //    user's data.
+        // 3. Any task failed to replay. Persisting a partial project would
+        //    cache the missing-task state as "final" — the next open would
+        //    hit the cache and never retry the failed task.
+        const liveUserId = getAuthStore().user_id;
+        const allTasksLoaded = taskIds.every((taskId) =>
+          loadedChatStoresByTaskId.has(taskId)
+        );
+        if (
+          cacheScope &&
+          liveUserId === cacheScope.userId &&
+          allTasksLoaded &&
+          loadedChatStoresByTaskId.size > 0
+        ) {
+          const tasksSnapshot: Record<string, CachedTask> = {};
+          const cachedTaskIds: string[] = [];
+          let snapshotComplete = true;
+          for (const taskId of taskIds) {
+            const chatStore = loadedChatStoresByTaskId.get(taskId);
+            const taskState = chatStore?.getState().tasks[taskId];
+            if (!taskState) {
+              snapshotComplete = false;
+              break;
+            }
+            // Task state contains FileInfo entries with React component
+            // references in `icon` (LucideIcon etc) and File objects in
+            // `attaches`. Neither survives IDB's structured clone, so
+            // round-trip through JSON to strip them. Functions, symbols,
+            // and undefined fields are dropped by JSON; we lose nothing
+            // that hydrateTask cares about (the volatile fields it
+            // already zeroes out cover the small set of stripped values).
+            let serializable: unknown;
+            try {
+              serializable = JSON.parse(JSON.stringify(taskState));
+            } catch (serializeError) {
+              console.warn(
+                `[ProjectStore] Failed to serialize task ${taskId} for cache:`,
+                serializeError
+              );
+              snapshotComplete = false;
+              break;
+            }
+            tasksSnapshot[taskId] = { taskState: serializable };
+            cachedTaskIds.push(taskId);
+          }
+          if (snapshotComplete && cachedTaskIds.length === taskIds.length) {
+            void putCachedProject(cacheScope, {
+              serverUpdatedAt: serverUpdatedAt as number,
+              taskIds: cachedTaskIds,
+              tasks: tasksSnapshot,
+              projectName: displayName,
+            }).catch(() => undefined);
+          }
+        }
       }
     } finally {
       get().setHistoryLoadingProject(loadProjectId, false);

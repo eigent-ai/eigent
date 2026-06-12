@@ -25,6 +25,10 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
+import {
+  isProjectAchieved,
+  setProjectAchievedState,
+} from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -652,6 +656,11 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
+    const targetProjectMeta = useSpaceStore
+      .getState()
+      .getProjectMeta(targetProjectId);
+    const shouldResumeProject = isProjectAchieved(targetProjectMeta?.metadata);
+
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
@@ -701,6 +710,17 @@ export default function ChatBox(): JSX.Element {
         }
       );
       return;
+    }
+
+    if (shouldResumeProject) {
+      void setProjectAchievedState({
+        projectStore,
+        projectId: targetProjectId,
+        achieved: false,
+      }).catch((error) => {
+        console.error('[handleSend] Failed to resume achieved Project:', error);
+        toast.error('Failed to persist resumed Project state.');
+      });
     }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
@@ -809,6 +829,11 @@ export default function ChatBox(): JSX.Element {
                 effectiveSessionMode
               );
               chatStore.setAttaches(_taskId, []);
+              // If activeTaskId changed (new task created), clear its draft too
+              const newActiveId = chatStore.activeTaskId;
+              if (newActiveId && newActiveId !== _taskId) {
+                chatStore.setAttaches(newActiveId, []);
+              }
             } catch (err: any) {
               console.error('Failed to start task:', err);
               toast.error(
@@ -879,6 +904,11 @@ export default function ChatBox(): JSX.Element {
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
             chatStore.setAttaches(_taskId, []);
+            // If activeTaskId changed (new task created), clear its draft too
+            const newActiveId2 = chatStore.activeTaskId;
+            if (newActiveId2 && newActiveId2 !== _taskId) {
+              chatStore.setAttaches(newActiveId2, []);
+            }
           } catch (err: any) {
             console.error('Failed to start task:', err);
             toast.error(

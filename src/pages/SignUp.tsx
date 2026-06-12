@@ -16,17 +16,16 @@ import { Button } from '@/components/ui/button';
 import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Input } from '@/components/ui/input';
 
 import { proxyFetchPost } from '@/api/http';
-import background from '@/assets/background.png';
-import eyeOff from '@/assets/eye-off.svg';
-import eye from '@/assets/eye.svg';
-import github2 from '@/assets/github2.svg';
-import google from '@/assets/google.svg';
+import background from '@/assets/custom/background.png';
+import github2 from '@/assets/icon/github.svg';
+import google from '@/assets/icon/google.svg';
 import eigentLogo from '@/assets/logo/eigent_icon.png';
 import WindowControls from '@/components/WindowControls';
 import { useHost } from '@/host';
@@ -301,7 +300,7 @@ export default function SignUp() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
+        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="signup-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -331,20 +330,20 @@ export default function SignUp() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
+        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
       >
         <div
-          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
-          <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
+          <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
             <img
               src={eigentLogo}
-              className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
+              className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
             />
             <div className="mb-4 flex items-end justify-between self-stretch">
               <div className="text-heading-lg font-bold text-ds-text-neutral-default-default">
@@ -359,12 +358,12 @@ export default function SignUp() {
               </Button>
             </div>
             {HAS_STACK_KEYS && (
-              <div className="pt-6 w-full">
+              <div className="w-full pt-6">
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default transition-all duration-300 ease-in-out"
                   disabled={isLoading}
                 >
                   <img src={google} className="h-5 w-5" />
@@ -376,7 +375,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="mb-4 font-inter font-bold ease-in-out rounded-2xl text-body-md text-ds-text-brand-inverse-default w-full justify-center text-center transition-all duration-300"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default transition-all duration-300 ease-in-out"
                   disabled={isLoading}
                 >
                   <img src={github2} className="h-5 w-5" />
@@ -387,17 +386,17 @@ export default function SignUp() {
               </div>
             )}
             {HAS_STACK_KEYS && (
-              <div className="mb-6 mt-2 font-inter font-medium text-ds-text-neutral-default-default text-body-md w-full text-center">
+              <div className="mb-6 mt-2 w-full text-center font-inter text-body-md font-medium text-ds-text-neutral-default-default">
                 {t('layout.or')}
               </div>
             )}
-            <div className="gap-4 flex w-full flex-col">
+            <div className="flex w-full flex-col gap-4">
               {generalError && (
                 <p className="mb-4 mt-1 text-label-md text-ds-text-status-error-strong-default">
                   {generalError}
                 </p>
               )}
-              <div className="mb-4 gap-4 relative flex w-full flex-col">
+              <div className="relative mb-4 flex w-full flex-col gap-4">
                 <Input
                   id="email"
                   type="email"
@@ -424,7 +423,13 @@ export default function SignUp() {
                   }
                   state={errors.password ? 'error' : undefined}
                   note={errors.password}
-                  backIcon={<img src={hidePassword ? eye : eyeOff} />}
+                  backIcon={
+                    hidePassword ? (
+                      <Eye className="h-5 w-5" />
+                    ) : (
+                      <EyeOff className="h-5 w-5" />
+                    )
+                  }
                   onBackIconClick={() => setHidePassword(!hidePassword)}
                 />
 

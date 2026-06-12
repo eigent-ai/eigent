@@ -15,7 +15,13 @@
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { AnimatePresence } from 'framer-motion';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ProjectSection } from './ProjectSection';
 
 interface ProjectChatContainerProps {
@@ -181,6 +187,63 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     };
   }, [chatStores, scrollContainerRef]);
 
+  // Turn viewport observer — updates which turn is visible in the side panel tabs
+  const setSidePanelViewedTurn = usePageTabStore(
+    (s) => s.setSidePanelViewedTurn
+  );
+  const turnObserverRef = useRef<IntersectionObserver | null>(null);
+  const visibleTurnScoresRef = useRef(new Map<string, number>());
+  const turnIdsKey = taskSections.map(({ taskId }) => taskId).join('|');
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    if (!root || !activeProjectId) return;
+
+    turnObserverRef.current?.disconnect();
+    visibleTurnScoresRef.current.clear();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const taskId = entry.target.getAttribute('data-turn-id');
+          if (!taskId) continue;
+          if (!entry.isIntersecting) {
+            visibleTurnScoresRef.current.delete(taskId);
+            continue;
+          }
+          const visibleHeight = entry.intersectionRect.height;
+          const availableHeight = Math.min(
+            entry.boundingClientRect.height,
+            root.clientHeight
+          );
+          visibleTurnScoresRef.current.set(
+            taskId,
+            availableHeight > 0 ? visibleHeight / availableHeight : 0
+          );
+        }
+        let bestTaskId: string | null = null;
+        let bestScore = 0;
+        for (const [taskId, score] of visibleTurnScoresRef.current) {
+          if (score > bestScore) {
+            bestTaskId = taskId;
+            bestScore = score;
+          }
+        }
+        if (bestTaskId) {
+          setSidePanelViewedTurn(activeProjectId, bestTaskId);
+        }
+      },
+      { root, threshold: [0, 0.01, 0.25, 0.5, 0.75, 1] }
+    );
+
+    turnObserverRef.current = observer;
+    root
+      .querySelectorAll('[data-turn-id]')
+      .forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [turnIdsKey, scrollContainerRef, activeProjectId, setSidePanelViewedTurn]);
+
   // Scroll to a specific query group when triggered from the sidebar
   const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
@@ -202,19 +265,63 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     setScrollToQueryId(null);
   }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
 
+  // Scroll to a specific turn when triggered from TurnTabs
+  const scrollToTurnRequest = usePageTabStore((s) => s.scrollToTurnRequest);
+  const setScrollToTurnRequest = usePageTabStore(
+    (s) => s.setScrollToTurnRequest
+  );
+
+  useEffect(() => {
+    if (
+      !scrollToTurnRequest ||
+      scrollToTurnRequest.projectId !== activeProjectId ||
+      !scrollContainerRef.current
+    ) {
+      return;
+    }
+
+    const el = scrollContainerRef.current.querySelector(
+      `[data-turn-id="${scrollToTurnRequest.taskId}"]`
+    );
+    if (el) {
+      const container = scrollContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
+    }
+
+    setScrollToTurnRequest(null);
+  }, [
+    activeProjectId,
+    scrollToTurnRequest,
+    setScrollToTurnRequest,
+    scrollContainerRef,
+  ]);
+
   // Surface the task box when the side-panel Progress section asks for it.
   // TaskCard listens to the same counter to expand itself; we own the
   // scroll. The `data-task-card="true"` attribute is set on a query
   // group's outer wrapper only when its TaskCard is currently visible.
   const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
+  const taskBoxFocusProjectId = usePageTabStore((s) => s.taskBoxFocusProjectId);
+  const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);
   useEffect(() => {
-    if (!taskBoxFocusRequestId) return;
+    if (
+      !taskBoxFocusRequestId ||
+      (taskBoxFocusProjectId && taskBoxFocusProjectId !== activeProjectId)
+    ) {
+      return;
+    }
     const container = scrollContainerRef.current;
     if (!container) return;
-    const matches = container.querySelectorAll<HTMLElement>(
-      '[data-task-card="true"]'
-    );
-    const target = matches[matches.length - 1];
+    const target = taskBoxFocusTaskId
+      ? container.querySelector<HTMLElement>(
+          `[data-turn-id="${taskBoxFocusTaskId}"] [data-task-card="true"]`
+        )
+      : Array.from(
+          container.querySelectorAll<HTMLElement>('[data-task-card="true"]')
+        ).at(-1);
     if (!target) return;
     // TaskCard's expand transition is ~300ms; do the scroll after a tick
     // so the card has started animating, but anchor on its top edge so
@@ -223,7 +330,13 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     const elRect = target.getBoundingClientRect();
     const scrollOffset = elRect.top - containerRect.top + container.scrollTop;
     container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
-  }, [taskBoxFocusRequestId, scrollContainerRef]);
+  }, [
+    activeProjectId,
+    taskBoxFocusProjectId,
+    taskBoxFocusRequestId,
+    taskBoxFocusTaskId,
+    scrollContainerRef,
+  ]);
 
   return (
     <div className={`relative z-10 w-full ${className}`}>

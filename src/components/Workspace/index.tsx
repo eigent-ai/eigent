@@ -30,6 +30,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
+import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
@@ -98,10 +99,11 @@ export default function Workspace({
   const activeSpace = useSpaceStore((s) =>
     s.activeSpaceId ? s.spaces[s.activeSpaceId] : null
   );
+  // Legacy Spaces are read-only — new Projects can't be started inside them.
+  const isLegacyActiveSpace = activeSpace ? isLegacySpace(activeSpace) : false;
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
-  const updateProjectMeta = useSpaceStore((s) => s.updateProjectMeta);
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
   const navLeadByProjectId = useProjectRuntimeStore(
     (s) => s.navLeadByProjectId
@@ -196,14 +198,7 @@ export default function Workspace({
   const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
     SessionMode.SINGLE_AGENT
   );
-  // Workspace is the pre-Run Project landing. Project.mode is the source of
-  // truth; the old sessionSidePanelMode global is retained only as a migration
-  // shim in pageTabStore.
-  const effectiveSessionMode =
-    controlledSessionMode ??
-    activeProjectMeta?.mode ??
-    activeProject?.mode ??
-    draftSessionMode;
+  const effectiveSessionMode = controlledSessionMode ?? draftSessionMode;
 
   const setActiveProjectMode = useCallback(
     (mode: SessionModeType) => {
@@ -211,13 +206,9 @@ export default function Workspace({
         onSessionModeChange(mode);
         return;
       }
-      if (!activeProjectId) {
-        setDraftSessionMode(mode);
-        return;
-      }
-      updateProjectMeta(activeProjectId, { mode });
+      setDraftSessionMode(mode);
     },
-    [activeProjectId, onSessionModeChange, updateProjectMeta]
+    [onSessionModeChange]
   );
 
   const [message, setMessage] = useState('');
@@ -280,73 +271,56 @@ export default function Workspace({
       return;
     }
 
-    const needsProjectBootstrap = !activeProjectId || !chatStore?.activeTaskId;
-    if (needsProjectBootstrap) {
-      if (directProjectStartRef.current) {
-        return;
-      }
-      directProjectStartRef.current = true;
-      setIsStartingDirectProject(true);
+    if (directProjectStartRef.current) {
+      return;
     }
+    directProjectStartRef.current = true;
+    setIsStartingDirectProject(true);
 
     try {
-      let targetProjectId = activeProjectId;
-      let targetChatStore: typeof chatStore | null = chatStore;
-
-      if (!targetProjectId || !targetChatStore?.activeTaskId) {
-        if (!activeSpaceId) {
-          toast.error(t('layout.spaces-create-failed'));
-          return;
-        }
-
-        const projectStore = useProjectRuntimeStore.getState();
-        const syncedProject = await createSyncedProjectInSpace({
-          projectStore,
-          spaceId: activeSpaceId,
-          name: trimmedMessage.slice(0, 120),
-          mode: effectiveSessionMode,
-          workdirMode:
-            activeSpace?.sourceType === 'folder'
-              ? 'direct-write'
-              : 'artifact-only',
-          metadata: {
-            createdFrom: 'workspace_direct_chat',
-          },
-        });
-        useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
-        targetProjectId = syncedProject.projectId;
-        targetChatStore =
-          useProjectRuntimeStore
-            .getState()
-            .getActiveChatStore(targetProjectId)
-            ?.getState() ?? null;
+      if (!activeSpaceId) {
+        toast.error(t('layout.spaces-create-failed'));
+        return;
       }
+
+      if (isLegacyActiveSpace) {
+        toast.error(
+          t('layout.spaces-legacy-readonly-hint', {
+            defaultValue:
+              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+          })
+        );
+        return;
+      }
+
+      const projectStore = useProjectRuntimeStore.getState();
+      const syncedProject = await createSyncedProjectInSpace({
+        projectStore,
+        spaceId: activeSpaceId,
+        name: trimmedMessage.slice(0, 120),
+        mode: effectiveSessionMode,
+        workdirMode: isLocalWorkspaceSpace(activeSpace)
+          ? 'direct-write'
+          : 'artifact-only',
+        metadata: {
+          createdFrom: 'workspace_direct_chat',
+        },
+      });
+      useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
+      const targetProjectId = syncedProject.projectId;
+      const targetChatStore =
+        useProjectRuntimeStore
+          .getState()
+          .getActiveChatStore(targetProjectId)
+          ?.getState() ?? null;
 
       if (!targetProjectId || !targetChatStore?.activeTaskId) {
         throw new Error('No active Project chat available');
       }
 
       const taskId = targetChatStore.activeTaskId;
-      const targetProjectMeta = useSpaceStore
-        .getState()
-        .getProjectMeta(targetProjectId);
-      const targetProject =
-        useProjectRuntimeStore.getState().projects[targetProjectId];
-      if (!(targetProjectMeta?.mode ?? targetProject?.mode)) {
-        updateProjectMeta(targetProjectId, {
-          mode: effectiveSessionMode,
-        });
-      }
       targetChatStore.setHasMessages(taskId, true);
-      const taskAttaches = targetChatStore.tasks[taskId]?.attaches || [];
-      const mergedAttaches = [
-        ...taskAttaches,
-        ...draftFiles.filter(
-          (draft) =>
-            !taskAttaches.some((file) => file.filePath === draft.filePath)
-        ),
-      ];
-      const attachesToSend = JSON.parse(JSON.stringify(mergedAttaches)) || [];
+      const attachesToSend = JSON.parse(JSON.stringify(draftFiles)) || [];
       targetChatStore.setAttaches(taskId, attachesToSend);
 
       // Enter the live Project immediately; task startup continues in the background.
@@ -374,10 +348,8 @@ export default function Workspace({
         err instanceof Error ? err.message : t('layout.failed-to-start-task')
       );
     } finally {
-      if (needsProjectBootstrap) {
-        directProjectStartRef.current = false;
-        setIsStartingDirectProject(false);
-      }
+      directProjectStartRef.current = false;
+      setIsStartingDirectProject(false);
     }
   };
 
@@ -389,65 +361,35 @@ export default function Workspace({
       });
 
       if (result?.success && result.files && result.files.length > 0) {
-        if (!chatStore?.activeTaskId) {
-          setDraftFiles((existingFiles) => [
-            ...existingFiles,
-            ...result.files.filter(
-              (r: File) => !existingFiles.some((f) => f.filePath === r.filePath)
-            ),
-          ]);
-          return;
-        }
-
-        const taskId = chatStore.activeTaskId as string;
-        const files = [
-          ...(chatStore.tasks[taskId].attaches || []),
+        setDraftFiles((existingFiles) => [
+          ...existingFiles,
           ...result.files.filter(
-            (r: File) =>
-              !chatStore.tasks[taskId].attaches?.some(
-                (f: File) => f.filePath === r.filePath
-              )
+            (r: File) => !existingFiles.some((f) => f.filePath === r.filePath)
           ),
-        ];
-        chatStore.setAttaches(taskId, files);
+        ]);
       }
     } catch (error) {
       console.error('Select File Error:', error);
     }
-  }, [chatStore, host, t]);
+  }, [host, t]);
 
-  const buildComposerInputProps = (
-    targetChatStore: typeof chatStore | null = chatStore
-  ) => ({
+  const buildComposerInputProps = () => ({
     value: message,
     onChange: setMessage,
     onSend: handleSend,
-    files:
-      targetChatStore?.activeTaskId &&
-      targetChatStore.tasks[targetChatStore.activeTaskId]
-        ? targetChatStore.tasks[targetChatStore.activeTaskId]?.attaches?.map(
-            (f) => ({
-              fileName: f.fileName,
-              filePath: f.filePath,
-            })
-          ) || []
-        : draftFiles,
-    onFilesChange: (files: FileAttachment[]) => {
-      if (!targetChatStore?.activeTaskId) {
-        setDraftFiles(files);
-        return;
-      }
-      targetChatStore.setAttaches(
-        targetChatStore.activeTaskId as string,
-        files as any
-      );
-    },
+    files: draftFiles,
+    onFilesChange: setDraftFiles,
     onAddFile: handleFileSelect,
-    disabled: !hasModel || isStartingDirectProject,
+    disabled: !hasModel || isStartingDirectProject || isLegacyActiveSpace,
     textareaRef,
     allowDragDrop: true,
     useCloudModelInDev,
-    placeholder: t('layout.project-task-placeholder'),
+    placeholder: isLegacyActiveSpace
+      ? t('layout.spaces-legacy-readonly-hint', {
+          defaultValue:
+            'Legacy Spaces are read-only. Create a new Space to start a Project.',
+        })
+      : t('layout.project-task-placeholder'),
     sessionMode: effectiveSessionMode,
     onSessionModeChange: setActiveProjectMode,
     sessionModeSelectInteractive: true,
@@ -572,7 +514,7 @@ export default function Workspace({
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
           onSelectModel={() => navigate('/history?tab=agents')}
-          inputProps={buildComposerInputProps(chatStore ?? undefined)}
+          inputProps={buildComposerInputProps()}
         />
       </div>
       <AddWorker

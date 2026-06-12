@@ -15,8 +15,15 @@
 import { proxyFetchGet } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
-import { buildTaskQuestionsById } from '@/lib/replay';
-import { isLegacySpace } from '@/lib/spaceLabel';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
+import {
+  canCreateProjectInSpace,
+  isLegacySpace,
+  isLocalWorkspaceSpace,
+} from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -160,7 +167,8 @@ export default function SpacesHub() {
           firstTask?.id != null ? String(firstTask.id) : undefined,
           historyProject.project_name || project.name,
           spaceId,
-          taskQuestionsById
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
         );
         setActiveWorkspaceTab('project');
       } catch (error) {
@@ -178,13 +186,15 @@ export default function SpacesHub() {
 
   const createProject = useCallback(
     async (space: Space) => {
+      if (!canCreateProjectInSpace(space)) return;
       setCreatingInSpaceId(space.id);
       try {
         const result = await createSyncedProjectInSpace({
           projectStore,
           spaceId: space.id,
-          workdirMode:
-            space.sourceType === 'folder' ? 'direct-write' : 'artifact-only',
+          workdirMode: isLocalWorkspaceSpace(space)
+            ? 'direct-write'
+            : 'artifact-only',
           metadata: {
             createdFrom: 'spaces_hub',
           },
@@ -247,12 +257,12 @@ export default function SpacesHub() {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
           {spaceSections.map(({ space, projects }) => {
             const isActive = space.id === activeSpaceId;
-            const subtitle =
-              space.sourceType === 'folder'
-                ? pathBasename(space.rootPath) || space.rootPath
-                : isLegacySpace(space)
-                  ? t('layout.spaces-hub-legacy-description')
-                  : t('layout.spaces-hub-blank-description');
+            const canCreate = canCreateProjectInSpace(space);
+            const subtitle = isLocalWorkspaceSpace(space)
+              ? pathBasename(space.rootPath) || space.rootPath
+              : isLegacySpace(space)
+                ? t('layout.spaces-hub-legacy-description')
+                : t('layout.spaces-hub-blank-description');
             return (
               <section
                 key={space.id}
@@ -285,33 +295,48 @@ export default function SpacesHub() {
                       {subtitle}
                     </span>
                   </button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    buttonContent="icon-only"
-                    aria-label={t('layout.spaces-hub-new-project')}
-                    disabled={creatingInSpaceId === space.id}
-                    onClick={() => void createProject(space)}
-                  >
-                    {creatingInSpaceId === space.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                  </Button>
+                  {canCreate ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      buttonContent="icon-only"
+                      aria-label={t('layout.spaces-hub-new-project')}
+                      disabled={creatingInSpaceId === space.id}
+                      onClick={() => void createProject(space)}
+                    >
+                      {creatingInSpaceId === space.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                    </Button>
+                  ) : null}
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
                   {projects.length === 0 ? (
-                    <button
-                      type="button"
-                      className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-ds-border-neutral-subtle-default px-4 py-5 text-center text-body-sm text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-subtle-default"
-                      onClick={() => void createProject(space)}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden />
-                      <span>{t('layout.spaces-hub-create-first-project')}</span>
-                    </button>
+                    canCreate ? (
+                      <button
+                        type="button"
+                        className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-ds-border-neutral-subtle-default px-4 py-5 text-center text-body-sm text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-subtle-default"
+                        onClick={() => void createProject(space)}
+                      >
+                        <Plus className="h-4 w-4" aria-hidden />
+                        <span>
+                          {t('layout.spaces-hub-create-first-project')}
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-ds-border-neutral-subtle-default px-4 py-5 text-center text-body-sm text-ds-text-neutral-muted-default">
+                        <span>
+                          {t('layout.spaces-legacy-readonly-hint', {
+                            defaultValue:
+                              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+                          })}
+                        </span>
+                      </div>
+                    )
                   ) : (
                     projects.map((project) => {
                       const isProjectLoading = loadingProjectId === project.id;

@@ -18,8 +18,10 @@ from pathlib import Path
 
 import pytest
 
+import app.component.environment as environment
 from app.component.environment import (
     _load_initial_env_files,
+    env,
     env_base_dir,
     sanitize_env_path,
 )
@@ -226,3 +228,39 @@ def test_initial_env_files_precedence(monkeypatch, temp_dir: Path):
     assert os.environ["GLOBAL_ONLY"] == "from_global"
     assert os.environ["DEVELOPMENT_ONLY"] == "from_development"
     assert os.environ["PROCESS_KEY"] == "from_process"
+
+
+def test_env_reads_live_dotenv_updates(monkeypatch, temp_dir: Path):
+    """env() should see dotenv changes written after process startup."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("DYNAMIC_ENV_KEY=first")
+
+    monkeypatch.delenv("DYNAMIC_ENV_KEY", raising=False)
+    monkeypatch.setattr(
+        environment, "_resolve_initial_env_paths", lambda: (env_file,)
+    )
+    monkeypatch.setattr(
+        environment, "_process_env_keys", set(os.environ.keys())
+    )
+
+    assert env("DYNAMIC_ENV_KEY") == "first"
+
+    env_file.write_text("DYNAMIC_ENV_KEY=second")
+
+    assert env("DYNAMIC_ENV_KEY") == "second"
+
+
+def test_env_process_value_overrides_live_dotenv(monkeypatch, temp_dir: Path):
+    """Real process env remains higher priority than dotenv files."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("PROCESS_PRIORITY_KEY=from_file")
+
+    monkeypatch.setenv("PROCESS_PRIORITY_KEY", "from_process")
+    monkeypatch.setattr(
+        environment, "_resolve_initial_env_paths", lambda: (env_file,)
+    )
+    monkeypatch.setattr(
+        environment, "_process_env_keys", {"PROCESS_PRIORITY_KEY"}
+    )
+
+    assert env("PROCESS_PRIORITY_KEY") == "from_process"

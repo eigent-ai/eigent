@@ -13,13 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchDelete } from '@/api/http';
-import tokenDarkIcon from '@/assets/token-dark.svg';
-import tokenLightIcon from '@/assets/token-light.svg';
+import tokenDarkIcon from '@/assets/custom/token-dark.svg';
+import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import { buildTaskQuestionsById, loadProjectFromHistory } from '@/lib';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+  loadProjectFromHistory,
+} from '@/lib';
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
@@ -216,7 +220,8 @@ export default function HistorySidebar() {
       taskIdsList,
       project?.project_name,
       project?.space_id,
-      buildTaskQuestionsById(project?.tasks)
+      buildTaskQuestionsById(project?.tasks),
+      computeProjectFreshnessAnchor(project)
     );
   };
 

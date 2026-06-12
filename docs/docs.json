@@ -4,26 +4,20 @@
   "theme": "aspen",
   "defaultPage": "/get_started/welcome",
   "logo": {
-    "light": "images/logo-light.png",
-    "dark": "images/logo-dark.png",
+    "light": "/images/logo-light.png",
+    "dark": "/images/logo-dark.png",
     "href": "https://www.eigent.ai"
   },
   "favicon": "images/favicon.png",
   "colors": {
     "primary": "#1d1d1d",
     "light": "#F5F4F0",
-    "dark": "#363AF5"
+    "dark": "#5F63FF"
   },
   "background": {
     "color": {
       "light": "#F5F4F0",
       "dark": "#1d1d1d"
-    }
-  },
-  "styling": {
-    "logo": {
-      "width": "auto",
-      "height": "100%"
     }
   },
   "navbar": {
@@ -36,7 +30,7 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Started",
+      "label": "Download",
       "href": "https://www.eigent.ai/download"
     }
   },
@@ -51,34 +45,112 @@
             "pages": [
               "/get_started/welcome",
               "/get_started/installation",
-              "/get_started/quick_start"
+              "/get_started/quick_start",
+              "/get_started/self-hosting",
+              "/core/concepts"
             ]
           },
           {
-            "group": "Core",
-            "icon": "key",
+            "group": "Dashboard",
+            "icon": "grid-2",
             "pages": [
-              "/core/concepts",
-              "/core/brain-architecture",
-              "/core/workforce",
+              "/dashboard/overview",
+              "/dashboard/spaces",
+              "/dashboard/projects",
+              "/dashboard/tasks",
+              "/dashboard/views-and-search"
+            ]
+          },
+          {
+            "group": "Projects",
+            "icon": "folder-kanban",
+            "pages": [
+              "/projects/overview",
+              "/projects/create-project",
+              "/projects/workspace",
+              "/projects/context-and-files",
+              "/projects/sessions",
+              "/core/project-runs",
+              "/projects/single-agent",
+              "/core/workforce"
+            ]
+          },
+          {
+            "group": "Agents",
+            "icon": "bot",
+            "pages": [
+              "/agents/overview",
+              "/core/workers",
+              "/core/agent-skills",
+              "/agents/remote-sub-agents",
+              "/agents/memory"
+            ]
+          },
+          {
+            "group": "Models",
+            "icon": "brain",
+            "pages": [
+              "/models/overview",
+              "/models/eigent-cloud",
+              "/core/models/byok",
+              "/core/models/local-model",
+              "/models/provider-reference",
               {
-                "group": "Models",
-                "icon": "brain",
-                "expanded": true,
+                "group": "Provider Guides",
+                "expanded": false,
                 "pages": [
-                  "/core/models/byok",
-                  "/core/models/local-model",
                   "/core/models/gemini",
                   "/core/models/ernie",
                   "/core/models/minimax",
                   "/core/models/kimi",
                   "/core/models/sambanova"
                 ]
-              },
-              "/core/tools",
-              "/core/workers",
-              "/core/agent-skills"
+              }
             ]
+          },
+          {
+            "group": "Connectors",
+            "icon": "plug",
+            "pages": [
+              "/connectors/overview",
+              "/connectors/mcp-marketplace",
+              "/connectors/custom-mcp",
+              "/connectors/google-search",
+              "/core/tools"
+            ]
+          },
+          {
+            "group": "Browser",
+            "icon": "compass",
+            "pages": [
+              "/browser/overview",
+              "/browser/connections",
+              "/browser/cookies"
+            ]
+          },
+          {
+            "group": "Automation",
+            "icon": "bolt",
+            "pages": [
+              "/automation/overview",
+              "/automation/scheduled-triggers",
+              "/automation/webhook-triggers",
+              "/automation/dispatch"
+            ]
+          },
+          {
+            "group": "Settings",
+            "icon": "gear",
+            "pages": [
+              "/settings/general",
+              "/settings/appearance",
+              "/settings/privacy"
+            ]
+          },
+          {
+            "group": "Open Source",
+            "icon": "code-branch",
+            "pages": ["/open-source/overview", "/core/brain-architecture"]
           },
           {
             "group": "Troubleshooting",
@@ -91,9 +163,14 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Download Here",
-          "href": "https://www.eigent.ai",
-          "icon": "gift"
+          "anchor": "Download Eigent",
+          "href": "https://www.eigent.ai/download",
+          "icon": "download"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/eigent-ai/eigent",
+          "icon": "github"
         }
       ]
     }

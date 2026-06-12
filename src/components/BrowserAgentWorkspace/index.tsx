@@ -14,6 +14,7 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
@@ -32,7 +33,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function BrowserAgentWorkspace() {
+export default function BrowserAgentWorkspace({
+  selectedTurn,
+}: {
+  selectedTurn?: SelectedProjectTurn;
+}) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const host = useHost();
@@ -96,9 +101,12 @@ export default function BrowserAgentWorkspace() {
     },
   };
   // Extract complex expressions to avoid lint error in dependency array
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const taskAssigning = chatStore?.tasks[activeTaskId]?.taskAssigning;
-  const activeWorkspace = chatStore?.tasks[activeTaskId]?.activeWorkspace;
+  const selectedChatState = selectedTurn?.chatStore?.getState();
+  const targetChatStore = selectedChatState ?? chatStore;
+  const activeTaskId =
+    selectedTurn?.taskId ?? (targetChatStore?.activeTaskId as string);
+  const taskAssigning = targetChatStore?.tasks[activeTaskId]?.taskAssigning;
+  const activeWorkspace = targetChatStore?.tasks[activeTaskId]?.activeWorkspace;
 
   // Derive activeAgent from taskAssigning and activeWorkspace (no setState in effect)
   const activeAgent = useMemo(() => {
@@ -165,7 +173,7 @@ export default function BrowserAgentWorkspace() {
     };
   }, [host]);
 
-  if (!chatStore) {
+  if (!targetChatStore) {
     return <div>Loading...</div>;
   }
 
@@ -205,10 +213,7 @@ export default function BrowserAgentWorkspace() {
               buttonContent="icon-only"
               variant="ghost"
               onClick={() => {
-                chatStore.setActiveWorkspace(
-                  chatStore.activeTaskId as string,
-                  'workflow'
-                );
+                targetChatStore.setActiveWorkspace(activeTaskId, 'workflow');
               }}
             >
               <ChevronLeft size={16} />

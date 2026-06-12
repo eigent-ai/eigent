@@ -3,12 +3,7 @@ title: Bug
 description: 'Follow these simple steps to report bugs and help improve our product for everyone:'
 ---
 
-<img
-src="/docs/images/bug_report.gif"
-alt="Bug Report"
-width="100%"
-height="auto"
-/>
+> **Video placeholder:** Add a current video walkthrough for “Bug Report”. Include captions.
 
 ### Step 1: Open Report a bug
 

@@ -266,7 +266,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (loading) {
     return (
-      <div className="text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
+      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
         <Loader2 className="mb-2 h-8 w-8 animate-spin" />
         <span className="text-sm">{t('triggers.loading-executions')}</span>
       </div>
@@ -275,7 +275,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (error || !trigger) {
     return (
-      <div className="text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
+      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
         <Terminal className="mb-2 h-8 w-8 opacity-50" />
         <span className="text-sm">
           {error || t('triggers.no-execution-data')}
@@ -310,10 +310,10 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Stats */}
-      <div className="px-4 pb-4 border-ds-border-neutral-subtle-default flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b-1 border-solid">
+      <div className="border-b-1 flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 pb-3">
         <div className="mb-4 flex w-full flex-row items-center justify-between">
           <span
-            className="text-label-sm font-medium text-ds-text-neutral-default-default max-w-[150px] truncate"
+            className="max-w-[150px] truncate text-label-sm font-medium text-ds-text-neutral-default-default"
             title={trigger.name}
           >
             {trigger.name}
@@ -329,7 +329,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </span>
         </div>
         <div className="flex flex-row">
-          <div className="mr-4 border-ds-border-neutral-subtle-default pr-4 flex flex-col border-y-0 border-r-1 border-l-0 border-solid">
+          <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-ds-border-neutral-subtle-default pr-4">
             <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
               {trigger.execution_count || 0}
             </span>
@@ -337,7 +337,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
               {t('triggers.total-runs')}
             </span>
           </div>
-          <div className="mr-4 border-ds-border-neutral-subtle-default pr-4 flex flex-col border-y-0 border-r-1 border-l-0 border-solid">
+          <div className="border-r-1 mr-4 flex flex-col border-y-0 border-l-0 border-solid border-ds-border-neutral-subtle-default pr-4">
             <span
               className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
             >
@@ -353,22 +353,22 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
       {/* Log Entries */}
       <div className="scrollbar flex-1 overflow-y-auto">
         {logs.length === 0 ? (
-          <div className="py-8 text-ds-text-neutral-muted-default flex h-full flex-col items-center justify-center">
+          <div className="flex h-full flex-col items-center justify-center py-8 text-ds-text-neutral-muted-default">
             <Terminal className="mb-2 h-8 w-8 opacity-50" />
             <span className="text-sm">{t('triggers.no-executions-yet')}</span>
           </div>
         ) : (
-          <div className="divide-ds-border-neutral-subtle-default divide-y">
+          <div className="divide-y divide-ds-border-neutral-subtle-default">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className={`hover:bg-ds-bg-neutral-strong-hover gap-2.5 px-4 py-2.5 flex items-start transition-colors ${getStatusColor(log.status)}`}
+                className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors hover:bg-ds-bg-neutral-strong-hover ${getStatusColor(log.status)}`}
               >
                 <div className="mt-0.5 flex-shrink-0">
                   {getStatusIcon(log.status)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="gap-2 flex items-center">
+                  <div className="flex items-center gap-2">
                     <span className="font-mono text-label-xs text-ds-text-neutral-muted-default">
                       {log.timestamp}
                     </span>
@@ -397,7 +397,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 flex flex-row items-center justify-start">
+      <div className="flex flex-row items-center justify-start px-4 py-2">
         <span className="text-label-xs text-ds-text-neutral-muted-default">
           {t('triggers.last-run-label')}:{' '}
           {formatRelativeTime(trigger.last_executed_at)}

@@ -20,6 +20,7 @@ from camel.tasks.task import TaskState
 
 from app.model.chat import Chat, NewAgent
 from app.service.chat_service import (
+    _extract_stream_chunk_content,
     _render_subtask_report,
     _trim_in_process_history,
     add_sub_tasks,
@@ -47,6 +48,60 @@ from app.service.task import (
     ImprovePayload,
     TaskLock,
 )
+
+
+class _StreamMsg:
+    def __init__(self, content="", reasoning_content=""):
+        self.content = content
+        self.reasoning_content = reasoning_content
+
+
+class _StreamChunk:
+    def __init__(self, msg=None, msgs=None):
+        self.msg = msg
+        self.msgs = msgs
+
+    def __str__(self):
+        return "msgs=[BaseMessage(role_name='System', reasoning_content='We')]"
+
+
+@pytest.mark.unit
+class TestExtractStreamChunkContent:
+    def test_extracts_single_message_content(self):
+        chunk = _StreamChunk(msg=_StreamMsg("<task>Clean desktop</task>"))
+
+        assert _extract_stream_chunk_content(chunk) == (
+            "<task>Clean desktop</task>"
+        )
+
+    def test_extracts_single_message_reasoning_content(self):
+        chunk = _StreamChunk(
+            msg=_StreamMsg(
+                reasoning_content="We need to organize the desktop."
+            )
+        )
+
+        assert (
+            _extract_stream_chunk_content(chunk)
+            == "We need to organize the desktop."
+        )
+
+    def test_extracts_message_list_content(self):
+        chunk = _StreamChunk(
+            msgs=[
+                _StreamMsg(reasoning_content="We need "),
+                _StreamMsg("<task>Group files</task>"),
+            ]
+        )
+
+        assert _extract_stream_chunk_content(chunk) == (
+            "We need <task>Group files</task>"
+        )
+
+    def test_ignores_metadata_only_chunk(self):
+        chunk = _StreamChunk()
+
+        assert _extract_stream_chunk_content(chunk) == ""
 
 
 @pytest.mark.unit

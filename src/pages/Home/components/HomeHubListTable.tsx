@@ -38,13 +38,11 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'space', labelKey: 'layout.home-list-space' },
     { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
-    { id: 'tokens', labelKey: 'layout.home-list-tokens', align: 'right' },
     { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
   ],
   task: [
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
-    { id: 'tokens', labelKey: 'layout.home-list-tokens', align: 'right' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
   ],
   trigger: [
@@ -72,13 +70,13 @@ export default function HomeHubListTable({
   const gridClass = HOME_HUB_LIST_GRID_CLASS[kind];
 
   return (
-    <div className={cn('min-w-0 w-full', className)}>
-      <div className={cn('gap-x-4 px-3 py-2.5 grid items-center', gridClass)}>
+    <div className={cn('w-full min-w-0', className)}>
+      <div className={cn('grid items-center gap-x-4 px-3 py-2.5', gridClass)}>
         {columns.map((column) => (
           <span
             key={column.id}
             className={cn(
-              '!text-label-sm font-normal text-ds-text-neutral-muted-default truncate leading-none',
+              'truncate !text-label-sm font-normal leading-none text-ds-text-neutral-muted-default',
               column.align === 'right' ? 'text-right' : 'text-left'
             )}
           >
@@ -86,7 +84,7 @@ export default function HomeHubListTable({
           </span>
         ))}
       </div>
-      <div className="gap-1 flex flex-col">{children}</div>
+      <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
 }
