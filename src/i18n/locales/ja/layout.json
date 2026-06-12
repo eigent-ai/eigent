@@ -52,6 +52,8 @@
   "welcome": "ようこそ",
   "delete-task": "タスクを削除",
   "delete-task-confirmation": "このタスクを削除してもよろしいですか？この操作は元に戻せません。",
+  "delete-success": "タスクを削除しました",
+  "delete-failed": "タスクの削除に失敗しました",
   "delete": "削除",
   "cancel": "キャンセル",
   "continue": "続行",
