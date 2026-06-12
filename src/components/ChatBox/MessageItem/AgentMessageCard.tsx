@@ -22,6 +22,8 @@ import { MarkDown } from './MarkDown';
 
 const COPIED_RESET_MS = 2000;
 
+type MessageFeedback = 'up' | 'down' | null;
+
 interface AgentMessageCardProps {
   id: string;
   content: string;
@@ -61,7 +63,12 @@ export function AgentMessageCard({
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<MessageFeedback>(null);
   const { t } = useTranslation();
+
+  useEffect(() => {
+    setFeedback(null);
+  }, [id]);
 
   const handleTypingComplete = () => {
     if (!completedTypewriterByMessageId.has(id)) {
@@ -88,6 +95,18 @@ export function AgentMessageCard({
     onMarkdownRenderComplete?.();
   }, [onMarkdownRenderComplete]);
 
+  const handleThumbUp = useCallback(() => {
+    if (feedback !== null) return;
+    setFeedback('up');
+    toast.success('Thanks for your feedback');
+  }, [feedback]);
+
+  const handleThumbDown = useCallback(() => {
+    if (feedback !== null) return;
+    setFeedback('down');
+    toast.success('Thanks for your feedback');
+  }, [feedback]);
+
   const showDeferredFileUi =
     markdownAndTypingComplete &&
     ((attaches && attaches.length > 0) || deferredFooter != null);
@@ -95,7 +114,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`flex w-full flex-col rounded-xl bg-transparent px-6 py-3 ${className || ''} overflow-hidden`}
+      className={`rounded-xl px-6 py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}
@@ -104,7 +123,7 @@ export function AgentMessageCard({
         enableTypewriter={enableTypewriter && typewriter}
       />
       {showDeferredFileUi && attaches && attaches.length > 0 && (
-        <div className="mt-[10px] flex flex-wrap gap-2">
+        <div className="gap-2 mt-[10px] flex flex-wrap">
           {attaches?.map((file) => {
             return (
               <div
@@ -113,11 +132,11 @@ export function AgentMessageCard({
                   ipcRenderer?.invoke('reveal-in-folder', file.filePath);
                 }}
                 key={'attache-' + file.fileName}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2"
+                className="gap-2 rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2 flex w-full cursor-pointer items-center border border-solid"
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
+                  <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
                     {file?.fileName?.split('.')[0]}
                   </div>
                   <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
@@ -133,7 +152,7 @@ export function AgentMessageCard({
         <div className="mt-[10px] w-full">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
-        <div className="mt-3 flex shrink-0 justify-start gap-1">
+        <div className="mt-3 gap-1 flex shrink-0 justify-start">
           <Button
             onClick={handleCopy}
             variant="ghost"
@@ -148,22 +167,30 @@ export function AgentMessageCard({
             )}
           </Button>
           <Button
-            onClick={() => {}}
+            onClick={handleThumbUp}
             variant="ghost"
             size="xs"
             buttonContent="icon-only"
             aria-label="Thumb up"
+            aria-pressed={feedback === 'up'}
+            disabled={feedback === 'down'}
           >
-            <ThumbsUp className="h-4 w-4" />
+            <ThumbsUp
+              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-text-brand-default-default' : ''}`}
+            />
           </Button>
           <Button
-            onClick={() => {}}
+            onClick={handleThumbDown}
             variant="ghost"
             size="xs"
             buttonContent="icon-only"
             aria-label="Thumb down"
+            aria-pressed={feedback === 'down'}
+            disabled={feedback === 'up'}
           >
-            <ThumbsDown className="h-4 w-4" />
+            <ThumbsDown
+              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-text-brand-default-default' : ''}`}
+            />
           </Button>
         </div>
       )}
