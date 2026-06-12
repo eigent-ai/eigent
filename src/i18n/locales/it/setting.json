@@ -1,6 +1,10 @@
 {
   "settings": "Impostazioni",
   "general": "Generale",
+  "human-in-the-loop": "Controllo",
+  "human-in-the-loop-title": "Controllo",
+  "terminal-approval": "Approvazione comandi",
+  "terminal-approval-hint": "Richiedere l'approvazione prima di eseguire comandi terminale potenzialmente pericolosi (es. rm, sudo, kill).",
   "privacy": "Privacy",
   "models": "Modelli",
   "mcp": "MCP e Strumenti",

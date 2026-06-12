@@ -22,6 +22,14 @@ class Status(str, Enum):
     done = "done"
 
 
+class ApprovalAction(str, Enum):
+    """User response choices for HITL command approval prompts."""
+
+    approve_once = "approve_once"
+    auto_approve = "auto_approve"
+    reject = "reject"
+
+
 DEFAULT_SUMMARY_PROMPT = (
     "After completing the task, please generate"
     " a summary of the entire task completion. "

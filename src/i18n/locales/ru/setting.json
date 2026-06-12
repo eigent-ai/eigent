@@ -1,6 +1,10 @@
 {
   "settings": "настройки",
   "general": "Общие",
+  "human-in-the-loop": "Контроль",
+  "human-in-the-loop-title": "Контроль",
+  "terminal-approval": "Одобрение команд терминала",
+  "terminal-approval-hint": "Запрашивать одобрение перед выполнением потенциально опасных терминальных команд (например, rm, sudo, kill).",
   "privacy": "Конфиденциальность",
   "models": "Модели",
   "mcp": "MCP и Инструменты",

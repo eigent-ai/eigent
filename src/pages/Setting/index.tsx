@@ -20,9 +20,10 @@ import VerticalNavigation, {
 import useAppVersion from '@/hooks/use-app-version';
 import { SITE_URL } from '@/lib';
 import General from '@/pages/Setting/General';
+import HumanInTheLoop from '@/pages/Setting/HumanInTheLoop';
 import Privacy from '@/pages/Setting/Privacy';
 import { useAuthStore } from '@/store/authStore';
-import { Fingerprint, Settings, TagIcon } from 'lucide-react';
+import { Fingerprint, Settings, ShieldCheck, TagIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -41,6 +42,12 @@ export default function Setting() {
       name: t('setting.general'),
       icon: Settings,
       path: '/setting/general',
+    },
+    {
+      id: 'human-in-the-loop',
+      name: t('setting.human-in-the-loop'),
+      icon: ShieldCheck,
+      path: '/setting/human-in-the-loop',
     },
     {
       id: 'privacy',
@@ -119,6 +126,7 @@ export default function Setting() {
         <div className="flex h-auto w-full flex-1 flex-col">
           <div className="flex flex-col gap-4">
             {activeTab === 'general' && <General />}
+            {activeTab === 'human-in-the-loop' && <HumanInTheLoop />}
             {activeTab === 'privacy' && <Privacy />}
           </div>
         </div>

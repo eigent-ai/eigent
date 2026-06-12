@@ -294,6 +294,12 @@ def listen_toolkit(
     """
 
     def decorator(func: Callable[..., Any]):
+        # `wrap` is the function whose metadata (name, signature, docstring)
+        # we copy onto the wrapper via @wraps.  When auto_listen_toolkit
+        # decorates an overridden method it passes the *base class* method
+        # as wrap_method so that Camel's FunctionTool picks up the original
+        # signature.  If the caller didn't supply wrap_method (e.g. a manual
+        # @listen_toolkit() on a new method), we just use func itself.
         wrap = func if wrap_method is None else wrap_method
 
         if iscoroutinefunction(func):
@@ -355,6 +361,37 @@ def listen_toolkit(
                 return res
 
             async_wrapper.__listen_toolkit__ = True
+
+            # Why this matters:
+            # @wraps(wrap) copies __wrapped__ from `wrap` onto the wrapper.
+            # When `wrap` is a *sync* base-class method (e.g. the original
+            # sync BaseTerminalToolkit.shell_exec) but `func` is an *async*
+            # override (e.g. our async TerminalToolkit.shell_exec), the
+            # wrapper ends up with __wrapped__ pointing to the sync base.
+            #
+            # Camel's FunctionTool uses inspect.unwrap() + iscoroutinefunction()
+            # to decide the dispatch path:
+            #   - iscoroutinefunction → True  → async_call (runs on main loop)
+            #   - iscoroutinefunction → False → __call__  (persistent bg loop)
+            #
+            # If __wrapped__ points to the sync base, unwrap() returns it,
+            # iscoroutinefunction() returns False, and Camel dispatches the
+            # async function onto a *different* event loop — breaking any
+            # cross-loop asyncio.Queue await (e.g. the approval flow).
+            #
+            # Fix: override __wrapped__ to point to the actual async `func`
+            # so that Camel correctly dispatches via async_call on the main
+            # loop. The metadata (name, signature, docstring) is still
+            # preserved from `wrap` by @wraps; only the unwrap chain changes.
+            #
+            # This only triggers when wrap != func, i.e. when a subclass
+            # provides an async override of a sync base method — a pattern
+            # first introduced for TerminalToolkit.shell_exec to support
+            # the HITL approval flow (Camel's upstream shell_exec is
+            # sync-only with no async variant available).
+            if wrap is not func:
+                async_wrapper.__wrapped__ = func
+
             return async_wrapper
 
         else:

@@ -37,6 +37,7 @@ from app.service.chat_service import (
 )
 from app.service.task import (
     Action,
+    ActionCommandApprovalData,
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
@@ -1295,3 +1296,31 @@ class TestChatServiceErrorCases:
 
         # Should filter out empty content tasks
         assert len(result) <= 1
+
+
+@pytest.mark.unit
+class TestCommandApprovalSSE:
+    """Test cases for dangerous command approval SSE data."""
+
+    def test_action_command_approval_data_creation(self):
+        """Test ActionCommandApprovalData model creation."""
+        data = ActionCommandApprovalData(data={"command": "rm -rf /"})
+        assert data.action == Action.command_approval
+        assert data.data["command"] == "rm -rf /"
+
+    def test_action_command_approval_sse_format(self):
+        """Test that command_approval produces correct SSE output."""
+        from app.model.chat import sse_json
+
+        command_data = {"command": "rm -rf /tmp/dangerous"}
+        result = sse_json("command_approval", command_data)
+
+        assert "command_approval" in result
+        assert "rm -rf /tmp/dangerous" in result
+        assert result.startswith("data: ")
+        assert result.endswith("\n\n")
+
+    def test_action_command_approval_action_enum(self):
+        """Action.command_approval should exist as a valid enum value."""
+        assert hasattr(Action, "command_approval")
+        assert Action.command_approval == "command_approval"
