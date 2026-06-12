@@ -13,7 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import { useAuthStore } from '@/store/authStore';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
+import { getCloudModelStore } from '@/store/cloudModelStore';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -52,14 +53,31 @@ export function useModelConfigCheck(): {
   const checkModelConfig = useCallback(async () => {
     try {
       if (modelType === 'cloud') {
-        const res = await proxyFetchGet('/api/v1/user/key');
-        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
-          setCloudUsageLimitReached(true);
+        const { token, cloud_model_type } = getAuthStore();
+        if (!token) {
+          setCloudUsageLimitReached(false);
           setHasModelConfigured(false);
           return;
         }
-        setCloudUsageLimitReached(false);
-        setHasModelConfigured(!!res.value);
+
+        await getCloudModelStore().fetchCloudModels();
+        const resolvedCloudModel =
+          getCloudModelStore().resolveCloudModel(cloud_model_type);
+        setHasModelConfigured(Boolean(resolvedCloudModel));
+
+        try {
+          const res = await proxyFetchGet('/api/v1/user/key');
+          setCloudUsageLimitReached(hasApiCode(res, API_CODE_TRIAL_LIMIT));
+        } catch (err: any) {
+          if (
+            hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT) ||
+            hasApiCode(err, API_CODE_TRIAL_LIMIT)
+          ) {
+            setCloudUsageLimitReached(true);
+          } else {
+            console.error('Failed to check cloud usage limit:', err);
+          }
+        }
       } else if (modelType === 'local' || modelType === 'custom') {
         setCloudUsageLimitReached(false);
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });

@@ -35,6 +35,7 @@ import {
   type DefaultModelCategory,
 } from '@/lib/applyDefaultModelSelection';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getProviderValid } from '@/lib/providerStatus';
 import { cn } from '@/lib/utils';
 import {
   getLocalPlatformName,
@@ -45,6 +46,7 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import type { Provider } from '@/types';
 
 import {
@@ -60,21 +62,6 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-
-const cloudModelOptions = [
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-  { id: 'gpt-5.4', name: 'GPT-5.4' },
-  { id: 'gpt-5.5', name: 'GPT-5.5' },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-  { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-  { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
-  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-  { id: 'minimax_m2_7', name: 'Minimax M2.7' },
-] as const;
 
 export interface ChatInputModelDropdownProps {
   disabled?: boolean;
@@ -105,6 +92,24 @@ export function ChatInputModelDropdown({
     setModelType,
     setCloudModelType,
   } = useAuthStore();
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const getCloudModelDisplayName = useCloudModelStore(
+    (state) => state.getModelDisplayName
+  );
+  const effectiveCloudModelId = useCloudModelStore((state) =>
+    state.getEffectiveModelId(cloud_model_type)
+  );
+  const cloudModelOptions = useMemo(
+    () =>
+      cloudModels.map((model) => ({
+        id: model.id,
+        name: model.display_name,
+      })),
+    [cloudModels]
+  );
 
   const [items] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
@@ -131,6 +136,11 @@ export function ChatInputModelDropdown({
   >({});
 
   useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
+    void fetchCloudModels();
+  }, [fetchCloudModels]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await proxyFetchGet('/api/v1/providers');
@@ -148,7 +158,7 @@ export function ChatInputModelDropdown({
                 provider_id: found.id,
                 apiKey: found.api_key || '',
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -226,14 +236,7 @@ export function ChatInputModelDropdown({
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
     if (cloudPrefer) {
-      const cloudModel = cloudModelOptions.find(
-        (m) => m.id === cloud_model_type
-      );
-      return cloudModel
-        ? cloudModel.name
-        : String(cloud_model_type)
-            .replace(/-/g, ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+      return getCloudModelDisplayName(cloud_model_type);
     }
 
     const preferredIdx = form.findIndex((f) => f.prefer);
@@ -254,6 +257,7 @@ export function ChatInputModelDropdown({
     cloudPrefer,
     cloud_model_type,
     form,
+    getCloudModelDisplayName,
     items,
     localPrefer,
     localPlatform,
@@ -289,7 +293,7 @@ export function ChatInputModelDropdown({
         localPlatform,
         setModelType,
         setCloudModelType: (id: string) => {
-          setCloudModelType(id as never);
+          setCloudModelType(id);
         },
         t,
       });
@@ -335,9 +339,9 @@ export function ChatInputModelDropdown({
           }
         )}
       >
-        <span className="min-w-0 gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
+        <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
           <Sparkles className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
-          <span className="min-w-0 !text-label-xs font-semibold truncate">
+          <span className="min-w-0 truncate !text-label-xs font-semibold">
             {triggerModelName}
           </span>
         </span>
@@ -346,7 +350,11 @@ export function ChatInputModelDropdown({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) void fetchCloudModels();
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -357,19 +365,19 @@ export function ChatInputModelDropdown({
           className={cn(
             modelTriggerShellClass,
             'min-w-0 cursor-pointer border-0 text-left',
-            'font-semibold justify-between transition-colors',
+            'justify-between font-semibold transition-colors',
             'hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-subtle-default',
-            'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
             'disabled:pointer-events-none disabled:opacity-50'
           )}
         >
-          <span className="min-w-0 gap-1.5 flex flex-1 items-center overflow-hidden">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             <Sparkles
               className="size-3.5 shrink-0"
               strokeWidth={2}
               aria-hidden
             />
-            <span className="min-w-0 !text-label-xs text-ds-text-neutral-default-default flex-1 truncate text-left">
+            <span className="min-w-0 flex-1 truncate text-left !text-label-xs text-ds-text-neutral-default-default">
               {triggerModelName}
             </span>
           </span>
@@ -391,7 +399,7 @@ export function ChatInputModelDropdown({
         {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
-              className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
+              className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
               onPointerEnter={(e) => {
                 activeSubTriggerRef.current = e.currentTarget;
               }}
@@ -402,7 +410,7 @@ export function ChatInputModelDropdown({
                 className="mt-0.5 h-4 w-4 shrink-0"
                 aria-hidden
               />
-              <span className="min-w-0 text-body-sm flex-1 text-left">
+              <span className="min-w-0 flex-1 text-left text-body-sm">
                 {t('setting.eigent-cloud')}
               </span>
             </DropdownMenuSubTrigger>
@@ -419,7 +427,7 @@ export function ChatInputModelDropdown({
                   className="flex items-center justify-between"
                 >
                   <span className="text-body-sm">{model.name}</span>
-                  {cloudPrefer && cloud_model_type === model.id && (
+                  {cloudPrefer && effectiveCloudModelId === model.id && (
                     <Check className="h-4 w-4 text-ds-text-success-default-default" />
                   )}
                 </DropdownMenuItem>
@@ -430,16 +438,16 @@ export function ChatInputModelDropdown({
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
-            className="min-w-0 gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
+            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <Layers
-              className="text-ds-icon-neutral-default-default shrink-0"
+              className="shrink-0 text-ds-icon-neutral-default-default"
               aria-hidden
             />
-            <span className="min-w-0 text-body-sm flex-1 text-left">
+            <span className="min-w-0 flex-1 text-left text-body-sm">
               {t('setting.custom-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -460,7 +468,7 @@ export function ChatInputModelDropdown({
                   }}
                   className="flex items-center justify-between"
                 >
-                  <div className="gap-2 flex items-center">
+                  <div className="flex items-center gap-2">
                     {modelImage ? (
                       <img
                         src={modelImage}
@@ -481,15 +489,15 @@ export function ChatInputModelDropdown({
                       {item.name}
                     </span>
                   </div>
-                  <div className="gap-1 flex items-center">
+                  <div className="flex items-center gap-1">
                     {!isConfigured && (
-                      <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
+                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
                     )}
                     {isPreferred && (
                       <Check className="h-4 w-4 text-ds-text-success-default-default" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
+                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
                     )}
                   </div>
                 </DropdownMenuItem>
@@ -500,16 +508,16 @@ export function ChatInputModelDropdown({
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
-            className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
+            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <HardDrive
-              className="text-ds-icon-neutral-default-default shrink-0"
+              className="shrink-0 text-ds-icon-neutral-default-default"
               aria-hidden
             />
-            <span className="min-w-0 text-body-sm flex-1 text-left">
+            <span className="min-w-0 flex-1 text-left text-body-sm">
               {t('setting.local-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -530,7 +538,7 @@ export function ChatInputModelDropdown({
                   }}
                   className="flex items-center justify-between"
                 >
-                  <div className="gap-2 flex items-center">
+                  <div className="flex items-center gap-2">
                     {modelImage ? (
                       <img
                         src={modelImage}
@@ -551,15 +559,15 @@ export function ChatInputModelDropdown({
                       {model.name}
                     </span>
                   </div>
-                  <div className="gap-1 flex items-center">
+                  <div className="flex items-center gap-1">
                     {!isConfigured && (
-                      <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
+                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
                     )}
                     {isPreferred && (
                       <Check className="h-4 w-4 text-ds-text-success-default-default" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
+                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
                     )}
                   </div>
                 </DropdownMenuItem>

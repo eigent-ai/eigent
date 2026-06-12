@@ -27,6 +27,7 @@ type InitState = 'carousel' | 'done';
 type ModelType = 'cloud' | 'local' | 'custom';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type AppearanceMode = Mode | 'system';
+const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
@@ -36,21 +37,7 @@ export type WorkspaceMainBackground =
   | 'ruled'
   | 'dotted'
   | 'dashed';
-export type CloudModelType =
-  | 'gemini-3.1-pro-preview'
-  | 'gemini-3.5-flash'
-  | 'gemini-3-pro-preview'
-  | 'gemini-3-flash-preview'
-  | 'claude-haiku-4-5'
-  | 'claude-sonnet-4-5'
-  | 'claude-sonnet-4-6'
-  | 'claude-opus-4-6'
-  | 'claude-opus-4-7'
-  | 'gpt-5.4'
-  | 'gpt-5.5'
-  | 'gpt-5-mini'
-  | 'deepseek-v4-pro'
-  | 'minimax_m2_7';
+export type CloudModelType = string;
 
 // auth info interface
 interface AuthInfo {
@@ -137,30 +124,8 @@ interface AuthState {
 
 // random default model selection
 const getRandomDefaultModel = (): CloudModelType => {
-  const models: CloudModelType[] = ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini'];
-  return models[Math.floor(Math.random() * models.length)];
+  return LEGACY_DEFAULT_CLOUD_MODEL_ID;
 };
-
-const SUPPORTED_CLOUD_MODEL_TYPES: ReadonlySet<CloudModelType> =
-  new Set<CloudModelType>([
-    'gemini-3.1-pro-preview',
-    'gemini-3-pro-preview',
-    'gemini-3-flash-preview',
-    'claude-haiku-4-5',
-    'claude-sonnet-4-5',
-    'claude-sonnet-4-6',
-    'claude-opus-4-6',
-    'claude-opus-4-7',
-    'gpt-5.4',
-    'gpt-5.5',
-    'gpt-5-mini',
-    'deepseek-v4-pro',
-    'minimax_m2_7',
-  ]);
-
-const isSupportedCloudModelType = (value: unknown): value is CloudModelType =>
-  typeof value === 'string' &&
-  SUPPORTED_CLOUD_MODEL_TYPES.has(value as CloudModelType);
 
 const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
   if (userId === null || userId === undefined || userId === '') {
@@ -368,11 +333,9 @@ const authStore = create<AuthState>()(
           | undefined;
         if (!s) return persistedState as typeof persistedState;
 
-        // Drop unsupported cloud model ids so stale values like 'gpt-5.2'
-        // (removed from the chat input dropdown) don't keep submitting an
-        // empty model_platform and triggering 422 on /chat.
         const sanitizedCloudModelType: CloudModelType =
-          isSupportedCloudModelType(s.cloud_model_type)
+          typeof s.cloud_model_type === 'string' &&
+          s.cloud_model_type.length > 0
             ? s.cloud_model_type
             : getRandomDefaultModel();
 
