@@ -49,7 +49,8 @@ import {
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
-import { getAuthStore, getWorkerList, type CloudModelType } from './authStore';
+import { getAuthStore, getWorkerList } from './authStore';
+import { getCloudModelStore } from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
@@ -479,37 +480,6 @@ export function collectTaskUploadFiles(
   }
 
   return Array.from(uniqueCandidates.values());
-}
-
-type CloudModelPlatform =
-  | 'azure'
-  | 'aws-bedrock-converse'
-  | 'gemini'
-  | 'deepseek'
-  | 'minimax';
-
-// prettier-ignore
-const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
-  'gemini-3.1-pro-preview': 'gemini',
-  'gemini-3.5-flash': 'gemini',
-  'gemini-3-pro-preview': 'gemini',
-  'gemini-3-flash-preview': 'gemini',
-  'claude-haiku-4-5': 'aws-bedrock-converse',
-  'claude-sonnet-4-5': 'aws-bedrock-converse',
-  'claude-sonnet-4-6': 'aws-bedrock-converse',
-  'claude-opus-4-6': 'aws-bedrock-converse',
-  'claude-opus-4-7': 'aws-bedrock-converse',
-  'gpt-5.4': 'azure',
-  'gpt-5.5': 'azure',
-  'gpt-5-mini': 'azure',
-  'deepseek-v4-pro': 'deepseek',
-  'minimax_m2_7': 'minimax',
-};
-
-export function getCloudModelPlatform(
-  cloudModelType: CloudModelType
-): CloudModelPlatform {
-  return CLOUD_MODEL_PLATFORM_MAP[cloudModelType];
 }
 
 async function uploadTaskFiles(
@@ -1340,6 +1310,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           .setTaskSessionMode(newTaskId, sessionModeForRequest);
       }
 
+      const finishStartupFailure = () => {
+        if (!isLiveTask) return;
+        const targetState = targetChatStore.getState();
+        const task = targetState.tasks[newTaskId];
+        if (!task) return;
+        if (activeSSEControllers[newTaskId]) {
+          try {
+            activeSSEControllers[newTaskId].abort();
+          } catch {
+            // Ignore abort errors while cleaning up a failed startup.
+          }
+          delete activeSSEControllers[newTaskId];
+        }
+        if (task.isPending) {
+          targetState.setIsPending(newTaskId, false);
+        }
+        if (task.status !== ChatTaskStatus.FINISHED) {
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+        }
+      };
+
       // Render the new turn before waiting for Brain. This keeps the project
       // page responsive and locks the composer through the task's pending state.
       if (!type || type === 'normal') {
@@ -1431,6 +1422,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const provider = providerList[0];
 
         if (!provider) {
+          finishStartupFailure();
           throw new Error(
             'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
           );
@@ -1444,15 +1436,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           extra_params: provider.encrypted_config,
         };
       } else if (modelType === 'cloud') {
-        // get current model
-        const res = await proxyFetchGet('/api/v1/user/key');
+        const cloudModelStore = getCloudModelStore();
+        let resolvedCloudModel =
+          cloudModelStore.resolveCloudModel(cloud_model_type);
+        if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
+          await cloudModelStore.fetchCloudModels(true);
+          resolvedCloudModel =
+            getCloudModelStore().resolveCloudModel(cloud_model_type);
+        }
+        if (!resolvedCloudModel) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to resolve cloud model. Please try again or choose another model in Agents > Models.'
+          );
+        }
+        if (
+          resolvedCloudModel.source === 'default' &&
+          resolvedCloudModel.requestedModelId
+        ) {
+          const message = `Model ${resolvedCloudModel.requestedModelId} is no longer available; switched to ${resolvedCloudModel.model.display_name}.`;
+          console.warn(message);
+          toast.warning(message);
+        }
+        if (resolvedCloudModel.model.id !== cloud_model_type) {
+          getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
+        }
+
+        let res: any;
+        try {
+          res = await proxyFetchGet('/api/v1/user/key');
+        } catch (error: any) {
+          finishStartupFailure();
+          const responseData = error?.response?.data;
+          if (
+            hasApiCode(responseData, API_CODE_TRIAL_LIMIT) ||
+            hasApiCode(error, API_CODE_TRIAL_LIMIT)
+          ) {
+            throw new Error(
+              responseData?.text ||
+                error?.message ||
+                'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+            );
+          }
+          throw error;
+        }
         if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+          finishStartupFailure();
           throw new Error(
             res.text ||
               'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
           );
         }
         if (!res.value) {
+          finishStartupFailure();
           throw new Error(
             res.text ||
               'Failed to get cloud model key. Please check your account or model settings.'
@@ -1463,8 +1499,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
         apiModel = {
           api_key: res.value,
-          model_type: cloud_model_type,
-          model_platform: getCloudModelPlatform(cloud_model_type),
+          model_type: resolvedCloudModel.model.model_type,
+          model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
           extra_params: {},
         };

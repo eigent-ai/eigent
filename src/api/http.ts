@@ -161,6 +161,9 @@ async function handleResponse(
     if (res.status === 204) {
       return { code: 0, text: '' };
     }
+    if (res.status === 304) {
+      return { code: 0, not_modified: true };
+    }
 
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
