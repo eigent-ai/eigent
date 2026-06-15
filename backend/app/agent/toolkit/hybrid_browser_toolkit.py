@@ -18,6 +18,7 @@ import logging
 import os
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 import websockets
 import websockets.exceptions
@@ -36,13 +37,66 @@ from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 logger = logging.getLogger("hybrid_browser_toolkit")
 
-# Global navigation lock to prevent concurrent visit_page conflicts (ERR_ABORTED)
-# This is needed because multiple sessions may share the same browser via CDP
-_global_navigation_lock = asyncio.Lock()
+# Navigation locks prevent concurrent visit_page conflicts (ERR_ABORTED) for
+# sessions sharing the same browser/CDP endpoint.
+_navigation_locks: dict[str, asyncio.Lock] = {}
+_navigation_locks_guard = asyncio.Lock()
+_browser_bringup_locks: dict[str, asyncio.Lock] = {}
+_browser_bringup_locks_guard = asyncio.Lock()
 
 # Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
 _global_tab_registry: dict[str, str] = {}
 _global_tab_registry_lock = asyncio.Lock()
+
+
+def _timeout_value_to_seconds(value: Any, *, fallback_seconds: float) -> float:
+    if value is None:
+        return fallback_seconds
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        return fallback_seconds
+    if timeout <= 0:
+        return fallback_seconds
+    # CAMEL browser timeout config is in milliseconds; local overrides may be
+    # provided in seconds. Values above 300 are treated as milliseconds.
+    if timeout > 300:
+        timeout = timeout / 1000.0
+    return timeout
+
+
+def _env_timeout_seconds(name: str, fallback_seconds: float) -> float:
+    return _timeout_value_to_seconds(
+        env(name, ""), fallback_seconds=fallback_seconds
+    )
+
+
+def _endpoint_lock_key(cdp_url: str | None) -> str:
+    if cdp_url:
+        parsed = urlparse(cdp_url)
+        if parsed.netloc:
+            return parsed.netloc
+        if parsed.path:
+            return parsed.path
+    return f"localhost:{env('browser_port', '9222')}"
+
+
+async def _get_navigation_lock(key: str) -> asyncio.Lock:
+    async with _navigation_locks_guard:
+        lock = _navigation_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _navigation_locks[key] = lock
+        return lock
+
+
+async def _get_browser_bringup_lock(key: str) -> asyncio.Lock:
+    async with _browser_bringup_locks_guard:
+        lock = _browser_bringup_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _browser_bringup_locks[key] = lock
+        return lock
 
 
 class SheetCell(TypedDict):
@@ -59,6 +113,54 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         # Track tabs opened by this session for isolation
         self._session_tab_ids: set = set()
         self._wrapper_session_id: str = str(uuid.uuid4())
+
+    def _fail_all_pending(self, exc: Exception) -> None:
+        for future in self._pending_responses.values():
+            if not future.done():
+                future.set_exception(exc)
+        self._pending_responses.clear()
+
+    def _command_timeout_seconds(self, command: str) -> float:
+        override = env("BROWSER_COMMAND_TIMEOUT_SECONDS", "").strip()
+        if override:
+            return _timeout_value_to_seconds(
+                override, fallback_seconds=self._request_timeout
+            )
+
+        command_name = command.lower()
+        if any(
+            token in command_name
+            for token in ("visit", "navigate", "open", "reload", "wait")
+        ):
+            return _timeout_value_to_seconds(
+                self.config.get("navigationTimeout"),
+                fallback_seconds=self._request_timeout,
+            )
+        return _timeout_value_to_seconds(
+            self.config.get("defaultTimeout"),
+            fallback_seconds=self._request_timeout,
+        )
+
+    def _navigation_lock_key(self) -> str:
+        cdp_url = str(self.config.get("cdpUrl") or "").strip()
+        return _endpoint_lock_key(cdp_url)
+
+    def _navigation_lock_wait_seconds(self) -> float:
+        command_timeout = self._command_timeout_seconds("visit_page")
+        return _env_timeout_seconds(
+            "BROWSER_NAVIGATION_LOCK_TIMEOUT_SECONDS",
+            fallback_seconds=command_timeout + 5.0,
+        )
+
+    async def _close_current_websocket(self) -> None:
+        websocket = self.websocket
+        self.websocket = None
+        if websocket is None:
+            return
+        try:
+            await asyncio.wait_for(websocket.close(), timeout=1.0)
+        except Exception as exc:
+            logger.debug(f"Error closing browser websocket: {exc}")
 
     def _ensure_local_no_proxy(self) -> None:
         local_hosts = ["localhost", "127.0.0.1", "::1"]
@@ -85,6 +187,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         """Background task to receive messages from WebSocket with enhanced logging."""
         logger.debug("WebSocket receive loop started")
         disconnect_reason = None
+        pending_error: Exception | None = None
 
         try:
             while self.websocket:
@@ -118,11 +221,17 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
                 except asyncio.CancelledError:
                     disconnect_reason = "Receive loop cancelled"
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
+                    )
                     logger.info(f"WebSocket disconnect: {disconnect_reason}")
                     break
                 except websockets.exceptions.ConnectionClosed as e:
                     disconnect_reason = (
                         f"WebSocket closed: code={e.code}, reason={e.reason}"
+                    )
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
                     )
                     logger.warning(
                         f"WebSocket disconnect: {disconnect_reason}"
@@ -131,6 +240,9 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                 except websockets.exceptions.WebSocketException as e:
                     disconnect_reason = (
                         f"WebSocket error: {type(e).__name__}: {e}"
+                    )
+                    pending_error = ConnectionError(
+                        f"browser ws closed: {disconnect_reason}"
                     )
                     logger.error(f"WebSocket disconnect: {disconnect_reason}")
                     break
@@ -141,19 +253,19 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
                     disconnect_reason = (
                         f"Unexpected error: {type(e).__name__}: {e}"
                     )
+                    pending_error = e
                     logger.error(
                         f"WebSocket disconnect: {disconnect_reason}",
                         exc_info=True,
                     )
-                    # Notify all pending futures of the error
-                    for future in self._pending_responses.values():
-                        if not future.done():
-                            future.set_exception(e)
-                    self._pending_responses.clear()
                     break
         finally:
             logger.info(
                 f"WebSocket receive loop terminated. Reason: {disconnect_reason or 'Normal shutdown'}"
+            )
+            self._fail_all_pending(
+                pending_error
+                or ConnectionError("browser ws receive loop ended")
             )
             # Mark the websocket as None to indicate disconnection
             self.websocket = None
@@ -186,18 +298,39 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
             logger.debug(f"Sending command '{command}' with params: {params}")
 
-            # Call parent's _send_command
-            result = await super()._send_command(command, params)
+            timeout = self._command_timeout_seconds(command)
+
+            # Call parent's _send_command with an outer timeout so cancelled
+            # waits cannot leave pending futures stranded in this subclass.
+            result = await asyncio.wait_for(
+                super()._send_command(command, params), timeout=timeout
+            )
 
             logger.debug(f"Command '{command}' completed successfully")
             return result
 
+        except TimeoutError as e:
+            message = (
+                f"browser command '{command}' timed out after "
+                f"{self._command_timeout_seconds(command)}s"
+            )
+            logger.error(message)
+            self._fail_all_pending(TimeoutError(message))
+            await self._close_current_websocket()
+            raise RuntimeError(message) from e
         except RuntimeError as e:
             logger.error(f"Failed to send command '{command}': {e}")
             # Check if it's a connection issue
-            if "WebSocket" in str(e) or "connection" in str(e).lower():
+            lower_error = str(e).lower()
+            if (
+                "websocket" in lower_error
+                or "connection" in lower_error
+                or "timeout" in lower_error
+                or "timed out" in lower_error
+            ):
                 # Mark connection as dead
-                self.websocket = None
+                self._fail_all_pending(e)
+                await self._close_current_websocket()
             raise
         except Exception as e:
             logger.error(
@@ -213,21 +346,32 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         blank page). This lock serializes navigation operations at the WebSocket
         wrapper level.
         """
-        global _global_navigation_lock
+        lock_key = self._navigation_lock_key()
+        lock = await _get_navigation_lock(lock_key)
+        lock_wait = self._navigation_lock_wait_seconds()
+        acquired = False
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=lock_wait)
+            acquired = True
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "navigation lock busy; browser may be stuck "
+                f"(key={lock_key}, waited={lock_wait}s)"
+            ) from exc
 
-        async with _global_navigation_lock:
-            logger.debug(
-                f"[visit_page] Acquired navigation lock, navigating to {url}"
-            )
-            try:
-                result = await super().visit_page(url)
-                logger.debug(
-                    "[visit_page] Navigation completed, releasing lock"
-                )
-                return result
-            except Exception as e:
-                logger.error(f"[visit_page] Navigation failed: {e}")
-                raise
+        logger.debug(
+            f"[visit_page] Acquired navigation lock ({lock_key}), navigating to {url}"
+        )
+        try:
+            result = await super().visit_page(url)
+            logger.debug("[visit_page] Navigation completed, releasing lock")
+            return result
+        except Exception as e:
+            logger.error(f"[visit_page] Navigation failed: {e}")
+            raise
+        finally:
+            if acquired:
+                lock.release()
 
     async def get_tab_info(self) -> list[dict[str, Any]]:
         """Override get_tab_info to track and filter tabs for session isolation.
@@ -514,9 +658,50 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
+        if self._default_timeout is not None:
+            self._ws_config["defaultTimeout"] = self._default_timeout
+        command_timeout_override = env(
+            "BROWSER_COMMAND_TIMEOUT_SECONDS", ""
+        ).strip()
+        if command_timeout_override:
+            self._ws_config["requestTimeout"] = _timeout_value_to_seconds(
+                command_timeout_override,
+                fallback_seconds=60.0,
+            )
         logger.info(
             f"[HybridBrowserToolkit] Initialization complete for api_task_id: {self.api_task_id}"
         )
+
+    def _ws_cdp_url(self) -> str:
+        return str(
+            self._ws_config.get("cdpUrl")
+            or self._ws_config.get("cdp_url")
+            or f"http://localhost:{env('browser_port', '9222')}"
+        )
+
+    def _should_prime_shared_cdp_tab(self) -> bool:
+        enabled = (
+            env("EIGENT_INTERIM_SHARED_BROWSER_TAB_ISOLATION", "true")
+            .strip()
+            .lower()
+        )
+        if enabled in {"0", "false", "no", "off"}:
+            return False
+        return bool(
+            self._ws_config.get("cdpUrl") or self._ws_config.get("cdp_url")
+        ) and not bool(self._ws_config.get("cdpKeepCurrentPage"))
+
+    async def _prime_shared_cdp_tab(self, session_id: str) -> None:
+        if self._ws_wrapper is None:
+            return
+        # === INTERIM(shared-browser tab isolation) remove after camel upstream fix; see docs/REMOTE_CONTROL_SHARED_BROWSER_TAB_ISOLATION_2026-06-15.md ===
+        sentinel_url = f"about:blank#eigent-{session_id}"
+        logger.info(
+            "[INTERIM shared-browser tab isolation] Priming session tab",
+            extra={"session_id": session_id, "sentinel_url": sentinel_url},
+        )
+        await self._ws_wrapper.visit_page(sentinel_url)
+        self._ws_wrapper._eigent_interim_shared_browser_primed = True
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
@@ -530,30 +715,63 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         logger.debug(f"[HybridBrowserToolkit] Using session_id: {session_id}")
 
         # Log when connecting to browser
-        cdp_url = self._ws_config.get(
-            "cdp_url", f"http://localhost:{env('browser_port', '9222')}"
-        )
+        cdp_url = self._ws_cdp_url()
         logger.info(
             f"[PROJECT BROWSER] Connecting to browser via CDP at {cdp_url}"
         )
 
-        # Get or create connection from pool
-        self._ws_wrapper = await websocket_connection_pool.get_connection(
-            session_id, self._ws_config
-        )
-        logger.info(
-            f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
-        )
-
-        # Additional health check
-        if self._ws_wrapper.websocket is None:
-            logger.warning(
-                f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+        should_prime = self._should_prime_shared_cdp_tab()
+        bringup_lock: asyncio.Lock | None = None
+        bringup_acquired = False
+        if should_prime:
+            bringup_lock = await _get_browser_bringup_lock(
+                _endpoint_lock_key(cdp_url)
             )
-            await websocket_connection_pool.close_connection(session_id)
+            bringup_wait = _env_timeout_seconds(
+                "BROWSER_BRINGUP_LOCK_TIMEOUT_SECONDS",
+                fallback_seconds=45.0,
+            )
+            try:
+                await asyncio.wait_for(
+                    bringup_lock.acquire(), timeout=bringup_wait
+                )
+                bringup_acquired = True
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "browser bring-up lock busy; shared browser may be stuck "
+                    f"(endpoint={cdp_url}, waited={bringup_wait}s)"
+                ) from exc
+
+        try:
+            # Get or create connection from pool
             self._ws_wrapper = await websocket_connection_pool.get_connection(
                 session_id, self._ws_config
             )
+            logger.info(
+                f"[HybridBrowserToolkit] WebSocket wrapper initialized for session: {session_id}"
+            )
+
+            # Additional health check
+            if self._ws_wrapper.websocket is None:
+                logger.warning(
+                    f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
+                )
+                await websocket_connection_pool.close_connection(session_id)
+                self._ws_wrapper = (
+                    await websocket_connection_pool.get_connection(
+                        session_id, self._ws_config
+                    )
+                )
+
+            if should_prime and not getattr(
+                self._ws_wrapper,
+                "_eigent_interim_shared_browser_primed",
+                False,
+            ):
+                await self._prime_shared_cdp_tab(session_id)
+        finally:
+            if bringup_acquired and bringup_lock is not None:
+                bringup_lock.release()
 
     def clone_for_new_session(
         self, new_session_id: str | None = None

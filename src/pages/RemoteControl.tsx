@@ -284,12 +284,13 @@ export default function RemoteControlPage() {
 
   const sendControlCommand = async (
     type: 'stop' | 'skip_task',
-    label: string
+    label: string,
+    confirmText: string
   ) => {
     if (!bridgeOnline || controlLoading) {
       return;
     }
-    if (!window.confirm(`${label} this desktop task?`)) {
+    if (!window.confirm(confirmText)) {
       return;
     }
     setControlLoading(type);
@@ -396,18 +397,30 @@ export default function RemoteControlPage() {
             <button
               className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!bridgeOnline || !!controlLoading}
-              onClick={() => sendControlCommand('skip_task', 'Skip')}
+              onClick={() =>
+                sendControlCommand(
+                  'skip_task',
+                  'Stop task',
+                  'Stop the current desktop task gracefully?'
+                )
+              }
             >
               <SkipForward className="h-4 w-4" />
-              Skip
+              Stop task
             </button>
             <button
               className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!bridgeOnline || !!controlLoading}
-              onClick={() => sendControlCommand('stop', 'Stop')}
+              onClick={() =>
+                sendControlCommand(
+                  'stop',
+                  'Force stop',
+                  'Force stop the current desktop task?'
+                )
+              }
             >
               <Ban className="h-4 w-4" />
-              Stop
+              Force stop
             </button>
             <button
               className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
@@ -415,7 +428,7 @@ export default function RemoteControlPage() {
               onClick={extendSession}
             >
               <Clock3 className="h-4 w-4" />
-              Extend
+              Extend link
             </button>
             <button
               className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
@@ -423,7 +436,7 @@ export default function RemoteControlPage() {
               onClick={revokeSession}
             >
               <ShieldX className="h-4 w-4" />
-              Revoke
+              Revoke link
             </button>
           </div>
         </header>

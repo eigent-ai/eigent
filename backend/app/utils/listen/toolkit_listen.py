@@ -15,8 +15,6 @@
 import asyncio
 import json
 import logging
-import queue
-import threading
 from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
@@ -30,6 +28,7 @@ from app.service.task import (
     get_task_lock,
     process_task,
 )
+from app.utils.event_loop_utils import _schedule_async_task
 
 logger = logging.getLogger("toolkit_listen")
 
@@ -192,63 +191,57 @@ def _filter_kwargs_for_callable(
 def _safe_put_queue(task_lock, data):
     """Safely put data to the queue, handling both sync and async contexts"""
     try:
-        # Try to get current event loop
-        asyncio.get_running_loop()
-
-        # We're in an async context, create a task
-        task = asyncio.create_task(task_lock.put_queue(data))
-
-        if hasattr(task_lock, "add_background_task"):
-            task_lock.add_background_task(task)
-
-        # Add done callback to handle any exceptions
-        def handle_task_result(t):
-            try:
-                t.result()
-            except Exception as e:
-                logger.error(f"[SAFE_PUT_QUEUE] Background task failed: {e}")
-
-        task.add_done_callback(handle_task_result)
-
-    except RuntimeError:
-        # No running event loop, run in a separate thread
         try:
-            result_queue = queue.Queue()
+            asyncio.get_running_loop()
+            has_running_loop = True
+        except RuntimeError:
+            has_running_loop = False
 
-            def run_in_thread():
+        scheduled = _schedule_async_task(task_lock.put_queue(data))
+        if scheduled is None:
+            logger.error(
+                "[SAFE_PUT_QUEUE] Failed to schedule queue event",
+                extra={"event_type": data.__class__.__name__},
+            )
+            return
+
+        if isinstance(scheduled, asyncio.Task):
+            if hasattr(task_lock, "add_background_task"):
+                task_lock.add_background_task(scheduled)
+
+            def handle_task_result(t):
                 try:
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        new_loop.run_until_complete(task_lock.put_queue(data))
-                        result_queue.put(("success", None))
-                    except Exception as e:
-                        logger.error(f"[SAFE_PUT_QUEUE] put_queue failed: {e}")
-                        result_queue.put(("error", e))
-                    finally:
-                        new_loop.close()
+                    t.result()
                 except Exception as e:
-                    logger.error(f"[SAFE_PUT_QUEUE] Thread failed: {e}")
-                    result_queue.put(("error", e))
-
-            thread = threading.Thread(target=run_in_thread, daemon=True)
-            thread.start()
-
-            # Wait briefly for completion
-            try:
-                status, error = result_queue.get(timeout=1.0)
-                if status == "error":
                     logger.error(
-                        f"[SAFE_PUT_QUEUE] Thread execution failed: {error}"
+                        f"[SAFE_PUT_QUEUE] Background task failed: {e}"
                     )
-            except queue.Empty:
-                logger.warning(
-                    f"[SAFE_PUT_QUEUE] Thread timeout after 1s "
-                    f"for {data.__class__.__name__}"
-                )
 
+            scheduled.add_done_callback(handle_task_result)
+            return
+
+        if has_running_loop:
+
+            def handle_threadsafe_result(t):
+                try:
+                    t.result()
+                except Exception as e:
+                    logger.error(f"[SAFE_PUT_QUEUE] put_queue failed: {e}")
+
+            scheduled.add_done_callback(handle_threadsafe_result)
+            return
+
+        try:
+            scheduled.result(timeout=1.0)
+        except TimeoutError:
+            logger.warning(
+                f"[SAFE_PUT_QUEUE] Thread-safe queue scheduling did not "
+                f"finish within 1s for {data.__class__.__name__}"
+            )
         except Exception as e:
-            logger.error(f"[SAFE_PUT_QUEUE] Failed to send data to queue: {e}")
+            logger.error(f"[SAFE_PUT_QUEUE] put_queue failed: {e}")
+    except Exception as e:
+        logger.error(f"[SAFE_PUT_QUEUE] Failed to send data to queue: {e}")
 
 
 def listen_toolkit(

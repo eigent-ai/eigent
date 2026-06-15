@@ -353,6 +353,14 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
     throw new Error('Failed to create local Project chat store');
   }
 
+  console.info('[RemoteControlBridge][RC-TRACE] startTask launching', {
+    command_id: command.id,
+    project_id: projectId,
+    next_task_id: nextTaskId,
+    session_mode: sessionMode,
+    history_id: historyId,
+  });
+
   const startPromise = chatStore
     .getState()
     .startTask(
@@ -373,7 +381,13 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
     );
 
   startPromise.catch((error: any) => {
-    console.error('[RemoteControlBridge] Failed to start remote task:', error);
+    // RC-TRACE: this failure is invisible to the remote web page because the
+    // command was already acked as acknowledged (fire-and-forget by design).
+    console.error(
+      '[RemoteControlBridge][RC-TRACE] startTask FAILED after ack:',
+      { command_id: command.id, next_task_id: nextTaskId },
+      error
+    );
   });
 }
 
@@ -449,6 +463,17 @@ async function executeRemoteCommand(
         'GET',
         `/chat/${projectId}/status`
       );
+      console.info(
+        '[RemoteControlBridge][RC-TRACE] user_message brain status',
+        {
+          command_id: command.id,
+          project_id: projectId,
+          has_lock: status?.has_lock,
+          lock_status: status?.status,
+          current_task_id: status?.current_task_id,
+          branch: status?.has_lock ? 'improve_queue' : 'start_local_task',
+        }
+      );
       if (status?.has_lock) {
         seedRemoteFollowUpPrompt(command);
         await requestBrain(command, token, 'POST', `/chat/${projectId}`, {
@@ -457,6 +482,10 @@ async function executeRemoteCommand(
           attaches: command.payload.attachments || [],
           target: command.payload.target,
         });
+        console.info(
+          '[RemoteControlBridge][RC-TRACE] improve request queued on brain',
+          { command_id: command.id, next_task_id: command.next_task_id }
+        );
       } else {
         await startLocalRemoteTask(command);
       }
@@ -730,6 +759,17 @@ export function useRemoteControlBridge(token: string | null | undefined) {
     const send = (payload: Record<string, unknown>) => {
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
+      } else {
+        // RC-TRACE: a delivered/ack frame silently dropped here means the
+        // server will see the command stuck in pending/delivered forever.
+        console.warn(
+          '[RemoteControlBridge][RC-TRACE] DROPPED outbound frame, ws not open',
+          {
+            readyState: ws?.readyState,
+            type: payload?.type,
+            command_id: (payload as any)?.command_id,
+          }
+        );
       }
     };
 
@@ -778,9 +818,21 @@ export function useRemoteControlBridge(token: string | null | undefined) {
     };
 
     const handleCommand = (command: RemoteCommand) => {
+      console.info('[RemoteControlBridge][RC-TRACE] command received', {
+        command_id: command.id,
+        type: command.type,
+        target_project_id: command.target_project_id,
+        target_task_id: command.target_task_id,
+        next_task_id: command.next_task_id,
+        active_project_id: useProjectStore.getState().activeProjectId,
+      });
       const cache = cacheRef.current;
       const existing = cache.get(command.id);
       if (existing?.state === 'done') {
+        console.info('[RemoteControlBridge][RC-TRACE] replaying cached ack', {
+          command_id: command.id,
+          status: existing.ack.status,
+        });
         sendAck({ ...existing.ack, replayed_from_cache: true });
         return;
       }
@@ -814,6 +866,12 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           completedAt: Date.now(),
         });
         trimCache(cache);
+        console.info('[RemoteControlBridge][RC-TRACE] sending ack', {
+          command_id: command.id,
+          status: ack.status,
+          error_code: ack.error_code,
+          error: ack.error,
+        });
         sendAck(ack);
       });
     };
@@ -826,6 +884,11 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         return;
       }
       ws = new WebSocket(url);
+      console.info('[RemoteControlBridge][RC-TRACE] connecting bridge ws', {
+        url,
+        desktop_instance_id: desktopInstanceId,
+        attempt: reconnectAttempt,
+      });
       ws.onopen = () => {
         reconnectAttempt = 0;
         send({
@@ -846,6 +909,10 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         try {
           const message = JSON.parse(event.data);
           if (message?.type === 'connected') {
+            console.info(
+              '[RemoteControlBridge][RC-TRACE] bridge registered on server',
+              { desktop_instance_id: desktopInstanceId }
+            );
             setRemoteControlBridgeConnected(true);
             return;
           }
@@ -875,7 +942,14 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           console.warn('[RemoteControlBridge] Invalid message', error);
         }
       };
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.warn('[RemoteControlBridge][RC-TRACE] bridge ws closed', {
+          code: event?.code,
+          reason: event?.reason,
+          wasClean: event?.wasClean,
+          stopped,
+          attempt: reconnectAttempt,
+        });
         setRemoteControlBridgeConnected(false);
         if (pingTimer) {
           window.clearInterval(pingTimer);
