@@ -221,6 +221,7 @@ def _safe_put_queue(task_lock, data):
             return
 
         if has_running_loop:
+
             def handle_threadsafe_result(t):
                 try:
                     t.result()

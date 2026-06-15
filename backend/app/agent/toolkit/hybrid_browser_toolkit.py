@@ -49,9 +49,7 @@ _global_tab_registry: dict[str, str] = {}
 _global_tab_registry_lock = asyncio.Lock()
 
 
-def _timeout_value_to_seconds(
-    value: Any, *, fallback_seconds: float
-) -> float:
+def _timeout_value_to_seconds(value: Any, *, fallback_seconds: float) -> float:
     if value is None:
         return fallback_seconds
     try:
@@ -311,7 +309,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             logger.debug(f"Command '{command}' completed successfully")
             return result
 
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             message = (
                 f"browser command '{command}' timed out after "
                 f"{self._command_timeout_seconds(command)}s"
@@ -355,7 +353,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         try:
             await asyncio.wait_for(lock.acquire(), timeout=lock_wait)
             acquired = True
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise RuntimeError(
                 "navigation lock busy; browser may be stuck "
                 f"(key={lock_key}, waited={lock_wait}s)"
@@ -682,9 +680,11 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         )
 
     def _should_prime_shared_cdp_tab(self) -> bool:
-        enabled = env(
-            "EIGENT_INTERIM_SHARED_BROWSER_TAB_ISOLATION", "true"
-        ).strip().lower()
+        enabled = (
+            env("EIGENT_INTERIM_SHARED_BROWSER_TAB_ISOLATION", "true")
+            .strip()
+            .lower()
+        )
         if enabled in {"0", "false", "no", "off"}:
             return False
         return bool(
@@ -701,11 +701,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             extra={"session_id": session_id, "sentinel_url": sentinel_url},
         )
         await self._ws_wrapper.visit_page(sentinel_url)
-        setattr(
-            self._ws_wrapper,
-            "_eigent_interim_shared_browser_primed",
-            True,
-        )
+        self._ws_wrapper._eigent_interim_shared_browser_primed = True
 
     async def _ensure_ws_wrapper(self):
         """Ensure WebSocket wrapper is initialized using connection pool."""
@@ -740,7 +736,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
                     bringup_lock.acquire(), timeout=bringup_wait
                 )
                 bringup_acquired = True
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 raise RuntimeError(
                     "browser bring-up lock busy; shared browser may be stuck "
                     f"(endpoint={cdp_url}, waited={bringup_wait}s)"
@@ -761,17 +757,16 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
                     f"WebSocket connection for session {session_id} is None after pool retrieval, recreating..."
                 )
                 await websocket_connection_pool.close_connection(session_id)
-                self._ws_wrapper = await websocket_connection_pool.get_connection(
-                    session_id, self._ws_config
+                self._ws_wrapper = (
+                    await websocket_connection_pool.get_connection(
+                        session_id, self._ws_config
+                    )
                 )
 
-            if (
-                should_prime
-                and not getattr(
-                    self._ws_wrapper,
-                    "_eigent_interim_shared_browser_primed",
-                    False,
-                )
+            if should_prime and not getattr(
+                self._ws_wrapper,
+                "_eigent_interim_shared_browser_primed",
+                False,
             ):
                 await self._prime_shared_cdp_tab(session_id)
         finally:

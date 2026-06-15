@@ -186,7 +186,7 @@ async def _prepare_browser_for_request_with_timeout(
             _prepare_browser_for_request(request, port),
             timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         chat_logger.warning(
             "Timed out preparing CDP browser",
             extra={"port": port, "timeout_seconds": timeout},

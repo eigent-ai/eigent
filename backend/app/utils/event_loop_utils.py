@@ -16,8 +16,9 @@ import asyncio
 import concurrent.futures
 import contextvars
 import logging
+from collections.abc import Coroutine
 from threading import Lock
-from typing import Any, Coroutine
+from typing import Any
 
 # Thread-safe reference to main event loop using contextvars
 # This ensures each request has its own event loop reference, avoiding race conditions
