@@ -121,14 +121,14 @@ export function ProjectNavListRows({
           <div key={project.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item h-8 min-w-0 rounded-xl pl-3 pr-3 relative flex w-full items-center overflow-hidden',
+                'group/session-item h-8 min-w-0 rounded-lg pl-3 pr-3 relative flex w-full items-center overflow-hidden',
                 'transition-colors duration-150',
                 active
                   ? panelListHover
-                    ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
-                    : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                    ? 'bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-default'
+                    : 'bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-default'
                   : !panelListHover
-                    ? 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
+                    ? 'hover:bg-ds-bg-neutral-default-default bg-transparent'
                     : 'hover:bg-ds-bg-neutral-default-default bg-transparent'
               )}
             >
@@ -138,7 +138,7 @@ export function ProjectNavListRows({
                 onClick={() => onProjectClick?.(project.id)}
                 className={cn(
                   'no-drag min-h-0 min-w-0 gap-3 px-0 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                  'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                  'focus-visible:ring-ds-ring-neutral-default-default focus-visible:ring-2 focus-visible:outline-none'
                 )}
               >
                 <LeadIcon className={leadClassName} aria-hidden />
