@@ -2617,6 +2617,7 @@ const setupWindowEventListeners = () => {
 // ==================== devtools shortcuts ====================
 const setupDevToolsShortcuts = () => {
   if (!win) return;
+  if (app.isPackaged) return;
 
   const toggleDevTools = () => win?.webContents.toggleDevTools();
 
