@@ -169,7 +169,7 @@ export default function WorkspacePage() {
     return { min, max };
   }, [sidebarPct.min, sidebarPct.max]);
 
-  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks a 40px sidebar. */
+  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks the rail-width sidebar. */
   const mainPanelMaxSize = useMemo(() => {
     if (projectSidebarFolded) {
       return Math.min(99, 100 - sidebarPct.rail);
@@ -755,7 +755,7 @@ export default function WorkspacePage() {
       <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
         <div
           ref={shellPanelGroupRef}
-          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-default-default h-full w-full flex-1"
+          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-subtle-default h-full w-full flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
@@ -769,14 +769,14 @@ export default function WorkspacePage() {
               defaultSize={24}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 pl-1"
+              className="min-h-0 min-w-0 pl-1 py-1"
             >
               <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-1 after:bg-ds-bg-neutral-default-default shrink-0 bg-transparent after:transition-colors',
-                'hover:after:bg-ds-bg-brand-default-focus transition-colors',
+                'after:bg-ds-bg-neutral-default-default w-[2px] shrink-0 bg-transparent after:transition-all',
+                'hover:bg-ds-bg-brand-subtle-default transition-all',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />

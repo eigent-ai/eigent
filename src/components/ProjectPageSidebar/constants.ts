@@ -23,10 +23,11 @@ export const PROJECT_SIDEBAR_FOLD_SPRING: Transition = {
 };
 
 /**
- * Icon rail width: `px-3` horizontal padding (12+12) + 16px icon = 40px.
- * Matches workspace tab leading column (`NavTab` / `workspaceTabButtonClass`).
+ * Icon rail width: outer `aside` padding (`p-1`, 4+4) + tab `px-3` padding
+ * (12+12) + 16px icon = 48px. Keeps the folded leading icon in the same
+ * position as the expanded `NavTab` / `workspaceTabButtonClass` column.
  */
-export const PROJECT_SIDEBAR_RAIL_WIDTH_PX = 40;
+export const PROJECT_SIDEBAR_RAIL_WIDTH_PX = 48;
 
 /** Radix tooltip content: cap width so long labels (e.g. session titles) wrap. */
 export const SIDEBAR_TOOLTIP_CONTENT_CLASS =

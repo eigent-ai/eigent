@@ -866,13 +866,13 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 py-1.5 box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'min-h-0 min-w-0 p-1 bg-ds-bg-neutral-default-default rounded-2xl box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
           className
         )}
       >
         <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
           <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-2 flex w-full shrink-0 flex-col">
+            <div className="gap-1 flex w-full shrink-0 flex-col">
               <SpaceSwitchDropdown
                 triggerTooltip="Spaces"
                 triggerTooltipEnabled={projectSidebarFolded}
@@ -915,7 +915,7 @@ export default function ProjectPageSidebar({
                 onSpaceSelect={handleSpaceSelect}
               />
 
-              <div className="min-w-0 gap-2 flex w-full flex-col">
+              <div className="min-w-0 gap-1 flex w-full flex-col">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
