@@ -452,6 +452,7 @@
   "dispatch-copy-link": "Copy link",
   "dispatch-link-copied": "Link copied",
   "dispatch-copy-failed": "Failed to copy link",
+  "dispatch-revoke-link": "Revoke link",
   "dispatch-coming-soon": "Coming soon",
   "workspace-start-from-scratch": "Start from scratch",
   "workspace-project-submenu": "Project",

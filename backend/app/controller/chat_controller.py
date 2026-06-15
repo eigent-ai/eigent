@@ -69,6 +69,7 @@ from app.utils.cdp_browser_state import (
     clear_connected_cdp_browser_for_request,
     get_connected_cdp_endpoint_for_request,
 )
+from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
 
@@ -166,6 +167,37 @@ async def _prepare_browser_for_request(
     return False
 
 
+def _browser_prepare_timeout_seconds() -> float:
+    raw = env("BROWSER_PREPARE_TIMEOUT_SECONDS", "8")
+    try:
+        timeout = float(raw)
+    except (TypeError, ValueError):
+        return 8.0
+    return timeout if timeout > 0 else 8.0
+
+
+async def _prepare_browser_for_request_with_timeout(
+    request: Request | None,
+    port: int,
+) -> bool:
+    timeout = _browser_prepare_timeout_seconds()
+    try:
+        return await asyncio.wait_for(
+            _prepare_browser_for_request(request, port),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        chat_logger.warning(
+            "Timed out preparing CDP browser",
+            extra={"port": port, "timeout_seconds": timeout},
+        )
+        if request is not None:
+            request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = port
+        return False
+
+
 def _build_run_context(
     data: Chat,
     frozen_dirs,
@@ -201,6 +233,14 @@ def _build_run_context(
         extra_env={
             "baseSnapshotId": frozen_dirs.base_snapshot_id or "",
         },
+    )
+
+
+def _queue_action_from_worker(task_lock, action, description: str) -> None:
+    schedule_async_task_from_worker(
+        task_lock.put_queue(action),
+        timeout=5.0,
+        description=description,
     )
 
 
@@ -388,7 +428,9 @@ async def start_chat_stream(data: Chat, request: Request):
     # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
     # through RemoteHands or launch a local browser when available.
     if not data.cdp_browsers:
-        await _prepare_browser_for_request(request, data.browser_port)
+        await _prepare_browser_for_request_with_timeout(
+            request, data.browser_port
+        )
 
     camel_log = _camel_log_dir(
         data.email,
@@ -467,7 +509,7 @@ async def post(data: Chat, request: Request):
 
 
 @router.get("/chat/{project_id}/status", name="get chat status")
-def status(project_id: str):
+async def status(project_id: str):
     task_lock = get_task_lock_if_exists(project_id)
     if task_lock is None:
         return {
@@ -485,7 +527,7 @@ def status(project_id: str):
 
 
 @router.post("/chat/{id}", name="improve chat")
-def improve(id: str, data: SupplementChat, request: Request):
+async def improve(id: str, data: SupplementChat, request: Request):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -500,7 +542,7 @@ def improve(id: str, data: SupplementChat, request: Request):
         if isinstance(current_context, RunContext)
         else int(env("browser_port", "9222"))
     )
-    asyncio.run(_prepare_browser_for_request(request, port))
+    await _prepare_browser_for_request_with_timeout(request, port)
 
     # Allow continuing conversation even after task is done
     # This supports multi-turn conversation after complex task completion
@@ -537,7 +579,8 @@ def improve(id: str, data: SupplementChat, request: Request):
             # the file_save_path
             if current_email and id:
                 resolver = get_workspace_resolver()
-                frozen_dirs = resolver.freeze_task_directories_for(
+                frozen_dirs = await asyncio.to_thread(
+                    resolver.freeze_task_directories_for,
                     space_id=getattr(task_lock, "space_id", id),
                     project_id=id,
                     task_id=data.task_id,
@@ -546,8 +589,10 @@ def improve(id: str, data: SupplementChat, request: Request):
                     user_id=getattr(task_lock, "user_id", None),
                 )
                 try:
-                    resolver.write_task_snapshot(
-                        current_email, frozen_dirs.snapshot
+                    await asyncio.to_thread(
+                        resolver.write_task_snapshot,
+                        current_email,
+                        frozen_dirs.snapshot,
                     )
                 except Exception:
                     chat_logger.warning(
@@ -562,7 +607,9 @@ def improve(id: str, data: SupplementChat, request: Request):
                     data.task_id,
                     getattr(task_lock, "user_id", None),
                 )
-                camel_log.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(
+                    camel_log.mkdir, parents=True, exist_ok=True
+                )
                 current_context = getattr(task_lock, "run_context", None)
                 if isinstance(current_context, RunContext):
                     updated_context = replace(
@@ -580,7 +627,9 @@ def improve(id: str, data: SupplementChat, request: Request):
                             request.state, "cdp_url", current_context.cdp_url
                         ),
                     )
-                    apply_run_env_for_third_party(updated_context)
+                    await asyncio.to_thread(
+                        apply_run_env_for_third_party, updated_context
+                    )
                     task_lock.run_context = updated_context
                 chat_logger.info(
                     f"Updated file_save_path to: {new_folder_path}"
@@ -630,7 +679,8 @@ def improve(id: str, data: SupplementChat, request: Request):
         and refreshed_context.run_id == data.task_id
     )
     if rotation_succeeded:
-        get_memory_service().on_run_start(
+        await asyncio.to_thread(
+            get_memory_service().on_run_start,
             run_context=refreshed_context,
             space_name=None,
             project_name=None,
@@ -661,16 +711,14 @@ def improve(id: str, data: SupplementChat, request: Request):
             },
         )
 
-    asyncio.run(
-        task_lock.put_queue(
-            ActionImproveData(
-                data=ImprovePayload(
-                    question=data.question,
-                    attaches=data.attaches or [],
-                    project_context=data.project_context,
-                ),
-                new_task_id=data.task_id,
-            )
+    await task_lock.put_queue(
+        ActionImproveData(
+            data=ImprovePayload(
+                question=data.question,
+                attaches=data.attaches or [],
+                project_context=data.project_context,
+            ),
+            new_task_id=data.task_id,
         )
     )
     chat_logger.info(
@@ -686,13 +734,17 @@ def supplement(id: str, data: SupplementChat):
     task_lock = get_task_lock(id)
     if task_lock.status != Status.done:
         raise UserException(code.error, "Please wait task done")
-    asyncio.run(task_lock.put_queue(ActionSupplementData(data=data)))
+    _queue_action_from_worker(
+        task_lock,
+        ActionSupplementData(data=data),
+        "supplement task queue action",
+    )
     chat_logger.debug("Supplement data queued", extra={"task_id": id})
     return Response(status_code=201)
 
 
 @router.delete("/chat/{id}", name="stop chat")
-def stop(id: str):
+async def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
     chat_logger.info(
@@ -713,9 +765,7 @@ def stop(id: str):
             " to task_lock queue"
         )
         try:
-            asyncio.run(
-                task_lock.put_queue(ActionStopData(action=Action.stop))
-            )
+            await task_lock.put_queue(ActionStopData(action=Action.stop))
             chat_logger.info(
                 "[STOP-BUTTON] ActionStopData queued"
                 " successfully, this will trigger"
@@ -735,14 +785,14 @@ def stop(id: str):
 
 
 @router.post("/chat/{id}/human-reply")
-def human_reply(id: str, data: HumanReply):
+async def human_reply(id: str, data: HumanReply):
     chat_logger.info(
         "Human reply received",
         extra={"task_id": id, "reply_length": len(data.reply)},
     )
     task_lock = get_task_lock(id)
     try:
-        asyncio.run(task_lock.put_human_input(data.agent, data.reply))
+        await task_lock.put_human_input(data.agent, data.reply)
     except KeyError as exc:
         chat_logger.warning(
             "Human reply target is no longer waiting for input",
@@ -766,10 +816,10 @@ def install_mcp(id: str, data: McpServers):
         },
     )
     task_lock = get_task_lock(id)
-    asyncio.run(
-        task_lock.put_queue(
-            ActionInstallMcpData(action=Action.install_mcp, data=data)
-        )
+    _queue_action_from_worker(
+        task_lock,
+        ActionInstallMcpData(action=Action.install_mcp, data=data),
+        "install MCP queue action",
     )
     chat_logger.info("MCP installation queued", extra={"task_id": id})
     return Response(status_code=201)
@@ -794,7 +844,11 @@ def add_task(id: str, data: AddTaskRequest):
             additional_info=data.additional_info,
             insert_position=data.insert_position,
         )
-        asyncio.run(task_lock.put_queue(add_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            add_task_action,
+            "add task queue action",
+        )
         return Response(status_code=201)
 
     except Exception as e:
@@ -818,7 +872,11 @@ def remove_task(project_id: str, task_id: str):
         remove_task_action = ActionRemoveTaskData(
             task_id=task_id, project_id=project_id
         )
-        asyncio.run(task_lock.put_queue(remove_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            remove_task_action,
+            "remove task queue action",
+        )
 
         chat_logger.info(
             "Task removal request queued for"
@@ -879,7 +937,11 @@ def skip_task(project_id: str):
             " (preserves context,"
             " marks as done)"
         )
-        asyncio.run(task_lock.put_queue(skip_task_action))
+        _queue_action_from_worker(
+            task_lock,
+            skip_task_action,
+            "skip task queue action",
+        )
 
         chat_logger.info(
             "[STOP-BUTTON] Skip request"
