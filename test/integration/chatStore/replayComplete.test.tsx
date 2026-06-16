@@ -26,7 +26,11 @@ import '../../mocks/sse.mock';
 import '../../../src/store/chatStore';
 
 import useChatStoreAdapter from '../../../src/hooks/useChatStoreAdapter';
-import { replayActiveTask, replayProject } from '../../../src/lib';
+import {
+  loadProjectFromHistory,
+  replayActiveTask,
+  replayProject,
+} from '../../../src/lib';
 import { useProjectStore } from '../../../src/store/projectStore';
 import {
   createSSESequence,
@@ -972,5 +976,172 @@ describe('Issue #619 - Duplicate Task Boxes after replay', () => {
 
     // Verify navigation was called for replay
     expect(mockNavigate).toHaveBeenCalledWith('/');
+  });
+
+  it('should replay the active task question instead of the earliest project question', async () => {
+    const { result, rerender } = renderHook(() => useChatStoreAdapter());
+
+    const firstQuestion = 'First task question';
+    const secondQuestion = 'Second task question';
+    const projectId = result.current.projectStore.activeProjectId as string;
+
+    const replaySequence = createSSESequence([
+      {
+        event: {
+          step: 'confirmed',
+          data: { question: 'Server replay fallback' },
+        },
+        delay: 50,
+      },
+      {
+        event: {
+          step: 'end',
+          data: '--- Replay complete ---',
+        },
+        delay: 100,
+      },
+    ]);
+
+    mockFetchEventSource.mockImplementation(
+      async (url: string, options: any) => {
+        if (!options.onmessage) return;
+
+        if (url.includes('/api/chat/steps/playback/')) {
+          await replaySequence(options.onmessage);
+        }
+      }
+    );
+
+    await act(async () => {
+      const { chatStore, projectStore } = result.current;
+
+      chatStore.addMessages(chatStore.activeTaskId, {
+        id: generateUniqueId(),
+        role: 'user',
+        content: firstQuestion,
+      });
+      chatStore.setHasMessages(chatStore.activeTaskId, true);
+
+      const secondChatResult = projectStore.appendInitChatStore(
+        projectId,
+        undefined,
+        'Second'
+      );
+      expect(secondChatResult).not.toBeNull();
+
+      const { taskId: secondTaskId, chatStore: secondChatStore } =
+        secondChatResult!;
+
+      secondChatStore.getState().addMessages(secondTaskId, {
+        id: generateUniqueId(),
+        role: 'user',
+        content: secondQuestion,
+      });
+      secondChatStore.getState().setHasMessages(secondTaskId, true);
+      projectStore.setActiveChatStore(projectId, Object.keys(
+        projectStore.getProjectById(projectId)!.chatStores
+      ).at(-1)!);
+
+      rerender();
+    });
+
+    const chatStores = result.current.projectStore.getAllChatStores(projectId);
+    const secondChatStore = chatStores[chatStores.length - 1].chatStore;
+
+    await act(async () => {
+      await replayActiveTask(
+        secondChatStore!.getState() as any,
+        result.current.projectStore,
+        mockNavigate
+      );
+      rerender();
+    });
+
+    await waitFor(() => {
+      rerender();
+      const projects = result.current.projectStore.getAllProjects();
+      const replayProject = projects.find((project: any) =>
+        project.name.includes(`Replay Project ${secondQuestion}`)
+      );
+
+      expect(replayProject).toBeDefined();
+
+      const replayChatStores = result.current.projectStore.getAllChatStores(
+        replayProject!.id
+      );
+      const replayChatStore = replayChatStores[1].chatStore;
+      const replayTaskId = replayChatStore.getState().activeTaskId;
+      const replayTask = replayChatStore.getState().tasks[replayTaskId];
+
+      expect(replayTask.messages[0].content).toBe(secondQuestion);
+      expect(replayTask.messages[0].content).not.toBe(firstQuestion);
+    });
+  });
+
+  it('should preserve per-task questions when loading multi-task history', async () => {
+    const { result, rerender } = renderHook(() => useChatStoreAdapter());
+
+    const firstQuestion = 'History task one';
+    const secondQuestion = 'History task two';
+
+    mockFetchEventSource.mockImplementation(
+      async (_url: string, options: any) => {
+        if (!options.onmessage) return;
+
+        const sequence = createSSESequence([
+          {
+            event: {
+              step: 'confirmed',
+              data: { question: 'History confirmed' },
+            },
+            delay: 10,
+          },
+          {
+            event: {
+              step: 'end',
+              data: '--- History load complete ---',
+            },
+            delay: 20,
+          },
+        ]);
+
+        await sequence(options.onmessage);
+      }
+    );
+
+    await act(async () => {
+      await loadProjectFromHistory(
+        result.current.projectStore,
+        mockNavigate,
+        'history-project',
+        firstQuestion,
+        'history-id',
+        ['history-task-1', 'history-task-2'],
+        'Loaded Project',
+        {
+          'history-task-1': firstQuestion,
+          'history-task-2': secondQuestion,
+        }
+      );
+      rerender();
+    });
+
+    await waitFor(() => {
+      rerender();
+      const chatStores = result.current.projectStore.getAllChatStores(
+        'history-project'
+      );
+
+      expect(chatStores).toHaveLength(3);
+
+      const prompts = chatStores.slice(1).map(({ chatStore }) => {
+        const activeTaskId = chatStore.getState().activeTaskId;
+        return chatStore.getState().tasks[activeTaskId].messages[0].content;
+      });
+
+      expect(prompts).toEqual([firstQuestion, secondQuestion]);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/' });
   });
 });

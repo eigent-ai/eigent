@@ -134,6 +134,11 @@ export default function ProjectGroup({
         const taskIdsList = project.tasks
           ?.map((t) => t.task_id)
           .filter(Boolean) || [project.project_id];
+        const taskQuestions = Object.fromEntries(
+          (project.tasks || [])
+            .filter((task) => task.task_id && task.question)
+            .map((task) => [task.task_id, task.question])
+        );
 
         setIsLoadingProject(true);
         try {
@@ -144,7 +149,8 @@ export default function ProjectGroup({
             question,
             historyId,
             taskIdsList,
-            project.project_name
+            project.project_name,
+            taskQuestions
           );
         } catch (error) {
           console.error('Failed to load project:', error);

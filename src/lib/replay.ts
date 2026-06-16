@@ -16,6 +16,29 @@ import { ChatStore } from '@/store/chatStore';
 import { ProjectStore } from '@/store/projectStore';
 import { NavigateFunction } from 'react-router-dom';
 
+const getTaskQuestion = (task: ChatStore['tasks'][string] | undefined) => {
+  if (!task?.messages?.length) {
+    return '';
+  }
+
+  const firstUserMessage = task.messages.find((message) => {
+    return (
+      message.role === 'user' &&
+      typeof message.content === 'string' &&
+      message.content.trim().length > 0
+    );
+  });
+
+  if (firstUserMessage?.content) {
+    return firstUserMessage.content.trim();
+  }
+
+  const firstMessage = task.messages[0];
+  return typeof firstMessage?.content === 'string'
+    ? firstMessage.content.trim()
+    : '';
+};
+
 /**
  * Load project from history with final state (no animation).
  * Waits for loading to complete before navigating.
@@ -28,6 +51,8 @@ import { NavigateFunction } from 'react-router-dom';
  * @param historyId - The history ID
  * @param taskIdsList - Optional list of task IDs (defaults to [projectId])
  * @param projectName - Optional project display name
+ * @param taskQuestions - Optional taskId-to-question map used to preserve
+ * each task's original prompt when loading multi-task projects from history
  */
 export const loadProjectFromHistory = async (
   projectStore: ProjectStore,
@@ -36,7 +61,8 @@ export const loadProjectFromHistory = async (
   question: string,
   historyId: string,
   taskIdsList?: string[],
-  projectName?: string
+  projectName?: string,
+  taskQuestions?: Record<string, string>
 ) => {
   const taskIds = taskIdsList || [projectId];
   await projectStore.loadProjectFromHistory(
@@ -44,7 +70,8 @@ export const loadProjectFromHistory = async (
     question,
     projectId,
     historyId,
-    projectName
+    projectName,
+    taskQuestions
   );
   navigate({ pathname: '/' });
 };
@@ -94,48 +121,11 @@ export const replayActiveTask = async (
     return;
   }
 
-  // Extract the very first available question from all chat stores and tasks
-  let question = '';
-  let earliestTimestamp = Infinity;
+  let question = getTaskQuestion(chatStore.tasks[taskId]);
 
-  // Get the project data to access all chat stores
-  const project = projectStore.projects[projectId];
-  if (project && project.chatStores) {
-    Object.entries(project.chatStores).forEach(
-      ([chatStoreId, chatStoreData]: [string, any]) => {
-        const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
-        const chatState = chatStoreData.getState();
-
-        if (chatState.tasks) {
-          Object.values(chatState.tasks).forEach((task: any) => {
-            // Check messages for user content
-            if (task.messages && task.messages.length > 0) {
-              const userMessage = task.messages.find(
-                (msg: any) => msg.role === 'user'
-              );
-              if (
-                userMessage &&
-                userMessage.content &&
-                timestamp < earliestTimestamp
-              ) {
-                question = userMessage.content.trim();
-                earliestTimestamp = timestamp;
-              }
-            }
-          });
-        }
-      }
-    );
-  }
-
-  // Fallback to current task's first message if no question found
-  if (
-    !question &&
-    chatStore.tasks[taskId] &&
-    chatStore.tasks[taskId].messages[0]
-  ) {
-    question = chatStore.tasks[taskId].messages[0].content;
-    console.log('[REPLAY] question fall back to ', question);
+  if (!question) {
+    console.log('[REPLAY] No user question found on active task, using fallback');
+    question = chatStore.tasks[taskId]?.messages?.[0]?.content || '';
   }
 
   const historyId = projectStore.getHistoryId(projectId);
