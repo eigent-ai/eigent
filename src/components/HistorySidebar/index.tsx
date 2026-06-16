@@ -146,6 +146,9 @@ export default function HistorySidebar() {
     const taskIdsList = project?.tasks.map(
       (task: HistoryTask) => task.task_id
     ) || [projectId];
+    const taskQuestionsList = project?.tasks.map(
+      (task: HistoryTask) => task.question
+    );
 
     // If no tasks to replay, create an empty project
     if (!taskIdsList || taskIdsList.length === 0) {
@@ -165,7 +168,8 @@ export default function HistorySidebar() {
       question,
       historyId,
       taskIdsList,
-      project?.project_name
+      project?.project_name,
+      taskQuestionsList
     );
   };
 
