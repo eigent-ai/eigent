@@ -224,6 +224,7 @@ const CLOUD_MODEL_PLATFORM_MAP: Record<CloudModelType, CloudModelPlatform> = {
   'claude-sonnet-4-6': 'aws-bedrock-converse',
   'claude-opus-4-6': 'aws-bedrock-converse',
   'claude-opus-4-7': 'aws-bedrock-converse',
+  'claude-opus-4-8': 'aws-bedrock-converse',
   'gpt-5.4': 'azure',
   'gpt-5.5': 'azure',
   'gpt-5-mini': 'azure',

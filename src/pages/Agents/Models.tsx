@@ -589,6 +589,7 @@ export default function SettingModels() {
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
     { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
+    { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
     { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
     { id: 'minimax_m2_7', name: 'Minimax M2.7' },
   ];
@@ -1515,6 +1516,9 @@ export default function SettingModels() {
                   </SelectItem>
                   <SelectItem value="claude-opus-4-7">
                     {t('setting.claude-opus-4-7-name')}
+                  </SelectItem>
+                  <SelectItem value="claude-opus-4-8">
+                    {t('setting.claude-opus-4-8-name')}
                   </SelectItem>
                   <SelectItem value="deepseek-v4-pro">
                     {t('setting.deepseek-v4-pro-name')}
