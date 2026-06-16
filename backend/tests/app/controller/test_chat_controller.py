@@ -488,6 +488,10 @@ class TestChatControllerIntegration:
             ) as mock_step_solve,
             patch("app.controller.chat_controller.load_dotenv"),
             patch("app.controller.chat_controller.set_current_task_id"),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
+                new=AsyncMock(return_value=True),
+            ),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.home", return_value=MagicMock()),
         ):
