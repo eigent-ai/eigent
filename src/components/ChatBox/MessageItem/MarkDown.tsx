@@ -13,7 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useHost } from '@/host';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
+import { escapeHtml } from '@/lib/richText';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -58,37 +60,47 @@ export const MarkDown = memo(
     content,
     speed = 10,
     onTyping,
+    onMarkdownRenderComplete,
     enableTypewriter = true,
     contentBasePath,
   }: {
     content: string;
     speed?: number;
     onTyping?: () => void;
+    /** Fires once per stable `content` when full text is shown and markdown HTML has been applied (after typewriter catches up if enabled). */
+    onMarkdownRenderComplete?: () => void;
     enableTypewriter?: boolean;
     pTextSize?: string;
     olPadding?: string;
     /** Base directory for resolving relative image paths (e.g. markdown file's directory). */
     contentBasePath?: string | null;
   }) => {
+    const host = useHost();
+    const electronAPI = host?.electronAPI;
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const lastContentRef = useRef<string | null>(null);
+    /** Tracks how many characters have been typed so far — lets streaming
+     *  appends continue from the current position instead of restarting. */
+    const typingIndexRef = useRef(0);
     const typingCallbackRef = useRef(onTyping);
+    const renderCompleteRef = useRef(onMarkdownRenderComplete);
 
     useEffect(() => {
       typingCallbackRef.current = onTyping;
     }, [onTyping]);
 
+    useEffect(() => {
+      renderCompleteRef.current = onMarkdownRenderComplete;
+    }, [onMarkdownRenderComplete]);
+
     // Typewriter effect
     useEffect(() => {
-      if (lastContentRef.current === content) {
-        return;
-      }
-      lastContentRef.current = content;
-
       if (!enableTypewriter) {
+        lastContentRef.current = content;
+        typingIndexRef.current = content.length;
         setDisplayedContent(content);
         if (typingCallbackRef.current) {
           typingCallbackRef.current();
@@ -96,13 +108,28 @@ export const MarkDown = memo(
         return;
       }
 
-      setDisplayedContent('');
-      let index = 0;
+      if (lastContentRef.current === content) {
+        return;
+      }
+
+      const prevContent = lastContentRef.current ?? '';
+      lastContentRef.current = content;
+
+      // When content is a streaming append of the previous value, continue
+      // typing from the current position instead of restarting from zero.
+      // This prevents the displayed text from blanking out on every SSE chunk.
+      const isAppend = content.startsWith(prevContent);
+      if (!isAppend) {
+        setDisplayedContent('');
+        typingIndexRef.current = 0;
+      }
+      let index = isAppend ? typingIndexRef.current : 0;
 
       const timer = setInterval(() => {
         if (index < content.length) {
           setDisplayedContent(content.slice(0, index + 1));
           index++;
+          typingIndexRef.current = index;
         } else {
           clearInterval(timer);
           if (typingCallbackRef.current) {
@@ -130,8 +157,11 @@ export const MarkDown = memo(
             .join('\n')
             .trim();
           setHtml(
-            `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
+            `<pre class="bg-ds-bg-neutral-strong-default p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${escapeHtml(formattedHtml)}</code></pre>`
           );
+          if (displayedContent === content && renderCompleteRef.current) {
+            renderCompleteRef.current();
+          }
           return;
         }
 
@@ -152,6 +182,7 @@ export const MarkDown = memo(
             // Check if it's a relative path
             const isRelative =
               src &&
+              !src.includes('${') &&
               !src.startsWith('http://') &&
               !src.startsWith('https://') &&
               !src.startsWith('data:');
@@ -160,12 +191,9 @@ export const MarkDown = memo(
               try {
                 const resolvedPath = resolveRelativePath(contentBasePath, src);
 
-                if (
-                  typeof window !== 'undefined' &&
-                  window.electronAPI?.readFileAsDataUrl
-                ) {
+                if (electronAPI?.readFileAsDataUrl) {
                   const dataUrl =
-                    await window.electronAPI.readFileAsDataUrl(resolvedPath);
+                    await electronAPI.readFileAsDataUrl(resolvedPath);
 
                   // Add cursor-pointer class and data attributes for click handling
                   const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
@@ -174,7 +202,7 @@ export const MarkDown = memo(
                   // Fallback: show alt text or placeholder
                   const altMatch = fullTag.match(/alt=["']([^"']*)["']/);
                   const alt = altMatch ? altMatch[1] : 'image';
-                  const placeholder = `<span class="inline-block text-sm text-text-secondary">[${alt}]</span>`;
+                  const placeholder = `<span class="inline-block text-sm text-ds-text-neutral-muted-default">[${alt}]</span>`;
                   rawHtml = rawHtml.replace(fullTag, placeholder);
                 }
               } catch (error) {
@@ -192,13 +220,19 @@ export const MarkDown = memo(
           }
         }
 
-        // Sanitize HTML
-        const sanitized = DOMPurify.sanitize(rawHtml);
+        // Sanitize HTML — explicitly allow class so syntax-highlighted code
+        // blocks keep their language-* className after sanitization.
+        const sanitized = DOMPurify.sanitize(rawHtml, {
+          ADD_ATTR: ['class'],
+        });
         setHtml(sanitized);
+        if (displayedContent === content && renderCompleteRef.current) {
+          renderCompleteRef.current();
+        }
       };
 
       processMarkdown();
-    }, [displayedContent, contentBasePath]);
+    }, [displayedContent, content, contentBasePath, electronAPI]);
 
     // Add click handlers for images
     useEffect(() => {
@@ -238,14 +272,14 @@ export const MarkDown = memo(
         >
           <DialogContent
             size="lg"
-            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
+            className="p-2 flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center"
             showCloseButton
           >
             {previewImage && (
               <img
                 src={previewImage}
                 alt="Preview"
-                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
+                className="rounded h-auto max-h-[90vh] w-auto max-w-full object-contain"
               />
             )}
           </DialogContent>

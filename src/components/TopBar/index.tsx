@@ -12,448 +12,879 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  fetchDelete,
-  fetchPut,
-  proxyFetchDelete,
-  proxyFetchGet,
-} from '@/api/http';
-import defaultFolderIcon from '@/assets/Folder.svg';
-import giftWhiteIcon from '@/assets/gift-white.svg';
-import giftIcon from '@/assets/gift.svg';
-import EndNoticeDialog from '@/components/Dialog/EndNotice';
+import { proxyFetchGet } from '@/api/http';
+import giftWhiteIcon from '@/assets/custom/gift-white.svg';
+import giftIcon from '@/assets/custom/gift.svg';
+import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
+import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
+import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
+import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
+import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
+import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import AlertDialog from '@/components/ui/alertDialog';
+import { Blocks } from '@/components/ui/animate-ui/icons/blocks';
+import { Bot } from '@/components/ui/animate-ui/icons/bot';
+import { Compass } from '@/components/ui/animate-ui/icons/compass';
+import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
+import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
+import { Radio } from '@/components/ui/animate-ui/icons/radio';
+import { Settings as AnimateSettings } from '@/components/ui/animate-ui/icons/settings';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { SITE_URL } from '@/lib';
-import { share } from '@/lib/share';
+import { useHost } from '@/host';
+import {
+  createSpaceFromFolderPicker,
+  getFolderSpaceErrorMessage,
+} from '@/lib/createSpaceFromFolder';
+import {
+  buildTaskQuestionsById,
+  computeProjectFreshnessAnchor,
+} from '@/lib/replay';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
+import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import {
+  getActiveSpaceTriggerLabel,
+  getDefaultNewSpaceName,
+} from '@/lib/spaceLabel';
+import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useSidebarStore } from '@/store/sidebarStore';
-import { ChatTaskStatus } from '@/types/constants';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import {
-  ChevronDown,
-  ChevronLeft,
-  FileDown,
-  House,
+  getVisibleProjectMetasForSpace,
+  isDisposableBlankSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  ChevronsUpDown,
+  CircleHelp,
   Minus,
-  Plus,
-  Power,
+  PanelLeft,
+  PanelLeftClose,
   Settings,
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  NavigationType,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+} from 'react-router-dom';
 import { toast } from 'sonner';
+
+/** Tracks linear in-app history so back/forward buttons can enable/disable like a browser. */
+function useStackNavigationBounds() {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const seededRef = useRef(false);
+  const stackRef = useRef<string[]>([]);
+  const indexRef = useRef(0);
+  const [bounds, setBounds] = useState({
+    canGoBack: false,
+    canGoForward: false,
+  });
+
+  useEffect(() => {
+    const fullPath = `${location.pathname}${location.search}`;
+
+    if (!seededRef.current) {
+      seededRef.current = true;
+      stackRef.current = [fullPath];
+      indexRef.current = 0;
+      setBounds({ canGoBack: false, canGoForward: false });
+      return;
+    }
+
+    if (navigationType === NavigationType.Push) {
+      const stack = stackRef.current;
+      const idx = indexRef.current;
+      stackRef.current = [...stack.slice(0, idx + 1), fullPath];
+      indexRef.current = stackRef.current.length - 1;
+    } else if (navigationType === NavigationType.Replace) {
+      stackRef.current[indexRef.current] = fullPath;
+    } else {
+      const stack = stackRef.current;
+      let idx = indexRef.current;
+      if (idx > 0 && stack[idx - 1] === fullPath) {
+        indexRef.current = idx - 1;
+      } else if (idx < stack.length - 1 && stack[idx + 1] === fullPath) {
+        indexRef.current = idx + 1;
+      } else {
+        const found = stack.lastIndexOf(fullPath);
+        if (found !== -1) {
+          indexRef.current = found;
+        }
+      }
+    }
+
+    const i = indexRef.current;
+    const s = stackRef.current;
+    setBounds({
+      canGoBack: i > 0,
+      canGoForward: i < s.length - 1,
+    });
+  }, [location.pathname, location.search, navigationType]);
+
+  return bounds;
+}
+
+const topBarCrossfade = {
+  duration: 0.2,
+  ease: [0.4, 0, 0.2, 1] as const,
+};
+
+const HOME_NAV_HISTORY_MENU: {
+  id: HistoryTabId;
+  labelKey: string;
+  icon: ReactNode;
+}[] = [
+  { id: 'home', labelKey: 'layout.spaces', icon: <Blocks /> },
+  { id: 'agents', labelKey: 'layout.agents', icon: <Bot /> },
+  { id: 'channels', labelKey: 'layout.channels', icon: <Radio /> },
+  { id: 'connectors', labelKey: 'layout.connectors', icon: <Hammer /> },
+  { id: 'browser', labelKey: 'layout.browser', icon: <Compass /> },
+  { id: 'settings', labelKey: 'layout.settings', icon: <AnimateSettings /> },
+];
 
 function HeaderWin() {
   const { t } = useTranslation();
+  const host = useHost();
   const titlebarRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
-  const { toggle } = useSidebarStore();
-  const { chatPanelPosition, setChatPanelPosition } = usePageTabStore();
+  const { canGoBack } = useStackNavigationBounds();
+  const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
+  const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
+  const [renameSpaceValue, setRenameSpaceValue] = useState('');
+  const [renamingSpace, setRenamingSpace] = useState(false);
+  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
+  const projectStore = useProjectRuntimeStore();
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spacesById = useSpaceStore((s) => s.spaces);
+  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
+  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
+  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
+  const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
+  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
+  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
+  const toggleProjectSidebarFolded = usePageTabStore(
+    (s) => s.toggleProjectSidebarFolded
+  );
   const appearance = useAuthStore((state) => state.appearance);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
-  const [endProjectLoading, setEndProjectLoading] = useState(false);
+  const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
+  const [homeNavMenuOpen, setHomeNavMenuOpen] = useState(false);
+  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
+  const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
 
   useEffect(() => {
-    const p = window.electronAPI.getPlatform();
+    if (!host?.electronAPI?.getPlatform) return;
+    const p = host.electronAPI.getPlatform();
     setPlatform(p);
-  }, []);
-  const exportLog = async () => {
-    try {
-      const response = await window.electronAPI.exportLog();
+  }, [host]);
 
-      if (!response.success) {
-        alert(t('layout.export-cancelled') + response.error);
+  useEffect(() => {
+    const ipc = ipcRenderer;
+    if (!ipc) return;
+
+    const onUpdateCanAvailable = (
+      _event: Electron.IpcRendererEvent,
+      info: VersionInfo
+    ) => {
+      setPackageUpdateAvailable(Boolean(info.update));
+    };
+
+    const onUpdateDownloaded = () => {
+      setPackageUpdateAvailable(false);
+    };
+
+    ipc.on('update-can-available', onUpdateCanAvailable);
+    ipc.on('update-downloaded', onUpdateDownloaded);
+    void ipc.invoke('check-update');
+
+    return () => {
+      ipc.off('update-can-available', onUpdateCanAvailable);
+      ipc.off('update-downloaded', onUpdateDownloaded);
+    };
+  }, [ipcRenderer]);
+
+  const handleStartDownload = useCallback(() => {
+    void ipcRenderer?.invoke('start-download');
+  }, [ipcRenderer]);
+
+  const isHistoryRoute = useMemo(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/';
+    return path === '/history' || path.endsWith('/history');
+  }, [location.pathname]);
+
+  const isHomeRoute = location.pathname === '/';
+
+  const handleExitHistoryOrSettings = useCallback(() => {
+    if (canGoBack) {
+      navigate(-1);
+    } else {
+      setActiveWorkspaceTab('workforce');
+      navigate('/');
+    }
+  }, [canGoBack, navigate, setActiveWorkspaceTab]);
+
+  const activeSpaceTitle = useMemo(
+    () =>
+      getActiveSpaceTriggerLabel(
+        activeSpaceId ? spacesById[activeSpaceId]?.name : undefined,
+        t,
+        {
+          emptyLabelKey: activeSpaceId
+            ? 'layout.spaces-untitled'
+            : 'layout.spaces-select-space',
+        }
+      ),
+    [activeSpaceId, spacesById, t]
+  );
+
+  const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const canRenameActiveSpace = Boolean(
+    activeSpace &&
+    activeSpace.status === 'active' &&
+    activeSpace.sourceType !== 'legacy' &&
+    activeSpace.metadata?.legacy !== true
+  );
+
+  const activeSpaces = useMemo(
+    () =>
+      Object.values(spacesById)
+        .filter(
+          (space) =>
+            space.status !== 'archived' &&
+            !(
+              space.id === 'legacy_local' &&
+              activeSpaceId !== 'legacy_local' &&
+              getVisibleProjectMetasForSpace(projectsBySpaceId, space.id)
+                .length === 0
+            ) &&
+            (space.id === activeSpaceId ||
+              !isDisposableBlankSpace(space, projectsBySpaceId))
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [activeSpaceId, projectsBySpaceId, spacesById]
+  );
+
+  const openInviteCodeDialog = () => {
+    setInviteCodeDialogOpen(true);
+  };
+
+  const navigateToHistoryTab = useCallback(
+    (tab: HistoryTabId) => {
+      setHomeNavMenuOpen(false);
+      if (tab === 'home') {
+        // The Home/Spaces hub is a project-independent surface and may
+        // re-select the same project the user just left. Clearing
+        // activeProjectId routes through `setActiveProject(null)`, which
+        // runs the stale-eviction hook on the outgoing project. Without
+        // this, returning to a stale-marked project from the hub would
+        // short-circuit on `setActiveProject(id)`'s same-id no-op and
+        // keep serving the cached state for the rest of the session.
+        projectStore.setActiveProject(null);
+        navigate('/history?tab=home&section=spaces');
         return;
       }
-      if (response.savedPath) {
-        window.location.href =
-          'https://github.com/eigent-ai/eigent/issues/new/choose';
-        alert(t('layout.log-saved') + response.savedPath);
-      }
-    } catch (e: any) {
-      alert(t('layout.export-error') + e.message);
-    }
-  };
+      navigate(`/history?tab=${tab}`);
+    },
+    [navigate, projectStore]
+  );
 
-  // create new project handler reused by plus icon and label
-  const createNewProject = () => {
-    //Handles refocusing id & nonduplicate internally
-    projectStore.createProject('new project');
-    navigate('/');
-  };
-
-  const summaryTask =
-    chatStore?.tasks[chatStore?.activeTaskId as string]?.summaryTask;
-
-  const activeTaskTitle = useMemo(() => {
-    if (chatStore?.activeTaskId && summaryTask) {
-      return summaryTask.split('|')[0];
-    }
-    return t('layout.new-project');
-  }, [chatStore?.activeTaskId, summaryTask, t]);
-
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
-  const getReferFriendsLink = async () => {
-    try {
-      const res: any = await proxyFetchGet('/api/v1/user/invite_code');
-      if (res?.invite_code) {
-        const inviteLink = `${SITE_URL}/signup?invite_code=${res.invite_code}`;
-        await navigator.clipboard.writeText(inviteLink);
-        toast.success(t('layout.invitation-link-copied'));
-      } else {
-        toast.error(t('layout.failed-to-get-invite-code'));
-      }
-    } catch (error) {
-      console.error('Failed to get referral link:', error);
-      toast.error(t('layout.failed-to-get-invitation-link'));
-    }
-  };
-
-  //TODO: Mark ChatStore details as completed
-  const handleEndProject = async () => {
-    const taskId = chatStore.activeTaskId;
-    const projectId = projectStore.activeProjectId;
-
-    if (!taskId) {
-      toast.error(t('layout.no-active-project-to-end'));
-      return;
-    }
-
-    const historyId = projectId ? projectStore.getHistoryId(projectId) : null;
-
-    setEndProjectLoading(true);
-    try {
-      const task = chatStore.tasks[taskId];
-
-      // Stop the task if it's running
-      if (task && task.status === ChatTaskStatus.RUNNING) {
-        await fetchPut(`/task/${taskId}/take-control`, {
-          action: 'stop',
-        });
+  const ensureProjectLoaded = useCallback(
+    async (projectId: string) => {
+      if (projectStore.peekActiveChatStore(projectId)) {
+        return;
       }
 
-      // Stop Workforce
       try {
-        await fetchDelete(`/chat/${projectId}`);
-      } catch (error) {
-        console.log('Task may not exist on backend:', error);
-      }
-
-      // Delete from history using historyId
-      if (historyId && task.status !== ChatTaskStatus.FINISHED) {
-        try {
-          await proxyFetchDelete(`/api/v1/chat/history/${historyId}`);
-          // Remove from local store
-          chatStore.removeTask(taskId);
-        } catch (error) {
-          console.log('History may not exist:', error);
-        }
-      } else {
-        console.warn(
-          'No historyId found for project or task finished, skipping history deletion'
+        const historyProject = await proxyFetchGet(
+          `/api/v1/chat/histories/grouped/${projectId}`,
+          { include_tasks: true }
         );
+        const taskIdsList = (historyProject?.tasks ?? [])
+          .map((task: { task_id?: string | null }) => task.task_id)
+          .filter((taskId: string | null | undefined): taskId is string =>
+            Boolean(taskId)
+          );
+
+        if (taskIdsList.length === 0) {
+          projectStore.appendInitChatStore(projectId);
+          return;
+        }
+
+        projectStore.setProjectNavLead(
+          projectId,
+          getSessionNavLeadFromHistoryProject(historyProject)
+        );
+
+        const firstTask = historyProject.tasks[0];
+        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        await projectStore.loadProjectFromHistory(
+          taskIdsList,
+          firstTask?.question || historyProject.last_prompt || '',
+          projectId,
+          firstTask?.id != null ? String(firstTask.id) : undefined,
+          historyProject.project_name,
+          undefined,
+          taskQuestionsById,
+          computeProjectFreshnessAnchor(historyProject)
+        );
+      } catch (error) {
+        console.error(
+          `Failed to load Project ${projectId} from history:`,
+          error
+        );
+        if (!projectStore.peekActiveChatStore(projectId)) {
+          projectStore.appendInitChatStore(projectId);
+        }
       }
+    },
+    [projectStore]
+  );
 
-      // Create a completely new project instead of just a new task
-      // This ensures we start fresh without any residual state
-      projectStore.createProject('new project');
-
-      // Navigate to home with replace to force refresh
-      navigate('/', { replace: true });
-
-      toast.success(t('layout.project-ended-successfully'), {
-        closeButton: true,
+  const handleCreateBlankSpace = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceOnServer({
+        name: getDefaultNewSpaceName(t),
+        sourceType: 'blank',
+        setActive: false,
+        metadata: {
+          createdFrom: 'top_bar',
+          autoCreatedPlaceholder: true,
+        },
       });
+      await ensureScratchSpaceWorkspaceBinding({
+        email,
+        userId,
+        space: useSpaceStore.getState().getSpaceById(spaceId),
+      });
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
     } catch (error) {
-      console.error('Failed to end project:', error);
-      toast.error(t('layout.failed-to-end-project'), {
+      console.error('Failed to create Space:', error);
+      toast.error(t('layout.spaces-create-failed'), {
         closeButton: true,
       });
-    } finally {
-      setEndProjectLoading(false);
-      setEndDialogOpen(false);
     }
-  };
+  }, [
+    createSpaceOnServer,
+    email,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveSpace,
+    setActiveWorkspaceTab,
+    t,
+    userId,
+  ]);
 
-  const handleShare = async (taskId: string) => {
-    share(taskId);
-  };
+  const handleCreateSpaceFromFolder = useCallback(async () => {
+    try {
+      const spaceId = await createSpaceFromFolderPicker({
+        host,
+        email,
+        userId,
+        activeSpaceId,
+        projectStore,
+        createdFrom: 'top_bar_space_selector',
+      });
+      if (!spaceId) return;
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
+    } catch (error) {
+      console.warn('[TopBar] Failed to create folder Space:', error);
+      toast.error(getFolderSpaceErrorMessage(error, t), {
+        closeButton: true,
+      });
+    }
+  }, [
+    activeSpaceId,
+    email,
+    host,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveWorkspaceTab,
+    t,
+    userId,
+  ]);
 
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
+  const handleTopBarSpaceSelect = useCallback(
+    async (spaceId: string) => {
+      setSwitchingSpaceId(spaceId);
+      try {
+        const resolvedSpaceId = await resolveServerBackedSpaceId(
+          projectStore,
+          spaceId
+        );
+        const spaceStore = useSpaceStore.getState();
+        if (
+          resolvedSpaceId.startsWith('legacy_') ||
+          spaceStore.shouldSyncProjects(resolvedSpaceId)
+        ) {
+          await spaceStore.syncProjectsFromServer(resolvedSpaceId);
+        }
+        const projectsInSpace = useSpaceStore
+          .getState()
+          .getProjectsForSpace(resolvedSpaceId);
+        setActiveSpace(resolvedSpaceId);
+        if (projectsInSpace.length > 0) {
+          const lastVisitedProjectId =
+            spaceStore.lastVisitedProjectBySpace[resolvedSpaceId];
+          const targetProject =
+            projectsInSpace.find(
+              (project) => project.id === lastVisitedProjectId
+            ) ?? projectsInSpace[0];
+          projectStore.setActiveProject(targetProject.id);
+          await ensureProjectLoaded(targetProject.id);
+        } else {
+          projectStore.setActiveProject(null);
+        }
+        setActiveWorkspaceTab('workforce');
+        requestWorkspaceChatFocus();
+      } catch (error) {
+        console.error('Failed to switch Space:', error);
+        toast.error(t('layout.spaces-create-failed'), {
+          closeButton: true,
+        });
+      } finally {
+        setSwitchingSpaceId(null);
+      }
+    },
+    [
+      ensureProjectLoaded,
+      projectStore,
+      requestWorkspaceChatFocus,
+      setActiveSpace,
+      setActiveWorkspaceTab,
+      t,
+    ]
+  );
+
+  const openRenameSpaceDialog = useCallback(() => {
+    if (!canRenameActiveSpace || !activeSpace) return;
+    setRenameSpaceValue(activeSpace.name?.trim() || '');
+    setRenameSpaceDialogOpen(true);
+  }, [activeSpace, canRenameActiveSpace]);
+
+  const handleRenameSpace = useCallback(async () => {
+    const nextName = renameSpaceValue.trim();
+    if (!activeSpaceId || !nextName || renamingSpace) return;
+    setRenamingSpace(true);
+    try {
+      await renameSpaceOnServer(activeSpaceId, nextName);
+      toast.success(t('layout.spaces-rename-success'));
+      setRenameSpaceDialogOpen(false);
+    } catch (error) {
+      console.warn('[TopBar] Failed to rename Space:', error);
+      toast.error(t('layout.spaces-rename-failed'));
+    } finally {
+      setRenamingSpace(false);
+    }
+  }, [activeSpaceId, renameSpaceOnServer, renameSpaceValue, renamingSpace, t]);
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 ${
-        platform === 'darwin' ? 'pl-16' : 'pl-2'
+      className={`drag left-0 right-0 top-0 !h-10 min-w-0 py-1 absolute z-50 flex items-center ${
+        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
     >
-      {/* left */}
-      <div
-        className={`no-drag ml-2 mt-[1.5px] flex items-center justify-center gap-1 ${platform === 'darwin' ? 'w-8' : 'w-auto pr-4'}`}
+      <AlertDialog
+        isOpen={renameSpaceDialogOpen}
+        onClose={() => setRenameSpaceDialogOpen(false)}
+        onConfirm={() => void handleRenameSpace()}
+        title={t('layout.spaces-rename-title')}
+        confirmText={t('layout.save')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmDisabled={!renameSpaceValue.trim() || renamingSpace}
       >
-        <img src={defaultFolderIcon} alt="folder-icon" className="h-6 w-6" />
-        {platform !== 'darwin' && (
-          <span className="whitespace-nowrap text-label-md font-bold text-text-heading">
-            Eigent
-          </span>
-        )}
-      </div>
-
-      {/* center */}
-      <div className="drag flex h-full flex-1 items-center justify-between pr-2">
-        <div className="relative z-50 flex h-full items-center">
-          {location.pathname === '/history' && (
-            <div className="mr-1 flex items-center">
-              <Button
-                variant="ghost"
-                size="xs"
-                className="no-drag rounded-full"
-                onClick={() => navigate('/')}
-              >
-                <ChevronLeft className="h-4 w-4 text-text-label" />
-              </Button>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
-            <div className="flex items-center">
-              <TooltipSimple
-                content={t('layout.home')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={() => navigate('/history')}
-                >
-                  <House className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.new-project')}
-                side="bottom"
-                align="center"
-              >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag rounded-full"
-                  onClick={createNewProject}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipSimple>
-            </div>
-          )}
-          {location.pathname !== '/history' && (
-            <>
-              {activeTaskTitle === t('layout.new-project') ? (
-                <TooltipSimple
-                  content={t('layout.new-project')}
-                  side="bottom"
-                  align="center"
-                >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    className="no-drag rounded-full text-base font-bold"
-                    onClick={toggle}
-                    size="sm"
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {t('layout.new-project')}
-                    </span>
-                    <ChevronDown />
-                  </Button>
-                </TooltipSimple>
-              ) : (
-                <TooltipSimple
-                  content={activeTaskTitle}
-                  side="bottom"
-                  align="center"
-                >
-                  <Button
-                    id="active-task-title-btn"
-                    variant="ghost"
-                    size="sm"
-                    className="no-drag text-base font-bold"
-                    onClick={toggle}
-                  >
-                    <span className="inline-block max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap align-middle">
-                      {activeTaskTitle}
-                    </span>
-                    <ChevronDown />
-                  </Button>
-                </TooltipSimple>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* right */}
-        {location.pathname !== '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
+        <Input
+          autoFocus
+          value={renameSpaceValue}
+          placeholder={t('layout.spaces-rename-placeholder')}
+          onChange={(event) => setRenameSpaceValue(event.target.value)}
+          onEnter={() => {
+            if (renameSpaceValue.trim() && !renamingSpace) {
+              void handleRenameSpace();
+            }
+          }}
+        />
+      </AlertDialog>
+      {/* Leading: home ↔ dashboard / new Space */}
+      <div className="no-drag flex shrink-0 items-center justify-center">
+        {isHistoryRoute ? (
+          <TooltipSimple
+            content={t('layout.back', { defaultValue: 'Back' })}
+            side="bottom"
+            align="center"
           >
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] &&
-              ((chatStore.tasks[chatStore.activeTaskId as string]?.messages
-                ?.length || 0) > 0 ||
-                chatStore.tasks[chatStore.activeTaskId as string]
-                  ?.hasMessages ||
-                chatStore.tasks[chatStore.activeTaskId as string]?.status !==
-                  ChatTaskStatus.PENDING) && (
-                <TooltipSimple
-                  content={t('layout.end-project')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() => setEndDialogOpen(true)}
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag justify-center rounded-full bg-surface-cuation !text-text-cuation"
-                  >
-                    <Power />
-                    {t('layout.end-project')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string]?.status ===
-                ChatTaskStatus.FINISHED && (
-                <TooltipSimple
-                  content={t('layout.share')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={() =>
-                      handleShare(chatStore.activeTaskId as string)
-                    }
-                    variant="ghost"
-                    size="xs"
-                    className="no-drag rounded-full bg-surface-information !text-text-information"
-                  >
-                    {t('layout.share')}
-                  </Button>
-                </TooltipSimple>
-              )}
-            {chatStore.activeTaskId &&
-              chatStore.tasks[chatStore.activeTaskId as string] && (
-                <TooltipSimple
-                  content={t('layout.report-bug')}
-                  side="bottom"
-                  align="end"
-                >
-                  <Button
-                    onClick={exportLog}
-                    variant="ghost"
-                    size="icon"
-                    className="no-drag rounded-full"
-                  >
-                    <FileDown className="h-4 w-4" />
-                  </Button>
-                </TooltipSimple>
-              )}
-            <TooltipSimple
-              content={t('layout.refer-friends')}
-              side="bottom"
-              align="end"
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="no-drag shrink-0 rounded-full"
+              onClick={handleExitHistoryOrSettings}
+              aria-label={t('layout.back', { defaultValue: 'Back' })}
             >
-              <Button
-                onClick={getReferFriendsLink}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipSimple>
+        ) : (
+          <TooltipSimple
+            content={
+              projectSidebarFolded
+                ? t('layout.expand-project-sidebar', {
+                    defaultValue: 'Expand sidebar',
+                  })
+                : t('layout.fold-project-sidebar', {
+                    defaultValue: 'Fold sidebar',
+                  })
+            }
+            side="bottom"
+            align="center"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="no-drag shrink-0 rounded-full"
+              onClick={() => toggleProjectSidebarFolded()}
+              aria-pressed={!projectSidebarFolded}
+              aria-label={
+                projectSidebarFolded
+                  ? t('layout.expand-project-sidebar', {
+                      defaultValue: 'Expand sidebar',
+                    })
+                  : t('layout.fold-project-sidebar', {
+                      defaultValue: 'Fold sidebar',
+                    })
+              }
+            >
+              {projectSidebarFolded ? (
+                <PanelLeft className="h-4 w-4" aria-hidden />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" aria-hidden />
+              )}
+            </Button>
+          </TooltipSimple>
+        )}
+        {isHistoryRoute ? (
+          <div
+            className="no-drag px-2 flex min-h-[28px] items-center"
+            aria-hidden
+          >
+            <img
+              src={
+                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
+              }
+              alt=""
+              className="h-6 w-6 mt-[2px] select-none"
+              width={16}
+              height={16}
+              draggable={false}
+            />
+          </div>
+        ) : (
+          <DropdownMenu
+            modal={false}
+            open={homeNavMenuOpen}
+            onOpenChange={setHomeNavMenuOpen}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] items-center rounded-full outline-none focus-visible:ring-[3px]"
+                aria-label={t('layout.home')}
+                aria-haspopup="menu"
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  setHomeNavMenuOpen(false);
+                  navigateToHistoryTab('home');
+                }}
               >
                 <img
-                  src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                  alt="gift-icon"
-                  className="h-4 w-4"
+                  src={
+                    appearance === 'dark'
+                      ? eigentAppIconWhite
+                      : eigentAppIconBlack
+                  }
+                  alt=""
+                  className="h-6 w-6 mt-[2px] select-none"
+                  width={16}
+                  height={16}
+                  draggable={false}
                 />
-              </Button>
-            </TooltipSimple>
-            <TooltipSimple
-              content={t('layout.settings')}
-              side="bottom"
-              align="end"
+                {t('layout.home')}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              sideOffset={6}
+              className="min-w-32 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 duration-100"
             >
-              <Button
-                onClick={() => navigate('/history?tab=settings')}
-                variant="ghost"
-                size="icon"
-                className="no-drag rounded-full"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipSimple>
-          </div>
-        )}
-        {location.pathname === '/history' && (
-          <div
-            className={`${
-              platform === 'darwin' && 'pr-2'
-            } no-drag relative z-50 flex h-full items-center gap-1`}
-          ></div>
+              {HOME_NAV_HISTORY_MENU.map(({ id, labelKey, icon }) => (
+                <AnimateIcon key={id} animateOnHover="default" asChild>
+                  <DropdownMenuItem
+                    className="gap-2 cursor-pointer"
+                    onClick={() => navigateToHistoryTab(id)}
+                  >
+                    <span className="size-4 [&_svg]:size-4 inline-flex shrink-0 items-center justify-center">
+                      {icon}
+                    </span>
+                    <span>{t(labelKey)}</span>
+                  </DropdownMenuItem>
+                </AnimateIcon>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
-      {/* Custom window controls only for Linux (Windows and macOS use native controls) */}
-      {platform !== 'darwin' && platform !== 'win32' && (
+
+      {/* Middle: full width on project home only (/) — nav + title */}
+      <div className="no-drag h-7 min-h-0 min-w-0 relative z-50 flex w-full">
+        <AnimatePresence initial={false}>
+          {isHomeRoute && projectSidebarFolded && (
+            <motion.div
+              key="home-middle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={topBarCrossfade}
+              className="drag inset-0 min-w-0 absolute z-10 flex items-center"
+            >
+              <div className="ml-1 min-h-0 min-w-0 border-ds-border-neutral-subtle-default pl-1 relative z-50 flex h-full items-center border-y-0 border-r-0 border-l border-solid">
+                <SpaceSwitchDropdown
+                  contentSideOffset={6}
+                  trigger={
+                    <button
+                      id="active-space-title-btn"
+                      type="button"
+                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 min-w-0 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] w-full max-w-[300px] flex-1 items-center rounded-full text-left outline-none focus-visible:ring-[3px]"
+                      aria-haspopup="menu"
+                      aria-label={activeSpaceTitle}
+                    >
+                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+                        {activeSpaceTitle}
+                      </span>
+                      <ChevronsUpDown
+                        className="h-3.5 w-3.5 text-ds-icon-neutral-subtle-default shrink-0"
+                        aria-hidden
+                      />
+                    </button>
+                  }
+                  spaces={activeSpaces}
+                  activeSpaceId={activeSpaceId}
+                  switchingSpaceId={switchingSpaceId}
+                  canRenameActiveSpace={canRenameActiveSpace}
+                  createSpaceMenu={{
+                    onStartFromScratch: handleCreateBlankSpace,
+                    onSelectFolder: handleCreateSpaceFromFolder,
+                  }}
+                  onRenameSpace={openRenameSpaceDialog}
+                  onSpaceSelect={handleTopBarSpaceSelect}
+                  contentAlign="start"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {(!isHomeRoute || !projectSidebarFolded) && (
+          <div className="drag min-h-0 min-w-0 flex-1" aria-hidden />
+        )}
+      </div>
+
+      {/* Trailing: project actions (home only) + utilities + settings/back + update */}
+      <div
+        className={`${
+          platform === 'darwin' && 'px-1.5'
+        } no-drag h-7 relative z-50 flex shrink-0 items-center`}
+      >
+        <div className="flex h-full shrink-0 items-center">
+          <TooltipSimple
+            content={t('layout.support')}
+            side="bottom"
+            align="end"
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="no-drag rounded-full"
+              aria-label={t('layout.support')}
+              onClick={() => setReportBugOpen(true)}
+              buttonContent="icon-only"
+            >
+              <CircleHelp aria-hidden />
+            </Button>
+          </TooltipSimple>
+          <TooltipSimple
+            content={t('layout.refer-friends')}
+            side="bottom"
+            align="end"
+          >
+            <Button
+              onClick={openInviteCodeDialog}
+              variant="ghost"
+              size="sm"
+              className="no-drag rounded-full"
+              buttonContent="icon-only"
+              aria-label={t('layout.refer-friends')}
+            >
+              <img
+                src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
+                alt=""
+                width={16}
+                height={16}
+                aria-hidden
+              />
+            </Button>
+          </TooltipSimple>
+
+          <div className="ml-1.5 gap-1 border-ds-border-neutral-subtle-default pl-1.5 flex h-full shrink-0 items-center border-y-0 border-r-0 border-l border-solid">
+            <AnimatePresence mode="wait" initial={false}>
+              {isHomeRoute ? (
+                <motion.div
+                  key="trailing-settings"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={topBarCrossfade}
+                  className="flex"
+                >
+                  <TooltipSimple
+                    content={t('layout.settings')}
+                    side="bottom"
+                    align="end"
+                  >
+                    <Button
+                      onClick={() => navigate('/history?tab=settings')}
+                      variant="ghost"
+                      buttonContent="icon-only"
+                      size="sm"
+                      className="no-drag rounded-full"
+                      aria-label={t('layout.settings')}
+                    >
+                      <Settings aria-hidden />
+                    </Button>
+                  </TooltipSimple>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="trailing-back"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={topBarCrossfade}
+                  className="flex"
+                >
+                  <TooltipSimple
+                    content={t('layout.back', { defaultValue: 'Back' })}
+                    side="bottom"
+                    align="end"
+                  >
+                    <Button
+                      type="button"
+                      onClick={handleExitHistoryOrSettings}
+                      variant="ghost"
+                      buttonContent="icon-only"
+                      size="sm"
+                      className="no-drag rounded-full"
+                      aria-label={t('layout.back', { defaultValue: 'Back' })}
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </TooltipSimple>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {packageUpdateAvailable && (
+              <TooltipSimple
+                content={t('layout.update')}
+                side="bottom"
+                align="end"
+              >
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  className="no-drag px-3 shrink-0 rounded-full"
+                  onClick={handleStartDownload}
+                  aria-label={t('layout.update')}
+                >
+                  {t('layout.update')}
+                </Button>
+              </TooltipSimple>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Custom window controls: Linux Electron only (macOS/Win use native chrome; web has no platform from getPlatform) */}
+      {platform === 'linux' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.minimizeWindow()}
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.toggleMaximizeWindow()}
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-surface-hover-subtle"
-            onClick={() => window.electronAPI.closeWindow()}
+            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />
           </div>
         </div>
       )}
-      <EndNoticeDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={handleEndProject}
-        loading={endProjectLoading}
+      <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
+      <InviteCodeDialog
+        open={inviteCodeDialogOpen}
+        onOpenChange={setInviteCodeDialogOpen}
       />
     </div>
   );

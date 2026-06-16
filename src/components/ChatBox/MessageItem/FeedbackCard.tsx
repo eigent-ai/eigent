@@ -70,15 +70,20 @@ export function FeedbackCard({
   return (
     <div
       key={id}
-      className={`bg-message-fill-secondary group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border px-4 py-3 ${className || ''}`}
+      className={`group gap-4 rounded-xl px-4 py-3 bg-ds-bg-neutral-default-default relative flex w-full flex-col items-center justify-center overflow-hidden border ${className || ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Copy button - appears on hover */}
-      <div className="absolute bottom-1 right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <Button onClick={handleCopy} variant="ghost" size="icon">
+      <div className="bottom-1 right-1 absolute opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        <Button
+          onClick={handleCopy}
+          variant="ghost"
+          size="xs"
+          buttonContent="icon-only"
+        >
           {copied ? (
-            <Check className="h-4 w-4 text-text-success" />
+            <Check className="h-4 w-4 text-ds-text-success-default-default" />
           ) : (
             <Copy className="h-4 w-4" />
           )}
@@ -86,17 +91,17 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="w-full font-inter text-sm font-bold leading-normal text-text-body">
+      <p className="font-inter text-sm font-bold leading-normal w-full text-ds-text-neutral-default-default">
         {title}
       </p>
 
       {/* Content */}
-      <p className="w-full font-inter text-sm font-medium leading-normal text-text-body">
+      <p className="font-inter text-sm font-medium leading-normal w-full text-ds-text-neutral-default-default">
         {content}
       </p>
 
       {/* Action buttons */}
-      <div className="flex w-full items-center gap-1">
+      <div className="gap-1 flex w-full items-center">
         <Button
           onClick={onConfirm}
           variant="primary"

@@ -17,6 +17,13 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
+import {
+  formFieldNoteTextClassName,
+  formFieldTextareaSizeClasses,
+  formFieldTextareaStateClasses,
+  type TextareaFormFieldState,
+} from './formFieldSurface';
+import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type TextareaVariant = 'none' | 'enhanced';
@@ -44,54 +51,6 @@ type BaseTextareaProps = Omit<React.ComponentProps<'textarea'>, 'size'> & {
   onEnter?: () => void;
 };
 
-const sizeClasses: Record<TextareaSize, string> = {
-  default: 'min-h-[60px] text-body-sm md:text-sm',
-  sm: 'min-h-[40px] text-body-sm',
-};
-
-function resolveStateClasses(state: TextareaState | undefined) {
-  if (state === 'disabled') {
-    return {
-      container: 'opacity-50 cursor-not-allowed',
-      field: 'border-transparent bg-input-bg-default text-input-text-default',
-      placeholder: 'text-input-label-default',
-    };
-  }
-  if (state === 'hover') {
-    return {
-      container: '',
-      field: 'border-transparent bg-input-bg-default text-input-text-default',
-      placeholder: 'text-input-label-default',
-    };
-  }
-  if (state === 'input') {
-    return {
-      container: '',
-      field: 'border-transparent bg-input-bg-input text-input-text-focus',
-      placeholder: 'text-input-label-default',
-    };
-  }
-  if (state === 'error') {
-    return {
-      container: '',
-      field: 'border-input-border-cuation bg-input-bg-default text-text-body',
-      placeholder: 'text-input-label-default',
-    };
-  }
-  if (state === 'success') {
-    return {
-      container: '',
-      field: 'border-input-border-success bg-input-bg-confirm text-text-body',
-      placeholder: 'text-input-label-default',
-    };
-  }
-  return {
-    container: '',
-    field: 'border-transparent bg-input-bg-default text-input-text-default',
-    placeholder: 'text-input-label-default/10',
-  };
-}
-
 const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
   (
     {
@@ -115,21 +74,40 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     },
     ref
   ) => {
-    const { onKeyDown, ...textareaProps } = props;
+    const {
+      onKeyDown,
+      onCompositionStart,
+      onCompositionEnd,
+      ...textareaProps
+    } = props;
+    const [isComposing, setIsComposing] = React.useState(false);
     // Original "none" variant - keep the original styling
     if (variant === 'none') {
       return (
         <>
           <textarea
+            {...textareaProps}
             data-scrollbar="ui-textarea"
             className={cn(
-              'border-input placeholder:text-text-label/20 focus-visible:ring-ring flex min-h-[60px] w-full rounded-lg border bg-transparent py-2 pl-3 pr-3 text-body-sm shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50',
+              'placeholder:text-ds-text-neutral-muted-default/20 flex min-h-[60px] w-full rounded-lg border border-ds-border-neutral-default-default bg-transparent py-2 pl-3 pr-3 text-body-sm shadow-sm [scrollbar-gutter:stable] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-ring-brand-default-focus disabled:cursor-not-allowed disabled:opacity-50',
+              isComposing && 'placeholder:opacity-0',
               className
             )}
-            style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
+            style={mergeAliasStyles(formControlTokenAliases, {
+              paddingRight: '4px',
+              ...(style as React.CSSProperties),
+            })}
             ref={ref}
             disabled={disabled}
             placeholder={placeholder}
+            onCompositionStart={(e) => {
+              setIsComposing(true);
+              onCompositionStart?.(e);
+            }}
+            onCompositionEnd={(e) => {
+              setIsComposing(false);
+              onCompositionEnd?.(e);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (onEnter) {
@@ -139,16 +117,15 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
               }
               onKeyDown?.(e);
             }}
-            {...textareaProps}
           />
           <style>{`
             /* Firefox */
             [data-scrollbar="ui-textarea"] { scrollbar-width: thin; }
             /* Ensure 4px track in Firefox (thin is ~6px, so tighten via colors) */
-            [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)) transparent; }
+            [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, var(--colors-black-30)) transparent; }
             /* WebKit */
             [data-scrollbar="ui-textarea"]::-webkit-scrollbar { width: 4px; height: 4px; }
-            [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)); border-radius: 9999px; }
+            [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, var(--colors-black-30)); border-radius: 9999px; }
             [data-scrollbar="ui-textarea"]::-webkit-scrollbar-track { background: transparent; }
           `}</style>
         </>
@@ -156,20 +133,30 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
     }
 
     // Enhanced variant with input-like functionality
-    const stateCls = resolveStateClasses(disabled ? 'disabled' : state);
+    const stateCls = formFieldTextareaStateClasses(
+      disabled ? 'disabled' : (state as TextareaFormFieldState)
+    );
     const hasLeft = Boolean(leadingIcon);
     const hasRight = Boolean(backIcon) || Boolean(trailingButton);
 
     return (
       <>
-        <div className={cn('w-full', stateCls.container)}>
+        <div
+          className={cn('w-full', stateCls.container)}
+          style={formControlTokenAliases}
+        >
           {title ? (
-            <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+            <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
               <span>{title}</span>
-              {required && <span className="text-text-body">*</span>}
+              {required && (
+                <span className="text-ds-text-neutral-default-default">*</span>
+              )}
               {tooltip && (
                 <TooltipSimple content={tooltip}>
-                  <CircleAlert size={16} className="text-icon-primary" />
+                  <CircleAlert
+                    size={16}
+                    className="text-ds-icon-neutral-default-default"
+                  />
                 </TooltipSimple>
               )}
             </div>
@@ -178,21 +165,25 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           <div
             className={cn(
               'relative flex items-start rounded-lg border border-solid shadow-sm transition-all',
-              // Only apply hover/focus visuals when not in error or success state
-              state !== 'error' &&
-                state !== 'success' &&
-                'focus-within:bg-input-bg-input focus-within:ring-1 focus-within:ring-input-border-focus focus-within:ring-offset-0 hover:bg-input-bg-hover hover:ring-1 hover:ring-input-border-hover hover:ring-offset-0',
               stateCls.field,
-              sizeClasses[size]
+              formFieldTextareaSizeClasses[size],
+              state !== 'error' &&
+                state !== 'success' && [
+                  'hover:bg-ds-bg-neutral-subtle-default',
+                  'focus-within:bg-ds-bg-neutral-subtle-default',
+                  'focus-within:ring-ds-ring-brand-default-focus hover:ring-ds-ring-neutral-strong-default',
+                  'focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
+                ]
             )}
           >
             {leadingIcon ? (
-              <span className="pointer-events-none absolute left-2 top-2 inline-flex h-5 w-5 items-center justify-center text-icon-primary">
+              <span className="pointer-events-none absolute left-2 top-2 inline-flex h-5 w-5 items-center justify-center text-ds-icon-neutral-default-default">
                 {leadingIcon}
               </span>
             ) : null}
 
             <textarea
+              {...textareaProps}
               data-scrollbar="ui-textarea"
               ref={ref}
               disabled={disabled}
@@ -203,9 +194,18 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 hasLeft ? 'pl-9' : 'pl-3',
                 hasRight ? 'pr-9' : 'pr-3',
                 'pb-2 pt-2',
+                isComposing && 'placeholder:opacity-0',
                 className
               )}
               style={{ paddingRight: '4px', ...(style as React.CSSProperties) }}
+              onCompositionStart={(e) => {
+                setIsComposing(true);
+                onCompositionStart?.(e);
+              }}
+              onCompositionEnd={(e) => {
+                setIsComposing(false);
+                onCompositionEnd?.(e);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   if (onEnter) {
@@ -215,13 +215,13 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
                 }
                 onKeyDown?.(e);
               }}
-              {...textareaProps}
             />
 
             {backIcon ? (
               <Button
                 variant="ghost"
-                size="icon"
+                size="xs"
+                buttonContent="icon-only"
                 type="button"
                 tabIndex={-1}
                 disabled={disabled}
@@ -247,16 +247,18 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             <div
               className={cn(
                 'mt-1.5 !text-body-xs',
-                state === 'error'
-                  ? 'text-text-cuation'
-                  : state === 'success'
-                    ? 'text-text-success'
-                    : 'text-text-label'
+                formFieldNoteTextClassName(
+                  state === 'error'
+                    ? 'error'
+                    : state === 'success'
+                      ? 'success'
+                      : 'default'
+                )
               )}
               dangerouslySetInnerHTML={{
                 __html: note.replace(
                   /(https?:\/\/[^\s]+)/g,
-                  '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-text-information hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
+                  '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-ds-text-status-splitting-strong-default hover:opacity-70 cursor-pointer transition-opacity duration-200">$1</a>'
                 ),
               }}
             />
@@ -266,10 +268,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           /* Firefox */
           [data-scrollbar="ui-textarea"] { scrollbar-width: thin; }
           /* Ensure 4px track in Firefox (thin is ~6px, so tighten via colors) */
-          [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)) transparent; }
+          [data-scrollbar="ui-textarea"] { scrollbar-color: var(--scrollbar-thumb, var(--colors-black-30)) transparent; }
           /* WebKit */
           [data-scrollbar="ui-textarea"]::-webkit-scrollbar { width: 4px; height: 4px; }
-          [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, rgba(0,0,0,0.3)); border-radius: 9999px; }
+          [data-scrollbar="ui-textarea"]::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb, var(--colors-black-30)); border-radius: 9999px; }
           [data-scrollbar="ui-textarea"]::-webkit-scrollbar-track { background: transparent; }
         `}</style>
       </>

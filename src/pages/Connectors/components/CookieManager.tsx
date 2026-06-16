@@ -113,14 +113,14 @@ export default function CookieManager() {
   };
 
   return (
-    <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+    <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="gap-2 text-base font-bold leading-12 text-text-primary flex items-center">
+          <div className="gap-2 text-base font-bold leading-12 text-ds-text-neutral-default-default flex items-center">
             <Cookie className="h-5 w-5" />
             {t('setting.cookie-manager')}
           </div>
-          <div className="mt-1 text-sm leading-13 text-text-secondary">
+          <div className="mt-1 text-sm leading-13 text-ds-text-neutral-muted-default">
             {t('setting.cookie-manager-description')}
           </div>
         </div>
@@ -153,7 +153,7 @@ export default function CookieManager() {
 
       {/* Search Bar */}
       <div className="mb-4 relative">
-        <Search className="left-3 h-4 w-4 text-text-tertiary absolute top-1/2 -translate-y-1/2 transform" />
+        <Search className="left-3 h-4 w-4 text-ds-text-neutral-muted-default absolute top-1/2 -translate-y-1/2 transform" />
         <Input
           type="text"
           placeholder={t('setting.search-domains')}
@@ -166,12 +166,12 @@ export default function CookieManager() {
       {/* Cookie List */}
       <div className="space-y-2">
         {isLoading ? (
-          <div className="py-8 text-text-secondary text-center">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             <RefreshCw className="mb-2 h-6 w-6 animate-spin mx-auto" />
             {t('setting.loading-cookies')}
           </div>
         ) : filteredDomains.length === 0 ? (
-          <div className="py-8 text-text-secondary text-center">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             <Cookie className="mb-3 h-12 w-12 mx-auto opacity-30" />
             <div className="mb-1 text-base font-medium">
               {domains.length === 0
@@ -188,13 +188,13 @@ export default function CookieManager() {
           filteredDomains.map((item) => (
             <div
               key={item.domain}
-              className="rounded-lg border-border-primary bg-surface-primary p-3 hover:border-border-secondary flex items-center justify-between border transition-colors"
+              className="rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-subtle-default p-3 hover:border-ds-border-neutral-default-default flex items-center justify-between border transition-colors"
             >
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-text-primary truncate">
+                <div className="font-medium text-ds-text-neutral-default-default truncate">
                   {item.domain}
                 </div>
-                <div className="mt-1 gap-3 text-xs text-text-tertiary flex items-center">
+                <div className="mt-1 gap-3 text-xs text-ds-text-neutral-muted-default flex items-center">
                   <span>
                     {t('setting.cookies-count', { count: item.cookie_count })}
                   </span>

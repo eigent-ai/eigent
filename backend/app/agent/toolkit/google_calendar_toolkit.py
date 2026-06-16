@@ -58,18 +58,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
 
     @classmethod
     def get_can_use_tools(cls, api_task_id: str):
-        from dotenv import load_dotenv
-
-        # Force reload environment variables
-        default_env_path = os.path.join(
-            os.path.expanduser("~"), ".eigent", ".env"
-        )
-        if os.path.exists(default_env_path):
-            load_dotenv(dotenv_path=default_env_path, override=True)
-
-        if os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get(
-            "GOOGLE_CLIENT_SECRET"
-        ):
+        if env("GOOGLE_CLIENT_ID") and env("GOOGLE_CLIENT_SECRET"):
             return cls(api_task_id).get_tools()
         else:
             return []
@@ -92,16 +81,8 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         return build("calendar", "v3", credentials=creds)
 
     def _authenticate(self):
-        from dotenv import load_dotenv
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
-
-        # Force reload environment variables from default .env file
-        default_env_path = os.path.join(
-            os.path.expanduser("~"), ".eigent", ".env"
-        )
-        if os.path.exists(default_env_path):
-            load_dotenv(dotenv_path=default_env_path, override=True)
 
         creds = None
 
@@ -142,12 +123,11 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
 
         # If no token file, try environment variables
         if not creds:
-            client_id = os.environ.get("GOOGLE_CLIENT_ID")
-            client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-            refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
-            token_uri = (
-                os.environ.get("GOOGLE_TOKEN_URI")
-                or "https://oauth2.googleapis.com/token"
+            client_id = env("GOOGLE_CLIENT_ID")
+            client_secret = env("GOOGLE_CLIENT_SECRET")
+            refresh_token = env("GOOGLE_REFRESH_TOKEN")
+            token_uri = env(
+                "GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"
             )
 
             if refresh_token and client_id and client_secret:
@@ -204,18 +184,7 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
         Start background OAuth authorization flow with timeout
         Returns the status of the authorization
         """
-        from dotenv import load_dotenv
         from google_auth_oauthlib.flow import InstalledAppFlow
-
-        # Force reload environment variables from default .env file
-        default_env_path = os.path.join(
-            os.path.expanduser("~"), ".eigent", ".env"
-        )
-        if os.path.exists(default_env_path):
-            logger.info(
-                f"Reloading environment variables from {default_env_path}"
-            )
-            load_dotenv(dotenv_path=default_env_path, override=True)
 
         # Check if there's an existing authorization and force stop it
         old_state = oauth_state_manager.get_state("google_calendar")
@@ -240,20 +209,10 @@ class GoogleCalendarToolkit(BaseGoogleCalendarToolkit, AbstractToolkit):
                     "google_calendar", "authorizing"
                 )
 
-                # Reload environment variables in this thread
-                from dotenv import load_dotenv
-
-                default_env_path = os.path.join(
-                    os.path.expanduser("~"), ".eigent", ".env"
-                )
-                if os.path.exists(default_env_path):
-                    load_dotenv(dotenv_path=default_env_path, override=True)
-
-                client_id = os.environ.get("GOOGLE_CLIENT_ID")
-                client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-                token_uri = (
-                    os.environ.get("GOOGLE_TOKEN_URI")
-                    or "https://oauth2.googleapis.com/token"
+                client_id = env("GOOGLE_CLIENT_ID")
+                client_secret = env("GOOGLE_CLIENT_SECRET")
+                token_uri = env(
+                    "GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"
                 )
 
                 logger.info(

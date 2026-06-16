@@ -1,285 +1,112 @@
-# ChatBox Component Structure
+# ChatBox component structure
 
-This document explains the new Message ChatBox structure and the relationships between different components in the ChatBox folder.
+This document describes the ChatBox layout, how the main pieces connect, and where to change behavior. Paths are relative to `src/components/ChatBox/`.
 
 ## Overview
 
-The ChatBox component has been restructured to support a multi-turn conversation system with improved message organization, task management, and user interaction patterns. The new structure separates concerns and provides better scalability for handling complex chat interactions.
+ChatBox is the main chat surface: it wires **project + chat store** data to **message threads**, **task / workforce UI**, and the **BottomBox** composer. It supports multi-turn flows, task planning, splitting, and execution with scroll and timeline affordances.
 
-## Architecture
+## Architecture (folders)
 
-### Core Structure
-
-```
+```text
 ChatBox/
-├── index.tsx                    # Main ChatBox container and orchestration
-├── ProjectChatContainer.tsx     # Project-level chat container
-├── ProjectSection.tsx           # Individual project section
-├── UserQueryGroup.tsx           # User query and response grouping
-├── TaskCard.tsx                 # Task planning and execution display
-├── MessageCard.tsx              # Individual message rendering
-├── TypeCardSkeleton.tsx         # Loading skeleton for task planning
-├── NoticeCard.tsx               # Chain of thought display
-├── FloatingAction.tsx           # Floating action buttons
-├── TaskItem.tsx                 # Individual task item component
-├── TaskType.tsx                 # Task type indicator
-├── MarkDown.tsx                 # Markdown content rendering
-├── SummaryMarkDown.tsx          # Summary markdown rendering
-└── BottomBox/                   # Input and action components
-    ├── index.tsx               # BottomBox container
-    ├── InputBox.tsx            # Message input component
-    ├── BoxAction.tsx           # Action buttons
-    ├── BoxHeader.tsx           # Header with task info
-    └── QueuedBox.tsx           # Queued messages display
+├── index.tsx                 # Main shell: layout, chat timeline, send/stop, BottomBox
+├── ChatTimeline.tsx         # Per-project task/chat rail or popover (narrow layout)
+├── ProjectChatContainer.tsx  # Scroll region + all chat stores for the active project
+├── ProjectSection.tsx        # One chat store: query groups, FloatingAction
+├── UserQueryGroup.tsx        # One user query → messages, task UI, agent results
+│
+├── TaskBox/                 # Plan / run task UI
+│   ├── TaskCard.tsx         # Plan list, progress, filter, expand (workforce subtasks)
+│   ├── TaskItem.tsx         # Editable line in the plan
+│   ├── TaskType.tsx         # Task type indicator
+│   ├── TypeCardSkeleton.tsx  # Loading skeleton while the plan is forming
+│   └── StreamingTaskList.tsx
+│
+├── MessageItem/             # All message- and log-specific UI
+│   ├── UserMessageCard.tsx
+│   ├── UserMessageRichContent.tsx
+│   ├── AgentMessageCard.tsx
+│   ├── NoticeCard.tsx
+│   ├── FeedbackCard.tsx
+│   ├── TaskCompletionCard.tsx
+│   ├── SplittingProgressRow.tsx   # “Splitting tasks” + token tick during decompose
+│   ├── TaskWorkLogAccordion.tsx  # Work log: tool / agent lines (workforce)
+│   ├── FloatingAction.tsx        # Pause / skip (used from ProjectSection)
+│   ├── MarkDown.tsx
+│   ├── SummaryMarkDown.tsx
+│   └── TokenUtils.tsx            # Token animation + splitting elapsed formatting
+│
+└── BottomBox/                # Composer and chrome above input
+    ├── index.tsx
+    ├── InputBox.tsx
+    ├── RichChatInput.tsx
+    ├── ChatInputModelDropdown.tsx
+    ├── BoxAction.tsx
+    ├── BoxHeader.tsx
+    └── QueuedBox.tsx
 ```
 
-## Component Relationships
+## Core responsibilities
 
-### 1. Main Orchestration (`index.tsx`)
+### `index.tsx`
 
-**Purpose**: The main ChatBox component that orchestrates the entire chat experience.
+- Composes `ProjectChatContainer`, `BottomBox`, and (when used) `ChatTimeline`.
+- Connects to `useChatStoreAdapter`, `projectStore`, navigation, and session chrome (e.g. scroll padding, task time display, pause/resume).
+- Owns high-level task operations (send, stop, share, history hooks) and passes props into children.
 
-**Key Responsibilities**:
+### `ProjectChatContainer.tsx`
 
-- Manages chat state and project store integration
-- Handles message sending and task queuing
-- Controls BottomBox state based on task status
-- Manages privacy settings and file attachments
-- Handles task confirmation and replay functionality
+- Renders the stack of per–chat-id sections for the active project.
+- Owns scroll behavior and “stick to bottom” / padding for the last message and BottomBox.
 
-**Relationships**:
+### `ProjectSection.tsx`
 
-- **Uses**: `ProjectChatContainer`, `BottomBox`
-- **Manages**: Chat store state, project store state, message queuing
-- **Controls**: Input state, task status, privacy settings
+- One **vanilla `chatStore`** instance: subscribes to it and maps **messages** into **query groups** (see `UserQueryGroup`).
+- Hosts `FloatingAction` (pause, skip) for the active task.
 
-### 2. Project Chat Container (`ProjectChatContainer.tsx`)
+### `UserQueryGroup.tsx`
 
-**Purpose**: Container for all chat stores within an active project.
+- A **single user turn**: user content, then downstream UI driven by `AgentStep` / `ChatTaskStatus` (e.g. splitting, task card, agent completion, notices).
+- Imports from `TaskBox/` and `MessageItem/`; this is the main place new message *shapes* are routed.
 
-**Key Responsibilities**:
+## TaskBox (`TaskBox/`)
 
-- Renders multiple chat stores for the active project
-- Manages scroll behavior and auto-scrolling
-- Handles intersection observer for scroll-based animations
-- Provides scrollbar visibility management
+- **`TaskCard`**: Task type 1/2/3 flows—plan text, `taskRunning` rows, filter tabs, link to the chat that owns a subtask, expand/collapse with session-backed preference.
+- **`TaskItem`**: Single plan line edit/delete.
+- **`TypeCardSkeleton`**: Shown while the model is decomposing before `to_sub_tasks` is ready.
+- **`StreamingTaskList`**: Renders running subtasks during streaming / updates.
 
-**Relationships**:
+## MessageItem (`MessageItem/`)
 
-- **Uses**: `ProjectSection`
-- **Manages**: Multiple chat stores, scroll behavior
-- **Provides**: Scroll container for all project chats
+- **`UserMessageCard` / `UserMessageRichContent`**: User bubble + rich blocks.
+- **`AgentMessageCard`**: Assistant markdown, optional typewriter, attachments.
+- **`SplittingProgressRow`**: Shown while the task is in the splitting phase; uses store `taskTime` / `elapsed` when present, with a per-session wall-clock fallback when not.
+- **`TaskWorkLogAccordion`**: Collapsible work log for running/finished/paused task (tool activate/deactivate, agent lines); Framer `height: auto` for expand, stable segment keys from the merged log.
+- **`TaskCompletionCard`**: Completion / summary style card when appropriate.
+- **`NoticeCard`**: Chain-of-thought or notice-style content.
+- **`FeedbackCard`**: Thumbs / feedback when enabled.
+- **`FloatingAction`**: Compact floating controls (wired from `ProjectSection`).
+- **`TokenUtils`**: Animated token number and `formatSplittingElapsed` helpers.
 
-### 3. Project Section (`ProjectSection.tsx`)
+## BottomBox (`BottomBox/`)
 
-**Purpose**: Individual project section that groups messages by query cycles.
+- **`index.tsx`**: Wires `BoxHeader`, `InputBox` / `RichChatInput`, `BoxAction`, `QueuedBox` to task state (pending, running, confirm, etc.).
+- **`InputBox` / `RichChatInput` / `ChatInputModelDropdown`**: Text input, model picker, rich input where applicable.
+- **`BoxAction`**: Confirm, edit, send, stop, and related actions.
+- **`BoxHeader`**: Task summary, timing, and header affordances.
+- **`QueuedBox`**: Queued user messages when the task pipeline is busy.
 
-**Key Responsibilities**:
+## Data flow (short)
 
-- Groups messages by user queries and responses
-- Renders query groups in chronological order
-- Manages floating action buttons
-- Provides project-level task management
+1. **User input** → `BottomBox` → `index.tsx` / store → API or store updates.
+1. **SSE / store updates** → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageItem` / `TaskBox` by step and status.
+1. **State** → **`chatStore`** (per chat), **`projectStore`** (project + which chat is active), plus local component state (expand, scroll, active query).
 
-**Relationships**:
+## Extending the UI
 
-- **Uses**: `UserQueryGroup`, `FloatingAction`
-- **Manages**: Message grouping, query cycles
-- **Provides**: Project-level task controls
+- **New agent or system message type**: branch in `UserQueryGroup.tsx` (and possibly `ProjectSection` if grouping changes).
+- **New task UI**: add under `TaskBox/` and mount from `UserQueryGroup` or `TaskCard` as needed.
+- **New bubble content**: add a card under `MessageItem/` and import it from `UserQueryGroup` (or the parent that owns that message list).
 
-### 4. User Query Group (`UserQueryGroup.tsx`)
-
-**Purpose**: Groups a user query with its associated task and responses.
-
-**Key Responsibilities**:
-
-- Renders user message and associated task card
-- Manages sticky task box behavior
-- Handles skeleton loading states
-- Renders assistant responses and file lists
-- Manages intersection observer for active query tracking
-
-**Relationships**:
-
-- **Uses**: `MessageCard`, `TaskCard`, `TypeCardSkeleton`, `NoticeCard`
-- **Manages**: Query grouping, sticky behavior, loading states
-- **Provides**: Complete query-response cycle display
-
-### 5. Task Card (`TaskCard.tsx`)
-
-**Purpose**: Displays task planning, execution status, and progress.
-
-**Key Responsibilities**:
-
-- Shows task summary and progress
-- Displays task list with status indicators
-- Manages task filtering and expansion
-- Handles task editing and management
-- Provides task state visualization
-
-**Relationships**:
-
-- **Uses**: `TaskItem`, `TaskType`, `TaskState`
-- **Manages**: Task info, task running status, progress
-- **Provides**: Task planning and execution interface
-
-### 6. Message Card (`MessageCard.tsx`)
-
-**Purpose**: Renders individual messages with typewriter effects and attachments.
-
-**Key Responsibilities**:
-
-- Displays message content with markdown rendering
-- Manages typewriter effect for agent messages
-- Handles file attachments display
-- Provides copy functionality for user messages
-- Tracks completed typewriter effects globally
-
-**Relationships**:
-
-- **Uses**: `MarkDown`
-- **Manages**: Message content, typewriter effects, attachments
-- **Provides**: Individual message rendering
-
-### 7. Loading and State Components
-
-#### TypeCardSkeleton (`TypeCardSkeleton.tsx`)
-
-- **Purpose**: Loading skeleton for task planning phase
-- **Shows**: Animated placeholders for task planning
-- **Used by**: `UserQueryGroup` during skeleton phase
-
-#### NoticeCard (`NoticeCard.tsx`)
-
-- **Purpose**: Displays chain of thought reasoning
-- **Shows**: Expandable list of reasoning steps
-- **Used by**: `UserQueryGroup` for CoT display
-
-#### FloatingAction (`FloatingAction.tsx`)
-
-- **Purpose**: Floating action buttons for task control
-- **Shows**: Pause, Resume, Skip buttons
-- **Used by**: `ProjectSection` for task control
-
-### 8. Task Management Components
-
-#### TaskItem (`TaskItem.tsx`)
-
-- **Purpose**: Individual task item with editing capabilities
-- **Features**: Inline editing, task status, delete functionality
-- **Used by**: `TaskCard` for task list display
-
-#### TaskType (`TaskType.tsx`)
-
-- **Purpose**: Visual indicator for task type
-- **Shows**: Task type icons and labels
-- **Used by**: `TaskCard`, `TypeCardSkeleton`
-
-### 9. BottomBox Components
-
-The BottomBox directory contains input and action components:
-
-#### BottomBox (`BottomBox/index.tsx`)
-
-- **Purpose**: Main input and action container
-- **Manages**: Different states (input, confirm, running, finished, splitting)
-- **Coordinates**: Input, actions, and queued messages
-
-#### InputBox (`BottomBox/InputBox.tsx`)
-
-- **Purpose**: Message input with file attachments
-- **Features**: Text input, file drag-drop, send functionality
-- **Used by**: BottomBox for message input
-
-#### QueuedBox (`BottomBox/QueuedBox.tsx`)
-
-- **Purpose**: Displays queued messages
-- **Features**: Message queuing, removal, reordering
-- **Used by**: BottomBox for queued message management
-
-#### BoxAction (`BottomBox/BoxAction.tsx`)
-
-- **Purpose**: Action buttons for task control
-- **Features**: Confirm, edit, replay, pause/resume, skip
-- **Used by**: BottomBox for task actions
-
-#### BoxHeader (`BottomBox/BoxHeader.tsx`)
-
-- **Purpose**: Header with task information
-- **Shows**: Task summary, progress, timing
-- **Used by**: BottomBox for task status display
-
-## Data Flow
-
-### Message Flow
-
-1. **User Input** → `BottomBox/InputBox` → `index.tsx` → Chat Store
-1. **Message Processing** → `index.tsx` → Backend API
-1. **Response Rendering** → Chat Store → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageCard`
-
-### Task Flow
-
-1. **Task Planning** → `UserQueryGroup` → `TypeCardSkeleton` (loading) → `TaskCard` (planning)
-1. **Task Execution** → `TaskCard` → Task status updates → `FloatingAction` (controls)
-1. **Task Completion** → `TaskCard` → Final results → `MessageCard` (end message)
-
-### State Management
-
-- **Chat Store**: Manages individual chat sessions and tasks
-- **Project Store**: Manages multiple chat stores per project
-- **Component State**: Local UI state (expanded/collapsed, active queries, etc.)
-
-## Key Features
-
-### Multi-Turn Conversations
-
-- Each user query creates a new query group
-- Task cards are sticky and follow the user query
-- Messages are grouped by query cycles for better organization
-
-### Task Management
-
-- Visual task planning with skeleton loading
-- Real-time task execution status
-- Task filtering and expansion
-- Inline task editing capabilities
-
-### Message Queuing
-
-- Messages can be queued when tasks are busy
-- Queued messages are displayed in a separate box
-- Automatic processing when current task completes
-
-### Responsive Design
-
-- Sticky task cards that adapt to scroll position
-- Smooth animations and transitions
-- Intersection observer for performance optimization
-
-### File Handling
-
-- File attachments in messages
-- File list display in end messages
-- Click-to-reveal functionality
-
-## Usage Patterns
-
-### Adding New Message Types
-
-1. Add message type handling in `UserQueryGroup.tsx`
-1. Create specific rendering logic in the appropriate component
-1. Update message grouping logic in `ProjectSection.tsx`
-
-### Extending Task Management
-
-1. Add new task states in `TaskCard.tsx`
-1. Update task filtering logic
-1. Add corresponding UI elements in `TaskItem.tsx`
-
-### Customizing Message Rendering
-
-1. Modify `MessageCard.tsx` for basic message display
-1. Update `MarkDown.tsx` for content rendering
-1. Add new attachment types as needed
-
-This structure provides a scalable foundation for complex chat interactions while maintaining clear separation of concerns and efficient state management.
+This layout keeps **transport and layout** (`index`, `Project*`) separate from **message rendering** (`MessageItem/`) and **task planning/execution** (`TaskBox/`), and **composer** behavior (`BottomBox/`).

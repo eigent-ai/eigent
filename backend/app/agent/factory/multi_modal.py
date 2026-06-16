@@ -36,12 +36,16 @@ from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.agent.utils import NOW_STR
+from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 
 
-def multi_modal_agent(options: Chat):
+def multi_modal_agent(
+    options: Chat,
+    hands: IHands | None = None,
+):
     working_directory = get_working_directory(options)
     logger.info(
         f"Creating multi-modal agent for project: {options.project_id} "
@@ -69,15 +73,6 @@ def multi_modal_agent(options: Chat):
     screenshot_toolkit = message_integration.register_toolkits(
         screenshot_toolkit
     )
-
-    terminal_toolkit = TerminalToolkit(
-        options.project_id,
-        agent_name=Agents.multi_modal_agent,
-        working_directory=working_directory,
-        safe_mode=True,
-        clone_current_env=True,
-    )
-    terminal_toolkit = message_integration.register_toolkits(terminal_toolkit)
 
     note_toolkit = NoteTakingToolkit(
         options.project_id,
@@ -108,13 +103,33 @@ def multi_modal_agent(options: Chat):
         *HumanToolkit.get_can_use_tools(
             options.project_id, Agents.multi_modal_agent
         ),
-        *terminal_toolkit.get_tools(),
         *note_toolkit.get_tools(),
         *skill_toolkit.get_tools(),
         *search_tools,
     ]
+    tool_names = [
+        VideoDownloaderToolkit.toolkit_name(),
+        ScreenshotToolkit.toolkit_name(),
+        HumanToolkit.toolkit_name(),
+        NoteTakingToolkit.toolkit_name(),
+        SkillToolkit.toolkit_name(),
+    ]
+    if search_tools:
+        tool_names.append(SearchToolkit.toolkit_name())
+    if hands is None or hands.can_execute_terminal():
+        terminal_toolkit = TerminalToolkit(
+            options.project_id,
+            agent_name=Agents.multi_modal_agent,
+            working_directory=working_directory,
+            safe_mode=True,
+            clone_current_env=True,
+        )
+        terminal_toolkit = message_integration.register_toolkits(
+            terminal_toolkit
+        )
+        tools.extend(terminal_toolkit.get_tools())
+        tool_names.append(TerminalToolkit.toolkit_name())
     if options.is_cloud():
-        # TODO: check llm has this model
         open_ai_image_toolkit = OpenAIImageToolkit(
             options.project_id,
             model="dall-e-3",
@@ -128,10 +143,8 @@ def multi_modal_agent(options: Chat):
         open_ai_image_toolkit = message_integration.register_toolkits(
             open_ai_image_toolkit
         )
-        tools = [
-            *tools,
-            *open_ai_image_toolkit.get_tools(),
-        ]
+        tools.extend(open_ai_image_toolkit.get_tools())
+        tool_names.append(OpenAIImageToolkit.toolkit_name())
     # Convert string model_platform to enum for comparison
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
@@ -151,6 +164,7 @@ def multi_modal_agent(options: Chat):
             audio_analysis_toolkit
         )
         tools.extend(audio_analysis_toolkit.get_tools())
+        tool_names.append(AudioAnalysisToolkit.toolkit_name())
 
     tool_names = [
         VideoDownloaderToolkit.toolkit_name(),

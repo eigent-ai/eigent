@@ -20,8 +20,15 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+/** Last fetched `/api/v1/configs` per session so connection status stays instant across remounts (e.g. opening another page and returning). */
+let integrationConfigsSnapshot: {
+  email: string | null;
+  configs: any[];
+} | null = null;
 
 export interface IntegrationItem {
   key: string;
@@ -36,7 +43,10 @@ export interface IntegrationItem {
  * Hook for managing integration configurations, OAuth, and installation state
  */
 export function useIntegrationManagement(items: IntegrationItem[]) {
-  const { email, checkAgentTool } = useAuthStore();
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
+  const ipcRenderer = host?.ipcRenderer;
+  const { email, checkAgentTool, modelType } = useAuthStore();
 
   // Local installed status
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
@@ -56,21 +66,54 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     try {
       const configsRes = await proxyFetchGet('/api/v1/configs');
       if (!ignore) {
-        setConfigs(Array.isArray(configsRes) ? configsRes : []);
+        const list = Array.isArray(configsRes) ? configsRes : [];
+        setConfigs(list);
+        integrationConfigsSnapshot = {
+          email: useAuthStore.getState().email ?? null,
+          configs: list,
+        };
       }
     } catch (_e) {
-      if (!ignore) setConfigs([]);
+      if (!ignore) {
+        setConfigs([]);
+        integrationConfigsSnapshot = {
+          email: useAuthStore.getState().email ?? null,
+          configs: [],
+        };
+      }
     }
   }, []);
 
-  // Fetch configs when mounted
+  // Hydrate configs from cache or fetch once per user session when mounted
   useEffect(() => {
-    let ignore = false;
-    fetchInstalled(ignore);
+    const u = email ?? null;
+    const snap = integrationConfigsSnapshot;
+    if (snap && snap.email === u) {
+      setConfigs(snap.configs);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const configsRes = await proxyFetchGet('/api/v1/configs');
+        if (cancelled) return;
+        const list = Array.isArray(configsRes) ? configsRes : [];
+        setConfigs(list);
+        integrationConfigsSnapshot = {
+          email: u,
+          configs: list,
+        };
+      } catch {
+        if (!cancelled) {
+          setConfigs([]);
+          integrationConfigsSnapshot = { email: u, configs: [] };
+        }
+      }
+    })();
     return () => {
-      ignore = true;
+      cancelled = true;
     };
-  }, [fetchInstalled]);
+  }, [email]);
 
   // Recalculate installed status when items or configs change
   useEffect(() => {
@@ -97,6 +140,22 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
             String(c.config_value).length > 0
         );
         map[item.key] = hasAccessToken;
+      } else if (item.key === 'Search') {
+        if (modelType !== 'custom') {
+          map[item.key] = true;
+        } else {
+          const hasApiKey = configs.some(
+            (c: any) =>
+              c.config_name === 'GOOGLE_API_KEY' &&
+              String(c.config_value ?? '').trim().length > 0
+          );
+          const hasEngineId = configs.some(
+            (c: any) =>
+              c.config_name === 'SEARCH_ENGINE_ID' &&
+              String(c.config_value ?? '').trim().length > 0
+          );
+          map[item.key] = hasApiKey && hasEngineId;
+        }
       } else {
         // For other integrations, use config_group presence
         const hasConfig = configs.some(
@@ -107,7 +166,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     });
 
     setInstalled(map);
-  }, [items, configs]);
+  }, [items, configs, modelType]);
 
   // Save environment variable and config
   const saveEnvAndConfig = useCallback(
@@ -155,11 +214,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         }
       }
 
-      if (window.electronAPI?.envWrite) {
-        await window.electronAPI.envWrite(email, { key: envVarKey, value });
+      if (electronAPI?.envWrite) {
+        await electronAPI.envWrite(email, { key: envVarKey, value });
       }
     },
-    [configs, email]
+    [configs, electronAPI, email]
   );
 
   // Process OAuth callback
@@ -262,11 +321,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       if (!data.provider || !data.code) return;
       processOauth(data);
     };
-    window.ipcRenderer?.on('oauth-authorized', handler);
+    ipcRenderer?.on('oauth-authorized', handler);
     return () => {
-      window.ipcRenderer?.off('oauth-authorized', handler);
+      ipcRenderer?.off('oauth-authorized', handler);
     };
-  }, [processOauth]);
+  }, [ipcRenderer, processOauth]);
 
   // Listen to OAuth callback URL notification
   useEffect(() => {
@@ -275,11 +334,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         setCallBackUrl(data.url);
       }
     };
-    window.ipcRenderer?.on('oauth-callback-url', handler);
+    ipcRenderer?.on('oauth-callback-url', handler);
     return () => {
-      window.ipcRenderer?.off('oauth-callback-url', handler);
+      ipcRenderer?.off('oauth-callback-url', handler);
     };
-  }, []);
+  }, [ipcRenderer]);
 
   // Process cached OAuth event when items are ready
   useEffect(() => {
@@ -311,9 +370,9 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           if (
             item.env_vars &&
             item.env_vars.length > 0 &&
-            window.electronAPI?.envRemove
+            electronAPI?.envRemove
           ) {
-            await window.electronAPI.envRemove(email, item.env_vars[0]);
+            await electronAPI.envRemove(email, item.env_vars[0]);
           }
         } catch (_e) {
           // Ignore error
@@ -345,11 +404,18 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
       }
 
       // Update configs after deletion
-      setConfigs((prev) =>
-        prev.filter((c: any) => c.config_group?.toLowerCase() !== groupKey)
-      );
+      setConfigs((prev) => {
+        const next = prev.filter(
+          (c: any) => c.config_group?.toLowerCase() !== groupKey
+        );
+        integrationConfigsSnapshot = {
+          email: email ?? null,
+          configs: next,
+        };
+        return next;
+      });
     },
-    [configs, email, checkAgentTool]
+    [checkAgentTool, configs, electronAPI, email]
   );
 
   // Helper to create MCP object from integration item

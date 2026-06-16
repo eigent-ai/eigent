@@ -42,13 +42,15 @@ class TestTaskController:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = start(task_id)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_update_task_success(self, mock_task_lock):
         """Test successful task update."""
@@ -65,13 +67,15 @@ class TestTaskController:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = put(task_id, update_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_take_control_pause_success(self, mock_task_lock):
         """Test successful task pause control."""
@@ -80,16 +84,18 @@ class TestTaskController:
 
         with (
             patch(
-                "app.controller.task_controller.get_task_lock",
+                "app.controller.task_controller.get_task_lock_if_exists",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = take_control(task_id, control_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 204
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_take_control_resume_success(self, mock_task_lock):
         """Test successful task resume control."""
@@ -98,16 +104,18 @@ class TestTaskController:
 
         with (
             patch(
-                "app.controller.task_controller.get_task_lock",
+                "app.controller.task_controller.get_task_lock_if_exists",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = take_control(task_id, control_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 204
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_add_agent_success(self, mock_task_lock):
         """Test successful agent addition."""
@@ -126,13 +134,15 @@ class TestTaskController:
                 return_value=mock_task_lock,
             ),
             patch("app.controller.task_controller.load_dotenv"),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = add_agent(task_id, new_agent)
 
             assert isinstance(response, Response)
             assert response.status_code == 204
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_start_task_nonexistent_task(self):
         """Test start task with nonexistent task ID."""
@@ -155,13 +165,15 @@ class TestTaskController:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = put(task_id, update_data)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
     def test_add_agent_with_mcp_tools(self, mock_task_lock):
         """Test adding agent with MCP tools."""
@@ -180,13 +192,15 @@ class TestTaskController:
                 return_value=mock_task_lock,
             ),
             patch("app.controller.task_controller.load_dotenv"),
-            patch("asyncio.run") as mock_run,
+            patch(
+                "app.controller.task_controller._queue_action_from_worker"
+            ) as mock_queue_action,
         ):
             response = add_agent(task_id, new_agent)
 
             assert isinstance(response, Response)
             assert response.status_code == 204
-            mock_run.assert_called_once()
+            mock_queue_action.assert_called_once()
 
 
 @pytest.mark.integration
@@ -201,7 +215,7 @@ class TestTaskControllerIntegration:
             patch(
                 "app.controller.task_controller.get_task_lock"
             ) as mock_get_lock,
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
@@ -224,7 +238,7 @@ class TestTaskControllerIntegration:
             patch(
                 "app.controller.task_controller.get_task_lock"
             ) as mock_get_lock,
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
@@ -240,9 +254,9 @@ class TestTaskControllerIntegration:
 
         with (
             patch(
-                "app.controller.task_controller.get_task_lock"
+                "app.controller.task_controller.get_task_lock_if_exists"
             ) as mock_get_lock,
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
@@ -262,9 +276,9 @@ class TestTaskControllerIntegration:
 
         with (
             patch(
-                "app.controller.task_controller.get_task_lock"
+                "app.controller.task_controller.get_task_lock_if_exists"
             ) as mock_get_lock,
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
@@ -291,7 +305,7 @@ class TestTaskControllerIntegration:
                 "app.controller.task_controller.get_task_lock"
             ) as mock_get_lock,
             patch("app.controller.task_controller.load_dotenv"),
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             mock_task_lock = MagicMock()
             mock_get_lock.return_value = mock_task_lock
@@ -316,7 +330,10 @@ class TestTaskControllerErrorCases:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run", side_effect=Exception("Async error")),
+            patch(
+                "app.controller.task_controller._queue_action_from_worker",
+                side_effect=Exception("Async error"),
+            ),
         ):
             with pytest.raises(Exception, match="Async error"):
                 start(task_id)
@@ -337,7 +354,7 @@ class TestTaskControllerErrorCases:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             # Should handle invalid data gracefully or raise appropriate error
             response = put(task_id, update_data)
@@ -370,7 +387,7 @@ class TestTaskControllerErrorCases:
                 "app.controller.task_controller.load_dotenv",
                 side_effect=Exception("Env load failed"),
             ),
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             # Should handle environment load failure gracefully or raise error
             with pytest.raises(Exception, match="Env load failed"):
@@ -393,7 +410,7 @@ class TestTaskControllerErrorCases:
                 return_value=mock_task_lock,
             ),
             patch("app.controller.task_controller.load_dotenv"),
-            patch("asyncio.run"),
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             # Should handle empty name appropriately
             response = add_agent(task_id, new_agent)
@@ -415,7 +432,7 @@ class TestTaskControllerErrorCases:
                 "app.controller.task_controller.get_task_lock",
                 return_value=mock_task_lock,
             ),
-            patch("asyncio.run") as mock_run,
+            patch("app.controller.task_controller._queue_action_from_worker"),
         ):
             response = start(task_id)
             assert response.status_code == 201

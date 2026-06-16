@@ -12,8 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
-import { BoxHeaderConfirm, BoxHeaderSplitting } from './BoxHeader';
+import { TriangleAlert } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
 import {
@@ -23,8 +26,8 @@ import {
 
 export type BottomBoxState =
   | 'input'
-  | 'splitting'
   | 'confirm'
+  | 'save'
   | 'running'
   | 'finished';
 
@@ -36,11 +39,13 @@ interface BottomBoxProps {
   queuedMessages?: QueuedMessage[];
   onRemoveQueuedMessage?: (id: string) => void;
 
-  // Subtask-related props (confirm/splitting state)
+  // Subtask-related props (confirm/save state)
   subtitle?: string;
+  autoStartDeadline?: number | null;
 
   // Action buttons
   onStartTask?: () => void;
+  onSavePlan?: () => void;
   onEdit?: () => void;
 
   // Task info
@@ -57,6 +62,10 @@ interface BottomBoxProps {
 
   // Loading states
   loading?: boolean;
+
+  /** Full-area warning overlay on the input card when no model is configured. */
+  noModelOverlay?: boolean;
+  onSelectModel?: () => void;
 }
 
 export default function BottomBox({
@@ -64,21 +73,26 @@ export default function BottomBox({
   queuedMessages = [],
   onRemoveQueuedMessage,
   subtitle,
+  autoStartDeadline,
   onStartTask,
+  onSavePlan,
   onEdit,
   inputProps,
   usageLimitBanner,
   loading = false,
+  noModelOverlay = false,
+  onSelectModel,
 }: BottomBoxProps) {
+  const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-input-bg-default';
-  if (state === 'splitting') backgroundClass = 'bg-input-bg-spliting';
-  else if (state === 'confirm') backgroundClass = 'bg-input-bg-confirm';
+  let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
+  if (state === 'confirm' || state === 'save')
+    backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
-    <div className="relative z-50 flex w-full flex-col">
+    <div className="relative z-50 flex w-full flex-col rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
         <div className="pointer-events-auto z-50 px-2">
@@ -90,14 +104,22 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`flex w-full flex-col rounded-t-lg p-2 ${backgroundClass}`}
+        className={`relative mb-sm flex w-full flex-col rounded-3xl ${backgroundClass}`}
       >
         {/* BoxHeader variants */}
-        {state === 'splitting' && <BoxHeaderSplitting />}
         {state === 'confirm' && (
           <BoxHeaderConfirm
             subtitle={subtitle}
             onStartTask={onStartTask}
+            onEdit={onEdit}
+            loading={loading}
+            autoStartDeadline={autoStartDeadline}
+          />
+        )}
+        {state === 'save' && (
+          <BoxHeaderSave
+            subtitle={subtitle}
+            onSave={onSavePlan}
             onEdit={onEdit}
             loading={loading}
           />
@@ -106,6 +128,33 @@ export default function BottomBox({
         {/* Inputbox (always visible) */}
         {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
         <Inputbox {...inputProps} />
+
+        {noModelOverlay && onSelectModel ? (
+          <div
+            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
+            role="alert"
+          >
+            <TriangleAlert
+              className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
+              aria-hidden
+            />
+            <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">
+              {t('layout.please-select-model')}
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              tone="warning"
+              size="sm"
+              buttonRadius="full"
+              onClick={onSelectModel}
+            >
+              {t('layout.select-model-cta', {
+                defaultValue: 'Select a model',
+              })}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

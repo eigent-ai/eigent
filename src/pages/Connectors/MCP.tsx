@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpInstall, mcpRemove, mcpUpdate } from '@/api/brain';
 import {
   fetchGet,
   fetchPost,
@@ -20,32 +21,104 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import IntegrationList from '@/components/IntegrationList';
-import SearchInput from '@/components/SearchInput';
+import cursorIcon from '@/assets/icon/cursor.svg';
+import githubIcon from '@/assets/icon/github.svg';
+import googleIcon from '@/assets/icon/google.svg';
+import googleCalendarIcon from '@/assets/icon/google_calendar.svg';
+import googleGmailIcon from '@/assets/icon/google_gmail.svg';
+import larkIcon from '@/assets/icon/lark.png';
+import linkedinIcon from '@/assets/icon/linkedin.svg';
+import notionIcon from '@/assets/icon/notion.svg';
+import ragIcon from '@/assets/icon/rag.svg';
+import redditIcon from '@/assets/icon/reddit.svg';
+import slackIcon from '@/assets/icon/slack.svg';
+import telegramIcon from '@/assets/icon/telegram.svg';
+import vsCodeIcon from '@/assets/icon/vs-code.svg';
+import whatsappIcon from '@/assets/icon/whatsapp.svg';
+import xIcon from '@/assets/icon/x.svg';
+import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getProxyBaseURL } from '@/lib';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import {
+  useIntegrationManagement,
+  type IntegrationItem,
+} from '@/hooks/useIntegrationManagement';
+import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Settings2,
+  Trash2,
+  Wrench,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
+import { GoogleSearchPanel } from './components/GoogleSearchPanel';
 import MCPAddDialog from './components/MCPAddDialog';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
-import MCPList from './components/MCPList';
+import { MCPEnvDialog } from './components/MCPEnvDialog';
 import type { MCPConfigForm, MCPUserItem } from './components/types';
 import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 
 import { ConfigFile } from 'electron/main/utils/mcpConfig';
 import { toast } from 'sonner';
 
-// Filter out Search from integrations (Search is now in its own Connectors tab)
-const EXCLUDED_FROM_MCP = ['Search'];
+// Filter out Search from integrations (it's now a hardcoded connector item below)
+const EXCLUDED_FROM_MCP = ['Search', 'RAG'];
+
+const GOOGLE_SEARCH_ID = 'google-search' as const;
+
+const COMING_SOON_NAMES = [
+  'X(Twitter)',
+  'WhatsApp',
+  'Reddit',
+  'Github',
+] as const;
+
+const INTEGRATION_ICON_BY_KEY: Record<string, string> = {
+  notion: notionIcon,
+  slack: slackIcon,
+  'google calendar': googleCalendarIcon,
+  gmail: googleGmailIcon,
+  'google gmail': googleGmailIcon,
+  linkedin: linkedinIcon,
+  lark: larkIcon,
+  rag: ragIcon,
+  telegram: telegramIcon,
+  whatsapp: whatsappIcon,
+  x: xIcon,
+  'x(twitter)': xIcon,
+  twitter: xIcon,
+  reddit: redditIcon,
+  github: githubIcon,
+  cursor: cursorIcon,
+  'vs code': vsCodeIcon,
+  vscode: vsCodeIcon,
+};
+
+function integrationLeadingIconUrl(integrationKey: string): string | undefined {
+  return INTEGRATION_ICON_BY_KEY[integrationKey.toLowerCase().trim()];
+}
 
 export default function SettingMCP() {
   const { checkAgentTool } = useAuthStore();
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<MCPUserItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -76,15 +149,72 @@ export default function SettingMCP() {
   const [switchLoading, setSwitchLoading] = useState<Record<number, boolean>>(
     {}
   );
-  const [activeTab, setActiveTab] = useState<'mcp-tools' | 'your-mcp'>(
-    'mcp-tools'
-  );
   const [searchQuery, setSearchQuery] = useState('');
+  const [webCollapsed, setWebCollapsed] = useState(false);
+  const [yourCollapsed, setYourCollapsed] = useState(false);
+  const [selected, setSelected] = useState<
+    | { type: 'web'; key: string }
+    | { type: 'your'; id: number }
+    | { type: typeof GOOGLE_SEARCH_ID }
+    | null
+  >(null);
+  const [showEnvConfig, setShowEnvConfig] = useState(false);
+  const [activeMcp, setActiveMcp] = useState<any | null>(null);
+  const [folderHint, setFolderHint] = useState<'web' | 'your' | null>(null);
 
-  // add: integrations list
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(true);
-  const [refreshKey, setRefreshKey] = useState<number>(0);
+
+  const integrationItems = useMemo((): IntegrationItem[] => {
+    const searchItem: IntegrationItem = {
+      key: 'Search',
+      name: 'Search',
+      desc: '',
+      env_vars: [],
+      onInstall: async () => {},
+    };
+    return [searchItem, ...(integrations as IntegrationItem[])];
+  }, [integrations]);
+
+  const {
+    installed,
+    fetchInstalled,
+    saveEnvAndConfig,
+    handleUninstall,
+    createMcpFromItem,
+  } = useIntegrationManagement(integrationItems);
+
+  const searchConnected = !!installed.Search;
+
+  const refreshConnectorConfigs = useCallback(() => {
+    void fetchInstalled();
+  }, [fetchInstalled]);
+
+  useEffect(() => {
+    const action = searchParams.get('connectorAction');
+    const section = searchParams.get('connectorSection');
+    if (action !== 'add' && section !== 'mcp-tools' && section !== 'your-mcp') {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    if (action === 'add') {
+      setShowAdd(true);
+      next.delete('connectorAction');
+    }
+    if (section === 'mcp-tools') {
+      setFolderHint('web');
+      setWebCollapsed(false);
+      setYourCollapsed(true);
+      next.delete('connectorSection');
+    }
+    if (section === 'your-mcp') {
+      setFolderHint('your');
+      setYourCollapsed(false);
+      setWebCollapsed(true);
+      next.delete('connectorSection');
+    }
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Filter integrations (MCP & Tools) by search
   const filteredIntegrations = useMemo(() => {
@@ -109,6 +239,46 @@ export default function SettingMCP() {
         (item.mcp_key || '').toLowerCase().includes(q)
     );
   }, [items, searchQuery]);
+
+  const webConnected = useMemo(
+    () => filteredIntegrations.filter((i) => installed[i.key]),
+    [filteredIntegrations, installed]
+  );
+
+  type SortedWebItem =
+    | { kind: 'google-search'; connected: boolean }
+    | {
+        kind: 'integration';
+        item: IntegrationItem;
+        connected: boolean;
+        comingSoon: boolean;
+      };
+
+  const sortedWebItems = useMemo((): SortedWebItem[] => {
+    const all: SortedWebItem[] = [
+      { kind: 'google-search', connected: searchConnected },
+      ...filteredIntegrations.map((item) => ({
+        kind: 'integration' as const,
+        item,
+        connected: !!installed[item.key],
+        comingSoon: (COMING_SOON_NAMES as readonly string[]).includes(
+          item.name
+        ),
+      })),
+    ];
+
+    const priority = (w: SortedWebItem) => {
+      if (w.kind === 'integration' && w.comingSoon) return 2;
+      return w.connected ? 0 : 1;
+    };
+    const getName = (w: SortedWebItem) =>
+      w.kind === 'google-search' ? 'Google Search' : w.item.name;
+
+    return [...all].sort((a, b) => {
+      const diff = priority(a) - priority(b);
+      return diff !== 0 ? diff : getName(a).localeCompare(getName(b));
+    });
+  }, [filteredIntegrations, installed, searchConnected]);
 
   // get list
   const fetchList = useCallback(() => {
@@ -166,8 +336,7 @@ export default function SettingMCP() {
                       });
                       // Refresh the integrations list to show the installed state
                       fetchList();
-                      // Force refresh IntegrationList component
-                      setRefreshKey((prev) => prev + 1);
+                      void fetchInstalled();
                     } else {
                       toast.error(
                         response.error ||
@@ -233,8 +402,7 @@ export default function SettingMCP() {
                       }
                       // Refresh the integrations list to show the installed state
                       fetchList();
-                      // Force refresh IntegrationList component
-                      setRefreshKey((prev) => prev + 1);
+                      void fetchInstalled();
                     } else if (response.status === 'authorizing') {
                       // Authorization in progress - start polling for completion
                       toast.info(
@@ -289,7 +457,7 @@ export default function SettingMCP() {
                                 )
                               );
                               fetchList();
-                              setRefreshKey((prev) => prev + 1);
+                              void fetchInstalled();
                             }
                           } else if (
                             statusResp?.status === 'failed' ||
@@ -361,8 +529,9 @@ export default function SettingMCP() {
       })
       .finally(() => {
         setIsLoadingIntegrations(false);
+        void fetchInstalled();
       });
-  }, [fetchList, t]);
+  }, [fetchList, t, fetchInstalled]);
 
   useEffect(() => {
     fetchList();
@@ -379,6 +548,386 @@ export default function SettingMCP() {
     } finally {
       setSwitchLoading((l) => ({ ...l, [id]: false }));
     }
+  };
+
+  const onCloseEnv = useCallback(() => {
+    setShowEnvConfig(false);
+    setActiveMcp(null);
+  }, []);
+
+  const handleWebInstall = useCallback(
+    async (item: IntegrationItem) => {
+      if (item.key === 'Lark' || item.key === 'RAG') {
+        const mcp = createMcpFromItem(item, item.key === 'Lark' ? 15 : 16);
+        setActiveMcp(mcp);
+        setShowEnvConfig(true);
+        return;
+      }
+
+      if (item.key === 'Google Calendar') {
+        const mcp = createMcpFromItem(item, 14);
+        setActiveMcp(mcp);
+        setShowEnvConfig(true);
+        return;
+      }
+
+      if (item.key === 'LinkedIn') {
+        const baseUrl = getProxyBaseURL();
+        window.open(
+          `${baseUrl}/api/v1/oauth/linkedin/login`,
+          '_blank',
+          'width=600,height=700'
+        );
+        return;
+      }
+
+      if (installed[item.key]) return;
+      await item.onInstall();
+      await fetchInstalled();
+      fetchList();
+    },
+    [installed, createMcpFromItem, fetchInstalled, fetchList]
+  );
+
+  const onEnvConnect = useCallback(
+    async (mcp: any) => {
+      await fetchInstalled();
+      await Promise.all(
+        Object.keys(mcp.install_command.env).map(async (k) => {
+          return saveEnvAndConfig(mcp.key, k, mcp.install_command.env[k]);
+        })
+      );
+
+      if (mcp.key === 'Google Calendar') {
+        const calendarItem = integrations.find(
+          (it: IntegrationItem) => it.key === 'Google Calendar'
+        );
+        try {
+          if (calendarItem?.onInstall) await calendarItem.onInstall();
+          else await fetchPost('/install/tool/google_calendar');
+        } catch (_) {}
+      }
+
+      await fetchInstalled();
+      fetchList();
+      onCloseEnv();
+    },
+    [fetchInstalled, saveEnvAndConfig, integrations, fetchList, onCloseEnv]
+  );
+
+  const handleOpenWebConfig = useCallback(
+    (item: IntegrationItem) => {
+      if (item.env_vars?.length > 0) {
+        const mcp = createMcpFromItem(item, -1);
+        setActiveMcp(mcp);
+        setShowEnvConfig(true);
+      }
+    },
+    [createMcpFromItem]
+  );
+
+  const renderSidebarRow = (
+    tabId: string,
+    label: string,
+    kind: 'web' | 'your',
+    isActive: boolean,
+    onSelect: () => void,
+    webInstalled?: boolean,
+    yourEnabled?: boolean,
+    integrationKey?: string
+  ) => {
+    const assetUrl =
+      kind === 'web' && integrationKey
+        ? integrationLeadingIconUrl(integrationKey)
+        : undefined;
+
+    return (
+      <button
+        key={tabId}
+        type="button"
+        onClick={onSelect}
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+          isActive
+            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+            : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+        } `}
+      >
+        <div className="flex min-w-0 items-center justify-center gap-3">
+          {kind === 'web' ? (
+            assetUrl ? (
+              <img
+                src={assetUrl}
+                alt=""
+                className="h-5 w-5 shrink-0 object-contain"
+              />
+            ) : (
+              <img
+                src={ellipseIcon}
+                alt=""
+                className="h-3 w-3 shrink-0"
+                style={{
+                  filter: webInstalled
+                    ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
+                    : 'none',
+                }}
+              />
+            )
+          ) : (
+            <Wrench className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
+          )}
+          <span
+            className={`truncate text-left text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+          >
+            {label}
+          </span>
+        </div>
+        {kind === 'your' && yourEnabled ? (
+          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+        ) : null}
+      </button>
+    );
+  };
+
+  useEffect(() => {
+    if (!folderHint) return;
+    if (folderHint === 'your') {
+      if (isLoading) return;
+      if (filteredItems.length > 0) {
+        setSelected({ type: 'your', id: filteredItems[0].id });
+      }
+      setFolderHint(null);
+      return;
+    }
+    if (folderHint === 'web') {
+      if (isLoadingIntegrations) return;
+      const pick = filteredIntegrations[0];
+      if (pick) setSelected({ type: 'web', key: pick.key });
+      setFolderHint(null);
+    }
+  }, [
+    folderHint,
+    filteredItems,
+    filteredIntegrations,
+    isLoading,
+    isLoadingIntegrations,
+  ]);
+
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.type === GOOGLE_SEARCH_ID) return;
+    if (selected.type === 'web') {
+      if (!integrations.some((i) => i.key === selected.key)) {
+        setSelected(null);
+      }
+      return;
+    }
+    if (!items.some((i) => i.id === selected.id)) {
+      setSelected(null);
+    }
+  }, [selected, integrations, items]);
+
+  useEffect(() => {
+    if (selected || isLoadingIntegrations || isLoading || folderHint) return;
+    const pick = webConnected[0] || filteredItems[0] || filteredIntegrations[0];
+    if (!pick) return;
+    if ('mcp_name' in pick) {
+      setSelected({ type: 'your', id: pick.id });
+    } else {
+      setSelected({ type: 'web', key: pick.key });
+    }
+  }, [
+    selected,
+    webConnected,
+    filteredIntegrations,
+    filteredItems,
+    isLoadingIntegrations,
+    isLoading,
+    folderHint,
+  ]);
+
+  const renderConnectionPanel = () => {
+    if (!selected) {
+      return (
+        <div className="py-16 text-center text-body-md text-ds-text-neutral-muted-default">
+          {t('setting.mcp-select-connection')}
+        </div>
+      );
+    }
+
+    if (selected.type === GOOGLE_SEARCH_ID) {
+      return (
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                <img
+                  src={googleIcon}
+                  alt=""
+                  className="h-5 w-5 object-contain"
+                />
+              </div>
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+                Google Search
+              </div>
+            </div>
+            {searchConnected && (
+              <span className="rounded-full bg-ds-bg-success-subtle-default px-2.5 py-0.5 text-label-xs font-medium text-ds-text-success-default-default">
+                {t('setting.configured', { defaultValue: 'Configured' })}
+              </span>
+            )}
+          </div>
+          <GoogleSearchPanel onConfigured={refreshConnectorConfigs} />
+        </div>
+      );
+    }
+
+    if (selected.type === 'web') {
+      const item = integrations.find((i) => i.key === selected.key) as
+        | IntegrationItem
+        | undefined;
+      if (!item) return null;
+      const isConn = !!installed[item.key];
+      const isComingSoon = (COMING_SOON_NAMES as readonly string[]).includes(
+        item.name
+      );
+      const headerAssetUrl = integrationLeadingIconUrl(item.key);
+
+      return (
+        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+            <div className="flex min-w-0 items-center gap-2">
+              {headerAssetUrl ? (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                  <img
+                    src={headerAssetUrl}
+                    alt=""
+                    className="h-5 w-5 object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default p-1">
+                  <img
+                    src={ellipseIcon}
+                    alt=""
+                    className="h-3 w-3"
+                    style={{
+                      filter: isConn
+                        ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
+                        : 'none',
+                    }}
+                  />
+                </div>
+              )}
+              <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+                {item.name}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                disabled={isComingSoon}
+                variant={
+                  isComingSoon ? 'ghost' : isConn ? 'outline' : 'primary'
+                }
+                size="sm"
+                onClick={() => {
+                  if (isComingSoon) return;
+                  if (isConn) void handleUninstall(item);
+                  else void handleWebInstall(item);
+                }}
+              >
+                {isComingSoon
+                  ? t('setting.coming-soon')
+                  : isConn
+                    ? t('setting.disconnect')
+                    : t('setting.connect')}
+              </Button>
+              {item.env_vars?.length > 0 ? (
+                <TooltipSimple content={t('setting.setting')}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    buttonContent="icon-only"
+                    aria-label={t('setting.setting')}
+                    onClick={() => handleOpenWebConfig(item)}
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </TooltipSimple>
+              ) : null}
+            </div>
+          </div>
+          {item.desc ? (
+            <div className="px-6 py-4">
+              <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
+                {item.desc}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    const userItem = items.find((i) => i.id === selected.id);
+    if (!userItem) return null;
+    const enabled = userItem.status === 1;
+
+    return (
+      <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+        <div className="mx-6 flex flex-row flex-wrap items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Wrench className="h-7 w-7 shrink-0 rounded-lg bg-ds-bg-neutral-default-default p-1 text-ds-icon-neutral-muted-default" />
+            <div className="text-body-base min-w-0 truncate font-bold text-ds-text-neutral-default-default">
+              {capitalizeFirstLetter(userItem.mcp_name || '')}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Switch
+              variant="outline"
+              size="default"
+              checked={enabled}
+              disabled={!!switchLoading[userItem.id]}
+              onCheckedChange={(checked) =>
+                void handleSwitch(userItem.id, checked)
+              }
+              aria-label={enabled ? t('setting.disable') : t('setting.enable')}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  aria-label={t('setting.more-options', {
+                    defaultValue: 'More options',
+                  })}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => setShowConfig(userItem)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {t('setting.edit', { defaultValue: 'Edit' })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer text-ds-text-status-error-strong-default focus:text-ds-text-status-error-strong-default"
+                  onClick={() => setDeleteTarget(userItem)}
+                >
+                  <Trash2 className="h-4 w-4 text-ds-text-status-error-strong-default" />
+                  {t('setting.delete', { defaultValue: 'Delete' })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // config dialog
@@ -413,18 +962,15 @@ export default function SettingMCP() {
       };
       await proxyFetchPut(`/api/v1/mcp/users/${showConfig.id}`, mcpData);
 
-      if (window.ipcRenderer) {
-        //Partial payload to empty env {}
-        const payload: any = {
-          description: configForm.mcp_desc,
-          command: configForm.command,
-          args: arrayToArgsJson(configForm.argsArr),
-        };
-        if (configForm.env && Object.keys(configForm.env).length > 0) {
-          payload.env = configForm.env;
-        }
-        window.ipcRenderer.invoke('mcp-update', mcpData.mcp_name, payload);
+      const payload: Record<string, unknown> = {
+        description: configForm.mcp_desc,
+        command: configForm.command,
+        args: arrayToArgsJson(configForm.argsArr),
+      };
+      if (configForm.env && Object.keys(configForm.env).length > 0) {
+        payload.env = configForm.env;
       }
+      await mcpUpdate(mcpData.mcp_name, payload);
 
       setShowConfig(null);
       fetchList();
@@ -496,10 +1042,10 @@ export default function SettingMCP() {
           setInstalling(false);
           return;
         }
-        if (window.ipcRenderer) {
-          const mcpServers = data['mcpServers'];
+        const mcpServers = data['mcpServers'];
+        if (mcpServers && typeof mcpServers === 'object') {
           for (const [key, value] of Object.entries(mcpServers)) {
-            await window.ipcRenderer.invoke('mcp-install', key, value);
+            await mcpInstall(key, value as Record<string, unknown>);
           }
         }
       }
@@ -522,10 +1068,9 @@ export default function SettingMCP() {
     try {
       checkAgentTool(deleteTarget.mcp_name);
       await proxyFetchDelete(`/api/v1/mcp/users/${deleteTarget.id}`);
-      // notify main process
-      if (window.ipcRenderer) {
-        console.log('deleteTarget', deleteTarget.mcp_key);
-        await window.ipcRenderer.invoke('mcp-remove', deleteTarget.mcp_key);
+      await mcpRemove(deleteTarget.mcp_key);
+      if (selected?.type === 'your' && selected.id === deleteTarget.id) {
+        setSelected(null);
       }
       setDeleteTarget(null);
       fetchList();
@@ -536,71 +1081,248 @@ export default function SettingMCP() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      {/* Header Section */}
       <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="text-heading-sm font-bold text-text-heading">
-          {t('setting.mcp-and-tools')}
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
+          {t('setting.mcps-and-tools')}
         </div>
       </div>
 
-      {/* Content Section */}
       <div className="mb-12 flex flex-col gap-6">
-        <div className="flex w-full flex-col items-center justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'mcp-tools' | 'your-mcp')}
-            className="w-full"
-          >
-            <div className="sticky top-[84px] z-10 flex w-full items-center justify-between gap-4 border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary">
-              <TabsList
-                variant="outline"
-                className="h-auto flex-1 justify-start border-0 bg-transparent"
+        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
+          <div className="z-10 mb-4 flex w-full flex-wrap items-center justify-between gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
+              {t('setting.connectors')}
+            </div>
+            <div className="flex items-center gap-2">
+              <SearchInput
+                variant="icon"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('setting.search-mcp')}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowAdd(true)}
               >
-                <TabsTrigger
-                  value="mcp-tools"
-                  className="data-[state=active]:bg-transparent"
-                >
-                  {t('setting.mcp-and-tools')}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="your-mcp"
-                  className="data-[state=active]:bg-transparent"
-                >
-                  {t('setting.your-own-mcps')}
-                </TabsTrigger>
-              </TabsList>
-              <div className="flex items-center gap-2">
-                <SearchInput
-                  variant="icon"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('setting.search-mcp')}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setShowAdd(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('setting.add-mcp-server')}
-                </Button>
+                <Plus className="h-4 w-4" />
+                {t('setting.mcp-add')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex w-full flex-row items-start justify-between gap-4 px-3">
+            <div className="sticky top-[var(--home-hub-history-tabs-offset,49px)] z-10 -ml-2 mr-4 h-fit max-h-[calc(100vh-var(--home-hub-history-tabs-offset,49px)-2rem)] w-[240px] shrink-0 self-start overflow-y-auto rounded-2xl bg-ds-bg-neutral-default-default">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setWebCollapsed(!webCollapsed)}
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                  >
+                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                      {t('setting.mcp-sidebar-built-in')}
+                    </div>
+                    {webCollapsed ? (
+                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    )}
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      webCollapsed
+                        ? 'max-h-0 opacity-0'
+                        : 'max-h-[2000px] opacity-100'
+                    }`}
+                  >
+                    {isLoadingIntegrations ? (
+                      <div className="flex flex-col gap-2 px-1">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className="h-9 rounded-xl bg-ds-bg-neutral-strong-default"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        {sortedWebItems.map((wi) => {
+                          if (wi.kind === 'google-search') {
+                            const isActive =
+                              selected?.type === GOOGLE_SEARCH_ID;
+                            return (
+                              <button
+                                key="google-search"
+                                type="button"
+                                onClick={() =>
+                                  setSelected({ type: GOOGLE_SEARCH_ID })
+                                }
+                                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+                                  isActive
+                                    ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                    : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                                }`}
+                              >
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <img
+                                    src={googleIcon}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
+                                  <span
+                                    className={`truncate text-left text-body-sm font-medium ${
+                                      isActive
+                                        ? 'text-ds-text-neutral-default-default'
+                                        : 'text-ds-text-neutral-muted-default'
+                                    }`}
+                                  >
+                                    Google Search
+                                  </span>
+                                </div>
+                                {wi.connected && (
+                                  <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                                )}
+                              </button>
+                            );
+                          }
+
+                          const {
+                            item,
+                            connected: isConn,
+                            comingSoon: isComingSoon,
+                          } = wi;
+                          const assetUrl = integrationLeadingIconUrl(item.key);
+                          const isActive =
+                            selected?.type === 'web' &&
+                            selected.key === item.key;
+                          return (
+                            <button
+                              key={`web-${item.key}`}
+                              type="button"
+                              disabled={isComingSoon}
+                              onClick={() =>
+                                !isComingSoon &&
+                                setSelected({ type: 'web', key: item.key })
+                              }
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+                                isActive
+                                  ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                                  : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+                              } ${isComingSoon ? 'cursor-not-allowed opacity-40' : ''}`}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                {assetUrl ? (
+                                  <img
+                                    src={assetUrl}
+                                    alt=""
+                                    className="h-5 w-5 shrink-0 object-contain"
+                                  />
+                                ) : (
+                                  <img
+                                    src={ellipseIcon}
+                                    alt=""
+                                    className="h-3 w-3 shrink-0"
+                                    style={{
+                                      filter: isConn
+                                        ? 'grayscale(0%) brightness(0) saturate(100%) invert(41%) sepia(99%) saturate(749%) hue-rotate(81deg) brightness(95%) contrast(92%)'
+                                        : 'none',
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  className={`truncate text-left text-body-sm font-medium ${
+                                    isActive
+                                      ? 'text-ds-text-neutral-default-default'
+                                      : 'text-ds-text-neutral-muted-default'
+                                  }`}
+                                >
+                                  {item.name}
+                                </span>
+                              </div>
+                              {isConn && (
+                                <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setYourCollapsed(!yourCollapsed)}
+                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                  >
+                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                      {t('setting.your-own-mcps')}
+                    </div>
+                    {yourCollapsed ? (
+                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    )}
+                  </button>
+                  <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                      yourCollapsed
+                        ? 'max-h-0 opacity-0'
+                        : 'max-h-[2000px] opacity-100'
+                    }`}
+                  >
+                    {isLoading ? (
+                      <div className="px-3 py-1 text-body-xs text-ds-text-neutral-muted-default">
+                        {t('setting.loading')}
+                      </div>
+                    ) : error ? (
+                      <div className="px-3 py-1 text-body-xs text-ds-text-status-error-strong-default">
+                        {error}
+                      </div>
+                    ) : filteredItems.length === 0 ? (
+                      <div className="px-3 py-2">
+                        <p className="text-body-xs text-ds-text-neutral-muted-default">
+                          {items.length === 0
+                            ? t('setting.no-mcp-servers', {
+                                defaultValue: 'No MCPs',
+                              })
+                            : t('dashboard.no-results')}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredItems.map((item) =>
+                        renderSidebarRow(
+                          `your-${item.id}`,
+                          capitalizeFirstLetter(item.mcp_name || ''),
+                          'your',
+                          selected?.type === 'your' && selected.id === item.id,
+                          () => setSelected({ type: 'your', id: item.id }),
+                          undefined,
+                          item.status === 1
+                        )
+                      )
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-            <TabsContent value="mcp-tools" className="mt-4">
-              {isLoadingIntegrations ? (
+
+            <div className="sticky top-[80px] z-10 min-w-0 flex-1">
+              {isLoadingIntegrations && !selected ? (
                 <div className="flex w-full flex-col items-start justify-start gap-4">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="relative w-full overflow-hidden rounded-2xl bg-surface-tertiary px-6 py-4"
+                      className="relative w-full overflow-hidden rounded-2xl bg-ds-bg-neutral-strong-default px-6 py-4"
                     >
                       <div className="flex w-full flex-row items-center justify-between gap-xs">
                         <div className="flex flex-row items-center gap-xs">
-                          <div className="mr-2 h-3 w-3 rounded-full bg-surface-hover-subtle" />
-                          <div className="h-5 w-32 rounded-md bg-surface-hover-subtle" />
-                          <div className="h-4 w-4 rounded bg-surface-hover-subtle" />
+                          <div className="mr-2 h-3 w-3 rounded-full bg-ds-bg-neutral-default-hover" />
+                          <div className="h-5 w-32 rounded-md bg-ds-bg-neutral-default-hover" />
                         </div>
-                        <div className="h-9 w-20 rounded-lg bg-surface-hover-subtle" />
+                        <div className="h-9 w-20 rounded-lg bg-ds-bg-neutral-default-hover" />
                       </div>
                       <motion.div
                         className="via-white/20 absolute inset-0 w-1/2 bg-gradient-to-r from-transparent to-transparent"
@@ -615,69 +1337,21 @@ export default function SettingMCP() {
                     </div>
                   ))}
                 </div>
-              ) : filteredIntegrations.length === 0 ? (
-                <div className="py-8 text-center text-text-label">
-                  {searchQuery.trim()
-                    ? t('dashboard.no-results')
-                    : t('setting.no-mcp-servers')}
-                </div>
               ) : (
-                <IntegrationList
-                  key={refreshKey}
-                  variant="manage"
-                  items={filteredIntegrations}
-                  showConfigButton={false}
-                  showInstallButton={true}
-                />
+                renderConnectionPanel()
               )}
-            </TabsContent>
-            <TabsContent value="your-mcp" className="mt-4">
-              {isLoading && (
-                <div className="py-8 text-center text-text-label">
-                  {t('setting.loading')}
-                </div>
-              )}
-              {error && (
-                <div className="py-8 text-center text-text-error">{error}</div>
-              )}
-              {!isLoading && !error && items.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-4 py-12">
-                  <p className="text-body-md text-text-label">
-                    {t('setting.no-mcp-servers')}
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => setShowAdd(true)}
-                  >
-                    <Plus className="h-4 w-4" />
-                    {t('setting.add-mcp-server')}
-                  </Button>
-                </div>
-              )}
-              {!isLoading &&
-                !error &&
-                items.length > 0 &&
-                filteredItems.length === 0 && (
-                  <div className="py-8 text-center text-text-label">
-                    {t('dashboard.no-results')}
-                  </div>
-                )}
-              {!isLoading && !error && filteredItems.length > 0 && (
-                <MCPList
-                  items={filteredItems}
-                  onSetting={setShowConfig}
-                  onDelete={setDeleteTarget}
-                  onSwitch={handleSwitch}
-                  switchLoading={switchLoading}
-                />
-              )}
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Dialogs */}
+      <MCPEnvDialog
+        showEnvConfig={showEnvConfig}
+        onClose={onCloseEnv}
+        onConnect={onEnvConnect}
+        activeMcp={activeMcp}
+      />
+
       <MCPConfigDialog
         open={!!showConfig}
         form={configForm}

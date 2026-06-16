@@ -23,6 +23,7 @@ from loguru import logger
 from app.core.database import session_make
 from app.core.encrypt import password_verify
 from app.core.environment import env_not_empty
+from app.domains.remote_control.service.remote_control_service import RemoteControlService
 from app.model.user.user import Status, User
 
 from app.shared.auth import create_access_token, create_refresh_token
@@ -113,6 +114,9 @@ class UserAuthService:
                 ttl = max(0, int(exp) - int(datetime.utcnow().timestamp())) if exp else 3600
                 await blacklist_token(jti, ttl)
                 logger.info("logout", extra={"user_id": user_id})
+                if user_id is not None:
+                    with session_make() as s:
+                        RemoteControlService.revoke_user_sessions(int(user_id), s, "logout")
             except Exception as e:
                 logger.warning("logout: token decode/blacklist failed", extra={"error": str(e)})
         return True

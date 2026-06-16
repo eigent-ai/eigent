@@ -1,6 +1,7 @@
 {
   "update-check-failed": "Controllo aggiornamento fallito",
   "new-version-available": "Nuova versione disponibile",
+  "update": "Aggiorna",
   "download": "Scarica",
   "update-error": "Errore aggiornamento",
   "downloading-update": "Download aggiornamento in corso",

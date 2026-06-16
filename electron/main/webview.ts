@@ -37,6 +37,20 @@ export class WebViewManager {
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
 
+  private getHiddenBounds(id: string, width = 100, height = 100) {
+    const numericId = Number(id);
+    const idOffset = Number.isFinite(numericId) ? (numericId % 20) * 20 : 0;
+    const safeWidth = Math.max(width, 100);
+    const safeHeight = Math.max(height, 100);
+
+    return {
+      x: -10000 - safeWidth - idOffset,
+      y: -10000 - safeHeight - idOffset,
+      width: safeWidth,
+      height: safeHeight,
+    };
+  }
+
   constructor(window: BrowserWindow) {
     this.win = window;
   }
@@ -45,11 +59,52 @@ export class WebViewManager {
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
-    const webContents = this.webViews.get(webviewId);
-    if (!webContents) return null;
+    const webViewInfo = this.webViews.get(webviewId);
+    if (!webViewInfo) return null;
 
-    const image = await webContents.view.webContents.capturePage();
-    const jpegBuffer = image.toJPEG(10);
+    const targetContents = webViewInfo.view.webContents;
+    if (!targetContents || targetContents.isDestroyed()) {
+      return null;
+    }
+
+    const debuggerApi = targetContents.debugger;
+    let attachedHere = false;
+
+    try {
+      if (!debuggerApi.isAttached()) {
+        debuggerApi.attach('1.3');
+        attachedHere = true;
+      }
+
+      const result = (await debuggerApi.sendCommand('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 60,
+        fromSurface: true,
+      })) as { data?: string };
+
+      if (result?.data) {
+        return 'data:image/jpeg;base64,' + result.data;
+      }
+    } catch (error) {
+      console.warn(
+        `CDP screenshot failed for webview ${webviewId}, falling back to capturePage:`,
+        error
+      );
+    } finally {
+      if (attachedHere && debuggerApi.isAttached()) {
+        try {
+          debuggerApi.detach();
+        } catch (detachError) {
+          console.warn(
+            `Failed to detach debugger for webview ${webviewId}:`,
+            detachError
+          );
+        }
+      }
+    }
+
+    const image = await targetContents.capturePage();
+    const jpegBuffer = image.toJPEG(60);
     return 'data:image/jpeg;base64,' + jpegBuffer.toString('base64');
   }
 
@@ -204,13 +259,7 @@ export class WebViewManager {
 
       // Set to muted state when created
       view.webContents.audioMuted = true;
-      let newId = Number(id);
-      view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      view.setBounds(this.getHiddenBounds(id));
       view.setBorderRadius(16);
 
       await view.webContents.loadURL(url);
@@ -257,12 +306,7 @@ export class WebViewManager {
           this.win?.webContents.send('url-updated', navigationUrl);
           return;
         }
-        webViewInfo.view.setBounds({
-          x: -1919,
-          y: -1079,
-          width: 1920,
-          height: 1080,
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, 1920, 1080));
         const activeSize = this.getActiveWebview().length;
         const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
@@ -333,13 +377,7 @@ export class WebViewManager {
           height: Math.max(height, 100),
         });
       } else {
-        let newId = Number(id);
-        webViewInfo.view.setBounds({
-          x: -9999 + newId * 100,
-          y: -9999 + newId * 100,
-          width: Math.max(width, 100),
-          height: Math.max(height, 100),
-        });
+        webViewInfo.view.setBounds(this.getHiddenBounds(id, width, height));
       }
 
       return { success: true };
@@ -354,13 +392,7 @@ export class WebViewManager {
     if (!webViewInfo) {
       return { success: false, error: `Webview with id ${id} not found` };
     }
-    let newId = Number(id);
-    webViewInfo.view.setBounds({
-      x: -9999 + newId * 100,
-      y: -9999 + newId * 100,
-      width: 100,
-      height: 100,
-    });
+    webViewInfo.view.setBounds(this.getHiddenBounds(id));
     webViewInfo.isShow = false;
 
     if (
@@ -374,13 +406,7 @@ export class WebViewManager {
   }
   public hideAllWebview() {
     this.webViews.forEach((webview) => {
-      let newId = Number(webview.id);
-      webview.view.setBounds({
-        x: -9999 + newId * 100,
-        y: -9999 + newId * 100,
-        width: 100,
-        height: 100,
-      });
+      webview.view.setBounds(this.getHiddenBounds(webview.id));
       webview.isShow = false;
 
       if (webview.view.webContents && !webview.view.webContents.isDestroyed()) {

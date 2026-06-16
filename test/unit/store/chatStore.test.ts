@@ -26,24 +26,54 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
-vi.mock('@/api/http', () => ({
-  fetchPost: vi.fn(),
-  fetchPut: vi.fn(),
-  getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
-  proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
-  proxyFetchPut: vi.fn(),
-  proxyFetchGet: vi.fn(() =>
-    Promise.resolve({
-      value: '',
-      api_url: '',
-      items: [],
-      warning_code: null,
-    })
-  ),
-  uploadFile: vi.fn(),
-  fetchDelete: vi.fn(),
-  waitForBackendReady: vi.fn(() => Promise.resolve(true)),
-}));
+vi.mock('@/api/http', async () => {
+  const { fetchEventSource } = await import('@microsoft/fetch-event-source');
+  const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
+
+  return {
+    fetchPost: vi.fn(),
+    fetchPut: vi.fn(),
+    getBaseURL,
+    proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
+    proxyFetchPut: vi.fn(),
+    proxyFetchGet: vi.fn(() =>
+      Promise.resolve({
+        value: '',
+        api_url: '',
+        items: [],
+        warning_code: null,
+      })
+    ),
+    uploadFile: vi.fn(),
+    fetchDelete: vi.fn(),
+    waitForBackendReady: vi.fn(() => Promise.resolve(true)),
+    sseTransport: vi.fn(async (options: any) => {
+      const baseURL = await getBaseURL();
+      const fullUrl =
+        options.url.startsWith('http://') || options.url.startsWith('https://')
+          ? options.url
+          : `${baseURL}${options.url}`;
+      const body =
+        typeof options.body === 'string'
+          ? options.body
+          : options.body
+            ? JSON.stringify(options.body)
+            : undefined;
+
+      await fetchEventSource(fullUrl, {
+        method: options.method || 'POST',
+        openWhenHidden: options.openWhenHidden ?? true,
+        signal: options.signal,
+        headers: options.extraHeaders ?? {},
+        body,
+        onmessage: options.onmessage,
+        onopen: options.onopen,
+        onerror: options.onerror,
+        onclose: options.onclose,
+      });
+    }),
+  };
+});
 
 vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
@@ -91,12 +121,13 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
-import { proxyFetchGet } from '@/api/http';
+import { proxyFetchGet, waitForBackendReady } from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
   getCloudModelPlatform,
+  resolveConfirmedUserMessageContent,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -116,6 +147,39 @@ import { ChatTaskStatus } from '../../../src/types/constants';
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Confirmed user prompt resolution', () => {
+    it('uses the optimistic user message when it exists', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          lastMessageContent: 'current typed prompt',
+          messageContent: 'first prompt',
+          question: 'backend current prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('current typed prompt');
+    });
+
+    it('uses the SSE question for follow-up confirms before stale startTask content', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'follow-up prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('follow-up prompt');
+    });
+
+    it('keeps first-run confirms on the captured startTask content before question', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'backend confirmed prompt',
+          isFollowUpConfirm: false,
+        })
+      ).toBe('first prompt');
+    });
   });
 
   describe('Task Upload Files', () => {
@@ -654,6 +718,107 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(result.current.getState().updateCount).toBe(initialCount + 2);
+    });
+  });
+
+  describe('Task startup', () => {
+    it('renders the pending user turn before backend readiness resolves', async () => {
+      let resolveBackendReady!: (ready: boolean) => void;
+      vi.mocked(waitForBackendReady).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveBackendReady = resolve;
+        })
+      );
+
+      const { result } = renderHook(() => useChatStore());
+      const appendInitChatStore = vi.fn(() => {
+        const optimisticTaskId = result.current
+          .getState()
+          .create('optimistic-task');
+        result.current.getState().setActiveTaskId(optimisticTaskId);
+        return {
+          taskId: optimisticTaskId,
+          chatStore: result.current,
+        };
+      });
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+      } as any);
+
+      let startPromise!: Promise<void>;
+      act(() => {
+        const initialTaskId = result.current.getState().create('initial-task');
+        startPromise = result.current
+          .getState()
+          .startTask(
+            initialTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'Resume this project',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+      });
+
+      expect(appendInitChatStore).toHaveBeenCalledTimes(1);
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: true,
+        status: ChatTaskStatus.PENDING,
+        messages: [
+          expect.objectContaining({
+            role: 'user',
+            content: 'Resume this project',
+          }),
+        ],
+      });
+
+      resolveBackendReady(false);
+      await act(async () => {
+        await startPromise;
+      });
+
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: false,
+        status: ChatTaskStatus.FINISHED,
+      });
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+  });
+
+  describe('Cross-store task safety', () => {
+    it('does not create phantom tasks through task-scoped setters', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      act(() => {
+        result.current.getState().setSelectedFile('missing-task', {
+          name: 'missing.md',
+          path: '/missing.md',
+          type: 'md',
+        });
+        result.current
+          .getState()
+          .setActiveWorkspace('missing-task', 'workflow');
+        result.current.getState().setActiveAgent('missing-task', 'agent-1');
+      });
+
+      expect(result.current.getState().tasks['missing-task']).toBeUndefined();
     });
   });
 

@@ -399,7 +399,7 @@ export default function SubAgents() {
 
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
-      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
+      <div className="flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
         <div className="flex w-full flex-col items-start justify-between gap-4">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-text-heading">
@@ -411,7 +411,7 @@ export default function SubAgents() {
 
       <div className="mb-8 flex flex-col gap-6">
         <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="text-body-base sticky top-[86px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
+          <div className="text-body-base sticky top-[48px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
             {t('setting.models-configuration')}
           </div>
 

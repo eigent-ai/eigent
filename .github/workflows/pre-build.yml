@@ -134,6 +134,10 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          VITE_SITE_URL: ${{ secrets.VITE_SITE_URL }}
+          VITE_USE_LOCAL_PROXY: ${{ secrets.VITE_USE_LOCAL_PROXY }}
+          VITE_REMOTE_CONTROL_WEB_ORIGIN: ${{ secrets.VITE_REMOTE_CONTROL_WEB_ORIGIN }}
+          VITE_REMOTE_CONTROL_LOCAL_API_URL: ${{ secrets.VITE_REMOTE_CONTROL_LOCAL_API_URL }}
           USE_NPM_INSTALL_BUN: 'true'
 
       # Step for Windows builds without signing
@@ -148,6 +152,10 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          VITE_SITE_URL: ${{ secrets.VITE_SITE_URL }}
+          VITE_USE_LOCAL_PROXY: ${{ secrets.VITE_USE_LOCAL_PROXY }}
+          VITE_REMOTE_CONTROL_WEB_ORIGIN: ${{ secrets.VITE_REMOTE_CONTROL_WEB_ORIGIN }}
+          VITE_REMOTE_CONTROL_LOCAL_API_URL: ${{ secrets.VITE_REMOTE_CONTROL_LOCAL_API_URL }}
           USE_NPM_INSTALL_BUN: 'true'
 
       # Step for Linux builds
@@ -162,6 +170,10 @@ jobs:
           VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
           VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
           VITE_STACK_SECRET_SERVER_KEY: ${{ secrets.VITE_STACK_SECRET_SERVER_KEY }}
+          VITE_SITE_URL: ${{ secrets.VITE_SITE_URL }}
+          VITE_USE_LOCAL_PROXY: ${{ secrets.VITE_USE_LOCAL_PROXY }}
+          VITE_REMOTE_CONTROL_WEB_ORIGIN: ${{ secrets.VITE_REMOTE_CONTROL_WEB_ORIGIN }}
+          VITE_REMOTE_CONTROL_LOCAL_API_URL: ${{ secrets.VITE_REMOTE_CONTROL_LOCAL_API_URL }}
           USE_NPM_INSTALL_BUN: 'true'
 
       # Verify built app contains Electron Framework

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
@@ -35,22 +36,24 @@ export default function CloseNoticeDialog({
   onOpenChange,
   trigger,
 }: Props) {
+  const host = useHost();
+  const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
   const onSubmit = useCallback(() => {
-    window.electronAPI.closeWindow(true);
-  }, []);
+    electronAPI?.closeWindow(true);
+  }, [electronAPI]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="gap-0 !rounded-xl border border-border-subtle-strong !bg-popup-surface p-0 shadow-sm sm:max-w-[600px]">
-        <DialogHeader className="!rounded-t-xl !bg-popup-surface p-md">
+      <DialogContent className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[600px] border">
+        <DialogHeader className="!rounded-t-xl !bg-ds-bg-neutral-strong-default p-md">
           <DialogTitle className="m-0">{t('layout.close-notice')}</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-md bg-popup-bg p-md">
+        <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
           {t('layout.a-task-is-currently-running')}
         </div>
-        <DialogFooter className="!rounded-b-xl bg-white-100% p-md">
+        <DialogFooter className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md">
           <DialogClose asChild>
             <Button variant="ghost" size="md">
               {t('layout.cancel')}

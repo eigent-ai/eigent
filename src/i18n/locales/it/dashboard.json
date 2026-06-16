@@ -11,6 +11,7 @@
   "grid": "Griglia",
   "table": "Tabella",
   "list": "Lista",
+  "board": "Bacheca",
   "search-dialog": "Dialogo di Ricerca",
   "search-dialog-placeholder": "Cerca o fai una domanda",
   "no-results": "Nessun risultato trovato.",
@@ -23,5 +24,6 @@
   "document-agent": "Agente Documenti",
   "multi-modal-agent": "Agente Multi Modale",
   "social-media-agent": "Agente Social Media",
-  "no-projects-found": "Nessun progetto trovato."
+  "no-projects-found": "Nessun progetto trovato.",
+  "no-tasks-found": "Nessuna attività trovata."
 }

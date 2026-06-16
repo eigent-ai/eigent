@@ -11,6 +11,7 @@
   "grid": "Grid",
   "table": "Table",
   "list": "List",
+  "board": "Board",
   "search-dialog": "Search Dialog",
   "search-dialog-placeholder": "Search or ask a question",
   "no-results": "No results found.",
@@ -23,5 +24,6 @@
   "document-agent": "Document Agent",
   "multi-modal-agent": "Multi Modal Agent",
   "social-media-agent": "Social Media Agent",
-  "no-projects-found": "No projects found."
+  "no-projects-found": "No projects found.",
+  "no-tasks-found": "No tasks found."
 }

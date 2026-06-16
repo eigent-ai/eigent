@@ -26,6 +26,7 @@ class Trigger(AbstractModel, DefaultTimes, table=True):
     
     id: int = Field(default=None, primary_key=True)
     user_id: str = Field(index=True, description="User ID who owns this trigger")
+    space_id: Optional[str] = Field(default=None, index=True, description="Space ID this trigger belongs to")
     project_id: str = Field(index=True, description="Project ID this trigger belongs to")
     name: str = Field(max_length=100, description="Human readable name for the trigger")
     description: str = Field(default="", max_length=1000, description="Description of what this trigger does")
@@ -130,6 +131,7 @@ class TriggerIn(BaseModel):
     """Input model for creating triggers"""
     name: str = Field(max_length=100)
     description: str = Field(default="", max_length=1000)
+    space_id: Optional[str] = None
     project_id: str
     trigger_type: TriggerType
     custom_cron_expression: Optional[str] = None
@@ -147,6 +149,7 @@ class TriggerUpdate(BaseModel):
     """Model for updating triggers"""
     name: Optional[str] = Field(default=None, max_length=100)
     description: Optional[str] = Field(default=None, max_length=1000)
+    space_id: Optional[str] = None
     status: Optional[TriggerStatus] = None
     custom_cron_expression: Optional[str] = None
     listener_type: Optional[ListenerType] = None
@@ -163,6 +166,7 @@ class TriggerOut(BaseModel):
     """Output model for trigger responses"""
     id: int
     user_id: str
+    space_id: Optional[str] = None
     project_id: str
     name: str
     description: str

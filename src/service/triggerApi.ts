@@ -21,6 +21,7 @@ import {
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import {
   ExecutionStatus,
+  SkipReason,
   Trigger,
   TriggerInput,
   TriggerStatus,
@@ -243,6 +244,7 @@ export const proxyUpdateTriggerExecution = async (
     duration_seconds?: number;
     output_data?: Record<string, any>;
     error_message?: string;
+    skip_reason?: SkipReason;
     attempts?: number;
     tokens_used?: number;
     tools_executed?: Record<string, any>;
@@ -290,6 +292,7 @@ export const proxyUpdateTriggerExecution = async (
       const metadata: Record<string, any> = {};
       if (updateData.error_message)
         metadata.error_message = updateData.error_message;
+      if (updateData.skip_reason) metadata.skip_reason = updateData.skip_reason;
       if (updateData.duration_seconds != null)
         metadata.duration_seconds = updateData.duration_seconds;
       if (updateData.tokens_used != null && updateData.tokens_used > 0)

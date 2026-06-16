@@ -8,6 +8,7 @@
   "save-changes": "Guardar cambios",
   "description-optional": "Descripción (Opcional)",
   "agent-tool": "Herramienta de Agent",
+  "agent-tool-tooltip": "Selecciona herramientas e integraciones para tu agente",
   "share": "Compartir",
   "advanced-model-config": "Configuración Avanzada del Modelo",
   "use-custom-model": "Usar configuración de modelo personalizada",
@@ -16,5 +17,8 @@
   "model-type": "Tipo de Modelo",
   "model-type-placeholder": "ej. gpt-4o-mini",
   "worker-name-cannot-be-empty": "El nombre del worker no puede estar vacío",
-  "worker-name-already-exists": "El nombre del worker ya existe"
+  "worker-name-already-exists": "El nombre del worker ya existe",
+  "detail": "Detalle",
+  "duplicate": "Duplicar",
+  "delete": "Eliminar"
 }

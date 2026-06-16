@@ -16,7 +16,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
@@ -53,6 +53,12 @@ McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 class Chat(BaseModel):
     task_id: str
     project_id: str
+    space_id: str | None = None
+    run_id: str | None = None
+    space_root_path: str | None = None
+    workdir_mode: (
+        Literal["worktree", "copy", "direct-write", "artifact-only"] | None
+    ) = None
     question: str
     email: str
     attaches: list[str] = []
@@ -78,8 +84,16 @@ class Chat(BaseModel):
     # (e.g., GOOGLE_API_KEY, SEARCH_ENGINE_ID)
     search_config: dict[str, str] | None = None
     # User identifier for user-specific skill configurations
-    user_id: str | None = None
+    user_id: str | int | None = None
+    # Direct server API base URL (for example http://localhost:3001/api/v1)
+    # used by standalone Brain to sync replay steps without Electron env injection.
+    server_url: str | None = None
+    session_mode: Literal["workforce", "single-agent"] = "workforce"
+    toolkit_config: dict[str, Any] | None = None
     remote_sub_agent_config: RemoteSubAgentConfig | None = None
+    # Durable Project context reconstructed from persisted runs after restart.
+    # In-process follow-ups still prefer TaskLock.conversation_history.
+    project_context: str | None = None
 
     @field_validator("model_type")
     @classmethod
@@ -126,19 +140,40 @@ class Chat(BaseModel):
         )
 
     def file_save_path(self, path: str | None = None):
-        email = re.sub(r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]).strip(
-            "."
-        )
+        legacy_owner_key = re.sub(
+            r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]
+        ).strip(".")
+        if self.user_id is not None and str(self.user_id).strip():
+            owner_key = "user_" + re.sub(
+                r'[\\/*?:"<>|\s]', "_", str(self.user_id)
+            ).strip(".")
+        else:
+            owner_key = legacy_owner_key
+        run_id = self.run_id or self.task_id
         # Use project-based structure: project_{project_id}/task_{task_id}
-        save_path = (
+        project_base = (
             Path.home()
             / "eigent"
-            / email
+            / owner_key
             / f"project_{self.project_id}"
-            / f"task_{self.task_id}"
+            / f"task_{run_id}"
         )
-        if path is not None:
-            save_path = save_path / path
+        legacy_project_base = (
+            Path.home()
+            / "eigent"
+            / legacy_owner_key
+            / f"project_{self.project_id}"
+            / f"task_{run_id}"
+        )
+        if (
+            owner_key != legacy_owner_key
+            and not project_base.exists()
+            and legacy_project_base.exists()
+        ):
+            # Bridge old installs whose artifacts were written under
+            # ~/eigent/{email_sanitized} before user_id-owned roots existed.
+            project_base = legacy_project_base
+        save_path = project_base / path if path is not None else project_base
         save_path.mkdir(parents=True, exist_ok=True)
 
         return str(save_path)
@@ -148,6 +183,7 @@ class SupplementChat(BaseModel):
     question: str
     task_id: str | None = None
     attaches: list[str] = []
+    project_context: str | None = None
 
 
 class HumanReply(BaseModel):

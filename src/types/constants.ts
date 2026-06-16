@@ -31,6 +31,7 @@ export const AgentStep = {
   DEACTIVATE_TOOLKIT: 'deactivate_toolkit',
   TERMINAL: 'terminal',
   WRITE_FILE: 'write_file',
+  TODO_STATE: 'todo_state',
   BUDGET_NOT_ENOUGH: 'budget_not_enough',
   CONTEXT_TOO_LONG: 'context_too_long',
   ERROR: 'error',
@@ -42,6 +43,7 @@ export const AgentStep = {
   NOTICE_CARD: 'notice_card',
   FAILED: 'failed',
   AGENT_SUMMARY_END: 'agent_summary_end',
+  AGENT_END: 'agent_end',
 } as const;
 
 export type AgentStepType = (typeof AgentStep)[keyof typeof AgentStep];
@@ -98,3 +100,13 @@ export const AgentStatusValue = {
 
 export type AgentStatusType =
   (typeof AgentStatusValue)[keyof typeof AgentStatusValue];
+
+/**
+ * Session side-panel mode: multi-agent workforce or single-agent focus.
+ */
+export const SessionMode = {
+  WORKFORCE: 'workforce',
+  SINGLE_AGENT: 'single-agent',
+} as const;
+
+export type SessionModeType = (typeof SessionMode)[keyof typeof SessionMode];

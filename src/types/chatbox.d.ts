@@ -32,6 +32,7 @@ declare global {
     task_id?: string;
     project_id?: string;
     isFolder?: boolean;
+    isRemote?: boolean;
     relativePath?: string;
   }
 
@@ -65,6 +66,8 @@ declare global {
   interface File {
     fileName: string;
     filePath: string;
+    fileId?: string;
+    source?: 'local' | 'upload';
   }
 
   type AgentStatus = AgentStatusType;
@@ -117,6 +120,8 @@ declare global {
   }
 
   interface AgentMessage {
+    timestamp?: number | null;
+    created_at?: string | null;
     step: AgentStepType;
     data: {
       project_id?: string;
@@ -142,6 +147,12 @@ declare global {
       output?: string;
       result?: string;
       tools?: string[];
+      todos?: {
+        id: string;
+        content: string;
+        active_form?: string;
+        status: 'pending' | 'in_progress' | 'completed';
+      }[];
       //Context Length
       current_length?: number;
       max_length?: number;
@@ -155,7 +166,8 @@ declare global {
     | 'browser_agent'
     | 'document_agent'
     | 'multi_modal_agent'
-    | 'social_media_agent';
+    | 'social_media_agent'
+    | 'single_agent';
 
   interface AgentNameMap {
     developer_agent: 'Developer Agent';
@@ -163,6 +175,7 @@ declare global {
     document_agent: 'Document Agent';
     multi_modal_agent: 'Multi Modal Agent';
     social_media_agent: 'Social Media Agent';
+    single_agent: 'CAMEL Agent';
   }
   type WorkspaceType =
     | 'workflow'

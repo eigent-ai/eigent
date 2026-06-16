@@ -12,12 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import animationData from '@/assets/animation/onboarding_success.json';
-import { AnimationJson } from '@/components/AnimationJson';
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
+import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { useEffect, useState } from 'react';
@@ -27,10 +26,11 @@ import HistorySidebar from '../HistorySidebar';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 const Layout = () => {
+  const host = useHost();
   const {
     initState,
     isFirstLaunch,
-    setIsFirstLaunch,
+    onboardingCompleted,
     setInitState: _setInitState,
   } = useAuthStore();
   const [noticeOpen, setNoticeOpen] = useState(false);
@@ -53,53 +53,49 @@ const Layout = () => {
   useInstallationSetup();
 
   useEffect(() => {
+    if (!host?.ipcRenderer || !host?.electronAPI) return;
+
     const handleBeforeClose = () => {
-      const currentStatus =
-        chatStore.tasks[chatStore.activeTaskId as string]?.status;
-      if (['running', 'pause'].includes(currentStatus)) {
+      const currentStatus = chatStore?.activeTaskId
+        ? chatStore.tasks[chatStore.activeTaskId]?.status
+        : undefined;
+      if (currentStatus && ['running', 'pause'].includes(currentStatus)) {
         setNoticeOpen(true);
       } else {
-        window.electronAPI.closeWindow(true);
+        host.electronAPI.closeWindow(true);
       }
     };
 
-    window.ipcRenderer.on('before-close', handleBeforeClose);
-
+    host.ipcRenderer.on('before-close', handleBeforeClose);
     return () => {
-      window.ipcRenderer.removeAllListeners('before-close');
+      host.ipcRenderer?.removeAllListeners('before-close');
     };
-  }, [chatStore.tasks, chatStore.activeTaskId]);
-
-  // Determine what to show based on states
-  const shouldShowOnboarding =
-    initState === 'done' && isFirstLaunch && !isInstalling;
+  }, [chatStore, host]);
 
   // Show install screen if: installation UI is active, user hasn't finished setup,
   // or backend hasn't passed health check yet.
   // isBackendReady defaults to false on each app launch (non-persisted),
   // so the main UI is gated until health check passes — no race condition.
+  // Also wait for first-launch onboarding to be completed before showing main UI.
   const actualShouldShowInstallScreen =
-    shouldShowInstallScreen || initState !== 'done' || !isBackendReady;
+    shouldShowInstallScreen ||
+    initState !== 'done' ||
+    !isBackendReady ||
+    (isFirstLaunch && !onboardingCompleted);
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
-  if (!chatStore) {
-    console.log(chatStore);
-
-    return <div>Loading...</div>;
-  }
-
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <TopBar />
-      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
-        {/* Onboarding animation */}
-        {shouldShowOnboarding && (
-          <AnimationJson
-            onComplete={() => setIsFirstLaunch(false)}
-            animationData={animationData}
-          />
-        )}
-
+    <div className="bg-ds-bg-neutral-muted-default relative flex h-full flex-col overflow-hidden">
+      <div
+        className={
+          actualShouldShowInstallScreen
+            ? 'pointer-events-none select-none'
+            : undefined
+        }
+      >
+        <TopBar />
+      </div>
+      <div className="min-h-0 relative h-full flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}
 

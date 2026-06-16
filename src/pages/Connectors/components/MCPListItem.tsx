@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { capitalizeFirstLetter } from '@/lib';
 import { CircleAlert, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,15 +38,15 @@ export default function MCPListItem({
   const [_showMenu, setShowMenu] = useState(false);
   const { t } = useTranslation();
   return (
-    <div className="mb-4 gap-4 rounded-2xl bg-surface-tertiary p-4 flex items-center justify-between">
-      <div className="gap-xs flex items-center">
+    <div className="mb-4 gap-4 rounded-2xl bg-ds-bg-neutral-strong-default p-4 flex items-center justify-between">
+      <div className="gap-4 flex items-center">
         <div className="mx-xs h-3 w-3 bg-green-500 rounded-full"></div>
-        <div className="text-base font-bold leading-9 text-text-primary">
-          {item.mcp_name}
+        <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
+          {capitalizeFirstLetter(item.mcp_name)}
         </div>
         <div className="flex items-center">
           <TooltipSimple content={item.mcp_desc}>
-            <CircleAlert className="h-4 w-4 text-icon-secondary" />
+            <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
           </TooltipSimple>
         </div>
       </div>
@@ -58,6 +59,9 @@ export default function MCPListItem({
         <Button
           variant="ghost"
           size="sm"
+          textWeight="medium"
+          buttonRadius="lg"
+          tone="error"
           className="w-full"
           onClick={() => {
             onDelete(item);
@@ -71,14 +75,14 @@ export default function MCPListItem({
 						<PopoverTrigger asChild>
 							<Button
 								variant="ghost"
-								size="icon"
+								size="xs" buttonContent="icon-only"
 								onClick={() => setShowMenu((v) => !v)}
 								disabled={loading}
 							>
-								<Ellipsis className="w-4 h-4 text-icon-primary" />
+								<Ellipsis className="w-4 h-4 text-ds-icon-neutral-default-default" />
 							</Button>
 						</PopoverTrigger>
-						<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-dropdown-border">
+						<PopoverContent className="w-[98px] p-sm rounded-[12px] bg-dropdown-bg border border-solid border-ds-border-neutral-default-default">
 							<div className="space-y-1">
 								<PopoverClose asChild>
 									<Button
@@ -97,7 +101,7 @@ export default function MCPListItem({
 									<Button
 										variant="ghost"
 										size="sm"
-										className="w-full !text-text-cuation"
+										className="w-full !text-ds-text-status-error-strong-default"
 										onClick={() => {
 											onDelete(item);
 											setShowMenu(false);

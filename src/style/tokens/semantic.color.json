@@ -1,0 +1,215 @@
+{
+  "$description": "Semantic token axes and generation transforms for V2.",
+  "axes": {
+    "elements": ["bg", "text", "border", "icon", "ring"],
+    "tones": [
+      "neutral",
+      "brand",
+      "status-running",
+      "status-splitting",
+      "status-pending",
+      "status-error",
+      "status-reassigning",
+      "status-completed",
+      "status-blocked",
+      "status-paused",
+      "status-skipped",
+      "status-cancelled",
+      "single-agent",
+      "workforce",
+      "browser",
+      "terminal",
+      "document",
+      "success",
+      "caution",
+      "error",
+      "warning",
+      "information"
+    ],
+    "emphasis": [
+      "subtle",
+      "muted",
+      "default",
+      "strong",
+      "inverse",
+      "transparent"
+    ],
+    "states": ["default", "hover", "active", "selected", "focus", "disabled"]
+  },
+  "transforms": {
+    "emphasis": {
+      "subtle": { "dL": 0.18, "dC": -0.02 },
+      "muted": { "dL": 0.1, "dC": -0.01 },
+      "default": { "dL": 0, "dC": 0 },
+      "strong": { "dL": -0.08, "dC": 0.02 },
+      "inverse": { "dL": -0.22, "dC": 0.01 },
+      "transparent": { "dL": 0, "dC": 0 }
+    },
+    "state": {
+      "default": { "dL": 0, "dC": 0 },
+      "hover": { "dL": -0.03, "dC": 0.01 },
+      "active": { "dL": -0.06, "dC": 0.015 },
+      "selected": { "dL": -0.08, "dC": 0.015 },
+      "focus": { "dL": -0.05, "dC": 0.03 },
+      "disabled": { "dL": 0.08, "dC": -0.03, "alpha": 0.5 }
+    },
+    "element": {
+      "bg": { "dL": 0, "dC": 0 },
+      "text": { "dL": -0.12, "dC": -0.005 },
+      "border": { "dL": -0.06, "dC": -0.01, "alpha": 0.75 },
+      "icon": { "dL": -0.1, "dC": -0.005, "alpha": 0.92 },
+      "ring": { "dL": -0.04, "dC": 0.01, "alpha": 0.62 }
+    }
+  },
+  "toneSource": {
+    "neutral": {
+      "source": "background",
+      "sourceByElement": {
+        "text": "ink",
+        "icon": "ink"
+      },
+      "dC": -0.08,
+      "dLLight": 0.08,
+      "dLDark": -0.08
+    },
+    "brand": { "source": "accent", "dC": 0.03 },
+    "status-running": { "source": "fixed" },
+    "status-splitting": { "source": "fixed" },
+    "status-pending": { "source": "fixed" },
+    "status-error": { "source": "fixed" },
+    "status-reassigning": { "source": "fixed" },
+    "status-completed": { "source": "fixed" },
+    "status-blocked": { "source": "fixed" },
+    "status-paused": { "source": "fixed" },
+    "status-skipped": { "source": "fixed" },
+    "status-cancelled": { "source": "fixed" },
+    "single-agent": { "source": "fixed" },
+    "workforce": { "source": "fixed" },
+    "browser": { "source": "fixed" },
+    "terminal": { "source": "fixed" },
+    "document": { "source": "fixed" },
+    "success": { "source": "fixed" },
+    "caution": { "source": "fixed" },
+    "error": { "source": "fixed" },
+    "warning": { "source": "fixed" },
+    "information": { "source": "fixed" }
+  },
+  "contrastPairs": [
+    {
+      "fg": "text.neutral.default.default",
+      "bg": "bg.neutral.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.neutral.muted.default",
+      "bg": "bg.neutral.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.brand.inverse.default",
+      "bg": "bg.brand.default.default",
+      "minContrast": 3,
+      "largeText": true
+    },
+    {
+      "fg": "text.status-completed.strong.default",
+      "bg": "bg.status-completed.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-error.strong.default",
+      "bg": "bg.status-error.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-splitting.strong.default",
+      "bg": "bg.status-splitting.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-pending.strong.default",
+      "bg": "bg.status-pending.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-running.strong.default",
+      "bg": "bg.status-running.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-reassigning.strong.default",
+      "bg": "bg.status-reassigning.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-blocked.strong.default",
+      "bg": "bg.status-blocked.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-paused.strong.default",
+      "bg": "bg.status-paused.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-skipped.strong.default",
+      "bg": "bg.status-skipped.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.status-cancelled.strong.default",
+      "bg": "bg.status-cancelled.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.single-agent.strong.default",
+      "bg": "bg.single-agent.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.workforce.strong.default",
+      "bg": "bg.workforce.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.browser.strong.default",
+      "bg": "bg.browser.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.terminal.strong.default",
+      "bg": "bg.terminal.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.document.strong.default",
+      "bg": "bg.document.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.success.strong.default",
+      "bg": "bg.success.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.caution.strong.default",
+      "bg": "bg.caution.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.error.strong.default",
+      "bg": "bg.error.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.warning.strong.default",
+      "bg": "bg.warning.subtle.default",
+      "minContrast": 4.5
+    },
+    {
+      "fg": "text.information.strong.default",
+      "bg": "bg.information.subtle.default",
+      "minContrast": 4.5
+    }
+  ]
+}

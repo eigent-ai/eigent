@@ -1,0 +1,26 @@
+[defaults]
+timeout_seconds = 10
+verify_tls = true
+acquire_path = "/acquire"
+release_path = "/release"
+health_path = "/health"
+# auth_token_env = "EIGENT_HANDS_CLUSTER_AUTH_TOKEN"
+
+[routes]
+browser = "browser_pool"
+terminal = "terminal_pool"
+model = "model_pool"
+default = "gateway"
+
+[clusters.gateway]
+base_url = "http://hands-gateway:8080"
+
+[clusters.browser_pool]
+base_url = "http://browser-cluster:8080"
+# auth_token_env = "EIGENT_BROWSER_CLUSTER_TOKEN"
+
+[clusters.terminal_pool]
+base_url = "http://terminal-cluster:8080"
+
+[clusters.model_pool]
+base_url = "http://model-cluster:8080"

@@ -58,9 +58,14 @@ export default [
       '.vite/**',
       // Config files
       'vite.config.ts',
+      'vite.config.*.ts',
+      '**/vite.config.ts',
       'vitest.config.ts',
+      '**/vitest.config.ts',
       'tailwind.config.js',
+      '**/tailwind.config.js',
       'postcss.config.cjs',
+      '**/postcss.config.cjs',
       // Generated files
       '**/*.d.ts',
       '**/*.map',
@@ -70,6 +75,8 @@ export default [
       '**/.venv/**',
       // Prebuilt resources
       'resources/prebuilt/**',
+      // Archive (pre-refactor snapshots)
+      'archive/**',
     ],
   },
 
@@ -138,6 +145,34 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  // Guardrail: in src code, always use Host abstraction instead of direct window Electron APIs
+  {
+    files: ['src/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'window',
+          property: 'electronAPI',
+          message:
+            'Use Host abstraction (useHost/createHost) instead of window.electronAPI',
+        },
+        {
+          object: 'window',
+          property: 'ipcRenderer',
+          message:
+            'Use Host abstraction (useHost/createHost) instead of window.ipcRenderer',
+        },
+      ],
+    },
+  },
+  // Single allowed bridge for reading global Electron APIs
+  {
+    files: ['src/host/createHost.ts'],
+    rules: {
+      'no-restricted-properties': 'off',
     },
   },
   // Prettier config (must be last to override conflicting rules)

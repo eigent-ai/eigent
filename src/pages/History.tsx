@@ -12,25 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Bot } from '@/components/animate-ui/icons/bot';
-import { Compass } from '@/components/animate-ui/icons/compass';
-import { Hammer } from '@/components/animate-ui/icons/hammer';
-import { Radio } from '@/components/animate-ui/icons/radio';
-import { Settings } from '@/components/animate-ui/icons/settings';
-import { Sparkle } from '@/components/animate-ui/icons/sparkle';
 import {
-  MenuToggleGroup,
-  MenuToggleItem,
-} from '@/components/MenuButton/MenuButton';
+  HistoryTabsNav,
+  isHistoryTabId,
+  type HistoryTabId,
+} from '@/components/Dashboard/HistoryTabsNav';
 import AlertDialog from '@/components/ui/alertDialog';
-import { Button } from '@/components/ui/button';
 import WordCarousel from '@/components/ui/WordCarousel';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import Project from '@/pages/Projects/Project';
+import HomeHub from '@/pages/Home';
 import Setting from '@/pages/Setting';
 import { useAuthStore } from '@/store/authStore';
-import { Plus } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Agents from './Agents';
@@ -38,45 +30,66 @@ import Browser from './Browser';
 import Channels from './Channels';
 import Connectors from './Connectors';
 
-const VALID_TABS = [
-  'projects',
-  'agents',
-  'channels',
-  'connectors',
-  'browser',
-  'settings',
-] as const;
-
-type TabType = (typeof VALID_TABS)[number];
-
-const TAB_ALIASES: Record<string, TabType> = {
+const TAB_ALIASES: Record<string, HistoryTabId> = {
   mcp_tools: 'connectors',
+  projects: 'home',
+  spaces: 'home',
 };
 
-export default function Home() {
+export default function History() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { chatStore, projectStore } = useChatStoreAdapter();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const { username, email } = useAuthStore();
   const displayName = username || email || '';
 
-  // Compute activeTab from URL, fallback to 'projects' if not in URL or invalid
   const activeTab = useMemo(() => {
     const tabFromUrl = searchParams.get('tab');
     if (tabFromUrl) {
       const normalizedTab = TAB_ALIASES[tabFromUrl] ?? tabFromUrl;
-      if (VALID_TABS.includes(normalizedTab as TabType)) {
-        return normalizedTab as TabType;
+      if (isHistoryTabId(normalizedTab)) {
+        return normalizedTab;
       }
     }
-    return 'projects' as TabType;
+    return 'home' as HistoryTabId;
   }, [searchParams]);
+
+  /** Mount each tab once when first opened; keep mounted and hide inactive so lists do not refetch on every tab switch. */
+  const [visitedTabs, setVisitedTabs] = useState<HistoryTabId[]>(() => [
+    activeTab,
+  ]);
+
+  useEffect(() => {
+    setVisitedTabs((prev) =>
+      prev.includes(activeTab) ? prev : [...prev, activeTab]
+    );
+  }, [activeTab]);
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    const section = searchParams.get('section');
+    if ((tabFromUrl === 'spaces' || tabFromUrl === 'projects') && !section) {
+      const legacySection = tabFromUrl === 'spaces' ? 'spaces' : 'projects';
+      navigate(`?tab=home&section=${legacySection}`, { replace: true });
+      return;
+    }
+    // When landing on Home with no section, default to Spaces so the
+    // URL is always self-describing (lets HomeHub render directly from
+    // searchParams without an internal default).
+    const isHomeTab = tabFromUrl === 'home' || tabFromUrl === null;
+    if (isHomeTab && !section) {
+      navigate(`?tab=home&section=spaces`, { replace: true });
+    }
+  }, [navigate, searchParams]);
 
   const handleTabChange = (value: string) => {
     if (value) {
+      if (value === 'home') {
+        navigate(`?tab=home&section=spaces`, { replace: true });
+        return;
+      }
       navigate(`?tab=${value}`, { replace: true });
     }
   };
@@ -96,128 +109,117 @@ export default function Home() {
 
   const welcomeName = formatWelcomeName(displayName);
 
+  /** User's local time: morning 5–12, afternoon 12–17, evening/night otherwise */
+  const hour = new Date().getHours();
+  const timeGreetingKey =
+    hour >= 5 && hour < 12
+      ? 'layout.greeting-morning'
+      : hour >= 12 && hour < 17
+        ? 'layout.greeting-afternoon'
+        : 'layout.greeting-evening';
+
   const confirmDelete = () => {
     setDeleteModalOpen(false);
   };
 
-  // create task
-  const createChat = () => {
-    //Handles refocusing id & non duplicate logic internally
-    projectStore?.createProject('new project');
-    navigate('/');
-  };
-
-  if (!chatStore || !projectStore) {
-    return <div>Loading...</div>;
-  }
-
   return (
-    <div
-      ref={scrollContainerRef}
-      className="scrollbar-hide mx-auto h-full overflow-y-auto"
-    >
-      {/* alert dialog */}
-      <AlertDialog
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        onConfirm={confirmDelete}
-        title={t('layout.delete-task')}
-        message={t('layout.delete-task-confirmation')}
-        confirmText={t('layout.delete')}
-        cancelText={t('layout.cancel')}
-      />
-      {/* welcome text */}
-      <div className="flex w-full flex-row bg-gradient-to-b from-surface-primary to-surface-primary px-20 pt-16">
-        <WordCarousel
-          words={[`${t('layout.welcome')}, ${welcomeName} !`]}
-          className="text-heading-xl font-bold tracking-tight"
-          rotateIntervalMs={100}
-          sweepDurationMs={2000}
-          sweepOnce
-          gradient={`linear-gradient(in oklch 90deg,
-							#f9f8f6 0%, var(--colors-blue-300) 30%,
-							var(--colors-emerald-default) 50%,
-							var(--colors-green-500) 70%,
-							var(--colors-orange-300) 100%)`}
-          ariaLabel="rotating headline"
-        />
-      </div>
-      {/* Navbar */}
-      {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
+    <div className="flex h-full w-full flex-1 flex-col px-1 pb-1 pt-10">
       <div
-        className={`sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-border-disabled bg-bg-page-default px-20 pb-4 pt-10`}
+        ref={scrollContainerRef}
+        className="scrollbar-hide h-full overflow-y-auto rounded-2xl bg-ds-bg-neutral-subtle-default"
       >
-        <div className="mx-auto flex w-full flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MenuToggleGroup
-              type="single"
-              value={activeTab}
-              orientation="horizontal"
-              onValueChange={handleTabChange}
-              className="gap-3"
-            >
-              <MenuToggleItem
-                size="xs"
-                value="projects"
-                iconAnimateOnHover="wiggle"
-                icon={<Sparkle />}
-              >
-                {t('layout.projects')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="agents"
-                iconAnimateOnHover="default"
-                icon={<Bot className="h-4 w-4" />}
-              >
-                {t('layout.agents')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="channels"
-                iconAnimateOnHover="default"
-                icon={<Radio className="h-4 w-4" />}
-              >
-                {t('layout.channels')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="connectors"
-                iconAnimateOnHover="default"
-                icon={<Hammer />}
-              >
-                {t('layout.connectors')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="browser"
-                iconAnimateOnHover="default"
-                icon={<Compass className="h-4 w-4" />}
-              >
-                {t('layout.browser')}
-              </MenuToggleItem>
-              <MenuToggleItem
-                size="xs"
-                value="settings"
-                iconAnimateOnHover="default"
-                icon={<Settings />}
-              >
-                {t('layout.settings')}
-              </MenuToggleItem>
-            </MenuToggleGroup>
+        {/* alert dialog */}
+        <AlertDialog
+          isOpen={deleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onConfirm={confirmDelete}
+          title={t('layout.delete-task')}
+          message={t('layout.delete-task-confirmation')}
+          confirmText={t('layout.delete')}
+          cancelText={t('layout.cancel')}
+        />
+        {/* welcome text */}
+        <div className="flex w-full flex-row bg-gradient-to-b from-ds-bg-neutral-default-default to-ds-bg-neutral-default-default px-[74px] py-8">
+          <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
+            <WordCarousel
+              words={[t(timeGreetingKey)]}
+              className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
+              rotateIntervalMs={100}
+              sweepDurationMs={2000}
+              sweepOnce
+              gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+            />
+            <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+              {`, ${welcomeName} !`}
+            </span>
+          </p>
+        </div>
+        {/* Navbar */}
+        {/* -top-px avoids a visible hairline: at top-0 subpixel rounding can leave a gap; */}
+        <div
+          className={`border-b-1 sticky -top-px z-20 flex flex-col items-center justify-between border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default px-[70px] pt-2`}
+        >
+          <div className="mx-auto flex w-full flex-row items-center">
+            <HistoryTabsNav activeTab={activeTab} onChange={handleTabChange} />
           </div>
-          <Button variant="primary" size="sm" onClick={createChat}>
-            <Plus />
-            {t('layout.new-project')}
-          </Button>
+        </div>
+        {visitedTabs.includes('home') && (
+          <div
+            className={
+              activeTab === 'home'
+                ? 'flex h-auto w-full px-[70px] pb-[120px]'
+                : 'hidden'
+            }
+            aria-hidden={activeTab !== 'home'}
+          >
+            <HomeHub />
+          </div>
+        )}
+        <div className="m-auto flex h-auto w-full max-w-[1020px] flex-1 flex-col">
+          <div className="flex h-auto w-full px-6 pb-[120px] [--home-hub-history-tabs-offset:49px]">
+            {visitedTabs.includes('agents') && (
+              <div
+                className={activeTab === 'agents' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'agents'}
+              >
+                <Agents />
+              </div>
+            )}
+            {visitedTabs.includes('channels') && (
+              <div
+                className={activeTab === 'channels' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'channels'}
+              >
+                <Channels />
+              </div>
+            )}
+            {visitedTabs.includes('connectors') && (
+              <div
+                className={activeTab === 'connectors' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'connectors'}
+              >
+                <Connectors />
+              </div>
+            )}
+            {visitedTabs.includes('browser') && (
+              <div
+                className={activeTab === 'browser' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'browser'}
+              >
+                <Browser />
+              </div>
+            )}
+            {visitedTabs.includes('settings') && (
+              <div
+                className={activeTab === 'settings' ? 'contents' : 'hidden'}
+                aria-hidden={activeTab !== 'settings'}
+              >
+                <Setting />
+              </div>
+            )}
+          </div>
         </div>
       </div>
-      {activeTab === 'projects' && <Project />}
-      {activeTab === 'agents' && <Agents />}
-      {activeTab === 'channels' && <Channels />}
-      {activeTab === 'connectors' && <Connectors />}
-      {activeTab === 'browser' && <Browser />}
-      {activeTab === 'settings' && <Setting />}
     </div>
   );
 }

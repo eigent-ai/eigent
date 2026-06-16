@@ -12,17 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { useEffect, useState } from 'react';
 
 export default function useAppVersion() {
   const [version, setVersion] = useState('');
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
 
   useEffect(() => {
-    window?.ipcRenderer
+    ipcRenderer
       ?.invoke('get-app-version')
       .then((v: string) => setVersion(v))
       .catch(() => setVersion('Unknown'));
-  }, []);
+  }, [ipcRenderer]);
 
   return version;
 }

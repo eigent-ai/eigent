@@ -135,7 +135,7 @@ export default function MCPConfigDialog({
             </div>
           ))}
           {errorMsg && (
-            <div className="mb-2 text-label-md text-text-cuation">
+            <div className="mb-2 text-label-md text-ds-text-status-error-strong-default">
               {errorMsg}
             </div>
           )}

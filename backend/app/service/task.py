@@ -33,8 +33,11 @@ from app.model.chat import (
     UpdateData,
 )
 from app.model.enums import Status
+from app.run_context import RunContext
 
 logger = logging.getLogger("task_service")
+
+TASK_LOCK_CLEANUP_SENTINEL = "__task_lock_cleanup__"
 
 
 class Action(str, Enum):
@@ -58,6 +61,7 @@ class Action(str, Enum):
     search_mcp = "search_mcp"  # backend -> user
     install_mcp = "install_mcp"  # backend -> user
     terminal = "terminal"  # backend -> user
+    todo_state = "todo_state"  # backend -> user
     end = "end"  # backend -> user
     stop = "stop"  # user -> backend
     supplement = "supplement"  # user -> backend
@@ -76,6 +80,7 @@ class ImprovePayload(BaseModel):
 
     question: str
     attaches: list[str] = []
+    project_context: str | None = None
 
 
 class ActionImproveData(BaseModel):
@@ -219,6 +224,11 @@ class ActionTerminalData(BaseModel):
     data: str
 
 
+class ActionTodoStateData(BaseModel):
+    action: Literal[Action.todo_state] = Action.todo_state
+    data: dict
+
+
 class ActionStopData(BaseModel):
     action: Literal[Action.stop] = Action.stop
 
@@ -296,6 +306,7 @@ ActionData = (
     | ActionSearchMcpData
     | ActionInstallMcpData
     | ActionTerminalData
+    | ActionTodoStateData
     | ActionStopData
     | ActionEndData
     | ActionTimeoutData
@@ -321,6 +332,7 @@ class Agents(str, Enum):
     multi_modal_agent = "multi_modal_agent"
     social_media_agent = "social_media_agent"
     mcp_agent = "mcp_agent"
+    single_agent = "single_agent"
 
 
 class TaskLock:
@@ -343,14 +355,46 @@ class TaskLock:
     # Context management fields
     conversation_history: list[dict[str, Any]]
     """Store conversation history for context"""
+    agent_memory_history: list[dict[str, Any]]
+    """Serialized ChatAgent memory snapshots for session continuity"""
+    memory_summary: str
+    """Compressed summary of older serialized agent memory"""
     last_task_result: str
     """Store the last task execution result"""
+    last_task_summary: str
+    """Store the last generated task summary"""
     question_agent: Any | None
     """Persistent question confirmation agent"""
     summary_generated: bool
     """Track if summary has been generated for this project"""
     current_task_id: str | None
     """Current task ID to be used in SSE responses"""
+    run_context: RunContext | None
+    """Current task-scoped runtime context for this Project."""
+    user_id: str | int | None
+    """Canonical user id when provided by the control plane."""
+    working_directory: str | None
+    """Resolved source/work directory for the current Run."""
+    task_output_root: str | None
+    """Resolved artifact/output directory for the current Run."""
+    task_start_time: float | None
+    """Timestamp captured when the current Run directories were frozen."""
+    email: str | None
+    """Legacy/display user email associated with the current Run."""
+    project_id: str | None
+    """Project id associated with the current Run."""
+    space_id: str | None
+    """Space id associated with the current Run."""
+    workdir_mode: str | None
+    """Actual workdir mode used by the current Run."""
+    base_snapshot_id: str | None
+    """Project workdir baseline snapshot id, when available."""
+    new_folder_path: Any | None
+    """Legacy cleanup marker for default output directories."""
+    memory_service: Any | None
+    """MemoryService bound for this Run; used by single_agent_service for on_run_end."""
+    _memory_finalized_runs: set[str]
+    """Run ids whose durable memory lifecycle has already been finalized."""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -365,10 +409,26 @@ class TaskLock:
 
         # Initialize context management fields
         self.conversation_history = []
+        self.agent_memory_history = []
+        self.memory_summary = ""
         self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
+        self.summary_generated = False
         self.current_task_id = None
+        self.run_context = None
+        self.user_id = None
+        self.working_directory = None
+        self.task_output_root = None
+        self.task_start_time = None
+        self.email = None
+        self.project_id = None
+        self.space_id = None
+        self.workdir_mode = None
+        self.base_snapshot_id = None
+        self.new_folder_path = None
+        self.memory_service = None
+        self._memory_finalized_runs = set()
 
         logger.info(
             "Task lock initialized",
@@ -444,6 +504,16 @@ class TaskLock:
                     pass
         self.background_tasks.clear()
 
+        # Unblock agents waiting on human input so shutdown can proceed.
+        for agent, queue in self.human_input.items():
+            try:
+                queue.put_nowait(TASK_LOCK_CLEANUP_SENTINEL)
+            except asyncio.QueueFull:
+                logger.debug(
+                    "Human input queue already full during cleanup",
+                    extra={"task_id": self.id, "agent": agent},
+                )
+
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
         for toolkit in self.registered_toolkits:
             try:
@@ -511,6 +581,18 @@ class TaskLock:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+
+    def add_agent_memory_snapshot(self, snapshot: dict[str, Any]) -> None:
+        logger.debug(
+            "Adding agent memory snapshot",
+            extra={
+                "task_id": self.id,
+                "scope": snapshot.get("scope"),
+                "agent_name": snapshot.get("agent_name"),
+                "message_count": len(snapshot.get("messages", [])),
+            },
+        )
+        self.agent_memory_history.append(snapshot)
 
     def get_recent_context(self, max_entries: int = None) -> str:
         """Get recent conversation context as a formatted string"""

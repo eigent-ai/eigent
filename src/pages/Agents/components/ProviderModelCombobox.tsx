@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Loader2, RotateCcw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -23,9 +23,13 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import type { ProviderModelGroup } from '@/lib/providerModels';
+import { cn } from '@/lib/utils';
 
 type Props = {
   /** Stable id used for "selected" comparison and aria-label scoping. */
@@ -167,8 +171,8 @@ export function ProviderModelCombobox({
                   {loading
                     ? 'Loading...'
                     : disabled
-                    ? disabledReason ?? 'Enter API Key first.'
-                    : 'Click the refresh button to load models.'}
+                      ? (disabledReason ?? 'Enter API Key first.')
+                      : 'Click the refresh button to load models.'}
                 </div>
               ) : (
                 <div className="flex max-h-80">
@@ -232,7 +236,8 @@ export function ProviderModelCombobox({
                               setOpen(false);
                             }}
                             className={cn(
-                              value === m.id && 'bg-button-transparent-fill-hover'
+                              value === m.id &&
+                                'bg-button-transparent-fill-hover'
                             )}
                           >
                             <span className="truncate">{modelName}</span>
@@ -268,7 +273,7 @@ export function ProviderModelCombobox({
       </div>
 
       {error ? (
-        <div className="mt-1.5 text-xs text-text-cuation">{error}</div>
+        <div className="text-text-cuation mt-1.5 text-xs">{error}</div>
       ) : null}
     </div>
   );

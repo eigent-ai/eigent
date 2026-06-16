@@ -12,12 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { SkipReason } from './index';
+
 // History API types for project-grouped structure
 
 export interface HistoryTask {
   id: number;
   task_id: string;
   project_id: string;
+  space_id?: string;
+  run_id?: string;
   question: string;
   language: string;
   model_platform: string;
@@ -31,12 +35,14 @@ export interface HistoryTask {
   summary?: string;
   tokens: number;
   status: number;
+  skip_reason?: SkipReason;
   created_at?: string;
   updated_at?: string;
 }
 
 export interface ProjectGroup {
   project_id: string;
+  space_id?: string;
   project_name?: string;
   total_tokens: number;
   task_count: number;

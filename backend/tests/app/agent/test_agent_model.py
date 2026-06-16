@@ -13,7 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ class TestAgentFactoryFunctions:
 
         mock_task_lock = MagicMock()
         task_locks[options.task_id] = mock_task_lock
+        mock_task_lock.put_queue = AsyncMock()
 
         _m = sys.modules["app.agent.agent_model"]
         with (
@@ -84,6 +85,7 @@ class TestAgentIntegration:
 
         # Create task lock
         mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = AsyncMock()
         task_locks[api_task_id] = mock_task_lock
 
         # Create agent

@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import { ProjectType, useProjectStore } from '@/store/projectStore';
+import {
+  ProjectType,
+  useProjectRuntimeStore,
+} from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import {
   TriggeredTask,
@@ -31,7 +35,8 @@ import { toast } from 'sonner';
  * 3. useBackgroundTaskProcessor handles execution from there
  */
 export function useTriggerTaskExecutor() {
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
 
   // Subscribe specifically to webSocketEvent to ensure re-renders when it changes
   const webSocketEvent = useTriggerStore((state) => state.webSocketEvent);
@@ -146,7 +151,8 @@ export function useTriggerTaskExecutor() {
             undefined,
             undefined,
             undefined,
-            false
+            false,
+            { spaceId: task.spaceId || activeSpaceId || undefined }
           );
           console.log(
             '[TriggerTaskExecutor] Created new project:',
@@ -173,9 +179,12 @@ export function useTriggerTaskExecutor() {
                 targetProjectId,
                 undefined,
                 undefined,
-                false
+                false,
+                { spaceId: task.spaceId || activeSpaceId || undefined }
               );
             }
+          } else if (task.spaceId && !existingProject.spaceId) {
+            store.setProjectSpace(targetProjectId, task.spaceId);
           }
         }
 
@@ -216,7 +225,7 @@ export function useTriggerTaskExecutor() {
         });
       }
     },
-    [loadProjectFromHistory]
+    [activeSpaceId, loadProjectFromHistory]
   );
 
   // Watch for new tasks via WebSocket events and route to projectStore
@@ -235,6 +244,7 @@ export function useTriggerTaskExecutor() {
         executionId: webSocketEvent.executionId,
         triggerType: webSocketEvent.triggerType,
         projectId: webSocketEvent.projectId,
+        spaceId: webSocketEvent.spaceId,
         inputData: webSocketEvent.inputData,
         timestamp: Date.now(),
       };

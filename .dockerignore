@@ -1,0 +1,70 @@
+# Keep build contexts small. This applies to every Dockerfile in the repo since
+# Docker reads it from the context root.
+
+# Source control
+.git
+.gitignore
+.gitattributes
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Build outputs
+dist
+build
+out
+release
+.next
+.cache
+.vite
+.parcel-cache
+storybook-static
+
+# Dependencies installed inside the container; never copy host's tree.
+node_modules
+**/node_modules
+.pnp.*
+.yarn
+
+# Test / coverage artifacts
+coverage
+.nyc_output
+playwright-report
+test-results
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env (the image must not bake host secrets).
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Electron / desktop build artifacts not needed in runtime images.
+out
+release-builds
+dist_electron
+
+# Backend / server runtime data not needed in frontend/runtime images.
+server/runtime
+server/.venv
+server/lang
+server/celerybeat-schedule*
+server/.image_env
+backend/.venv
+
+# Docs / reviews — not relevant to runtime image.
+docs
+
+# Other working dirs in this repo that bloat the build context.
+projects
+benchmark

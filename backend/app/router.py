@@ -19,15 +19,21 @@ for better visibility and maintainability.
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from app.auth import get_brain_auth_context
 from app.controller import (
     chat_controller,
+    file_controller,
     health_controller,
+    mcp_controller,
+    message_controller,
     model_controller,
     remote_sub_agent_controller,
+    skill_controller,
     task_controller,
     tool_controller,
+    workspace_controller,
 )
 
 logger = logging.getLogger("router")
@@ -53,9 +59,29 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "description": "Health check endpoint for service readiness",
         },
         {
+            "router": file_controller.router,
+            "tags": ["Files"],
+            "description": "File upload for Web/Channel clients",
+        },
+        {
+            "router": mcp_controller.router,
+            "tags": ["MCP"],
+            "description": "MCP config (list, install, remove, update)",
+        },
+        {
+            "router": skill_controller.router,
+            "tags": ["Skills"],
+            "description": "Skills scan, write, read, delete",
+        },
+        {
             "router": chat_controller.router,
             "tags": ["chat"],
             "description": "Chat session management, improvements, and human interactions",
+        },
+        {
+            "router": message_controller.router,
+            "tags": ["Message Router"],
+            "description": "Phase 2 Message Router - /messages endpoint (prefix-aware)",
         },
         {
             "router": model_controller.router,
@@ -77,6 +103,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "tags": ["tool"],
             "description": "Tool installation and management",
         },
+        {
+            "router": workspace_controller.router,
+            "tags": ["workspace"],
+            "description": "Space-level local workspace binding",
+        },
     ]
 
     app.include_router(health_controller.router, tags=["Health"])
@@ -85,8 +116,16 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
     )
 
     for config in routers_config:
+        dependencies = (
+            []
+            if config["tags"] == ["Health"]
+            else [Depends(get_brain_auth_context)]
+        )
         app.include_router(
-            config["router"], prefix=prefix, tags=config["tags"]
+            config["router"],
+            prefix=prefix,
+            tags=config["tags"],
+            dependencies=dependencies,
         )
         route_count = len(config["router"].routes)
         logger.info(

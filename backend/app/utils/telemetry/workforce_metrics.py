@@ -183,6 +183,25 @@ def get_tracer_provider() -> TracerProvider | None:
     return _GLOBAL_TRACER_PROVIDER
 
 
+def shutdown_tracer_provider() -> None:
+    """Shutdown the global TracerProvider and release background threads.
+
+    Call during FastAPI shutdown to ensure BatchSpanProcessor worker threads
+    are properly released, preventing process hang on exit.
+    """
+    global _GLOBAL_TRACER_PROVIDER
+    if _GLOBAL_TRACER_PROVIDER is None:
+        return
+    try:
+        _GLOBAL_TRACER_PROVIDER.force_flush(timeout_millis=2000)
+        _GLOBAL_TRACER_PROVIDER.shutdown()
+        logger.info("TracerProvider shutdown completed")
+    except Exception as e:
+        logger.warning(f"TracerProvider shutdown failed: {e}")
+    finally:
+        _GLOBAL_TRACER_PROVIDER = None
+
+
 def _create_langfuse_endpoint(base_url: str) -> str:
     """Create Langfuse OTLP endpoint URL.
 

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createHost } from '@/host';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -75,6 +76,8 @@ const initialState = {
   isBackendReady: false,
   needsBackendRestart: false,
 };
+
+const getElectronAPI = () => createHost().electronAPI;
 
 // Create the installation store
 export const useInstallationStore = create<InstallationStoreState>()(
@@ -154,6 +157,7 @@ export const useInstallationStore = create<InstallationStoreState>()(
 
     retryBackend: async () => {
       try {
+        const electronAPI = getElectronAPI();
         // Clear backend error and go back to waiting-backend state
         set({
           backendError: undefined,
@@ -163,9 +167,9 @@ export const useInstallationStore = create<InstallationStoreState>()(
         });
 
         // Call restart-backend via electronAPI
-        const result = await window.electronAPI.restartBackend();
+        const result = await electronAPI?.restartBackend();
 
-        if (!result.success) {
+        if (!result?.success) {
           set({
             backendError: result.error || 'Failed to restart backend',
             state: 'error',
@@ -200,9 +204,10 @@ export const useInstallationStore = create<InstallationStoreState>()(
 
       try {
         startInstallation();
-        const result = await window.electronAPI.checkAndInstallDepsOnUpdate();
+        const electronAPI = getElectronAPI();
+        const result = await electronAPI?.checkAndInstallDepsOnUpdate();
 
-        if (result.success) {
+        if (result?.success) {
           // Keep waiting state until useInstallationSetup confirms backend readiness.
           setWaitingBackend();
         } else {
@@ -214,8 +219,10 @@ export const useInstallationStore = create<InstallationStoreState>()(
     },
 
     exportLog: async () => {
+      const electronAPI = getElectronAPI();
+      if (!electronAPI?.exportLog) return;
       try {
-        const response = await window.electronAPI.exportLog();
+        const response = await electronAPI.exportLog();
 
         if (!response.success) {
           alert('Export cancelled: ' + response.error);

@@ -21,6 +21,7 @@ from camel.types import ModelPlatformType
 
 from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
+    remote_sub_agent_enabled,
 )
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.agent.prompt import MCP_SYS_PROMPT
@@ -28,7 +29,10 @@ from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.model.model_platform import patch_bedrock_cloud_config
+from app.model.model_platform import (
+    patch_azure_cloud_config,
+    patch_bedrock_cloud_config,
+)
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.file_utils import get_working_directory
 
@@ -39,11 +43,13 @@ async def mcp_agent(options: Chat):
         f"Creating MCP agent for project: {options.project_id} "
         f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
-    message_integration = ToolkitMessageIntegration(
-        message_handler=HumanToolkit(
-            options.project_id, Agents.mcp_agent
-        ).send_message_to_user
-    )
+    message_integration = None
+    if remote_sub_agent_enabled(options, working_directory):
+        message_integration = ToolkitMessageIntegration(
+            message_handler=HumanToolkit(
+                options.project_id, Agents.mcp_agent
+            ).send_message_to_user
+        )
     tools = [
         *McpSearchToolkit(options.project_id).get_tools(),
     ]
@@ -100,11 +106,8 @@ async def mcp_agent(options: Chat):
         api_url, extra_params = patch_bedrock_cloud_config(
             api_url, extra_params
         )
-    # Cloud Azure: camel's AzureOpenAIModel requires api_version; default it
-    # since the frontend doesn't pass one for cloud GPT models.
     if options.model_platform == "azure" and options.is_cloud():
-        extra_params = dict(extra_params)
-        extra_params.setdefault("api_version", "2024-12-01-preview")
+        extra_params = patch_azure_cloud_config(extra_params)
 
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
