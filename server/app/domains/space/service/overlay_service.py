@@ -23,6 +23,7 @@ from app.domains.space.service.apply_service import (
     normalize_overlay_path,
     space_write_lock,
 )
+from app.domains.space.service.file_ops_guard import assert_local_file_operations_enabled
 from app.domains.space.service.space_service import SpaceService
 from app.model.project import Project
 from app.model.space import (
@@ -113,6 +114,7 @@ class SpaceOverlayService:
         s: Session,
     ) -> SpaceOverlayOut:
         SpaceOverlayService._get_owned_project(space_id, project_id, user_id, s)
+        assert_local_file_operations_enabled()
         path = normalize_overlay_path(data.path)
         metadata = dict(data.metadata or {})
         source_path = data.source_path or metadata.get(OVERLAY_SOURCE_PATH_METADATA_KEY)

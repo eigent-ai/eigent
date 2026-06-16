@@ -18,6 +18,7 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
@@ -52,6 +53,7 @@ from app.domains.space.service.space_service import SpaceService
 from app.model.chat.chat_history import ChatHistory, ChatStatus
 from app.model.chat.chat_step import ChatStep
 from app.model.project.project import Project, ProjectIn, ProjectMode, ProjectOut
+from app.model.provider.provider import Provider
 from app.model.remote_control import (
     RemoteControlCommand,
     RemoteControlEvent,
@@ -172,6 +174,9 @@ class RemoteControlRedis:
         app_version: str | None = None,
         capabilities: dict[str, Any] | None = None,
     ) -> None:
+        existing = RemoteControlRedis.get_bridge(desktop_instance_id)
+        if existing and str(existing.get("user_id")) != str(user_id):
+            raise ValueError("Desktop instance is already registered to another user")
         payload = {
             "user_id": user_id,
             "desktop_instance_id": desktop_instance_id,
@@ -190,6 +195,8 @@ class RemoteControlRedis:
     @staticmethod
     def refresh_bridge(desktop_instance_id: str, user_id: int, worker_id: str) -> None:
         existing = RemoteControlRedis.get_bridge(desktop_instance_id) or {}
+        if existing.get("user_id") and str(existing.get("user_id")) != str(user_id):
+            return
         if existing.get("worker_id") and existing.get("worker_id") != worker_id:
             return
         RemoteControlRedis.register_bridge(
@@ -768,9 +775,19 @@ class RemoteControlService:
     @staticmethod
     def revoke_session(session_id: str, user_id: int, db: Session) -> None:
         session = RemoteControlService._owned_session(session_id, user_id, db)
+        now = _now()
         session.status = SESSION_REVOKED
-        session.revoked_at = _now()
+        session.revoked_at = now
         db.add(session)
+        links = db.exec(
+            select(RemoteControlLink).where(
+                RemoteControlLink.session_id == session.id,
+                RemoteControlLink.expires_at > now,
+            )
+        ).all()
+        for link in links:
+            link.expires_at = now
+            db.add(link)
         RemoteControlService.record_event(
             session.id,
             "session_revoked",
@@ -790,6 +807,17 @@ class RemoteControlService:
             )
         ).all()
         now = _now()
+        session_ids = [session.id for session in sessions]
+        if session_ids:
+            links = db.exec(
+                select(RemoteControlLink).where(
+                    RemoteControlLink.session_id.in_(session_ids),
+                    RemoteControlLink.expires_at > now,
+                )
+            ).all()
+            for link in links:
+                link.expires_at = now
+                db.add(link)
         for session in sessions:
             session.status = SESSION_REVOKED
             session.revoked_at = now
@@ -816,7 +844,7 @@ class RemoteControlService:
         target_project_id: str,
         target_task_id: str | None,
         db: Session,
-    ) -> ChatHistory:
+    ) -> ChatHistory | SimpleNamespace:
         if target_task_id:
             active = RemoteControlService._find_task_history(user_id, target_task_id, db)
             if active:
@@ -828,9 +856,30 @@ class RemoteControlService:
                 .where(ChatHistory.user_id == user_id)
                 .order_by(desc(ChatHistory.created_at), desc(ChatHistory.id))
             ).first()
-        if not fallback:
-            raise HTTPException(status_code=500, detail={"code": "REMOTE_HISTORY_TEMPLATE_NOT_FOUND"})
-        return fallback
+        if fallback:
+            return fallback
+
+        provider = db.exec(
+            select(Provider)
+            .where(Provider.user_id == user_id, Provider.prefer == True, Provider.no_delete())  # noqa: E712
+            .order_by(desc(Provider.updated_at), desc(Provider.id))
+        ).first()
+        if not provider:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "REMOTE_MODEL_PROVIDER_REQUIRED"},
+            )
+        return SimpleNamespace(
+            language="en",
+            model_platform=provider.provider_name,
+            model_type=provider.model_type or "",
+            api_key=provider.api_key or "",
+            api_url=provider.endpoint_url or "",
+            max_retries=3,
+            file_save_path=None,
+            installed_mcp={},
+            project_name="",
+        )
 
     @staticmethod
     def _create_history_for_command(
@@ -1213,9 +1262,7 @@ class RemoteControlService:
         if command_type == "remove_task" and not normalized["payload"].get("task_id"):
             raise HTTPException(status_code=400, detail={"code": "REMOTE_TASK_ID_REQUIRED"})
 
-        owned_project = RemoteControlService._ensure_project_in_session_space(
-            session, user_id, target_project_id, db
-        )
+        RemoteControlService._ensure_project_in_session_space(session, user_id, target_project_id, db)
         RemoteControlService._ensure_target_owner(user_id, target_project_id, target_task_id, db)
         if command_type == SWITCH_PROJECT_VIEW:
             normalized["payload"] = RemoteControlService._enrich_switch_project_payload(
@@ -1255,12 +1302,8 @@ class RemoteControlService:
                 db.flush()
                 normalized["payload"]["remote_history_id"] = history.id
                 command.payload = normalized["payload"]
-            except HTTPException as exc:
-                if not (
-                    owned_project
-                    and getattr(exc, "detail", {}) == {"code": "REMOTE_HISTORY_TEMPLATE_NOT_FOUND"}
-                ):
-                    raise
+            except HTTPException:
+                raise
         db.add(command)
         db.commit()
         db.refresh(command)
@@ -1316,10 +1359,21 @@ class RemoteControlService:
 
     @staticmethod
     def publish_command(session: RemoteControlSession, command: RemoteControlCommand) -> bool:
-        return RemoteControlRedis.publish(
+        had_subscriber = RemoteControlRedis.publish(
             RemoteControlRedis.command_channel(session.desktop_instance_id),
             RemoteControlService.command_payload(session, command),
         )
+        logger.info(
+            "[RC-TRACE] command published",
+            extra={
+                "command_id": command.id,
+                "type": command.type,
+                "session_id": session.id,
+                "desktop_instance_id": session.desktop_instance_id,
+                "had_subscriber": had_subscriber,
+            },
+        )
+        return had_subscriber
 
     @staticmethod
     def publish_status(session_id: str, event_type: str, payload: dict[str, Any]) -> bool:
@@ -1543,32 +1597,75 @@ class RemoteControlService:
             if not session or session.status != SESSION_ACTIVE:
                 continue
             if not RemoteControlRedis.is_bridge_online(session.desktop_instance_id, session.user_id):
+                logger.warning(
+                    "[RC-TRACE] pending command waiting, bridge offline",
+                    extra={
+                        "command_id": command.id,
+                        "session_id": command.session_id,
+                        "age_seconds": (_now() - command.created_at).total_seconds(),
+                    },
+                )
                 continue
+            logger.warning(
+                "[RC-TRACE] re-publishing stuck pending command",
+                extra={
+                    "command_id": command.id,
+                    "session_id": command.session_id,
+                    "age_seconds": (_now() - command.created_at).total_seconds(),
+                },
+            )
             RemoteControlService.publish_command(session, command)
 
     @staticmethod
     def expire_timed_out_commands(db: Session) -> None:
         now = _now()
-        cutoff = now - timedelta(
+        delivered_cutoff = now - timedelta(
             seconds=min(COMMAND_ACK_TIMEOUT_SECONDS, SWITCH_PROJECT_VIEW_ACK_TIMEOUT_SECONDS)
         )
-        commands = db.exec(
-            select(RemoteControlCommand).where(
-                RemoteControlCommand.status == COMMAND_DELIVERED,
-                RemoteControlCommand.delivered_at < cutoff,
-            )
-        ).all()
+        pending_cutoff = now - timedelta(
+            seconds=min(COMMAND_ACK_TIMEOUT_SECONDS, SWITCH_PROJECT_VIEW_ACK_TIMEOUT_SECONDS)
+        )
+        commands = list(
+            db.exec(
+                select(RemoteControlCommand).where(
+                    RemoteControlCommand.status == COMMAND_DELIVERED,
+                    RemoteControlCommand.delivered_at < delivered_cutoff,
+                )
+            ).all()
+        )
+        commands.extend(
+            db.exec(
+                select(RemoteControlCommand).where(
+                    RemoteControlCommand.status == COMMAND_PENDING,
+                    RemoteControlCommand.created_at < pending_cutoff,
+                )
+            ).all()
+        )
+
+        seen_command_ids: set[str] = set()
         for command in commands:
+            if command.id in seen_command_ids:
+                continue
+            seen_command_ids.add(command.id)
+
             timeout_seconds = (
                 SWITCH_PROJECT_VIEW_ACK_TIMEOUT_SECONDS
                 if command.type == SWITCH_PROJECT_VIEW
                 else COMMAND_ACK_TIMEOUT_SECONDS
             )
-            if not command.delivered_at or command.delivered_at >= now - timedelta(seconds=timeout_seconds):
-                continue
+            if command.status == COMMAND_PENDING:
+                if command.created_at >= now - timedelta(seconds=timeout_seconds):
+                    continue
+                error_code = "PENDING_TIMEOUT"
+                error_message = "Remote command was not delivered before timeout"
+            else:
+                if not command.delivered_at or command.delivered_at >= now - timedelta(seconds=timeout_seconds):
+                    continue
+                error_code = "BRIDGE_TIMEOUT"
+                error_message = "Remote command delivery timed out"
             command.status = COMMAND_FAILED
-            command.error_code = "BRIDGE_TIMEOUT"
-            command.error = "Remote command delivery timed out"
+            command.error_code = error_code
+            command.error = error_message
             command.acknowledged_at = _now()
             restored_payload: dict[str, Any] = {}
             if command.type == SWITCH_PROJECT_VIEW:

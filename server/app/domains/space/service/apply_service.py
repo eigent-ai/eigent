@@ -28,6 +28,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlmodel import Session, select
 
+from app.domains.space.service.file_ops_guard import assert_local_file_operations_enabled
 from app.domains.space.service.space_service import SpaceService
 from app.model.project import Project
 from app.model.space import (
@@ -234,6 +235,7 @@ class SpaceApplyService:
             raise ValueError("Project not found")
         if space.source_type != SpaceSourceType.FOLDER or not space.root_path:
             raise ValueError("Apply requires a folder-backed Space")
+        assert_local_file_operations_enabled()
 
         root = Path(space.root_path).resolve()
         if not root.exists() or not root.is_dir():

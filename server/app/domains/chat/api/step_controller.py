@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 from sqlalchemy import or_
 from sqlalchemy.sql.expression import case
-from sqlmodel import Session, asc, select
+from sqlmodel import Session, asc, desc, select
 
 from app.core.database import session
 from app.model.chat.chat_step import ChatStep, ChatStepOut, ChatStepIn, ChatStepUpdate
@@ -48,15 +48,20 @@ def _history_for_run(db: Session, run_id: str, user_id: int) -> ChatHistory | No
         select(ChatHistory)
         .where(ChatHistory.user_id == user_id)
         .where((ChatHistory.run_id == run_id) | (ChatHistory.task_id == run_id))
+        .order_by(
+            desc(case((ChatHistory.run_id == run_id, 1), else_=0)),
+            desc(ChatHistory.created_at),
+            desc(ChatHistory.id),
+        )
     ).first()
 
 
 def _steps_for_run_stmt(run_id: str, task_id: str):
-    return select(ChatStep).where(
+    return select(ChatStep).where(ChatStep.task_id == task_id).where(
         or_(
             ChatStep.run_id == run_id,
-            (ChatStep.run_id.is_(None) & (ChatStep.task_id == task_id)),
-            ((ChatStep.run_id == task_id) & (ChatStep.task_id == task_id)),
+            ChatStep.run_id.is_(None),
+            ChatStep.run_id == task_id,
         )
     )
 
@@ -105,7 +110,7 @@ async def list_chat_steps(
         return []
     query = select(ChatStep).where(ChatStep.task_id == task_id)
     if run_id is not None:
-        query = query.where((ChatStep.run_id == run_id) | (ChatStep.run_id.is_(None) & (ChatStep.task_id == run_id)))
+        query = query.where((ChatStep.run_id == run_id) | ChatStep.run_id.is_(None))
     if step is not None:
         query = query.where(ChatStep.step == step)
     return list(db_session.exec(query).all())

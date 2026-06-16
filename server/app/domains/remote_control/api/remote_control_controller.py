@@ -872,16 +872,32 @@ async def bridge_subscribe(websocket: WebSocket):
         blacklist_check_interval = _bridge_blacklist_check_interval_seconds()
         next_blacklist_check_at = datetime.utcnow() + timedelta(seconds=blacklist_check_interval)
 
+        existing_user = bridge_users.get(desktop_instance_id)
+        if existing_user is not None and str(existing_user) != str(user_id):
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "message": "Desktop instance is already registered to another user",
+                }
+            )
+            await websocket.close(code=1008)
+            return
+        try:
+            RemoteControlRedis.register_bridge(
+                desktop_instance_id,
+                user_id,
+                worker_id,
+                app_version=data.get("app_version"),
+                capabilities=data.get("capabilities"),
+            )
+        except ValueError as exc:
+            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.close(code=1008)
+            return
+
         bridge_websockets[desktop_instance_id] = websocket
         bridge_users[desktop_instance_id] = user_id
         _remember_bridge_token_jti(desktop_instance_id, token_jti)
-        RemoteControlRedis.register_bridge(
-            desktop_instance_id,
-            user_id,
-            worker_id,
-            app_version=data.get("app_version"),
-            capabilities=data.get("capabilities"),
-        )
 
         now = datetime.utcnow()
         sessions = db.exec(
@@ -915,11 +931,20 @@ async def bridge_subscribe(websocket: WebSocket):
         db.commit()
 
         await websocket.send_json({"type": "connected", "desktop_instance_id": desktop_instance_id})
-        await _flush_pending_bridge_commands(
+        flushed_at_connect = await _flush_pending_bridge_commands(
             desktop_instance_id,
             user_id,
             db,
             websocket=websocket,
+        )
+        logger.info(
+            "[RC-TRACE] bridge registered",
+            extra={
+                "desktop_instance_id": desktop_instance_id,
+                "user_id": user_id,
+                "worker_id": worker_id,
+                "flushed_pending_at_connect": flushed_at_connect,
+            },
         )
 
         while True:
@@ -989,9 +1014,25 @@ async def bridge_subscribe(websocket: WebSocket):
                     await websocket.close(code=4401)
                     return
             elif msg_type == "command_delivered" and msg.get("command_id"):
+                logger.info(
+                    "[RC-TRACE] command_delivered received",
+                    extra={
+                        "command_id": msg["command_id"],
+                        "desktop_instance_id": desktop_instance_id,
+                    },
+                )
                 RemoteControlService.mark_delivered(msg["command_id"], db)
             elif msg_type == "command_ack" and msg.get("command_id"):
                 status = msg.get("status") or COMMAND_FAILED
+                logger.info(
+                    "[RC-TRACE] command_ack received",
+                    extra={
+                        "command_id": msg["command_id"],
+                        "status": status,
+                        "error_code": msg.get("error_code"),
+                        "error": msg.get("error"),
+                    },
+                )
                 RemoteControlService.mark_ack(
                     msg["command_id"],
                     COMMAND_ACKNOWLEDGED if status == COMMAND_ACKNOWLEDGED else COMMAND_FAILED,
@@ -1226,7 +1267,28 @@ async def _handle_pubsub_message(channel: str, payload: dict[str, Any]) -> None:
         desktop_instance_id = channel.removeprefix("rc:cmd:")
         ws = bridge_websockets.get(desktop_instance_id)
         if ws:
-            await ws.send_json(payload)
+            command_id = payload.get("command", {}).get("id")
+            try:
+                await ws.send_json(payload)
+            except Exception as exc:
+                logger.warning(
+                    "[RC-TRACE] bridge ws send FAILED",
+                    extra={
+                        "command_id": command_id,
+                        "desktop_instance_id": desktop_instance_id,
+                        "pid": os.getpid(),
+                        "error": str(exc),
+                    },
+                )
+                return
+            logger.info(
+                "[RC-TRACE] command sent to bridge ws",
+                extra={
+                    "command_id": command_id,
+                    "desktop_instance_id": desktop_instance_id,
+                    "pid": os.getpid(),
+                },
+            )
         else:
             logger.warning(
                 "Remote-control command pub/sub arrived without a local bridge websocket",

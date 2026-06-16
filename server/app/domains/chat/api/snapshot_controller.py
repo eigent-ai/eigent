@@ -21,6 +21,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi_babel import _
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.core.database import session
@@ -95,10 +96,17 @@ async def list_chat_snapshots(
     if run_id is not None:
         _validate_api_task_id(run_id)
     query = select(ChatSnapshot).where(ChatSnapshot.user_id == auth.user.id)
-    task_or_run_id = run_id or api_task_id
-    if task_or_run_id is not None:
-        _validate_api_task_id(task_or_run_id)
-        query = query.where(ChatSnapshot.api_task_id == task_or_run_id)
+    if api_task_id is not None:
+        _validate_api_task_id(api_task_id)
+        query = query.where(ChatSnapshot.api_task_id == api_task_id)
+    if run_id is not None:
+        _validate_api_task_id(run_id)
+        query = query.where(
+            or_(
+                ChatSnapshot.api_task_id == run_id,
+                ChatSnapshot.storage_key.like(f"%/runs/{run_id}/snapshot/%"),
+            )
+        )
     if camel_task_id is not None:
         query = query.where(ChatSnapshot.camel_task_id == camel_task_id)
     if browser_url is not None:

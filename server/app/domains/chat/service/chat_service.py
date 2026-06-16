@@ -28,11 +28,23 @@ from app.model.trigger.trigger import Trigger
 from app.domains.chat.schema import TaskOwnershipCheckReq, FileValidationReq, FileValidationResult
 
 ALLOWED_EXTENSIONS = {
-    "jpg", "jpeg", "png", "gif", "webp",
-    "pdf", "txt", "md", "csv",
-    "json", "xml", "yaml", "yml",
-    "doc", "docx", "xls", "xlsx",
-    "zip",
+    # Images
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "ico",
+    # Documents
+    "pdf", "txt", "md", "csv", "doc", "docx", "xls", "xlsx",
+    # Data
+    "json", "xml", "yaml", "yml", "toml",
+    # Web
+    "html", "htm", "css", "js", "jsx", "ts", "tsx", "vue", "svelte",
+    # Code
+    "py", "rb", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs",
+    "sh", "bash", "zsh", "bat", "ps1",
+    "sql", "graphql", "proto",
+    # Config
+    "env", "ini", "cfg", "conf", "lock",
+    "dockerfile", "dockerignore", "gitignore",
+    # Archive
+    "zip", "tar", "gz",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -42,7 +54,7 @@ class ChatService:
 
     @staticmethod
     def verify_task_ownership(req: TaskOwnershipCheckReq) -> bool:
-        """Check if task_id belongs to user_id."""
+        """Check if task_id belongs to user_id. Replaces _task_owned_by_user."""
         with session_make() as s:
             h = s.exec(
                 select(ChatHistory)

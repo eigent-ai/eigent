@@ -13,7 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 from pydantic import BaseModel, field_validator
 from sqlmodel import JSON, Field
@@ -61,11 +62,17 @@ class ChatStepOut(BaseModel):
     run_id: str | None = None
     step: str
     data: Any
-    timestamp: float | None = None
+    timestamp: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 class ChatStepUpdate(BaseModel):
+    step: Optional[str] = None
+    data: Optional[Any] = None
+    timestamp: Optional[float] = None
     run_id: str | None = None
-    step: str | None = None
-    data: Any | None = None
-    timestamp: float | None = None

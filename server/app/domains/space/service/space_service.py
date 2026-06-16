@@ -17,6 +17,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.domains.space.service.folder_binding import (
@@ -148,7 +149,7 @@ class SpaceService:
         return f"legacy_{SpaceService.canonical_user_id(user_id)}"
 
     @staticmethod
-    def ensure_legacy_space(user_id: int | str, s: Session) -> Space:
+    def ensure_legacy_space(user_id: int | str, s: Session, *, commit: bool = True) -> Space:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         space_id = SpaceService.legacy_space_id(canonical_user_id)
         space = s.get(Space, space_id)
@@ -163,9 +164,18 @@ class SpaceService:
             source_type=SpaceSourceType.LEGACY,
             metadata_json={"legacy": True, "schemaVersion": 1},
         )
-        s.add(space)
-        s.commit()
-        s.refresh(space)
+        try:
+            with s.begin_nested():
+                s.add(space)
+                s.flush()
+        except IntegrityError:
+            existing = s.get(Space, space_id)
+            if existing and existing.user_id == canonical_user_id:
+                return existing
+            raise
+        if commit:
+            s.commit()
+            s.refresh(space)
         return space
 
     @staticmethod
@@ -395,6 +405,7 @@ class SpaceService:
         mode: str | None = None,
         workdir_mode: str | None = None,
         metadata: dict | None = None,
+        commit: bool = True,
     ) -> Project:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
         SpaceService._validate_project_payload(mode=mode, workdir_mode=workdir_mode)
@@ -402,7 +413,7 @@ class SpaceService:
         legacy_space_id = SpaceService.legacy_space_id(canonical_user_id)
         space = s.get(Space, target_space_id)
         if not space and target_space_id == legacy_space_id:
-            space = SpaceService.ensure_legacy_space(canonical_user_id, s)
+            space = SpaceService.ensure_legacy_space(canonical_user_id, s, commit=commit)
         elif not space:
             raise ValueError("Space not found")
         if space.user_id != canonical_user_id:
@@ -434,16 +445,21 @@ class SpaceService:
                 project.workdir_mode = workdir_mode
                 changed = True
             if metadata:
-                project.metadata_json = {
+                next_metadata = {
                     **(project.metadata_json or {}),
                     **metadata,
                 }
-                changed = True
+                if next_metadata != (project.metadata_json or {}):
+                    project.metadata_json = next_metadata
+                    changed = True
             if changed:
                 project.updated_at = datetime.now()
                 s.add(project)
-                s.commit()
-                s.refresh(project)
+                if commit:
+                    s.commit()
+                    s.refresh(project)
+                else:
+                    s.flush()
             return project
 
         project = Project(
@@ -457,9 +473,34 @@ class SpaceService:
             or SpaceService._default_project_workdir_mode(space),
             metadata_json=metadata,
         )
-        s.add(project)
-        s.commit()
-        s.refresh(project)
+        try:
+            with s.begin_nested():
+                s.add(project)
+                s.flush()
+        except IntegrityError:
+            existing_project = s.exec(
+                select(Project).where(
+                    Project.id == project_id,
+                    Project.user_id == canonical_user_id,
+                )
+            ).first()
+            if existing_project:
+                return SpaceService.ensure_project(
+                    user_id,
+                    project_id,
+                    target_space_id,
+                    project_name,
+                    s,
+                    description=description,
+                    mode=mode,
+                    workdir_mode=workdir_mode,
+                    metadata=metadata,
+                    commit=commit,
+                )
+            raise
+        if commit:
+            s.commit()
+            s.refresh(project)
         return project
 
     @staticmethod

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from loguru import logger
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, case, delete, desc, func, select
 from fastapi_babel import _
 
@@ -80,12 +81,17 @@ def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(sessi
             mode=data.mode,
             workdir_mode=data.workdir_mode,
             metadata={"createdFrom": "chat_history"},
+            commit=False,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     chat_history = ChatHistory(**data.model_dump(exclude={"workdir_mode", "mode"}))
     db_session.add(chat_history)
-    db_session.commit()
+    try:
+        db_session.commit()
+    except IntegrityError as exc:
+        db_session.rollback()
+        raise HTTPException(status_code=409, detail="Chat history already exists") from exc
     db_session.refresh(chat_history)
     return chat_history
 

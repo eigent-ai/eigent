@@ -253,7 +253,10 @@ def apply_space_project_run(
         )
     except ValueError as exc:
         detail = str(exc)
-        status_code = 409 if "requires" in detail or "not available" in detail else 404
+        if "disabled" in detail:
+            status_code = 403
+        else:
+            status_code = 409 if "requires" in detail or "not available" in detail else 404
         raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
@@ -302,7 +305,9 @@ def record_space_project_overlay(
             db_session,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        detail = str(exc)
+        status_code = 403 if "disabled" in detail else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 @router.post(
