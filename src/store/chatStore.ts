@@ -1413,7 +1413,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         api_url: '',
         extra_params: {},
       };
-      if (modelType === 'custom' || modelType === 'local') {
+      if (!type && (modelType === 'custom' || modelType === 'local')) {
         const res = await proxyFetchGet('/api/v1/providers', {
           prefer: true,
         });
@@ -1435,7 +1435,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           api_url: provider.endpoint_url || provider.api_url,
           extra_params: provider.encrypted_config,
         };
-      } else if (modelType === 'cloud') {
+      } else if (!type && modelType === 'cloud') {
         const cloudModelStore = getCloudModelStore();
         let resolvedCloudModel =
           cloudModelStore.resolveCloudModel(cloud_model_type);
@@ -1508,7 +1508,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
-      if (modelType === 'custom') {
+      if (!type && modelType === 'custom') {
         try {
           const configsRes = await proxyFetchGet('/api/v1/configs');
           const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -1539,20 +1539,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       let remoteSubAgentConfig = null;
-      try {
-        const providersRes = await proxyFetchGet(
-          '/api/v1/remote-sub-agent-providers',
-          { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
-        );
-        const providerList = Array.isArray(providersRes)
-          ? providersRes
-          : providersRes.items || [];
-        const remoteSubAgentProvider = providerList[0];
-        remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
-          normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
-        );
-      } catch (error) {
-        console.error('Failed to load remote sub agent configuration:', error);
+      if (!type) {
+        try {
+          const providersRes = await proxyFetchGet(
+            '/api/v1/remote-sub-agent-providers',
+            { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+          );
+          const providerList = Array.isArray(providersRes)
+            ? providersRes
+            : providersRes.items || [];
+          const remoteSubAgentProvider = providerList[0];
+          remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
+            normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
+          );
+        } catch (error) {
+          console.error(
+            'Failed to load remote sub agent configuration:',
+            error
+          );
+        }
       }
 
       const addWorkers = workerList.map((worker) => {
@@ -1566,11 +1571,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // get env path (Electron only)
       let envPath = '';
-      try {
-        envPath =
-          (await getHostIpcRenderer()?.invoke?.('get-env-path', email)) ?? '';
-      } catch (error) {
-        console.log('get-env-path error', error);
+      if (!type) {
+        try {
+          envPath =
+            (await getHostIpcRenderer()?.invoke?.('get-env-path', email)) ?? '';
+        } catch (error) {
+          console.log('get-env-path error', error);
+        }
       }
 
       // create history
@@ -1628,16 +1635,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       let browser_port: number | undefined;
       let cdp_browsers: any[] = [];
-      try {
-        ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
-          shouldEnsureBrowserForRequest(
-            workerList,
-            sessionModeForRequest,
-            messageContent
-          )
-        ));
-      } catch {
-        // Web mode: no CDP
+      if (!type) {
+        try {
+          ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
+            shouldEnsureBrowserForRequest(
+              workerList,
+              sessionModeForRequest,
+              messageContent
+            )
+          ));
+        } catch {
+          // Web mode: no CDP
+        }
       }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
@@ -3822,6 +3831,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         startTask,
         setActiveTaskId,
         handleConfirmTask,
+        setIsPending,
+        setStatus,
       } = get();
       //get project id
       const project_id = useProjectStore.getState().activeProjectId;
@@ -3838,9 +3849,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         content: question.split('|')[0],
       });
 
-      await startTask(taskId, 'replay', undefined, time);
-      setActiveTaskId(taskId);
-      handleConfirmTask(project_id, taskId, 'replay');
+      try {
+        await startTask(taskId, 'replay', undefined, time);
+        setActiveTaskId(taskId);
+        handleConfirmTask(project_id, taskId, 'replay');
+      } catch (error) {
+        console.error(`Failed to replay task ${taskId}:`, error);
+        const task = get().tasks[taskId];
+        if (task) {
+          if (task.isPending) {
+            setIsPending(taskId, false);
+          }
+          if (task.status !== ChatTaskStatus.FINISHED) {
+            setStatus(taskId, ChatTaskStatus.FINISHED);
+          }
+          const hasReplayErrorMessage = task.messages.some(
+            (message) =>
+              message.role === 'agent' &&
+              typeof message.content === 'string' &&
+              message.content.includes('Unable to replay this legacy task')
+          );
+          if (!hasReplayErrorMessage) {
+            addMessages(taskId, {
+              id: generateUniqueId(),
+              role: 'agent',
+              content:
+                'Unable to replay this legacy task. The saved playback data could not be loaded.',
+            });
+          }
+        }
+        throw error;
+      }
     },
     setUpdateCount() {
       set((state) => ({
