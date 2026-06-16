@@ -109,6 +109,40 @@ export function AddWorker({
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [customModelPlatform, setCustomModelPlatform] = useState('');
   const [customModelType, setCustomModelType] = useState('');
+  const [isCustomModelTypeCustom, setIsCustomModelTypeCustom] = useState(false);
+
+  const modelTypeOptionsByPlatform: Record<string, string[]> = {
+    openai: ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini', 'gpt-4o-mini'],
+    azure: ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini', 'gpt-4o-mini'],
+    'openai-compatible-model': ['gpt-4o-mini', 'gpt-5-mini', 'gpt-5.5'],
+    anthropic: [
+      'claude-sonnet-4-6',
+      'claude-sonnet-4-5',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-haiku-4-5',
+    ],
+    gemini: [
+      'gemini-3.1-pro-preview',
+      'gemini-3-pro-preview',
+      'gemini-3-flash-preview',
+    ],
+    deepseek: ['deepseek-v4-pro'],
+    minimax: ['minimax_m2_7'],
+  };
+
+  const getModelTypeOptions = (platform: string): string[] => {
+    const platformOptions = modelTypeOptionsByPlatform[platform];
+    if (platformOptions && platformOptions.length > 0) return platformOptions;
+    // Fallback list for unknown/custom platforms
+    return [
+      'gpt-4o-mini',
+      'gpt-5-mini',
+      'gpt-5.5',
+      'claude-sonnet-4-6',
+      'gemini-3.1-pro-preview',
+    ];
+  };
 
   if (!chatStore) {
     return null;
@@ -269,6 +303,7 @@ export function AddWorker({
     setUseCustomModel(false);
     setCustomModelPlatform('');
     setCustomModelType('');
+    setIsCustomModelTypeCustom(false);
   };
 
   // tool function
@@ -642,7 +677,11 @@ export function AddWorker({
                             </label>
                             <Select
                               value={customModelPlatform}
-                              onValueChange={setCustomModelPlatform}
+                              onValueChange={(v) => {
+                                setCustomModelPlatform(v);
+                                setCustomModelType('');
+                                setIsCustomModelTypeCustom(false);
+                              }}
                             >
                               <SelectTrigger className="w-full">
                                 <SelectValue
@@ -666,16 +705,59 @@ export function AddWorker({
                             <label className="text-xs text-text-body">
                               {t('workforce.model-type')}
                             </label>
-                            <Input
-                              size="sm"
-                              placeholder={t(
-                                'workforce.model-type-placeholder'
-                              )}
-                              value={customModelType}
-                              onChange={(e) =>
-                                setCustomModelType(e.target.value)
+                            <Select
+                              value={
+                                isCustomModelTypeCustom
+                                  ? '__custom__'
+                                  : customModelType || ''
                               }
-                            />
+                              onValueChange={(v) => {
+                                if (v === '__custom__') {
+                                  setIsCustomModelTypeCustom(true);
+                                  setCustomModelType('');
+                                  return;
+                                }
+                                setIsCustomModelTypeCustom(false);
+                                setCustomModelType(v);
+                              }}
+                              disabled={!customModelPlatform}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue
+                                  placeholder={t(
+                                    'workforce.model-type-placeholder'
+                                  )}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getModelTypeOptions(customModelPlatform).map(
+                                  (modelType) => (
+                                    <SelectItem
+                                      key={modelType}
+                                      value={modelType}
+                                    >
+                                      {modelType}
+                                    </SelectItem>
+                                  )
+                                )}
+                                <SelectItem value="__custom__">
+                                  {t('setting.custom-model')}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            {isCustomModelTypeCustom && (
+                              <Input
+                                size="sm"
+                                placeholder={t(
+                                  'workforce.model-type-placeholder'
+                                )}
+                                value={customModelType}
+                                onChange={(e) =>
+                                  setCustomModelType(e.target.value)
+                                }
+                              />
+                            )}
                           </div>
                         </>
                       )}
