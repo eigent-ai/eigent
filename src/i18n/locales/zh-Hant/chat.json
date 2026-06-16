@@ -31,6 +31,7 @@
   "open": "打開",
   "close": "關閉",
   "search": "搜索",
+  "folders": "資料夾",
   "files": "文件",
   "loading": "加載中",
   "select-a-file-to-view-its-contents": "選擇一個文件以查看其內容",

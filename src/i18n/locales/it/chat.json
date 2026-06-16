@@ -31,6 +31,7 @@
   "open": "Apri",
   "close": "Chiudi",
   "search": "Cerca",
+  "folders": "Cartelle",
   "files": "File",
   "loading": "Caricamento",
   "select-a-file-to-view-its-contents": "Seleziona un file per visualizzarne il contenuto",
