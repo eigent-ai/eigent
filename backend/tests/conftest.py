@@ -15,6 +15,7 @@
 import asyncio
 import os
 import tempfile
+import threading
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from types import SimpleNamespace
@@ -278,6 +279,36 @@ def event_loop():
     """Create an instance of the default event loop for the test session."""
     loop = asyncio.new_event_loop()
     yield loop
+    loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def registered_main_event_loop():
+    """Provide the running main loop expected by worker-thread queue helpers."""
+    from app.utils.event_loop_utils import set_main_event_loop
+
+    loop = asyncio.new_event_loop()
+    ready = threading.Event()
+
+    def run_loop() -> None:
+        asyncio.set_event_loop(loop)
+        ready.set()
+        loop.run_forever()
+
+    thread = threading.Thread(
+        target=run_loop,
+        name="pytest-main-event-loop",
+        daemon=True,
+    )
+    thread.start()
+    ready.wait(timeout=5)
+    set_main_event_loop(loop)
+
+    yield loop
+
+    set_main_event_loop(None)
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)
     loop.close()
 
 

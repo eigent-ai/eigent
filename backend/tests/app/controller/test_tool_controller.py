@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.controller import tool_controller
 from app.controller.tool_controller import install_tool
+from app.utils import cdp_browser_state
 
 
 @pytest.mark.unit
@@ -157,9 +157,10 @@ class TestToolController:
                 return "http://worker-17:9222"
 
         monkeypatch.delenv("EIGENT_CDP_URL", raising=False)
-        tool_controller._web_cdp_browser_meta = None
+        tool_controller._clear_connected_cdp_browser("local")
         request = SimpleNamespace(
-            state=SimpleNamespace(hands=_FakeRemoteHands())
+            state=SimpleNamespace(hands=_FakeRemoteHands()),
+            headers={},
         )
 
         response = await tool_controller.launch_cdp_browser(request)
@@ -168,10 +169,8 @@ class TestToolController:
         assert response["endpoint"] == "http://worker-17:9222"
         assert response["browser"]["managedBy"] == "remote"
         assert response["browser"]["host"] == "worker-17"
-        assert os.environ["EIGENT_CDP_URL"] == "http://worker-17:9222"
-        assert os.environ["browser_port"] == "9222"
 
-        tool_controller._clear_connected_cdp_browser()
+        tool_controller._clear_connected_cdp_browser("local")
 
     @pytest.mark.asyncio
     async def test_open_browser_login_uses_dedicated_cookie_port_when_existing(
@@ -215,10 +214,10 @@ class TestToolController:
 
     def test_remote_cdp_endpoint_uses_shared_validation(self):
         with patch(
-            "app.controller.tool_controller.is_cdp_url_available",
+            "app.utils.cdp_browser_state.is_cdp_url_available",
             return_value=True,
         ) as is_cdp_url_available:
-            assert tool_controller._is_cdp_endpoint_available(
+            assert cdp_browser_state.is_cdp_endpoint_available(
                 "http://worker-17:9222"
             )
 
@@ -287,7 +286,7 @@ class TestToolControllerIntegration:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ):
         monkeypatch.delenv("EIGENT_CDP_URL", raising=False)
-        tool_controller._web_cdp_browser_meta = None
+        tool_controller._clear_connected_cdp_browser("local")
 
         with patch(
             "app.controller.tool_controller.ensure_cdp_browser_endpoint",
@@ -300,19 +299,25 @@ class TestToolControllerIntegration:
         assert data["success"] is True
         assert data["port"] == 9222
         assert data["browser"]["id"] == "web-cdp-9222"
-        assert tool_controller._get_connected_cdp_port() == 9222
+        assert tool_controller._get_connected_cdp_port("local") == 9222
 
-        tool_controller._clear_connected_cdp_browser()
+        tool_controller._clear_connected_cdp_browser("local")
 
     def test_connect_list_and_disconnect_cdp_browser_endpoints(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ):
         monkeypatch.delenv("EIGENT_CDP_URL", raising=False)
-        tool_controller._web_cdp_browser_meta = None
+        tool_controller._clear_connected_cdp_browser("local")
 
-        with patch(
-            "app.controller.tool_controller._is_cdp_available",
-            return_value=True,
+        with (
+            patch(
+                "app.controller.tool_controller._is_cdp_available",
+                return_value=True,
+            ),
+            patch(
+                "app.utils.cdp_browser_state._is_cdp_available",
+                return_value=True,
+            ),
         ):
             connect_response = client.post(
                 "/browser/cdp/connect",
@@ -332,13 +337,13 @@ class TestToolControllerIntegration:
         disconnect_response = client.delete("/browser/cdp/9333")
         assert disconnect_response.status_code == 200
         assert disconnect_response.json()["success"] is True
-        assert tool_controller._get_connected_cdp_port() is None
+        assert tool_controller._get_connected_cdp_port("local") is None
 
     def test_connect_cdp_browser_endpoint_returns_error_when_unreachable(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ):
         monkeypatch.delenv("EIGENT_CDP_URL", raising=False)
-        tool_controller._web_cdp_browser_meta = None
+        tool_controller._clear_connected_cdp_browser("local")
 
         with patch(
             "app.controller.tool_controller._is_cdp_available",

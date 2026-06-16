@@ -978,6 +978,10 @@ class TestChatServiceAgentOperations:
             patch(
                 "app.service.chat_service.agent_model", return_value=mock_agent
             ),
+            patch(
+                "app.agent.toolkit.human_toolkit.get_task_lock",
+                return_value=MagicMock(),
+            ),
         ):
             result = await new_agent_model(agent_data, options)
 
