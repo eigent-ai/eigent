@@ -94,47 +94,26 @@ export const replayActiveTask = async (
     return;
   }
 
-  // Extract the very first available question from all chat stores and tasks
+  // Get the question from the active task's own messages
+  const activeTask = chatStore.tasks[taskId];
   let question = '';
-  let earliestTimestamp = Infinity;
-
-  // Get the project data to access all chat stores
-  const project = projectStore.projects[projectId];
-  if (project && project.chatStores) {
-    Object.entries(project.chatStores).forEach(
-      ([chatStoreId, chatStoreData]: [string, any]) => {
-        const timestamp = project.chatStoreTimestamps[chatStoreId] || 0;
-        const chatState = chatStoreData.getState();
-
-        if (chatState.tasks) {
-          Object.values(chatState.tasks).forEach((task: any) => {
-            // Check messages for user content
-            if (task.messages && task.messages.length > 0) {
-              const userMessage = task.messages.find(
-                (msg: any) => msg.role === 'user'
-              );
-              if (
-                userMessage &&
-                userMessage.content &&
-                timestamp < earliestTimestamp
-              ) {
-                question = userMessage.content.trim();
-                earliestTimestamp = timestamp;
-              }
-            }
-          });
-        }
-      }
+  if (activeTask && activeTask.messages && activeTask.messages.length > 0) {
+    const userMessage = activeTask.messages.find(
+      (msg: any) => msg.role === 'user'
     );
+    if (userMessage && userMessage.content) {
+      question = userMessage.content.trim();
+    }
   }
 
-  // Fallback to current task's first message if no question found
+  // Fallback to first message if no user message found
   if (
     !question &&
-    chatStore.tasks[taskId] &&
-    chatStore.tasks[taskId].messages[0]
+    activeTask &&
+    activeTask.messages[0] &&
+    activeTask.messages[0].content
   ) {
-    question = chatStore.tasks[taskId].messages[0].content;
+    question = activeTask.messages[0].content;
     console.log('[REPLAY] question fall back to ', question);
   }
 
