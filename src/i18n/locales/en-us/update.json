@@ -7,5 +7,10 @@
   "complete": "Complete",
   "download-completed": "Download completed",
   "click-to-install-update": "Click to install update",
-  "install": "Install"
+  "install": "Install",
+  "update-eigent": "Update Eigent",
+  "downloading-in-progress": "Downloading in progress.",
+  "click-to-stop": "Click to stop.",
+  "ready-to-install": "Ready to install.",
+  "click-to-restart": "Click to restart."
 }
