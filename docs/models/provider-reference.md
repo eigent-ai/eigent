@@ -78,9 +78,9 @@ Compatibility can vary. Test streaming, tool calls, and structured responses bef
 6. Enter the endpoint and model.
 7. Validate and enable it.
 
-> **Screenshot placeholder:** Add a composite screenshot showing one cloud provider form, Azure provider-specific fields, and one local runtime form. Blur credentials.
+**Screenshot placeholder:** Add a composite screenshot showing one cloud provider form, Azure provider-specific fields, and one local runtime form. Blur credentials.
 
-> **Video placeholder:** Add a 90-second MP4 showing an Ollama model and an OpenAI-compatible cloud endpoint being configured and tested. Include captions.
+**Video placeholder:** Add a 90-second MP4 showing an Ollama model and an OpenAI-compatible cloud endpoint being configured and tested. Include captions.
 
 ## Provider page checklist
 

@@ -80,9 +80,9 @@ Eigent provides deletion or removal actions for:
 
 Deletion in Eigent does not automatically revoke data or credentials stored by an external provider.
 
-> **Screenshot placeholder:** Add a privacy-oriented composite screenshot showing provider removal, connector removal, cookie deletion, and project deletion confirmations. Do not include real data.
+**Screenshot placeholder:** Add a privacy-oriented composite screenshot showing provider removal, connector removal, cookie deletion, and project deletion confirmations. Do not include real data.
 
-> **Video placeholder:** Add a 60-second privacy walkthrough covering local versus cloud models, Space file boundaries, credential removal, and browser-cookie cleanup. Include captions.
+**Video placeholder:** Add a 60-second privacy walkthrough covering local versus cloud models, Space file boundaries, credential removal, and browser-cookie cleanup. Include captions.
 
 ## Open-source deployments
 

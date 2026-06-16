@@ -38,9 +38,9 @@ include controls for:
 - Sensitive-data controls
 - How memory affects prompts and model usage
 
-> **Screenshot placeholder:** Add a screenshot only after the Memory page contains active controls. Do not use the current Coming soon screen as the primary product image.
+**Screenshot placeholder:** Add a screenshot only after the Memory page contains active controls. Do not use the current Coming soon screen as the primary product image.
 
-> **Video placeholder:** Add a video only after users can create, review, and delete a memory. The video should include all three actions and explain scope.
+**Video placeholder:** Add a video only after users can create, review, and delete a memory. The video should include all three actions and explain scope.
 
 ## Use current alternatives
 

@@ -33,7 +33,7 @@ describe('stripScriptBlocks', () => {
       <img src="assets/home.png" alt="home">
       <script>
         const row = \`<img src="\${escapeHtml(node.image)}" alt="node">\`;
-      </script>
+      </script >
     `;
 
     expect(stripScriptBlocks(html)).not.toContain('escapeHtml');

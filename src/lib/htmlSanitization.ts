@@ -163,5 +163,15 @@ export function isStaticImageSrc(src: string): boolean {
 
 /** Remove script blocks so img tag scans match real HTML, not JS template strings. */
 export function stripScriptBlocks(html: string): string {
-  return html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  if (typeof document === 'undefined') {
+    return html;
+  }
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  template.content
+    .querySelectorAll('script')
+    .forEach((script) => script.remove());
+
+  return template.innerHTML;
 }

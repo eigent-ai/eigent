@@ -44,6 +44,7 @@ yarn.lock
 .env.development
 client_secret_*.json
 
+.claude/
 .cursor
 
 # Public directory (large media files)
