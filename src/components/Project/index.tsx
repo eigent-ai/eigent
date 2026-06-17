@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
-import { HeaderBox } from '@/components/Session/HeaderBox';
+import { HeaderBox } from '@/components/Project/HeaderBox';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
@@ -27,23 +27,23 @@ import {
   type SessionModeType,
 } from '@/types/constants';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { SessionSidePanel } from './SessionSidePanel';
+import { ProjectSidePanel } from './ProjectSidePanel';
 import {
-  SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
-  SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
-} from './sessionSidePanelLayout';
+  PROJECT_SIDE_PANEL_EXPANDED_OUTER_CLASS,
+  PROJECT_SIDE_PANEL_FOLDED_OUTER_CLASS,
+} from './projectSidePanelLayout';
 
 /**
  * Active Project: header + chat (left) and a mode-dependent side panel (right).
  * The side panel is selected from Project.mode. Task/session mode fields are
  * retained only to render legacy runs that do not have a Project mode yet.
  */
-interface SessionProps {
+interface ProjectProps {
   /** New Project shell: empty Project that promotes to a live Project on send. */
   isNewProject?: boolean;
 }
 
-export default function Session({ isNewProject = false }: SessionProps) {
+export default function Project({ isNewProject = false }: ProjectProps) {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -226,7 +226,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }
 
   const sessionSidePanel = displaySessionMode ? (
-    <SessionSidePanel
+    <ProjectSidePanel
       key={displaySessionMode}
       mode={displaySessionMode}
       workforcePanelKey={workforcePanelKey}
@@ -241,10 +241,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   if (isNewProject) {
     return (
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
           <HeaderBox empty />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <Workspace
               variant="new-project"
               embedded
@@ -257,10 +257,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
         <div
           id="session-side-panel"
           className={cn(
-            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+            'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
             isSidePanelVisible
-              ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-              : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+              ? PROJECT_SIDE_PANEL_EXPANDED_OUTER_CLASS
+              : cn(PROJECT_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
           )}
         >
           {sessionSidePanel}
@@ -270,14 +270,14 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
           />
         )}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
           <ChatBox />
         </div>
       </div>
@@ -285,10 +285,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
       <div
         id="session-side-panel"
         className={cn(
-          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
           isSidePanelVisible
-            ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-            : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+            ? PROJECT_SIDE_PANEL_EXPANDED_OUTER_CLASS
+            : cn(PROJECT_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
         )}
       >
         {sessionSidePanel}

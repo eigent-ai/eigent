@@ -12,17 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AgentFolderSection } from '@/components/Session/SidePanelSections/AgentFolderSection';
-import { AgentPoolSection } from '@/components/Session/SidePanelSections/AgentPoolSection';
-import { buildContextItems } from '@/components/Session/SidePanelSections/buildContextItems';
+import { AgentFolderSection } from '@/components/Project/SidePanelSections/AgentFolderSection';
+import { ExecutionContextSection } from '@/components/Project/SidePanelSections/ExecutionContextSection';
+import { ProgressSection } from '@/components/Project/SidePanelSections/ProgressSection';
+import { buildContextItems } from '@/components/Project/SidePanelSections/buildContextItems';
 import {
   collectSidePanelOutputFiles,
   mergeSidePanelOutputFiles,
-} from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
-import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
-import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
-import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
-import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
+} from '@/components/Project/SidePanelSections/collectSidePanelOutputFiles';
+import { useProjectOutputFiles } from '@/components/Project/SidePanelSections/useProjectOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { cn } from '@/lib/utils';
@@ -31,30 +29,7 @@ import { useSkillsStore } from '@/store/skillsStore';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-/** Main column under `SessionSidePanel` header: fills remaining height in flex parent */
-export const WORKFORCE_MAIN_SURFACE_CLASS =
-  'min-w-0 flex w-full min-h-0 flex-1 flex-col overflow-hidden';
-
-export interface WorkforceSidePanelProps {
-  workforcePanelKey: string;
-  hasAnyMessages: boolean;
-  isSidePanelVisible: boolean;
-  onToggleSidePanel: () => void;
-  /** Controlled: whether the full-screen workforce overlay is open. */
-  isExpandedOverlayOpen: boolean;
-  onToggleExpandedOverlay: () => void;
-  onCloseExpandedOverlay: () => void;
-}
-
-export function WorkforceSidePanel({
-  workforcePanelKey,
-  hasAnyMessages: _hasAnyMessages,
-  isSidePanelVisible,
-  onToggleSidePanel,
-  isExpandedOverlayOpen,
-  onToggleExpandedOverlay: _onToggleExpandedOverlay,
-  onCloseExpandedOverlay,
-}: WorkforceSidePanelProps) {
+export function SingleAgentSidePanel() {
   const { t } = useTranslation();
   const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -72,20 +47,17 @@ export function WorkforceSidePanel({
     selectedTask,
     selectedTaskId
   );
-  /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
+  /** Prefer live `taskRunning` status (updated on TASK_STATE), keep plan order/text from agent tasks or taskInfo. */
   const subtasks = useMemo(() => {
-    const taskInfo = selectedTask?.taskInfo ?? [];
+    const base = agents[0]?.tasks ?? selectedTask?.taskInfo ?? [];
     const taskRunning = selectedTask?.taskRunning ?? [];
-    if (taskRunning.length === 0) return taskInfo;
-    const runById = new Map(
-      taskRunning.map((r) => [r.id, r] as [string, TaskInfo])
-    );
-    return taskInfo.map((t) => {
-      const live = runById.get(t.id);
+    if (taskRunning.length === 0) return base;
+    return base.map((t) => {
+      const live = taskRunning.find((r) => r.id === t.id);
       if (!live) return t;
       return { ...t, ...live, content: t.content || live.content };
     });
-  }, [selectedTask?.taskInfo, selectedTask?.taskRunning]);
+  }, [agents, selectedTask?.taskInfo, selectedTask?.taskRunning]);
   const files = useMemo(
     () =>
       mergeSidePanelOutputFiles(
@@ -139,47 +111,33 @@ export function WorkforceSidePanel({
   );
 
   return (
-    <>
-      <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-        <div className="min-h-0 min-w-0 gap-2 px-2 pb-2 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <AgentPoolSection
-            title={t('layout.workforce-agent-pool', {
-              defaultValue: 'Agent Pool',
-            })}
-            agents={agents}
-          />
-          <ProgressSection
-            title={t('layout.workforce-progress', {
-              defaultValue: 'Progress',
-            })}
-            subtasks={subtasks}
-            projectId={projectStore.activeProjectId}
-            taskId={selectedTaskId}
-          />
-          <ExecutionContextSection
-            title={t('layout.execution-context', {
-              defaultValue: 'Execution Context',
-            })}
-            items={contextItems}
-          />
-          <AgentFolderSection
-            title={t('layout.workforce-agent-folder', {
-              defaultValue: 'Agent Folder',
-            })}
-            files={files}
-            onOpenFile={handleOpenAgentFile}
-          />
-        </div>
+    <div
+      className={cn(
+        'min-h-0 min-w-0 flex w-full flex-1 flex-col overflow-hidden',
+        'relative'
+      )}
+    >
+      <div className="min-h-0 min-w-0 gap-2 px-2 pb-2 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <ProgressSection
+          title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
+          subtasks={subtasks}
+          projectId={projectStore.activeProjectId}
+          taskId={selectedTaskId}
+        />
+        <ExecutionContextSection
+          title={t('layout.execution-context', {
+            defaultValue: 'Execution Context',
+          })}
+          items={contextItems}
+        />
+        <AgentFolderSection
+          title={t('layout.workforce-agent-folder', {
+            defaultValue: 'Agent Folder',
+          })}
+          files={files}
+          onOpenFile={handleOpenAgentFile}
+        />
       </div>
-
-      <ExpandedOverlay
-        open={isExpandedOverlayOpen}
-        onClose={onCloseExpandedOverlay}
-        workforcePanelKey={workforcePanelKey}
-        onToggleSidePanel={onToggleSidePanel}
-        isSidePanelVisible={isSidePanelVisible}
-        selectedTurn={selectedTurn}
-      />
-    </>
+    </div>
   );
 }

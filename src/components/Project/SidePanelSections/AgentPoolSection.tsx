@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { SidePanelAccordionBox } from '@/components/Project/SidePanelAccordionBox';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { getToolkitIcon } from '@/lib/toolkitIcons';

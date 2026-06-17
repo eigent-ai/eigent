@@ -16,7 +16,7 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Project/projectSidePanelLayout';
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,
@@ -77,15 +77,15 @@ function BentoSessionGrid({
 
   if (count === 1) {
     return (
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="h-1/2 min-h-0 w-full">{renderCard(sessions[0])}</div>
+      <div className="min-h-0 flex h-full w-full flex-col">
+        <div className="min-h-0 h-1/2 w-full">{renderCard(sessions[0])}</div>
       </div>
     );
   }
 
   if (count === 2) {
     return (
-      <div className="flex h-full min-h-0 w-full flex-col gap-3">
+      <div className="min-h-0 gap-3 flex h-full w-full flex-col">
         {sessions.map((session) => (
           <div key={session.sessionId} className="min-h-0 flex-1">
             {renderCard(session)}
@@ -103,7 +103,7 @@ function BentoSessionGrid({
   return (
     <div className={gridClassName}>
       {sessions.map((session) => (
-        <div key={session.sessionId} className="h-full min-h-0">
+        <div key={session.sessionId} className="min-h-0 h-full">
           {renderCard(session)}
         </div>
       ))}
@@ -121,14 +121,14 @@ function BentoCard({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3">
+    <div className="min-h-0 gap-2 rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3 flex h-full flex-col border">
       {/* Header */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="min-w-0 gap-2 flex items-center">
         <MonitorSmartphone
-          className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+          className="h-4 w-4 text-ds-text-neutral-muted-default shrink-0"
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="min-w-0 text-body-sm font-semibold text-ds-text-neutral-default-default flex-1 truncate">
           {session.title}
         </span>
         <Button
@@ -136,7 +136,7 @@ function BentoCard({
           variant="primary"
           size="xs"
           buttonContent="text"
-          className="no-drag shrink-0 gap-1.5"
+          className="no-drag gap-1.5 shrink-0"
           onClick={onCopy}
         >
           <Copy className="h-3 w-3" aria-hidden />
@@ -148,7 +148,7 @@ function BentoCard({
           tone="error"
           size="xs"
           buttonContent="text"
-          className="no-drag shrink-0 gap-1"
+          className="no-drag gap-1 shrink-0"
           disabled={stopping}
           onClick={onStop}
         >
@@ -162,7 +162,7 @@ function BentoCard({
       </div>
 
       {/* Log */}
-      <div className="min-h-0 flex-1 border-t border-ds-border-neutral-subtle-default pt-2">
+      <div className="min-h-0 border-ds-border-neutral-subtle-default pt-2 flex-1 border-t">
         <LogPanel logs={logs} />
       </div>
     </div>
@@ -195,8 +195,8 @@ function ChannelRow({
   return (
     <div
       className={cn(
-        'group/row flex h-[44px] w-full cursor-default select-none items-center gap-3 rounded-xl',
-        'border border-transparent bg-ds-bg-neutral-default-default px-3',
+        'group/row gap-3 rounded-xl flex h-[44px] w-full cursor-default items-center select-none',
+        'bg-ds-bg-neutral-default-default px-3 border border-transparent',
         'transition-colors duration-150',
         !disabled && 'hover:border-ds-border-neutral-subtle-default',
         hasActiveSessions && 'border-ds-border-neutral-subtle-default',
@@ -214,20 +214,20 @@ function ChannelRow({
           />
         )}
       </div>
-      <span className="flex-1 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="text-body-sm font-medium text-ds-text-neutral-default-default flex-1 truncate">
         {name}
       </span>
 
       {/* Right slot — always the same reserved width so all rows stay the same height */}
-      <div className="flex h-6 w-[72px] shrink-0 items-center justify-end">
+      <div className="h-6 flex w-[72px] shrink-0 items-center justify-end">
         {comingSoon && (
-          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+          <span className="bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default shrink-0 rounded-full">
             {t('layout.dispatch-coming-soon', { defaultValue: 'Coming soon' })}
           </span>
         )}
 
         {!disabled && !comingSoon && hasActiveSessions && (
-          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-label-xs text-ds-text-success-strong-default">
+          <span className="bg-ds-bg-success-subtle-default px-2 py-0.5 text-label-xs text-ds-text-success-strong-default shrink-0 rounded-full">
             {t('layout.dispatch-connected', { defaultValue: 'Connected' })}
           </span>
         )}
@@ -238,7 +238,7 @@ function ChannelRow({
             variant="secondary"
             size="xs"
             buttonContent="text"
-            className="no-drag shrink-0 gap-1"
+            className="no-drag gap-1 shrink-0"
             disabled={loading}
             onClick={onStart}
           >
@@ -286,12 +286,12 @@ function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
       {[...logs].reverse().map((entry) => (
         <div
           key={entry.id}
-          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-label-xs"
+          className="min-w-0 gap-3 px-1 py-1.5 text-label-xs flex items-center"
         >
-          <span className="w-[72px] shrink-0 tabular-nums text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-neutral-muted-default w-[72px] shrink-0 tabular-nums">
             {formatLogTime(entry.time)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-ds-text-neutral-default-default">
+          <span className="min-w-0 text-ds-text-neutral-default-default flex-1 truncate">
             {entry.name}
           </span>
           <span
@@ -538,14 +538,14 @@ export function WorkspaceDispatch() {
   );
 
   const channelList = (
-    <div className="flex w-full flex-col gap-1">
+    <div className="gap-1 flex w-full flex-col">
       <ChannelRow
         name={t('layout.workspace-work-with-remote-control', {
           defaultValue: 'Remote Control',
         })}
         icon={
           <MonitorSmartphone
-            className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+            className="h-4 w-4 text-ds-text-neutral-muted-default shrink-0"
             aria-hidden
           />
         }
@@ -554,7 +554,7 @@ export function WorkspaceDispatch() {
         onStart={() => void handleCreateRemoteControl()}
       />
 
-      <div className="mx-1 border-t border-ds-border-neutral-subtle-default" />
+      <div className="mx-1 border-ds-border-neutral-subtle-default border-t" />
 
       <ChannelRow
         name={t('layout.channels-telegram', { defaultValue: 'Telegram' })}
@@ -578,28 +578,28 @@ export function WorkspaceDispatch() {
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+    <div className="min-h-0 flex h-full w-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b-1 box-border flex h-[45.5px] w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3">
+      <div className="gap-2 border-ds-border-neutral-subtle-default px-3 box-border flex h-[45.5px] w-full shrink-0 items-center border-x-0 border-t-0 border-b-1 border-solid">
         <span className="text-body-md font-bold text-ds-text-neutral-muted-default">
           {t('layout.workspace-work-with-title', { defaultValue: 'Work with' })}
         </span>
       </div>
 
       {/* Body */}
-      <div className="relative flex min-h-0 w-full flex-1 overflow-hidden">
+      <div className="min-h-0 relative flex w-full flex-1 overflow-hidden">
         {/* Centered default state */}
         <AnimatePresence initial={false}>
           {!hasSessions && (
             <motion.div
               key="centered"
-              className="absolute inset-0 flex items-start justify-center overflow-y-auto p-6"
+              className="inset-0 p-6 absolute flex items-start justify-center overflow-y-auto"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
               transition={{ duration: 0.2 }}
             >
-              <div className="w-full max-w-xl">{channelList}</div>
+              <div className="max-w-xl w-full">{channelList}</div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -609,14 +609,14 @@ export function WorkspaceDispatch() {
           {hasSessions && (
             <motion.div
               key="split"
-              className="absolute inset-0 flex overflow-hidden"
+              className="inset-0 absolute flex overflow-hidden"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
               transition={{ duration: 0.2 }}
             >
               {/* Left column: dynamic bento layout by session count */}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+              <div className="min-h-0 p-3 flex flex-1 flex-col overflow-hidden">
                 <BentoSessionGrid
                   sessions={activeSessions}
                   logs={logs}
@@ -629,8 +629,8 @@ export function WorkspaceDispatch() {
               {/* Right panel — same width as session side panel */}
               <motion.div
                 className={cn(
-                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-l border-ds-border-neutral-subtle-default p-3',
-                  SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+                  'gap-1 border-ds-border-neutral-subtle-default p-3 flex shrink-0 flex-col overflow-y-auto border-l',
+                  PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS
                 )}
                 initial={{ x: 40, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}

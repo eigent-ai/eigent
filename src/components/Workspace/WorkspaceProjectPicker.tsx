@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { SpaceSwitchDropdown } from '@/components/PageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -537,7 +537,7 @@ export function WorkspaceProjectPicker({
         aria-label={activeSpaceTitle}
       >
         <FolderIcon className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+        <span className="min-w-0 text-label-sm text-ds-text-neutral-default-default truncate">
           {activeSpaceTitle}
         </span>
       </div>
@@ -607,13 +607,13 @@ export function WorkspaceProjectPicker({
             buttonRadius="full"
             className={cn(
               PROJECT_PICKER_SHELL_CLASS,
-              'no-drag justify-between hover:bg-ds-bg-neutral-default-hover'
+              'no-drag hover:bg-ds-bg-neutral-default-hover justify-between'
             )}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
           >
             <FolderIcon className="size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+            <span className="min-w-0 text-label-sm text-ds-text-neutral-default-default truncate">
               {activeSpaceTitle}
             </span>
             <ChevronsUpDown

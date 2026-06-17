@@ -15,7 +15,7 @@
 import {
   ProjectNavListRows,
   type ProjectNavItem,
-} from '@/components/ProjectPageSidebar/ProjectNavListRows';
+} from '@/components/PageSidebar/ProjectNavListRows';
 import { useTranslation } from 'react-i18next';
 
 interface WorkspaceAllSessionsProps {
@@ -32,10 +32,10 @@ export function WorkspaceAllSessions({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-      <div className="m-0 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden">
+      <div className="m-0 min-h-0 max-w-3xl gap-0.5 p-2 mx-auto flex w-full flex-1 flex-col overflow-y-auto">
         {projects.length === 0 ? (
-          <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
+          <p className="m-0 px-3 py-6 text-body-sm text-ds-text-neutral-muted-default text-center">
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (

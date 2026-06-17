@@ -16,7 +16,7 @@ import {
   NAV_LIST_PROJECTS_RECENT_MAX,
   ProjectNavListRows,
   type ProjectNavItem,
-} from '@/components/ProjectPageSidebar/ProjectNavListRows';
+} from '@/components/PageSidebar/ProjectNavListRows';
 
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -45,26 +45,26 @@ export function WorkspaceRecentSessions({
   }
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col pb-4">
-      <div className="mb-3 flex w-full min-w-0 items-center justify-between gap-2 px-3 text-ds-text-neutral-muted-default">
-        <h2 className="min-w-0 text-left text-body-sm font-semibold">
+    <div className="pb-4 mx-auto flex min-h-full w-full max-w-[600px] flex-col">
+      <div className="mb-3 min-w-0 gap-2 px-3 text-ds-text-neutral-muted-default flex w-full items-center justify-between">
+        <h2 className="min-w-0 text-body-sm font-semibold text-left">
           {t('layout.workspace-recent-sessions-heading')}
         </h2>
         <button
           type="button"
           onClick={onOpenAllProjects}
-          className="group inline-flex shrink-0 items-center gap-0.5 text-body-sm font-medium text-ds-text-neutral-muted-default outline-none transition-colors hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus"
+          className="group gap-0.5 text-body-sm font-medium text-ds-text-neutral-muted-default focus-visible:rounded focus-visible:ring-ds-ring-neutral-default-focus inline-flex shrink-0 items-center transition-colors outline-none hover:underline focus-visible:ring-2"
         >
           {t('layout.all', { defaultValue: 'All' })}
           <span
-            className="inline-flex max-w-0 overflow-hidden transition-[max-width] duration-200 ease-out group-hover:max-w-4"
+            className="max-w-0 ease-out group-hover:max-w-4 inline-flex overflow-hidden transition-[max-width] duration-200"
             aria-hidden
           >
             <ArrowRight className="h-3.5 w-3.5 shrink-0" />
           </span>
         </button>
       </div>
-      <div className="m-0 flex min-h-0 w-full flex-col gap-0.5 p-0">
+      <div className="m-0 min-h-0 gap-0.5 p-0 flex w-full flex-col">
         <ProjectNavListRows
           projects={projects}
           activeProjectId={activeProjectId}

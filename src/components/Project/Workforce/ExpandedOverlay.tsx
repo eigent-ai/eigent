@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
-import Folder from '@/components/Folder';
-import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
+import Context from '@/components/Context';
 import Workflow from '@/components/WorkFlow';
-import WorkforceMenu from '@/components/WorkforceMenu';
+import BrowserAgentWorkspace from '@/components/WorkFlow/BrowserAgentWorkspace';
+import TerminalAgentWorkspace from '@/components/WorkFlow/TerminalAgentWorkspace';
+import WorkflowMenu from '@/components/WorkFlow/WorkflowMenu';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
@@ -90,7 +90,7 @@ function WorkforceOverlayCanvas({
           <div className="relative flex h-full w-full flex-col">
             <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder />
+              <Context />
             </div>
           </div>
         </div>
@@ -102,7 +102,7 @@ function WorkforceOverlayCanvas({
           <div className="relative flex h-full w-full flex-col">
             <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder
+              <Context
                 data={activeTask.taskAssigning?.find(
                   (agent) => agent.agent_id === activeWorkSpace
                 )}
@@ -116,7 +116,7 @@ function WorkforceOverlayCanvas({
           <div className="relative flex h-full w-full flex-col">
             <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder />
+              <Context />
             </div>
           </div>
         </div>
@@ -239,7 +239,7 @@ export default function ExpandedOverlay({
             </div>
             <div className="relative z-50 shrink-0">
               <div className="pointer-events-auto">
-                <WorkforceMenu
+                <WorkflowMenu
                   onToggleChatBox={onToggleSidePanel}
                   isChatBoxVisible={!isSidePanelVisible}
                 />

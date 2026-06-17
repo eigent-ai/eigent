@@ -30,8 +30,8 @@ import {
   Image,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { TaskState } from '../TaskState';
-import { Button } from '../ui/button';
+import { TaskState } from '../../TaskState';
+import { Button } from '../../ui/button';
 
 export default function BrowserAgentWorkspace({
   selectedTurn,

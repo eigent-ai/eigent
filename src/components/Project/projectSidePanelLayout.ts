@@ -13,12 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /** Full logical width of the session side panel content (clipped by the outer when folded to 40px). */
-export const SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS =
+export const PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS =
   'w-[min(360px,40vw)] max-w-[400px]';
 
 /** Outer `#session-side-panel` when expanded (same as content width; no extra clip). */
-export const SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS =
-  SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS;
+export const PROJECT_SIDE_PANEL_EXPANDED_OUTER_CLASS =
+  PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS;
 
-/** Outer shell when folded: fixed 40px; content layer keeps `SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS`. */
-export const SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS = 'w-[40px]';
+/** Outer shell when folded: fixed 40px; content layer keeps `PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS`. */
+export const PROJECT_SIDE_PANEL_FOLDED_OUTER_CLASS = 'w-[40px]';

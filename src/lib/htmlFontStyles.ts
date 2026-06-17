@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Scoped font style for HTML fragments rendered in the main document (e.g. CSV in FolderComponent).
+ * Scoped font style for HTML fragments rendered in the main document (e.g. CSV in ContextComponent).
  * Uses a wrapper class so styles do not leak to the rest of the app (sidebar, file list, etc.).
  */
 const SCOPED_FONT_STYLE = `<style data-eigent-fonts>

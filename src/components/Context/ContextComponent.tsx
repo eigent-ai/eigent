@@ -22,7 +22,7 @@ type Props = {
   };
 };
 
-export default function FolderComponent({ selectedFile }: Props) {
+export default function ContextComponent({ selectedFile }: Props) {
   const sanitizedHtml = useMemo(() => {
     const raw = selectedFile?.content || '';
     if (!raw) return '';

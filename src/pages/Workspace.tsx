@@ -20,14 +20,14 @@ import {
   GridPatternBackground,
   RuledLinesBackground,
 } from '@/components/Background';
+import Context from '@/components/Context';
 import { WorkspaceDispatch } from '@/components/Dispatch';
-import Folder from '@/components/Folder';
-import ProjectPageSidebar from '@/components/ProjectPageSidebar';
+import PageSidebar from '@/components/PageSidebar';
 import {
   PROJECT_SIDEBAR_FOLD_SPRING,
   PROJECT_SIDEBAR_RAIL_WIDTH_PX,
-} from '@/components/ProjectPageSidebar/constants';
-import SessionGroup from '@/components/Session/SessionGroup';
+} from '@/components/PageSidebar/constants';
+import ProjectGroup from '@/components/Project/ProjectGroup';
 import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
@@ -56,7 +56,7 @@ import {
   type TriggerSortKey,
 } from '../components/Trigger/Triggers';
 
-import Session from '@/components/Session';
+import Project from '@/components/Project';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -692,7 +692,7 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session />
+              <Project />
             </div>
           </div>
         );
@@ -701,7 +701,7 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session isNewProject />
+              <Project isNewProject />
             </div>
           </div>
         );
@@ -714,7 +714,7 @@ export default function WorkspacePage() {
       case 'inbox':
         return (
           <div className={mainPanelContentClass}>
-            <Folder />
+            <Context />
           </div>
         );
       case 'triggers':
@@ -733,7 +733,7 @@ export default function WorkspacePage() {
         );
       case 'runs':
         return (
-          <SessionGroup
+          <ProjectGroup
             className={mainPanelContentClass}
             tasks={chatStore?.tasks ?? {}}
             activeSessionId={chatStore?.activeTaskId ?? undefined}
@@ -771,7 +771,7 @@ export default function WorkspacePage() {
               maxSize={sidebarPct.max}
               className="min-h-0 min-w-0 pl-1 py-1"
             >
-              <ProjectPageSidebar chatStore={chatStore} />
+              <PageSidebar chatStore={chatStore} />
             </ResizablePanel>
             <ResizableHandle
               className={cn(

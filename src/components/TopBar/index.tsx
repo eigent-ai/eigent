@@ -20,7 +20,7 @@ import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { SpaceSwitchDropdown } from '@/components/PageSidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Blocks } from '@/components/ui/animate-ui/icons/blocks';
 import { Bot } from '@/components/ui/animate-ui/icons/bot';

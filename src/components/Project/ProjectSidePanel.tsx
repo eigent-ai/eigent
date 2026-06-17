@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionSidePanelHeader } from '@/components/Session/SessionSidePanelHeader';
-import { SingleAgentSidePanel } from '@/components/Session/SingleAgent/SingleAgentSidePanel';
-import { TurnTabs } from '@/components/Session/TurnTabs';
-import { WorkforceSidePanel } from '@/components/Session/Workforce/WorkforceSidePanel';
-import { WorkforceSidePanelHeaderEnd } from '@/components/Session/Workforce/WorkforceSidePanelHeaderEnd';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { ProjectSidePanelHeader } from '@/components/Project/ProjectSidePanelHeader';
+import { SingleAgentSidePanel } from '@/components/Project/SingleAgent/SingleAgentSidePanel';
+import { TurnTabs } from '@/components/Project/TurnTabs';
+import { WorkforceSidePanel } from '@/components/Project/Workforce/WorkforceSidePanel';
+import { WorkforceSidePanelHeaderEnd } from '@/components/Project/Workforce/WorkforceSidePanelHeaderEnd';
+import { PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Project/projectSidePanelLayout';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
@@ -35,7 +35,7 @@ export interface SessionSidePanelProps {
   onCloseExpandedOverlay: () => void;
 }
 
-export function SessionSidePanel({
+export function ProjectSidePanel({
   mode,
   workforcePanelKey,
   hasAnyMessages,
@@ -68,12 +68,12 @@ export function SessionSidePanel({
       <div
         className={cn(
           'min-h-0 flex h-full flex-shrink-0 flex-col overflow-hidden',
-          SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS,
+          PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS,
           isFolded &&
             'pointer-events-none opacity-40 transition-opacity duration-200 group-hover:opacity-80'
         )}
       >
-        <SessionSidePanelHeader
+        <ProjectSidePanelHeader
           title={headerTitle}
           mode={mode}
           isSidePanelVisible={isSidePanelVisible}

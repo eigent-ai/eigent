@@ -51,7 +51,7 @@ import {
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-/** Sub icons aligned with `WorkforceMenu` / `ui/menu-button` → `MenuToggleItem` (top-right badge, 10px). */
+/** Sub icons aligned with `WorkflowMenu` / `ui/menu-button` → `MenuToggleItem` (top-right badge, 10px). */
 function getWorkforceMenuStyleSubIcon(agentType: string): ReactNode {
   const key = agentType as WorkflowAgentType;
   const iconClass = WORKFLOW_AGENT_SUB_ICON_CLASS[key];

@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../ui/button';
+import { Button } from '../../ui/button';
 
 export default function TerminalAgentWorkspace({
   selectedTurn,

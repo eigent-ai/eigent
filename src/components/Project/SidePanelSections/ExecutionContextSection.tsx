@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { SidePanelAccordionBox } from '@/components/Project/SidePanelAccordionBox';
 import {
   CategoryLabel,
   SidePanelListRow,
-} from '@/components/Session/SidePanelSections/primitives';
+} from '@/components/Project/SidePanelSections/primitives';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';

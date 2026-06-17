@@ -14,7 +14,7 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Project/projectSidePanelLayout';
 import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
@@ -482,12 +482,12 @@ export default function Workspace({
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-      <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
+      <span className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default w-full text-center">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT
           ? t('layout.workspace-cowork-single-agent')
           : t('layout.workspace-cowork-workforce')}
       </span>
-      <div className="mb-8 flex w-full justify-center px-5">
+      <div className="mb-8 px-5 flex w-full justify-center">
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <SingleAgentList />
         ) : (
@@ -536,7 +536,7 @@ export default function Workspace({
 
   const composer = (
     <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
+      <div className="min-w-0 flex min-h-[50vh] w-full flex-col justify-end">
         {composerTop}
         {composerInput}
       </div>
@@ -551,10 +551,10 @@ export default function Workspace({
 
   if (embedded && isNewProjectVariant) {
     return (
-      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
+      <div className="min-h-0 min-w-0 px-3 relative z-[1] flex flex-1 flex-col overflow-hidden">
         {composer}
         <div
-          className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
+          className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
           id="workspace-bottom-group"
           aria-hidden
         />
@@ -568,7 +568,7 @@ export default function Workspace({
         <div
           className={cn(
             'flex h-full flex-col overflow-hidden',
-            SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+            PROJECT_SIDE_PANEL_CONTENT_WIDTH_CLASS
           )}
         >
           <WorkspaceCoworkPanel
@@ -580,13 +580,13 @@ export default function Workspace({
     ) : null;
 
   return (
-    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
+    <div className="min-h-0 min-w-0 relative z-[1] flex h-full w-full flex-row overflow-hidden">
       {/* Center section: header + content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {/* Header toolbar */}
         <div
           className={cn(
-            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
+            'gap-1 relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start',
             !isNewProjectVariant && 'px-3'
           )}
         >
@@ -605,8 +605,8 @@ export default function Workspace({
             </Button>
           )}
           {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
+            <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span className="!text-label-sm font-semibold text-ds-text-neutral-default-default block max-w-[60vw] truncate text-center">
                 {SUB_PAGE_TITLES[workspaceSubPage]}
               </span>
             </div>
@@ -635,7 +635,7 @@ export default function Workspace({
         </div>
 
         {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex w-full flex-1 flex-col overflow-hidden">
           {/* Sub-pages */}
           {!isNewProjectVariant && workspaceSubPage === 'all-sessions' && (
             <WorkspaceAllSessions
@@ -658,17 +658,17 @@ export default function Workspace({
 
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
+            <div className="min-h-0 min-w-0 relative flex flex-1 flex-col items-stretch overflow-hidden">
               <div
                 className={cn(
-                  'flex min-h-0 w-full flex-1 flex-col',
+                  'min-h-0 flex w-full flex-1 flex-col',
                   !isNewProjectVariant && 'px-3'
                 )}
               >
                 {composer}
 
                 <div
-                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
+                  className="min-h-0 pt-6 flex w-full flex-1 flex-col overflow-y-auto"
                   id="workspace-bottom-group"
                 >
                   {showBottomExamplePrompts ? (

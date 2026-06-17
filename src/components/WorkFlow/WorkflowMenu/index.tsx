@@ -37,7 +37,7 @@ export interface WorkforceMenuProps {
   isChatBoxVisible?: boolean;
 }
 
-export default function WorkforceMenu({
+export default function WorkflowMenu({
   onToggleChatBox: _onToggleChatBox,
   isChatBoxVisible: _isChatBoxVisible = true,
 }: WorkforceMenuProps) {

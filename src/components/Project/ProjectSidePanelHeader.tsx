@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionSidePanelFoldButton } from '@/components/Session/SessionSidePanelFoldButton';
+import { ProjectSidePanelFoldButton } from '@/components/Project/ProjectSidePanelFoldButton';
 import type { SessionModeType } from '@/types/constants';
 import type { ReactNode } from 'react';
 
-export interface SessionSidePanelHeaderProps {
+export interface ProjectSidePanelHeaderProps {
   title: string;
   mode: SessionModeType;
   isSidePanelVisible: boolean;
@@ -27,18 +27,18 @@ export interface SessionSidePanelHeaderProps {
   end?: ReactNode;
 }
 
-export function SessionSidePanelHeader({
+export function ProjectSidePanelHeader({
   title,
   mode,
   isSidePanelVisible,
   onToggle,
   start,
   end,
-}: SessionSidePanelHeaderProps) {
+}: ProjectSidePanelHeaderProps) {
   return (
     <div className="p-2 min-w-0 relative z-50 flex w-full shrink-0 items-center">
       <div className="min-w-0 gap-1 flex flex-1 items-center justify-start">
-        <SessionSidePanelFoldButton
+        <ProjectSidePanelFoldButton
           sessionSidePanelMode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggle}

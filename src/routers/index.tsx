@@ -23,7 +23,7 @@ import Layout from '@/components/Layout';
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
-const History = lazy(() => import('@/pages/History'));
+const HomePage = lazy(() => import('@/pages/HomePage'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 
@@ -138,7 +138,7 @@ const ProtectedRoute = () => {
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin border-blue-600 rounded-full border-b-2"></div>
       </div>
     );
   }
@@ -163,14 +163,14 @@ const AppRoutes = () => (
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
         <Route path="/" element={<Workspace />} />
-        <Route path="/history" element={<History />} />
+        <Route path="/home" element={<HomePage />} />
         <Route
           path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?tab=settings" replace />}
         />
         <Route
           path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?tab=settings" replace />}
         />
       </Route>
     </Route>
