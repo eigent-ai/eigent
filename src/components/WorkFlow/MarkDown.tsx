@@ -132,7 +132,7 @@ export const MarkDown = ({
           a: ({ children, href }) => (
             <a
               href={href}
-              className="text-ds-text-neutral-default-default hover:text-ds-text-neutral-default-hover break-all underline"
+              className="text-ds-text-neutral-default-default hover:text-ds-text-neutral-muted-default break-all underline"
               target="_blank"
               rel="noopener noreferrer"
             >
