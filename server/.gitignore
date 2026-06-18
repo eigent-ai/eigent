@@ -13,3 +13,9 @@ wheels/
 runtime
 
 app/public/upload/
+
+# Environment files with sensitive data
+.env
+
+# Alembic config with credentials
+alembic.ini
