@@ -17,6 +17,11 @@ from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import app.utils.telemetry.workforce_metrics as wm_module
+from app.utils.telemetry.workforce_metrics import (
+    ATTR_TASK_FAILURE_COUNT,
+    WorkforceMetricsCallback,
+)
 from camel.societies.workforce.events import (
     LogEvent,
     TaskAssignedEvent,
@@ -28,9 +33,6 @@ from camel.societies.workforce.events import (
     TaskUpdatedEvent,
     WorkerCreatedEvent,
 )
-
-import app.utils.telemetry.workforce_metrics as wm_module
-from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 
 
 @pytest.fixture(autouse=True)
@@ -238,12 +240,14 @@ def test_log_task_failed(metrics_callback):
         worker_id="worker_1",
         parent_task_id="parent_1",
         error_message="Test error",
+        metadata={"failure_count": 3},
     )
 
     metrics_callback.log_task_failed(event)
 
     # Verify span was ended with error status
     assert task_id not in metrics_callback.task_spans
+    mock_span.set_attribute.assert_any_call(ATTR_TASK_FAILURE_COUNT, 3)
     assert mock_span.set_attribute.called
     assert mock_span.set_status.called
     assert mock_span.end.called
