@@ -14,6 +14,15 @@
 
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_STACK_CLIENT_ID?: string;
+  readonly VITE_STACK_CLIENT_SECRET?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
 interface Window {
   // Expose in Electron preload. Optional in Web mode (no Electron).
   ipcRenderer?: import('electron').IpcRenderer;
