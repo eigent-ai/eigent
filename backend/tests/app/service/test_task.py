@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import threading
 import weakref
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -36,9 +37,11 @@ from app.service.task import (
     Agents,
     ImprovePayload,
     TaskLock,
+    _task_locks_mutex,
     create_task_lock,
     delete_task_lock,
     get_camel_task,
+    get_or_create_task_lock,
     get_task_lock,
     process_task,
     set_process_task,
@@ -542,6 +545,62 @@ class TestPeriodicCleanup:
 
             # Should have logged the error
             mock_logger.error.assert_called()
+
+
+@pytest.fixture
+def clean_task_locks_with_mutex():
+    """Clean up task_locks using mutex before and after each test."""
+    with _task_locks_mutex:
+        task_locks.clear()
+    yield
+    with _task_locks_mutex:
+        task_locks.clear()
+
+
+@pytest.mark.unit
+def test_create_task_lock_is_thread_safe(clean_task_locks_with_mutex):
+    """Concurrent create_task_lock calls should not corrupt task_locks."""
+    errors = []
+    barrier = threading.Barrier(10)
+
+    def worker(idx):
+        try:
+            barrier.wait(timeout=5)
+            create_task_lock(f"task_{idx}")
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"Unexpected errors: {errors}"
+    with _task_locks_mutex:
+        assert len(task_locks) == 10
+
+
+@pytest.mark.unit
+def test_get_or_create_is_idempotent(clean_task_locks_with_mutex):
+    """get_or_create_task_lock called twice returns the same lock."""
+    lock1 = get_or_create_task_lock("same_id")
+    lock2 = get_or_create_task_lock("same_id")
+    assert lock1 is lock2
+
+
+@pytest.mark.unit
+def test_create_task_lock_raises_on_duplicate(clean_task_locks_with_mutex):
+    """create_task_lock should raise for an existing id."""
+    create_task_lock("dup_id")
+    with pytest.raises(Exception):
+        create_task_lock("dup_id")
+
+
+@pytest.mark.unit
+def test_mutex_attribute_exists():
+    """_task_locks_mutex should be a threading.Lock instance."""
+    assert isinstance(_task_locks_mutex, type(threading.Lock()))
 
 
 @pytest.mark.integration
