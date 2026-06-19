@@ -12,9 +12,15 @@ ChatBox is the main chat surface: it wires **project + chat store** data to **me
 ChatBox/
 ├── index.tsx                 # Main shell: layout, chat timeline, send/stop, BottomBox
 ├── ChatTimeline.tsx         # Per-project task/chat rail or popover (narrow layout)
-├── ProjectChatContainer.tsx  # Scroll region + all chat stores for the active project
-├── ProjectSection.tsx        # One chat store: query groups, FloatingAction
-├── UserQueryGroup.tsx        # One user query → messages, task UI, agent results
+│
+├── channel/                  # Session-channel renderer (one ordered channel per project)
+│   ├── SessionChannel.tsx    # Flat, turn-grouped render + scroll/turn-observer + FloatingAction
+│   ├── ChannelItemRenderer.tsx  # registry[item.kind] lookup
+│   ├── rendererRegistry.ts   # ChannelItemKind → renderer
+│   ├── context.ts            # Render context (resolveTurn → live chatStore bridge)
+│   ├── submitHumanReply.ts   # Shared HITL reply (existing /human-reply shape)
+│   ├── useSessionChannelShadow.ts  # Derives the channel from live per-turn tasks
+│   └── renderers/            # One component per ChannelItemKind (wraps existing cards)
 │
 ├── TaskBox/                 # Plan / run task UI
 │   ├── TaskCard.tsx         # Plan list, progress, filter, expand (workforce subtasks)
@@ -32,7 +38,7 @@ ChatBox/
 │   ├── TaskCompletionCard.tsx
 │   ├── SplittingProgressRow.tsx   # “Splitting tasks” + token tick during decompose
 │   ├── TaskWorkLogAccordion.tsx  # Work log: tool / agent lines (workforce)
-│   ├── FloatingAction.tsx        # Pause / skip (used from ProjectSection)
+│   ├── FloatingAction.tsx        # Pause / skip (rendered by SessionChannel)
 │   ├── MarkDown.tsx
 │   ├── SummaryMarkDown.tsx
 │   └── TokenUtils.tsx            # Token animation + splitting elapsed formatting
@@ -51,24 +57,26 @@ ChatBox/
 
 ### `index.tsx`
 
-- Composes `ProjectChatContainer`, `BottomBox`, and (when used) `ChatTimeline`.
+- Composes `channel/SessionChannel`, `BottomBox`, and (when used) `ChatTimeline`.
 - Connects to `useChatStoreAdapter`, `projectStore`, navigation, and session chrome (e.g. scroll padding, task time display, pause/resume).
 - Owns high-level task operations (send, stop, share, history hooks) and passes props into children.
 
-### `ProjectChatContainer.tsx`
+### `channel/` (session-channel renderer)
 
-- Renders the stack of per–chat-id sections for the active project.
-- Owns scroll behavior and “stick to bottom” / padding for the last message and BottomBox.
+The project's whole conversation is **one ordered, typed channel** (`ChannelItem[]`,
+`src/types/sessionChannel.ts`), keyed by `projectId`. Items are grouped into turns by `turnId`
+(`items.filter(i => i.turnId === t)`), replacing the old per-turn `chatStore` + render-time
+`groupMessagesByQuery` heuristic.
 
-### `ProjectSection.tsx`
-
-- One **vanilla `chatStore`** instance: subscribes to it and maps **messages** into **query groups** (see `UserQueryGroup`).
-- Hosts `FloatingAction` (pause, skip) for the active task.
-
-### `UserQueryGroup.tsx`
-
-- A **single user turn**: user content, then downstream UI driven by `AgentStep` / `ChatTaskStatus` (e.g. splitting, task card, agent completion, notices).
-- Imports from `TaskBox/` and `MessageItem/`; this is the main place new message *shapes* are routed.
+- **`SessionChannel.tsx`**: renders `turnOrder.map(turn → items.map(<ChannelItemRenderer/>))`,
+  owns the turn IntersectionObserver (drives side-panel `TurnTabs`), scroll-to-turn,
+  auto-scroll-to-bottom, and the `FloatingAction` (pause/skip) for the running turn.
+- **`useSessionChannelShadow.ts`**: derives the channel by folding the live per-turn `chatStore`
+  tasks (`buildProjectChannel`) — the chatStore SSE handler is still the source of truth; the
+  channel is a typed projection of it.
+- **`ChannelItemRenderer` + `rendererRegistry`**: look up the renderer by `item.kind` — no switch.
+- **`renderers/`**: one component per kind, wrapping the existing `MessageItem/` & `TaskBox/` cards.
+- **`submitHumanReply.ts`** + `renderers/AskRenderer.tsx`: HITL replies + 30s auto-skip.
 
 ## TaskBox (`TaskBox/`)
 
@@ -86,7 +94,7 @@ ChatBox/
 - **`TaskCompletionCard`**: Completion / summary style card when appropriate.
 - **`NoticeCard`**: Chain-of-thought or notice-style content.
 - **`FeedbackCard`**: Thumbs / feedback when enabled.
-- **`FloatingAction`**: Compact floating controls (wired from `ProjectSection`).
+- **`FloatingAction`**: Compact floating controls (rendered by `channel/SessionChannel`).
 - **`TokenUtils`**: Animated token number and `formatSplittingElapsed` helpers.
 
 ## BottomBox (`BottomBox/`)
@@ -100,13 +108,13 @@ ChatBox/
 ## Data flow (short)
 
 1. **User input** → `BottomBox` → `index.tsx` / store → API or store updates.
-1. **SSE / store updates** → `ProjectChatContainer` → `ProjectSection` → `UserQueryGroup` → `MessageItem` / `TaskBox` by step and status.
-1. **State** → **`chatStore`** (per chat), **`projectStore`** (project + which chat is active), plus local component state (expand, scroll, active query).
+1. **SSE / store updates** → `chatStore` accumulates per-turn `Task` state → `useSessionChannelShadow` folds it into `ChannelItem[]` → `SessionChannel` → `ChannelItemRenderer` → `MessageItem` / `TaskBox` by `item.kind`.
+1. **State** → **`chatStore`** (per chat, source of truth), **`sessionChannelStore`** (derived channel per project), **`projectStore`** (project + which chat is active), plus local component state (expand, scroll).
 
 ## Extending the UI
 
-- **New agent or system message type**: branch in `UserQueryGroup.tsx` (and possibly `ProjectSection` if grouping changes).
-- **New task UI**: add under `TaskBox/` and mount from `UserQueryGroup` or `TaskCard` as needed.
-- **New bubble content**: add a card under `MessageItem/` and import it from `UserQueryGroup` (or the parent that owns that message list).
+- **New channel item kind**: add the type to `src/types/sessionChannel.ts`, emit it from `buildProjectChannel` (`store/sessionChannelReducer.ts`), add a renderer under `channel/renderers/`, and register it in `channel/rendererRegistry.ts`.
+- **New task UI**: add under `TaskBox/` and mount from the relevant renderer or `TaskCard`.
+- **New bubble content**: add a card under `MessageItem/` and use it from a `channel/renderers/` component.
 
-This layout keeps **transport and layout** (`index`, `Project*`) separate from **message rendering** (`MessageItem/`) and **task planning/execution** (`TaskBox/`), and **composer** behavior (`BottomBox/`).
+This layout keeps **transport** (`index`, `chatStore`) separate from the **typed channel projection** (`channel/`, `store/sessionChannel*`), **message rendering** (`MessageItem/`), **task planning/execution** (`TaskBox/`), and **composer** behavior (`BottomBox/`).

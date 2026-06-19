@@ -49,7 +49,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
-import { ProjectChatContainer } from './ProjectChatContainer';
+import { SessionChannel } from './channel/SessionChannel';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -386,9 +386,6 @@ export default function ChatBox(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
-  const activeTaskId = chatStore?.activeTaskId;
-  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
-
   useEffect(() => {
     if (!chatStore?.activeTaskId) return;
     const interval = setInterval(() => {
@@ -399,24 +396,9 @@ export default function ChatBox(): JSX.Element {
     return () => clearInterval(interval);
   }, [chatStore?.activeTaskId, chatStore]);
 
-  useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
-    }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, chatStore, activeTaskId]);
+  // The 30s HITL auto-skip is owned by the channel's AskRenderer (keyed on the
+  // active ask). The legacy timer here was removed at the session-channel
+  // cut-over to avoid a duplicate skip.
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -1254,7 +1236,7 @@ export default function ChatBox(): JSX.Element {
           className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
-            <ProjectChatContainer
+            <SessionChannel
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onSkip={handleSkip}

@@ -74,8 +74,8 @@ interface PageTabState {
   setScrollToQueryId: (queryId: string | null) => void;
   /**
    * Bumped when the side-panel Progress section asks the chat to surface
-   * the task box: TaskCard expands itself, ProjectChatContainer scrolls
-   * the active query group so the task box sits at the top.
+   * the task box: TaskCard expands itself, SessionChannel scrolls
+   * the active turn so the task box sits at the top.
    */
   taskBoxFocusRequestId: number;
   taskBoxFocusProjectId: string | null;
@@ -120,7 +120,7 @@ interface PageTabState {
   sidePanelManualUntilByProject: Record<string, number>;
   /**
    * Task ID currently visible in the chatbox scroll viewport, per project.
-   * Written by the IntersectionObserver in ProjectChatContainer.
+   * Written by the IntersectionObserver in SessionChannel.
    */
   sidePanelViewedTurnByProject: Record<string, string>;
   setSidePanelSelectedTurn: (
@@ -129,7 +129,7 @@ interface PageTabState {
     manualDurationMs?: number
   ) => void;
   setSidePanelViewedTurn: (projectId: string, taskId: string) => void;
-  /** Set by TurnTabs to tell the matching ProjectChatContainer to scroll. */
+  /** Set by TurnTabs to tell the matching SessionChannel to scroll. */
   scrollToTurnRequest: { projectId: string; taskId: string } | null;
   setScrollToTurnRequest: (
     request: { projectId: string; taskId: string } | null

@@ -66,14 +66,16 @@ function getTaskElapsedMs(task: {
   return Math.max(0, task.elapsed);
 }
 
-type TaggedLog = {
+export type TaggedLog = {
   entry: AgentMessage;
   agentId: string;
   agentType: string;
   agentName: string;
 };
 
-function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
+export function mergeTaggedAgentLogs(
+  taskAssigning: Agent[] | undefined
+): TaggedLog[] {
   if (!taskAssigning?.length) return [];
   return taskAssigning.flatMap((a) =>
     (a.log ?? []).map((entry) => ({
@@ -130,7 +132,7 @@ function looksLikeNarration(raw: string): boolean {
   return true;
 }
 
-type ToolItem = {
+export type ToolItem = {
   kind: 'tool';
   id: string;
   rowTitle: string;
@@ -141,7 +143,7 @@ type ToolItem = {
   status: 'running' | 'done';
 };
 
-type MessageItem = {
+export type MessageItem = {
   kind: 'message';
   id: string;
   text: string;
