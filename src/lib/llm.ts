@@ -215,7 +215,6 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'OrcaRouter model configuration.',
     is_valid: false,
     model_type: '',
-    modelsEndpoint: '/models',
     websiteUrl: 'https://www.orcarouter.ai',
   },
   {
@@ -226,7 +225,6 @@ export const INIT_PROVODERS: Provider[] = [
     description: 'Nebius Token Factory model configuration.',
     is_valid: false,
     model_type: '',
-    modelsEndpoint: '/models',
     websiteUrl: 'https://docs.tokenfactory.nebius.com/quickstart',
   },
   {
