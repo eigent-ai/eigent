@@ -2,7 +2,9 @@
 # Docker reads it from the context root.
 
 # Source control
-.git
+# Note: .git is intentionally NOT ignored — server/Dockerfile bind-mounts it
+# (--mount=type=bind,source=.git) to stamp the server commit into the image
+# without baking .git into any layer. Excluding it here breaks the build.
 .gitignore
 .gitattributes
 
