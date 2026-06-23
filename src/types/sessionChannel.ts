@@ -56,7 +56,9 @@ export type ChannelItemKind =
   | 'failed'
   | 'file-output'
   | 'ask'
-  | 'skip-marker';
+  | 'followup-questions'
+  | 'skip-marker'
+  | 'unsupported';
 
 /**
  * Fields shared by every channel item.
@@ -106,6 +108,11 @@ export interface AgentMessageItem extends ChannelItemBase {
   fileList?: FileInfo[];
   /** True while the text is still streaming in (suppressed for replay@0ms). */
   streaming?: boolean;
+  /**
+   * Raw source `Message.id` (the channel item id is prefixed `am-…`). The
+   * typewriter check compares this against the live task's last message id.
+   */
+  messageId?: string;
 }
 
 export interface PlanItem extends ChannelItemBase {
@@ -150,6 +157,31 @@ export interface AskItem extends ChannelItemBase {
   autoSkipDeadline?: number;
 }
 
+/** One sub-question in a follow-up questionnaire. */
+export interface FollowupQuestion {
+  id: string;
+  prompt: string;
+  inputKind: 'single' | 'multi';
+  options: { value: string; label: string }[];
+}
+
+/**
+ * A group of follow-up questions the model asks after a query (e.g. 3 questions,
+ * each with options). All sub-questions are answered together and submitted as a
+ * single human reply. The interactive answer controls render in the BottomBox
+ * question variant; this channel item records the questionnaire in the log.
+ */
+export interface FollowupQuestionsItem extends ChannelItemBase {
+  kind: 'followup-questions';
+  agent: string;
+  /** Optional intro shown above the questions. */
+  question: string;
+  questions: FollowupQuestion[];
+  answered: boolean;
+  /** questionId → selected option values (set once answered). */
+  answers?: Record<string, string[]>;
+}
+
 export interface SkipMarkerItem extends ChannelItemBase {
   kind: 'skip-marker';
   reason: 'agent' | 'timeout' | 'user-stop';
@@ -175,6 +207,28 @@ export interface PreparingItem extends ChannelItemBase {
   kind: 'preparing';
 }
 
+/**
+ * Fallback for a source message the channel can't confidently render — a
+ * structural/internal step that leaked into `messages[]`, an unknown/renamed
+ * step from a legacy project, or a renderer that threw on a stale data shape.
+ *
+ * It carries no user-facing content: the renderer shows nothing inline (so
+ * legacy projects don't surface raw internal payloads), only a small inspect
+ * affordance that reveals the diagnostic chip on demand. The original message is
+ * never dropped from the channel — it is demoted, so the gap is inspectable.
+ */
+export interface UnsupportedItem extends ChannelItemBase {
+  kind: 'unsupported';
+  reason: 'structural-step' | 'unknown-step' | 'render-error';
+  /** Original message `step`, for diagnostics (never shown to end users). */
+  sourceStep?: string;
+  /** Original message `role`, for diagnostics. */
+  sourceRole?: string;
+  /** Truncated original content — diagnostic only, behind the inspect toggle. */
+  preview?: string;
+  messageId?: string;
+}
+
 /** Discriminated union of all channel items (discriminant: `kind`). */
 export type ChannelItem =
   | TurnBoundaryItem
@@ -183,11 +237,13 @@ export type ChannelItem =
   | PlanItem
   | WorkLogItem
   | AskItem
+  | FollowupQuestionsItem
   | SkipMarkerItem
   | ErrorItem
   | FileOutputItem
   | ChainOfThoughtItem
-  | PreparingItem;
+  | PreparingItem
+  | UnsupportedItem;
 
 /** Narrowing helper: maps each `kind` to its concrete item type. */
 export type ChannelItemOfKind<K extends ChannelItemKind> = Extract<

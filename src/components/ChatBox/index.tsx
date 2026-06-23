@@ -48,8 +48,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { deriveActiveAsk } from './ask/askPayload';
 import BottomBox from './BottomBox';
 import { SessionChannel } from './channel/SessionChannel';
+import { submitHumanReply } from './channel/submitHumanReply';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -581,6 +583,34 @@ export default function ChatBox(): JSX.Element {
       }, 200);
     }
   }, []);
+
+  // Active structured ask (single/multi/confirm/followup) parsed from the live
+  // task. Drives the BottomBox question variant; null for plain-text asks, which
+  // keep the default free-text composer.
+  const activeAskInput = useMemo(
+    () => deriveActiveAsk(activeTask),
+    [activeTask]
+  );
+
+  // Submit a structured ask answer through the shared HITL path (one reply for
+  // all answers — e.g. a follow-up questionnaire posts a single human-reply).
+  const handleAnswerAsk = useCallback(
+    async (reply: string, display?: string) => {
+      const taskId = chatStore?.activeTaskId;
+      const projectId = projectStore.activeProjectId;
+      const store = projectStore.getActiveChatStore();
+      if (!taskId || !projectId || !store) return;
+      await submitHumanReply({
+        projectId,
+        chatStore: store,
+        taskId,
+        reply,
+        displayContent: display,
+      });
+      scrollToBottom();
+    },
+    [chatStore?.activeTaskId, projectStore, scrollToBottom]
+  );
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -1174,6 +1204,9 @@ export default function ChatBox(): JSX.Element {
       return 'running';
     }
     if (task.status === ChatTaskStatus.RUNNING) {
+      // Always surface the input when the agent is waiting for a human reply.
+      if (task.activeAsk) return 'input';
+
       const hasSubTasks = task.messages.some(
         (m) => m.step === AgentStep.TO_SUB_TASKS
       );
@@ -1236,12 +1269,14 @@ export default function ChatBox(): JSX.Element {
           className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
         >
           {hasAnyMessages ? (
-            <SessionChannel
-              scrollContainerRef={scrollContainerRef}
-              scrollBottomInsetPx={scrollBottomInsetPx}
-              onSkip={handleSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
-            />
+            <div className="px-2 mx-auto w-full max-w-[600px]">
+              <SessionChannel
+                scrollContainerRef={scrollContainerRef}
+                scrollBottomInsetPx={scrollBottomInsetPx}
+                onSkip={handleSkip}
+                isPauseResumeLoading={isPauseResumeLoading}
+              />
+            </div>
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
               <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
@@ -1336,6 +1371,8 @@ export default function ChatBox(): JSX.Element {
                 onPauseResume={handlePauseResume}
                 pauseResumeLoading={isPauseResumeLoading}
                 loading={loading}
+                askInput={activeAskInput}
+                onAnswerAsk={handleAnswerAsk}
                 inputProps={{
                   value: message,
                   onChange: setMessage,

@@ -18,6 +18,7 @@ import type {
   ChainOfThoughtItem,
   ErrorItem,
   FileOutputItem,
+  FollowupQuestionsItem,
   SkipMarkerItem,
   UserMessageItem,
 } from '@/types/sessionChannel';
@@ -25,7 +26,7 @@ import { motion } from 'framer-motion';
 import { ChevronDown, FileText } from 'lucide-react';
 import React, { useState } from 'react';
 import { AgentMessageCard } from '../../MessageItem/AgentMessageCard';
-import { NoticeCard } from '../../MessageItem/NoticeCard';
+import { ChainOfThoughtBox } from '../../MessageItem/ChainOfThoughtBox';
 import { UserMessageCard } from '../../MessageItem/UserMessageCard';
 import type { ChannelRenderer } from '../context';
 
@@ -147,12 +148,15 @@ export const AgentMessageRenderer: ChannelRenderer<AgentMessageItem> = ({
     (task?.type === 'replay' && task?.delayTime !== 0);
   const msgs = task?.messages ?? [];
   const last = msgs[msgs.length - 1];
+  // Compare against the raw source id (`item.messageId`), not the prefixed
+  // channel id (`item.id` is `am-…`) — otherwise this never matches and the
+  // typewriter animation for the streaming message never plays.
   const typewriter =
     replayAllows &&
     task?.status === ChatTaskStatus.RUNNING &&
     !!last &&
     last.role === 'agent' &&
-    last.id === item.id;
+    last.id === item.messageId;
 
   return (
     <motion.div
@@ -219,9 +223,15 @@ export const ErrorRenderer: ChannelRenderer<ErrorItem> = ({ item }) => (
   </motion.div>
 );
 
-export const ChainOfThoughtRenderer: ChannelRenderer<
-  ChainOfThoughtItem
-> = () => <NoticeCard />;
+export const ChainOfThoughtRenderer: ChannelRenderer<ChainOfThoughtItem> = ({
+  item,
+  ctx,
+}) => {
+  const resolved = ctx.resolveTurn(item.turnId);
+  const task = resolved?.chatStore.getState().tasks[resolved.taskId];
+  const isStreaming = task?.status === ChatTaskStatus.RUNNING;
+  return <ChainOfThoughtBox item={item} isStreaming={!!isStreaming} />;
+};
 
 export const FileOutputRenderer: ChannelRenderer<FileOutputItem> = ({
   item,
@@ -232,4 +242,54 @@ export const FileOutputRenderer: ChannelRenderer<FileOutputItem> = ({
     files={item.files}
     onOpen={(file) => ctx.openFilePreview(item.turnId, file)}
   />
+);
+
+/**
+ * Follow-up questionnaire — read-only record in the conversation log. The
+ * interactive answer controls live in the BottomBox question variant; once the
+ * user submits, their choices appear as a normal user-message below this item.
+ * When already answered, each question shows the chosen option(s) inline.
+ */
+export const FollowupQuestionsRenderer: ChannelRenderer<
+  FollowupQuestionsItem
+> = ({ item }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.2 }}
+    className="gap-3 px-6 flex flex-col"
+  >
+    {item.question ? (
+      <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+        {item.question}
+      </div>
+    ) : null}
+    {item.questions.map((q, qi) => {
+      const selected = item.answers?.[q.id] ?? [];
+      return (
+        <div key={q.id} className="gap-1.5 flex flex-col">
+          <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+            {qi + 1}. {q.prompt}
+          </div>
+          <div className="gap-1.5 flex flex-wrap">
+            {q.options.map((opt) => {
+              const isChosen = selected.includes(opt.value);
+              return (
+                <span
+                  key={opt.value}
+                  className={`rounded-lg px-2.5 py-1 text-label-xs font-medium border ${
+                    isChosen
+                      ? 'border-ds-border-information-default-default bg-ds-bg-information-subtle-default text-ds-text-information-default-default'
+                      : 'border-ds-border-neutral-default-default text-ds-text-neutral-muted-default'
+                  }`}
+                >
+                  {opt.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      );
+    })}
+  </motion.div>
 );

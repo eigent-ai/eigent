@@ -12,14 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ChatTaskStatus } from '@/types/constants';
+import { ChatTaskStatus, SessionMode } from '@/types/constants';
 import type {
   PlanItem,
   PreparingItem,
   TurnBoundaryItem,
+  UnsupportedItem,
   WorkLogItem,
 } from '@/types/sessionChannel';
 import { motion } from 'framer-motion';
+import { Inspect } from 'lucide-react';
+import { useState } from 'react';
 import { PreparingToExecuteTasks } from '../../MessageItem/PreparingToExecuteTasks';
 import { TaskWorkLogAccordion } from '../../MessageItem/TaskWorkLogAccordion';
 import { PlanTaskBox } from '../../TaskBox/PlanTaskBox';
@@ -52,6 +55,8 @@ export const PlanRenderer: ChannelRenderer<PlanItem> = ({ item, ctx }) => {
   const { chatStore, taskId } = resolved;
   const chatState = chatStore.getState();
   const task = chatState.tasks[taskId];
+
+  if (task?.sessionMode === SessionMode.SINGLE_AGENT) return null;
 
   const hasConfirmedSubTasks = item.confirmed && item.subTasks.length > 0;
   const isRunning = task?.status === ChatTaskStatus.RUNNING;
@@ -122,3 +127,52 @@ export const PreparingRenderer: ChannelRenderer<PreparingItem> = () => (
     <PreparingToExecuteTasks />
   </div>
 );
+
+/**
+ * Fallback for a message the channel can't confidently render (structural step
+ * leaked into `messages[]`, an unknown/renamed legacy step, or a renderer that
+ * threw). It shows nothing inline — only a small, low-contrast inspect icon.
+ * Clicking it toggles a diagnostic chip (reason + original step/role/content
+ * preview) so engineers can see exactly what was demoted, without ever surfacing
+ * a raw internal payload to the user.
+ */
+export const UnsupportedRenderer: ChannelRenderer<UnsupportedItem> = ({
+  item,
+}) => {
+  const [open, setOpen] = useState(false);
+  const reasonLabel =
+    item.reason === 'structural-step'
+      ? 'Structural step (not displayable)'
+      : item.reason === 'render-error'
+        ? 'Renderer error'
+        : 'Unknown / legacy step';
+
+  return (
+    <div className="px-6 py-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Inspect unsupported message"
+        aria-expanded={open}
+        className="text-ds-icon-neutral-muted-default opacity-30 transition-opacity hover:opacity-100"
+      >
+        <Inspect className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      {open && (
+        <div className="mt-1 gap-1 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2 py-1.5 text-label-xs text-ds-text-neutral-muted-default flex flex-col border">
+          <span className="font-medium">
+            Unsupported channel item · {reasonLabel}
+          </span>
+          {item.sourceStep && <span>step: {item.sourceStep}</span>}
+          {item.sourceRole && <span>role: {item.sourceRole}</span>}
+          {item.messageId && <span>messageId: {item.messageId}</span>}
+          {item.preview && (
+            <span className="break-words whitespace-pre-wrap opacity-80">
+              {item.preview}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};

@@ -12,10 +12,53 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { ChannelItem } from '@/types/sessionChannel';
+import type { ChannelItem, UnsupportedItem } from '@/types/sessionChannel';
 import React from 'react';
 import type { ChannelRenderContext } from './context';
 import { rendererRegistry } from './rendererRegistry';
+import { UnsupportedRenderer } from './renderers/structureRenderers';
+
+/**
+ * Per-item error boundary: if a renderer throws on a stale legacy data shape, we
+ * degrade that single item to the hidden+inspectable `unsupported` fallback
+ * instead of taking down the whole turn/channel. Scoped to one item so a bad
+ * item never hides its siblings.
+ */
+class ItemErrorBoundary extends React.Component<
+  { item: ChannelItem; ctx: ChannelRenderContext; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error(
+      `[session-channel] renderer threw for item ${this.props.item.id} (kind=${this.props.item.kind})`,
+      error
+    );
+  }
+
+  render() {
+    if (this.state.failed) {
+      const { item, ctx } = this.props;
+      const fallback: UnsupportedItem = {
+        id: `unsup-render-${item.id}`,
+        kind: 'unsupported',
+        turnId: item.turnId,
+        seq: item.seq,
+        createdAt: item.createdAt,
+        reason: 'render-error',
+        sourceStep: item.kind,
+        messageId: item.id,
+      };
+      return <UnsupportedRenderer item={fallback} ctx={ctx} />;
+    }
+    return this.props.children;
+  }
+}
 
 /** Looks up `registry[item.kind]` and renders it, or nothing for an unknown kind. */
 export const ChannelItemRenderer: React.FC<{
@@ -24,5 +67,9 @@ export const ChannelItemRenderer: React.FC<{
 }> = ({ item, ctx }) => {
   const Renderer = rendererRegistry[item.kind];
   if (!Renderer) return null;
-  return <Renderer item={item as never} ctx={ctx} />;
+  return (
+    <ItemErrorBoundary item={item} ctx={ctx}>
+      <Renderer item={item as never} ctx={ctx} />
+    </ItemErrorBoundary>
+  );
 };

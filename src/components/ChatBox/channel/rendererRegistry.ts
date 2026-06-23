@@ -20,6 +20,7 @@ import {
   ChainOfThoughtRenderer,
   ErrorRenderer,
   FileOutputRenderer,
+  FollowupQuestionsRenderer,
   SkipMarkerRenderer,
   UserMessageRenderer,
 } from './renderers/messageRenderers';
@@ -27,6 +28,7 @@ import {
   PlanRenderer,
   PreparingRenderer,
   TurnBoundaryRenderer,
+  UnsupportedRenderer,
   WorkLogRenderer,
 } from './renderers/structureRenderers';
 
@@ -50,5 +52,7 @@ export const rendererRegistry: Record<
   failed: ErrorRenderer as ChannelRenderer<never>,
   'file-output': FileOutputRenderer as ChannelRenderer<never>,
   ask: AskRenderer as ChannelRenderer<never>,
+  'followup-questions': FollowupQuestionsRenderer as ChannelRenderer<never>,
   'skip-marker': SkipMarkerRenderer as ChannelRenderer<never>,
+  unsupported: UnsupportedRenderer as ChannelRenderer<never>,
 };

@@ -32,6 +32,7 @@
  * this fold is replaced by direct appends; the item shapes stay identical.
  */
 
+import { parseAskMessage } from '@/components/ChatBox/ask/askPayload';
 import {
   buildAgentBlocks,
   mergeTaggedAgentLogs,
@@ -59,6 +60,38 @@ export interface TurnInput {
   task: TurnTask;
 }
 
+/**
+ * Structural / tool-lifecycle / state steps. In the live flow these are folded
+ * into the work-log (`taskAssigning[].log`) and never appear as standalone
+ * conversation messages. If one does leak into `messages[]` (legacy project
+ * shape), it must NOT render as a free-text agent answer — it would surface a
+ * raw internal payload. We demote it to an `unsupported` item instead.
+ */
+const STRUCTURAL_STEPS: ReadonlySet<string> = new Set<string>([
+  AgentStep.CREATE_AGENT,
+  AgentStep.NEW_TASK_STATE,
+  AgentStep.TASK_STATE,
+  AgentStep.ACTIVATE_AGENT,
+  AgentStep.DEACTIVATE_AGENT,
+  AgentStep.ASSIGN_TASK,
+  AgentStep.ACTIVATE_TOOLKIT,
+  AgentStep.DEACTIVATE_TOOLKIT,
+  AgentStep.TERMINAL,
+  AgentStep.WRITE_FILE,
+  AgentStep.TODO_STATE,
+  AgentStep.ADD_TASK,
+  AgentStep.REMOVE_TASK,
+  AgentStep.DECOMPOSE_TEXT,
+  AgentStep.CONFIRMED,
+  AgentStep.WAIT_CONFIRM,
+]);
+
+/** Truncate original content for the (dev-only) inspect chip. */
+function previewOf(content: string | undefined): string | undefined {
+  if (!content) return undefined;
+  return content.length > 120 ? `${content.slice(0, 120)}…` : content;
+}
+
 /** Steps that map to an `error`/`failed` channel item. */
 function errorTypeFor(step: string): {
   kind: 'error' | 'failed';
@@ -76,35 +109,6 @@ function errorTypeFor(step: string): {
     default:
       return null;
   }
-}
-
-/** Read-model for the HITL `ask` payload — forward-compatible, defaults to text. */
-function deriveAsk(message: Message): {
-  question: string;
-  agent: string;
-  inputKind: AskInputKind;
-  options?: { value: string; label: string }[];
-} {
-  // Backend currently only emits a free-text question; `input_kind`/`options`
-  // are read opportunistically so richer kinds light up with no code change.
-  const data = (message as unknown as { data?: Record<string, unknown> }).data;
-  const rawKind = (data?.input_kind ?? data?.inputKind) as string | undefined;
-  const inputKind: AskInputKind =
-    rawKind === 'single' ||
-    rawKind === 'multi' ||
-    rawKind === 'confirm' ||
-    rawKind === 'text'
-      ? rawKind
-      : 'text';
-  const rawOptions = (data?.options ?? undefined) as
-    | { value: string; label: string }[]
-    | undefined;
-  return {
-    question: message.content ?? '',
-    agent: message.agent_id ?? message.agent_name ?? '',
-    inputKind,
-    options: Array.isArray(rawOptions) ? rawOptions : undefined,
-  };
 }
 
 /**
@@ -165,7 +169,12 @@ export function buildProjectChannel(turns: TurnInput[]): ChannelItem[] {
         mergeTaggedAgentLogs(task.taskAssigning),
         sessionMode === SessionMode.SINGLE_AGENT
       );
-      if (!blocks.length) return;
+      // Reserve the slot in the channel while the task is still running even
+      // if no blocks have arrived yet — this locks the position BEFORE any
+      // agent-message/ask items so the order is always:
+      //   plan → work-log → agent-message / ask
+      // The WorkLogRenderer shows a preparing spinner for empty running blocks.
+      if (!blocks.length && task.status !== 'running') return;
       workLogEmitted = true;
       push({
         id: `wl-${turnId}-0`,
@@ -228,18 +237,74 @@ export function buildProjectChannel(turns: TurnInput[]): ChannelItem[] {
       }
 
       if (message.step === AgentStep.ASK) {
-        const ask = deriveAsk(message);
-        const answered = task.activeAsk !== message.content;
+        // Ensure plan and work-log appear BEFORE the ask in the channel
+        // (same anchor used for answer/end messages above).
+        emitPlan();
+        emitWorkLog();
+
+        const desc = parseAskMessage(message);
+        const agentId = message.agent_id ?? message.agent_name ?? '';
+        // `activeAsk` holds the agent name; an ask is unanswered while it is the
+        // task's active ask. (Previously compared against the question text,
+        // which is never equal, so `answered` was always true.)
+        const answered = task.activeAsk !== agentId;
+
+        if (desc.kind === 'followup') {
+          push({
+            id: `fq-${message.id}`,
+            kind: 'followup-questions',
+            turnId,
+            createdAt,
+            agent: agentId,
+            question: desc.question,
+            questions: desc.questions ?? [],
+            answered,
+          });
+          return;
+        }
+
         push({
           id: `ask-${message.id}`,
           kind: 'ask',
           turnId,
           createdAt,
-          question: ask.question,
-          agent: ask.agent,
-          inputKind: ask.inputKind,
-          options: ask.options,
+          question: desc.question,
+          agent: agentId,
+          // `followup` is handled above; the rest map 1:1 onto AskInputKind.
+          inputKind: desc.kind as AskInputKind,
+          options: desc.options,
           answered,
+        });
+        return;
+      }
+
+      // Everything reaching here should be displayable agent narration: a known
+      // answer/end/agent-end/notice step, or a plain streamed answer (empty
+      // step). Any other step is either a structural/tool event that leaked into
+      // `messages[]` or an unknown/renamed step from a legacy project — demote it
+      // to a hidden `unsupported` item rather than render its raw payload.
+      const step = message.step ?? '';
+      const isDisplayableStep =
+        step === '' ||
+        step === AgentStep.END ||
+        step === AgentStep.AGENT_END ||
+        step === AgentStep.AGENT_SUMMARY_END ||
+        step === AgentStep.NOTICE ||
+        step === AgentStep.NOTICE_CARD;
+
+      if (!isDisplayableStep) {
+        push({
+          id: `unsup-${message.id}`,
+          kind: 'unsupported',
+          turnId,
+          createdAt,
+          reason: STRUCTURAL_STEPS.has(step)
+            ? 'structural-step'
+            : 'unknown-step',
+          sourceStep: step || undefined,
+          sourceRole: message.role,
+          preview: previewOf(message.content),
+          messageId: message.id,
         });
         return;
       }
@@ -273,6 +338,7 @@ export function buildProjectChannel(turns: TurnInput[]): ChannelItem[] {
         variant,
         fileList: message.fileList,
         streaming: false,
+        messageId: message.id,
       });
     });
 

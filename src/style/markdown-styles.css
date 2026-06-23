@@ -55,7 +55,8 @@
 
 /* Code blocks styling */
 .markdown-body pre {
-  background-color: #f6f8fa;
+  background-color: var(--ds-bg-neutral-muted-default);
+  color: var(--ds-text-neutral-default-default);
   border-radius: 6px;
   padding: 16px;
   overflow-x: auto;
@@ -65,7 +66,8 @@
 }
 
 .markdown-body code {
-  background-color: rgba(175, 184, 193, 0.2);
+  background-color: var(--ds-bg-neutral-muted-default);
+  color: var(--ds-text-neutral-default-default);
   padding: 0.2em 0.4em;
   border-radius: 3px;
   font-size: 85%;
@@ -81,6 +83,7 @@
 
 .markdown-body pre code {
   background-color: transparent;
+  color: inherit;
   padding: 0;
   font-size: 100%;
 }
@@ -97,21 +100,21 @@
 .markdown-body table th,
 .markdown-body table td {
   padding: 6px 13px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--ds-border-neutral-subtle-default);
 }
 
 .markdown-body table th {
   font-weight: 600;
-  background-color: #f6f8fa;
+  background-color: var(--ds-bg-neutral-subtle-default);
 }
 
 .markdown-body table tr {
-  background-color: #ffffff;
-  border-top: 1px solid #d0d7de;
+  background-color: transparent;
+  border-top: 1px solid var(--ds-border-neutral-subtle-default);
 }
 
 .markdown-body table tr:nth-child(2n) {
-  background-color: #f6f8fa;
+  background-color: var(--ds-bg-neutral-subtle-default);
 }
 
 /* List styling */
@@ -132,14 +135,14 @@
 /* Blockquote styling */
 .markdown-body blockquote {
   padding: 0 1em;
-  color: #57606a;
-  border-left: 0.25em solid #d0d7de;
+  color: var(--ds-text-neutral-muted-default);
+  border-left: 0.25em solid var(--ds-border-neutral-subtle-default);
   margin-bottom: 16px;
 }
 
 /* Link styling */
 .markdown-body a {
-  color: #0969da;
+  color: var(--ds-text-information-default-default);
   text-decoration: none;
 }
 
@@ -165,44 +168,10 @@
   border-top: 2px solid var(--ds-border-neutral-default-default);
 }
 
-/* Dark mode support - matches app's data-theme attribute */
-[data-theme='dark'] .markdown-body {
-  color: #e6edf3;
-}
-
-[data-theme='dark'] .markdown-body pre {
-  background-color: #161b22;
-}
-
-[data-theme='dark'] .markdown-body code {
-  background-color: rgba(110, 118, 129, 0.4);
-}
-
-[data-theme='dark'] .markdown-body table th {
-  background-color: #161b22;
-}
-
-[data-theme='dark'] .markdown-body table th,
-[data-theme='dark'] .markdown-body table td {
-  border-color: #30363d;
-}
-
-[data-theme='dark'] .markdown-body table tr {
-  background-color: transparent;
-  border-top-color: #30363d;
-}
-
-[data-theme='dark'] .markdown-body table tr:nth-child(2n) {
-  background-color: rgba(110, 118, 129, 0.1);
-}
-
-[data-theme='dark'] .markdown-body blockquote {
-  color: #8b949e;
-  border-left-color: #30363d;
-}
-
-[data-theme='dark'] .markdown-body a {
-  color: #58a6ff;
+/* Dark / transparent theme — all colours via tokens, no hardcoded values */
+[data-theme='dark'] .markdown-body,
+[data-theme='transparent'] .markdown-body {
+  color: var(--ds-text-neutral-default-default);
 }
 
 /* Task list styling */

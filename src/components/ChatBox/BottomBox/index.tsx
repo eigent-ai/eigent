@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { type ChatTaskStatusType } from '@/types/constants';
 import { TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { AskInputDescriptor } from '../ask/askPayload';
 import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
 import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
 import { QueuedBox, QueuedMessage } from './QueuedBox';
@@ -23,6 +24,8 @@ import {
   UsageLimitBanner,
   type UsageLimitBannerProps,
 } from './UsageLimitBanner';
+import { QuestionVariant } from './variants/QuestionVariant';
+import { resolveBottomBoxVariant } from './variants/registry';
 
 export type BottomBoxState =
   | 'input'
@@ -60,6 +63,15 @@ interface BottomBoxProps {
   inputProps: Omit<InputboxProps, 'className'> & { className?: string };
   usageLimitBanner?: UsageLimitBannerProps | null;
 
+  /**
+   * Active structured ask awaiting an answer. When present and non-text, the
+   * BottomBox switches to the question variant (question + option buttons)
+   * instead of the free-text composer.
+   */
+  askInput?: AskInputDescriptor | null;
+  /** Submit a structured ask answer. `reply` is canonical, `display` is echoed. */
+  onAnswerAsk?: (reply: string, display?: string) => void | Promise<void>;
+
   // Loading states
   loading?: boolean;
 
@@ -79,6 +91,8 @@ export default function BottomBox({
   onEdit,
   inputProps,
   usageLimitBanner,
+  askInput = null,
+  onAnswerAsk,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -86,16 +100,20 @@ export default function BottomBox({
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
 
+  // Which input affordance to render inside the box shell.
+  const variant = resolveBottomBoxVariant({ ask: askInput });
+  const isQuestion = variant === 'question' && !!askInput && !!onAnswerAsk;
+
   // Background color reflects current state only
   let backgroundClass = 'bg-ds-bg-neutral-subtle-default';
   if (state === 'confirm' || state === 'save')
     backgroundClass = 'bg-ds-bg-completed-subtle-default';
 
   return (
-    <div className="relative z-50 flex w-full flex-col rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl">
+    <div className="rounded-t-2xl bg-ds-bg-neutral-subtle-default backdrop-blur-xl relative z-50 flex w-full flex-col">
       {/* QueuedBox overlay (should not affect BoxMain layout) */}
       {enableQueuedBox && queuedMessages.length > 0 && (
-        <div className="pointer-events-auto z-50 px-2">
+        <div className="px-2 pointer-events-auto z-50">
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
@@ -104,38 +122,46 @@ export default function BottomBox({
       )}
       {/* BoxMain */}
       <div
-        className={`relative mb-sm flex w-full flex-col rounded-3xl ${backgroundClass}`}
+        className={`mb-sm rounded-3xl relative flex w-full flex-col ${backgroundClass}`}
       >
-        {/* BoxHeader variants */}
-        {state === 'confirm' && (
-          <BoxHeaderConfirm
-            subtitle={subtitle}
-            onStartTask={onStartTask}
-            onEdit={onEdit}
-            loading={loading}
-            autoStartDeadline={autoStartDeadline}
-          />
-        )}
-        {state === 'save' && (
-          <BoxHeaderSave
-            subtitle={subtitle}
-            onSave={onSavePlan}
-            onEdit={onEdit}
-            loading={loading}
-          />
-        )}
-
-        {/* Inputbox (always visible) */}
         {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
-        <Inputbox {...inputProps} />
+
+        {isQuestion ? (
+          // Question-and-answer mode: the model's ask drives the input surface.
+          <QuestionVariant ask={askInput!} onAnswer={onAnswerAsk!} />
+        ) : (
+          <>
+            {/* BoxHeader variants */}
+            {state === 'confirm' && (
+              <BoxHeaderConfirm
+                subtitle={subtitle}
+                onStartTask={onStartTask}
+                onEdit={onEdit}
+                loading={loading}
+                autoStartDeadline={autoStartDeadline}
+              />
+            )}
+            {state === 'save' && (
+              <BoxHeaderSave
+                subtitle={subtitle}
+                onSave={onSavePlan}
+                onEdit={onEdit}
+                loading={loading}
+              />
+            )}
+
+            {/* Inputbox (default free-text composer) */}
+            <Inputbox {...inputProps} />
+          </>
+        )}
 
         {noModelOverlay && onSelectModel ? (
           <div
-            className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
+            className="inset-0 gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg absolute z-[15] flex flex-row items-center justify-center"
             role="alert"
           >
             <TriangleAlert
-              className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
+              className="h-4 w-4 text-ds-icon-warning-default-default shrink-0"
               aria-hidden
             />
             <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">
