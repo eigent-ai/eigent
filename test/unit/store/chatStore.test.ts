@@ -121,13 +121,20 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
-import { proxyFetchGet, waitForBackendReady } from '@/api/http';
+import {
+  fetchPost,
+  fetchPut,
+  proxyFetchGet,
+  waitForBackendReady,
+} from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
+  extractEndPayloadText,
   getCloudModelPlatform,
   resolveConfirmedUserMessageContent,
+  resolveEndMessageText,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -179,6 +186,40 @@ describe('ChatStore - Core Functionality', () => {
           isFollowUpConfirm: false,
         })
       ).toBe('first prompt');
+    });
+  });
+
+  describe('END message resolution', () => {
+    it('keeps non-empty END payload ahead of prior agent summaries', () => {
+      expect(
+        resolveEndMessageText('Final task output', [
+          { step: 'agent_summary_end', summary: 'Older summary' },
+        ] as any)
+      ).toBe('Final task output');
+    });
+
+    it('extracts result-shaped END payloads', () => {
+      expect(
+        extractEndPayloadText({
+          result: 'Final result from replay payload',
+          tokens: 10,
+        })
+      ).toBe('Final result from replay payload');
+    });
+
+    it('falls back to completed subtask reports when END payload is empty', () => {
+      expect(
+        resolveEndMessageText('', [], {
+          taskAssigning: [
+            {
+              tasks: [
+                { report: 'Created INC0494320' },
+                { report: 'Generated ticket report with 27 rows' },
+              ],
+            },
+          ],
+        } as any)
+      ).toContain('Generated ticket report with 27 rows');
     });
   });
 
@@ -819,6 +860,46 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(result.current.getState().tasks['missing-task']).toBeUndefined();
+    });
+  });
+
+  describe('Plan confirmation', () => {
+    it('rolls back confirmed plan UI when backend start request fails', async () => {
+      vi.mocked(fetchPut).mockRejectedValueOnce(new Error('network down'));
+      const { result } = renderHook(() => useChatStore());
+
+      let taskId: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId);
+        result.current.getState().setTaskInfo(taskId, [
+          {
+            id: 'task.1',
+            content: 'Do the work',
+            status: 'empty',
+          } as any,
+        ]);
+        result.current.getState().addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'agent',
+          content: '',
+          step: 'to_sub_tasks',
+          isConfirm: false,
+        });
+      });
+
+      await act(async () => {
+        await result.current.getState().handleConfirmTask('project-1', taskId!);
+      });
+
+      const task = result.current.getState().tasks[taskId!];
+      const planMessage = task.messages.find(
+        (message) => message.step === 'to_sub_tasks'
+      );
+      expect(planMessage?.isConfirm).toBe(false);
+      expect(task.status).toBe(ChatTaskStatus.PENDING);
+      expect(task.taskTime).toBe(0);
+      expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
     });
   });
 

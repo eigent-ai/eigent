@@ -28,6 +28,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
   DEFAULT_MODEL_CONFIGURE_PATH,
@@ -88,6 +89,8 @@ export function ChatInputModelDropdown({
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     appearance,
     setModelType,
     setCloudModelType,
@@ -134,6 +137,10 @@ export function ChatInputModelDropdown({
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+  }>({ connected: false, status: 'not_connected' });
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
@@ -223,6 +230,10 @@ export function ChatInputModelDropdown({
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -233,8 +244,50 @@ export function ChatInputModelDropdown({
     })();
   }, [items, modelType]);
 
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({ connected: false, status: 'error' });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = () => {
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus]);
+
+  const handleCodexSetDefault = useCallback(() => {
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
+  }, [setModelType]);
+
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
+    if (modelType === 'codex_subscription') {
+      return `Codex Subscription${codex_model_type ? ` (${codex_model_type})` : ''}`;
+    }
+
     if (cloudPrefer) {
       return getCloudModelDisplayName(cloud_model_type);
     }
@@ -256,12 +309,14 @@ export function ChatInputModelDropdown({
   }, [
     cloudPrefer,
     cloud_model_type,
+    codex_model_type,
     form,
     getCloudModelDisplayName,
     items,
     localPrefer,
     localPlatform,
     localTypes,
+    modelType,
     t,
   ]);
 
@@ -456,14 +511,27 @@ export function ChatInputModelDropdown({
             className="max-h-[440px] w-[220px] overflow-y-auto"
           >
             {items.map((item, idx) => {
-              const isConfigured = !!form[idx]?.provider_id;
-              const isPreferred = form[idx]?.prefer;
+              const isSubscriptionAuth = item.authMode === 'oauth_subscription';
+              const isConfigured = isSubscriptionAuth
+                ? codexStatus.connected
+                : !!form[idx]?.provider_id;
+              const isPreferred = isSubscriptionAuth
+                ? modelType === 'codex_subscription'
+                : form[idx]?.prefer;
               const modelImage = getModelImage(item.id);
 
               return (
                 <DropdownMenuItem
                   key={item.id}
                   onSelect={() => {
+                    if (isSubscriptionAuth) {
+                      if (isConfigured) {
+                        handleCodexSetDefault();
+                      } else {
+                        navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+                      }
+                      return;
+                    }
                     void handleDefaultModelSelect('custom', item.id);
                   }}
                   className="flex items-center justify-between"

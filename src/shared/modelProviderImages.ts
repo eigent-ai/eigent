@@ -41,6 +41,7 @@ import {
 const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   cloud: eigentImage,
   openai: openaiImage,
+  'codex-subscription': openaiImage,
   anthropic: anthropicImage,
   gemini: geminiImage,
   nebius: PROVIDER_AVATAR_URLS.nebius,

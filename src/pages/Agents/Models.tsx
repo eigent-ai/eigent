@@ -44,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { createHost } from '@/host/createHost';
 import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
 import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
@@ -119,8 +120,11 @@ export default function SettingModels() {
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     setModelType,
     setCloudModelType,
+    setCodexModelType,
     appearance,
   } = useAuthStore();
   const _navigate = useNavigate();
@@ -213,6 +217,14 @@ export default function SettingModels() {
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);
+  const [codexBusy, setCodexBusy] = useState(false);
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+    account_label?: string | null;
+    expires_at?: string | null;
+    last_error_code?: string | null;
+  }>({ connected: false, status: 'not_connected' });
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -466,6 +478,10 @@ export default function SettingModels() {
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -503,6 +519,12 @@ export default function SettingModels() {
       return `${t('setting.eigent-cloud')} / ${modelName}`;
     }
 
+    if (modelType === 'codex_subscription') {
+      return `${t('setting.custom-model')} / Codex Subscription${
+        codex_model_type ? ` (${codex_model_type})` : ''
+      }`;
+    }
+
     // Check for custom model preference
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
@@ -531,6 +553,9 @@ export default function SettingModels() {
     }
     if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
+      if (idx !== -1 && items[idx].authMode === 'oauth_subscription') {
+        return codexStatus.connected;
+      }
       return idx !== -1 && !!form[idx]?.provider_id;
     }
     if (category === 'local') {
@@ -1284,6 +1309,141 @@ export default function SettingModels() {
     );
   };
 
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({
+        connected: false,
+        status: 'error',
+        last_error_code: 'status_unavailable',
+      });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  const codexAuthErrorMessage = useCallback(
+    (code?: string | null): string => {
+      switch (code) {
+        case 'oauth_callback_port_in_use':
+          return t('setting.codex-port-in-use', {
+            defaultValue:
+              'The Codex sign-in port (1455) is in use. Close other Codex/ChatGPT CLI sessions or another Eigent window, then try again.',
+          });
+        case 'oauth_callback_unavailable':
+          return t('setting.codex-callback-unavailable', {
+            defaultValue:
+              'Could not start the local sign-in listener. Please try again.',
+          });
+        case 'oauth_open_browser_failed':
+          return t('setting.codex-open-browser-failed', {
+            defaultValue: 'Could not open your browser for sign-in.',
+          });
+        case 'oauth_state_expired':
+          return t('setting.codex-state-expired', {
+            defaultValue: 'Sign-in took too long. Please try again.',
+          });
+        case 'oauth_state_mismatch':
+          return t('setting.codex-state-mismatch', {
+            defaultValue: 'Sign-in could not be verified. Please try again.',
+          });
+        case 'access_denied':
+          return t('setting.codex-access-denied', {
+            defaultValue: 'Sign-in was cancelled.',
+          });
+        default:
+          return t('setting.codex-login-failed', {
+            defaultValue: 'Codex sign-in failed. Please try again.',
+          });
+      }
+    },
+    [t]
+  );
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = (_event?: unknown, payload?: { error_code?: string }) => {
+      if (payload?.error_code) {
+        toast.error(codexAuthErrorMessage(payload.error_code));
+      }
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus, codexAuthErrorMessage]);
+
+  const handleCodexLogin = async () => {
+    if (!email) {
+      toast.error(
+        t('setting.login-required', { defaultValue: 'Please sign in first.' })
+      );
+      return;
+    }
+
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionLogin?.(email);
+      if (!result?.success) {
+        throw new Error(result?.error || result?.error_code || 'login_failed');
+      }
+      await refreshCodexStatus();
+    } catch (error: any) {
+      console.error('Failed to start Codex subscription login:', error);
+      toast.error(codexAuthErrorMessage(error?.message));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexDisconnect = async () => {
+    if (!email) return;
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionDisconnect?.(email);
+      if (!result?.success) {
+        throw new Error(
+          result?.error || result?.error_code || 'disconnect_failed'
+        );
+      }
+      await refreshCodexStatus();
+      if (modelType === 'codex_subscription') {
+        setModelType('cloud');
+      }
+      toast.success(
+        t('setting.codex-disconnected', {
+          defaultValue: 'Codex subscription disconnected.',
+        })
+      );
+    } catch (error: any) {
+      console.error('Failed to disconnect Codex subscription:', error);
+      toast.error(error?.message || t('setting.reset-failed'));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexSetDefault = () => {
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
+  };
+
   // Render content based on selected tab
   const renderContent = () => {
     // Cloud version content
@@ -1488,7 +1648,133 @@ export default function SettingModels() {
       if (idx === -1) return null;
 
       const item = items[idx];
-      const canSwitch = !!form[idx].provider_id;
+      const isSubscriptionAuth = item.authMode === 'oauth_subscription';
+      const canSwitch = !!form[idx].provider_id && !isSubscriptionAuth;
+
+      if (isSubscriptionAuth) {
+        const isConnected = codexStatus.connected;
+        const isDefault = modelType === 'codex_subscription';
+        const statusLabel = isConnected
+          ? isDefault
+            ? t('setting.default')
+            : t('setting.connected', { defaultValue: 'Connected' })
+          : t('setting.not-configured');
+
+        return (
+          <ConfigModelCard status={configCardRing}>
+            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+              <div className="inline-flex items-center justify-between gap-2 self-stretch">
+                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+                  {item.name}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    tone={isDefault ? 'success' : 'neutral'}
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    disabled
+                    buttonRadius="full"
+                  >
+                    {statusLabel}
+                  </Button>
+                  <div
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      isConnected
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-neutral-default-default opacity-10'
+                    }`}
+                  />
+                </div>
+              </div>
+              <div className="text-body-sm text-ds-text-neutral-muted-default">
+                {item.description}
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-4 px-6 pb-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                  {t('setting.model-type')}
+                </label>
+                <Input
+                  value={codex_model_type}
+                  onChange={(e) => setCodexModelType(e.target.value)}
+                  placeholder="gpt-5.5"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-solid border-ds-border-neutral-default-default px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                    {isConnected
+                      ? codexStatus.account_label ||
+                        t('setting.connected', { defaultValue: 'Connected' })
+                      : t('setting.not-configured')}
+                  </div>
+                  {codexStatus.expires_at ? (
+                    <div className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.expires_at}
+                    </div>
+                  ) : null}
+                  {!isConnected && codexStatus.last_error_code ? (
+                    <div className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.last_error_code}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {isConnected && !isDefault ? (
+                    <Button
+                      variant="secondary"
+                      tone="neutral"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexSetDefault}
+                    >
+                      {t('setting.set-as-default')}
+                    </Button>
+                  ) : null}
+                  {isConnected ? (
+                    <Button
+                      variant="secondary"
+                      tone="neutral"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexDisconnect}
+                    >
+                      {t('setting.disconnect', { defaultValue: 'Disconnect' })}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      tone="neutral"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexLogin}
+                    >
+                      {codexBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t('layout.login', { defaultValue: 'Sign in' })
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </ConfigModelCard>
+        );
+      }
 
       return (
         <ConfigModelCard status={configCardRing}>
@@ -2112,16 +2398,30 @@ export default function SettingModels() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
                   {items.map((item, idx) => {
-                    const isConfigured = !!form[idx]?.provider_id;
-                    const isPreferred = form[idx]?.prefer;
+                    const isSubscriptionAuth =
+                      item.authMode === 'oauth_subscription';
+                    const isConfigured = isSubscriptionAuth
+                      ? codexStatus.connected
+                      : !!form[idx]?.provider_id;
+                    const isPreferred = isSubscriptionAuth
+                      ? modelType === 'codex_subscription'
+                      : form[idx]?.prefer;
                     const modelImage = getModelImage(item.id);
 
                     return (
                       <DropdownMenuItem
                         key={item.id}
-                        onClick={() =>
-                          handleDefaultModelSelect('custom', item.id)
-                        }
+                        onClick={() => {
+                          if (isSubscriptionAuth) {
+                            if (isConfigured) {
+                              handleCodexSetDefault();
+                            } else {
+                              setSelectedTab(`byok-${item.id}` as SidebarTab);
+                            }
+                            return;
+                          }
+                          handleDefaultModelSelect('custom', item.id);
+                        }}
                         className="flex items-center justify-between"
                       >
                         <div className="flex items-center gap-2">
@@ -2280,7 +2580,9 @@ export default function SettingModels() {
                         item.id,
                         selectedTab === `byok-${item.id}`,
                         true,
-                        !!form[idx].provider_id
+                        item.authMode === 'oauth_subscription'
+                          ? codexStatus.connected
+                          : !!form[idx].provider_id
                       )
                     )}
                   </div>

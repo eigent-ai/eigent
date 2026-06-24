@@ -50,6 +50,11 @@ import {
   PromiseReturnType,
 } from './install-deps';
 import { setRoundedCorners } from './native/macos-window';
+import {
+  completeCodexOAuthCallback,
+  getCodexResolverEnv,
+  registerCodexSubscriptionAuthIpcHandlers,
+} from './subscriptionAuth';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -450,29 +455,33 @@ const setupProtocolHandlers = () => {
 
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
-  log.info('enter handleProtocolUrl', url);
+  log.info('enter handleProtocolUrl');
 
   // If window is not ready, queue the URL
   if (!isWindowReady || !win || win.isDestroyed()) {
-    log.info('Window not ready, queuing protocol URL:', url);
+    log.info('Window not ready, queuing protocol URL');
     protocolUrlQueue.push(url);
     return;
   }
 
-  processProtocolUrl(url);
+  void processProtocolUrl(url);
 }
 
 // Process a single protocol URL
-function processProtocolUrl(url: string) {
+async function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const token = urlObj.searchParams.get('token');
   const share_token = urlObj.searchParams.get('share_token');
 
-  log.info('urlObj', urlObj);
-  log.info('code', code);
-  log.info('token', token);
-  log.info('share_token', share_token);
+  log.info('urlObj', {
+    protocol: urlObj.protocol,
+    host: urlObj.host,
+    pathname: urlObj.pathname,
+  });
+  log.info('code present', Boolean(code));
+  log.info('token present', Boolean(token));
+  log.info('share_token present', Boolean(share_token));
 
   if (win && !win.isDestroyed()) {
     log.info('urlObj.pathname', urlObj.pathname);
@@ -481,7 +490,17 @@ function processProtocolUrl(url: string) {
       log.info('oauth');
       const provider = urlObj.searchParams.get('provider');
       const code = urlObj.searchParams.get('code');
-      log.info('protocol oauth', provider, code);
+      const codexResult = await completeCodexOAuthCallback(urlObj);
+      if (codexResult.handled) {
+        win.webContents.send(
+          'subscription-auth:codex-status-changed',
+          codexResult.error_code
+            ? { error_code: codexResult.error_code }
+            : undefined
+        );
+        return;
+      }
+      log.info('protocol oauth', provider, Boolean(code));
       win.webContents.send('oauth-authorized', { provider, code });
       return;
     }
@@ -493,7 +512,7 @@ function processProtocolUrl(url: string) {
     }
 
     if (code) {
-      log.error('protocol code:', code);
+      log.info('protocol code received');
       win.webContents.send('auth-code-received', code);
     }
 
@@ -522,7 +541,7 @@ function processQueuedProtocolUrls() {
     protocolUrlQueue = [];
 
     urls.forEach((url) => {
-      processProtocolUrl(url);
+      void processProtocolUrl(url);
     });
   }
 }
@@ -658,6 +677,8 @@ const checkManagerInstance = (manager: any, name: string) => {
 };
 
 function registerIpcHandlers() {
+  registerCodexSubscriptionAuthIpcHandlers(ipcMain);
+
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
     const port = await startAuthCallbackServer();
@@ -2707,12 +2728,13 @@ const checkAndStartBackend = async () => {
     const isToolInstalled = await checkToolInstalled();
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
+      const codexResolverEnv = await getCodexResolverEnv();
 
       // Start backend and wait for health check to pass
       python_process = await startBackend((port) => {
         backendPort = port;
         log.info('Backend service started successfully', { port });
-      });
+      }, codexResolverEnv);
 
       // Notify frontend that backend is ready
       if (win && !win.isDestroyed()) {

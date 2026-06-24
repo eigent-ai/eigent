@@ -67,6 +67,11 @@ class Chat(BaseModel):
     api_key: str
     # for cloud version, user don't need to set api_url
     api_url: str | None = None
+    # Marker for subscription-auth providers (e.g. Codex). When set, the token
+    # is NOT carried in api_key; the runtime resolves a fresh access token from
+    # the desktop-local resolver instead. None => legacy api_key path (default,
+    # no behavior change). See docs/models/codex-subscription-auth-review.md.
+    auth_source: Literal["codex_subscription"] | None = None
     language: str = "en"
     browser_port: int = 9222
     cdp_browsers: list[dict] = Field(default_factory=list)

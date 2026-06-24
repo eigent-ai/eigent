@@ -24,7 +24,7 @@ import { useSpaceStore } from './spaceStore';
 
 // type definition
 type InitState = 'carousel' | 'done';
-type ModelType = 'cloud' | 'local' | 'custom';
+type ModelType = 'cloud' | 'local' | 'custom' | 'codex_subscription';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type AppearanceMode = Mode | 'system';
 const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
@@ -38,6 +38,7 @@ export type WorkspaceMainBackground =
   | 'dotted'
   | 'dashed';
 export type CloudModelType = string;
+export type CodexSubscriptionModelType = string;
 
 // auth info interface
 interface AuthInfo {
@@ -67,6 +68,7 @@ interface AuthState {
   onboardingCompleted: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
+  codex_model_type: CodexSubscriptionModelType;
   /**
    * Last known result of the model configuration check, persisted so that
    * returning users don't see the "select a model" overlay flash on mount
@@ -111,6 +113,7 @@ interface AuthState {
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
+  setCodexModelType: (codex_model_type: CodexSubscriptionModelType) => void;
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setOnboardingCompleted: (completed: boolean) => void;
@@ -159,6 +162,7 @@ const authStore = create<AuthState>()(
       onboardingCompleted: false,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
+      codex_model_type: 'gpt-5.5',
       hasModelConfigured: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
@@ -262,6 +266,8 @@ const authStore = create<AuthState>()(
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
+      setCodexModelType: (codex_model_type) => set({ codex_model_type }),
+
       setHasModelConfigured: (hasModelConfigured) =>
         set({ hasModelConfigured }),
 
@@ -320,7 +326,7 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 8,
+      version: 9,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -329,6 +335,7 @@ const authStore = create<AuthState>()(
               customThemeCatalog?: Partial<ThemeCatalog>;
               workspaceMainBackground?: string;
               cloud_model_type?: unknown;
+              codex_model_type?: unknown;
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
@@ -338,6 +345,11 @@ const authStore = create<AuthState>()(
           s.cloud_model_type.length > 0
             ? s.cloud_model_type
             : getRandomDefaultModel();
+        const sanitizedCodexModelType: CodexSubscriptionModelType =
+          typeof s.codex_model_type === 'string' &&
+          s.codex_model_type.length > 0
+            ? s.codex_model_type
+            : 'gpt-5.5';
 
         const rawWmb = s.workspaceMainBackground;
         let workspaceMainBackground: WorkspaceMainBackground = 'empty';
@@ -374,6 +386,7 @@ const authStore = create<AuthState>()(
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
             cloud_model_type: sanitizedCloudModelType,
+            codex_model_type: sanitizedCodexModelType,
           };
         }
         return {
@@ -383,6 +396,7 @@ const authStore = create<AuthState>()(
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
           cloud_model_type: sanitizedCloudModelType,
+          codex_model_type: sanitizedCodexModelType,
         } as typeof persistedState;
       },
       partialize: (state) => ({
@@ -399,6 +413,7 @@ const authStore = create<AuthState>()(
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,
+        codex_model_type: state.codex_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
         onboardingCompleted: state.onboardingCompleted,

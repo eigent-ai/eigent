@@ -18,12 +18,18 @@ import logging
 import platform
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from camel.models import ModelProcessingError
 from camel.tasks import Task
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
+from camel.utils.stream_utils import (
+    consume_response_content,
+    consume_response_content_async,
+    is_streaming_response,
+)
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -55,6 +61,7 @@ from app.memory import (
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.model.subscription_runtime import is_subscription_auth
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -2334,23 +2341,70 @@ def _extract_agent_response_content(resp) -> str | None:
     return None
 
 
+def _response_with_content(resp, content: str):
+    if not content:
+        return resp
+
+    msg = getattr(resp, "msg", None)
+    if msg is not None:
+        try:
+            msg.content = content
+            return resp
+        except Exception:
+            pass
+
+    msgs = getattr(resp, "msgs", None)
+    if msgs:
+        try:
+            msgs[0].content = content
+            return resp
+        except Exception:
+            pass
+
+    msg = SimpleNamespace(content=content)
+    return SimpleNamespace(
+        msg=msg,
+        msgs=[msg],
+        info=getattr(resp, "info", {}),
+    )
+
+
+async def _materialize_agent_step_result(result):
+    if asyncio.iscoroutine(result):
+        result = await result
+
+    if not is_streaming_response(result):
+        return result
+
+    from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
+
+    if isinstance(result, AsyncStreamingChatAgentResponse):
+        response, content = await consume_response_content_async(result)
+    else:
+        response, content = await asyncio.to_thread(
+            consume_response_content,
+            result,
+        )
+
+    return _response_with_content(response, content)
+
+
 async def _run_agent_step(agent: ListenChatAgent, prompt: str):
     """Run one model step with backward-compatible priority.
 
     Some call sites and tests still stub synchronous ``step`` while newer paths
     provide ``astep``. Prefer ``step`` when available to preserve existing
-    behavior, and fall back to ``astep``.
+    behavior, but run it off the event loop because real model calls are
+    blocking. Fall back to ``astep``.
     """
     step_fn = getattr(agent, "step", None)
     if callable(step_fn):
-        result = step_fn(prompt)
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        result = await asyncio.to_thread(step_fn, prompt)
+        return await _materialize_agent_step_result(result)
 
     astep_fn = getattr(agent, "astep", None)
     if callable(astep_fn):
-        return await astep_fn(prompt)
+        return await _materialize_agent_step_result(astep_fn(prompt))
 
     raise AttributeError("Agent has neither step nor astep")
 
@@ -2663,6 +2717,10 @@ the current date.
     workforce_metrics = WorkforceMetricsCallback(
         project_id=options.project_id, task_id=options.task_id
     )
+    use_native_structured_output = (
+        model_platform_enum == ModelPlatformType.OPENAI
+        and not is_subscription_auth(options)
+    )
 
     workforce = Workforce(
         options.project_id,
@@ -2672,9 +2730,7 @@ the current date.
         coordinator_agent=coordinator_agent,
         task_agent=task_agent,
         new_worker_agent=new_worker_agent,
-        use_structured_output_handler=False
-        if model_platform_enum == ModelPlatformType.OPENAI
-        else True,
+        use_structured_output_handler=not use_native_structured_output,
     )
 
     # Register workforce metrics callback
