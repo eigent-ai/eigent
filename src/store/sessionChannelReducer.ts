@@ -145,9 +145,21 @@ export function buildProjectChannel(turns: TurnInput[]): ChannelItem[] {
       status: task.status,
     });
 
+    // A plan belongs only to workforce turns — single-agent turns go straight to
+    // the work-log, with no plan/confirm step.
+    const isSingleAgent = sessionMode === SessionMode.SINGLE_AGENT;
+    // The plan is "confirmed" once the user has started it: that's the
+    // `to_sub_tasks` message's `isConfirm` flag (set by `handleConfirmTask`), NOT
+    // the `planDirty` (unsaved-edits) flag. Conflating the two made a fresh plan
+    // render as "confirmed" and an edited plan render as nothing.
+    const planMessage = (task.messages ?? []).find(
+      (m) => m.step === AgentStep.TO_SUB_TASKS
+    );
+    const planConfirmed = !!planMessage?.isConfirm;
+
     let planEmitted = false;
     const emitPlan = () => {
-      if (planEmitted) return;
+      if (planEmitted || isSingleAgent) return;
       planEmitted = true;
       push({
         id: `plan-${turnId}`,
@@ -156,7 +168,7 @@ export function buildProjectChannel(turns: TurnInput[]): ChannelItem[] {
         createdAt,
         subTasks: task.taskInfo ?? [],
         summaryTask: task.summaryTask ?? '',
-        confirmed: !task.planDirty,
+        confirmed: planConfirmed,
         planDirty: !!task.planDirty,
         streamingDecomposeText: task.streamingDecomposeText ?? '',
       });

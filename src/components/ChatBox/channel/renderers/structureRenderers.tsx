@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ChatTaskStatus, SessionMode } from '@/types/constants';
+import { SessionMode } from '@/types/constants';
 import type {
   PlanItem,
   PreparingItem,
@@ -56,13 +56,28 @@ export const PlanRenderer: ChannelRenderer<PlanItem> = ({ item, ctx }) => {
   const chatState = chatStore.getState();
   const task = chatState.tasks[taskId];
 
+  // Single-agent turns have no plan step (the reducer doesn't emit a plan item
+  // for them, but guard here too for safety).
   if (task?.sessionMode === SessionMode.SINGLE_AGENT) return null;
 
-  const hasConfirmedSubTasks = item.confirmed && item.subTasks.length > 0;
-  const isRunning = task?.status === ChatTaskStatus.RUNNING;
-  const isPlanning =
-    !item.confirmed && (item.streamingDecomposeText.length > 0 || isRunning);
+  // Until the user confirms the plan, the whole prepare → planning → edit phase
+  // is owned by the new PlanTaskBox (folded preview + expand-to-edit overlay).
+  // `item.confirmed` tracks the plan message's `isConfirm`, so an edited (dirty)
+  // but unconfirmed plan still stays in the editable PlanTaskBox.
+  if (!item.confirmed) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      >
+        <PlanTaskBox chatStore={chatStore} taskId={taskId} />
+      </motion.div>
+    );
+  }
 
+  // Confirmed plan → the running/finished progress card.
+  if (item.subTasks.length === 0) return null;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -72,28 +87,24 @@ export const PlanRenderer: ChannelRenderer<PlanItem> = ({ item, ctx }) => {
       <div
         style={{ transition: 'all 0.3s ease-in-out', transformOrigin: 'top' }}
       >
-        {hasConfirmedSubTasks ? (
-          <TaskCard
-            key={`task-${taskId}`}
-            chatId={taskId}
-            taskId={taskId}
-            taskInfo={item.subTasks}
-            taskType={1}
-            taskAssigning={task?.taskAssigning || []}
-            taskRunning={task?.taskRunning || []}
-            progressValue={task?.progressValue || 0}
-            summaryTask={item.summaryTask}
-            onAddTask={() => chatState.addTaskInfo()}
-            onUpdateTask={(taskIndex, content) =>
-              chatState.updateTaskInfo(taskIndex, content)
-            }
-            onSaveTask={() => chatState.saveTaskInfo()}
-            onDeleteTask={(taskIndex) => chatState.deleteTaskInfo(taskIndex)}
-            clickable={true}
-          />
-        ) : isPlanning ? (
-          <PlanTaskBox chatStore={chatStore} taskId={taskId} />
-        ) : null}
+        <TaskCard
+          key={`task-${taskId}`}
+          chatId={taskId}
+          taskId={taskId}
+          taskInfo={item.subTasks}
+          taskType={1}
+          taskAssigning={task?.taskAssigning || []}
+          taskRunning={task?.taskRunning || []}
+          progressValue={task?.progressValue || 0}
+          summaryTask={item.summaryTask}
+          onAddTask={() => chatState.addTaskInfo()}
+          onUpdateTask={(taskIndex, content) =>
+            chatState.updateTaskInfo(taskIndex, content)
+          }
+          onSaveTask={() => chatState.saveTaskInfo()}
+          onDeleteTask={(taskIndex) => chatState.deleteTaskInfo(taskIndex)}
+          clickable={true}
+        />
       </div>
     </motion.div>
   );

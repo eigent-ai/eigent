@@ -373,6 +373,12 @@ export default function ChatBox(): JSX.Element {
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
 
+  // Tracks the background backend cleanup kicked off by a plan-edit (DELETE
+  // /chat + history). The Edit button resets the UI optimistically and never
+  // awaits this; only a resend awaits it (below) so the delete can't race the
+  // new run's creation.
+  const pendingEditCleanupRef = useRef<Promise<unknown> | null>(null);
+
   const navigate = useNavigate();
 
   const handleSelectModel = useCallback(() => {
@@ -407,24 +413,49 @@ export default function ChatBox(): JSX.Element {
     return projectStore.getAllChatStores(projectStore.activeProjectId);
   }, [projectStore]);
 
-  // Check if any chat store in the project has messages
-  const hasAnyMessages = useMemo(() => {
-    const hasMessages = (store: typeof chatStore) =>
-      !!store &&
-      Object.values(store.tasks).some(
-        (task) => (task.messages?.length || 0) > 0 || task.hasMessages
-      );
+  // Re-render whenever ANY of the project's chat stores changes, not just the
+  // active one. A workforce project accumulates its turns into several chat
+  // stores, but `useChatStoreAdapter` only subscribes to the active store — so
+  // without this the channel (and the `hasAnyMessages` gate below) stays empty
+  // until a remount, which is why navigating away and back "fixes" it. Throttled
+  // to ~100ms to avoid a render per SSE token (mirrors the former
+  // ProjectChatContainer subscription).
+  const [, setChatRevision] = useState(0);
+  useEffect(() => {
+    if (!getAllChatStoresMemoized.length) return;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        setChatRevision((value) => value + 1);
+        timeoutId = null;
+      }, 100);
+    };
+    const unsubscribe = getAllChatStoresMemoized.map(({ chatStore: store }) =>
+      store.subscribe(scheduleRefresh)
+    );
+    return () => {
+      unsubscribe.forEach((fn) => fn());
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [getAllChatStoresMemoized]);
 
-    if (hasMessages(chatStore)) return true;
-
-    // Then check all other chat stores in the project
-    return getAllChatStoresMemoized.some(({ chatStore: store }) => {
+  // Whether any chat store in the project has messages. Computed every render
+  // (not memoized) so the all-stores subscription above — which forces a render
+  // on any turn's update — always re-evaluates it against live store state.
+  const hasMessagesInStore = (store: typeof chatStore) =>
+    !!store &&
+    Object.values(store.tasks).some(
+      (task) => (task.messages?.length || 0) > 0 || task.hasMessages
+    );
+  const hasAnyMessages =
+    hasMessagesInStore(chatStore) ||
+    getAllChatStoresMemoized.some(({ chatStore: store }) => {
       const state = store.getState();
       return Object.values(state.tasks).some(
         (task) => (task.messages?.length || 0) > 0 || task.hasMessages
       );
     });
-  }, [chatStore, getAllChatStoresMemoized]);
 
   useLayoutEffect(() => {
     if (!chatStore?.activeTaskId || !hasAnyMessages) return;
@@ -649,6 +680,17 @@ export default function ChatBox(): JSX.Element {
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
+
+    // If a plan-edit cleanup (DELETE /chat) is still draining in the background,
+    // let it settle before starting a new run so the delete can't race the new
+    // task's creation. The UI was never blocked — only this resend waits.
+    if (pendingEditCleanupRef.current) {
+      try {
+        await pendingEditCleanupRef.current;
+      } catch {
+        /* best-effort: cleanup failures shouldn't block the new run */
+      }
+    }
 
     if (!hasModel) {
       if (isCloudUsageLimited) {
@@ -1120,8 +1162,11 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  // Edit query handler
-  const handleEditQuery = async () => {
+  // Edit query handler — reverts the plan-confirm box back to the original
+  // "task didn't start" state: the editable composer pre-filled with the user's
+  // question. The UI resets instantly (optimistic); the backend cleanup runs in
+  // the background so the user is never blocked on the network.
+  const handleEditQuery = () => {
     const taskId = chatStore.activeTaskId as string;
     const projectId = projectStore.activeProjectId;
 
@@ -1130,50 +1175,57 @@ export default function ChatBox(): JSX.Element {
       console.error('No active project ID found for edit operation');
       return;
     }
+    const task = chatStore.tasks[taskId];
+    if (!task) return;
 
-    // Get question and attachments before any deletions
-    const messageIndex = chatStore.tasks[taskId].messages.findLastIndex(
+    // Recover the original query + attachments. The user message normally sits
+    // two before the plan card; fall back to the last user message if the shape
+    // differs, so a missing index never throws or strands the user.
+    const messages = task.messages || [];
+    const planIndex = messages.findLastIndex(
       (item) => item.step === 'to_sub_tasks'
     );
-    const questionMessage = chatStore.tasks[taskId].messages[messageIndex - 2];
-    const question = questionMessage.content;
-    // Get the file attachments from the original user message (not from task.attaches which gets cleared after sending)
-    const attachments = questionMessage.attaches || [];
-
-    // Delete task from backend first
-    try {
-      await fetchDelete(`/chat/${projectId}`);
-    } catch (error) {
-      console.error('Failed to delete task from backend:', error);
-      // Continue with local cleanup even if backend fails
+    if (planIndex < 0) return; // not in a plan-confirm state — nothing to edit
+    let questionMessage: (typeof messages)[number] | undefined =
+      messages[planIndex - 2];
+    if (!questionMessage || questionMessage.role !== 'user') {
+      questionMessage = [...messages.slice(0, planIndex)]
+        .reverse()
+        .find((m) => m.role === 'user');
     }
+    const question = questionMessage?.content ?? '';
+    const attachments = questionMessage?.attaches ?? [];
 
-    // Delete chat history
-    const history_id = projectStore.getHistoryId(projectId);
-    if (history_id) {
-      try {
-        await proxyFetchDelete(`/api/v1/chat/history/${history_id}`);
-      } catch (error) {
-        console.error(
-          `Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`,
-          error
-        );
-      }
-    } else {
-      console.warn(
-        `No history ID found for project ${projectId} during edit operation`
-      );
-    }
-
-    // Create new task and clean up locally
-    let id = chatStore.create();
+    // 1) Optimistic, synchronous local reset — returns to the composer at once.
+    const id = chatStore.create();
     chatStore.setHasMessages(id, true);
-    // Copy the file attachments to the new task
     if (attachments.length > 0) {
       chatStore.setAttaches(id, attachments);
     }
     chatStore.removeTask(taskId);
     setMessage(question);
+
+    // 2) Background backend cleanup (delete the abandoned run + its history).
+    //    Tracked so a fast resend waits for it (see handleSend), but the UI here
+    //    never does.
+    const history_id = projectStore.getHistoryId(projectId);
+    pendingEditCleanupRef.current = Promise.allSettled([
+      fetchDelete(`/chat/${projectId}`).catch((error) => {
+        console.error('Failed to delete task from backend:', error);
+      }),
+      history_id
+        ? proxyFetchDelete(`/api/v1/chat/history/${history_id}`).catch(
+            (error) => {
+              console.error(
+                `Failed to delete chat history (ID: ${history_id}) for project ${projectId}:`,
+                error
+              );
+            }
+          )
+        : Promise.resolve(),
+    ]).finally(() => {
+      pendingEditCleanupRef.current = null;
+    });
   };
 
   // Determine BottomBox state
