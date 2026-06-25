@@ -113,13 +113,30 @@ class Chat(BaseModel):
     def skill_config_user_id(self) -> str | None:
         """Return the filesystem user_id used by skills-config.
 
-        This must stay aligned with frontend `emailToUserId` so
-        `~/.eigent/<user_id>/skills-config.json` is shared consistently.
+        Prefer the canonical user-id-owned directory (`user_<id>`) and migrate
+        the previous email-local-part config into it when possible.
         """
-        user_id = re.sub(
+        legacy_user_id = re.sub(
             r'[\\/*?:"<>|\s]', "_", self.email.split("@")[0]
         ).strip(".")
-        return user_id or None
+        if self.user_id is not None and str(self.user_id).strip():
+            sanitized_user_id = re.sub(
+                r'[\\/*?:"<>|\s]', "_", str(self.user_id)
+            ).strip(".")
+            if sanitized_user_id:
+                user_id = f"user_{sanitized_user_id}"
+                try:
+                    from app.service.skill_config_service import (
+                        migrate_legacy_skill_config,
+                    )
+
+                    migrate_legacy_skill_config(user_id, legacy_user_id)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to migrate legacy skills config: %s", e
+                    )
+                return user_id
+        return legacy_user_id or None
 
     def get_bun_env(self) -> dict[str, str]:
         return (

@@ -2121,6 +2121,7 @@ const ensureEigentDirectories = () => {
 // ==================== skills (used at startup and by IPC) ====================
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
+const EXAMPLE_SKILL_MARKER = '.eigent-example-skill';
 
 const getExampleSkillsSourceDir = (): string => {
   if (app.isPackaged) {
@@ -2147,7 +2148,86 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
   }
 }
 
-async function seedDefaultSkillsIfEmpty(): Promise<void> {
+function parseSkillName(content: string): string | null {
+  const match = content.match(/^\s*name\s*:\s*(.+)$/m);
+  return match?.[1]?.trim().replace(/^['"]|['"]$/g, '') || null;
+}
+
+async function readSkillName(skillDir: string): Promise<string | null> {
+  try {
+    const content = await fsp.readFile(
+      path.join(skillDir, SKILL_FILE),
+      'utf-8'
+    );
+    return parseSkillName(content);
+  } catch {
+    return null;
+  }
+}
+
+async function isManagedExampleSkill(
+  dstDir: string,
+  srcDir: string
+): Promise<boolean> {
+  if (existsSync(path.join(dstDir, EXAMPLE_SKILL_MARKER))) return true;
+  const [dstName, srcName] = await Promise.all([
+    readSkillName(dstDir),
+    readSkillName(srcDir),
+  ]);
+  return !!dstName && dstName === srcName;
+}
+
+async function writeExampleSkillMarker(
+  dstDir: string,
+  sourceDirName: string
+): Promise<void> {
+  await fsp.writeFile(
+    path.join(dstDir, EXAMPLE_SKILL_MARKER),
+    `source=${sourceDirName}\n`,
+    'utf-8'
+  );
+}
+
+async function listRegularFiles(
+  root: string,
+  ignoredNames = new Set<string>()
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  const walk = async (dir: string) => {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || ignoredNames.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        files.set(path.relative(root, fullPath), fullPath);
+      }
+    }
+  };
+  await walk(root);
+  return files;
+}
+
+async function dirContentsMatch(src: string, dst: string): Promise<boolean> {
+  const [srcFiles, dstFiles] = await Promise.all([
+    listRegularFiles(src),
+    listRegularFiles(dst, new Set([EXAMPLE_SKILL_MARKER])),
+  ]);
+  if (srcFiles.size !== dstFiles.size) return false;
+  for (const [relativePath, srcPath] of srcFiles) {
+    const dstPath = dstFiles.get(relativePath);
+    if (!dstPath) return false;
+    const [srcContent, dstContent] = await Promise.all([
+      fsp.readFile(srcPath),
+      fsp.readFile(dstPath),
+    ]);
+    if (!srcContent.equals(dstContent)) return false;
+  }
+  return true;
+}
+
+async function syncDefaultSkillsFromBundle(): Promise<void> {
   if (!existsSync(SKILLS_ROOT)) {
     await fsp.mkdir(SKILLS_ROOT, { recursive: true });
   }
@@ -2158,22 +2238,48 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
   let copiedCount = 0;
+  let updatedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
     const destDir = path.join(SKILLS_ROOT, e.name);
-    if (existsSync(destDir)) continue; // Skip if user already has this skill
     const srcDir = path.join(exampleDir, e.name);
+    if (!existsSync(destDir)) {
+      await copyDirRecursive(srcDir, destDir);
+      await writeExampleSkillMarker(destDir, e.name);
+      copiedCount++;
+      continue;
+    }
+
+    const destStats = await fsp.stat(destDir).catch(() => null);
+    if (!destStats?.isDirectory()) continue;
+
+    if (!(await isManagedExampleSkill(destDir, srcDir))) {
+      log.warn('Skipping default skill sync due to local conflict:', destDir);
+      continue;
+    }
+
+    if (await dirContentsMatch(srcDir, destDir)) {
+      await writeExampleSkillMarker(destDir, e.name);
+      continue;
+    }
+
+    await fsp.rm(destDir, { recursive: true, force: true });
     await copyDirRecursive(srcDir, destDir);
-    copiedCount++;
+    await writeExampleSkillMarker(destDir, e.name);
+    updatedCount++;
   }
-  if (copiedCount > 0) {
+  if (copiedCount > 0 || updatedCount > 0) {
     log.info(
-      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      `Synced default skill(s) to ~/.eigent/skills: copied=${copiedCount} updated=${updatedCount} from`,
       exampleDir
     );
   }
+}
+
+async function seedDefaultSkillsIfEmpty(): Promise<void> {
+  await syncDefaultSkillsFromBundle();
 }
 
 // ==================== Shared backend startup logic ====================
@@ -2729,12 +2835,19 @@ const checkAndStartBackend = async () => {
     if (isToolInstalled.success) {
       log.info('Tool installed, starting backend service...');
       const codexResolverEnv = await getCodexResolverEnv();
+      const exampleSkillsDir = getExampleSkillsSourceDir();
 
       // Start backend and wait for health check to pass
-      python_process = await startBackend((port) => {
-        backendPort = port;
-        log.info('Backend service started successfully', { port });
-      }, codexResolverEnv);
+      python_process = await startBackend(
+        (port) => {
+          backendPort = port;
+          log.info('Backend service started successfully', { port });
+        },
+        {
+          ...codexResolverEnv,
+          EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+        }
+      );
 
       // Notify frontend that backend is ready
       if (win && !win.isDestroyed()) {
