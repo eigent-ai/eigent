@@ -13,9 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { FilePreview } from '@/components/Folder/FilePreview';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -26,12 +28,23 @@ import {
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SessionSidePanel } from './SessionSidePanel';
 import {
   SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
   SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
 } from './sessionSidePanelLayout';
+
+/**
+ * When the inline preview is open, the chat column is pinned to its max width
+ * (so the chat flow keeps its comfortable reading width) and the preview fills
+ * the rest. The chat content itself is capped at 600px; 680 leaves side gutters.
+ */
+const CHAT_PRIORITY_WIDTH = 680;
+/** Smallest the chat column may be dragged to. */
+const CHAT_MIN_WIDTH = 360;
+/** Keep at least this much room for the preview when the chat is widened. */
+const PREVIEW_MIN_WIDTH = 320;
 
 /**
  * Active Project: header + chat (left) and a mode-dependent side panel (right).
@@ -47,6 +60,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const filePreviewOpen = usePageTabStore((s) => s.filePreviewOpen);
+  const filePreviewFile = usePageTabStore((s) => s.filePreviewFile);
+  const closeFilePreview = usePageTabStore((s) => s.closeFilePreview);
   const activeProjectId = projectStore.activeProjectId;
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
@@ -213,6 +229,85 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setIsSidePanelVisible((prev) => !prev);
   }, []);
 
+  // Inline preview column sizing. The chat column is width-controlled so it can
+  // animate between full-width (closed) and its max width (open); the preview is
+  // flex-1 and fills the remaining space ("full width"), absorbing the extra
+  // room freed by the side-panel fold. Dragging the divider resizes the chat.
+  const chatRowRef = useRef<HTMLDivElement>(null);
+  const [chatWidth, setChatWidth] = useState(CHAT_PRIORITY_WIDTH);
+  const [isResizingPreview, setIsResizingPreview] = useState(false);
+
+  // Opening the inline file preview auto-folds the session side panel so the
+  // preview has room, and resets the chat back to its priority max width.
+  useEffect(() => {
+    if (filePreviewOpen) {
+      setIsSidePanelVisible(false);
+      const rowWidth = chatRowRef.current?.getBoundingClientRect().width ?? 0;
+      const maxChat = rowWidth
+        ? Math.max(CHAT_MIN_WIDTH, rowWidth - PREVIEW_MIN_WIDTH)
+        : CHAT_PRIORITY_WIDTH;
+      setChatWidth(Math.min(CHAT_PRIORITY_WIDTH, maxChat));
+    }
+  }, [filePreviewOpen]);
+
+  // The preview is a project-page concern; close it when leaving that tab or
+  // switching projects so it never lingers over an unrelated view.
+  useEffect(() => {
+    if (activeWorkspaceTab !== 'project') {
+      closeFilePreview();
+    }
+  }, [activeWorkspaceTab, activeProjectId, closeFilePreview]);
+
+  const handlePreviewResizeStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      const rowWidth =
+        chatRowRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+      // Chat never exceeds its priority max width, and always leaves room for
+      // the preview's minimum width.
+      const maxChat = Math.max(
+        CHAT_MIN_WIDTH,
+        Math.min(CHAT_PRIORITY_WIDTH, rowWidth - PREVIEW_MIN_WIDTH)
+      );
+      const startX = e.clientX;
+      const startWidth = chatWidth;
+      setIsResizingPreview(true);
+      const onMove = (ev: PointerEvent) => {
+        // Dragging right (larger clientX) widens the chat, shrinking the preview.
+        const next = Math.min(
+          maxChat,
+          Math.max(CHAT_MIN_WIDTH, startWidth + (ev.clientX - startX))
+        );
+        setChatWidth(next);
+      };
+      const onUp = () => {
+        setIsResizingPreview(false);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [chatWidth]
+  );
+
+  // "Context" breadcrumb / empty-state action: open the Inbox tab for this file.
+  const selectedTurn = useSelectedProjectTurn(activeProjectId);
+  const handleJumpToContext = useCallback(
+    (file: FileInfo | null) => {
+      if (file && selectedTurn.taskId && selectedTurn.chatStore) {
+        selectedTurn.chatStore
+          .getState()
+          .setSelectedFile(selectedTurn.taskId, file);
+      }
+      setActiveWorkspaceTab('inbox', {
+        clearInboxForProjectId: activeProjectId ?? null,
+      });
+      closeFilePreview();
+    },
+    [selectedTurn, setActiveWorkspaceTab, activeProjectId, closeFilePreview]
+  );
+
   const toggleExpandedOverlay = useCallback(() => {
     setIsExpandedOverlayOpen((prev) => !prev);
   }, []);
@@ -241,10 +336,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   if (isNewProject) {
     return (
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
           <HeaderBox empty />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <Workspace
               variant="new-project"
               embedded
@@ -257,7 +352,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
         <div
           id="session-side-panel"
           className={cn(
-            'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+            'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
             isSidePanelVisible
               ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
               : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
@@ -270,22 +365,59 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="min-h-0 min-w-0 flex h-full w-full flex-1 flex-row overflow-hidden">
+      <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
         {chatStore.activeTaskId && hasAnyMessages && (
           <HeaderBox
             totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
           />
         )}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ChatBox />
+        <div
+          ref={chatRowRef}
+          className="min-h-0 min-w-0 flex flex-1 flex-row overflow-hidden"
+        >
+          <div
+            style={{ width: filePreviewOpen ? chatWidth : '100%' }}
+            className={cn(
+              'min-h-0 flex shrink-0 flex-col overflow-hidden',
+              !isResizingPreview && 'ease-out transition-[width] duration-200'
+            )}
+          >
+            <ChatBox />
+          </div>
+          {filePreviewOpen && (
+            <div
+              onPointerDown={handlePreviewResizeStart}
+              role="separator"
+              aria-orientation="vertical"
+              data-resize-handle-state={isResizingPreview ? 'drag' : 'inactive'}
+              className={cn(
+                // Mirrors the project sidebar ResizableHandle: transparent 2px
+                // rail with a centered ::after line, brand color on hover/drag.
+                'hover:bg-ds-bg-brand-subtle-default relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent transition-all',
+                // Widen the pointer hit area without changing the visible width.
+                "before:inset-y-0 before:-left-1 before:-right-1 before:absolute before:content-['']",
+                'after:inset-y-0 after:w-1 after:bg-ds-bg-neutral-default-default after:absolute after:left-1/2 after:-translate-x-1/2 after:transition-all',
+                isResizingPreview &&
+                  'bg-ds-bg-brand-subtle-default after:bg-ds-bg-brand-default-focus'
+              )}
+            />
+          )}
+          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <FilePreview
+              file={filePreviewFile}
+              surfaceClassName="bg-ds-bg-neutral-default-default"
+              onClose={closeFilePreview}
+              onJumpToContext={handleJumpToContext}
+            />
+          </div>
         </div>
       </div>
 
       <div
         id="session-side-panel"
         className={cn(
-          'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
+          'min-h-0 ease-out flex shrink-0 flex-col overflow-hidden transition-[width] duration-200',
           isSidePanelVisible
             ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
             : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')

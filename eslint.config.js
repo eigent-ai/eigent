@@ -51,6 +51,7 @@ export default [
       // Build outputs
       'dist/**',
       'dist-electron/**',
+      '**/dist/**',
       'build/**',
       'release/**',
       // Cache

@@ -14,8 +14,10 @@
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useHost } from '@/host';
+import { fileInfoFromPath } from '@/lib/fileInfo';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { escapeHtml } from '@/lib/richText';
+import { usePageTabStore } from '@/store/pageTabStore';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -77,6 +79,7 @@ export const MarkDown = memo(
   }) => {
     const host = useHost();
     const electronAPI = host?.electronAPI;
+    const openFilePreview = usePageTabStore((s) => s.openFilePreview);
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -220,6 +223,44 @@ export const MarkDown = memo(
           }
         }
 
+        // Annotate links that point to local project files so clicking them
+        // opens the inline file preview instead of navigating the renderer.
+        // External links (http/mailto/anchors/etc.) are left untouched.
+        const anchorRegex = /<a([^>]*?)href=["']([^"']+)["']([^>]*?)>/gi;
+        for (const match of Array.from(rawHtml.matchAll(anchorRegex))) {
+          const fullTag = match[0];
+          const href = match[2];
+          if (!href) continue;
+          const lower = href.toLowerCase();
+          const isExternalOrSpecial =
+            lower.startsWith('http://') ||
+            lower.startsWith('https://') ||
+            lower.startsWith('mailto:') ||
+            lower.startsWith('tel:') ||
+            lower.startsWith('data:') ||
+            lower.startsWith('javascript:') ||
+            href.startsWith('#') ||
+            href.includes('${');
+          if (isExternalOrSpecial) continue;
+
+          let resolved = href;
+          if (href.startsWith('file://')) {
+            resolved = decodeURIComponent(href.replace(/^file:\/\//, ''));
+          } else {
+            const isRelative =
+              !href.startsWith('/') && !/^[a-zA-Z]:[\\/]/.test(href);
+            if (isRelative && contentBasePath) {
+              resolved = resolveRelativePath(contentBasePath, href);
+            }
+          }
+
+          const newTag = fullTag.replace(
+            /^<a/,
+            `<a data-file-path="${resolved.replace(/"/g, '&quot;')}"`
+          );
+          rawHtml = rawHtml.replace(fullTag, newTag);
+        }
+
         // Sanitize HTML — explicitly allow class so syntax-highlighted code
         // blocks keep their language-* className after sanitization.
         const sanitized = DOMPurify.sanitize(rawHtml, {
@@ -238,7 +279,7 @@ export const MarkDown = memo(
     useEffect(() => {
       if (!contentRef.current) return;
 
-      const handleImageClick = (e: MouseEvent) => {
+      const handleContentClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         if (
           target.tagName === 'IMG' &&
@@ -246,16 +287,26 @@ export const MarkDown = memo(
         ) {
           const src = (target as HTMLImageElement).src;
           setPreviewImage(src);
+          return;
+        }
+        // Local file links open the inline preview instead of navigating.
+        const anchor = target.closest('a[data-file-path]');
+        if (anchor) {
+          e.preventDefault();
+          const filePath = anchor.getAttribute('data-file-path');
+          if (filePath) {
+            openFilePreview(fileInfoFromPath(filePath));
+          }
         }
       };
 
       const div = contentRef.current;
-      div.addEventListener('click', handleImageClick);
+      div.addEventListener('click', handleContentClick);
 
       return () => {
-        div.removeEventListener('click', handleImageClick);
+        div.removeEventListener('click', handleContentClick);
       };
-    }, [html]);
+    }, [html, openFilePreview]);
 
     return (
       <>

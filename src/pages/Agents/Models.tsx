@@ -209,8 +209,11 @@ export default function SettingModels() {
   // Sidebar selected tab - default to cloud
   const [selectedTab, setSelectedTab] = useState<SidebarTab>('cloud');
 
-  // BYOK accordion state
-  const [byokCollapsed, setByokCollapsed] = useState(false);
+  // Subscription sub-accordion state (nested inside Custom Model)
+  const [subscriptionCollapsed, setSubscriptionCollapsed] = useState(false);
+
+  // BYOK (API key) sub-accordion state (nested inside Custom Model)
+  const [byokGroupCollapsed, setByokGroupCollapsed] = useState(false);
 
   // Local Model accordion state
   const [localCollapsed, setLocalCollapsed] = useState(false);
@@ -580,8 +583,13 @@ export default function SettingModels() {
         setSelectedTab('cloud');
       } else if (category === 'custom') {
         setSelectedTab(`byok-${modelId}` as SidebarTab);
-        // Expand BYOK section if collapsed
-        if (byokCollapsed) setByokCollapsed(false);
+        // Expand the relevant Custom Model sub-accordion if collapsed
+        const target = items.find((item) => item.id === modelId);
+        if (target?.authMode === 'oauth_subscription') {
+          setSubscriptionCollapsed(false);
+        } else {
+          setByokGroupCollapsed(false);
+        }
       } else if (category === 'local') {
         setSelectedTab(`local-${modelId}` as SidebarTab);
         // Expand Local section if collapsed
@@ -1166,14 +1174,18 @@ export default function SettingModels() {
   };
   const [credits, setCredits] = useState<any>(0);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  // True when the credits request failed (treated as "server not connected").
+  const [creditsError, setCreditsError] = useState(false);
   const updateCredits = async () => {
     try {
       setLoadingCredits(true);
       const res = await proxyFetchGet(`/api/v1/user/current_credits`);
       console.log(res?.credits);
       setCredits(res?.credits);
+      setCreditsError(false);
     } catch (error) {
       console.error(error);
+      setCreditsError(true);
     } finally {
       setLoadingCredits(false);
     }
@@ -1255,7 +1267,10 @@ export default function SettingModels() {
     modelId: string | null,
     isActive: boolean,
     isSubItem: boolean = false,
-    isConfigured: boolean = false
+    isConfigured: boolean = false,
+    // When provided, renders a connection dot with this tone (overrides the
+    // default binary "configured" green dot). `null` renders no dot.
+    dotTone?: 'success' | 'error' | 'muted' | null
   ) => {
     const modelImage = getModelImage(modelId);
     const fallbackIcon =
@@ -1271,13 +1286,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="flex items-center justify-center gap-3">
+        <div className="gap-3 flex items-center justify-center">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1302,9 +1317,21 @@ export default function SettingModels() {
             {label}
           </span>
         </div>
-        {isConfigured && (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
-        )}
+        {dotTone !== undefined
+          ? dotTone && (
+              <div
+                className={`m-1 h-2 w-2 shrink-0 rounded-full ${
+                  dotTone === 'success'
+                    ? 'bg-ds-text-success-default-default'
+                    : dotTone === 'error'
+                      ? 'bg-ds-text-error-default-default'
+                      : 'bg-ds-text-neutral-default-default opacity-10'
+                }`}
+              />
+            )
+          : isConfigured && (
+              <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+            )}
       </button>
     );
   };
@@ -1450,7 +1477,7 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="flex h-64 items-center justify-center text-ds-text-neutral-muted-default">
+          <div className="h-64 text-ds-text-neutral-muted-default flex items-center justify-center">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
@@ -1462,44 +1489,57 @@ export default function SettingModels() {
       const trialTotalLimit =
         Number(subscription?.trial_total_credits_limit) || 1000;
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-start gap-2 self-stretch">
-              <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-start self-stretch">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
                 {t('setting.eigent-cloud')}
               </div>
-              {cloudPrefer ? (
-                <Button
-                  variant="primary"
-                  tone="success"
-                  size="xs"
-                  buttonContent="text"
-                  textWeight="bold"
-                  buttonRadius="full"
-                  disabled
-                >
-                  {t('setting.default')}
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  tone="neutral"
-                  size="xs"
-                  buttonContent="text"
-                  textWeight="bold"
-                  buttonRadius="full"
-                  className="!text-ds-text-neutral-muted-default"
-                  onClick={() => {
-                    setLocalPrefer(false);
-                    setActiveModelIdx(null);
-                    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-                    setCloudPrefer(true);
-                    setModelType('cloud');
-                  }}
-                >
-                  {t('setting.set-as-default')}
-                </Button>
-              )}
+              <div className="gap-2 flex items-center">
+                {cloudPrefer ? (
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    disabled
+                  >
+                    {t('setting.default')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    tone="neutral"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    className="!text-ds-text-neutral-muted-default"
+                    onClick={() => {
+                      setLocalPrefer(false);
+                      setActiveModelIdx(null);
+                      setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+                      setCloudPrefer(true);
+                      setModelType('cloud');
+                    }}
+                  >
+                    {t('setting.set-as-default')}
+                  </Button>
+                )}
+                {/* Connection dot: green = connected with credits,
+                    grey = server not connected, error = out of credits. */}
+                <div
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    creditsError
+                      ? 'bg-ds-text-neutral-default-default opacity-10'
+                      : Number(credits) > 0
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-error-default-default'
+                  }`}
+                />
+              </div>
             </div>
             <div className="justify-center self-stretch">
               <span className="text-body-sm text-ds-text-neutral-muted-default">
@@ -1510,7 +1550,7 @@ export default function SettingModels() {
                 onClick={() => {
                   window.location.href = `${SITE_URL}/pricing`;
                 }}
-                className="cursor-pointer text-body-sm text-ds-text-neutral-muted-default underline"
+                className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
               >
                 {t('setting.pricing-options')}
               </span>
@@ -1520,9 +1560,9 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-start justify-between gap-4 px-6 pb-4">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-1 text-body-sm text-text-body">
+          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-start justify-between">
+            <div className="min-w-0 gap-1 flex flex-1 flex-col">
+              <div className="gap-1 text-body-sm text-text-body flex items-center">
                 <span>{t('setting.credits')}:</span>
                 {loadingCredits ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1531,7 +1571,7 @@ export default function SettingModels() {
                 )}
               </div>
               {isTrialing && (
-                <p className="m-0 max-w-[560px] text-label-sm leading-5 text-text-label">
+                <p className="m-0 text-label-sm leading-5 text-text-label max-w-[560px]">
                   {t('setting.trial-plan-notice-before-upgrade', {
                     defaultValue:
                       "You're on a trial. Your {{planName}} plan includes {{planCredits}} credits; the trial unlocks {{daily}} credits/day (up to {{total}}) before you upgrade.",
@@ -1543,7 +1583,7 @@ export default function SettingModels() {
                   <button
                     type="button"
                     onClick={() => setTrialUpgradeDialogOpen(true)}
-                    className="cursor-pointer border-0 bg-transparent p-0 text-label-sm font-medium text-text-body underline"
+                    className="p-0 text-label-sm font-medium text-text-body cursor-pointer border-0 bg-transparent underline"
                   >
                     {t('setting.upgrade', { defaultValue: 'Upgrade' })}
                   </button>{' '}
@@ -1613,9 +1653,9 @@ export default function SettingModels() {
               />
             </DialogContent>
           </Dialog>
-          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
-            <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
+            <div className="min-w-0 flex flex-1 items-center">
+              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
             </div>
@@ -1654,31 +1694,44 @@ export default function SettingModels() {
       if (isSubscriptionAuth) {
         const isConnected = codexStatus.connected;
         const isDefault = modelType === 'codex_subscription';
-        const statusLabel = isConnected
-          ? isDefault
-            ? t('setting.default')
-            : t('setting.connected', { defaultValue: 'Connected' })
-          : t('setting.not-configured');
 
         return (
           <ConfigModelCard status={configCardRing}>
-            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-              <div className="inline-flex items-center justify-between gap-2 self-stretch">
+            <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+              <div className="gap-2 inline-flex items-center justify-between self-stretch">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {item.name}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    tone={isDefault ? 'success' : 'neutral'}
-                    size="xs"
-                    buttonContent="text"
-                    textWeight="bold"
-                    disabled
-                    buttonRadius="full"
-                  >
-                    {statusLabel}
-                  </Button>
+                <div className="gap-2 flex items-center">
+                  {isConnected ? (
+                    isDefault ? (
+                      <Button
+                        variant="primary"
+                        tone="success"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        disabled
+                      >
+                        {t('setting.default')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        tone="neutral"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        className="!text-ds-text-neutral-muted-default"
+                        disabled={codexBusy}
+                        onClick={handleCodexSetDefault}
+                      >
+                        {t('setting.set-as-default')}
+                      </Button>
+                    )
+                  ) : null}
                   <div
                     className={`h-2 w-2 shrink-0 rounded-full ${
                       isConnected
@@ -1692,56 +1745,32 @@ export default function SettingModels() {
                 {item.description}
               </div>
             </div>
-            <div className="flex w-full flex-col gap-4 px-6 pb-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-body-sm font-medium text-ds-text-neutral-default-default">
-                  {t('setting.model-type')}
-                </label>
-                <Input
-                  value={codex_model_type}
-                  onChange={(e) => setCodexModelType(e.target.value)}
-                  placeholder="gpt-5.5"
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-solid border-ds-border-neutral-default-default px-4 py-3">
-                <div className="min-w-0">
-                  <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+            <div className="gap-4 px-6 pb-4 flex w-full flex-col">
+              {/* Login row: left status text, right action */}
+              <div className="gap-3 flex w-full items-center justify-between">
+                <div className="min-w-0 flex flex-1 flex-col">
+                  <span className="text-body-sm text-ds-text-neutral-default-default">
                     {isConnected
                       ? codexStatus.account_label ||
                         t('setting.connected', { defaultValue: 'Connected' })
                       : t('setting.not-configured')}
-                  </div>
+                  </span>
                   {codexStatus.expires_at ? (
-                    <div className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
                       {codexStatus.expires_at}
-                    </div>
+                    </span>
                   ) : null}
                   {!isConnected && codexStatus.last_error_code ? (
-                    <div className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
                       {codexStatus.last_error_code}
-                    </div>
+                    </span>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {isConnected && !isDefault ? (
-                    <Button
-                      variant="secondary"
-                      tone="neutral"
-                      size="sm"
-                      buttonContent="text"
-                      textWeight="bold"
-                      buttonRadius="lg"
-                      disabled={codexBusy}
-                      onClick={handleCodexSetDefault}
-                    >
-                      {t('setting.set-as-default')}
-                    </Button>
-                  ) : null}
+                <div className="ml-4 gap-2 flex shrink-0 items-center">
                   {isConnected ? (
                     <Button
                       variant="secondary"
-                      tone="neutral"
+                      tone="error"
                       size="sm"
                       buttonContent="text"
                       textWeight="bold"
@@ -1771,6 +1800,23 @@ export default function SettingModels() {
                   )}
                 </div>
               </div>
+
+              {/* Model type row: left label, right input */}
+              <div className="gap-3 flex w-full items-center justify-between">
+                <div className="min-w-0 flex flex-1 items-center">
+                  <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
+                    {t('setting.model-type')}
+                  </span>
+                </div>
+                <div className="ml-4 flex-shrink-0">
+                  <Input
+                    value={codex_model_type}
+                    onChange={(e) => setCodexModelType(e.target.value)}
+                    placeholder="gpt-5.5"
+                    className="w-[220px]"
+                  />
+                </div>
+              </div>
             </div>
           </ConfigModelCard>
         );
@@ -1778,12 +1824,12 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
                   <Button
                     variant="primary"
@@ -1823,9 +1869,9 @@ export default function SettingModels() {
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+                  <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
                 ) : (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-neutral-default-default opacity-10" />
+                  <div className="h-2 w-2 bg-ds-text-neutral-default-default shrink-0 rounded-full opacity-10" />
                 )}
               </div>
             </div>
@@ -1846,7 +1892,7 @@ export default function SettingModels() {
               ) : null}
             </div>
           </div>
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1928,9 +1974,9 @@ export default function SettingModels() {
                 disabled={!form[idx].apiKey}
                 disabledReason="Enter API Key first."
                 onRefresh={() => void fetchCloudProviderModels(idx)}
-                triggerPlaceholder={`${t('setting.enter-your-model-type')} ${
-                  item.name
-                } ${t('setting.model-type')}`}
+                triggerPlaceholder={t('setting.select-model-type', {
+                  defaultValue: 'Select model type',
+                })}
               />
             ) : (
               <Input
@@ -1962,7 +2008,7 @@ export default function SettingModels() {
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
+                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
@@ -2053,7 +2099,7 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               tone="neutral"
@@ -2099,9 +2145,9 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="flex items-center gap-2">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+              <div className="gap-2 flex items-center">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
@@ -2131,7 +2177,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default shadow-none hover:bg-ds-bg-neutral-default-active'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active shadow-none'
                         : ''
                     }
                   >
@@ -2142,14 +2188,14 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 rounded-full bg-text-success" />
+                <div className="h-2 w-2 bg-text-success rounded-full" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
@@ -2191,8 +2237,8 @@ export default function SettingModels() {
               note={localError ?? undefined}
             />
             {isModelListPlatform ? (
-              <div className="flex w-full flex-col gap-1">
-                <div className="flex w-full items-end gap-2">
+              <div className="gap-1 flex w-full flex-col">
+                <div className="gap-2 flex w-full items-end">
                   <div className="flex-1">
                     <Select
                       value={currentType}
@@ -2290,7 +2336,7 @@ export default function SettingModels() {
             )}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
               tone="neutral"
@@ -2325,8 +2371,8 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="z-10 flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="flex w-full flex-col items-start justify-between gap-4">
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
+        <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
             <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.models')}
@@ -2335,10 +2381,10 @@ export default function SettingModels() {
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 flex flex-col gap-6">
+      <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
-          <div className="flex w-full flex-col items-start justify-center gap-1">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
+          <div className="gap-1 flex w-full flex-col items-start justify-center">
             <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.models-default-setting-title')}
             </div>
@@ -2352,11 +2398,11 @@ export default function SettingModels() {
             }}
           >
             <DropdownMenuTrigger asChild>
-              <button className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default outline-none transition-colors hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active">
-                <span className="whitespace-nowrap text-body-sm leading-none">
+              <button className="gap-2 rounded-lg border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active flex w-fit items-center border-[0.5px] border-solid transition-colors outline-none focus:outline-none focus-visible:outline-none">
+                <span className="text-body-sm leading-none whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 flex-shrink-0 !text-ds-text-brand-inverse-default" />
+                <ChevronDown className="h-4 w-4 !text-ds-text-brand-inverse-default flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -2424,7 +2470,7 @@ export default function SettingModels() {
                         }}
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -2445,15 +2491,15 @@ export default function SettingModels() {
                             {item.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -2485,7 +2531,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -2506,15 +2552,15 @@ export default function SettingModels() {
                             {model.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
                             <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -2527,17 +2573,17 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="flex w-full flex-col items-start justify-between rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2">
-          <div className="text-body-base sticky top-[48px] z-10 mb-4 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+          <div className="text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
-          <div className="flex w-full flex-row items-start justify-between px-3">
+          <div className="px-3 flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
-              <div className="flex flex-col gap-4">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
+              <div className="gap-4 flex flex-col">
                 {/* Eigent Cloud Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
                     {t('setting.eigent-cloud')}
                   </div>
@@ -2548,51 +2594,114 @@ export default function SettingModels() {
                       'cloud',
                       selectedTab === 'cloud',
                       false,
-                      cloudPrefer
+                      cloudPrefer,
+                      creditsError
+                        ? 'muted'
+                        : Number(credits) > 0
+                          ? 'success'
+                          : 'error'
                     )}
                 </div>
-                {/* Bring Your Own Key Section */}
-                <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.custom-model')}
-                    </div>
-                    {byokCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                {/* Custom Model Section */}
+                <div className="gap-1 flex flex-col">
+                  <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
+                    {t('setting.custom-model')}
+                  </div>
+                  <div className="gap-2 flex flex-col">
+                    {/* Subscription sub-accordion (OAuth login providers) */}
+                    {items.some(
+                      (item) => item.authMode === 'oauth_subscription'
+                    ) && (
+                      <div className="gap-1 flex flex-col">
+                        <button
+                          onClick={() =>
+                            setSubscriptionCollapsed(!subscriptionCollapsed)
+                          }
+                          className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.subscription', {
+                              defaultValue: 'Subscription',
+                            })}
+                          </div>
+                          {subscriptionCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                            subscriptionCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item) =>
+                            item.authMode === 'oauth_subscription'
+                              ? renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  codexStatus.connected
+                                )
+                              : null
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </button>
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      byokCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {items.map((item, idx) =>
-                      renderSidebarItem(
-                        `byok-${item.id}` as SidebarTab,
-                        item.name,
-                        item.id,
-                        selectedTab === `byok-${item.id}`,
-                        true,
-                        item.authMode === 'oauth_subscription'
-                          ? codexStatus.connected
-                          : !!form[idx].provider_id
-                      )
+                    {/* BYOK (API key) sub-accordion */}
+                    {items.some(
+                      (item) => item.authMode !== 'oauth_subscription'
+                    ) && (
+                      <div className="gap-1 flex flex-col">
+                        <button
+                          onClick={() =>
+                            setByokGroupCollapsed(!byokGroupCollapsed)
+                          }
+                          className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.byok', { defaultValue: 'BYOK' })}
+                          </div>
+                          {byokGroupCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                            byokGroupCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item, idx) =>
+                            item.authMode === 'oauth_subscription'
+                              ? null
+                              : renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  !!form[idx].provider_id
+                                )
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {/* Local Model Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
                     <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.local-model')}
@@ -2604,7 +2713,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2655,7 +2764,7 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
+            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
               {renderContent()}
             </div>
           </div>

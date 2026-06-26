@@ -12,24 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ChevronDown, Loader2, RotateCcw } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Loader2, RotateCcw } from 'lucide-react';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
 import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { ProviderModelGroup } from '@/lib/providerModels';
-import { cn } from '@/lib/utils';
 
 type Props = {
   /** Stable id used for "selected" comparison and aria-label scoping. */
@@ -44,7 +41,7 @@ type Props = {
   error: string | null;
   /** Disable everything when the user hasn't filled in an API key yet. */
   disabled: boolean;
-  /** Reason to show inside the popover when disabled (e.g. "Enter API Key first"). */
+  /** Reason to show inside the dropdown when disabled (e.g. "Enter API Key first"). */
   disabledReason?: string;
   onRefresh: () => void;
   triggerPlaceholder?: string;
@@ -57,6 +54,11 @@ function splitPrefix(id: string): [string, string] {
   return [id.slice(0, idx), id.slice(idx + 1)];
 }
 
+/**
+ * Model-type picker for providers that expose a `/models` endpoint
+ * (Nebius, OrcaRouter). A full-width {@link Select} (matching the Eigent Cloud
+ * model select) with a trailing rounded "Refresh" button to re-fetch the list.
+ */
 export function ProviderModelCombobox({
   providerName,
   title,
@@ -70,211 +72,112 @@ export function ProviderModelCombobox({
   onRefresh,
   triggerPlaceholder,
 }: Props) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const { t } = useTranslation();
 
-  // Default the active left-column entry to the provider of the saved value,
-  // falling back to the first provider with at least one model.
-  const initialActiveProvider = useMemo(() => {
-    if (value) {
-      const [prefix] = splitPrefix(value);
-      if (prefix && groups.some((g) => g.provider === prefix)) return prefix;
-    }
-    const first = groups.find((g) => g.models.length > 0);
-    return first?.provider ?? '';
-  }, [value, groups]);
-
-  const [activeProvider, setActiveProvider] = useState<string>(
-    initialActiveProvider
-  );
-
-  // Keep activeProvider sane if `groups` changes (e.g. after a refresh).
-  useEffect(() => {
-    if (!activeProvider && initialActiveProvider) {
-      setActiveProvider(initialActiveProvider);
-    } else if (
-      activeProvider &&
-      groups.length > 0 &&
-      !groups.some((g) => g.provider === activeProvider)
-    ) {
-      setActiveProvider(initialActiveProvider);
-    }
-  }, [groups, activeProvider, initialActiveProvider]);
-
-  // Saved value not present in any group — surface a one-row "Current" section.
+  // Saved value not present in any group — surface it as a "Current" entry so
+  // the select can still display and keep the existing selection.
   const orphanValue = useMemo(() => {
     if (!value) return null;
     const known = groups.some((g) => g.models.some((m) => m.id === value));
     return known ? null : value;
   }, [value, groups]);
 
-  // Models for the right column: active provider's models filtered by query.
-  const activeModels = useMemo(() => {
-    const group = groups.find((g) => g.provider === activeProvider);
-    if (!group) return [];
-    const q = query.trim().toLowerCase();
-    if (!q) return group.models;
-    return group.models.filter((m) => m.id.toLowerCase().includes(q));
-  }, [groups, activeProvider, query]);
-
   const hasAnyModels = groups.some((g) => g.models.length > 0);
+
+  // The select is only usable once there is something to pick: an API key must
+  // be set AND the model list must have been fetched (refreshed). A previously
+  // saved value (orphan) still counts so the user can keep their selection.
+  const selectDisabled = disabled || (!hasAnyModels && !orphanValue);
+
+  const emptyMessage = loading
+    ? t('setting.loading', { defaultValue: 'Loading...' })
+    : disabled
+      ? (disabledReason ??
+        t('setting.enter-api-key-first', {
+          defaultValue: 'Enter API Key first.',
+        }))
+      : t('setting.click-refresh-to-load-models', {
+          defaultValue: 'Click refresh to load models.',
+        });
 
   return (
     <div className="flex w-full flex-col">
       {title ? (
-        <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-text-heading">
+        <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
           {title}
         </div>
       ) : null}
 
-      <div className="flex w-full items-center gap-2">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              role="combobox"
-              aria-expanded={open}
-              aria-label={`${providerName} model type`}
-              disabled={disabled}
-              className={cn(
-                'flex h-10 w-full items-center justify-between rounded-md border px-3 text-body-sm transition-colors',
-                'border-input-border-default bg-input-bg-default text-text-heading',
-                'hover:border-input-border-hover focus:border-input-border-focus focus:outline-none',
-                disabled && 'cursor-not-allowed opacity-50',
-                error && 'border-input-border-cuation'
-              )}
-            >
-              <span
-                className={cn(
-                  'truncate text-left',
-                  !value && 'text-input-label-default'
-                )}
-              >
-                {value || triggerPlaceholder || 'Select model'}
-              </span>
-              <ChevronDown className="ml-2 h-4 w-4 flex-shrink-0 opacity-60" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] p-0"
-            align="start"
+      <div className="gap-2 flex w-full items-center">
+        <Select
+          value={value || undefined}
+          onValueChange={onChange}
+          disabled={selectDisabled}
+        >
+          <SelectTrigger
+            wrapperClassName="min-w-0 flex-1"
+            state={error ? 'error' : undefined}
+            note={error ?? undefined}
+            aria-label={`${providerName} model type`}
           >
-            <Command shouldFilter={false}>
-              <CommandInput
-                placeholder="Search model..."
-                value={query}
-                onValueChange={setQuery}
-              />
-
-              {!hasAnyModels && !orphanValue ? (
-                <div className="px-3 py-6 text-center text-xs text-text-label">
-                  {loading
-                    ? 'Loading...'
-                    : disabled
-                      ? (disabledReason ?? 'Enter API Key first.')
-                      : 'Click the refresh button to load models.'}
-                </div>
-              ) : (
-                <div className="flex max-h-80">
-                  {/* Left column: provider list */}
-                  <div className="w-[120px] flex-shrink-0 overflow-y-auto border-r border-border-secondary py-1">
-                    {orphanValue ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveProvider('__orphan__')}
-                        className={cn(
-                          'flex w-full items-center px-3 py-1.5 text-left text-xs text-text-label transition-colors',
-                          activeProvider === '__orphan__'
-                            ? 'bg-button-transparent-fill-hover text-text-heading'
-                            : 'hover:bg-button-transparent-fill-hover'
-                        )}
-                      >
-                        Current
-                      </button>
-                    ) : null}
-                    {groups.map((g) => (
-                      <button
-                        key={g.provider}
-                        type="button"
-                        onClick={() => setActiveProvider(g.provider)}
-                        className={cn(
-                          'flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors',
-                          activeProvider === g.provider
-                            ? 'bg-button-transparent-fill-hover text-text-heading'
-                            : 'text-text-label hover:bg-button-transparent-fill-hover'
-                        )}
-                      >
-                        <span className="truncate">{g.provider}</span>
-                        <span className="ml-2 flex-shrink-0 text-text-label opacity-60">
-                          {g.models.length}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Right column: models for active provider */}
-                  <CommandList className="max-h-80 flex-1">
-                    {activeProvider === '__orphan__' && orphanValue ? (
-                      <CommandItem
-                        value={orphanValue}
-                        onSelect={() => {
-                          onChange(orphanValue);
-                          setOpen(false);
-                        }}
-                      >
-                        <span className="truncate">{orphanValue}</span>
-                      </CommandItem>
-                    ) : activeModels.length > 0 ? (
-                      activeModels.map((m) => {
+            <SelectValue
+              placeholder={triggerPlaceholder ?? 'Select model type'}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {!hasAnyModels && !orphanValue ? (
+              <div className="px-3 py-6 text-xs text-ds-text-neutral-muted-default text-center">
+                {emptyMessage}
+              </div>
+            ) : (
+              <>
+                {orphanValue ? (
+                  <SelectGroup>
+                    <SelectLabel>
+                      {t('setting.current', { defaultValue: 'Current' })}
+                    </SelectLabel>
+                    <SelectItem value={orphanValue}>{orphanValue}</SelectItem>
+                  </SelectGroup>
+                ) : null}
+                {groups.map((g) =>
+                  g.models.length > 0 ? (
+                    <SelectGroup key={g.provider}>
+                      {g.provider ? (
+                        <SelectLabel>{g.provider}</SelectLabel>
+                      ) : null}
+                      {g.models.map((m) => {
                         const [, modelName] = splitPrefix(m.id);
                         return (
-                          <CommandItem
-                            key={m.id}
-                            value={m.id}
-                            onSelect={() => {
-                              onChange(m.id);
-                              setOpen(false);
-                            }}
-                            className={cn(
-                              value === m.id &&
-                                'bg-button-transparent-fill-hover'
-                            )}
-                          >
-                            <span className="truncate">{modelName}</span>
-                          </CommandItem>
+                          <SelectItem key={m.id} value={m.id}>
+                            {modelName}
+                          </SelectItem>
                         );
-                      })
-                    ) : (
-                      <CommandEmpty>
-                        {query.trim() ? 'No matches.' : 'No models.'}
-                      </CommandEmpty>
-                    )}
-                  </CommandList>
-                </div>
-              )}
-            </Command>
-          </PopoverContent>
-        </Popover>
+                      })}
+                    </SelectGroup>
+                  ) : null
+                )}
+              </>
+            )}
+          </SelectContent>
+        </Select>
 
         <Button
-          variant="ghost"
-          size="icon"
+          type="button"
+          variant="secondary"
+          buttonRadius="full"
           onClick={onRefresh}
           disabled={disabled || loading}
           aria-label={`Refresh ${providerName} models`}
-          className="flex-shrink-0"
+          className="text-body-sm shrink-0"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="!h-4 !w-4" />
           )}
+          {t('setting.refresh', { defaultValue: 'Refresh' })}
         </Button>
       </div>
-
-      {error ? (
-        <div className="text-text-cuation mt-1.5 text-xs">{error}</div>
-      ) : null}
     </div>
   );
 }
