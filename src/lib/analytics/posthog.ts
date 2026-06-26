@@ -23,9 +23,13 @@
  * What it tracks:
  *  - Autocapture: every click/input, which powers "most used feature buttons"
  *    and PostHog's built-in rage-click detection ($rageclick).
- *  - Exception autocapture ($exception) for surfacing error issues.
- *  - `app_opened` / `first_task_started` / `task_started` custom events, which
- *    let us measure how long it takes a user to start their first task.
+ *  - Bundled exception capture for surfacing error issues.
+ *  - A named-event taxonomy (app_launched / task_submitted / task_completed /
+ *    first_task_* / feature_used / *_failed …) wired at code chokepoints — see
+ *    the desktop tracking plan.
+ *
+ * Identity is keyed on **email** so a person's website activity (channel/UTM/
+ * content) merges with their desktop activity into a single PostHog person.
  */
 import type { PostHog } from 'posthog-js';
 
@@ -36,10 +40,11 @@ let client: PostHog | null = null;
 /** Wall-clock time the renderer booted; baseline for time-to-first-task. */
 const appOpenedAt = Date.now();
 
-/** Per-session guard so we only flag one "first task of this session". */
-let firstTaskCapturedThisSession = false;
+/** Per-session guards so we only flag one "first task of this session". */
+let firstSubmitCapturedThisSession = false;
 
-const HAS_STARTED_TASK_KEY = 'eigent:analytics:has_started_task';
+const HAS_SUBMITTED_TASK_KEY = 'eigent:analytics:has_started_task';
+const HAS_COMPLETED_TASK_KEY = 'eigent:analytics:has_completed_task';
 
 const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as
   | string
@@ -52,11 +57,20 @@ export function isAnalyticsEnabled(): boolean {
   return Boolean(client);
 }
 
+/** Context for the one-time `app_launched` event, gathered by the caller. */
+export interface AppLaunchContext {
+  isFirstLaunch?: boolean;
+  version?: string;
+}
+
 /**
  * Initialise PostHog once, at app startup. Safe to call when no key is set —
  * it simply returns without doing anything, leaving every other helper a no-op.
+ * Emits the one-time `app_launched` event once the client is ready.
  */
-export async function initAnalytics(): Promise<void> {
+export async function initAnalytics(
+  launchContext?: AppLaunchContext
+): Promise<void> {
   if (client) return;
   if (!POSTHOG_KEY) {
     if (import.meta.env.DEV) {
@@ -92,22 +106,33 @@ export async function initAnalytics(): Promise<void> {
     });
     client = posthog;
     attachErrorHandlers(posthog);
-    capture('app_opened', { channel: detectChannel() });
+    capture('app_launched', {
+      is_first_launch: launchContext?.isFirstLaunch ?? null,
+      platform: detectPlatform(),
+      version: launchContext?.version ?? null,
+      channel: detectChannel(),
+    });
   } catch (error) {
     console.error('[analytics] Failed to initialise PostHog:', error);
   }
 }
 
-/** Associate subsequent events with a signed-in user. */
+/**
+ * Associate subsequent events with a signed-in user, keyed on email (the join
+ * key shared with the website). Skips when email is absent so the person stays
+ * anonymous rather than being keyed on an unstable id.
+ */
 export function identifyUser(user: {
-  id: string | number;
+  id?: string | number | null;
   email?: string | null;
   username?: string | null;
 }): void {
   if (!client) return;
+  if (!user.email) return;
   try {
-    client.identify(String(user.id), {
-      email: user.email ?? undefined,
+    client.identify(user.email, {
+      email: user.email,
+      user_id: user.id ?? undefined,
       username: user.username ?? undefined,
     });
   } catch (error) {
@@ -177,9 +202,10 @@ function attachErrorHandlers(posthog: PostHog): void {
 }
 
 /**
- * Explicit helper for tracking a feature button / action. Autocapture already
- * records raw clicks, but calling this for the buttons we care about gives a
- * clean, named event that's easy to chart.
+ * Explicit helper for tracking a feature button / action per surface (MCP,
+ * skills, triggers, multi-agent, file generation, …). Autocapture already
+ * records raw clicks, but a named event is what the feature-adoption analysis
+ * needs and is easy to chart.
  */
 export function trackFeature(
   feature: string,
@@ -189,31 +215,124 @@ export function trackFeature(
 }
 
 /**
- * Record that a user started a task. Emits `task_started` always, plus a
+ * Record that a user submitted a task. Emits `task_submitted` always, plus a
  * dedicated `first_task_started` (with the elapsed time since the app opened)
- * the first time a given install starts a task — that's the metric for
+ * the first time a given install submits a task — that's the metric for
  * "how long does it take a user to start their first task".
  */
-export function trackTaskStarted(properties?: Record<string, unknown>): void {
+export function trackTaskSubmitted(properties?: Record<string, unknown>): void {
   const secondsSinceAppOpen = (Date.now() - appOpenedAt) / 1000;
-  const hasStartedBefore = readHasStartedTask();
-  const isFirstTaskThisSession = !firstTaskCapturedThisSession;
-  firstTaskCapturedThisSession = true;
+  const hasSubmittedBefore = readFlag(HAS_SUBMITTED_TASK_KEY);
+  const isFirstTaskThisSession = !firstSubmitCapturedThisSession;
+  firstSubmitCapturedThisSession = true;
 
-  capture('task_started', {
+  capture('task_submitted', {
     ...properties,
-    is_first_task_ever: !hasStartedBefore,
+    is_first_task_ever: !hasSubmittedBefore,
     is_first_task_this_session: isFirstTaskThisSession,
     seconds_since_app_open: round(secondsSinceAppOpen),
   });
 
-  if (!hasStartedBefore) {
+  if (!hasSubmittedBefore) {
     capture('first_task_started', {
       ...properties,
       seconds_since_app_open: round(secondsSinceAppOpen),
     });
-    writeHasStartedTask();
+    writeFlag(HAS_SUBMITTED_TASK_KEY);
   }
+}
+
+/**
+ * Record that a task finished successfully. Emits `task_completed` always, plus
+ * `first_task_completed` (with elapsed time since app open) the first time an
+ * install ever completes a task — the "time to value" milestone.
+ */
+export function trackTaskCompleted(properties?: Record<string, unknown>): void {
+  const secondsSinceAppOpen = (Date.now() - appOpenedAt) / 1000;
+  const hasCompletedBefore = readFlag(HAS_COMPLETED_TASK_KEY);
+
+  capture('task_completed', {
+    ...properties,
+    is_first_completion_ever: !hasCompletedBefore,
+  });
+
+  if (!hasCompletedBefore) {
+    capture('first_task_completed', {
+      ...properties,
+      seconds_since_app_open: round(secondsSinceAppOpen),
+    });
+    writeFlag(HAS_COMPLETED_TASK_KEY);
+  }
+}
+
+/**
+ * Bucket a raw task/runtime error message into a small, stable taxonomy so the
+ * `error_type` property stays chart-friendly instead of high-cardinality.
+ */
+export function classifyError(message?: string | null): string {
+  if (!message) return 'unknown';
+  const m = message.toLowerCase();
+  if (m.includes('backend') && (m.includes('ready') || m.includes('not')))
+    return 'backend_unavailable';
+  if (m.includes('already processing')) return 'single_agent_busy';
+  if (m.includes('credit') || m.includes('usage limit') || m.includes('quota'))
+    return 'credits_or_limit';
+  if (m.includes('model')) return 'model';
+  if (m.includes('mcp') || m.includes('tool') || m.includes('toolkit'))
+    return 'tool_or_mcp';
+  if (m.includes('network') || m.includes('timeout') || m.includes('fetch'))
+    return 'network';
+  return 'unknown';
+}
+
+/**
+ * Classify "what job is Eigent hired for" entirely on-device, returning a
+ * low-cardinality `task_category` enum. The raw project name / summary is read
+ * here but NEVER sent to PostHog — only the resulting label leaves the machine,
+ * which keeps user task content private and the property chart-friendly.
+ *
+ * This is a deliberately simple keyword heuristic — first match wins, ordered
+ * from most distinctive to least. Refine the buckets/keywords as needed.
+ */
+const TASK_CATEGORY_RULES: Array<[string, RegExp]> = [
+  [
+    'coding',
+    /\b(code|coding|bug|debug|refactor|api|repo|git|deploy|compile|script|function|python|javascript|typescript)\b/,
+  ],
+  [
+    'data_analysis',
+    /\b(data|csv|excel|spreadsheet|dataset|sql|chart|graph|statistic|analy)/,
+  ],
+  [
+    'web_automation',
+    /\b(browse|browser|website|web page|navigate|crawl|scrape|fill.*form|automate)/,
+  ],
+  [
+    'document',
+    /\b(pdf|document|\bdoc\b|slide|presentation|ppt|word file|convert.*file)/,
+  ],
+  ['communication', /\b(email|slack|message|notify|calendar|meeting|invite)\b/],
+  [
+    'design',
+    /\b(design|logo|figma|mockup|diagram|wireframe|image|illustration)\b/,
+  ],
+  [
+    'writing',
+    /\b(write|blog|article|essay|draft|post|copywrit|content|translate|summari[sz]e)/,
+  ],
+  [
+    'research',
+    /\b(research|find|search|investigate|gather|compare|look up|report on)/,
+  ],
+];
+
+export function classifyTaskCategory(text?: string | null): string {
+  if (!text) return 'unknown';
+  const t = text.toLowerCase();
+  for (const [category, pattern] of TASK_CATEGORY_RULES) {
+    if (pattern.test(t)) return category;
+  }
+  return 'other';
 }
 
 function detectChannel(): 'web' | 'desktop' {
@@ -223,17 +342,26 @@ function detectChannel(): 'web' | 'desktop' {
     : 'web';
 }
 
-function readHasStartedTask(): boolean {
+function detectPlatform(): string {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const ua = navigator.userAgent || '';
+  if (/Mac/i.test(ua)) return 'mac';
+  if (/Win/i.test(ua)) return 'windows';
+  if (/Linux/i.test(ua)) return 'linux';
+  return 'unknown';
+}
+
+function readFlag(key: string): boolean {
   try {
-    return localStorage.getItem(HAS_STARTED_TASK_KEY) === 'true';
+    return localStorage.getItem(key) === 'true';
   } catch {
     return false;
   }
 }
 
-function writeHasStartedTask(): void {
+function writeFlag(key: string): void {
   try {
-    localStorage.setItem(HAS_STARTED_TASK_KEY, 'true');
+    localStorage.setItem(key, 'true');
   } catch {
     // localStorage unavailable — degrade silently.
   }

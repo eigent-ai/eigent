@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { capture } from '@/lib/analytics/posthog';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -117,6 +118,7 @@ export default function Login() {
       navigate(redirectTo, { replace: true });
     } catch (error: any) {
       console.error('Auto login failed:', error);
+      capture('signin_failed', { reason: 'auto_login_error', method: 'auto' });
       setGeneralError(t('layout.login-failed-please-try-again'));
     } finally {
       setIsLoading(false);
@@ -136,6 +138,7 @@ export default function Login() {
 
         const errorMessage = getLoginErrorMessage(data);
         if (errorMessage) {
+          capture('signin_failed', { reason: 'rejected', method: 'stack' });
           setGeneralError(errorMessage);
           return;
         }
@@ -146,6 +149,7 @@ export default function Login() {
         navigate(redirectTo, { replace: true });
       } catch (error: any) {
         console.error('Login failed:', error);
+        capture('signin_failed', { reason: 'stack_error', method: 'stack' });
         setGeneralError(
           t('layout.login-failed-please-check-your-email-and-password')
         );
@@ -249,6 +253,10 @@ export default function Login() {
         navigate(redirectTo, { replace: true });
       } catch (e) {
         console.error('Failed to fetch user info:', e);
+        capture('signin_failed', {
+          reason: 'user_fetch_error',
+          method: 'token',
+        });
         setGeneralError(t('layout.login-failed-please-try-again'));
       } finally {
         setIsLoading(false);

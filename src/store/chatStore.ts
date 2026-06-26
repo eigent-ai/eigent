@@ -28,7 +28,14 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
-import { trackTaskStarted } from '@/lib/analytics/posthog';
+import {
+  capture as captureAnalytics,
+  classifyError,
+  classifyTaskCategory,
+  trackFeature,
+  trackTaskCompleted,
+  trackTaskSubmitted,
+} from '@/lib/analytics/posthog';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -1314,10 +1321,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Track genuine, user-facing task starts (skip replay/share playback).
       // Powers the "time to first task" funnel in PostHog.
       if (isLiveTask) {
-        trackTaskStarted({
+        const submitWorkers = getWorkerList();
+        const submitHasMcp = submitWorkers.some(
+          (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+        );
+        trackTaskSubmitted({
           session_mode: sessionModeForRequest,
           task_source: executionId ? 'trigger' : 'user',
+          agent_count: submitWorkers.length,
+          has_mcp: submitHasMcp,
         });
+        if (sessionModeForRequest === SessionMode.WORKFORCE) {
+          trackFeature('multi_agent', { session_mode: sessionModeForRequest });
+        }
       }
       if (project_id && !project?.mode) {
         useSpaceStore
@@ -1402,6 +1418,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!isBackendReady) {
           console.error('[startTask] Backend is not ready, cannot start task');
+          captureAnalytics('app_launch_failed', {
+            reason: 'backend_not_ready',
+          });
           const targetState = targetChatStore.getState();
           targetState.addMessages(newTaskId, {
             id: generateUniqueId(),
@@ -3326,6 +3345,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 content: `❌ **Error**: ${errorMessage}`,
               });
               uploadLog(currentTaskId, type);
+              // Analytics: task failed — split breakage vs disinterest.
+              if (!type || type === 'normal') {
+                captureAnalytics('task_failed', {
+                  error_type: classifyError(errorMessage),
+                  is_project_busy: isProjectBusyError,
+                  session_mode: tasks[currentTaskId]?.sessionMode,
+                });
+              }
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
                 getCurrentChatStore(),
@@ -3488,6 +3515,32 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
 
+            // Analytics: task completed (+ first_task_completed milestone).
+            // Skip replay/share playback so only real runs are measured.
+            if (!type || type === 'normal') {
+              const completedTask = tasks[currentTaskId];
+              const completedProjectName = (
+                project_id ? projectStore.getProjectById(project_id) : null
+              )?.name;
+              trackTaskCompleted({
+                session_mode: completedTask?.sessionMode,
+                agent_count: completedTask?.taskAssigning?.length ?? 0,
+                has_mcp: getWorkerList().some(
+                  (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+                ),
+                duration_seconds: completedTask?.createdAt
+                  ? Math.round((Date.now() - completedTask.createdAt) / 1000)
+                  : undefined,
+                tokens: getTokens(currentTaskId),
+                // Goal 2D: "what job is Eigent hired for". Classified on-device;
+                // only the low-cardinality category label is sent — the raw
+                // project name / summary (user content) never leaves the machine.
+                task_category: classifyTaskCategory(
+                  `${completedProjectName ?? ''} ${completedTask?.summaryTask ?? ''}`
+                ),
+              });
+            }
+
             // compute task time
             console.log(
               'tasks[taskId].snapshotsTemp',
@@ -3549,6 +3602,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         proxyFetchPost(`/api/v1/user/stat`, {
                           action: 'file_generate_count',
                           value: generatedSuccessCount,
+                        });
+                        trackFeature('file_generate', {
+                          count: generatedSuccessCount,
                         });
                       }
                     }

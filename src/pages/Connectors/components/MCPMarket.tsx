@@ -23,6 +23,7 @@ import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { capture, trackFeature } from '@/lib/analytics/posthog';
 import { useAuthStore } from '@/store/authStore';
 import { ChevronLeft, CircleAlert, Store } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -222,8 +223,18 @@ export default function MCPMarket({
       if (mcpItem?.install_command) {
         await mcpInstall(mcpItem.key, mcpItem.install_command);
       }
+      trackFeature('mcp', {
+        action: 'install',
+        mcp_id: id,
+        mcp_key: mcpItem?.key,
+      });
+      capture('mcp_installed', { mcp_id: id, mcp_key: mcpItem?.key });
     } catch (e) {
       console.error('Error installing MCP:', e);
+      capture('mcp_install_failed', {
+        mcp_id: id,
+        reason: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       setInstalling((prev) => ({ ...prev, [id]: false }));
     }

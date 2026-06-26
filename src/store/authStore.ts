@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { identifyUser, resetAnalytics } from '@/lib/analytics/posthog';
+import {
+  capture as captureAnalytics,
+  identifyUser,
+  resetAnalytics,
+} from '@/lib/analytics/posthog';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -265,14 +269,38 @@ const authStore = create<AuthState>()(
         set({ initState });
       },
 
-      setModelType: (modelType) => set({ modelType }),
+      setModelType: (modelType) =>
+        set((state) => {
+          if (modelType !== state.modelType) {
+            captureAnalytics('model_type_changed', {
+              from: state.modelType,
+              to: modelType,
+            });
+          }
+          return { modelType };
+        }),
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
       setCodexModelType: (codex_model_type) => set({ codex_model_type }),
 
       setHasModelConfigured: (hasModelConfigured) =>
-        set({ hasModelConfigured }),
+        set((state) => {
+          // Fire `model_configured` once, on the false → true edge (Goal 1A).
+          if (hasModelConfigured && !state.hasModelConfigured) {
+            const modelId =
+              state.modelType === 'cloud'
+                ? state.cloud_model_type
+                : state.modelType === 'codex_subscription'
+                  ? state.codex_model_type
+                  : undefined;
+            captureAnalytics('model_configured', {
+              model_type: state.modelType,
+              model_id: modelId,
+            });
+          }
+          return { hasModelConfigured };
+        }),
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
