@@ -28,6 +28,7 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { trackTaskStarted } from '@/lib/analytics/posthog';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -1310,6 +1311,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Track genuine, user-facing task starts (skip replay/share playback).
+      // Powers the "time to first task" funnel in PostHog.
+      if (isLiveTask) {
+        trackTaskStarted({
+          session_mode: sessionModeForRequest,
+          task_source: executionId ? 'trigger' : 'user',
+        });
+      }
       if (project_id && !project?.mode) {
         useSpaceStore
           .getState()

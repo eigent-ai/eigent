@@ -27,6 +27,7 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { createHost, HostProvider } from './host';
 import './i18n';
+import { initAnalytics } from './lib/analytics/posthog';
 import { injectHost } from './store/chatStore';
 import './style/index.css';
 
@@ -34,6 +35,8 @@ import './style/index.css';
 // import './demos/node'
 const host = createHost();
 injectHost(host);
+
+void initAnalytics();
 const Router = isWeb() ? BrowserRouter : HashRouter;
 const initialChannel = isWeb() ? 'web' : 'desktop';
 

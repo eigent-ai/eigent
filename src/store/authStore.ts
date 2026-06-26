@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { identifyUser, resetAnalytics } from '@/lib/analytics/posthog';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -175,6 +176,7 @@ const authStore = create<AuthState>()(
       setAuth: ({ token, username, email, user_id }) => {
         set({ token, username, email, user_id });
         hydrateSpacesForUser(user_id);
+        identifyUser({ id: user_id, email, username });
       },
 
       logout: () => {
@@ -193,6 +195,7 @@ const authStore = create<AuthState>()(
           initState: 'carousel',
           localProxyValue: null,
         });
+        resetAnalytics();
       },
 
       // set related methods
@@ -433,9 +436,12 @@ export const useAuthStore = authStore;
 export const getAuthStore = () => authStore.getState();
 
 queueMicrotask(() => {
-  const { token, user_id } = authStore.getState();
+  const { token, user_id, email, username } = authStore.getState();
   if (token) {
     hydrateSpacesForUser(user_id);
+    if (user_id != null) {
+      identifyUser({ id: user_id, email, username });
+    }
   } else {
     useSpaceStore.getState().ensureLegacySpace(user_id);
   }
