@@ -332,6 +332,55 @@ describe('ChatStore - Core Functionality', () => {
         },
       ]);
     });
+
+    it('collects generated files from task output file lists', () => {
+      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          type: 'html',
+        },
+        {
+          path: 'https://example.com/files/remote.html',
+          name: 'remote.html',
+          type: 'html',
+        },
+      ] as any);
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          uploadName: 'project_output/index.html',
+          source: 'project_output',
+        },
+      ]);
+    });
+
+    it('keeps camel log upload names nested under camel_log', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [
+          {
+            path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+            name: 'conv.json',
+            relativePath: 'agent',
+            source: 'camel_log',
+          },
+        ],
+        [],
+        [],
+        'task-123'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+          name: 'conv.json',
+          uploadName: 'camel_log/agent/conv.json',
+          source: 'camel_log',
+        },
+      ]);
+    });
   });
 
   describe('Cloud Model Platform Mapping', () => {

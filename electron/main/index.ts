@@ -1934,9 +1934,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-file-list',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getFileList(email, taskId, projectId);
+      return manager.getFileList(email, taskId, projectId, userId);
     }
   );
 

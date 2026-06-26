@@ -321,6 +321,7 @@ interface UploadOutcome {
   success: boolean;
   fileName: string;
   source: UploadFileSource;
+  response?: unknown;
   error?: unknown;
 }
 
@@ -484,7 +485,8 @@ export function collectTaskUploadFiles(
   generatedFiles: GeneratedUploadFile[],
   messages: Message[],
   pendingAttaches: File[] = [],
-  taskId = 'unknown_task'
+  taskId = 'unknown_task',
+  taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
     Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
@@ -497,6 +499,28 @@ export function collectTaskUploadFiles(
       name: file.name,
       relativePath: file.relativePath,
       source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+    });
+  }
+
+  for (const file of taskOutputFiles) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
+    });
+  }
+
+  for (const file of messages.flatMap((message) => message.fileList || [])) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
     });
   }
 
@@ -573,12 +597,21 @@ async function uploadTaskFiles(
       // TODO(file): rename endpoint to use project_id
       formData.append('task_id', uploadTargetId);
 
-      await uploadFile('/api/v1/chat/files/upload', formData);
-      console.log('File uploaded successfully:', file.uploadName, file.source);
+      const uploadResponse = await uploadFile(
+        '/api/v1/chat/files/upload',
+        formData
+      );
+      console.log('File uploaded successfully:', {
+        fileName: file.uploadName,
+        source: file.source,
+        uploadTargetId,
+        response: uploadResponse,
+      });
       results.push({
         success: true,
         fileName: file.uploadName,
         source: file.source,
+        response: uploadResponse,
       });
     } catch (error) {
       console.error('File upload failed:', file.uploadName, file.source, error);
@@ -1414,6 +1447,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         cloud_model_type,
         codex_model_type,
         email,
+        user_id,
       } = getAuthStore();
       const workerList = getWorkerList();
       const { getLastUserMessage: _getLastUserMessage } = get();
@@ -3510,14 +3544,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         'get-file-list',
                         email,
                         currentTaskId,
-                        uploadTargetId
+                        uploadTargetId,
+                        user_id
                       )) as GeneratedUploadFile[]) || [];
+                    const taskOutputFiles = tasks[
+                      currentTaskId
+                    ].taskAssigning.flatMap((agent) =>
+                      agent.tasks.flatMap((task) => task.fileList || [])
+                    );
                     const filesToUpload = collectTaskUploadFiles(
                       generatedFiles,
                       tasks[currentTaskId].messages,
                       tasks[currentTaskId].attaches,
-                      currentTaskId
+                      currentTaskId,
+                      taskOutputFiles
                     );
+                    console.log('Task upload files collected:', {
+                      generatedFileCount: generatedFiles.length,
+                      taskOutputFileCount: taskOutputFiles.length,
+                      uploadCandidateCount: filesToUpload.length,
+                      uploadTargetId,
+                      taskId: currentTaskId,
+                    });
 
                     if (filesToUpload.length > 0) {
                       const uploadResults = await uploadTaskFiles(
