@@ -325,24 +325,39 @@ class RemoteControlService:
         return None
 
     @staticmethod
+    def _ensure_remote_control_supported_space(space: Space) -> None:
+        if space.source_type == SpaceSourceType.LEGACY:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "REMOTE_CONTROL_LEGACY_SPACE_UNSUPPORTED",
+                    "message": "Legacy Spaces do not support remote control.",
+                },
+            )
+
+    @staticmethod
     def _session_space(session: RemoteControlSession, user_id: int, db: Session) -> Space:
         if session.space_id:
-            return RemoteControlService._get_owned_space(user_id, session.space_id, db)
+            space = RemoteControlService._get_owned_space(user_id, session.space_id, db)
+            RemoteControlService._ensure_remote_control_supported_space(space)
+            return space
         project_id, _, _, _ = RemoteControlService._effective_target(session)
         if project_id:
             space = RemoteControlService._space_for_project(user_id, project_id, db)
             if space:
+                RemoteControlService._ensure_remote_control_supported_space(space)
                 session.space_id = space.id
                 session.space_name_snapshot = space.name
                 db.add(session)
                 db.flush()
                 return space
-        space = SpaceService.ensure_legacy_space(user_id, db)
-        session.space_id = space.id
-        session.space_name_snapshot = space.name
-        db.add(session)
-        db.flush()
-        return space
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                "message": "Remote control requires a non-legacy Space.",
+            },
+        )
 
     @staticmethod
     def _ensure_folder_space(space: Space) -> None:
@@ -515,9 +530,22 @@ class RemoteControlService:
         elif target_project_id:
             space = RemoteControlService._space_for_project(user_id, target_project_id, db)
             if not space:
-                space = SpaceService.ensure_legacy_space(user_id, db)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                        "message": "Remote control requires a non-legacy Space.",
+                    },
+                )
         else:
-            space = SpaceService.ensure_legacy_space(user_id, db)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                    "message": "Remote control requires a non-legacy Space.",
+                },
+            )
+        RemoteControlService._ensure_remote_control_supported_space(space)
         if target_project_id:
             project = RemoteControlService._get_owned_project(user_id, target_project_id, db)
             if project and project.space_id != space.id:

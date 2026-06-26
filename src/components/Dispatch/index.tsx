@@ -26,6 +26,7 @@ import {
   revokeRemoteControlSession,
   waitForRemoteControlBridgeConnected,
 } from '@/lib/remoteControl';
+import { canUseRemoteControlInSpace } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { getConnectionConfig } from '@/store/connectionStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -176,6 +177,7 @@ interface ChannelRowProps {
   icon?: React.ReactNode;
   imgSrc?: string;
   disabled?: boolean;
+  disabledLabel?: string;
   comingSoon?: boolean;
   hasActiveSessions?: boolean;
   loading?: boolean;
@@ -187,12 +189,14 @@ function ChannelRow({
   icon,
   imgSrc,
   disabled,
+  disabledLabel,
   comingSoon,
   hasActiveSessions,
   loading,
   onStart,
 }: ChannelRowProps) {
   const { t } = useTranslation();
+  const isDisabled = Boolean(disabled);
 
   return (
     <div
@@ -200,9 +204,9 @@ function ChannelRow({
         'group/row flex h-[44px] w-full cursor-default select-none items-center gap-3 rounded-xl',
         'border border-transparent bg-ds-bg-neutral-default-default px-3',
         'transition-colors duration-150',
-        !disabled && 'hover:border-ds-border-neutral-subtle-default',
+        !isDisabled && 'hover:border-ds-border-neutral-subtle-default',
         hasActiveSessions && 'border-ds-border-neutral-subtle-default',
-        disabled && 'cursor-not-allowed opacity-50'
+        isDisabled && 'cursor-not-allowed opacity-50'
       )}
     >
       <div className="flex shrink-0 items-center">
@@ -228,13 +232,19 @@ function ChannelRow({
           </span>
         )}
 
-        {!disabled && !comingSoon && hasActiveSessions && (
+        {isDisabled && !comingSoon && disabledLabel && (
+          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+            {disabledLabel}
+          </span>
+        )}
+
+        {!isDisabled && !comingSoon && hasActiveSessions && (
           <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-label-xs text-ds-text-success-strong-default">
             {t('layout.dispatch-connected', { defaultValue: 'Connected' })}
           </span>
         )}
 
-        {!disabled && !comingSoon && !hasActiveSessions && (
+        {!isDisabled && !comingSoon && !hasActiveSessions && (
           <Button
             type="button"
             variant="secondary"
@@ -332,6 +342,8 @@ export function WorkspaceDispatch() {
     s.activeSpaceId ? s.spaces[s.activeSpaceId] : null
   );
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
+  const remoteControlUnsupportedForSpace =
+    activeSpace !== null && !canUseRemoteControlInSpace(activeSpace);
 
   const activeSessions = useTriggerStore((s) => s.activeRemoteControlSessions);
   const logs = useTriggerStore((s) => s.remoteControlLogs);
@@ -416,6 +428,10 @@ export function WorkspaceDispatch() {
       toast.error('Open a Space before starting remote control.');
       return;
     }
+    if (!activeSpace || !canUseRemoteControlInSpace(activeSpace)) {
+      toast.error('Legacy Spaces do not support remote control.');
+      return;
+    }
 
     setRemoteControlLoading(true);
     try {
@@ -478,6 +494,7 @@ export function WorkspaceDispatch() {
     }
   }, [
     activeProjectId,
+    activeSpace,
     activeSpace?.name,
     activeSpaceId,
     addRemoteControlSession,
@@ -599,6 +616,10 @@ export function WorkspaceDispatch() {
           />
         }
         hasActiveSessions={hasActiveRemoteControl}
+        disabled={remoteControlUnsupportedForSpace && !hasActiveRemoteControl}
+        disabledLabel={t('layout.dispatch-unavailable', {
+          defaultValue: 'Unavailable',
+        })}
         loading={remoteControlLoading}
         onStart={() => void handleCreateRemoteControl()}
       />

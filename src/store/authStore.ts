@@ -131,11 +131,13 @@ const getRandomDefaultModel = (): CloudModelType => {
 };
 
 const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
+  if (!useSpaceStore?.getState) return;
   if (userId === null || userId === undefined || userId === '') {
+    useSpaceStore.getState().resetForUser(null);
     useSpaceStore.getState().ensureLegacySpace();
     return;
   }
-  useSpaceStore.getState().ensureLegacySpace(userId);
+  useSpaceStore.getState().resetForUser(userId);
   void useSpaceStore.getState().hydrateFromServer(userId);
 };
 
@@ -173,6 +175,11 @@ const authStore = create<AuthState>()(
 
       // auth related methods
       setAuth: ({ token, username, email, user_id }) => {
+        const previousUserId = get().user_id;
+        if (previousUserId != null && previousUserId !== user_id) {
+          void clearAllCachedProjects(previousUserId);
+        }
+        useSpaceStore.getState().resetForUser(user_id);
         set({ token, username, email, user_id });
         hydrateSpacesForUser(user_id);
       },
@@ -193,6 +200,7 @@ const authStore = create<AuthState>()(
           initState: 'carousel',
           localProxyValue: null,
         });
+        useSpaceStore.getState().resetForUser(null);
       },
 
       // set related methods
@@ -433,12 +441,9 @@ export const useAuthStore = authStore;
 export const getAuthStore = () => authStore.getState();
 
 queueMicrotask(() => {
-  const { token, user_id } = authStore.getState();
-  if (token) {
-    hydrateSpacesForUser(user_id);
-  } else {
-    useSpaceStore.getState().ensureLegacySpace(user_id);
-  }
+  if (!useSpaceStore?.getState) return;
+  const { user_id } = authStore.getState();
+  hydrateSpacesForUser(user_id);
 });
 
 // constant definition
