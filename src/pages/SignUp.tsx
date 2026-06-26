@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { SITE_URL } from '@/lib';
+import { capture } from '@/lib/analytics/posthog';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
 import { Eye, EyeOff } from 'lucide-react';
@@ -136,12 +137,14 @@ export default function SignUp() {
       });
 
       if (data.code === 10 || data.code === 1) {
+        capture('signup_failed', { reason: `code_${data.code}` });
         setGeneralError(
           data.text || t('layout.sign-up-failed-please-try-again')
         );
         return;
       }
       if (data.code === 100 && data.error) {
+        capture('signup_failed', { reason: 'validation' });
         let errors = {
           email: '',
           password: '',
@@ -161,6 +164,7 @@ export default function SignUp() {
       navigate('/login');
     } catch (error: any) {
       console.error('Sign up failed:', error);
+      capture('signup_failed', { reason: 'request_error' });
       setGeneralError(
         t('layout.sign-up-failed-please-check-your-email-and-password')
       );

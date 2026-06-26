@@ -22,6 +22,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { trackFeature } from '@/lib/analytics/posthog';
 import { buildSkillMd, parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
 
@@ -113,6 +114,7 @@ export default function SkillUploadDialog({
         enabled: true,
       });
       toast.success(t('agents.skill-added-success'));
+      trackFeature('skills', { action: 'create' });
       handleClose();
     } catch {
       toast.error(t('agents.skill-add-error'));
@@ -306,6 +308,7 @@ export default function SkillUploadDialog({
 
           await syncFromDisk();
           toast.success(t('agents.skill-added-success'));
+          trackFeature('skills', { action: 'upload', format: 'zip' });
           handleClose();
           return;
         }
@@ -343,6 +346,7 @@ export default function SkillUploadDialog({
         });
 
         toast.success(t('agents.skill-added-success'));
+        trackFeature('skills', { action: 'upload', format: 'md' });
         handleClose();
       } catch (_error) {
         toast.error(t('agents.skill-add-error'));

@@ -21,6 +21,7 @@ import {
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
 import { LocaleEnum, switchLanguage } from '@/i18n';
+import { capture } from '@/lib/analytics/posthog';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import {
@@ -410,7 +411,14 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     setColorThemeForMode('dark', themeId);
   };
 
+  const stepName = (s: Step) =>
+    s === 1 ? 'language' : s === 2 ? 'theme' : 'background';
+
   const handleComplete = () => {
+    capture('onboarding_step_completed', {
+      step_id: 3,
+      step_name: 'background',
+    });
     setOnboardingCompleted(true);
     setIsFirstLaunch(false);
     onComplete();
@@ -482,7 +490,13 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
               textWeight="semibold"
               buttonContent="text"
               buttonRadius="lg"
-              onClick={() => setStep((s) => (s + 1) as Step)}
+              onClick={() => {
+                capture('onboarding_step_completed', {
+                  step_id: step,
+                  step_name: stepName(step),
+                });
+                setStep((s) => (s + 1) as Step);
+              }}
             >
               {t('layout.continue')}
               <ArrowRightIcon />

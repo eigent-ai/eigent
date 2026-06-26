@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { createHost } from '@/host';
+import { capture as captureAnalytics } from '@/lib/analytics/posthog';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -239,6 +240,24 @@ export const useInstallationStore = create<InstallationStoreState>()(
       }
     },
   }))
+);
+
+// Analytics: one subscription tracks the install/setup lifecycle so we don't
+// have to instrument every individual setter. Progress phases feed the
+// onboarding funnel; an `error` phase is also reported as `app_launch_failed`.
+useInstallationStore.subscribe(
+  (s) => s.state,
+  (state, prevState) => {
+    if (state === prevState || state === 'idle') return;
+    if (state === 'error') {
+      captureAnalytics('app_launch_failed', { reason: 'install_error' });
+      return;
+    }
+    captureAnalytics('onboarding_step_completed', {
+      step_id: `install:${state}`,
+      phase: 'installation',
+    });
+  }
 );
 
 // Computed selectors

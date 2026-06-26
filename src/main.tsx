@@ -27,6 +27,8 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { createHost, HostProvider } from './host';
 import './i18n';
+import { initAnalytics } from './lib/analytics/posthog';
+import { getAuthStore } from './store/authStore';
 import { injectHost } from './store/chatStore';
 import './style/index.css';
 
@@ -34,6 +36,22 @@ import './style/index.css';
 // import './demos/node'
 const host = createHost();
 injectHost(host);
+
+// Boot PostHog analytics with launch context. No-op unless the key is set.
+void (async () => {
+  let version: string | undefined;
+  try {
+    version = (await host?.ipcRenderer?.invoke?.('get-app-version')) as
+      | string
+      | undefined;
+  } catch {
+    // Version unavailable (e.g. web mode) — emit without it.
+  }
+  await initAnalytics({
+    isFirstLaunch: getAuthStore().isFirstLaunch,
+    version,
+  });
+})();
 const Router = isWeb() ? BrowserRouter : HashRouter;
 const initialChannel = isWeb() ? 'web' : 'desktop';
 
