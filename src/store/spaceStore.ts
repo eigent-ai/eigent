@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
+import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import {
   getSessionNavLeadFromHistoryProject,
   type SessionNavLeadPresentation,
@@ -36,6 +37,7 @@ import type {
 } from './projectRuntimeStore';
 
 export const SPACE_SCHEMA_VERSION = 2;
+const SPACE_STORE_PERSIST_VERSION = 3;
 export const DEFAULT_LOCAL_USER_ID = 'local';
 const PROJECT_SYNC_TTL_MS = 5 * 60 * 1000;
 const PROJECT_PLACEHOLDER_RESYNC_MS = 10 * 1000;
@@ -99,6 +101,7 @@ interface UpsertProjectMetaOptions {
 }
 
 interface SpaceStore {
+  storageEnvironmentKey: string;
   activeSpaceId: string | null;
   spaces: Record<string, Space>;
   lastVisitedProjectBySpace: Record<string, string>;
@@ -158,6 +161,28 @@ interface SpaceStore {
   getAllSpaces: () => Space[];
   getSpaceById: (spaceId: string | null | undefined) => Space | null;
 }
+
+const emptyEnvironmentScopedSpaceState = (): Pick<
+  SpaceStore,
+  | 'storageEnvironmentKey'
+  | 'activeSpaceId'
+  | 'spaces'
+  | 'lastVisitedProjectBySpace'
+  | 'projectsBySpaceId'
+  | 'projectIdIndex'
+  | 'projectsSyncedAt'
+> => ({
+  storageEnvironmentKey: getAuthEnvironmentKey(),
+  activeSpaceId: null,
+  spaces: {},
+  lastVisitedProjectBySpace: {},
+  projectsBySpaceId: {},
+  projectIdIndex: {},
+  projectsSyncedAt: {},
+});
+
+const spaceStoreEnvironmentMatches = (state: Partial<SpaceStore> | undefined) =>
+  state?.storageEnvironmentKey === getAuthEnvironmentKey();
 
 const canonicalUserId = (userId?: string | number | null) =>
   userId === undefined || userId === null || userId === ''
@@ -486,6 +511,7 @@ const isHydrationStillCurrentForUser = async (ownerId: string) => {
 export const useSpaceStore = create<SpaceStore>()(
   persist(
     (set, get) => ({
+      storageEnvironmentKey: getAuthEnvironmentKey(),
       activeSpaceId: null,
       spaces: {},
       lastVisitedProjectBySpace: {},
@@ -535,6 +561,7 @@ export const useSpaceStore = create<SpaceStore>()(
 
           const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
           return {
+            storageEnvironmentKey: getAuthEnvironmentKey(),
             spaces: nextSpaces,
             activeSpaceId: pickHydratedActiveSpaceId(
               nextSpaces,
@@ -1418,10 +1445,13 @@ export const useSpaceStore = create<SpaceStore>()(
     }),
     {
       name: 'eigent-space-store',
-      version: SPACE_SCHEMA_VERSION,
+      version: SPACE_STORE_PERSIST_VERSION,
       migrate: (persistedState) => {
         const state = persistedState as Partial<SpaceStore> | undefined;
         if (!state) return persistedState as SpaceStore;
+        if (!spaceStoreEnvironmentMatches(state)) {
+          return emptyEnvironmentScopedSpaceState() as SpaceStore;
+        }
         const pruned = pruneAutoCreatedProjectMetas(
           state.projectsBySpaceId,
           state.projectIdIndex
@@ -1434,6 +1464,7 @@ export const useSpaceStore = create<SpaceStore>()(
         );
         return {
           ...state,
+          storageEnvironmentKey: getAuthEnvironmentKey(),
           activeSpaceId: state.activeSpaceId ?? null,
           spaces: prunedSpaces.spaces,
           lastVisitedProjectBySpace: prunedSpaces.lastVisitedProjectBySpace,
@@ -1443,6 +1474,7 @@ export const useSpaceStore = create<SpaceStore>()(
         } as SpaceStore;
       },
       partialize: (state) => ({
+        storageEnvironmentKey: state.storageEnvironmentKey,
         activeSpaceId: state.activeSpaceId,
         spaces: state.spaces,
         lastVisitedProjectBySpace: state.lastVisitedProjectBySpace,
@@ -1456,6 +1488,13 @@ export const useSpaceStore = create<SpaceStore>()(
 if (typeof queueMicrotask === 'function') {
   queueMicrotask(() => {
     const state = useSpaceStore.getState();
+    if (!spaceStoreEnvironmentMatches(state)) {
+      useSpaceStore.setState(emptyEnvironmentScopedSpaceState());
+      console.warn(
+        '[spaceStore] Cleared persisted spaces after API environment changed.'
+      );
+      return;
+    }
     const pruned = pruneAutoCreatedProjectMetas(
       state.projectsBySpaceId,
       state.projectIdIndex

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -89,6 +90,9 @@ interface AuthState {
   // local proxy value recorded at login
   localProxyValue?: string | null;
 
+  // API/auth environment that issued the persisted auth state.
+  authEnvironmentKey: string | null;
+
   // worker list data
   workerListData: { [key: string]: Agent[] };
 
@@ -141,6 +145,39 @@ const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
   void useSpaceStore.getState().hydrateFromServer(userId);
 };
 
+const clearAuthForCurrentEnvironment = (
+  setState: (state: Partial<AuthState>) => void,
+  getState: () => AuthState
+) => {
+  const currentEnvironmentKey = getAuthEnvironmentKey();
+  const state = getState();
+  if (state.authEnvironmentKey === currentEnvironmentKey) {
+    return false;
+  }
+
+  const hadAuth = Boolean(state.token || state.email || state.user_id != null);
+  if (state.user_id != null) {
+    void clearAllCachedProjects(state.user_id);
+  }
+
+  setState({
+    token: null,
+    username: null,
+    email: null,
+    user_id: null,
+    share_token: null,
+    localProxyValue: null,
+    authEnvironmentKey: currentEnvironmentKey,
+  });
+  useSpaceStore.getState().resetForUser(null);
+  if (hadAuth) {
+    console.warn(
+      '[authStore] Cleared persisted auth after API environment changed.'
+    );
+  }
+  return true;
+};
+
 // create store
 const authStore = create<AuthState>()(
   persist(
@@ -171,6 +208,7 @@ const authStore = create<AuthState>()(
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
+      authEnvironmentKey: getAuthEnvironmentKey(),
       workerListData: {},
 
       // auth related methods
@@ -180,7 +218,13 @@ const authStore = create<AuthState>()(
           void clearAllCachedProjects(previousUserId);
         }
         useSpaceStore.getState().resetForUser(user_id);
-        set({ token, username, email, user_id });
+        set({
+          token,
+          username,
+          email,
+          user_id,
+          authEnvironmentKey: getAuthEnvironmentKey(),
+        });
         hydrateSpacesForUser(user_id);
       },
 
@@ -199,6 +243,7 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
+          authEnvironmentKey: getAuthEnvironmentKey(),
         });
         useSpaceStore.getState().resetForUser(null);
       },
@@ -334,10 +379,17 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 9,
+      version: 10,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
+              token?: unknown;
+              username?: unknown;
+              email?: unknown;
+              user_id?: unknown;
+              share_token?: unknown;
+              localProxyValue?: unknown;
+              authEnvironmentKey?: string | null;
               appearance?: string;
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
@@ -347,6 +399,19 @@ const authStore = create<AuthState>()(
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
+        const currentEnvironmentKey = getAuthEnvironmentKey();
+        const environmentMatches =
+          s.authEnvironmentKey === currentEnvironmentKey;
+        const authState = environmentMatches
+          ? {}
+          : {
+              token: null,
+              username: null,
+              email: null,
+              user_id: null,
+              share_token: null,
+              localProxyValue: null,
+            };
 
         const sanitizedCloudModelType: CloudModelType =
           typeof s.cloud_model_type === 'string' &&
@@ -389,22 +454,26 @@ const authStore = create<AuthState>()(
         if (s.appearance === 'transparent') {
           return {
             ...s,
+            ...authState,
             appearance: 'light',
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
             cloud_model_type: sanitizedCloudModelType,
             codex_model_type: sanitizedCodexModelType,
+            authEnvironmentKey: currentEnvironmentKey,
           };
         }
         return {
           ...s,
+          ...authState,
           appearance: normalizedAppearance,
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
           cloud_model_type: sanitizedCloudModelType,
           codex_model_type: sanitizedCodexModelType,
+          authEnvironmentKey: currentEnvironmentKey,
         } as typeof persistedState;
       },
       partialize: (state) => ({
@@ -428,6 +497,7 @@ const authStore = create<AuthState>()(
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,
+        authEnvironmentKey: state.authEnvironmentKey,
         workerListData: state.workerListData,
       }),
     }
@@ -442,6 +512,7 @@ export const getAuthStore = () => authStore.getState();
 
 queueMicrotask(() => {
   if (!useSpaceStore?.getState) return;
+  clearAuthForCurrentEnvironment(authStore.setState, authStore.getState);
   const { user_id } = authStore.getState();
   hydrateSpacesForUser(user_id);
 });

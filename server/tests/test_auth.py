@@ -13,7 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import inspect
+from datetime import datetime, timedelta
 
+import jwt
 import pytest
 
 from app.domains.chat.api.share_controller import (
@@ -72,6 +74,59 @@ class TestAuthMustNoneTokenHandling:
             except Exception:
                 pass
             mock_decode.assert_not_called()
+
+
+class TestTokenEnvironmentBinding:
+    def test_access_token_requires_current_token_environment(self):
+        from app.shared.auth.user_auth import (
+            SECRET_KEY,
+            TOKEN_AUDIENCE,
+            TOKEN_ISSUER,
+            TOKEN_TYPE_USER,
+            V1UserAuth,
+        )
+        from app.shared.exception import TokenException
+
+        token = V1UserAuth.create_access_token(123)
+        assert V1UserAuth.decode_token(token).id == 123
+
+        wrong_issuer_token = jwt.encode(
+            {
+                "id": 123,
+                "type": TOKEN_TYPE_USER,
+                "jti": "wrong-issuer",
+                "iss": f"{TOKEN_ISSUER}:other",
+                "aud": TOKEN_AUDIENCE,
+                "exp": datetime.utcnow() + timedelta(minutes=5),
+            },
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+
+        with pytest.raises(TokenException):
+            V1UserAuth.decode_token(wrong_issuer_token)
+
+    def test_legacy_token_without_environment_claims_is_rejected(self):
+        from app.shared.auth.user_auth import (
+            SECRET_KEY,
+            TOKEN_TYPE_USER,
+            V1UserAuth,
+        )
+        from app.shared.exception import TokenException
+
+        legacy_token = jwt.encode(
+            {
+                "id": 123,
+                "type": TOKEN_TYPE_USER,
+                "jti": "legacy-token",
+                "exp": datetime.utcnow() + timedelta(minutes=5),
+            },
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+
+        with pytest.raises(TokenException):
+            V1UserAuth.decode_token(legacy_token)
 
 
 class TestSnapshotEndpointAuthRequirements:
