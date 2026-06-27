@@ -231,13 +231,14 @@ export const MarkDown = memo(
           const fullTag = match[0];
           const href = match[2];
           if (!href) continue;
-          const lower = href.toLowerCase();
+          const lower = href.trim().toLowerCase();
           const isExternalOrSpecial =
             lower.startsWith('http://') ||
             lower.startsWith('https://') ||
             lower.startsWith('mailto:') ||
             lower.startsWith('tel:') ||
             lower.startsWith('data:') ||
+            lower.startsWith('vbscript:') ||
             lower.startsWith('javascript:') ||
             href.startsWith('#') ||
             href.includes('${');
@@ -323,14 +324,14 @@ export const MarkDown = memo(
         >
           <DialogContent
             size="lg"
-            className="p-2 flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center"
+            className="flex h-auto max-h-[95vh] w-auto max-w-[95vw] items-center justify-center p-2"
             showCloseButton
           >
             {previewImage && (
               <img
                 src={previewImage}
                 alt="Preview"
-                className="rounded h-auto max-h-[90vh] w-auto max-w-full object-contain"
+                className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
               />
             )}
           </DialogContent>
