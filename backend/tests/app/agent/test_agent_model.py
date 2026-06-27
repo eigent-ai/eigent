@@ -55,6 +55,105 @@ class TestAgentFactoryFunctions:
             assert result is mock_agent
             mock_listen_agent.assert_called_once()
 
+    def test_codex_subscription_model_uses_responses_api(
+        self, monkeypatch, sample_chat_data
+    ):
+        """Codex subscription must call the Responses API, not chat completions."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "api_key": "",
+                "api_url": "",
+                "model_platform": "openai",
+                "model_type": "gpt-5.5",
+                "auth_source": "codex_subscription",
+            }
+        )
+        monkeypatch.setenv("CODEX_RESOLVER_URL", "http://127.0.0.1:12345")
+        monkeypatch.setenv("CODEX_RESOLVER_SECRET", "resolver-secret")
+
+        from app.model.subscription_runtime import codex
+        from app.service.task import task_locks
+
+        class Response:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "access_token": "fresh-local-token",
+                    "token_type": "Bearer",
+                    "status": "connected",
+                }
+
+        monkeypatch.setattr(
+            codex.httpx, "post", lambda *args, **kwargs: Response()
+        )
+
+        mock_task_lock = MagicMock()
+        task_locks[options.task_id] = mock_task_lock
+        mock_task_lock.put_queue = AsyncMock()
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent") as mock_listen_agent,
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch("asyncio.create_task"),
+        ):
+            mock_listen_agent.return_value = MagicMock()
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        _, kwargs = mock_model_factory.create.call_args
+        assert kwargs["model_platform"] == "openai"
+        assert kwargs["model_type"] == "gpt-5.5"
+        assert kwargs["url"] == "https://chatgpt.com/backend-api/codex"
+        assert kwargs["api_mode"] == "responses"
+        assert kwargs["model_config_dict"]["stream"] is True
+        assert kwargs["model_config_dict"]["store"] is False
+        assert kwargs["default_headers"]["originator"] == "codex_cli_rs"
+
+    def test_non_codex_model_does_not_inherit_subscription_runtime_params(
+        self, sample_chat_data
+    ):
+        """Switching away from Codex must not keep Codex-only runtime params."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "api_key": "legacy-key",
+                "api_url": "https://api.openai.com/v1",
+                "model_platform": "openai",
+                "model_type": "gpt-4o",
+                "auth_source": None,
+                "extra_params": {},
+            }
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        task_locks[options.task_id] = mock_task_lock
+        mock_task_lock.put_queue = AsyncMock()
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch("asyncio.create_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        _, kwargs = mock_model_factory.create.call_args
+        model_config = kwargs["model_config_dict"] or {}
+        assert "api_mode" not in kwargs
+        assert "stream" not in model_config
+        assert "store" not in model_config
+        assert kwargs["url"] == "https://api.openai.com/v1"
+
     def test_agent_model_with_missing_options(self):
         """Test agent_model with missing required options."""
         agent_name = "ErrorAgent"

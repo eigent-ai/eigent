@@ -85,7 +85,9 @@ describe('FileTree', () => {
     const buttons = container.querySelectorAll('button');
     expect(buttons.length).toBe(2);
     buttons.forEach((btn) => {
-      const firstCol = btn.querySelector('[class*="h-4"][class*="w-4"]');
+      // Folder rows wrap the chevron in a `w-4` spacer; file rows render a
+      // `size-4` icon. Both reserve a consistent 16px first column.
+      const firstCol = btn.querySelector('[class*="w-4"], [class*="size-4"]');
       expect(firstCol).toBeInTheDocument();
     });
   });
@@ -133,7 +135,7 @@ describe('FileTree', () => {
       />
     );
     await userEvent.click(screen.getByRole('button', { name: /src/i }));
-    expect(onToggleFolder).toHaveBeenCalledWith('folder:src');
+    expect(onToggleFolder).toHaveBeenCalledWith('/proj/src');
   });
 
   it('calls onSelectFile when file row is clicked', async () => {

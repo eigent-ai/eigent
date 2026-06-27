@@ -11,29 +11,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-import asyncio
-import logging
-import uuid
-
-from camel.models import ModelFactory
 from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
 
+from app.agent.agent_model import agent_model
 from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
     remote_sub_agent_enabled,
 )
-from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MCP_SYS_PROMPT
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.model.model_platform import (
-    patch_azure_cloud_config,
-    patch_bedrock_cloud_config,
-)
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 
 
@@ -76,39 +67,6 @@ async def mcp_agent(options: Chat):
         except Exception as e:
             logger.debug(repr(e))
 
-    task_lock = get_task_lock(options.project_id)
-    agent_id = str(uuid.uuid4())
-    logger.info(
-        f"Creating MCP agent: {Agents.mcp_agent} with id: "
-        f"{agent_id} for task: {options.project_id}"
-    )
-    asyncio.create_task(
-        task_lock.put_queue(
-            ActionCreateAgentData(
-                data={
-                    "agent_name": Agents.mcp_agent,
-                    "agent_id": agent_id,
-                    "tools": [
-                        key
-                        for key in options.installed_mcp["mcpServers"].keys()
-                    ],
-                }
-            )
-        )
-    )
-    extra_params = {
-        k: v
-        for k, v in (options.extra_params or {}).items()
-        if k not in ["model_platform", "model_type", "api_key", "url"]
-    }
-    api_url = options.api_url
-    if options.model_platform == "aws-bedrock-converse" and options.is_cloud():
-        api_url, extra_params = patch_bedrock_cloud_config(
-            api_url, extra_params
-        )
-    if options.model_platform == "azure" and options.is_cloud():
-        extra_params = patch_azure_cloud_config(extra_params)
-
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.mcp_agent,
@@ -120,41 +78,10 @@ async def mcp_agent(options: Chat):
         message_integration=message_integration,
     )
 
-    # Build model_config_dict with prompt caching
-    model_config_dict = {}
-    if options.is_cloud():
-        model_config_dict["user"] = str(options.project_id)
-    try:
-        platform_enum = ModelPlatformType(options.model_platform.lower())
-        if platform_enum in {
-            ModelPlatformType.ANTHROPIC,
-            ModelPlatformType.AWS_BEDROCK_CONVERSE,
-        }:
-            model_config_dict.setdefault("cache_control", "5m")
-        elif platform_enum == ModelPlatformType.OPENAI:
-            model_config_dict.setdefault(
-                "prompt_cache_key", str(options.project_id)
-            )
-    except (ValueError, AttributeError):
-        logging.error(
-            f"Invalid model platform: {options.model_platform}",
-            exc_info=True,
-        )
-
-    return ListenChatAgent(
-        options.project_id,
+    return agent_model(
         Agents.mcp_agent,
-        system_message=system_message,
-        model=ModelFactory.create(
-            model_platform=options.model_platform,
-            model_type=options.model_type,
-            api_key=options.api_key,
-            url=api_url,
-            model_config_dict=model_config_dict or None,
-            timeout=600,  # 10 minutes
-            **extra_params,
-        ),
-        # output_language=options.language,
-        tools=tools,
-        agent_id=agent_id,
+        system_message,
+        options,
+        tools,
+        tool_names=[key for key in options.installed_mcp["mcpServers"].keys()],
     )

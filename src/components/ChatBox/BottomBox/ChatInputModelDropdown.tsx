@@ -28,6 +28,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
   DEFAULT_MODEL_CONFIGURE_PATH,
@@ -88,6 +89,8 @@ export function ChatInputModelDropdown({
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     appearance,
     setModelType,
     setCloudModelType,
@@ -134,6 +137,10 @@ export function ChatInputModelDropdown({
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+  }>({ connected: false, status: 'not_connected' });
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
@@ -223,6 +230,10 @@ export function ChatInputModelDropdown({
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -233,8 +244,50 @@ export function ChatInputModelDropdown({
     })();
   }, [items, modelType]);
 
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({ connected: false, status: 'error' });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = () => {
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus]);
+
+  const handleCodexSetDefault = useCallback(() => {
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
+  }, [setModelType]);
+
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
+    if (modelType === 'codex_subscription') {
+      return `Codex Subscription${codex_model_type ? ` (${codex_model_type})` : ''}`;
+    }
+
     if (cloudPrefer) {
       return getCloudModelDisplayName(cloud_model_type);
     }
@@ -256,12 +309,14 @@ export function ChatInputModelDropdown({
   }, [
     cloudPrefer,
     cloud_model_type,
+    codex_model_type,
     form,
     getCloudModelDisplayName,
     items,
     localPrefer,
     localPlatform,
     localTypes,
+    modelType,
     t,
   ]);
 
@@ -339,9 +394,9 @@ export function ChatInputModelDropdown({
           }
         )}
       >
-        <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
+        <span className="min-w-0 gap-1.5 inline-flex min-h-[1.25rem] items-center overflow-hidden">
           <Sparkles className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
-          <span className="min-w-0 truncate !text-label-xs font-semibold">
+          <span className="min-w-0 !text-label-xs font-semibold truncate">
             {triggerModelName}
           </span>
         </span>
@@ -365,19 +420,19 @@ export function ChatInputModelDropdown({
           className={cn(
             modelTriggerShellClass,
             'min-w-0 cursor-pointer border-0 text-left',
-            'justify-between font-semibold transition-colors',
+            'font-semibold justify-between transition-colors',
             'hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-subtle-default',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
+            'focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50'
           )}
         >
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+          <span className="min-w-0 gap-1.5 flex flex-1 items-center overflow-hidden">
             <Sparkles
               className="size-3.5 shrink-0"
               strokeWidth={2}
               aria-hidden
             />
-            <span className="min-w-0 flex-1 truncate text-left !text-label-xs text-ds-text-neutral-default-default">
+            <span className="min-w-0 !text-label-xs text-ds-text-neutral-default-default flex-1 truncate text-left">
               {triggerModelName}
             </span>
           </span>
@@ -399,7 +454,7 @@ export function ChatInputModelDropdown({
         {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
-              className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
+              className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
               onPointerEnter={(e) => {
                 activeSubTriggerRef.current = e.currentTarget;
               }}
@@ -410,7 +465,7 @@ export function ChatInputModelDropdown({
                 className="mt-0.5 h-4 w-4 shrink-0"
                 aria-hidden
               />
-              <span className="min-w-0 flex-1 text-left text-body-sm">
+              <span className="min-w-0 text-body-sm flex-1 text-left">
                 {t('setting.eigent-cloud')}
               </span>
             </DropdownMenuSubTrigger>
@@ -438,16 +493,16 @@ export function ChatInputModelDropdown({
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
-            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
+            className="min-w-0 gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <Layers
-              className="shrink-0 text-ds-icon-neutral-default-default"
+              className="text-ds-icon-neutral-default-default shrink-0"
               aria-hidden
             />
-            <span className="min-w-0 flex-1 text-left text-body-sm">
+            <span className="min-w-0 text-body-sm flex-1 text-left">
               {t('setting.custom-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -455,69 +510,91 @@ export function ChatInputModelDropdown({
             ref={subContentCallbackRef}
             className="max-h-[440px] w-[220px] overflow-y-auto"
           >
-            {items.map((item, idx) => {
-              const isConfigured = !!form[idx]?.provider_id;
-              const isPreferred = form[idx]?.prefer;
-              const modelImage = getModelImage(item.id);
+            {items
+              .map((item, idx) => ({ item, idx }))
+              .sort((a, b) => {
+                // Subscription (OAuth) providers first, original order otherwise.
+                const aSub = a.item.authMode === 'oauth_subscription' ? 0 : 1;
+                const bSub = b.item.authMode === 'oauth_subscription' ? 0 : 1;
+                return aSub - bSub;
+              })
+              .map(({ item, idx }) => {
+                const isSubscriptionAuth =
+                  item.authMode === 'oauth_subscription';
+                const isConfigured = isSubscriptionAuth
+                  ? codexStatus.connected
+                  : !!form[idx]?.provider_id;
+                const isPreferred = isSubscriptionAuth
+                  ? modelType === 'codex_subscription'
+                  : form[idx]?.prefer;
+                const modelImage = getModelImage(item.id);
 
-              return (
-                <DropdownMenuItem
-                  key={item.id}
-                  onSelect={() => {
-                    void handleDefaultModelSelect('custom', item.id);
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    {modelImage ? (
-                      <img
-                        src={modelImage}
-                        alt={item.name}
-                        className="h-4 w-4"
-                        style={
-                          needsInvert(item.id)
-                            ? { filter: 'invert(1)' }
-                            : undefined
+                return (
+                  <DropdownMenuItem
+                    key={item.id}
+                    onSelect={() => {
+                      if (isSubscriptionAuth) {
+                        if (isConfigured) {
+                          handleCodexSetDefault();
+                        } else {
+                          navigate(DEFAULT_MODEL_CONFIGURE_PATH);
                         }
-                      />
-                    ) : (
-                      <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
-                    )}
-                    <span
-                      className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
-                    >
-                      {item.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
-                    )}
-                    {isPreferred && (
-                      <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                    )}
-                    {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
-                    )}
-                  </div>
-                </DropdownMenuItem>
-              );
-            })}
+                        return;
+                      }
+                      void handleDefaultModelSelect('custom', item.id);
+                    }}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="gap-2 flex items-center">
+                      {modelImage ? (
+                        <img
+                          src={modelImage}
+                          alt={item.name}
+                          className="h-4 w-4"
+                          style={
+                            needsInvert(item.id)
+                              ? { filter: 'invert(1)' }
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
+                      )}
+                      <span
+                        className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
+                      >
+                        {item.name}
+                      </span>
+                    </div>
+                    <div className="gap-1 flex items-center">
+                      {!isConfigured && (
+                        <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
+                      )}
+                      {isPreferred && (
+                        <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                      )}
+                      {isConfigured && !isPreferred && (
+                        <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger
-            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
+            className="min-w-0 gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4 flex w-full items-center justify-start"
             onPointerEnter={(e) => {
               activeSubTriggerRef.current = e.currentTarget;
             }}
           >
             <HardDrive
-              className="shrink-0 text-ds-icon-neutral-default-default"
+              className="text-ds-icon-neutral-default-default shrink-0"
               aria-hidden
             />
-            <span className="min-w-0 flex-1 text-left text-body-sm">
+            <span className="min-w-0 text-body-sm flex-1 text-left">
               {t('setting.local-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -538,7 +615,7 @@ export function ChatInputModelDropdown({
                   }}
                   className="flex items-center justify-between"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="gap-2 flex items-center">
                     {modelImage ? (
                       <img
                         src={modelImage}
@@ -559,15 +636,15 @@ export function ChatInputModelDropdown({
                       {model.name}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="gap-1 flex items-center">
                     {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
+                      <div className="h-2 w-2 bg-ds-text-neutral-subtle-default rounded-full opacity-10" />
                     )}
                     {isPreferred && (
                       <Check className="h-4 w-4 text-ds-text-success-default-default" />
                     )}
                     {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
+                      <div className="h-2 w-2 bg-ds-text-success-default-default rounded-full" />
                     )}
                   </div>
                 </DropdownMenuItem>

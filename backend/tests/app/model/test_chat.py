@@ -13,9 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Unit tests for Chat and AgentModelConfig model configuration."""
 
+import json
 from pathlib import Path
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.service import skill_config_service
 
 
 class TestAgentModelConfig:
@@ -158,6 +160,38 @@ class TestModelPlatformMapping:
         """Test AgentModelConfig also maps grok alias for per-agent overrides."""
         config = AgentModelConfig(model_platform="grok")
         assert config.model_platform == "openai-compatible-model"
+
+
+class TestChatSkillConfigUserId:
+    """Tests for Chat skills config owner-key derivation."""
+
+    def test_skill_config_user_id_prefers_canonical_user_dir(
+        self, tmp_path, monkeypatch
+    ):
+        eigent_root = tmp_path / ".eigent"
+        legacy_dir = eigent_root / "alice"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "skills-config.json").write_text(
+            json.dumps({"version": 1, "skills": {"pdf": {"enabled": False}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(skill_config_service, "EIGENT_ROOT", eigent_root)
+
+        chat = Chat(
+            task_id="task-1",
+            project_id="project-1",
+            question="test question",
+            email="alice@example.com",
+            user_id=42,
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test-key",
+            api_url="https://api.example.com/v1",
+        )
+
+        assert chat.skill_config_user_id() == "user_42"
+        assert not (legacy_dir / "skills-config.json").exists()
+        assert (eigent_root / "user_42" / "skills-config.json").exists()
 
     def test_agent_model_config_maps_nebius_alias(self):
         """Test AgentModelConfig also maps Nebius alias."""

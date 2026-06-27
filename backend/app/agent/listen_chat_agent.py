@@ -96,6 +96,9 @@ class ListenChatAgent(ChatAgent):
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
         step_timeout: float | None = 1800,  # 30 minutes
+        model_reload_callback: (
+            Callable[[], BaseModelBackend | ModelManager] | None
+        ) = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -123,8 +126,65 @@ class ListenChatAgent(ChatAgent):
         )
         self.api_task_id = api_task_id
         self.agent_name = agent_name
+        self._model_reload_callback = model_reload_callback
+        self._model_reload_lock = threading.Lock()
 
     process_task_id: str = ""
+
+    @staticmethod
+    def _is_retryable_model_auth_error(error: BaseException) -> bool:
+        error_text = str(error).lower()
+        return any(
+            marker in error_text
+            for marker in (
+                "401",
+                "unauthorized",
+                "invalid_api_key",
+                "invalid api key",
+                "authentication error",
+                "authenticationerror",
+                "token_expired",
+            )
+        )
+
+    def _reload_model_after_auth_error(self, error: BaseException) -> bool:
+        if (
+            self._model_reload_callback is None
+            or not self._is_retryable_model_auth_error(error)
+        ):
+            return False
+
+        try:
+            with self._model_reload_lock:
+                logger.info(
+                    f"Agent {self.agent_name} refreshing model after "
+                    "subscription auth error"
+                )
+                model = self._model_reload_callback()
+                self.model_backend = (
+                    model
+                    if isinstance(model, ModelManager)
+                    else ModelManager(
+                        model,
+                        scheduling_strategy=self.model_backend.scheduling_strategy.__name__,
+                    )
+                )
+                self.model_type = self.model_backend.model_type
+            return True
+        except Exception as reload_error:
+            logger.warning(
+                f"Agent {self.agent_name} failed to refresh model after "
+                f"auth error: {reload_error}"
+            )
+            return False
+
+    async def _areload_model_after_auth_error(
+        self, error: BaseException
+    ) -> bool:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._reload_model_after_auth_error, error
+        )
 
     def _send_agent_deactivate(self, message: str, tokens: int) -> None:
         """Send agent deactivation event to the frontend.
@@ -167,7 +227,13 @@ class ListenChatAgent(ChatAgent):
         )
         return usage_info.get("total_tokens", 0)
 
-    def _stream_chunks(self, response_gen):
+    def _stream_chunks(
+        self,
+        response_gen,
+        input_message: BaseMessage | str | None = None,
+        response_format: type[BaseModel] | None = None,
+        auth_retry_available: bool = True,
+    ):
         """Generator that wraps a streaming response.
 
         Sends chunks to frontend.
@@ -186,16 +252,47 @@ class ListenChatAgent(ChatAgent):
         last_chunk = None
 
         try:
-            for chunk in response_gen:
-                last_chunk = chunk
-                if chunk.msg and chunk.msg.content:
-                    accumulated_content += chunk.msg.content
-                yield chunk
+            try:
+                for chunk in response_gen:
+                    last_chunk = chunk
+                    if chunk.msg and chunk.msg.content:
+                        accumulated_content += chunk.msg.content
+                    yield chunk
+            except ModelProcessingError as error:
+                can_retry = (
+                    auth_retry_available
+                    and input_message is not None
+                    and not accumulated_content
+                    and self._reload_model_after_auth_error(error)
+                )
+                if not can_retry:
+                    raise
+
+                retry_response = ChatAgent.step(
+                    self, input_message, response_format
+                )
+                if isinstance(retry_response, StreamingChatAgentResponse):
+                    for chunk in retry_response:
+                        last_chunk = chunk
+                        if chunk.msg and chunk.msg.content:
+                            accumulated_content += chunk.msg.content
+                        yield chunk
+                else:
+                    last_chunk = retry_response
+                    if retry_response.msg and retry_response.msg.content:
+                        accumulated_content += retry_response.msg.content
+                    yield retry_response
         finally:
             total_tokens = self._extract_tokens(last_chunk)
             self._send_agent_deactivate(accumulated_content, total_tokens)
 
-    async def _astream_chunks(self, response_gen):
+    async def _astream_chunks(
+        self,
+        response_gen,
+        input_message: BaseMessage | str | None = None,
+        response_format: type[BaseModel] | None = None,
+        auth_retry_available: bool = True,
+    ):
         """Async generator that wraps a streaming response.
 
         Sends chunks to frontend.
@@ -210,12 +307,38 @@ class ListenChatAgent(ChatAgent):
         last_chunk = None
 
         try:
-            async for chunk in response_gen:
-                last_chunk = chunk
-                if chunk.msg and chunk.msg.content:
-                    delta_content = chunk.msg.content
-                    accumulated_content += delta_content
-                yield chunk
+            try:
+                async for chunk in response_gen:
+                    last_chunk = chunk
+                    if chunk.msg and chunk.msg.content:
+                        delta_content = chunk.msg.content
+                        accumulated_content += delta_content
+                    yield chunk
+            except ModelProcessingError as error:
+                can_retry = (
+                    auth_retry_available
+                    and input_message is not None
+                    and not accumulated_content
+                    and await self._areload_model_after_auth_error(error)
+                )
+                if not can_retry:
+                    raise
+
+                retry_response = await ChatAgent.astep(
+                    self, input_message, response_format
+                )
+                if isinstance(retry_response, AsyncStreamingChatAgentResponse):
+                    async for chunk in retry_response:
+                        last_chunk = chunk
+                        if chunk.msg and chunk.msg.content:
+                            delta_content = chunk.msg.content
+                            accumulated_content += delta_content
+                        yield chunk
+                else:
+                    last_chunk = retry_response
+                    if retry_response.msg and retry_response.msg.content:
+                        accumulated_content += retry_response.msg.content
+                    yield retry_response
         finally:
             total_tokens = self._extract_tokens(last_chunk)
             self._send_agent_deactivate(accumulated_content, total_tokens)
@@ -253,23 +376,34 @@ class ListenChatAgent(ChatAgent):
         logger.info(
             f"Agent {self.agent_name} starting step with message: {msg}"
         )
+        auth_retried = False
+
         try:
             res = super().step(input_message, response_format)
         except ModelProcessingError as e:
-            res = None
-            error_info = e
-            if "Budget has been exceeded" in str(e):
-                message = "Budget has been exceeded"
-                logger.warning(f"Agent {self.agent_name} budget exceeded")
-                _schedule_async_task(
-                    task_lock.put_queue(ActionBudgetNotEnough())
-                )
+            if self._reload_model_after_auth_error(e):
+                auth_retried = True
+                try:
+                    res = super().step(input_message, response_format)
+                except ModelProcessingError as retry_error:
+                    e = retry_error
+
+            if res is not None:
+                error_info = None
             else:
-                message = str(e)
-                logger.error(
-                    f"Agent {self.agent_name} model processing error: {e}"
-                )
-            total_tokens = 0
+                error_info = e
+                if "Budget has been exceeded" in str(e):
+                    message = "Budget has been exceeded"
+                    logger.warning(f"Agent {self.agent_name} budget exceeded")
+                    _schedule_async_task(
+                        task_lock.put_queue(ActionBudgetNotEnough())
+                    )
+                else:
+                    message = str(e)
+                    logger.error(
+                        f"Agent {self.agent_name} model processing error: {e}"
+                    )
+                total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
@@ -283,7 +417,14 @@ class ListenChatAgent(ChatAgent):
         if res is not None:
             if isinstance(res, StreamingChatAgentResponse):
                 # Use reusable stream wrapper to send chunks to frontend
-                return StreamingChatAgentResponse(self._stream_chunks(res))
+                return StreamingChatAgentResponse(
+                    self._stream_chunks(
+                        res,
+                        input_message,
+                        response_format,
+                        auth_retry_available=not auth_retried,
+                    )
+                )
 
             message = res.msg.content if res.msg else ""
             usage_info = (
@@ -357,23 +498,45 @@ class ListenChatAgent(ChatAgent):
             if isinstance(res, AsyncStreamingChatAgentResponse):
                 # Use reusable async stream wrapper to send chunks to frontend
                 return AsyncStreamingChatAgentResponse(
-                    self._astream_chunks(res)
+                    self._astream_chunks(
+                        res,
+                        input_message,
+                        response_format,
+                        auth_retry_available=True,
+                    )
                 )
         except ModelProcessingError as e:
-            res = None
-            error_info = e
-            if "Budget has been exceeded" in str(e):
-                message = "Budget has been exceeded"
-                logger.warning(f"Agent {self.agent_name} budget exceeded")
-                asyncio.create_task(
-                    task_lock.put_queue(ActionBudgetNotEnough())
-                )
+            if await self._areload_model_after_auth_error(e):
+                try:
+                    res = await super().astep(input_message, response_format)
+                    if isinstance(res, AsyncStreamingChatAgentResponse):
+                        return AsyncStreamingChatAgentResponse(
+                            self._astream_chunks(
+                                res,
+                                input_message,
+                                response_format,
+                                auth_retry_available=False,
+                            )
+                        )
+                except ModelProcessingError as retry_error:
+                    e = retry_error
+
+            if res is not None:
+                error_info = None
             else:
-                message = str(e)
-                logger.error(
-                    f"Agent {self.agent_name} model processing error: {e}"
-                )
-            total_tokens = 0
+                error_info = e
+                if "Budget has been exceeded" in str(e):
+                    message = "Budget has been exceeded"
+                    logger.warning(f"Agent {self.agent_name} budget exceeded")
+                    asyncio.create_task(
+                        task_lock.put_queue(ActionBudgetNotEnough())
+                    )
+                else:
+                    message = str(e)
+                    logger.error(
+                        f"Agent {self.agent_name} model processing error: {e}"
+                    )
+                total_tokens = 0
         except Exception as e:
             res = None
             error_info = e
@@ -539,6 +702,43 @@ class ListenChatAgent(ChatAgent):
             extra_content=tool_call_request.extra_content,
         )
 
+    def _tool_call_request_from_stream_data(
+        self, tool_call_data: dict[str, Any]
+    ) -> ToolCallRequest:
+        function_data = tool_call_data.get("function") or {}
+        raw_args = function_data.get("arguments") or "{}"
+        if isinstance(raw_args, str):
+            args = json.loads(raw_args)
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        else:
+            args = {"arguments": raw_args}
+
+        if not isinstance(args, dict):
+            args = {"arguments": args}
+
+        return ToolCallRequest(
+            tool_name=function_data.get("name", ""),
+            args=args,
+            tool_call_id=tool_call_data.get("id")
+            or tool_call_data.get("call_id", ""),
+            extra_content=tool_call_data.get("extra_content"),
+        )
+
+    def _execute_tool_from_stream_data(
+        self, tool_call_data: dict[str, Any]
+    ) -> ToolCallingRecord | None:
+        try:
+            tool_call_request = self._tool_call_request_from_stream_data(
+                tool_call_data
+            )
+            if tool_call_request.tool_name not in self._internal_tools:
+                return super()._execute_tool_from_stream_data(tool_call_data)
+            return self._execute_tool(tool_call_request)
+        except Exception as e:
+            logger.error(f"Error processing streaming tool call: {e}")
+            return None
+
     async def _aexecute_tool(
         self, tool_call_request: ToolCallRequest
     ) -> ToolCallingRecord:
@@ -692,6 +892,22 @@ class ListenChatAgent(ChatAgent):
             tool_call_id,
             extra_content=tool_call_request.extra_content,
         )
+
+    async def _aexecute_tool_from_stream_data(
+        self, tool_call_data: dict[str, Any]
+    ) -> ToolCallingRecord | None:
+        try:
+            tool_call_request = self._tool_call_request_from_stream_data(
+                tool_call_data
+            )
+            if tool_call_request.tool_name not in self._internal_tools:
+                return await super()._aexecute_tool_from_stream_data(
+                    tool_call_data
+                )
+            return await self._aexecute_tool(tool_call_request)
+        except Exception as e:
+            logger.error(f"Error processing async streaming tool call: {e}")
+            return None
 
     def clone(self, with_memory: bool = False) -> ChatAgent:
         """Please see super.clone()"""

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -24,7 +25,7 @@ import { useSpaceStore } from './spaceStore';
 
 // type definition
 type InitState = 'carousel' | 'done';
-type ModelType = 'cloud' | 'local' | 'custom';
+type ModelType = 'cloud' | 'local' | 'custom' | 'codex_subscription';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
 type AppearanceMode = Mode | 'system';
 const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
@@ -38,6 +39,7 @@ export type WorkspaceMainBackground =
   | 'dotted'
   | 'dashed';
 export type CloudModelType = string;
+export type CodexSubscriptionModelType = string;
 
 // auth info interface
 interface AuthInfo {
@@ -67,6 +69,7 @@ interface AuthState {
   onboardingCompleted: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
+  codex_model_type: CodexSubscriptionModelType;
   /**
    * Last known result of the model configuration check, persisted so that
    * returning users don't see the "select a model" overlay flash on mount
@@ -86,6 +89,9 @@ interface AuthState {
 
   // local proxy value recorded at login
   localProxyValue?: string | null;
+
+  // API/auth environment that issued the persisted auth state.
+  authEnvironmentKey: string | null;
 
   // worker list data
   workerListData: { [key: string]: Agent[] };
@@ -111,6 +117,7 @@ interface AuthState {
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
+  setCodexModelType: (codex_model_type: CodexSubscriptionModelType) => void;
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setOnboardingCompleted: (completed: boolean) => void;
@@ -128,12 +135,47 @@ const getRandomDefaultModel = (): CloudModelType => {
 };
 
 const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
+  if (!useSpaceStore?.getState) return;
   if (userId === null || userId === undefined || userId === '') {
+    useSpaceStore.getState().resetForUser(null);
     useSpaceStore.getState().ensureLegacySpace();
     return;
   }
-  useSpaceStore.getState().ensureLegacySpace(userId);
+  useSpaceStore.getState().resetForUser(userId);
   void useSpaceStore.getState().hydrateFromServer(userId);
+};
+
+const clearAuthForCurrentEnvironment = (
+  setState: (state: Partial<AuthState>) => void,
+  getState: () => AuthState
+) => {
+  const currentEnvironmentKey = getAuthEnvironmentKey();
+  const state = getState();
+  if (state.authEnvironmentKey === currentEnvironmentKey) {
+    return false;
+  }
+
+  const hadAuth = Boolean(state.token || state.email || state.user_id != null);
+  if (state.user_id != null) {
+    void clearAllCachedProjects(state.user_id);
+  }
+
+  setState({
+    token: null,
+    username: null,
+    email: null,
+    user_id: null,
+    share_token: null,
+    localProxyValue: null,
+    authEnvironmentKey: currentEnvironmentKey,
+  });
+  useSpaceStore.getState().resetForUser(null);
+  if (hadAuth) {
+    console.warn(
+      '[authStore] Cleared persisted auth after API environment changed.'
+    );
+  }
+  return true;
 };
 
 // create store
@@ -159,17 +201,30 @@ const authStore = create<AuthState>()(
       onboardingCompleted: false,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
+      codex_model_type: 'gpt-5.5',
       hasModelConfigured: false,
       preferredIDE: 'system',
       workspaceMainBackground: 'empty',
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
+      authEnvironmentKey: getAuthEnvironmentKey(),
       workerListData: {},
 
       // auth related methods
       setAuth: ({ token, username, email, user_id }) => {
-        set({ token, username, email, user_id });
+        const previousUserId = get().user_id;
+        if (previousUserId != null && previousUserId !== user_id) {
+          void clearAllCachedProjects(previousUserId);
+        }
+        useSpaceStore.getState().resetForUser(user_id);
+        set({
+          token,
+          username,
+          email,
+          user_id,
+          authEnvironmentKey: getAuthEnvironmentKey(),
+        });
         hydrateSpacesForUser(user_id);
       },
 
@@ -188,7 +243,9 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
+          authEnvironmentKey: getAuthEnvironmentKey(),
         });
+        useSpaceStore.getState().resetForUser(null);
       },
 
       // set related methods
@@ -262,6 +319,8 @@ const authStore = create<AuthState>()(
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
+      setCodexModelType: (codex_model_type) => set({ codex_model_type }),
+
       setHasModelConfigured: (hasModelConfigured) =>
         set({ hasModelConfigured }),
 
@@ -320,24 +379,50 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 8,
+      version: 10,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
+              token?: unknown;
+              username?: unknown;
+              email?: unknown;
+              user_id?: unknown;
+              share_token?: unknown;
+              localProxyValue?: unknown;
+              authEnvironmentKey?: string | null;
               appearance?: string;
               appearanceMode?: AppearanceMode;
               customThemeCatalog?: Partial<ThemeCatalog>;
               workspaceMainBackground?: string;
               cloud_model_type?: unknown;
+              codex_model_type?: unknown;
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
+        const currentEnvironmentKey = getAuthEnvironmentKey();
+        const environmentMatches =
+          s.authEnvironmentKey === currentEnvironmentKey;
+        const authState = environmentMatches
+          ? {}
+          : {
+              token: null,
+              username: null,
+              email: null,
+              user_id: null,
+              share_token: null,
+              localProxyValue: null,
+            };
 
         const sanitizedCloudModelType: CloudModelType =
           typeof s.cloud_model_type === 'string' &&
           s.cloud_model_type.length > 0
             ? s.cloud_model_type
             : getRandomDefaultModel();
+        const sanitizedCodexModelType: CodexSubscriptionModelType =
+          typeof s.codex_model_type === 'string' &&
+          s.codex_model_type.length > 0
+            ? s.codex_model_type
+            : 'gpt-5.5';
 
         const rawWmb = s.workspaceMainBackground;
         let workspaceMainBackground: WorkspaceMainBackground = 'empty';
@@ -369,20 +454,26 @@ const authStore = create<AuthState>()(
         if (s.appearance === 'transparent') {
           return {
             ...s,
+            ...authState,
             appearance: 'light',
             appearanceMode: 'light',
             customThemeCatalog: normalizedCustomCatalog,
             workspaceMainBackground,
             cloud_model_type: sanitizedCloudModelType,
+            codex_model_type: sanitizedCodexModelType,
+            authEnvironmentKey: currentEnvironmentKey,
           };
         }
         return {
           ...s,
+          ...authState,
           appearance: normalizedAppearance,
           appearanceMode: normalizedAppearanceMode,
           customThemeCatalog: normalizedCustomCatalog,
           workspaceMainBackground,
           cloud_model_type: sanitizedCloudModelType,
+          codex_model_type: sanitizedCodexModelType,
+          authEnvironmentKey: currentEnvironmentKey,
         } as typeof persistedState;
       },
       partialize: (state) => ({
@@ -399,12 +490,14 @@ const authStore = create<AuthState>()(
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,
+        codex_model_type: state.codex_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
         onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,
+        authEnvironmentKey: state.authEnvironmentKey,
         workerListData: state.workerListData,
       }),
     }
@@ -418,12 +511,10 @@ export const useAuthStore = authStore;
 export const getAuthStore = () => authStore.getState();
 
 queueMicrotask(() => {
-  const { token, user_id } = authStore.getState();
-  if (token) {
-    hydrateSpacesForUser(user_id);
-  } else {
-    useSpaceStore.getState().ensureLegacySpace(user_id);
-  }
+  if (!useSpaceStore?.getState) return;
+  clearAuthForCurrentEnvironment(authStore.setState, authStore.getState);
+  const { user_id } = authStore.getState();
+  hydrateSpacesForUser(user_id);
 });
 
 // constant definition

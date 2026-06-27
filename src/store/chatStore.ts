@@ -321,6 +321,7 @@ interface UploadOutcome {
   success: boolean;
   fileName: string;
   source: UploadFileSource;
+  response?: unknown;
   error?: unknown;
 }
 
@@ -387,6 +388,60 @@ function taskContextResult(task: Task): string {
   return compactContextText(agentMessage?.content);
 }
 
+export function extractEndPayloadText(endData: unknown): string {
+  if (typeof endData === 'string') {
+    return endData;
+  }
+  if (!endData || typeof endData !== 'object') {
+    return '';
+  }
+
+  for (const key of ['message', 'content', 'result', 'summary']) {
+    const value = (endData as Record<string, unknown>)[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function completedSubtaskReportFallback(task?: Task): string {
+  if (!task) return '';
+
+  const reports =
+    task.taskAssigning
+      ?.flatMap((agent) => agent.tasks || [])
+      .map((subtask) => compactContextText(subtask.report))
+      .filter(Boolean) || [];
+
+  if (reports.length <= 1) {
+    return reports[0] || '';
+  }
+
+  return reports
+    .map((report, index) => `**Subtask ${index + 1}**\n${report}`)
+    .join('\n\n');
+}
+
+export function resolveEndMessageText(
+  rawEndPayload: string,
+  messages: Message[],
+  task?: Task
+) {
+  const summary = rawEndPayload.match(/<summary>(.*?)<\/summary>/s)?.[1];
+  if (summary) return summary;
+
+  if (rawEndPayload.trim()) {
+    return rawEndPayload;
+  }
+
+  const agentSummaryEnd = messages.findLast(
+    (message) => message.step === AgentStep.AGENT_SUMMARY_END
+  );
+  return agentSummaryEnd?.summary || completedSubtaskReportFallback(task);
+}
+
 export function buildProjectContinuationContext(
   projectId?: string | null,
   excludeTaskId?: string | null
@@ -430,7 +485,8 @@ export function collectTaskUploadFiles(
   generatedFiles: GeneratedUploadFile[],
   messages: Message[],
   pendingAttaches: File[] = [],
-  taskId = 'unknown_task'
+  taskId = 'unknown_task',
+  taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
     Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
@@ -443,6 +499,28 @@ export function collectTaskUploadFiles(
       name: file.name,
       relativePath: file.relativePath,
       source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+    });
+  }
+
+  for (const file of taskOutputFiles) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
+    });
+  }
+
+  for (const file of messages.flatMap((message) => message.fileList || [])) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
     });
   }
 
@@ -519,12 +597,21 @@ async function uploadTaskFiles(
       // TODO(file): rename endpoint to use project_id
       formData.append('task_id', uploadTargetId);
 
-      await uploadFile('/api/v1/chat/files/upload', formData);
-      console.log('File uploaded successfully:', file.uploadName, file.source);
+      const uploadResponse = await uploadFile(
+        '/api/v1/chat/files/upload',
+        formData
+      );
+      console.log('File uploaded successfully:', {
+        fileName: file.uploadName,
+        source: file.source,
+        uploadTargetId,
+        response: uploadResponse,
+      });
       results.push({
         success: true,
         fileName: file.uploadName,
         source: file.source,
+        response: uploadResponse,
       });
     } catch (error) {
       console.error('File upload failed:', file.uploadName, file.source, error);
@@ -1353,8 +1440,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         console.log('[startTask] Backend is ready, proceeding with task...');
       }
 
-      const { token, language, modelType, cloud_model_type, email } =
-        getAuthStore();
+      const {
+        token,
+        language,
+        modelType,
+        cloud_model_type,
+        codex_model_type,
+        email,
+        user_id,
+      } = getAuthStore();
       const workerList = getWorkerList();
       const { getLastUserMessage: _getLastUserMessage } = get();
       let systemLanguage = language;
@@ -1412,6 +1506,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         model_platform: '',
         api_url: '',
         extra_params: {},
+        auth_source: undefined as 'codex_subscription' | undefined,
       };
       if (!type && (modelType === 'custom' || modelType === 'local')) {
         const res = await proxyFetchGet('/api/v1/providers', {
@@ -1434,6 +1529,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: provider.provider_name,
           api_url: provider.endpoint_url || provider.api_url,
           extra_params: provider.encrypted_config,
+          auth_source: undefined,
         };
       } else if (!type && modelType === 'cloud') {
         const cloudModelStore = getCloudModelStore();
@@ -1503,6 +1599,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
           extra_params: {},
+          auth_source: undefined,
+        };
+      } else if (!type && modelType === 'codex_subscription') {
+        apiModel = {
+          api_key: '',
+          model_type: codex_model_type || 'gpt-5.5',
+          model_platform: 'openai',
+          api_url: '',
+          extra_params: {},
+          auth_source: 'codex_subscription',
         };
       }
 
@@ -1708,6 +1814,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             api_key: apiModel.api_key,
             api_url: apiModel.api_url,
             extra_params: apiModel.extra_params,
+            auth_source: apiModel.auth_source,
             installed_mcp: { mcpServers: {} },
             language: systemLanguage,
             allow_local_system: true,
@@ -2034,6 +2141,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addWebViewUrl,
             setIsPending,
             addMessages,
+            updateMessage,
             setHasWaitComfirm,
             setSummaryTask,
             setTaskAssigning,
@@ -2161,41 +2269,52 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   currentTaskId,
                   Date.now() + AUTO_CONFIRM_TIMEOUT_MS
                 );
-                autoConfirmTimers[currentTaskId] = setTimeout(() => {
+                const scheduledTaskId = currentTaskId;
+                const scheduledProjectId = project_id;
+                const scheduledType = type;
+                autoConfirmTimers[scheduledTaskId] = setTimeout(async () => {
                   try {
                     const currentStore = getCurrentChatStore();
-                    const currentId = getCurrentTaskId();
                     const {
                       tasks,
                       handleConfirmTask,
                       setPlanDirty,
                       setAutoConfirmDeadline,
                     } = currentStore;
-                    const message = tasks[currentId].messages.findLast(
+                    const latestTask = tasks[scheduledTaskId];
+                    if (!latestTask) {
+                      delete autoConfirmTimers[scheduledTaskId];
+                      return;
+                    }
+                    const message = latestTask.messages.findLast(
                       (item) => item.step === AgentStep.TO_SUB_TASKS
                     );
                     const isConfirm = message?.isConfirm || false;
-                    const isTakeControl = tasks[currentId].isTakeControl;
+                    const isTakeControl = latestTask.isTakeControl;
 
                     if (
-                      project_id &&
+                      scheduledProjectId &&
                       !isConfirm &&
                       !isTakeControl &&
-                      !tasks[currentId].planDirty
+                      !latestTask.planDirty
                     ) {
-                      handleConfirmTask(project_id, currentId, type);
+                      await handleConfirmTask(
+                        scheduledProjectId,
+                        scheduledTaskId,
+                        scheduledType
+                      );
                     }
-                    setPlanDirty(currentId, false);
-                    setAutoConfirmDeadline(currentId, null);
-                    delete autoConfirmTimers[currentId];
+                    setPlanDirty(scheduledTaskId, false);
+                    setAutoConfirmDeadline(scheduledTaskId, null);
+                    delete autoConfirmTimers[scheduledTaskId];
                   } catch (error) {
                     console.error(
                       'Error in auto-confirm timeout handler:',
                       error
                     );
                     // Clean up the timer reference even if there's an error
-                    setAutoConfirmDeadline(currentTaskId, null);
-                    delete autoConfirmTimers[currentTaskId];
+                    setAutoConfirmDeadline(scheduledTaskId, null);
+                    delete autoConfirmTimers[scheduledTaskId];
                   }
                 }, AUTO_CONFIRM_TIMEOUT_MS);
               } catch (error) {
@@ -3362,13 +3481,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (agentMessages.step === AgentStep.END) {
             const endData: unknown = agentMessages.data;
-            const endMessageText =
-              typeof endData === 'string'
-                ? endData
-                : typeof (endData as { message?: unknown })?.message ===
-                    'string'
-                  ? (endData as { message: string }).message
-                  : '';
+            const endMessageText = extractEndPayloadText(endData);
             const endTokens =
               typeof endData === 'object' &&
               endData !== null &&
@@ -3378,6 +3491,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            if (!currentTaskId || !tasks[currentTaskId]) return;
+
+            const endMessage = resolveEndMessageText(
+              endMessageText,
+              tasks[currentTaskId].messages,
+              tasks[currentTaskId]
+            );
+            const endMessageId = generateUniqueId();
+            const endUiMessage: Message = {
+              id: endMessageId,
+              role: 'agent',
+              content: endMessage || '',
+              step: agentMessages.step,
+              isConfirm: false,
+              fileList: [],
+            };
+
+            addMessages(currentTaskId, endUiMessage);
+            setIsPending(currentTaskId, false);
+            setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            setUpdateCount();
+
             // compute task time
             console.log(
               'tasks[taskId].snapshotsTemp',
@@ -3409,14 +3544,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         'get-file-list',
                         email,
                         currentTaskId,
-                        uploadTargetId
+                        uploadTargetId,
+                        user_id
                       )) as GeneratedUploadFile[]) || [];
+                    const taskOutputFiles = tasks[
+                      currentTaskId
+                    ].taskAssigning.flatMap((agent) =>
+                      agent.tasks.flatMap((task) => task.fileList || [])
+                    );
                     const filesToUpload = collectTaskUploadFiles(
                       generatedFiles,
                       tasks[currentTaskId].messages,
                       tasks[currentTaskId].attaches,
-                      currentTaskId
+                      currentTaskId,
+                      taskOutputFiles
                     );
+                    console.log('Task upload files collected:', {
+                      generatedFileCount: generatedFiles.length,
+                      taskOutputFileCount: taskOutputFiles.length,
+                      uploadCandidateCount: filesToUpload.length,
+                      uploadTargetId,
+                      taskId: currentTaskId,
+                    });
 
                     if (filesToUpload.length > 0) {
                       const uploadResults = await uploadTaskFiles(
@@ -3510,8 +3659,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskAssigning(currentTaskId, [...taskAssigning]);
             setTaskRunning(currentTaskId, [...taskRunning]);
 
-            if (!currentTaskId || !tasks[currentTaskId]) return;
-
             const task = tasks[currentTaskId];
             let taskTime = task.taskTime;
             let elapsed = task.elapsed;
@@ -3539,19 +3686,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   .flat();
               })
               .flat();
-            let endMessage = endMessageText;
-            let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1];
-            let newMessage: Message | null = null;
-            const agent_summary_end = tasks[currentTaskId].messages.findLast(
-              (message: Message) => message.step === AgentStep.AGENT_SUMMARY_END
-            );
-            console.log('summary', summary);
-            if (summary) {
-              endMessage = summary;
-            } else if (agent_summary_end) {
-              console.log('agent_summary_end', agent_summary_end);
-              endMessage = agent_summary_end.summary || '';
-            }
 
             const outputProjectId =
               project_id || projectStore.activeProjectId || undefined;
@@ -3568,21 +3702,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
 
             console.log('endMessage', endMessage);
-            newMessage = {
-              id: generateUniqueId(),
-              role: 'agent',
-              content: endMessage || '',
-              step: agentMessages.step,
-              isConfirm: false,
+            updateMessage(currentTaskId, endMessageId, {
+              ...endUiMessage,
               fileList: mergedFileList,
-            };
-
-            addMessages(currentTaskId, newMessage);
-
-            setIsPending(currentTaskId, false);
-            setStatus(currentTaskId, ChatTaskStatus.FINISHED);
-            // completed tasks move to history
-            setUpdateCount();
+            });
 
             console.log(tasks[currentTaskId], 'end');
 
@@ -4121,6 +4244,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setAutoConfirmDeadline,
       } = get();
       if (!taskId) return;
+      const task = tasks[taskId];
+      if (!task) return;
+
+      const setLatestPlanConfirmed = (isConfirm: boolean) => {
+        const latestTask = get().tasks[taskId];
+        if (!latestTask) return;
+        const messages = [...latestTask.messages];
+        const cardTaskIndex = messages.findLastIndex(
+          (message) => message.step === AgentStep.TO_SUB_TASKS
+        );
+        if (cardTaskIndex === -1) return;
+        messages[cardTaskIndex] = {
+          ...messages[cardTaskIndex],
+          isConfirm,
+          taskType: isConfirm ? 2 : messages[cardTaskIndex].taskType,
+        };
+        setMessages(taskId, messages);
+      };
 
       // Stop any pending auto-confirm timers for this task (manual confirmation)
       try {
@@ -4139,9 +4280,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // record task start time
       setTaskTime(taskId, Date.now());
       // Filter out empty tasks from the user-edited taskInfo
-      const taskInfo = tasks[taskId].taskInfo.filter(
-        (task) => task.content !== ''
-      );
+      const taskInfo = task.taskInfo.filter((task) => task.content !== '');
       setTaskInfo(taskId, taskInfo);
       // Sync taskRunning with the filtered taskInfo (user edits should be reflected
       setTaskRunning(
@@ -4151,27 +4290,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
       // where backend sends to_sub_tasks SSE event before we mark task as confirmed
-      let messages = [...tasks[taskId].messages];
-      const cardTaskIndex = messages.findLastIndex(
-        (message) => message.step === AgentStep.TO_SUB_TASKS
-      );
-      if (cardTaskIndex !== -1) {
-        messages[cardTaskIndex] = {
-          ...messages[cardTaskIndex],
-          isConfirm: true,
-          taskType: 2,
-        };
-        setMessages(taskId, messages);
-      }
+      setLatestPlanConfirmed(true);
 
       if (!type) {
-        await fetchPut(`/task/${project_id}`, {
-          task: taskInfo,
-        });
-        await fetchPost(`/task/${project_id}/start`, {});
+        try {
+          await fetchPut(`/task/${project_id}`, {
+            task: taskInfo,
+          });
+          await fetchPost(`/task/${project_id}/start`, {});
 
-        setActiveWorkspace(taskId, 'workflow');
-        setStatus(taskId, ChatTaskStatus.RUNNING);
+          setActiveWorkspace(taskId, 'workflow');
+          setStatus(taskId, ChatTaskStatus.RUNNING);
+        } catch (error) {
+          console.error('Failed to confirm and start task:', error);
+          setLatestPlanConfirmed(false);
+          setStatus(taskId, ChatTaskStatus.PENDING);
+          setTaskTime(taskId, 0);
+          toast.error('Failed to start task. Please try again.');
+          return;
+        }
       }
 
       // Reset editing state after manual confirmation so next round can auto-start

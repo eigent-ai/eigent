@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -21,6 +22,8 @@ from pathlib import Path
 
 SKILLS_ROOT = Path.home() / ".eigent" / "skills"
 SKILL_FILE = "SKILL.md"
+EXAMPLE_SKILLS_ENV = "EIGENT_EXAMPLE_SKILLS_DIR"
+EXAMPLE_SKILL_MARKER = ".eigent-example-skill"
 logger = logging.getLogger("skill_service")
 
 
@@ -50,8 +53,215 @@ def _assert_under_skills_root(target: Path) -> Path:
     return resolved
 
 
+def _candidate_example_skill_roots() -> list[Path]:
+    """Return likely example-skills roots for dev and packaged Electron."""
+    candidates: list[Path] = []
+
+    env_path = os.getenv(EXAMPLE_SKILLS_ENV)
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    backend_root = Path(__file__).resolve().parent.parent.parent
+    candidates.extend(
+        [
+            # Packaged app: <Resources>/example-skills
+            backend_root.parent / "example-skills",
+            # Dev repo: <repo>/resources/example-skills
+            backend_root.parent / "resources" / "example-skills",
+            # CWD variants used by uvicorn when launched from backend/.
+            Path.cwd().parent / "example-skills",
+            Path.cwd().parent / "resources" / "example-skills",
+        ]
+    )
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = str(candidate.resolve())
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(candidate)
+    return unique
+
+
+def get_example_skills_root() -> Path | None:
+    """Find the bundled example-skills directory, if available."""
+    for candidate in _candidate_example_skill_roots():
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return None
+
+
+def _copy_dir_without_symlinks(src: Path, dst: Path) -> None:
+    """Copy a directory tree while ignoring symlinks."""
+    dst.mkdir(parents=True, exist_ok=True)
+    for entry in src.iterdir():
+        if entry.is_symlink():
+            continue
+        target = dst / entry.name
+        if entry.is_dir():
+            _copy_dir_without_symlinks(entry, target)
+        elif entry.is_file():
+            shutil.copy2(entry, target)
+
+
+def _regular_files_by_relative_path(
+    root: Path, ignored_names: set[str] | None = None
+) -> dict[str, Path]:
+    ignored_names = ignored_names or set()
+    files: dict[str, Path] = {}
+    for path in root.rglob("*"):
+        if path.is_symlink() or path.name in ignored_names:
+            continue
+        if path.is_file():
+            files[str(path.relative_to(root))] = path
+    return files
+
+
+def _dir_contents_match(src: Path, dst: Path) -> bool:
+    src_files = _regular_files_by_relative_path(src)
+    dst_files = _regular_files_by_relative_path(dst, {EXAMPLE_SKILL_MARKER})
+    if set(src_files) != set(dst_files):
+        return False
+    for rel_path, src_file in src_files.items():
+        try:
+            if src_file.read_bytes() != dst_files[rel_path].read_bytes():
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def _skill_name_from_dir(skill_dir: Path) -> str | None:
+    skill_path = skill_dir / SKILL_FILE
+    if not skill_path.exists():
+        return None
+    try:
+        meta = _parse_skill_frontmatter(skill_path.read_text(encoding="utf-8"))
+        return meta["name"] if meta else None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _is_managed_example_skill(dst: Path, src: Path) -> bool:
+    if (dst / EXAMPLE_SKILL_MARKER).exists():
+        return True
+    return _skill_name_from_dir(dst) == _skill_name_from_dir(src)
+
+
+def _write_example_marker(dst: Path, source_dir_name: str) -> None:
+    (dst / EXAMPLE_SKILL_MARKER).write_text(
+        f"source={source_dir_name}\n",
+        encoding="utf-8",
+    )
+
+
+def sync_example_skills() -> dict[str, int]:
+    """Copy new bundled example skills and update existing managed examples."""
+    example_root = get_example_skills_root()
+    stats = {"copied": 0, "updated": 0, "skipped": 0}
+    if example_root is None:
+        logger.warning(
+            "Example skills source dir missing. Checked: %s",
+            [str(p) for p in _candidate_example_skill_roots()],
+        )
+        return stats
+
+    SKILLS_ROOT.mkdir(parents=True, exist_ok=True)
+    for entry in example_root.iterdir():
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        if not (entry / SKILL_FILE).exists():
+            continue
+        dest = SKILLS_ROOT / entry.name
+        if not dest.exists():
+            _copy_dir_without_symlinks(entry, dest)
+            _write_example_marker(dest, entry.name)
+            stats["copied"] += 1
+            continue
+
+        if not dest.is_dir() or not _is_managed_example_skill(dest, entry):
+            logger.warning(
+                "Skipping bundled example skill sync due to "
+                "local conflict: %s",
+                dest,
+            )
+            stats["skipped"] += 1
+            continue
+
+        if _dir_contents_match(entry, dest):
+            _write_example_marker(dest, entry.name)
+            continue
+
+        shutil.rmtree(dest)
+        _copy_dir_without_symlinks(entry, dest)
+        _write_example_marker(dest, entry.name)
+        stats["updated"] += 1
+
+    if stats["copied"] or stats["updated"]:
+        logger.info(
+            "Synced example skills to %s from %s: copied=%s updated=%s",
+            SKILLS_ROOT,
+            example_root,
+            stats["copied"],
+            stats["updated"],
+        )
+    return stats
+
+
+def seed_example_skills_if_missing() -> int:
+    """Compatibility wrapper for older callers."""
+    stats = sync_example_skills()
+    return stats["copied"] + stats["updated"]
+
+
+def is_example_skill_dir(skill_dir_name: str) -> bool:
+    """Return whether a skill directory corresponds to a bundled example."""
+    example_root = get_example_skills_root()
+    if example_root is None:
+        return False
+    src = example_root / skill_dir_name
+    dst = SKILLS_ROOT / skill_dir_name
+    return (
+        (src / SKILL_FILE).exists()
+        and dst.exists()
+        and _is_managed_example_skill(dst, src)
+    )
+
+
+def example_skills_metadata() -> list[dict]:
+    """Read metadata for all bundled example skills."""
+    example_root = get_example_skills_root()
+    if example_root is None:
+        return []
+
+    skills = []
+    for entry in example_root.iterdir():
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        skill_path = entry / SKILL_FILE
+        if not skill_path.exists():
+            continue
+        try:
+            meta = _parse_skill_frontmatter(
+                skill_path.read_text(encoding="utf-8")
+            )
+            if meta:
+                skills.append(
+                    {
+                        "name": meta["name"],
+                        "description": meta["description"],
+                        "skillDirName": entry.name,
+                    }
+                )
+        except (OSError, UnicodeDecodeError):
+            pass
+    return skills
+
+
 def skills_scan() -> list[dict]:
     """Scan skills directory and return list of skills with metadata."""
+    sync_example_skills()
     if not SKILLS_ROOT.exists():
         return []
     skills = []
@@ -70,6 +280,7 @@ def skills_scan() -> list[dict]:
                         "path": str(skill_path),
                         "scope": "user",
                         "skillDirName": entry.name,
+                        "isExample": is_example_skill_dir(entry.name),
                     }
                 )
         except (OSError, UnicodeDecodeError):

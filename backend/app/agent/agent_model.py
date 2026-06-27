@@ -28,6 +28,10 @@ from app.model.model_platform import (
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
 )
+from app.model.subscription_runtime import (
+    apply_subscription_runtime,
+    is_subscription_auth,
+)
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -84,113 +88,146 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
-    # Cloud mode: inject default Bedrock region and adjust URL for proxy.
-    if (
-        effective_config.get("model_platform") == "aws-bedrock-converse"
-        and options.is_cloud()
-    ):
-        effective_config["api_url"], extra_params = patch_bedrock_cloud_config(
-            effective_config["api_url"], extra_params
-        )
-    # Cloud mode: default api_version for Azure-backed models so AzureOpenAI
-    # construction does not blow up when the frontend omits extra_params.
-    if (
-        effective_config.get("model_platform") == "azure"
-        and options.is_cloud()
-    ):
-        extra_params = patch_azure_cloud_config(extra_params)
-    init_param_keys = {
-        "api_version",
-        "azure_ad_token",
-        "azure_ad_token_provider",
-        "max_retries",
-        "timeout",
-        "client",
-        "async_client",
-        "azure_deployment_name",
-        "region_name",
-        "aws_access_key_id",
-        "aws_secret_access_key",
-        "aws_session_token",
-    }
 
-    init_params = {}
-    model_config: dict[str, Any] = {}
+    has_explicit_custom_api_key = (
+        custom_model_config is not None
+        and custom_model_config.has_custom_config()
+        and custom_model_config.api_key is not None
+    )
+    use_subscription_runtime = (
+        is_subscription_auth(options) and not has_explicit_custom_api_key
+    )
 
-    if options.is_cloud():
-        model_config["user"] = str(options.project_id)
+    base_effective_config = dict(effective_config)
+    base_extra_params = dict(extra_params or {})
 
-    excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+    def build_model(force_refresh: bool = False):
+        effective_config = dict(base_effective_config)
+        extra_params = dict(base_extra_params)
 
-    # Distribute extra_params between init_params and model_config
-    for k, v in extra_params.items():
-        if k in excluded_keys:
-            continue
-        # Skip empty values
-        if v is None or (isinstance(v, str) and not v.strip()):
-            continue
-
-        if k in init_param_keys:
-            init_params[k] = v
-        else:
-            model_config[k] = v
-
-    # Auto-inject prompt caching based on model platform
-    try:
-        model_platform_enum = ModelPlatformType(
-            effective_config["model_platform"].lower()
-        )
-        if model_platform_enum in {
-            ModelPlatformType.ANTHROPIC,
-            ModelPlatformType.AWS_BEDROCK_CONVERSE,
-        }:
-            model_config.setdefault("cache_control", "5m")
-        elif model_platform_enum == ModelPlatformType.OPENAI:
-            model_config.setdefault(
-                "prompt_cache_key", str(options.project_id)
+        if use_subscription_runtime:
+            effective_config, extra_params = apply_subscription_runtime(
+                options,
+                effective_config,
+                extra_params,
+                force_refresh=force_refresh,
             )
-    except (ValueError, AttributeError):
-        logging.error(
-            f"Invalid model platform: {effective_config['model_platform']}",
-            exc_info=True,
-        )
 
-    if agent_name == Agents.task_agent:
-        model_config["stream"] = True
-    if agent_name == Agents.browser_agent:
+        # Cloud mode: inject default Bedrock region and adjust URL for proxy.
+        if (
+            effective_config.get("model_platform") == "aws-bedrock-converse"
+            and options.is_cloud()
+        ):
+            (
+                effective_config["api_url"],
+                extra_params,
+            ) = patch_bedrock_cloud_config(
+                effective_config["api_url"], extra_params
+            )
+        # Cloud mode: default api_version for Azure-backed models so AzureOpenAI
+        # construction does not blow up when the frontend omits extra_params.
+        if (
+            effective_config.get("model_platform") == "azure"
+            and options.is_cloud()
+        ):
+            extra_params = patch_azure_cloud_config(extra_params)
+        init_param_keys = {
+            "api_version",
+            "azure_ad_token",
+            "azure_ad_token_provider",
+            "max_retries",
+            "timeout",
+            "client",
+            "async_client",
+            "azure_deployment_name",
+            "region_name",
+            "aws_access_key_id",
+            "aws_secret_access_key",
+            "aws_session_token",
+            "default_headers",
+            "api_mode",
+        }
+
+        init_params = {}
+        model_config: dict[str, Any] = {}
+
+        if options.is_cloud():
+            model_config["user"] = str(options.project_id)
+
+        excluded_keys = {"model_platform", "model_type", "api_key", "url"}
+
+        # Distribute extra_params between init_params and model_config
+        for k, v in extra_params.items():
+            if k in excluded_keys:
+                continue
+            # Skip empty values
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+
+            if k in init_param_keys:
+                init_params[k] = v
+            else:
+                model_config[k] = v
+
+        # Auto-inject prompt caching based on model platform
         try:
             model_platform_enum = ModelPlatformType(
                 effective_config["model_platform"].lower()
             )
             if model_platform_enum in {
-                ModelPlatformType.OPENAI,
-                ModelPlatformType.AZURE,
-                ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
-                ModelPlatformType.LITELLM,
-                ModelPlatformType.OPENROUTER,
+                ModelPlatformType.ANTHROPIC,
+                ModelPlatformType.AWS_BEDROCK_CONVERSE,
             }:
-                model_config["parallel_tool_calls"] = False
+                model_config.setdefault("cache_control", "5m")
+            elif model_platform_enum == ModelPlatformType.OPENAI:
+                model_config.setdefault(
+                    "prompt_cache_key", str(options.project_id)
+                )
         except (ValueError, AttributeError):
             logging.error(
-                f"Invalid model platform for browser agent: "
+                f"Invalid model platform: "
                 f"{effective_config['model_platform']}",
                 exc_info=True,
             )
-            model_platform_enum = None
 
-    if effective_config["model_platform"].lower() == "anthropic":
-        if model_config.get("max_tokens") is None:
-            model_config["max_tokens"] = 128000
+        if agent_name == Agents.task_agent:
+            model_config["stream"] = True
+        if agent_name == Agents.browser_agent:
+            try:
+                model_platform_enum = ModelPlatformType(
+                    effective_config["model_platform"].lower()
+                )
+                if model_platform_enum in {
+                    ModelPlatformType.OPENAI,
+                    ModelPlatformType.AZURE,
+                    ModelPlatformType.OPENAI_COMPATIBLE_MODEL,
+                    ModelPlatformType.LITELLM,
+                    ModelPlatformType.OPENROUTER,
+                }:
+                    model_config["parallel_tool_calls"] = False
+            except (ValueError, AttributeError):
+                logging.error(
+                    f"Invalid model platform for browser agent: "
+                    f"{effective_config['model_platform']}",
+                    exc_info=True,
+                )
+                model_platform_enum = None
 
-    model = ModelFactory.create(
-        model_platform=effective_config["model_platform"],
-        model_type=effective_config["model_type"],
-        api_key=effective_config["api_key"],
-        url=effective_config["api_url"],
-        model_config_dict=model_config or None,
-        timeout=600,  # 10 minutes
-        **init_params,
-    )
+        if effective_config["model_platform"].lower() == "anthropic":
+            if model_config.get("max_tokens") is None:
+                model_config["max_tokens"] = 128000
+
+        return ModelFactory.create(
+            model_platform=effective_config["model_platform"],
+            model_type=effective_config["model_type"],
+            api_key=effective_config["api_key"],
+            url=effective_config["api_url"],
+            model_config_dict=model_config or None,
+            timeout=600,  # 10 minutes
+            **init_params,
+        )
+
+    model = build_model()
 
     return ListenChatAgent(
         options.project_id,
@@ -202,5 +239,10 @@ def agent_model(
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
         enable_snapshot_clean=enable_snapshot_clean,
+        model_reload_callback=(
+            (lambda: build_model(force_refresh=True))
+            if use_subscription_runtime
+            else None
+        ),
         stream_accumulate=False,
     )

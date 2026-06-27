@@ -15,8 +15,13 @@
 import { checkBackendHealth, resetBaseURL } from '@/api/http';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
-import { resetConnectionConfig } from '@/store/connectionStore';
+import {
+  getConnectionConfig,
+  resetConnectionConfig,
+  setConnectionConfig,
+} from '@/store/connectionStore';
 import { useInstallationStore } from '@/store/installationStore';
+import { getSkillsStore } from '@/store/skillsStore';
 import { useCallback, useEffect, useRef } from 'react';
 
 /**
@@ -25,11 +30,12 @@ import { useCallback, useEffect, useRef } from 'react';
  */
 export const useInstallationSetup = () => {
   const host = useHost();
-  const { initState, setInitState, email } = useAuthStore();
+  const { initState, setInitState, email, user_id } = useAuthStore();
 
   const hasCheckedOnMount = useRef(false);
   const installationCompleted = useRef(false);
   const backendReady = useRef(false);
+  const syncedSkillsConfigKey = useRef<string | null>(null);
   const startInstallation = useInstallationStore(
     (state) => state.startInstallation
   );
@@ -52,6 +58,32 @@ export const useInstallationSetup = () => {
     (state) => state.setNeedsBackendRestart
   );
 
+  const syncSkillsConfigOnOpen = useCallback(async () => {
+    const currentAuth = useAuthStore.getState();
+    if (currentAuth.user_id === null || currentAuth.user_id === undefined) {
+      return;
+    }
+
+    const endpoint = getConnectionConfig().brainEndpoint;
+    if (!endpoint) return;
+
+    const syncKey = `${currentAuth.user_id}:${endpoint}`;
+    if (syncedSkillsConfigKey.current === syncKey) return;
+
+    try {
+      await getSkillsStore().syncFromDisk();
+      syncedSkillsConfigKey.current = syncKey;
+      console.log(
+        `[useInstallationSetup] Skills config synced for user ${currentAuth.user_id}`
+      );
+    } catch (error) {
+      console.warn(
+        '[useInstallationSetup] Failed to sync skills config on open:',
+        error
+      );
+    }
+  }, []);
+
   // Shared function to poll backend/Brain status
   const startBackendPolling = useCallback(() => {
     console.log('[useInstallationSetup] Starting backend polling');
@@ -64,6 +96,7 @@ export const useInstallationSetup = () => {
           setSuccess();
           setInitState('done');
           setNeedsBackendRestart(false);
+          void syncSkillsConfigOnOpen();
           return true;
         }
       } catch (e) {
@@ -78,14 +111,17 @@ export const useInstallationSetup = () => {
       try {
         const backendPort = await host.electronAPI.getBackendPort();
         if (backendPort && backendPort > 0) {
-          const response = await fetch(
-            `http://localhost:${backendPort}/health`
-          ).catch(() => null);
+          const backendEndpoint = `http://localhost:${backendPort}`;
+          const response = await fetch(`${backendEndpoint}/health`).catch(
+            () => null
+          );
           if (response?.ok) {
+            setConnectionConfig({ brainEndpoint: backendEndpoint });
             backendReady.current = true;
             setSuccess();
             setInitState('done');
             setNeedsBackendRestart(false);
+            void syncSkillsConfigOnOpen();
             return true;
           }
         }
@@ -111,7 +147,13 @@ export const useInstallationSetup = () => {
       }, 2000);
       setTimeout(() => clearInterval(pollInterval), 30000);
     });
-  }, [setSuccess, setInitState, setNeedsBackendRestart, host]);
+  }, [
+    setSuccess,
+    setInitState,
+    setNeedsBackendRestart,
+    host,
+    syncSkillsConfigOnOpen,
+  ]);
 
   // Monitor for backend restart after logout
   useEffect(() => {
@@ -133,6 +175,12 @@ export const useInstallationSetup = () => {
       startBackendPolling();
     }
   }, [needsBackendRestart, email, setWaitingBackend, startBackendPolling]);
+
+  useEffect(() => {
+    if (backendReady.current && user_id !== null && user_id !== undefined) {
+      void syncSkillsConfigOnOpen();
+    }
+  }, [user_id, syncSkillsConfigOnOpen]);
 
   useEffect(() => {
     if (hasCheckedOnMount.current) {
@@ -271,6 +319,7 @@ export const useInstallationSetup = () => {
         // Reset cached baseURL so next getBaseURL fetches fresh port (handles restart)
         resetBaseURL();
         resetConnectionConfig();
+        setConnectionConfig({ brainEndpoint: `http://localhost:${data.port}` });
         console.log(
           `[useInstallationSetup] Backend is ready on port ${data.port}`
         );
@@ -287,6 +336,7 @@ export const useInstallationSetup = () => {
 
         setSuccess();
         setNeedsBackendRestart(false);
+        void syncSkillsConfigOnOpen();
         checkAndSetDone();
       } else {
         console.error(
@@ -319,5 +369,6 @@ export const useInstallationSetup = () => {
     setBackendError,
     setInitState,
     setNeedsBackendRestart,
+    syncSkillsConfigOnOpen,
   ]);
 };

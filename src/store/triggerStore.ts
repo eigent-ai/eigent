@@ -45,6 +45,7 @@ export interface RemoteControlSession {
   url: string;
   title: string;
   expiresAt?: string;
+  linkToken?: string;
 }
 
 export type RemoteControlLogStatus = 'created' | 'stopped' | 'expired';
@@ -81,7 +82,6 @@ interface TriggerStore {
   clearWebSocketEvent: () => void;
   addRemoteControlSession: (session: RemoteControlSession) => void;
   removeRemoteControlSession: (sessionId: string) => void;
-  clearRemoteControlSessions: () => void;
   addRemoteControlLog: (
     entry: Omit<RemoteControlLogEntry, 'id' | 'time'>
   ) => void;
@@ -187,10 +187,6 @@ export const useTriggerStore = create<TriggerStore>((set, get) => ({
         (s) => s.sessionId !== sessionId
       ),
     }));
-  },
-
-  clearRemoteControlSessions: () => {
-    set({ activeRemoteControlSessions: [] });
   },
 
   addRemoteControlLog: (entry) => {

@@ -134,6 +134,18 @@ interface PageTabState {
   setScrollToTurnRequest: (
     request: { projectId: string; taskId: string } | null
   ) => void;
+
+  // ── Inline file preview (project page) ───────────────────────────────────
+  /** Whether the inline file preview column is open beside the chat content. */
+  filePreviewOpen: boolean;
+  /** File currently shown in the inline preview, or null for the empty state. */
+  filePreviewFile: FileInfo | null;
+  /** Open the preview column. Pass a file to show it, or null for the empty state. */
+  openFilePreview: (file?: FileInfo | null) => void;
+  /** Close the preview column (keeps the last file for a subsequent re-open). */
+  closeFilePreview: () => void;
+  /** Toggle the preview column open/closed without changing the selected file. */
+  toggleFilePreview: () => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -321,6 +333,17 @@ export const usePageTabStore = create<PageTabState>()(
       scrollToTurnRequest: null,
       setScrollToTurnRequest: (request) =>
         set({ scrollToTurnRequest: request }),
+
+      filePreviewOpen: false,
+      filePreviewFile: null,
+      openFilePreview: (file) =>
+        set((state) => ({
+          filePreviewOpen: true,
+          filePreviewFile: file === undefined ? state.filePreviewFile : file,
+        })),
+      closeFilePreview: () => set({ filePreviewOpen: false }),
+      toggleFilePreview: () =>
+        set((state) => ({ filePreviewOpen: !state.filePreviewOpen })),
     }),
     {
       name: 'eigent-page-tab',
