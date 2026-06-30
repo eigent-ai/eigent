@@ -15,10 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: self-hosted
             arch: arm64
             artifact_name: macos-arm64
-          - os: macos-15-intel
+          - os: self-hosted
             arch: x64
             artifact_name: macos-intel
           - os: windows-latest
@@ -33,6 +33,21 @@ jobs:
         uses: actions/checkout@v6
         with:
           clean: true
+
+      - name: Print self-hosted runner diagnostics
+        if: contains(matrix.os, 'self-hosted')
+        run: |
+          echo "Runner name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner arch: ${{ runner.arch }}"
+          echo "Workflow runner selector: ${{ matrix.os }}"
+          echo "Build arch: ${{ matrix.arch }}"
+          sw_vers || true
+          uname -a || true
+          node --version || true
+          npm --version || true
+          python3 --version || true
+          xcodebuild -version || true
 
       # Clean node_modules on self-hosted runner to ensure fresh install
       - name: Clean node_modules (self-hosted)
