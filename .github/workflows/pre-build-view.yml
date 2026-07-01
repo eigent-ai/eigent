@@ -15,16 +15,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: [self-hosted, macOS, ARM64]
+            self_hosted: true
+            runner_labels: self-hosted, macOS, ARM64
             arch: arm64
             artifact_name: macos-arm64
-          - os: macos-15-intel
+          - os: [self-hosted, macOS, X64]
+            self_hosted: true
+            runner_labels: self-hosted, macOS, X64
             arch: x64
             artifact_name: macos-intel
           - os: windows-latest
+            self_hosted: false
+            runner_labels: windows-latest
             arch: x64
             artifact_name: windows-latest
           - os: ubuntu-latest
+            self_hosted: false
+            runner_labels: ubuntu-latest
             arch: x64
             artifact_name: ubuntu-latest
 
@@ -34,9 +42,24 @@ jobs:
         with:
           clean: true
 
+      - name: Print self-hosted runner diagnostics
+        if: matrix.self_hosted
+        run: |
+          echo "Runner name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner arch: ${{ runner.arch }}"
+          echo "Workflow runner selector: ${{ matrix.runner_labels }}"
+          echo "Build arch: ${{ matrix.arch }}"
+          sw_vers || true
+          uname -a || true
+          node --version || true
+          npm --version || true
+          python3 --version || true
+          xcodebuild -version || true
+
       # Clean node_modules on self-hosted runner to ensure fresh install
       - name: Clean node_modules (self-hosted)
-        if: contains(matrix.os, 'self-hosted')
+        if: matrix.self_hosted
         run: |
           rm -rf node_modules
           rm -rf release
@@ -45,26 +68,26 @@ jobs:
 
       # Clean build outputs on GitHub-hosted runners to avoid stale artifacts in current job
       - name: Clean build outputs (non-Windows)
-        if: "!contains(matrix.os, 'self-hosted') && runner.os != 'Windows'"
+        if: ${{ !matrix.self_hosted && runner.os != 'Windows' }}
         run: |
           rm -rf release dist out .vite
           rm -rf node_modules/.cache || true
 
       - name: Clean build outputs (Windows)
-        if: "!contains(matrix.os, 'self-hosted') && runner.os == 'Windows'"
+        if: ${{ !matrix.self_hosted && runner.os == 'Windows' }}
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force release, dist, out, .vite -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force node_modules/.cache -ErrorAction SilentlyContinue
 
       - name: Setup Node.js
-        if: "!contains(matrix.os, 'self-hosted')"
+        if: ${{ !matrix.self_hosted }}
         uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Setup Python
-        if: "!contains(matrix.os, 'self-hosted')"
+        if: ${{ !matrix.self_hosted }}
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
