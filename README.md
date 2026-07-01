@@ -54,6 +54,7 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 - [🚀 Getting Started with Open Source Cowork](#-getting-started-with-open-source-Cowork)
   - [🏠 Local Deployment (Recommended)](#-local-deployment-recommended)
   - [⚡ Quick Start (Cloud-Connected)](#-quick-start-cloud-connected)
+  - [📦 Install on Arch Linux (AUR)](#-install-on-arch-linux-aur)
   - [🏢 Enterprise](#-enterprise)
   - [☁️ Cloud Version](#%EF%B8%8F-cloud-version)
 - [✨ Key features - Open Source Cowork](#-key-features---open-source-Cowork)
@@ -129,6 +130,20 @@ npm install
 cd backend
 uv sync
 ```
+
+### 📦 Install on Arch Linux (AUR)
+
+Arch Linux (and Arch-based distros) users can install the prebuilt desktop app from the [AUR](https://aur.archlinux.org/packages/eigent-bin) with any AUR helper:
+
+```bash
+# using paru
+paru -S eigent-bin
+
+# or using yay
+yay -S eigent-bin
+```
+
+Once installed, start it from your application menu or by running `eigent` in a terminal.
 
 ### 🏢 Enterprise
 
