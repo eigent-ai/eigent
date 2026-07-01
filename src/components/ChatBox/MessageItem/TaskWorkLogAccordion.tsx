@@ -22,6 +22,7 @@ import {
   ChatTaskStatus,
   type ChatTaskStatusType,
   SessionMode,
+  TaskStatus,
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bot, ChevronDown, ChevronRight } from 'lucide-react';
@@ -83,6 +84,32 @@ function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
       agentName: agentMap[a.type as WorkflowAgentType]?.name ?? a.name,
     }))
   );
+}
+
+/**
+ * The single agent drives its work through a todo list (TODO_STATE). The
+ * in-progress todo's `active_form` (e.g. "Searching Google for relevant
+ * papers") is plumbed into that task's `content` in the store. Surface it as
+ * the live header label so the user sees what the agent is doing *right now*
+ * instead of a static "CAMEL Agent" tag.
+ *
+ * Falls back to the most recently completed step so the label never flashes
+ * empty between todos or after the run finishes.
+ */
+function getSingleAgentActiveForm(
+  task: { taskAssigning?: Agent[] } | undefined
+): string {
+  const single = task?.taskAssigning?.find((a) => a.type === 'single_agent');
+  const tasks = single?.tasks ?? [];
+  const running = tasks.find((tk) => tk.status === TaskStatus.RUNNING);
+  if (running?.content?.trim()) return running.content.trim();
+  for (let i = tasks.length - 1; i >= 0; i--) {
+    const tk = tasks[i]!;
+    if (tk.status === TaskStatus.COMPLETED && tk.content?.trim()) {
+      return tk.content.trim();
+    }
+  }
+  return '';
 }
 
 function titleCaseMethod(method: string): string {
@@ -601,7 +628,11 @@ function useTaskWorkStoreSnapshot(
           return `${log.length}:${last?.step ?? ''}:${msgLen}:${last?.data?.toolkit_name ?? ''}:${last?.data?.method_name ?? ''}`;
         })
         .join('>');
-      return `${t.status}|${t.taskTime}|${t.elapsed}|${logDigest}`;
+      // Single-agent header tracks the live in-progress todo `active_form`
+      // (carried on each task's `content`). Fold the running/last-completed
+      // step into the digest so the header re-renders as todos advance.
+      const activeFormDigest = getSingleAgentActiveForm(t);
+      return `${t.status}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}`;
     },
     () => ''
   );
@@ -927,12 +958,14 @@ const AgentGroupRow = memo(function AgentGroupRow({
   open,
   onToggle,
   isSingleAgent,
+  singleAgentActiveForm,
 }: {
   group: AgentGroup;
   taskRunning: boolean;
   open: boolean;
   onToggle: () => void;
   isSingleAgent: boolean;
+  singleAgentActiveForm: string;
 }) {
   const { agentLabel, progressLabel, latestToolTitle, latestToolRunning } =
     getGroupHeaderParts(group);
@@ -942,6 +975,12 @@ const AgentGroupRow = memo(function AgentGroupRow({
   const icon = isSingleAgent
     ? DEFAULT_BOT_ICON
     : (agentDisplay?.icon ?? DEFAULT_BOT_ICON);
+
+  // Single agent: surface the live in-progress `active_form` in place of the
+  // static "CAMEL Agent" label. Fall back to the static label only when no
+  // step description is available (never expected while running).
+  const singleAgentLabel =
+    isSingleAgent && singleAgentActiveForm ? singleAgentActiveForm : agentLabel;
 
   const headerParts: string[] = [agentLabel];
   if (progressLabel) headerParts.push(`(${progressLabel})`);
@@ -954,54 +993,90 @@ const AgentGroupRow = memo(function AgentGroupRow({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="my-1 min-w-0 gap-2 px-0 py-1 flex w-fit max-w-full items-center text-left transition-opacity hover:opacity-80"
+        className={cn(
+          'my-1 min-w-0 gap-2 px-0 py-1 flex w-fit max-w-full text-left transition-opacity hover:opacity-80',
+          isSingleAgent ? 'items-start' : 'items-center'
+        )}
       >
         {icon ? (
-          <span className="flex shrink-0 items-center">{icon}</span>
+          // my-0.5 centers the 16px icon within the 20px label-sm line so a
+          // single-line header reads as icon/text center-aligned, while a
+          // wrapped header keeps the icon pinned to the first line (items-start).
+          <span className="my-0.5 flex shrink-0 items-center">{icon}</span>
         ) : null}
 
-        <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
-          {headerRunning ? (
-            <ShinyText
-              text={headerText}
-              speed={2.5}
-              className="!text-label-sm font-normal truncate"
-            />
-          ) : (
-            <>
-              <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
-                {agentLabel}
-              </span>
-              {progressLabel ? (
-                <span className="text-label-sm text-ds-text-neutral-subtle-default">
-                  ({progressLabel})
+        {isSingleAgent ? (
+          <span className="min-w-0 block max-w-full">
+            {/* Cross-fade/slide whenever the in-progress step changes so the
+                header animates from one `active_form` to the next. Wraps onto
+                multiple lines instead of truncating. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={singleAgentLabel}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.24, ease: CONTENT_EASE }}
+                className="min-w-0 block break-words whitespace-normal"
+              >
+                {headerRunning ? (
+                  <ShinyText
+                    text={singleAgentLabel}
+                    speed={2.5}
+                    className="!text-label-sm font-normal !block break-words whitespace-normal"
+                  />
+                ) : (
+                  <span className="text-label-sm font-normal text-ds-text-neutral-muted-default block break-words whitespace-normal">
+                    {singleAgentLabel}
+                  </span>
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+        ) : (
+          <span className="min-w-0 gap-1.5 inline-flex max-w-full items-baseline truncate">
+            {headerRunning ? (
+              <ShinyText
+                text={headerText}
+                speed={2.5}
+                className="!text-label-sm font-normal truncate"
+              />
+            ) : (
+              <>
+                <span className="text-label-sm font-normal text-ds-text-neutral-muted-default">
+                  {agentLabel}
                 </span>
-              ) : null}
-              {latestToolTitle ? (
-                <>
+                {progressLabel ? (
                   <span className="text-label-sm text-ds-text-neutral-subtle-default">
-                    ·
+                    ({progressLabel})
                   </span>
-                  <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
-                    {latestToolTitle}
-                  </span>
-                </>
-              ) : null}
-            </>
-          )}
-        </span>
+                ) : null}
+                {latestToolTitle ? (
+                  <>
+                    <span className="text-label-sm text-ds-text-neutral-subtle-default">
+                      ·
+                    </span>
+                    <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default truncate">
+                      {latestToolTitle}
+                    </span>
+                  </>
+                ) : null}
+              </>
+            )}
+          </span>
+        )}
 
         {open ? (
           <ChevronDown
             size={16}
             aria-hidden
-            className="text-ds-icon-neutral-subtle-default shrink-0"
+            className="my-0.5 text-ds-icon-neutral-subtle-default shrink-0"
           />
         ) : (
           <ChevronRight
             size={16}
             aria-hidden
-            className="text-ds-icon-neutral-subtle-default shrink-0"
+            className="my-0.5 text-ds-icon-neutral-subtle-default shrink-0"
           />
         )}
       </button>
@@ -1148,6 +1223,9 @@ export function TaskWorkLogAccordion({
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
   const taskRunning = status === ChatTaskStatus.RUNNING;
   const isSingleAgent = task?.sessionMode === SessionMode.SINGLE_AGENT;
+  const singleAgentActiveForm = isSingleAgent
+    ? getSingleAgentActiveForm(task)
+    : '';
 
   // Normalize status with task-level context — once the task stops,
   // every entry (and any running message/tool) is done regardless of whether
@@ -1269,6 +1347,7 @@ export function TaskWorkLogAccordion({
                     open={isOpen(entry)}
                     onToggle={() => toggle(entry.id)}
                     isSingleAgent={isSingleAgent}
+                    singleAgentActiveForm={singleAgentActiveForm}
                   />
                 ) : (
                   <AgentBlockRow
