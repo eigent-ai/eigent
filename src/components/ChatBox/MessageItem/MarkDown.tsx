@@ -199,7 +199,8 @@ export const MarkDown = memo(
                     await electronAPI.readFileAsDataUrl(resolvedPath);
 
                   // Add cursor-pointer class and data attributes for click handling
-                  const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
+                  // Add loop="infinite" to ensure GIFs play continuously (fixes issue #1480)
+                  const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;" loop="infinite">`;
                   rawHtml = rawHtml.replace(fullTag, newTag);
                 } else {
                   // Fallback: show alt text or placeholder
@@ -213,10 +214,10 @@ export const MarkDown = memo(
                 // Keep original tag if loading fails
               }
             } else {
-              // For absolute URLs, add click handler
+              // For absolute URLs, add click handler and loop attribute
               const newTag = fullTag.replace(
                 '<img',
-                '<img class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;"'
+                '<img class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;" loop="infinite"'
               );
               rawHtml = rawHtml.replace(fullTag, newTag);
             }
@@ -332,6 +333,7 @@ export const MarkDown = memo(
                 src={previewImage}
                 alt="Preview"
                 className="h-auto max-h-[90vh] w-auto max-w-full rounded object-contain"
+                loop="infinite"
               />
             )}
           </DialogContent>
