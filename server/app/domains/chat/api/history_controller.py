@@ -179,6 +179,12 @@ async def update_chat_history(
         raise HTTPException(status_code=403, detail="You are not allowed to update this chat history")
 
     update_data = data.model_dump(exclude_unset=True)
+    # The summary column is length-bounded; clamp defensively so an
+    # over-long value from any client truncates instead of failing the
+    # whole update (which would also discard the status change).
+    if isinstance(update_data.get("summary"), str):
+        summary_limit = ChatHistory.summary.type.length
+        update_data["summary"] = update_data["summary"][:summary_limit]
     history.update_fields(update_data)
     if "project_name" in update_data:
         _sync_project_display_name(
