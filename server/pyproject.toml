@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.15.2",
     "openai>=1.99.3,<2",
-    "camel-ai==0.2.90a5",
+    "camel-ai==0.2.90a6",
     "pydantic[email]>=2.11.1",
     "click>=8.1.8",
     "fastapi>=0.115.12",
@@ -38,6 +38,7 @@ dependencies = [
     "slack-sdk>=3.39.0",
     "celery>=5.6.2",
     "redis>=7.2.1",
+    "loguru>=0.7.3",
 ]
 
 [project.optional-dependencies]

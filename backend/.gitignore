@@ -1,6 +1,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+camel_logs/
 build/
 dist/
 wheels/
@@ -20,3 +21,4 @@ img
 uv_installing.lock
 uv_installed.lock
 benchmark/*_results.csv
+benchmark/harbor/jobs/

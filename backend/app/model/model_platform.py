@@ -17,11 +17,51 @@ from typing import Annotated, Final
 from pydantic import BeforeValidator
 
 PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
-    "z.ai": "openai-compatible-model",
+    "z.ai": "zhipuai",
     "ModelArk": "openai-compatible-model",
     "grok": "openai-compatible-model",
+    "ernie": "qianfan",
     "llama.cpp": "openai-compatible-model",
+    "nebius": "openai-compatible-model",
+    "orcarouter": "openai-compatible-model",
 }
+
+# Bedrock Converse requires a region during model initialization.
+BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
+
+# Azure OpenAI requires an api_version. The cloud proxy accepts any modern
+# version; this default keeps cloud-mode requests working when the frontend
+# does not surface api_version in extra_params.
+AZURE_DEFAULT_API_VERSION: Final[str] = "2024-10-21"
+
+
+def patch_bedrock_cloud_config(
+    api_url: str, extra_params: dict
+) -> tuple[str, dict]:
+    """Patch API URL and extra_params for Bedrock Converse in cloud mode.
+
+    Appends '/bedrock' to the proxy URL and defaults the region.
+    Returns the updated (api_url, extra_params).
+    """
+    extra_params = dict(extra_params)
+    extra_params.setdefault("region_name", BEDROCK_CONVERSE_REGION)
+    if not api_url.rstrip("/").endswith("/bedrock"):
+        api_url = api_url + "/bedrock"
+    return api_url, extra_params
+
+
+def patch_azure_cloud_config(extra_params: dict) -> dict:
+    """Default Azure `api_version` for cloud mode.
+
+    The cloud proxy fronts Azure OpenAI but the frontend sends an empty
+    `extra_params` for cloud, leaving `api_version` unset. Camel's
+    `AzureOpenAIModel` raises if neither the kwarg nor `AZURE_API_VERSION`
+    env var is provided — inject a sensible default here so cloud-mode
+    GPT models (gpt-5.4, gpt-5.5, gpt-5-mini, ...) construct cleanly.
+    """
+    extra_params = dict(extra_params)
+    extra_params.setdefault("api_version", AZURE_DEFAULT_API_VERSION)
+    return extra_params
 
 
 def normalize_model_platform(platform: str) -> str:

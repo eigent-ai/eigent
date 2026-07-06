@@ -15,7 +15,7 @@
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.type.config_group import ConfigGroup
+from app.shared.types.config_group import ConfigGroup
 
 
 class Config(AbstractModel, DefaultTimes, table=True):
@@ -55,8 +55,9 @@ class ConfigInfo:
         #     "toolkit": "",
         # },
         ConfigGroup.SLACK.value: {
-            "env_vars": ["SLACK_BOT_TOKEN"],
+            "env_vars": ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET", "SLACK_APP_TOKEN"],
             "toolkit": "slack_toolkit",
+            "trigger": "slack_trigger",
         },
         ConfigGroup.LARK.value: {
             "env_vars": ["LARK_APP_ID", "LARK_APP_SECRET"],
@@ -149,7 +150,14 @@ class ConfigInfo:
             "toolkit": "google_drive_mcp_toolkit",
         },
         ConfigGroup.GOOGLE_GMAIL_MCP.value: {
-            "env_vars": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+            "env_vars": [
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "GOOGLE_REFRESH_TOKEN",
+                "GMAIL_GOOGLE_CLIENT_ID",
+                "GMAIL_GOOGLE_CLIENT_SECRET",
+                "GMAIL_GOOGLE_REFRESH_TOKEN",
+            ],
             "toolkit": "google_gmail_native_toolkit",
         },
         ConfigGroup.IMAGE_ANALYSIS.value: {
@@ -167,14 +175,6 @@ class ConfigInfo:
         ConfigGroup.RAG.value: {
             "env_vars": ["OPENAI_API_KEY"],
             "toolkit": "rag_toolkit",
-        },
-        ConfigGroup.REDDIT.value: {
-            "env_vars": [
-                "REDDIT_CLIENT_ID",
-                "REDDIT_CLIENT_SECRET",
-                "REDDIT_USER_AGENT",
-            ],
-            "toolkit": "reddit_toolkit",
         },
     }
 

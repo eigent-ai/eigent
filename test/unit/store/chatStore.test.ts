@@ -26,24 +26,54 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
-vi.mock('@/api/http', () => ({
-  fetchPost: vi.fn(),
-  fetchPut: vi.fn(),
-  getBaseURL: vi.fn(() => Promise.resolve('http://localhost:8000')),
-  proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
-  proxyFetchPut: vi.fn(),
-  proxyFetchGet: vi.fn(() =>
-    Promise.resolve({
-      value: '',
-      api_url: '',
-      items: [],
-      warning_code: null,
-    })
-  ),
-  uploadFile: vi.fn(),
-  fetchDelete: vi.fn(),
-  waitForBackendReady: vi.fn(() => Promise.resolve(true)),
-}));
+vi.mock('@/api/http', async () => {
+  const { fetchEventSource } = await import('@microsoft/fetch-event-source');
+  const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
+
+  return {
+    fetchPost: vi.fn(),
+    fetchPut: vi.fn(),
+    getBaseURL,
+    proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
+    proxyFetchPut: vi.fn(),
+    proxyFetchGet: vi.fn(() =>
+      Promise.resolve({
+        value: '',
+        api_url: '',
+        items: [],
+        warning_code: null,
+      })
+    ),
+    uploadFile: vi.fn(),
+    fetchDelete: vi.fn(),
+    waitForBackendReady: vi.fn(() => Promise.resolve(true)),
+    sseTransport: vi.fn(async (options: any) => {
+      const baseURL = await getBaseURL();
+      const fullUrl =
+        options.url.startsWith('http://') || options.url.startsWith('https://')
+          ? options.url
+          : `${baseURL}${options.url}`;
+      const body =
+        typeof options.body === 'string'
+          ? options.body
+          : options.body
+            ? JSON.stringify(options.body)
+            : undefined;
+
+      await fetchEventSource(fullUrl, {
+        method: options.method || 'POST',
+        openWhenHidden: options.openWhenHidden ?? true,
+        signal: options.signal,
+        headers: options.extraHeaders ?? {},
+        body,
+        onmessage: options.onmessage,
+        onopen: options.onopen,
+        onerror: options.onerror,
+        onclose: options.onclose,
+      });
+    }),
+  };
+});
 
 vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
@@ -59,8 +89,8 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
-    initState: 'permissions' as const,
+    cloud_model_type: 'gpt-5.4' as const,
+    initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
   },
@@ -73,8 +103,8 @@ vi.mock('../../../src/store/authStore', () => ({
     language: 'system',
     isFirstLaunch: true,
     modelType: 'cloud' as const,
-    cloud_model_type: 'gpt-4.1' as const,
-    initState: 'permissions' as const,
+    cloud_model_type: 'gpt-5.4' as const,
+    initState: 'carousel' as const,
     share_token: null,
     workerListData: {},
   })),
@@ -91,10 +121,22 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
-import { proxyFetchGet } from '@/api/http';
+import {
+  fetchPost,
+  fetchPut,
+  proxyFetchGet,
+  waitForBackendReady,
+} from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
-import { useChatStore } from '../../../src/store/chatStore';
+import {
+  collectTaskUploadFiles,
+  extractEndPayloadText,
+  getCloudModelPlatform,
+  resolveConfirmedUserMessageContent,
+  resolveEndMessageText,
+  useChatStore,
+} from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ChatTaskStatus } from '../../../src/types/constants';
 
@@ -112,6 +154,244 @@ import { ChatTaskStatus } from '../../../src/types/constants';
 describe('ChatStore - Core Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('Confirmed user prompt resolution', () => {
+    it('uses the optimistic user message when it exists', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          lastMessageContent: 'current typed prompt',
+          messageContent: 'first prompt',
+          question: 'backend current prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('current typed prompt');
+    });
+
+    it('uses the SSE question for follow-up confirms before stale startTask content', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'follow-up prompt',
+          isFollowUpConfirm: true,
+        })
+      ).toBe('follow-up prompt');
+    });
+
+    it('keeps first-run confirms on the captured startTask content before question', () => {
+      expect(
+        resolveConfirmedUserMessageContent({
+          messageContent: 'first prompt',
+          question: 'backend confirmed prompt',
+          isFollowUpConfirm: false,
+        })
+      ).toBe('first prompt');
+    });
+  });
+
+  describe('END message resolution', () => {
+    it('keeps non-empty END payload ahead of prior agent summaries', () => {
+      expect(
+        resolveEndMessageText('Final task output', [
+          { step: 'agent_summary_end', summary: 'Older summary' },
+        ] as any)
+      ).toBe('Final task output');
+    });
+
+    it('extracts result-shaped END payloads', () => {
+      expect(
+        extractEndPayloadText({
+          result: 'Final result from replay payload',
+          tokens: 10,
+        })
+      ).toBe('Final result from replay payload');
+    });
+
+    it('falls back to completed subtask reports when END payload is empty', () => {
+      expect(
+        resolveEndMessageText('', [], {
+          taskAssigning: [
+            {
+              tasks: [
+                { report: 'Created INC0494320' },
+                { report: 'Generated ticket report with 27 rows' },
+              ],
+            },
+          ],
+        } as any)
+      ).toContain('Generated ticket report with 27 rows');
+    });
+  });
+
+  describe('Task Upload Files', () => {
+    it('collects project outputs, camel logs, and unique user attachments', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [
+          {
+            path: '/tmp/project/report.md',
+            name: 'report.md',
+            source: 'project_output',
+          },
+          {
+            path: '/tmp/logs/ba4462e1/agent.log',
+            name: 'agent.log',
+            relativePath: 'ba4462e1',
+            source: 'camel_log',
+          },
+          {
+            path: '/tmp/project',
+            name: 'project',
+            isFolder: true,
+            source: 'project_output',
+          },
+        ],
+        [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'question',
+            attaches: [
+              {
+                fileName: 'brief.pdf',
+                filePath: '/Users/test/Documents/brief.pdf',
+              },
+              {
+                fileName: 'report.md',
+                filePath: '/tmp/project/report.md',
+              },
+            ],
+          },
+        ] as any,
+        [
+          {
+            fileName: 'followup.csv',
+            filePath: '/Users/test/Documents/followup.csv',
+          },
+        ],
+        'task-123'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/tmp/project/report.md',
+          name: 'report.md',
+          uploadName: 'project_output/report.md',
+          source: 'project_output',
+        },
+        {
+          path: '/tmp/logs/ba4462e1/agent.log',
+          name: 'agent.log',
+          uploadName: 'camel_log/ba4462e1/agent.log',
+          source: 'camel_log',
+        },
+        {
+          path: '/Users/test/Documents/brief.pdf',
+          name: 'brief.pdf',
+          uploadName: 'user_attachment/brief.pdf',
+          source: 'user_attachment',
+        },
+        {
+          path: '/Users/test/Documents/followup.csv',
+          name: 'followup.csv',
+          uploadName: 'user_attachment/followup.csv',
+          source: 'user_attachment',
+        },
+      ]);
+    });
+
+    it('skips remote attachment URLs and falls back to filename from path', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [],
+        [
+          {
+            id: 'msg-2',
+            role: 'user',
+            content: 'question',
+            attaches: [
+              {
+                fileName: '',
+                filePath: 'C:\\Users\\test\\Desktop\\notes.txt',
+              },
+              {
+                fileName: 'remote.pdf',
+                filePath: 'https://example.com/remote.pdf',
+              },
+            ],
+          },
+        ] as any,
+        [],
+        'task-456'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: 'C:\\Users\\test\\Desktop\\notes.txt',
+          name: 'notes.txt',
+          uploadName: 'user_attachment/notes.txt',
+          source: 'user_attachment',
+        },
+      ]);
+    });
+
+    it('collects generated files from task output file lists', () => {
+      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          type: 'html',
+        },
+        {
+          path: 'https://example.com/files/remote.html',
+          name: 'remote.html',
+          type: 'html',
+        },
+      ] as any);
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          uploadName: 'project_output/index.html',
+          source: 'project_output',
+        },
+      ]);
+    });
+
+    it('keeps camel log upload names nested under camel_log', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [
+          {
+            path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+            name: 'conv.json',
+            relativePath: 'agent',
+            source: 'camel_log',
+          },
+        ],
+        [],
+        [],
+        'task-123'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+          name: 'conv.json',
+          uploadName: 'camel_log/agent/conv.json',
+          source: 'camel_log',
+        },
+      ]);
+    });
+  });
+
+  describe('Cloud Model Platform Mapping', () => {
+    it('maps cloud model ids to backend platforms', () => {
+      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
+      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
+        'aws-bedrock-converse'
+      );
+      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
+      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
+    });
   });
 
   describe('Task Creation', () => {
@@ -528,6 +808,147 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(result.current.getState().updateCount).toBe(initialCount + 2);
+    });
+  });
+
+  describe('Task startup', () => {
+    it('renders the pending user turn before backend readiness resolves', async () => {
+      let resolveBackendReady!: (ready: boolean) => void;
+      vi.mocked(waitForBackendReady).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveBackendReady = resolve;
+        })
+      );
+
+      const { result } = renderHook(() => useChatStore());
+      const appendInitChatStore = vi.fn(() => {
+        const optimisticTaskId = result.current
+          .getState()
+          .create('optimistic-task');
+        result.current.getState().setActiveTaskId(optimisticTaskId);
+        return {
+          taskId: optimisticTaskId,
+          chatStore: result.current,
+        };
+      });
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+      } as any);
+
+      let startPromise!: Promise<void>;
+      act(() => {
+        const initialTaskId = result.current.getState().create('initial-task');
+        startPromise = result.current
+          .getState()
+          .startTask(
+            initialTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'Resume this project',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+      });
+
+      expect(appendInitChatStore).toHaveBeenCalledTimes(1);
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: true,
+        status: ChatTaskStatus.PENDING,
+        messages: [
+          expect.objectContaining({
+            role: 'user',
+            content: 'Resume this project',
+          }),
+        ],
+      });
+
+      resolveBackendReady(false);
+      await act(async () => {
+        await startPromise;
+      });
+
+      expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
+        isPending: false,
+        status: ChatTaskStatus.FINISHED,
+      });
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+  });
+
+  describe('Cross-store task safety', () => {
+    it('does not create phantom tasks through task-scoped setters', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      act(() => {
+        result.current.getState().setSelectedFile('missing-task', {
+          name: 'missing.md',
+          path: '/missing.md',
+          type: 'md',
+        });
+        result.current
+          .getState()
+          .setActiveWorkspace('missing-task', 'workflow');
+        result.current.getState().setActiveAgent('missing-task', 'agent-1');
+      });
+
+      expect(result.current.getState().tasks['missing-task']).toBeUndefined();
+    });
+  });
+
+  describe('Plan confirmation', () => {
+    it('rolls back confirmed plan UI when backend start request fails', async () => {
+      vi.mocked(fetchPut).mockRejectedValueOnce(new Error('network down'));
+      const { result } = renderHook(() => useChatStore());
+
+      let taskId: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId);
+        result.current.getState().setTaskInfo(taskId, [
+          {
+            id: 'task.1',
+            content: 'Do the work',
+            status: 'empty',
+          } as any,
+        ]);
+        result.current.getState().addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'agent',
+          content: '',
+          step: 'to_sub_tasks',
+          isConfirm: false,
+        });
+      });
+
+      await act(async () => {
+        await result.current.getState().handleConfirmTask('project-1', taskId!);
+      });
+
+      const task = result.current.getState().tasks[taskId!];
+      const planMessage = task.messages.find(
+        (message) => message.step === 'to_sub_tasks'
+      );
+      expect(planMessage?.isConfirm).toBe(false);
+      expect(task.status).toBe(ChatTaskStatus.PENDING);
+      expect(task.taskTime).toBe(0);
+      expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
     });
   });
 

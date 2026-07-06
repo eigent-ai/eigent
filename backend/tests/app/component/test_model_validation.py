@@ -216,6 +216,25 @@ def test_create_agent_invalid_model_platform():
 
 
 @pytest.mark.unit
+@patch("app.component.model_validation.ModelFactory.create")
+@patch("app.component.model_validation.ChatAgent")
+def test_create_agent_hardcodes_bedrock_converse_region(
+    mock_chat_agent, mock_model_factory
+):
+    """Test Bedrock Converse validation always uses the hardcoded region."""
+    mock_model_factory.return_value = MagicMock()
+    mock_chat_agent.return_value = MagicMock()
+
+    create_agent(
+        model_platform="aws-bedrock-converse",
+        model_type="anthropic.claude-3-5-sonnet",
+        api_key="test_key",
+    )
+
+    assert mock_model_factory.call_args.kwargs["region_name"] == "us-west-2"
+
+
+@pytest.mark.unit
 def test_validation_missing_model_type():
     """Test validation with missing model type."""
     result = validate_model_with_details(

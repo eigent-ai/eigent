@@ -21,6 +21,13 @@ import {
 } from '@/api/http';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogContentSection,
+  DialogFooter,
+  DialogHeader,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -37,8 +44,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { createHost } from '@/host/createHost';
+import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { useAuthStore } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Provider } from '@/types';
 import {
   Check,
@@ -53,35 +64,28 @@ import {
   Server,
   Settings,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-// Import model images
-import anthropicImage from '@/assets/model/anthropic.svg';
-import azureImage from '@/assets/model/azure.svg';
-import bedrockImage from '@/assets/model/bedrock.svg';
-import deepseekImage from '@/assets/model/deepseek.svg';
 import eigentImage from '@/assets/model/eigent.svg';
-import geminiImage from '@/assets/model/gemini.svg';
-import llamaCppImage from '@/assets/model/llamacpp.svg';
-import lmstudioImage from '@/assets/model/lmstudio.svg';
-import minimaxImage from '@/assets/model/minimax.svg';
-import modelarkImage from '@/assets/model/modelark.svg';
-import moonshotImage from '@/assets/model/moonshot.svg';
-import ollamaImage from '@/assets/model/ollama.svg';
-import openaiImage from '@/assets/model/openai.svg';
-import openrouterImage from '@/assets/model/openrouter.svg';
-import qwenImage from '@/assets/model/qwen.svg';
-import sglangImage from '@/assets/model/sglang.svg';
-import vllmImage from '@/assets/model/vllm.svg';
-import zaiImage from '@/assets/model/zai.svg';
+import {
+  getModelImage,
+  needsInvertModelImage,
+} from '@/shared/modelProviderImages';
 
+import {
+  fetchProviderModels,
+  loadCachedModels,
+  saveCachedModels,
+  type ProviderModelGroup,
+} from '@/lib/providerModels';
+import { ProviderModelCombobox } from './components/ProviderModelCombobox';
+import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
   appendV1ToEndpoint,
   canAutoFixOllamaEndpoint,
-  DARK_FILL_MODELS,
   getDefaultLocalEndpoint,
   getLocalPlatformName,
   LLAMA_CPP_PROVIDER_ID,
@@ -90,7 +94,6 @@ import {
   OLLAMA_ENDPOINT_AUTO_FIX_DESC,
   OLLAMA_ENDPOINT_AUTO_FIX_TITLE,
   OLLAMA_PROVIDER_ID,
-  PROVIDER_AVATAR_URLS,
   SGLANG_PROVIDER_ID,
   toEndpointBaseUrl,
   VLLM_PROVIDER_ID,
@@ -108,25 +111,50 @@ type SidebarTab =
   | 'local-lmstudio'
   | 'local-llama.cpp';
 
+const PLAN_CREDITS_BY_KEY: Record<string, number> = {
+  plus: 2000,
+  pro: 10000,
+};
+
 export default function SettingModels() {
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     setModelType,
     setCloudModelType,
+    setCodexModelType,
     appearance,
   } = useAuthStore();
   const _navigate = useNavigate();
   const { t } = useTranslation();
-  const getValidateMessage = (res: any) =>
-    res?.message ??
-    res?.detail?.message ??
-    res?.detail?.error?.message ??
-    res?.error?.message ??
-    t('setting.validate-failed');
+  const getValidateMessage = (res: any): string => {
+    const msg =
+      res?.message ??
+      res?.detail?.message ??
+      res?.detail?.error?.message ??
+      res?.error?.message ??
+      t('setting.validate-failed');
+    return typeof msg === 'string' ? msg : JSON.stringify(msg);
+  };
   const [items, _setItems] = useState<Provider[]>(
     INIT_PROVODERS.filter((p) => p.id !== 'local')
   );
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const getCloudModelDisplayName = useCloudModelStore(
+    (state) => state.getModelDisplayName
+  );
+  const effectiveCloudModelId = useCloudModelStore((state) =>
+    state.getEffectiveModelId(cloud_model_type)
+  );
+  const cloudModelOptions = cloudModels.map((model) => ({
+    id: model.id,
+    name: model.display_name,
+  }));
   const [form, setForm] = useState(() =>
     INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => ({
       apiKey: p.apiKey,
@@ -143,7 +171,26 @@ export default function SettingModels() {
   const [showApiKey, setShowApiKey] = useState(() =>
     INIT_PROVODERS.filter((p) => p.id !== 'local').map(() => false)
   );
+  const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<number | null>(null);
+  const [configCardRing, setConfigCardRing] =
+    useState<ConfigCardRingStatus>('idle');
+  const configCardRingResetRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const showConfigCardRing = useCallback((status: ConfigCardRingStatus) => {
+    if (configCardRingResetRef.current) {
+      clearTimeout(configCardRingResetRef.current);
+      configCardRingResetRef.current = null;
+    }
+    setConfigCardRing(status);
+    if (status === 'success' || status === 'error') {
+      configCardRingResetRef.current = setTimeout(() => {
+        setConfigCardRing('idle');
+        configCardRingResetRef.current = null;
+      }, 1000);
+    }
+  }, []);
   const [errors, setErrors] = useState<
     {
       apiKey?: string;
@@ -162,14 +209,25 @@ export default function SettingModels() {
   // Sidebar selected tab - default to cloud
   const [selectedTab, setSelectedTab] = useState<SidebarTab>('cloud');
 
-  // BYOK accordion state
-  const [byokCollapsed, setByokCollapsed] = useState(false);
+  // Subscription sub-accordion state (nested inside Custom Model)
+  const [subscriptionCollapsed, setSubscriptionCollapsed] = useState(false);
+
+  // BYOK (API key) sub-accordion state (nested inside Custom Model)
+  const [byokGroupCollapsed, setByokGroupCollapsed] = useState(false);
 
   // Local Model accordion state
   const [localCollapsed, setLocalCollapsed] = useState(false);
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);
+  const [codexBusy, setCodexBusy] = useState(false);
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+    account_label?: string | null;
+    expires_at?: string | null;
+    last_error_code?: string | null;
+  }>({ connected: false, status: 'not_connected' });
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -193,6 +251,72 @@ export default function SettingModels() {
   >({});
   const [ollamaEndpointAutoFixedOnce, setOllamaEndpointAutoFixedOnce] =
     useState(false);
+
+  // Per-cloud-provider model list state: { groups, loading, error } keyed by
+  // provider id. Populated for providers whose `INIT_PROVODERS` entry declares
+  // a `modelsEndpoint`.
+  const [cloudModelsState, setCloudModelsState] = useState<
+    Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    >
+  >(() => {
+    const initial: Record<
+      string,
+      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+    > = {};
+    for (const p of INIT_PROVODERS) {
+      if (!p.modelsEndpoint) continue;
+      const cached = loadCachedModels(p.id);
+      if (cached) {
+        initial[p.id] = { groups: cached, loading: false, error: null };
+      }
+    }
+    return initial;
+  });
+
+  const fetchCloudProviderModels = useCallback(
+    async (idx: number) => {
+      const item = items[idx];
+      if (!item?.modelsEndpoint) return;
+      const apiKey = form[idx]?.apiKey;
+      const apiHost = form[idx]?.apiHost || item.apiHost;
+      if (!apiKey) return;
+      setCloudModelsState((prev) => ({
+        ...prev,
+        [item.id]: {
+          groups: prev[item.id]?.groups || [],
+          loading: true,
+          error: null,
+        },
+      }));
+      try {
+        const groups = await fetchProviderModels(
+          apiHost,
+          item.modelsEndpoint,
+          apiKey
+        );
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: { groups, loading: false, error: null },
+        }));
+        saveCachedModels(item.id, groups);
+      } catch (err: any) {
+        setCloudModelsState((prev) => ({
+          ...prev,
+          [item.id]: {
+            groups: prev[item.id]?.groups || [],
+            loading: false,
+            error:
+              typeof err?.message === 'string'
+                ? err.message
+                : 'Failed to fetch models.',
+          },
+        }));
+      }
+    },
+    [items, form]
+  );
 
   // Generic model fetcher driven by LOCAL_MODEL_OPTIONS config.
   // Only fetches for providers that define fetchPath and parseModels.
@@ -266,8 +390,9 @@ export default function SettingModels() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await proxyFetchGet('/api/providers');
+        const res = await proxyFetchGet('/api/v1/providers');
         const providerList = Array.isArray(res) ? res : res.items || [];
+
         // Handle custom models
         setForm((f) =>
           f.map((fi, idx) => {
@@ -282,7 +407,7 @@ export default function SettingModels() {
                 apiKey: found.api_key || '',
                 // Fall back to provider's default API host if endpoint_url is empty
                 apiHost: found.endpoint_url || item.apiHost,
-                is_valid: !!found?.is_valid,
+                is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
                 externalConfig: fi.externalConfig
@@ -356,6 +481,10 @@ export default function SettingModels() {
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -372,18 +501,31 @@ export default function SettingModels() {
     }
   }, [items, modelType, fetchModelsForPlatform]);
 
+  useEffect(
+    () => () => {
+      if (configCardRingResetRef.current) {
+        clearTimeout(configCardRingResetRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
+    void fetchCloudModels();
+  }, [fetchCloudModels]);
+
   // Get current default model display text
   const getDefaultModelDisplayText = (): string => {
     if (cloudPrefer) {
-      const cloudModel = cloudModelOptions.find(
-        (m) => m.id === cloud_model_type
-      );
-      const modelName = cloudModel
-        ? cloudModel.name
-        : cloud_model_type
-            .replace(/-/g, ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+      const modelName = getCloudModelDisplayName(cloud_model_type);
       return `${t('setting.eigent-cloud')} / ${modelName}`;
+    }
+
+    if (modelType === 'codex_subscription') {
+      return `${t('setting.custom-model')} / Codex Subscription${
+        codex_model_type ? ` (${codex_model_type})` : ''
+      }`;
     }
 
     // Check for custom model preference
@@ -414,6 +556,9 @@ export default function SettingModels() {
     }
     if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
+      if (idx !== -1 && items[idx].authMode === 'oauth_subscription') {
+        return codexStatus.connected;
+      }
       return idx !== -1 && !!form[idx]?.provider_id;
     }
     if (category === 'local') {
@@ -438,8 +583,13 @@ export default function SettingModels() {
         setSelectedTab('cloud');
       } else if (category === 'custom') {
         setSelectedTab(`byok-${modelId}` as SidebarTab);
-        // Expand BYOK section if collapsed
-        if (byokCollapsed) setByokCollapsed(false);
+        // Expand the relevant Custom Model sub-accordion if collapsed
+        const target = items.find((item) => item.id === modelId);
+        if (target?.authMode === 'oauth_subscription') {
+          setSubscriptionCollapsed(false);
+        } else {
+          setByokGroupCollapsed(false);
+        }
       } else if (category === 'local') {
         setSelectedTab(`local-${modelId}` as SidebarTab);
         // Expand Local section if collapsed
@@ -464,7 +614,7 @@ export default function SettingModels() {
       setCloudPrefer(true);
       setModelType('cloud');
       if (modelId !== 'cloud') {
-        setCloudModelType(modelId as any);
+        setCloudModelType(modelId);
       }
     } else if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
@@ -482,27 +632,12 @@ export default function SettingModels() {
     setPendingDefaultModel(null);
   };
 
-  // Cloud model options
-  const cloudModelOptions = [
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
-    { id: 'gpt-4.1', name: 'GPT-4.1' },
-    { id: 'gpt-5', name: 'GPT-5' },
-    { id: 'gpt-5.1', name: 'GPT-5.1' },
-    { id: 'gpt-5.2', name: 'GPT-5.2' },
-    { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4-5' },
-    { id: 'minimax_m2_5', name: 'Minimax M2.5' },
-  ];
-
   const handleVerify = async (idx: number) => {
     const { apiKey, apiHost, externalConfig, model_type, provider_id } =
       form[idx];
     let hasError = false;
     const newErrors = [...errors];
-    if (items[idx].id !== 'local') {
+    if (items[idx].id !== 'local' && items[idx].id !== 'aws-bedrock-converse') {
       if (!apiKey || apiKey.trim() === '') {
         newErrors[idx].apiKey = t('setting.api-key-can-not-be-empty');
         hasError = true;
@@ -523,8 +658,12 @@ export default function SettingModels() {
       newErrors[idx].model_type = '';
     }
     setErrors(newErrors);
-    if (hasError) return;
+    if (hasError) {
+      showConfigCardRing('error');
+      return;
+    }
 
+    showConfigCardRing('configuring');
     setLoading(idx);
     const item = items[idx];
     let external: any = {};
@@ -539,7 +678,7 @@ export default function SettingModels() {
       const res = await fetchPost('/model/validate', {
         model_platform: item.id,
         model_type: form[idx].model_type,
-        api_key: form[idx].apiKey,
+        api_key: form[idx].apiKey || null,
         url: form[idx].apiHost,
         extra_params: external,
       });
@@ -560,6 +699,8 @@ export default function SettingModels() {
           next[idx].apiKey = getValidateMessage(res);
           return next;
         });
+        showConfigCardRing('error');
+        setLoading(null);
         return;
       }
       console.log(res);
@@ -572,16 +713,16 @@ export default function SettingModels() {
         next[idx].apiKey = getValidateMessage(e);
         return next;
       });
-      return;
-    } finally {
+      showConfigCardRing('error');
       setLoading(null);
+      return;
     }
 
     const data: any = {
       provider_name: item.id,
       api_key: form[idx].apiKey,
       endpoint_url: form[idx].apiHost,
-      is_valid: form[idx].is_valid,
+      is_valid: toProviderValidStatus(true),
       model_type: form[idx].model_type,
     };
     if (externalConfig) {
@@ -592,12 +733,12 @@ export default function SettingModels() {
     }
     try {
       if (provider_id) {
-        await proxyFetchPut(`/api/provider/${provider_id}`, data);
+        await proxyFetchPut(`/api/v1/provider/${provider_id}`, data);
       } else {
-        await proxyFetchPost('/api/provider', data);
+        await proxyFetchPost('/api/v1/provider', data);
       }
       // add: refresh provider list after saving, update form and switch editable status
-      const res = await proxyFetchGet('/api/providers');
+      const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
       setForm((f) =>
         f.map((fi, i) => {
@@ -612,8 +753,9 @@ export default function SettingModels() {
               apiKey: found.api_key || '',
               // Fall back to provider's default API host if endpoint_url is empty
               apiHost: found.endpoint_url || item.apiHost,
-              is_valid: !!found.is_valid,
+              is_valid: getProviderValid(found),
               prefer: found.prefer ?? false,
+              model_type: found.model_type ?? fi.model_type ?? '',
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -642,12 +784,17 @@ export default function SettingModels() {
       } else {
         handleSwitch(idx, true);
       }
+      showConfigCardRing('success');
+    } catch (e) {
+      console.error('Error saving provider:', e);
+      showConfigCardRing('error');
     } finally {
       setLoading(null);
     }
   };
 
   const handleLocalVerify = async () => {
+    showConfigCardRing('configuring');
     setLocalVerifying(true);
     setLocalError(null);
     setLocalInputError(false);
@@ -674,12 +821,14 @@ export default function SettingModels() {
       setLocalError(t('setting.endpoint-url-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     if (!currentType) {
       setLocalError(t('setting.model-type-can-not-be-empty'));
       setLocalInputError(true);
       setLocalVerifying(false);
+      showConfigCardRing('error');
       return;
     }
     try {
@@ -753,6 +902,7 @@ export default function SettingModels() {
               },
             });
 
+            showConfigCardRing('error');
             return;
           }
           console.log(res);
@@ -767,6 +917,7 @@ export default function SettingModels() {
               },
             },
           });
+          showConfigCardRing('error');
           return;
         }
       }
@@ -777,7 +928,7 @@ export default function SettingModels() {
         provider_name: localPlatform,
         api_key: 'not-required',
         endpoint_url: currentEndpoint, // Save base URL without specific endpoints
-        is_valid: true,
+        is_valid: toProviderValidStatus(true),
         model_type: currentType,
         encrypted_config: {
           model_platform: localPlatform,
@@ -787,15 +938,15 @@ export default function SettingModels() {
 
       // Update or create provider
       if (currentProviderId) {
-        await proxyFetchPut(`/api/provider/${currentProviderId}`, data);
+        await proxyFetchPut(`/api/v1/provider/${currentProviderId}`, data);
       } else {
-        await proxyFetchPost('/api/provider', data);
+        await proxyFetchPost('/api/v1/provider', data);
       }
 
       setLocalError(null);
       setLocalInputError(false);
       // add: refresh provider list after saving, update localProviderIds and localPrefer
-      const res = await proxyFetchGet('/api/providers');
+      const res = await proxyFetchGet('/api/v1/providers');
       const providerList = Array.isArray(res) ? res : res.items || [];
       const local = providerList.find(
         (p: any) => p.provider_name === localPlatform
@@ -818,11 +969,13 @@ export default function SettingModels() {
       }
 
       await fetchModelsForPlatform(localPlatform, currentEndpoint);
+      showConfigCardRing('success');
     } catch (e: any) {
       setLocalError(
         e.message || t('setting.verification-failed-please-check-endpoint-url')
       );
       setLocalInputError(true);
+      showConfigCardRing('error');
     } finally {
       setLocalVerifying(false);
     }
@@ -871,7 +1024,7 @@ export default function SettingModels() {
       });
     }
     try {
-      await proxyFetchPost('/api/provider/prefer', {
+      await proxyFetchPost('/api/v1/provider/prefer', {
         provider_id: form[idx].provider_id,
       });
       setModelType('custom');
@@ -905,7 +1058,7 @@ export default function SettingModels() {
       const targetProviderId =
         providerId !== undefined ? providerId : localProviderIds[localPlatform];
       if (targetProviderId === undefined) return;
-      await proxyFetchPost('/api/provider/prefer', {
+      await proxyFetchPost('/api/v1/provider/prefer', {
         provider_id: targetProviderId,
       });
       setModelType('local');
@@ -924,7 +1077,7 @@ export default function SettingModels() {
     try {
       const currentProviderId = localProviderIds[localPlatform];
       if (currentProviderId !== undefined) {
-        await proxyFetchDelete(`/api/provider/${currentProviderId}`);
+        await proxyFetchDelete(`/api/v1/provider/${currentProviderId}`);
       }
       // Set endpoint to platform default
       const defaultEndpoint = getDefaultLocalEndpoint(localPlatform);
@@ -952,11 +1105,12 @@ export default function SettingModels() {
       toast.error(t('setting.reset-failed'));
     }
   };
+
   const handleDelete = async (idx: number) => {
     try {
       const { provider_id } = form[idx];
       if (provider_id) {
-        await proxyFetchDelete(`/api/provider/${provider_id}`);
+        await proxyFetchDelete(`/api/v1/provider/${provider_id}`);
       }
       // reset single form entry to default empty values
       setForm((prev) =>
@@ -996,7 +1150,7 @@ export default function SettingModels() {
   // removed bulk reset; only single-provider delete is supported
 
   const checkHasSearchKey = async () => {
-    const configsRes = await proxyFetchGet('/api/configs');
+    const configsRes = await proxyFetchGet('/api/v1/configs');
     const configs = Array.isArray(configsRes) ? configsRes : [];
     console.log(configsRes, configs);
     const _hasApiKey = configs.find(
@@ -1009,8 +1163,10 @@ export default function SettingModels() {
   };
 
   const [subscription, setSubscription] = useState<any>(null);
+  const [trialUpgradeDialogOpen, setTrialUpgradeDialogOpen] = useState(false);
+  const [upgradingTrial, setUpgradingTrial] = useState(false);
   const fetchSubscription = async () => {
-    const res = await proxyFetchGet('/api/subscription');
+    const res = await proxyFetchGet('/api/v1/subscription');
     console.log(res);
     if (res) {
       setSubscription(res);
@@ -1018,67 +1174,91 @@ export default function SettingModels() {
   };
   const [credits, setCredits] = useState<any>(0);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  // True when the credits request failed (treated as "server not connected").
+  const [creditsError, setCreditsError] = useState(false);
   const updateCredits = async () => {
     try {
       setLoadingCredits(true);
-      const res = await proxyFetchGet(`/api/user/current_credits`);
+      const res = await proxyFetchGet(`/api/v1/user/current_credits`);
       console.log(res?.credits);
       setCredits(res?.credits);
+      setCreditsError(false);
     } catch (error) {
       console.error(error);
+      setCreditsError(true);
     } finally {
       setLoadingCredits(false);
     }
   };
 
-  // Check if a model logo needs inversion in dark mode
-  const needsInvert = (modelId: string | null): boolean => {
-    if (!modelId || appearance !== 'dark') return false;
-    // Strip 'local-' prefix for local model tab IDs
-    const key = modelId.startsWith('local-')
-      ? modelId.replace('local-', '')
-      : modelId;
-    return DARK_FILL_MODELS.has(key);
+  const formatCredits = (value: unknown): string => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return String(value ?? 0);
+    }
+    return new Intl.NumberFormat().format(numericValue);
   };
 
-  // Helper to get model image based on model ID
-  const getModelImage = (modelId: string | null): string | null => {
-    if (!modelId) return null;
-    const modelImageMap: Record<string, string> = {
-      // Cloud version
-      cloud: eigentImage,
-      // Cloud models
-      openai: openaiImage,
-      anthropic: anthropicImage,
-      gemini: geminiImage,
-      openrouter: openrouterImage,
-      'tongyi-qianwen': qwenImage,
-      deepseek: deepseekImage,
-      minimax: minimaxImage,
-      'z.ai': zaiImage,
-      moonshot: moonshotImage,
-      ModelArk: modelarkImage,
-      'samba-nova': PROVIDER_AVATAR_URLS['samba-nova'],
-      grok: PROVIDER_AVATAR_URLS.grok,
-      mistral: PROVIDER_AVATAR_URLS.mistral,
-      'aws-bedrock': bedrockImage,
-      azure: azureImage,
-      'openai-compatible-model': openaiImage, // Use OpenAI icon as fallback
-      // Local models
-      ollama: ollamaImage,
-      vllm: vllmImage,
-      sglang: sglangImage,
-      lmstudio: lmstudioImage,
-      [LLAMA_CPP_PROVIDER_ID]: llamaCppImage,
-      // Local model tab IDs
-      'local-ollama': ollamaImage,
-      'local-vllm': vllmImage,
-      'local-sglang': sglangImage,
-      'local-lmstudio': lmstudioImage,
-      'local-llama.cpp': llamaCppImage,
-    };
-    return modelImageMap[modelId] || null;
+  const getPlanKey = () =>
+    typeof subscription?.plan_key === 'string'
+      ? subscription.plan_key.toLowerCase()
+      : '';
+
+  const getPlanName = () => {
+    const planKey = getPlanKey();
+    if (!planKey) {
+      return '';
+    }
+    return planKey.charAt(0).toUpperCase() + planKey.slice(1);
   };
+
+  const getSelectedPlanCredits = () => {
+    const planKey = getPlanKey();
+    const monthlyCredits = Number(subscription?.monthly_credits);
+    return (
+      PLAN_CREDITS_BY_KEY[planKey] ??
+      (Number.isFinite(monthlyCredits) ? monthlyCredits : 0)
+    );
+  };
+
+  const handleTrialUpgrade = async () => {
+    try {
+      setUpgradingTrial(true);
+      await proxyFetchPost('/api/v1/upgrade-trial-to-paid');
+      toast.success(
+        t('setting.trial-upgrade-success', {
+          defaultValue: 'Your full plan credits are unlocked.',
+        })
+      );
+      setTrialUpgradeDialogOpen(false);
+      await Promise.all([fetchSubscription(), updateCredits()]);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const recoveryUrl =
+        detail && typeof detail === 'object' ? detail.recovery_url : undefined;
+      const message =
+        detail && typeof detail === 'object'
+          ? detail.message
+          : detail || error?.message;
+
+      if (recoveryUrl) {
+        window.location.href = recoveryUrl;
+        return;
+      }
+
+      toast.error(
+        message ||
+          t('setting.trial-upgrade-failed', {
+            defaultValue: 'Upgrade failed. Please try again.',
+          })
+      );
+    } finally {
+      setUpgradingTrial(false);
+    }
+  };
+
+  const needsInvert = (modelId: string | null): boolean =>
+    needsInvertModelImage(modelId, appearance);
 
   // Helper to render sidebar tab item
   const renderSidebarItem = (
@@ -1087,7 +1267,10 @@ export default function SettingModels() {
     modelId: string | null,
     isActive: boolean,
     isSubItem: boolean = false,
-    isConfigured: boolean = false
+    isConfigured: boolean = false,
+    // When provided, renders a connection dot with this tone (overrides the
+    // default binary "configured" green dot). `null` renders no dot.
+    dotTone?: 'success' | 'error' | 'muted' | null
   ) => {
     const modelImage = getModelImage(modelId);
     const fallbackIcon =
@@ -1103,13 +1286,13 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`rounded-xl px-3 py-2 flex w-full items-center justify-between transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
-            ? 'bg-fill-fill-transparent-active'
+            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
         } `}
       >
-        <div className="flex items-center justify-center gap-3">
+        <div className="gap-3 flex items-center justify-center">
           {modelImage ? (
             <img
               src={modelImage}
@@ -1118,21 +1301,174 @@ export default function SettingModels() {
               style={needsInvert(modelId) ? { filter: 'invert(1)' } : undefined}
             />
           ) : (
-            <span className={isActive ? 'text-text-body' : 'text-text-label'}>
+            <span
+              className={
+                isActive
+                  ? 'text-ds-text-neutral-default-default'
+                  : 'text-ds-text-neutral-muted-default'
+              }
+            >
               {fallbackIcon}
             </span>
           )}
           <span
-            className={`text-body-sm font-medium ${isActive ? 'text-text-body' : 'text-text-label'}`}
+            className={`text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
           >
             {label}
           </span>
         </div>
-        {isConfigured && (
-          <div className="m-1 h-2 w-2 rounded-full bg-text-success" />
-        )}
+        {dotTone !== undefined
+          ? dotTone && (
+              <div
+                className={`m-1 h-2 w-2 shrink-0 rounded-full ${
+                  dotTone === 'success'
+                    ? 'bg-ds-text-success-default-default'
+                    : dotTone === 'error'
+                      ? 'bg-ds-text-error-default-default'
+                      : 'bg-ds-text-neutral-default-default opacity-10'
+                }`}
+              />
+            )
+          : isConfigured && (
+              <div className="m-1 h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
+            )}
       </button>
     );
+  };
+
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({
+        connected: false,
+        status: 'error',
+        last_error_code: 'status_unavailable',
+      });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  const codexAuthErrorMessage = useCallback(
+    (code?: string | null): string => {
+      switch (code) {
+        case 'oauth_callback_port_in_use':
+          return t('setting.codex-port-in-use', {
+            defaultValue:
+              'The Codex sign-in port (1455) is in use. Close other Codex/ChatGPT CLI sessions or another Eigent window, then try again.',
+          });
+        case 'oauth_callback_unavailable':
+          return t('setting.codex-callback-unavailable', {
+            defaultValue:
+              'Could not start the local sign-in listener. Please try again.',
+          });
+        case 'oauth_open_browser_failed':
+          return t('setting.codex-open-browser-failed', {
+            defaultValue: 'Could not open your browser for sign-in.',
+          });
+        case 'oauth_state_expired':
+          return t('setting.codex-state-expired', {
+            defaultValue: 'Sign-in took too long. Please try again.',
+          });
+        case 'oauth_state_mismatch':
+          return t('setting.codex-state-mismatch', {
+            defaultValue: 'Sign-in could not be verified. Please try again.',
+          });
+        case 'access_denied':
+          return t('setting.codex-access-denied', {
+            defaultValue: 'Sign-in was cancelled.',
+          });
+        default:
+          return t('setting.codex-login-failed', {
+            defaultValue: 'Codex sign-in failed. Please try again.',
+          });
+      }
+    },
+    [t]
+  );
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = (_event?: unknown, payload?: { error_code?: string }) => {
+      if (payload?.error_code) {
+        toast.error(codexAuthErrorMessage(payload.error_code));
+      }
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus, codexAuthErrorMessage]);
+
+  const handleCodexLogin = async () => {
+    if (!email) {
+      toast.error(
+        t('setting.login-required', { defaultValue: 'Please sign in first.' })
+      );
+      return;
+    }
+
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionLogin?.(email);
+      if (!result?.success) {
+        throw new Error(result?.error || result?.error_code || 'login_failed');
+      }
+      await refreshCodexStatus();
+    } catch (error: any) {
+      console.error('Failed to start Codex subscription login:', error);
+      toast.error(codexAuthErrorMessage(error?.message));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexDisconnect = async () => {
+    if (!email) return;
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionDisconnect?.(email);
+      if (!result?.success) {
+        throw new Error(
+          result?.error || result?.error_code || 'disconnect_failed'
+        );
+      }
+      await refreshCodexStatus();
+      if (modelType === 'codex_subscription') {
+        setModelType('cloud');
+      }
+      toast.success(
+        t('setting.codex-disconnected', {
+          defaultValue: 'Codex subscription disconnected.',
+        })
+      );
+    } catch (error: any) {
+      console.error('Failed to disconnect Codex subscription:', error);
+      toast.error(error?.message || t('setting.reset-failed'));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexSetDefault = () => {
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
   };
 
   // Render content based on selected tab
@@ -1141,141 +1477,202 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="flex h-64 items-center justify-center text-text-label">
+          <div className="h-64 text-ds-text-neutral-muted-default flex items-center justify-center">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
       }
+      const isTrialing = Boolean(subscription?.is_trialing);
+      const selectedPlanCredits = getSelectedPlanCredits();
+      const trialDailyLimit =
+        Number(subscription?.trial_daily_credits_limit) || 300;
+      const trialTotalLimit =
+        Number(subscription?.trial_total_credits_limit) || 1000;
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-start gap-2 self-stretch">
-              <div className="text-body-base my-2 flex-1 justify-center font-bold text-text-heading">
+        <div className="rounded-2xl bg-ds-bg-neutral-subtle-default flex w-full flex-col">
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-start self-stretch">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default flex-1 justify-center">
                 {t('setting.eigent-cloud')}
               </div>
-              {cloudPrefer ? (
-                <Button
-                  variant="success"
-                  size="xs"
-                  className="focus-none rounded-full"
-                  onClick={() => {
-                    setCloudPrefer(false);
-                    setModelType('custom');
-                  }}
-                >
-                  {t('setting.default')}
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="rounded-full !text-text-label"
-                  onClick={() => {
-                    setLocalPrefer(false);
-                    setActiveModelIdx(null);
-                    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-                    setCloudPrefer(true);
-                    setModelType('cloud');
-                  }}
-                >
-                  {t('setting.set-as-default')}
-                </Button>
-              )}
+              <div className="gap-2 flex items-center">
+                {cloudPrefer ? (
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    disabled
+                  >
+                    {t('setting.default')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    tone="neutral"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    className="!text-ds-text-neutral-muted-default"
+                    onClick={() => {
+                      setLocalPrefer(false);
+                      setActiveModelIdx(null);
+                      setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+                      setCloudPrefer(true);
+                      setModelType('cloud');
+                    }}
+                  >
+                    {t('setting.set-as-default')}
+                  </Button>
+                )}
+                {/* Connection dot: green = connected with credits,
+                    grey = server not connected, error = out of credits. */}
+                <div
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    creditsError
+                      ? 'bg-ds-text-neutral-default-default opacity-10'
+                      : Number(credits) > 0
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-error-default-default'
+                  }`}
+                />
+              </div>
             </div>
             <div className="justify-center self-stretch">
-              <span className="text-body-sm text-text-label">
+              <span className="text-body-sm text-ds-text-neutral-muted-default">
                 {t('setting.you-are-currently-subscribed-to-the')}{' '}
-                {subscription?.plan_key?.charAt(0).toUpperCase() +
-                  subscription?.plan_key?.slice(1)}
-                . {t('setting.discover-more-about-our')}{' '}
+                {getPlanName()}. {t('setting.discover-more-about-our')}{' '}
               </span>
               <span
                 onClick={() => {
-                  window.location.href = `https://www.eigent.ai/pricing`;
+                  window.location.href = `${SITE_URL}/pricing`;
                 }}
-                className="cursor-pointer text-body-sm text-text-label underline"
+                className="text-body-sm text-ds-text-neutral-muted-default cursor-pointer underline"
               >
                 {t('setting.pricing-options')}
               </span>
-              <span className="text-label-sm font-normal text-text-body">
+              <span className="text-label-sm font-normal text-ds-text-neutral-default-default">
                 .
               </span>
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
-            <div className="text-body-sm text-text-body">
-              {t('setting.credits')}:{' '}
-              {loadingCredits ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                credits
+          <div className="gap-4 px-6 pb-4 flex w-full flex-row items-start justify-between">
+            <div className="min-w-0 gap-1 flex flex-1 flex-col">
+              <div className="gap-1 text-body-sm text-text-body flex items-center">
+                <span>{t('setting.credits')}:</span>
+                {loadingCredits ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <span>{formatCredits(credits)}</span>
+                )}
+              </div>
+              {isTrialing && (
+                <p className="m-0 text-label-sm leading-5 text-text-label max-w-[560px]">
+                  {t('setting.trial-plan-notice-before-upgrade', {
+                    defaultValue:
+                      "You're on a trial. Your {{planName}} plan includes {{planCredits}} credits; the trial unlocks {{daily}} credits/day (up to {{total}}) before you upgrade.",
+                    planName: getPlanName(),
+                    planCredits: formatCredits(selectedPlanCredits),
+                    daily: formatCredits(trialDailyLimit),
+                    total: formatCredits(trialTotalLimit),
+                  })}{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTrialUpgradeDialogOpen(true)}
+                    className="p-0 text-label-sm font-medium text-text-body cursor-pointer border-0 bg-transparent underline"
+                  >
+                    {t('setting.upgrade', { defaultValue: 'Upgrade' })}
+                  </button>{' '}
+                  {t('setting.trial-plan-notice-after-upgrade', {
+                    defaultValue:
+                      'anytime to unlock the full plan credits and get the most out of your plan.',
+                  })}
+                </p>
               )}
             </div>
             <Button
               onClick={() => {
-                window.location.href = `https://www.eigent.ai/dashboard`;
+                window.location.href = `${SITE_URL}/dashboard`;
               }}
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
+              textWeight="bold"
+              buttonRadius="lg"
             >
               {loadingCredits ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                subscription?.plan_key?.charAt(0).toUpperCase() +
-                subscription?.plan_key?.slice(1)
+                getPlanName()
               )}
               <Settings />
             </Button>
           </div>
-          <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
-            <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+          <Dialog
+            open={trialUpgradeDialogOpen}
+            onOpenChange={setTrialUpgradeDialogOpen}
+          >
+            <DialogContent
+              size="sm"
+              overlayVariant="dark"
+              onClose={() => setTrialUpgradeDialogOpen(false)}
+            >
+              <DialogHeader
+                title={t('setting.trial-upgrade-title', {
+                  defaultValue: 'Upgrade plan',
+                })}
+              />
+              <DialogContentSection className="px-4 py-4">
+                <p className="m-0 text-body-sm text-text-body">
+                  {t('setting.trial-upgrade-body', {
+                    defaultValue:
+                      'Upgrade now to unlock full credits instantly.',
+                  })}
+                </p>
+              </DialogContentSection>
+              <DialogFooter
+                showCancelButton
+                showConfirmButton
+                cancelButtonText={t('setting.not-now', {
+                  defaultValue: 'Not Now',
+                })}
+                confirmButtonText={
+                  upgradingTrial
+                    ? t('setting.upgrading', { defaultValue: 'Upgrading...' })
+                    : t('setting.upgrade', { defaultValue: 'Upgrade' })
+                }
+                onCancel={() => setTrialUpgradeDialogOpen(false)}
+                onConfirm={handleTrialUpgrade}
+                confirmButtonDisabled={upgradingTrial}
+                cancelButtonDisabled={upgradingTrial}
+              />
+            </DialogContent>
+          </Dialog>
+          <div className="px-6 pb-4 flex w-full flex-1 items-center justify-between">
+            <div className="min-w-0 flex flex-1 items-center">
+              <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
             </div>
             <div className="ml-4 flex-shrink-0">
               <Select
-                value={cloud_model_type}
+                value={effectiveCloudModelId ?? cloud_model_type}
                 onValueChange={setCloudModelType}
               >
                 <SelectTrigger size="sm">
                   <SelectValue placeholder={t('setting.select-model-type')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gemini-3.1-pro-preview">
-                    {t('setting.gemini-3.1-pro-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gemini-3-pro-preview">
-                    {t('setting.gemini-3-pro-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gemini-3-flash-preview">
-                    {t('setting.gemini-3-flash-preview-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-4.1-mini">
-                    {t('setting.gpt-4.1-mini-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-4.1">
-                    {t('setting.gpt-4.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5">
-                    {t('setting.gpt-5-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.1">
-                    {t('setting.gpt-5.1-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5.2">
-                    {t('setting.gpt-5.2-name')}
-                  </SelectItem>
-                  <SelectItem value="gpt-5-mini">
-                    {t('setting.gpt-5-mini-name')}
-                  </SelectItem>
-                  <SelectItem value="claude-sonnet-4-5">
-                    {t('setting.claude-sonnet-4-5-name')}
-                  </SelectItem>
-                  <SelectItem value="minimax_m2_5">
-                    {t('setting.minimax-m2-5-name')}
-                  </SelectItem>
+                  {cloudModelOptions.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1291,49 +1688,211 @@ export default function SettingModels() {
       if (idx === -1) return null;
 
       const item = items[idx];
-      const canSwitch = !!form[idx].provider_id;
+      const isSubscriptionAuth = item.authMode === 'oauth_subscription';
+      const canSwitch = !!form[idx].provider_id && !isSubscriptionAuth;
+
+      if (isSubscriptionAuth) {
+        const isConnected = codexStatus.connected;
+        const isDefault = modelType === 'codex_subscription';
+
+        return (
+          <ConfigModelCard status={configCardRing}>
+            <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+              <div className="gap-2 inline-flex items-center justify-between self-stretch">
+                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+                  {item.name}
+                </div>
+                <div className="gap-2 flex items-center">
+                  {isConnected ? (
+                    isDefault ? (
+                      <Button
+                        variant="primary"
+                        tone="success"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        disabled
+                      >
+                        {t('setting.default')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        tone="neutral"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        className="!text-ds-text-neutral-muted-default"
+                        disabled={codexBusy}
+                        onClick={handleCodexSetDefault}
+                      >
+                        {t('setting.set-as-default')}
+                      </Button>
+                    )
+                  ) : null}
+                  <div
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      isConnected
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-neutral-default-default opacity-10'
+                    }`}
+                  />
+                </div>
+              </div>
+              <div className="text-body-sm text-ds-text-neutral-muted-default">
+                {item.description}
+              </div>
+            </div>
+            <div className="gap-4 px-6 pb-4 flex w-full flex-col">
+              {/* Login row: left status text, right action */}
+              <div className="gap-3 flex w-full items-center justify-between">
+                <div className="min-w-0 flex flex-1 flex-col">
+                  <span className="text-body-sm text-ds-text-neutral-default-default">
+                    {isConnected
+                      ? codexStatus.account_label ||
+                        t('setting.connected', { defaultValue: 'Connected' })
+                      : t('setting.not-configured')}
+                  </span>
+                  {codexStatus.expires_at ? (
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.expires_at}
+                    </span>
+                  ) : null}
+                  {!isConnected && codexStatus.last_error_code ? (
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.last_error_code}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="ml-4 gap-2 flex shrink-0 items-center">
+                  {isConnected ? (
+                    <Button
+                      variant="secondary"
+                      tone="error"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexDisconnect}
+                    >
+                      {t('setting.disconnect', { defaultValue: 'Disconnect' })}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      tone="neutral"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexLogin}
+                    >
+                      {codexBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t('layout.login', { defaultValue: 'Sign in' })
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Model type row: left label, right input */}
+              <div className="gap-3 flex w-full items-center justify-between">
+                <div className="min-w-0 flex flex-1 items-center">
+                  <span className="text-body-sm overflow-hidden text-ellipsis whitespace-nowrap">
+                    {t('setting.model-type')}
+                  </span>
+                </div>
+                <div className="ml-4 flex-shrink-0">
+                  <Input
+                    value={codex_model_type}
+                    onChange={(e) => setCodexModelType(e.target.value)}
+                    placeholder="gpt-5.5"
+                    className="w-[220px]"
+                  />
+                </div>
+              </div>
+            </div>
+          </ConfigModelCard>
+        );
+      }
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="text-body-base my-2 font-bold text-text-heading">
+        <ConfigModelCard status={configCardRing}>
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="gap-2 flex items-center">
                 {form[idx].prefer ? (
-                  <span className="inline-flex items-center rounded-full px-2 py-1 text-label-xs font-bold text-text-success">
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    disabled
+                    buttonRadius="full"
+                  >
                     {t('setting.default')}
-                  </span>
-                ) : (
+                  </Button>
+                ) : canSwitch ? (
                   <Button
                     variant="ghost"
+                    tone="neutral"
                     size="xs"
-                    disabled={!canSwitch || loading === idx}
+                    buttonContent="text"
+                    textWeight="bold"
+                    disabled={loading === idx}
+                    buttonRadius="full"
                     onClick={() => handleSwitch(idx, true)}
-                    className={
-                      canSwitch
-                        ? 'inline-flex items-center rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none hover:bg-button-transparent-fill-active'
-                        : 'inline-flex items-center gap-1.5'
-                    }
                   >
-                    {!canSwitch
-                      ? t('setting.not-configured')
-                      : t('setting.set-as-default')}
+                    {t('setting.set-as-default')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    tone="neutral"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    disabled
+                    buttonRadius="full"
+                  >
+                    {t('setting.not-configured')}
                   </Button>
                 )}
                 {form[idx].provider_id ? (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-success" />
+                  <div className="h-2 w-2 bg-ds-text-success-default-default shrink-0 rounded-full" />
                 ) : (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-text-label opacity-10" />
+                  <div className="h-2 w-2 bg-ds-text-neutral-default-default shrink-0 rounded-full opacity-10" />
                 )}
               </div>
             </div>
-            <div className="text-body-sm text-text-label">
+            <div className="text-body-sm text-ds-text-neutral-muted-default">
               {item.description}
+              {item.websiteUrl ? (
+                <>
+                  {' '}
+                  <a
+                    href={item.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text-information hover:underline"
+                  >
+                    Visit {item.name}
+                  </a>
+                </>
+              ) : null}
             </div>
           </div>
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             {/* API Key Setting */}
             <Input
               id={`apiKey-${item.id}`}
@@ -1388,33 +1947,68 @@ export default function SettingModels() {
               }}
             />
             {/* Model Type Setting */}
-            <Input
-              id={`modelType-${item.id}`}
-              size="default"
-              title={t('setting.model-type-setting')}
-              state={errors[idx]?.model_type ? 'error' : 'default'}
-              note={errors[idx]?.model_type ?? undefined}
-              placeholder={`${t('setting.enter-your-model-type')} ${
-                item.name
-              } ${t('setting.model-type')}`}
-              value={form[idx].model_type}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) =>
-                  f.map((fi, i) => (i === idx ? { ...fi, model_type: v } : fi))
-                );
-                setErrors((errs) =>
-                  errs.map((er, i) =>
-                    i === idx ? { ...er, model_type: '' } : er
-                  )
-                );
-              }}
-            />
+            {item.modelsEndpoint ? (
+              <ProviderModelCombobox
+                providerName={item.name}
+                title={t('setting.model-type-setting')}
+                value={form[idx].model_type || ''}
+                onChange={(v) => {
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+                groups={cloudModelsState[item.id]?.groups || []}
+                loading={cloudModelsState[item.id]?.loading || false}
+                error={
+                  cloudModelsState[item.id]?.error ??
+                  errors[idx]?.model_type ??
+                  null
+                }
+                disabled={!form[idx].apiKey}
+                disabledReason="Enter API Key first."
+                onRefresh={() => void fetchCloudProviderModels(idx)}
+                triggerPlaceholder={t('setting.select-model-type', {
+                  defaultValue: 'Select model type',
+                })}
+              />
+            ) : (
+              <Input
+                id={`modelType-${item.id}`}
+                size="default"
+                title={t('setting.model-type-setting')}
+                state={errors[idx]?.model_type ? 'error' : 'default'}
+                note={errors[idx]?.model_type ?? undefined}
+                placeholder={`${t('setting.enter-your-model-type')} ${
+                  item.name
+                } ${t('setting.model-type')}`}
+                value={form[idx].model_type}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) =>
+                    f.map((fi, i) =>
+                      i === idx ? { ...fi, model_type: v } : fi
+                    )
+                  );
+                  setErrors((errs) =>
+                    errs.map((er, i) =>
+                      i === idx ? { ...er, model_type: '' } : er
+                    )
+                  );
+                }}
+              />
+            )}
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
               form[idx].externalConfig.map((ec, ecIdx) => (
-                <div key={ec.key} className="flex h-full w-full flex-col gap-4">
+                <div key={ec.key} className="gap-4 flex h-full w-full flex-col">
                   {ec.options && ec.options.length > 0 ? (
                     <Select
                       value={ec.value}
@@ -1456,8 +2050,32 @@ export default function SettingModels() {
                     <Input
                       size="default"
                       title={ec.name}
+                      type={
+                        ec.secret && !showSecret[`${idx}-${ecIdx}`]
+                          ? 'password'
+                          : 'text'
+                      }
+                      placeholder={ec.placeholder ?? `Enter your ${ec.name}`}
                       state={errors[idx]?.externalConfig ? 'error' : undefined}
                       note={errors[idx]?.externalConfig ?? undefined}
+                      backIcon={
+                        ec.secret ? (
+                          showSecret[`${idx}-${ecIdx}`] ? (
+                            <Eye className="h-5 w-5" />
+                          ) : (
+                            <EyeOff className="h-5 w-5" />
+                          )
+                        ) : undefined
+                      }
+                      onBackIconClick={
+                        ec.secret
+                          ? () =>
+                              setShowSecret((prev) => ({
+                                ...prev,
+                                [`${idx}-${ecIdx}`]: !prev[`${idx}-${ecIdx}`],
+                              }))
+                          : undefined
+                      }
                       value={ec.value}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -1481,27 +2099,32 @@ export default function SettingModels() {
               ))}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
+              tone="neutral"
               size="sm"
-              className="!text-text-label"
+              buttonContent="text"
+              textWeight="medium"
+              buttonRadius="lg"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
             </Button>
             <Button
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
+              textWeight="bold"
+              buttonRadius="lg"
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
-              <span className="text-text-inverse-primary">
-                {loading === idx ? t('setting.configuring') : t('setting.save')}
-              </span>
+              {loading === idx ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
@@ -1521,18 +2144,22 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-surface-tertiary">
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary pb-4 pt-2">
-            <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="flex items-center gap-2">
-                <div className="text-body-base my-2 font-bold text-text-heading">
+        <ConfigModelCard status={configCardRing}>
+          <div className="mx-6 mb-4 border-ds-border-neutral-default-default pb-4 pt-2 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid">
+            <div className="gap-2 inline-flex items-center justify-between self-stretch">
+              <div className="gap-2 flex items-center">
+                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
                 {isPreferred ? (
                   <Button
-                    variant="success"
+                    variant="primary"
+                    tone="success"
                     size="xs"
-                    className="focus-none rounded-full shadow-none"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    className="focus-none shadow-none"
                     disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(false)}
                   >
@@ -1541,12 +2168,16 @@ export default function SettingModels() {
                 ) : (
                   <Button
                     variant="ghost"
+                    tone="neutral"
                     size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
                     disabled={!isConfigured}
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'rounded-full bg-button-transparent-fill-hover !text-text-label shadow-none'
+                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-active shadow-none'
                         : ''
                     }
                   >
@@ -1557,14 +2188,14 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 rounded-full bg-text-success" />
+                <div className="h-2 w-2 bg-text-success rounded-full" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
               )}
             </div>
           </div>
           {/* Model Endpoint URL Setting */}
-          <div className="flex w-full flex-col items-center gap-4 px-6">
+          <div className="gap-4 px-6 flex w-full flex-col items-center">
             <Input
               size="default"
               title={t('setting.model-endpoint-url')}
@@ -1606,8 +2237,8 @@ export default function SettingModels() {
               note={localError ?? undefined}
             />
             {isModelListPlatform ? (
-              <div className="flex w-full flex-col gap-1">
-                <div className="flex w-full items-end gap-2">
+              <div className="gap-1 flex w-full flex-col">
+                <div className="gap-2 flex w-full items-end">
                   <div className="flex-1">
                     <Select
                       value={currentType}
@@ -1661,7 +2292,10 @@ export default function SettingModels() {
                   </div>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    tone="neutral"
+                    size="xs"
+                    buttonContent="icon-only"
+                    textWeight="bold"
                     onClick={() =>
                       void fetchModelsForPlatform(
                         platform,
@@ -1679,7 +2313,7 @@ export default function SettingModels() {
                   </Button>
                 </div>
                 {platformModelsError && (
-                  <span className="text-label-sm text-text-error">
+                  <span className="text-label-sm text-ds-text-status-error-strong-default">
                     {platformModelsError}
                   </span>
                 )}
@@ -1702,11 +2336,14 @@ export default function SettingModels() {
             )}
           </div>
           {/* Action Button */}
-          <div className="flex justify-end gap-2 px-6 py-4">
+          <div className="gap-2 px-6 py-4 flex justify-end">
             <Button
               variant="ghost"
+              tone="neutral"
               size="sm"
-              className="!text-text-label"
+              buttonContent="text"
+              textWeight="medium"
+              buttonRadius="lg"
               onClick={handleLocalReset}
             >
               {t('setting.reset')}
@@ -1715,14 +2352,16 @@ export default function SettingModels() {
               onClick={handleLocalVerify}
               disabled={!localEnabled || localVerifying}
               variant="primary"
+              tone="neutral"
               size="sm"
+              buttonContent="text"
+              textWeight="bold"
+              buttonRadius="lg"
             >
-              <span className="text-text-inverse-primary">
-                {localVerifying ? t('setting.configuring') : t('setting.save')}
-              </span>
+              {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
           </div>
-        </div>
+        </ConfigModelCard>
       );
     }
 
@@ -1732,34 +2371,38 @@ export default function SettingModels() {
   return (
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
-      <div className="sticky top-0 z-10 flex w-full items-center justify-between bg-surface-primary px-6 pb-6 pt-8">
-        <div className="flex w-full flex-col items-start justify-between gap-4">
+      <div className="px-6 pb-6 pt-8 z-10 flex w-full items-center justify-between">
+        <div className="gap-4 flex w-full flex-col items-start justify-between">
           <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-text-heading">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.models')}
             </div>
           </div>
         </div>
       </div>
       {/* Content Section */}
-      <div className="mb-8 flex flex-col gap-6">
+      <div className="mb-8 gap-6 flex flex-col">
         {/* Default Model Cascading Dropdown */}
-        <div className="flex w-full flex-col items-end justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="flex w-full flex-col items-start justify-center gap-1">
-            <div className="text-body-base font-bold text-text-heading">
+        <div className="gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4 flex w-full flex-col items-end justify-between">
+          <div className="gap-1 flex w-full flex-col items-start justify-center">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.models-default-setting-title')}
             </div>
             <div className="text-body-sm">
               {t('setting.models-default-setting-description')}
             </div>
           </div>
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open) void fetchCloudModels();
+            }}
+          >
             <DropdownMenuTrigger asChild>
-              <button className="flex w-fit items-center justify-between gap-2 rounded-lg border-[0.5px] border-solid border-border-success bg-surface-success px-3 py-1 font-semibold text-text-success transition-colors hover:opacity-70 active:opacity-90">
-                <span className="whitespace-nowrap text-body-sm">
+              <button className="gap-2 rounded-lg border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active flex w-fit items-center border-[0.5px] border-solid transition-colors outline-none focus:outline-none focus-visible:outline-none">
+                <span className="text-body-sm leading-none whitespace-nowrap">
                   {getDefaultModelDisplayText()}
                 </span>
-                <ChevronDown className="h-4 w-4 flex-shrink-0 text-text-success" />
+                <ChevronDown className="h-4 w-4 !text-ds-text-brand-inverse-default flex-shrink-0" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[180px]">
@@ -1782,8 +2425,8 @@ export default function SettingModels() {
                         className="flex items-center justify-between"
                       >
                         <span className="text-body-sm">{model.name}</span>
-                        {cloudPrefer && cloud_model_type === model.id && (
-                          <Check className="h-4 w-4 text-text-success" />
+                        {cloudPrefer && effectiveCloudModelId === model.id && (
+                          <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                         )}
                       </DropdownMenuItem>
                     ))}
@@ -1794,26 +2437,40 @@ export default function SettingModels() {
               {/* Custom Model Category */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Key className="h-5 w-5 text-icon-primary" />
+                  <Key className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   <span className="text-body-sm">
                     {t('setting.custom-model')}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
                   {items.map((item, idx) => {
-                    const isConfigured = !!form[idx]?.provider_id;
-                    const isPreferred = form[idx]?.prefer;
+                    const isSubscriptionAuth =
+                      item.authMode === 'oauth_subscription';
+                    const isConfigured = isSubscriptionAuth
+                      ? codexStatus.connected
+                      : !!form[idx]?.provider_id;
+                    const isPreferred = isSubscriptionAuth
+                      ? modelType === 'codex_subscription'
+                      : form[idx]?.prefer;
                     const modelImage = getModelImage(item.id);
 
                     return (
                       <DropdownMenuItem
                         key={item.id}
-                        onClick={() =>
-                          handleDefaultModelSelect('custom', item.id)
-                        }
+                        onClick={() => {
+                          if (isSubscriptionAuth) {
+                            if (isConfigured) {
+                              handleCodexSetDefault();
+                            } else {
+                              setSelectedTab(`byok-${item.id}` as SidebarTab);
+                            }
+                            return;
+                          }
+                          handleDefaultModelSelect('custom', item.id);
+                        }}
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1826,23 +2483,23 @@ export default function SettingModels() {
                               }
                             />
                           ) : (
-                            <Key className="h-4 w-4 text-icon-secondary" />
+                            <Key className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                           )}
                           <span
-                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                            className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
                           >
                             {item.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
-                            <Check className="h-4 w-4 text-text-success" />
+                            <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1854,7 +2511,7 @@ export default function SettingModels() {
               {/* Local Host Category */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
-                  <Server className="h-5 w-5 text-icon-primary" />
+                  <Server className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   <span className="text-body-sm">
                     {t('setting.local-model')}
                   </span>
@@ -1874,7 +2531,7 @@ export default function SettingModels() {
                         }
                         className="flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="gap-2 flex items-center">
                           {modelImage ? (
                             <img
                               src={modelImage}
@@ -1887,23 +2544,23 @@ export default function SettingModels() {
                               }
                             />
                           ) : (
-                            <Server className="h-4 w-4 text-icon-secondary" />
+                            <Server className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                           )}
                           <span
-                            className={`text-body-sm ${isConfigured ? 'text-text-body' : 'text-text-label'}`}
+                            className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
                           >
                             {model.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="gap-1 flex items-center">
                           {!isConfigured && (
-                            <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                            <div className="h-2 w-2 bg-text-label rounded-full opacity-10" />
                           )}
                           {isPreferred && (
-                            <Check className="h-4 w-4 text-text-success" />
+                            <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                           )}
                           {isConfigured && !isPreferred && (
-                            <div className="h-2 w-2 rounded-full bg-text-success" />
+                            <div className="h-2 w-2 bg-text-success rounded-full" />
                           )}
                         </div>
                       </DropdownMenuItem>
@@ -1916,18 +2573,18 @@ export default function SettingModels() {
         </div>
 
         {/* Content Section with Sidebar */}
-        <div className="flex w-full flex-col items-start justify-between gap-2 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="text-body-base sticky top-[86px] z-10 mb-2 w-full border-x-0 border-b-[0.5px] border-t-0 border-solid border-border-secondary bg-surface-secondary pb-4 font-bold text-text-heading">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-3 py-2 flex w-full flex-col items-start justify-between">
+          <div className="text-body-base mb-4 border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 py-2 pb-2 font-bold text-ds-text-neutral-default-default sticky top-[48px] z-10 w-full border-x-0 border-t-0 border-b-[0.5px] border-solid">
             {t('setting.models-configuration')}
           </div>
 
-          <div className="flex w-full flex-row items-start justify-between">
+          <div className="px-3 flex w-full flex-row items-start justify-between">
             {/* Sidebar */}
-            <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
-              <div className="flex flex-col gap-4">
+            <div className="-ml-2 mr-4 rounded-2xl bg-ds-bg-neutral-default-default h-full w-[240px]">
+              <div className="gap-4 flex flex-col">
                 {/* Eigent Cloud Section */}
-                <div className="flex flex-col gap-1">
-                  <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
+                <div className="gap-1 flex flex-col">
+                  <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
                     {t('setting.eigent-cloud')}
                   </div>
                   {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
@@ -1937,61 +2594,126 @@ export default function SettingModels() {
                       'cloud',
                       selectedTab === 'cloud',
                       false,
-                      cloudPrefer
+                      cloudPrefer,
+                      creditsError
+                        ? 'muted'
+                        : Number(credits) > 0
+                          ? 'success'
+                          : 'error'
                     )}
                 </div>
-                {/* Bring Your Own Key Section */}
-                <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
-                  >
-                    <div className="text-body-sm font-bold text-text-heading">
-                      {t('setting.custom-model')}
-                    </div>
-                    {byokCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-text-label" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-text-label" />
+                {/* Custom Model Section */}
+                <div className="gap-1 flex flex-col">
+                  <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
+                    {t('setting.custom-model')}
+                  </div>
+                  <div className="gap-2 flex flex-col">
+                    {/* Subscription sub-accordion (OAuth login providers) */}
+                    {items.some(
+                      (item) => item.authMode === 'oauth_subscription'
+                    ) && (
+                      <div className="gap-1 flex flex-col">
+                        <button
+                          onClick={() =>
+                            setSubscriptionCollapsed(!subscriptionCollapsed)
+                          }
+                          className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.subscription', {
+                              defaultValue: 'Subscription',
+                            })}
+                          </div>
+                          {subscriptionCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                            subscriptionCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item) =>
+                            item.authMode === 'oauth_subscription'
+                              ? renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  codexStatus.connected
+                                )
+                              : null
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </button>
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      byokCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {items.map((item, idx) =>
-                      renderSidebarItem(
-                        `byok-${item.id}` as SidebarTab,
-                        item.name,
-                        item.id,
-                        selectedTab === `byok-${item.id}`,
-                        true,
-                        !!form[idx].provider_id
-                      )
+                    {/* BYOK (API key) sub-accordion */}
+                    {items.some(
+                      (item) => item.authMode !== 'oauth_subscription'
+                    ) && (
+                      <div className="gap-1 flex flex-col">
+                        <button
+                          onClick={() =>
+                            setByokGroupCollapsed(!byokGroupCollapsed)
+                          }
+                          className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.byok', { defaultValue: 'BYOK' })}
+                          </div>
+                          {byokGroupCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`ease-in-out overflow-hidden transition-all duration-300 ${
+                            byokGroupCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item, idx) =>
+                            item.authMode === 'oauth_subscription'
+                              ? null
+                              : renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  !!form[idx].provider_id
+                                )
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {/* Local Model Section */}
-                <div className="flex flex-col gap-1">
+                <div className="gap-1 flex flex-col">
                   <button
                     onClick={() => setLocalCollapsed(!localCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-surface-secondary"
+                    className="rounded-lg px-3 py-2 hover:bg-ds-bg-neutral-default-default flex items-center justify-between bg-transparent transition-colors"
                   >
-                    <div className="text-body-sm font-bold text-text-heading">
+                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
                       {t('setting.local-model')}
                     </div>
                     {localCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-text-label" />
+                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     ) : (
-                      <ChevronUp className="h-4 w-4 text-text-label" />
+                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`ease-in-out overflow-hidden transition-all duration-300 ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'
@@ -2042,7 +2764,7 @@ export default function SettingModels() {
               </div>
             </div>
             {/* Main Content */}
-            <div className="sticky top-[136px] z-10 min-w-0 flex-1">
+            <div className="min-w-0 sticky top-[136px] z-10 flex-1">
               {renderContent()}
             </div>
           </div>

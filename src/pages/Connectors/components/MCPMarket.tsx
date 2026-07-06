@@ -12,13 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { mcpInstall, mcpRemove } from '@/api/brain';
 import { proxyFetchDelete, proxyFetchGet, proxyFetchPost } from '@/api/http';
-import githubIcon from '@/assets/github.svg';
+import githubIcon from '@/assets/icon/github.svg';
 import AnthropicIcon from '@/assets/mcp/Anthropic.svg?url';
 import CamelIcon from '@/assets/mcp/Camel.svg?url';
 import CommunityIcon from '@/assets/mcp/Community.svg?url';
 import OfficialIcon from '@/assets/mcp/Official.svg?url';
-import SearchInput from '@/components/SearchInput';
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -104,7 +105,7 @@ export default function MCPMarket({
   const [userInstallMcp, setUserInstallMcp] = useState<any | undefined>([]);
   // get installed MCP list
   useEffect(() => {
-    proxyFetchGet('/api/mcp/users').then((res) => {
+    proxyFetchGet('/api/v1/mcp/users').then((res) => {
       let ids: number[] = [];
       if (Array.isArray(res)) {
         setUserInstallMcp(res);
@@ -119,7 +120,7 @@ export default function MCPMarket({
 
   // get MCP categories
   useEffect(() => {
-    proxyFetchGet('/api/mcp/categories').then((res) => {
+    proxyFetchGet('/api/v1/mcp/categories').then((res) => {
       if (Array.isArray(res)) {
         setMcpCategory(res);
       }
@@ -134,7 +135,7 @@ export default function MCPMarket({
       try {
         const params: any = { page: pageNum, size: pageSize, keyword: kw };
         if (catId) params.category_id = catId;
-        const res = await proxyFetchGet('/api/mcps', params);
+        const res = await proxyFetchGet('/api/v1/mcps', params);
         if (res && Array.isArray(res.items)) {
           // frontend deduplication
           const all: MCPItem[] =
@@ -211,20 +212,15 @@ export default function MCPMarket({
     setInstalling((prev) => ({ ...prev, [id]: true }));
     try {
       const mcpItem = items.find((item) => item.id === id);
-      const res = await proxyFetchPost('/api/mcp/install?mcp_id=' + id);
+      const res = await proxyFetchPost('/api/v1/mcp/install?mcp_id=' + id);
       if (res) {
         console.log(res);
         setUserInstallMcp((prev: any) => [...prev, res]);
       }
       setInstalled((prev) => ({ ...prev, [id]: true }));
       setInstalledIds((prev) => [...prev, id]);
-      // notify main process
-      if (window.ipcRenderer && mcpItem) {
-        await window.ipcRenderer.invoke(
-          'mcp-install',
-          mcpItem.key,
-          mcpItem.install_command
-        );
+      if (mcpItem?.install_command) {
+        await mcpInstall(mcpItem.key, mcpItem.install_command);
       }
     } catch (e) {
       console.error('Error installing MCP:', e);
@@ -255,11 +251,8 @@ export default function MCPMarket({
         return;
       }
       console.log('deleteTarget', deleteTarget);
-      await proxyFetchDelete(`/api/mcp/users/${id}`);
-      // notify main process
-      if (window.ipcRenderer) {
-        await window.ipcRenderer.invoke('mcp-remove', deleteTarget.key);
-      }
+      await proxyFetchDelete(`/api/v1/mcp/users/${id}`);
+      await mcpRemove(deleteTarget.key);
       setInstalledIds((prev) =>
         prev.filter((item) => item !== deleteTarget.id)
       );
@@ -282,7 +275,7 @@ export default function MCPMarket({
             >
               <ChevronLeft className="h-6 w-6" />
             </Button>
-            <span className="text-base font-bold leading-12 text-text-primary">
+            <span className="text-base font-bold leading-12 text-ds-text-neutral-default-default">
               {t('setting.mcp-market')}
             </span>
           </div>
@@ -323,22 +316,24 @@ export default function MCPMarket({
       ></MCPEnvDialog>
       <div className="gap-4 pt-4 flex w-full flex-col">
         {isLoading && items.length === 0 && (
-          <div className="py-8 text-text-muted text-center">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             {t('setting.loading')}
           </div>
         )}
         {error && (
-          <div className="py-8 text-text-error text-center">{error}</div>
+          <div className="py-8 text-ds-text-status-error-strong-default text-center">
+            {error}
+          </div>
         )}
         {!isLoading && !error && items.length === 0 && (
-          <div className="py-8 text-text-muted text-center">
+          <div className="py-8 text-ds-text-neutral-muted-default text-center">
             {t('setting.no-mcp-services')}
           </div>
         )}
         {items.map((item) => (
           <div
             key={item.id}
-            className="rounded-2xl bg-surface-secondary p-4 flex items-center"
+            className="rounded-2xl bg-ds-bg-neutral-default-default p-4 flex items-center"
           >
             {/* Left: Icon */}
             <div className="mr-4 flex items-center">
@@ -352,18 +347,18 @@ export default function MCPMarket({
                 return iconUrl ? (
                   <img src={iconUrl} alt={catName} className="h-11 w-9" />
                 ) : (
-                  <Store className="h-11 w-9 text-icon-primary" />
+                  <Store className="h-11 w-9 text-ds-icon-neutral-default-default" />
                 );
               })()}
             </div>
             <div className="min-w-0 flex flex-1 flex-col justify-center">
               <div className="gap-xs pb-1 flex w-full items-center">
                 <div className="gap-xs flex flex-1 items-center">
-                  <span className="text-base font-bold leading-9 text-text-primary truncate">
+                  <span className="text-base font-bold leading-9 text-ds-text-neutral-default-default truncate">
                     {item.name}
                   </span>
                   <TooltipSimple content={item.description}>
-                    <CircleAlert className="h-4 w-4 text-icon-secondary" />
+                    <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
                   </TooltipSimple>
                 </div>
                 <Button
@@ -408,7 +403,7 @@ export default function MCPMarket({
                     </span>
                   </div>
                 )}
-              <div className="mt-1 text-sm text-text-muted break-words whitespace-pre-line">
+              <div className="mt-1 text-sm text-ds-text-neutral-muted-default break-words whitespace-pre-line">
                 {item.description}
               </div>
             </div>
@@ -416,12 +411,12 @@ export default function MCPMarket({
         ))}
         <div ref={loader} />
         {isLoading && items.length > 0 && (
-          <div className="py-4 text-text-muted text-center">
+          <div className="py-4 text-ds-text-neutral-muted-default text-center">
             {t('setting.loading-more')}
           </div>
         )}
         {!hasMore && items.length > 0 && (
-          <div className="py-4 text-text-muted text-center">
+          <div className="py-4 text-ds-text-neutral-muted-default text-center">
             {t('setting.no-more-mcp-servers')}
           </div>
         )}

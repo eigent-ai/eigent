@@ -141,6 +141,18 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
             ],
           },
         });
+        chatStore.setSummaryTask(
+          taskId,
+          'Calculator App|Build a simple calculator app'
+        );
+        chatStore.setTaskInfo(taskId, [
+          { id: 'task-1', content: 'Create UI components', status: '' },
+          {
+            id: 'task-2',
+            content: 'Implement calculator logic',
+            status: '',
+          },
+        ]);
         rerender();
       });
 
@@ -158,6 +170,10 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
         );
         expect(calculatorElements.length).toBeGreaterThanOrEqual(1);
         // The component should show task breakdown
+        expect(screen.getByText('Create UI components')).toBeInTheDocument();
+        expect(
+          screen.getByText('Implement calculator logic')
+        ).toBeInTheDocument();
         expect(
           screen.queryByText(/layout.welcome-to-eigent/i)
         ).not.toBeInTheDocument();
@@ -455,33 +471,23 @@ describe('ChatBox Integration Tests - Different ChatStore Configurations', () =>
       expect(sendButton).toBeDisabled();
     });
 
-    it('should display layout.terms-of-use and layout.privacy-policy links', async () => {
+    it('should not display privacy consent links (moved to login)', async () => {
       render(
         <TestWrapper>
           <ChatBox />
         </TestWrapper>
       );
 
-      const termsLink = screen.getByRole('link', {
+      // Privacy consent links are now in Login/SignUp, not in ChatBox
+      const termsLink = screen.queryByRole('link', {
         name: /layout.terms-of-use/i,
       });
-      const privacyLink = screen.getByRole('link', {
+      const privacyLink = screen.queryByRole('link', {
         name: /layout.privacy-policy/i,
       });
 
-      expect(termsLink).toBeInTheDocument();
-      expect(termsLink).toHaveAttribute(
-        'href',
-        'https://www.eigent.ai/terms-of-use'
-      );
-      expect(termsLink).toHaveAttribute('target', '_blank');
-
-      expect(privacyLink).toBeInTheDocument();
-      expect(privacyLink).toHaveAttribute(
-        'href',
-        'https://www.eigent.ai/privacy-policy'
-      );
-      expect(privacyLink).toHaveAttribute('target', '_blank');
+      expect(termsLink).not.toBeInTheDocument();
+      expect(privacyLink).not.toBeInTheDocument();
     });
   });
 

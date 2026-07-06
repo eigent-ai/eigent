@@ -12,10 +12,15 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import datetime
 import logging
+from collections.abc import Awaitable, Callable
 
-from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
+from camel.agents.chat_agent import (
+    AsyncStreamingChatAgentResponse,
+    ChatAgentResponse,
+)
 from camel.societies.workforce.prompts import PROCESS_TASK_PROMPT
 from camel.societies.workforce.single_agent_worker import (
     SingleAgentWorker as BaseSingleAgentWorker,
@@ -26,6 +31,8 @@ from camel.utils.context_utils import ContextUtility
 from colorama import Fore
 
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.service.task import get_task_lock
+from app.utils.agent_memory import record_agent_memory_snapshot
 
 logger = logging.getLogger("single_agent_worker")
 
@@ -67,7 +74,13 @@ class SingleAgentWorker(BaseSingleAgentWorker):
         self.worker = worker  # change type hint
 
     async def _process_task(
-        self, task: Task, dependencies: list[Task]
+        self,
+        task: Task,
+        dependencies: list[Task],
+        stream_callback: Callable[
+            ["ChatAgentResponse"], Awaitable[None] | None
+        ]
+        | None = None,
     ) -> TaskState:
         r"""Processes a task with its dependencies using an efficient agent
         management system.
@@ -146,6 +159,10 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     async for chunk in response:
                         chunk_count += 1
                         last_chunk = chunk
+                        if stream_callback:
+                            maybe = stream_callback(chunk)
+                            if asyncio.iscoroutine(maybe):
+                                await maybe
                         if chunk.msg and chunk.msg.content:
                             accumulated_content += chunk.msg.content
                     logger.info(
@@ -186,6 +203,10 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     last_chunk = None
                     async for chunk in response:
                         last_chunk = chunk
+                        if stream_callback:
+                            maybe = stream_callback(chunk)
+                            if asyncio.iscoroutine(maybe):
+                                await maybe
                         if chunk.msg:
                             if chunk.msg.content:
                                 accumulated_content += chunk.msg.content
@@ -249,6 +270,19 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     logger.warning(
                         f"Failed to transfer conversation to accumulator: {e}"
                     )
+
+            try:
+                task_lock = get_task_lock(worker_agent.api_task_id)
+                record_agent_memory_snapshot(
+                    task_lock,
+                    worker_agent,
+                    scope="workforce_worker",
+                    task_id=task.id,
+                    task_content=task.content,
+                    task_result=response_content,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record worker memory snapshot: {e}")
 
         except Exception as e:
             logger.error(

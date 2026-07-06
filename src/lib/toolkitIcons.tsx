@@ -39,7 +39,6 @@ import {
   Play,
   Presentation,
   Rocket,
-  ScanEye,
   Search,
   Sheet,
   StickyNote,
@@ -72,7 +71,6 @@ const toolkitIconMap: Record<string, LucideIcon> = {
   'Rag Toolkit': BookOpen,
 
   // Media
-  'Image Analysis Toolkit': ScanEye,
   'Open Ai Image Toolkit': Image,
   'Video Downloader Toolkit': Download,
   'Video Analysis Toolkit': Video,

@@ -1,6 +1,7 @@
 {
   "update-check-failed": "Update-Prüfung fehlgeschlagen",
   "new-version-available": "Neue Version verfügbar",
+  "update": "Aktualisieren",
   "download": "Herunterladen",
   "update-error": "Update-Fehler",
   "downloading-update": "Update wird heruntergeladen",

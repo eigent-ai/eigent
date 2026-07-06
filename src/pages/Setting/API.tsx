@@ -32,7 +32,7 @@ export default function SettingAPI() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    proxyFetchGet('/api/config/info').then((res) => {
+    proxyFetchGet('/api/v1/config/info').then((res) => {
       const configs = Object.entries(res || {})
         .map(([name, v]: [string, any]) => ({ name, env_vars: v.env_vars }))
         .filter(
@@ -40,7 +40,7 @@ export default function SettingAPI() {
         );
       setItems(configs);
     });
-    proxyFetchGet('/api/configs').then((res) => {
+    proxyFetchGet('/api/v1/configs').then((res) => {
       if (Array.isArray(res)) {
         const envMap: Record<string, string> = {};
         res.forEach((item: any) => {
@@ -70,7 +70,7 @@ export default function SettingAPI() {
     }
     setLoading((prev) => ({ ...prev, [env]: true }));
     try {
-      await proxyFetchPost('/api/configs', {
+      await proxyFetchPost('/api/v1/configs', {
         config_name: env,
         config_value: value,
         config_group: configGroup,
@@ -87,10 +87,10 @@ export default function SettingAPI() {
       {items.map((item) => (
         <div
           key={item.name}
-          className="bg-bg-surface-tertiary rounded-2xl px-6 py-4"
+          className="bg-bg-ds-bg-neutral-strong-default rounded-2xl px-6 py-4"
         >
           <div>
-            <div className="text-base font-bold leading-12 text-text-primary">
+            <div className="text-base font-bold leading-12 text-ds-text-neutral-default-default">
               {item.name}
             </div>
           </div>
@@ -98,7 +98,7 @@ export default function SettingAPI() {
             <div>
               {item.env_vars.map((env) => (
                 <div key={env} className="mt-md">
-                  <div className="flex items-center gap-2">
+                  <div className="gap-2 flex items-center">
                     <Input
                       id={env}
                       placeholder={env}
@@ -115,19 +115,19 @@ export default function SettingAPI() {
                       onClick={() => handleVerify(item.name, env)}
                       disabled={loading[env]}
                     >
-                      <span className="text-sm leading-13 text-text-inverse-primary">
+                      <span className="text-sm leading-13 text-ds-text-neutral-inverse-default">
                         {loading[env]
                           ? t('layout.loading')
                           : t('layout.verify')}
                       </span>
-                      <Circle className="text-icon-inverse-primary h-4 w-4" />
+                      <Circle className="text-ds-icon-neutral-inverse-default h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="mt-1.5 text-xs leading-17 text-text-secondary">
+                  <div className="mt-1.5 text-xs leading-17 text-ds-text-neutral-muted-default">
                     {env}
                   </div>
                   {errors[env] && (
-                    <span className="mt-1 text-xs text-text-error">
+                    <span className="mt-1 text-xs text-ds-text-status-error-strong-default">
                       {errors[env]}
                     </span>
                   )}

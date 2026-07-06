@@ -23,7 +23,7 @@ import re
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from pydantic import BaseModel, Field, field_validator
 
-from app.type.config_group import ConfigGroup
+from app.shared.types.config_group import ConfigGroup
 
 if TYPE_CHECKING:
     from sqlmodel import Session

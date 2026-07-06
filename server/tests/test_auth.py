@@ -13,10 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import inspect
+from datetime import datetime, timedelta
 
+import jwt
 import pytest
 
-from app.controller.chat.share_controller import (
+from app.domains.chat.api.share_controller import (
     create_share_link,
     get_share_info,
     share_playback,
@@ -35,7 +37,7 @@ class TestAuthMustNoneTokenHandling:
     def test_auth_must_has_none_type_annotation(self):
         """auth_must should accept Optional[str] since oauth2_scheme
         may return None with auto_error=False."""
-        from app.component.auth import auth_must
+        from app.shared.auth.user_auth import auth_must
 
         sig = inspect.signature(auth_must)
         token_param = sig.parameters["token"]
@@ -49,41 +51,90 @@ class TestAuthMustNoneTokenHandling:
         import asyncio
         from unittest.mock import MagicMock
 
-        from app.component.auth import auth_must
-        from app.exception.exception import TokenException
+        from app.shared.auth.user_auth import auth_must
+        from app.shared.exception import TokenException
 
         mock_session = MagicMock()
 
         with pytest.raises(TokenException):
-            asyncio.run(auth_must(token=None, session=mock_session))
+            asyncio.run(auth_must(token=None, db_session=mock_session))
 
     def test_auth_must_does_not_call_decode_on_none(self):
         """Verify jwt.decode is never called with None token."""
         import asyncio
         from unittest.mock import MagicMock, patch
 
-        from app.component.auth import auth_must
+        from app.shared.auth.user_auth import auth_must
 
         mock_session = MagicMock()
 
-        with patch("app.component.auth.Auth.decode_token") as mock_decode:
+        with patch("app.shared.auth.user_auth.V1UserAuth.decode_token") as mock_decode:
             try:
-                asyncio.run(auth_must(token=None, session=mock_session))
+                asyncio.run(auth_must(token=None, db_session=mock_session))
             except Exception:
                 pass
             mock_decode.assert_not_called()
 
 
-class TestSnapshotEndpointAuthRequirements:
-    """Tests verifying that all snapshot CRUD endpoints require authentication.
+class TestTokenEnvironmentBinding:
+    def test_access_token_requires_current_token_environment(self):
+        from app.shared.auth.user_auth import (
+            SECRET_KEY,
+            TOKEN_AUDIENCE,
+            TOKEN_ISSUER,
+            TOKEN_TYPE_USER,
+            V1UserAuth,
+        )
+        from app.shared.exception import TokenException
 
-    The list endpoint was previously missing the auth dependency, allowing
-    unauthenticated users to enumerate all snapshots across all users.
-    """
+        token = V1UserAuth.create_access_token(123)
+        assert V1UserAuth.decode_token(token).id == 123
+
+        wrong_issuer_token = jwt.encode(
+            {
+                "id": 123,
+                "type": TOKEN_TYPE_USER,
+                "jti": "wrong-issuer",
+                "iss": f"{TOKEN_ISSUER}:other",
+                "aud": TOKEN_AUDIENCE,
+                "exp": datetime.utcnow() + timedelta(minutes=5),
+            },
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+
+        with pytest.raises(TokenException):
+            V1UserAuth.decode_token(wrong_issuer_token)
+
+    def test_legacy_token_without_environment_claims_is_rejected(self):
+        from app.shared.auth.user_auth import (
+            SECRET_KEY,
+            TOKEN_TYPE_USER,
+            V1UserAuth,
+        )
+        from app.shared.exception import TokenException
+
+        legacy_token = jwt.encode(
+            {
+                "id": 123,
+                "type": TOKEN_TYPE_USER,
+                "jti": "legacy-token",
+                "exp": datetime.utcnow() + timedelta(minutes=5),
+            },
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+
+        with pytest.raises(TokenException):
+            V1UserAuth.decode_token(legacy_token)
+
+
+class TestSnapshotEndpointAuthRequirements:
+    """Tests verifying that all snapshot CRUD endpoints require authentication."""
 
     def test_list_snapshots_requires_auth_dependency(self):
         """GET /snapshots must include auth_must as a dependency."""
-        from app.controller.chat.snapshot_controller import list_chat_snapshots
+        from app.domains.chat.api.snapshot_controller import list_chat_snapshots
 
         sig = inspect.signature(list_chat_snapshots)
         param_names = list(sig.parameters.keys())
@@ -93,7 +144,7 @@ class TestSnapshotEndpointAuthRequirements:
 
     def test_get_snapshot_requires_auth_dependency(self):
         """GET /snapshots/{id} must include auth_must as a dependency."""
-        from app.controller.chat.snapshot_controller import get_chat_snapshot
+        from app.domains.chat.api.snapshot_controller import get_chat_snapshot
 
         sig = inspect.signature(get_chat_snapshot)
         param_names = list(sig.parameters.keys())
@@ -101,7 +152,7 @@ class TestSnapshotEndpointAuthRequirements:
 
     def test_create_snapshot_requires_auth_dependency(self):
         """POST /snapshots must include auth_must as a dependency."""
-        from app.controller.chat.snapshot_controller import create_chat_snapshot
+        from app.domains.chat.api.snapshot_controller import create_chat_snapshot
 
         sig = inspect.signature(create_chat_snapshot)
         param_names = list(sig.parameters.keys())
@@ -109,7 +160,7 @@ class TestSnapshotEndpointAuthRequirements:
 
     def test_update_snapshot_requires_auth_dependency(self):
         """PUT /snapshots/{id} must include auth_must as a dependency."""
-        from app.controller.chat.snapshot_controller import update_chat_snapshot
+        from app.domains.chat.api.snapshot_controller import update_chat_snapshot
 
         sig = inspect.signature(update_chat_snapshot)
         param_names = list(sig.parameters.keys())
@@ -117,7 +168,7 @@ class TestSnapshotEndpointAuthRequirements:
 
     def test_delete_snapshot_requires_auth_dependency(self):
         """DELETE /snapshots/{id} must include auth_must as a dependency."""
-        from app.controller.chat.snapshot_controller import delete_chat_snapshot
+        from app.domains.chat.api.snapshot_controller import delete_chat_snapshot
 
         sig = inspect.signature(delete_chat_snapshot)
         param_names = list(sig.parameters.keys())

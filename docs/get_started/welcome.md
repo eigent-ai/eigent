@@ -4,16 +4,11 @@ description: Learn about Eigent and Unlock Your Exceptional Productivity now
 icon: wave
 ---
 
-**Eigent** is the world’s first **Multi-agent Workforce** desktop application, empowering you to build, manage, and deploy a custom AI workforce that can turn your most complex workflows into automated tasks.
+**Eigent** is the first open-source, general-agent desktop app. Easily build, manage, and deploy a custom AI workforce or orchestrate a master agent with specialized sub-agents to turn your most complex workflows into automated tasks.
 
-Built on CAMEL-AI's acclaimed open-source project (CAMEL with 13k⭐ on GitHub, #1 on GitHub Daily Trending), our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection. Previously #1 opensource project on GAIA.
+Built on CAMEL-AI's acclaimed open-source project (CAMEL with 17k⭐ on GitHub, #1 on GitHub Daily Trending), our system introduces a **Multi-Agent Workforce** that **boosts productivity** through parallel execution, customization, and privacy protection. Previously #1 opensource project on GAIA.
 
-<img
-src="/docs/images/thumbnail.png"
-alt="Dynamic Workforce"
-width="100%"
-height="auto"
-/>
+> **Screenshot placeholder:** Add a current screenshot for “Dynamic Workforce”.
 
 ## Core Features and Capabilities
 
@@ -47,5 +42,15 @@ height="auto"
     title="Local Model Support"
     icon="server">
     Deploy Eigent locally with your preferred models. Your data stays on **your own device**, addressing privacy and security concerns. You can use personal API keys or local LLMs so that sensitive information never leaves your environment.
+  </Card>
+  <Card
+    title="Agent Skills"
+    icon="wand-magic-sparkles">
+    To boost Eigent's efficiency and reliability, we provide a flexible Skills system for agents. Skills can be dynamically generated from tasks (so agents quickly gain the right tools for the job) or manually added by users for precise control and governance.
+  </Card>
+  <Card
+    title="Task Trigger"
+    icon="clock-rotate-left">
+    Eigent also supports powerful Triggers to automate when agents should run. This includes Schedule Triggers for recurring jobs, Webhook/Event Triggers for real-time actions from external systems, and Agentic Triggers where agents can trigger follow-up work based on context and outcomes.
   </Card>
 </CardGroup>

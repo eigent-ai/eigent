@@ -17,24 +17,33 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as fetchApi from '../../../src/api/http';
+import {
+  fetchDelete,
+  fetchPost,
+  fetchPut,
+  proxyFetchDelete,
+  proxyFetchGet,
+} from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
 import { useAuthStore } from '../../../src/store/authStore';
-const { fetchPost, proxyFetchGet } = fetchApi;
 
 // Mock dependencies (use the same relative paths as the imports above)
 vi.mock('../../../src/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('../../../src/api/http', () => ({
   fetchPost: vi.fn(),
+  fetchPut: vi.fn(),
+  fetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
-  proxyFetchPut: vi.fn(),
+  proxyFetchDelete: vi.fn(),
 }));
 // Also mock the alias paths the component uses so the component picks up these mocks
 vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
 vi.mock('@/api/http', () => ({
   fetchPost: vi.fn(),
+  fetchPut: vi.fn(),
+  fetchDelete: vi.fn(),
   proxyFetchGet: vi.fn(),
-  proxyFetchPut: vi.fn(),
+  proxyFetchDelete: vi.fn(),
 }));
 vi.mock('../../../src/lib', () => ({
   generateUniqueId: vi.fn(() => 'test-unique-id'),
@@ -56,17 +65,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
-        'layout.welcome-to-eigent': 'Welcome to Eigent',
-        'layout.how-can-i-help-you': 'How can I help you today?',
-        'layout.it-ticket-creation': 'IT Ticket Creation',
-        'layout.bank-transfer-csv-analysis':
-          'Bank Transfer CSV Analysis and Visualization',
-        'layout.find-duplicate-files': 'Please Help Organize My Desktop',
-        'layout.it-ticket-creation-message':
-          'Plan a 3-day tennis trip to Palm Springs',
-        'layout.bank-transfer-csv-analysis-message':
-          'Analyze bank transfer CSV',
-        'layout.find-duplicate-files-message': 'Find duplicate files',
         'chat.ask-placeholder': 'Type your message...',
         'layout.by-messaging-eigent': 'By messaging Eigent, you agree to our',
         'layout.terms-of-use': 'Terms of Use',
@@ -124,21 +122,13 @@ vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
   TypeCardSkeleton: vi.fn(() => <div data-testid="skeleton">Loading...</div>),
 }));
 
-vi.mock('../../../src/components/Dialog/Privacy', () => ({
-  PrivacyDialog: vi.fn(({ open, onOpenChange }: any) =>
-    open ? (
-      <div data-testid="privacy-dialog">
-        Privacy Dialog
-        <button onClick={() => onOpenChange(false)}>Close</button>
-      </div>
-    ) : null
-  ),
-}));
-
 describe('ChatBox Component', async () => {
   const mockUseAuthStore = vi.mocked(useAuthStore);
-  const mockFetchPost = vi.mocked(fetchPost);
+  const _mockFetchPost = vi.mocked(fetchPost);
+  const _mockFetchPut = vi.mocked(fetchPut);
+  const _mockFetchDelete = vi.mocked(fetchDelete);
   const mockProxyFetchGet = vi.mocked(proxyFetchGet);
+  const _mockProxyFetchDelete = vi.mocked(proxyFetchDelete);
 
   // Import the mocked hook
   const mockUseChatStoreAdapter = vi.mocked(
@@ -194,6 +184,7 @@ describe('ChatBox Component', async () => {
     getFormattedTaskTime: vi.fn(() => '00:00:00'),
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
+    setNextExecutionId: vi.fn(),
     removeTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
@@ -248,12 +239,8 @@ describe('ChatBox Component', async () => {
 
     // Setup default API responses
     mockProxyFetchGet.mockImplementation((url: string) => {
-      if (url === '/api/user/privacy') {
-        return Promise.resolve({
-          dataCollection: true,
-          analytics: true,
-          marketing: true,
-        });
+      if (url === '/api/user/key' || url === '/api/v1/user/key') {
+        return Promise.resolve({ value: 'test-api-key' });
       }
       if (url === '/api/configs') {
         return Promise.resolve([
@@ -264,7 +251,7 @@ describe('ChatBox Component', async () => {
       return Promise.resolve({});
     });
 
-    mockFetchPost.mockResolvedValue({ success: true });
+    _mockFetchPost.mockResolvedValue({ success: true });
 
     // Mock import.meta.env
     Object.defineProperty(import.meta, 'env', {
@@ -286,24 +273,23 @@ describe('ChatBox Component', async () => {
   };
 
   describe('Initial Render', () => {
-    it('should render welcome screen when no messages exist', () => {
-      renderChatBox();
-
-      expect(screen.getByText('Welcome to Eigent')).toBeInTheDocument();
-      expect(screen.getByText('How can I help you today?')).toBeInTheDocument();
-    });
-
-    it('should render bottom box component', () => {
+    it('should render bottom box when no messages exist', () => {
       renderChatBox();
 
       expect(screen.getByTestId('bottom-box')).toBeInTheDocument();
     });
 
-    it('should fetch privacy settings on mount', async () => {
+    it('should render message input in bottom box', () => {
+      renderChatBox();
+
+      expect(screen.getByTestId('message-input')).toBeInTheDocument();
+    });
+
+    it('should not fetch privacy settings on mount', async () => {
       renderChatBox();
 
       await waitFor(() => {
-        expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/user/privacy');
+        expect(mockProxyFetchGet).not.toHaveBeenCalledWith('/api/user/privacy');
       });
     });
 
@@ -316,72 +302,14 @@ describe('ChatBox Component', async () => {
     });
   });
 
-  describe('Privacy Dialog', () => {
-    it('should automatically accept privacy settings when incomplete', async () => {
-      mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/user/privacy') {
-          return Promise.resolve({
-            dataCollection: false,
-            analytics: true,
-            marketing: true,
-          });
-        }
-        return Promise.resolve([]);
-      });
-
-      const mockProxyFetchPut = vi.fn().mockResolvedValue({});
-      vi.mocked(fetchApi.proxyFetchPut).mockImplementation(mockProxyFetchPut);
-
-      const user = userEvent.setup();
+  describe('Privacy', () => {
+    it('should not fetch privacy settings on mount', async () => {
       renderChatBox();
 
-      // Type a message and send it
-      const input = screen.getByPlaceholderText('Type your message...');
-      await user.type(input, 'Test message');
-      const sendButton = screen.getByTestId('send-button');
-      await user.click(sendButton);
-
-      // When privacy is incomplete, it should automatically accept all permissions
+      // Privacy is now handled at login, not in ChatBox
       await waitFor(() => {
-        expect(mockProxyFetchPut).toHaveBeenCalledWith('/api/user/privacy', {
-          take_screenshot: true,
-          access_local_software: true,
-          access_your_address: true,
-          password_storage: true,
-        });
+        expect(mockProxyFetchGet).not.toHaveBeenCalledWith('/api/user/privacy');
       });
-    });
-
-    it('should not auto-accept privacy when already complete', async () => {
-      mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/user/privacy') {
-          return Promise.resolve({
-            dataCollection: true,
-            analytics: true,
-            marketing: true,
-          });
-        }
-        return Promise.resolve([]);
-      });
-
-      const mockProxyFetchPut = vi.fn().mockResolvedValue({});
-      vi.mocked(fetchApi.proxyFetchPut).mockImplementation(mockProxyFetchPut);
-
-      const user = userEvent.setup();
-      renderChatBox();
-
-      // Type a message and send it
-      const input = screen.getByPlaceholderText('Type your message...');
-      await user.type(input, 'Test message');
-      const sendButton = screen.getByTestId('send-button');
-      await user.click(sendButton);
-
-      // Should not call privacy update when already complete
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(mockProxyFetchPut).not.toHaveBeenCalledWith(
-        '/api/user/privacy',
-        expect.anything()
-      );
     });
   });
 
@@ -469,7 +397,7 @@ describe('ChatBox Component', async () => {
 
       // The component should call fetchPost for continuing conversation
       await waitFor(() => {
-        expect(mockFetchPost).toHaveBeenCalled();
+        expect(_mockFetchPost).toHaveBeenCalled();
       });
     });
 
@@ -680,7 +608,7 @@ describe('ChatBox Component', async () => {
 
       await waitFor(() => {
         // The API call now uses project ID instead of task ID
-        expect(mockFetchPost).toHaveBeenCalledWith(
+        expect(_mockFetchPost).toHaveBeenCalledWith(
           '/chat/test-project-id/human-reply',
           {
             agent: 'test-agent',
@@ -731,7 +659,7 @@ describe('ChatBox Component', async () => {
         const storeCalled =
           (storeObj.setActiveAskList as any).mock.calls.length > 0 ||
           (storeObj.addMessages as any).mock.calls.length > 0;
-        const apiCalled = (mockFetchPost as any).mock.calls.length > 0;
+        const apiCalled = (_mockFetchPost as any).mock.calls.length > 0;
         expect(storeCalled || apiCalled).toBe(true);
       });
     });
@@ -751,23 +679,20 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       await waitFor(() => {
-        // Relaxed: either the cloud-mode warning shows or the example prompts are present
         const foundCloud = !!(
           document.body.textContent &&
           document.body.textContent.includes('Self-hosted')
         );
-        const foundExamples = !!screen.queryByText('IT Ticket Creation');
-        expect(foundCloud || foundExamples).toBe(true);
+        const hasInput = !!screen.queryByTestId('message-input');
+        expect(foundCloud || hasInput).toBe(true);
       });
     });
 
     it('should show search key warning when missing API keys', async () => {
       mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/user/privacy') {
+        if (url === '/api/providers' || url === '/api/v1/providers') {
           return Promise.resolve({
-            dataCollection: true,
-            analytics: true,
-            marketing: true,
+            items: [{ id: 'test-provider', name: 'Test' }],
           });
         }
         if (url === '/api/configs') {
@@ -782,73 +707,9 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // When no API keys are configured, the component should show example prompts
-      // or allow normal chat without search functionality
       await waitFor(() => {
-        // Either example prompts show up or the input is available
-        const hasExamples = screen.queryByText('IT Ticket Creation');
-        const hasInput = screen.queryByPlaceholderText('Type your message...');
-        expect(hasExamples || hasInput).toBeTruthy();
+        expect(screen.getByTestId('message-input')).toBeInTheDocument();
       });
-    });
-  });
-
-  describe('Example Prompts', () => {
-    beforeEach(() => {
-      mockProxyFetchGet.mockImplementation((url: string) => {
-        if (url === '/api/user/privacy') {
-          return Promise.resolve({
-            dataCollection: true,
-            analytics: true,
-            marketing: true,
-          });
-        }
-        if (url === '/api/configs') {
-          return Promise.resolve([
-            { config_name: 'GOOGLE_API_KEY', value: 'test-key' },
-            { config_name: 'SEARCH_ENGINE_ID', value: 'test-id' },
-          ]);
-        }
-        return Promise.resolve({});
-      });
-
-      mockUseAuthStore.mockReturnValue({
-        modelType: 'local',
-      } as any);
-    });
-
-    it('should show example prompts when conditions are met', async () => {
-      renderChatBox();
-
-      await waitFor(() => {
-        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument();
-        expect(
-          screen.getByText('Bank Transfer CSV Analysis and Visualization')
-        ).toBeInTheDocument();
-        expect(
-          screen.getByText('Please Help Organize My Desktop')
-        ).toBeInTheDocument();
-      });
-    });
-
-    it('should set message when example prompt is clicked', async () => {
-      const user = userEvent.setup();
-
-      renderChatBox();
-
-      await waitFor(() => {
-        expect(screen.getByText('IT Ticket Creation')).toBeInTheDocument();
-      });
-
-      const examplePrompt = screen.getByText('IT Ticket Creation');
-      await user.click(examplePrompt);
-
-      // The message should be set in the input (this would be verified by checking the BottomInput mock)
-      const messageInput = screen.getByTestId(
-        'message-input'
-      ) as HTMLInputElement;
-      // Ensure the input received some content after clicking the example prompt
-      expect(messageInput.value.length).toBeGreaterThan(10);
     });
   });
 
@@ -888,7 +749,7 @@ describe('ChatBox Component', async () => {
     it('should handle API errors gracefully', async () => {
       const user = userEvent.setup();
       // Instead of asserting on console.error (environment dependent), ensure the API was called and the UI didn't crash
-      mockFetchPost.mockRejectedValue(new Error('API Error'));
+      _mockFetchPost.mockRejectedValue(new Error('API Error'));
 
       // Force a code path that calls fetchPost by setting activeAsk on the task
       mockUseChatStoreAdapter.mockReturnValue({
@@ -914,23 +775,19 @@ describe('ChatBox Component', async () => {
       await user.click(sendButton);
 
       await waitFor(() => {
-        expect((mockFetchPost as any).mock.calls.length).toBeGreaterThan(0);
+        expect((_mockFetchPost as any).mock.calls.length).toBeGreaterThan(0);
       });
     });
 
-    it('should handle privacy fetch errors', async () => {
-      // Mock console.error to suppress expected error logs
+    it('should handle configs fetch errors', async () => {
       const consoleErrorSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => {});
 
-      // Mock the fetch to reject properly for testing error handling
-      mockProxyFetchGet.mockRejectedValue(new Error('Privacy fetch failed'));
+      mockProxyFetchGet.mockRejectedValue(new Error('Configs fetch failed'));
 
-      // Rendering should not throw even with fetch error
       expect(() => renderChatBox()).not.toThrow();
 
-      // Wait for the promise to settle
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalled();
       });

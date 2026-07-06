@@ -16,8 +16,25 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { mergeAliasStyles, tooltipTokenAliases } from './tokenAliases';
 
-const TooltipProvider = TooltipPrimitive.Provider;
+/** Default hover delay before a tooltip opens (Radix default is 700ms). */
+const TOOLTIP_DELAY_MS = 100;
+
+/** Delay skipped when moving between tooltip triggers (Radix default is 300ms). */
+const TOOLTIP_SKIP_DELAY_MS = 100;
+
+const TooltipProvider = ({
+  delayDuration = TOOLTIP_DELAY_MS,
+  skipDelayDuration = TOOLTIP_SKIP_DELAY_MS,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
+  <TooltipPrimitive.Provider
+    delayDuration={delayDuration}
+    skipDelayDuration={skipDelayDuration}
+    {...props}
+  />
+);
 
 const Tooltip = TooltipPrimitive.Root;
 
@@ -26,15 +43,16 @@ const TooltipTrigger = TooltipPrimitive.Trigger;
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
+>(({ className, sideOffset = 4, style, ...props }, ref) => (
   <TooltipPrimitive.Portal>
     <TooltipPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 origin-[--radix-tooltip-content-transform-origin] overflow-hidden rounded-md border border-border-secondary bg-surface-tertiary px-2 py-1.5 text-xs text-text-primary shadow-md backdrop-blur-sm animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        'rounded-lg border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-2 py-1.5 text-xs text-ds-text-neutral-default-default shadow-lg backdrop-blur-sm animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-[100] origin-[--radix-tooltip-content-transform-origin] overflow-hidden border-solid',
         className
       )}
+      style={mergeAliasStyles(tooltipTokenAliases, style)}
       {...props}
     />
   </TooltipPrimitive.Portal>
@@ -71,7 +89,7 @@ const TooltipSimple = React.forwardRef<
       content,
       className,
       sideOffset = 4,
-      delayDuration = 700,
+      delayDuration = TOOLTIP_DELAY_MS,
       enabled = true,
       ...props
     },
@@ -97,6 +115,7 @@ const TooltipSimple = React.forwardRef<
     );
   }
 );
+TooltipSimple.displayName = 'TooltipSimple';
 
 export {
   Tooltip,

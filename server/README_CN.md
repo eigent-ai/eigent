@@ -14,7 +14,7 @@
 - 配置中心 Config（保存各类工具/能力所需的密钥或参数）
   - `GET /configs`、`POST /configs`、`PUT /configs/{id}`、`DELETE /configs/{id}`、`GET /config/info`
 - 聊天与数据
-  - 历史、快照、分享等接口位于 `app/controller/chat/`，数据全部落在本地数据库
+  - 历史、快照、分享等接口位于 `app/domains/chat/api/`，数据全部落在本地数据库
 - MCP 服务管理（导入本地/远程 MCP 服务器）
   - `GET /mcps`、`POST /mcp/install`、`POST /mcp/import/{Local|Remote}` 等
 

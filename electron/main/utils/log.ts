@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 // @ts-ignore
 import archiver from 'archiver';
 import log from 'electron-log';
@@ -36,4 +40,43 @@ export function zipFolder(
     archive.directory(folderPath, false);
     archive.finalize();
   });
+}
+
+export type DiagnosticsLogFile = { src: string; destName: string };
+
+/**
+ * Stages log files and bug_report.txt into a temp directory, zips to outputZipPath, then removes the staging dir.
+ */
+export async function createDiagnosticsZip(
+  outputZipPath: string,
+  bugReportText: string,
+  logFiles: DiagnosticsLogFile[]
+): Promise<void> {
+  if (logFiles.length === 0) {
+    throw new Error('no log files to include');
+  }
+  const id = randomBytes(8).toString('hex');
+  const staging = path.join(os.tmpdir(), `eigent-diagnostics-${id}`);
+  await fsp.mkdir(staging, { recursive: true });
+  try {
+    for (const f of logFiles) {
+      if (!fs.existsSync(f.src)) {
+        log.warn(`[diagnostics] skip missing log: ${f.src}`);
+        continue;
+      }
+      await fsp.copyFile(f.src, path.join(staging, f.destName));
+    }
+    await fsp.writeFile(
+      path.join(staging, 'bug_report.txt'),
+      bugReportText,
+      'utf-8'
+    );
+    const entries = await fsp.readdir(staging);
+    if (entries.length === 0) {
+      throw new Error('no log files to include');
+    }
+    await zipFolder(staging, outputZipPath);
+  } finally {
+    await fsp.rm(staging, { recursive: true, force: true });
+  }
 }

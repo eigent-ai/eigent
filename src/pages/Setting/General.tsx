@@ -12,12 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import dark from '@/assets/dark.png';
-import light from '@/assets/light.png';
-import transparent from '@/assets/transparent.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
+import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
@@ -35,9 +33,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useHost } from '@/host';
 
 export default function SettingGeneral() {
   const { t } = useTranslation();
+  const host = useHost();
   const authStore = useAuthStore();
 
   const resetInstallation = useInstallationStore((state) => state.reset);
@@ -47,68 +47,18 @@ export default function SettingGeneral() {
 
   const navigate = useNavigate();
   const [_isLoading, _setIsLoading] = useState(false);
-  const setAppearance = authStore.setAppearance;
   const language = authStore.language;
   const _setLanguage = authStore.setLanguage;
-  const appearance = authStore.appearance;
   const _fullNameRef: RefObject<HTMLInputElement> = createRef();
   const _nickNameRef: RefObject<HTMLInputElement> = createRef();
   const _workDescRef: RefObject<HTMLInputElement> = createRef();
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
 
-  const [themeList, setThemeList] = useState<any>([
-    {
-      img: dark,
-      label: 'setting.dark',
-      value: 'dark',
-    },
-    {
-      img: light,
-      label: 'setting.light',
-      value: 'light',
-    },
-    {
-      img: transparent,
-      label: 'setting.transparent',
-      value: 'transparent',
-    },
-  ]);
-
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
-
-  useEffect(() => {
-    const platform = window.electronAPI.getPlatform();
-    console.log(platform);
-    const baseThemes = [
-      {
-        img: dark,
-        label: 'setting.dark',
-        value: 'dark',
-      },
-      {
-        img: light,
-        label: 'setting.light',
-        value: 'light',
-      },
-    ];
-
-    if (platform === 'darwin') {
-      setThemeList([
-        ...baseThemes,
-        {
-          img: transparent,
-          label: 'setting.transparent',
-          value: 'transparent',
-        },
-      ]);
-    } else {
-      setThemeList(baseThemes);
-    }
-  }, []);
 
   const languageList = [
     {
@@ -160,9 +110,9 @@ export default function SettingGeneral() {
   useEffect(() => {
     // Load proxy configuration from global env
     const loadProxyConfig = async () => {
-      if (window.electronAPI?.readGlobalEnv) {
+      if (host?.electronAPI?.readGlobalEnv) {
         try {
-          const result = await window.electronAPI.readGlobalEnv('HTTP_PROXY');
+          const result = await host.electronAPI.readGlobalEnv('HTTP_PROXY');
           if (result?.value) {
             setProxyUrl(result.value);
           }
@@ -172,7 +122,7 @@ export default function SettingGeneral() {
       }
     };
     loadProxyConfig();
-  }, []);
+  }, [host]);
 
   // Save proxy configuration
   const handleSaveProxy = async () => {
@@ -199,7 +149,7 @@ export default function SettingGeneral() {
       }
     }
 
-    if (!window.electronAPI?.envWrite || !window.electronAPI?.envRemove) {
+    if (!host?.electronAPI?.envWrite || !host?.electronAPI?.envRemove) {
       toast.error(t('setting.proxy-save-failed'));
       return;
     }
@@ -207,13 +157,13 @@ export default function SettingGeneral() {
     setIsProxySaving(true);
     try {
       if (trimmed) {
-        const result = await window.electronAPI.envWrite(authStore.email, {
+        const result = await host.electronAPI.envWrite(authStore.email, {
           key: 'HTTP_PROXY',
           value: trimmed,
         });
         if (!result?.success) throw new Error('envWrite returned no success');
       } else {
-        const result = await window.electronAPI.envRemove(
+        const result = await host.electronAPI.envRemove(
           authStore.email,
           'HTTP_PROXY'
         );
@@ -229,17 +179,13 @@ export default function SettingGeneral() {
     }
   };
 
-  if (!chatStore) {
-    return <div>Loading...</div>;
-  }
-
   return (
     <div className="m-auto h-auto w-full flex-1">
       {/* Header Section */}
       <div className="mx-auto flex w-full max-w-[900px] items-center justify-between px-6 pb-6 pt-8">
         <div className="flex w-full flex-row items-center justify-between gap-4">
           <div className="flex flex-col">
-            <div className="text-heading-sm font-bold text-text-heading">
+            <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
               {t('setting.general')}
             </div>
           </div>
@@ -248,9 +194,9 @@ export default function SettingGeneral() {
       {/* Content Section */}
       <div className="mb-xl flex flex-col gap-6">
         {/* Profile Section */}
-        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="flex flex-col gap-2">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.profile')}
             </div>
             <div className="text-body-sm">
@@ -258,7 +204,9 @@ export default function SettingGeneral() {
                 i18nKey="setting.you-are-currently-signed-in-with"
                 values={{ email: authStore.email }}
                 components={{
-                  email: <span className="text-text-information underline" />,
+                  email: (
+                    <span className="text-ds-text-status-splitting-strong-default underline" />
+                  ),
                 }}
               />
             </div>
@@ -266,19 +214,27 @@ export default function SettingGeneral() {
           <div className="flex items-center gap-sm">
             <Button
               onClick={() => {
-                window.location.href = `https://www.eigent.ai/dashboard?email=${authStore.email}`;
+                window.location.href = `${SITE_URL}/dashboard?email=${authStore.email}`;
               }}
               variant="primary"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
             >
-              <Settings className="h-4 w-4 text-button-primary-icon-default" />
+              <Settings />
               {t('setting.manage')}
             </Button>
             <Button
               variant="outline"
+              textWeight="semibold"
+              buttonContent="text"
+              buttonRadius="lg"
+              tone="neutral"
               size="sm"
               onClick={() => {
-                chatStore.clearTasks();
+                chatStore?.clearTasks?.();
 
                 resetInstallation(); // Reset installation state for new account
                 setNeedsBackendRestart(true); // Mark that backend is restarting
@@ -287,21 +243,21 @@ export default function SettingGeneral() {
                 navigate('/login');
               }}
             >
-              <LogOut className="h-4 w-4 text-button-tertiery-text-default" />
+              <LogOut />
               {t('setting.log-out')}
             </Button>
           </div>
         </div>
 
         {/* Language Section */}
-        <div className="item-center flex flex-row justify-between rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="item-center flex flex-row justify-between rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="flex flex-1 items-center">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.language')}
             </div>
           </div>
           <Select value={language} onValueChange={switchLanguage}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger variant="secondary" className="w-48">
               <SelectValue placeholder={t('setting.select-language')} />
             </SelectTrigger>
             <SelectContent className="border bg-input-bg-default">
@@ -319,46 +275,13 @@ export default function SettingGeneral() {
           </Select>
         </div>
 
-        {/* Appearance Section */}
-        <div className="item-center flex flex-col justify-between gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
-          <div className="text-body-base font-bold text-text-heading">
-            {t('setting.appearance')}
-          </div>
-          <div className="flex w-full flex-row items-center gap-md">
-            {themeList.map((item: any) => (
-              <div
-                key={item.label}
-                className="group flex w-full flex-col items-center gap-sm hover:cursor-pointer"
-                onClick={() => setAppearance(item.value)}
-              >
-                <img
-                  src={item.img}
-                  className={`group-hover:border-bg-fill-info-primary aspect-[183/91.67] w-full rounded-lg border border-solid border-transparent transition-all ${
-                    item.value == appearance
-                      ? 'border-bg-fill-info-primary'
-                      : ''
-                  }`}
-                  alt=""
-                />
-                <div
-                  className={`text-sm text-text-primary group-hover:underline ${
-                    item.value == appearance ? 'underline' : ''
-                  }`}
-                >
-                  {t(item.label)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Network Proxy Section */}
-        <div className="flex flex-col gap-4 rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="flex flex-col gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="flex flex-col gap-1">
-            <div className="text-body-base font-bold text-text-heading">
+            <div className="text-body-base font-bold text-ds-text-neutral-default-default">
               {t('setting.network-proxy')}
             </div>
-            <div className="mb-4 text-sm leading-13 text-text-secondary">
+            <div className="mb-4 text-sm leading-13 text-ds-text-neutral-muted-default">
               {t('setting.network-proxy-description')}
             </div>
           </div>
@@ -380,7 +303,7 @@ export default function SettingGeneral() {
                 size="sm"
                 onClick={
                   proxyNeedsRestart
-                    ? () => window.electronAPI?.restartApp()
+                    ? () => host?.electronAPI?.restartApp()
                     : handleSaveProxy
                 }
                 disabled={!proxyNeedsRestart && isProxySaving}

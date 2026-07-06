@@ -26,7 +26,6 @@ from app.agent.toolkit.github_toolkit import GithubToolkit
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
-from app.agent.toolkit.image_analysis_toolkit import ImageAnalysisToolkit
 from app.agent.toolkit.lark_toolkit import LarkToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
@@ -35,6 +34,7 @@ from app.agent.toolkit.openai_image_toolkit import OpenAIImageToolkit
 from app.agent.toolkit.pptx_toolkit import PPTXToolkit
 from app.agent.toolkit.rag_toolkit import RAGToolkit
 from app.agent.toolkit.reddit_toolkit import RedditToolkit
+from app.agent.toolkit.remote_sub_agent_toolkit import RemoteSubAgentToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.slack_toolkit import SlackToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
@@ -43,12 +43,26 @@ from app.agent.toolkit.video_analysis_toolkit import VideoAnalysisToolkit
 from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.agent.toolkit.whatsapp_toolkit import WhatsAppToolkit
 from app.component.environment import env
+from app.hands.interface import IHands
 from app.model.chat import McpServers
 
 logger = logging.getLogger(__name__)
 
+# Toolkits depending on terminal hand
+TERMINAL_DEPENDENT_TOOLKITS = frozenset({"terminal_toolkit"})
 
-async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
+# Toolkits depending on browser hand
+BROWSER_DEPENDENT_TOOLKITS = (
+    frozenset()
+)  # hybrid_browser not in get_toolkits dict
+
+
+async def get_toolkits(
+    tools: list[str],
+    agent_name: str,
+    api_task_id: str,
+    hands: IHands | None = None,
+):
     logger.info(
         f"Getting toolkits for agent: {agent_name}, "
         f"task: {api_task_id}, tools: {tools}"
@@ -62,7 +76,6 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "google_calendar_toolkit": GoogleCalendarToolkit,
         "google_drive_mcp_toolkit": GoogleDriveMCPToolkit,
         "google_gmail_mcp_toolkit": GoogleGmailMCPToolkit,
-        "image_analysis_toolkit": ImageAnalysisToolkit,
         "linkedin_toolkit": LinkedInToolkit,
         "lark_toolkit": LarkToolkit,
         "mcp_search_toolkit": McpSearchToolkit,
@@ -70,6 +83,7 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
         "pptx_toolkit": PPTXToolkit,
         "rag_toolkit": RAGToolkit,
         "reddit_toolkit": RedditToolkit,
+        "remote_sub_agent_toolkit": RemoteSubAgentToolkit,
         "search_toolkit": SearchToolkit,
         "slack_toolkit": SlackToolkit,
         "terminal_toolkit": TerminalToolkit,
@@ -81,6 +95,24 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
     res = []
     for item in tools:
         if item in toolkits:
+            # Filter by Brain capabilities
+            if hands is not None:
+                if (
+                    item in TERMINAL_DEPENDENT_TOOLKITS
+                    and not hands.can_execute_terminal()
+                ):
+                    logger.info(
+                        f"Skipping {item} for {agent_name}: no terminal hand"
+                    )
+                    continue
+                if (
+                    item in BROWSER_DEPENDENT_TOOLKITS
+                    and not hands.can_use_browser()
+                ):
+                    logger.info(
+                        f"Skipping {item} for {agent_name}: no browser hand"
+                    )
+                    continue
             toolkit: AbstractToolkit = toolkits[item]
             toolkit.agent_name = agent_name
             toolkit_tools = toolkit.get_can_use_tools(api_task_id)
@@ -95,12 +127,30 @@ async def get_toolkits(tools: list[str], agent_name: str, api_task_id: str):
     return res
 
 
-async def get_mcp_tools(mcp_server: McpServers):
+async def get_mcp_tools(
+    mcp_server: McpServers,
+    hands: IHands | None = None,
+):
     logger.info(
         f"Getting MCP tools for {len(mcp_server['mcpServers'])} servers"
     )
     if len(mcp_server["mcpServers"]) == 0:
         return []
+
+    # Filter by mcp hand capability
+    mcp_servers = mcp_server["mcpServers"]
+    if hands is not None:
+        filtered = {
+            name: cfg
+            for name, cfg in mcp_servers.items()
+            if hands.can_use_mcp(name)
+        }
+        if len(filtered) == 0:
+            logger.info(
+                "No MCP servers allowed by mcp hand, skipping MCP tools"
+            )
+            return []
+        mcp_server = {**mcp_server, "mcpServers": filtered}
 
     # Ensure unified auth directory for all mcp-remote servers to avoid
     # re-authentication on each task

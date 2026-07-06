@@ -21,6 +21,7 @@ repos:
         exclude: '\.md$'
       - id: check-toml
         name: Check toml
+        exclude: 'benchmark/harbor/template/'
       - id: check-yaml
         name: Check yaml
 

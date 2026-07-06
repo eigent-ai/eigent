@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import asyncio
 import logging
 from typing import Literal
 
@@ -30,19 +29,44 @@ from app.service.task import (
     ActionTakeControl,
     ActionUpdateTaskData,
     get_task_lock,
+    get_task_lock_if_exists,
     task_locks,
 )
+from app.utils.event_loop_utils import schedule_async_task_from_worker
 
 logger = logging.getLogger("task_controller")
 
 router = APIRouter()
 
 
+def _queue_action_from_worker(task_lock, action, description: str) -> None:
+    schedule_async_task_from_worker(
+        task_lock.put_queue(action),
+        timeout=5.0,
+        description=description,
+    )
+
+
+@router.post("/v1/tasks", name="dispatch task placeholder")
+def create_dispatch_task():
+    return Response(status_code=501, content="Not implemented yet")
+
+
+@router.get("/v1/tasks/{task_id}", name="dispatch task status placeholder")
+def get_dispatch_task(task_id: str):
+    _ = task_id
+    return Response(status_code=501, content="Not implemented yet")
+
+
 @router.post("/task/{id}/start", name="start task")
 def start(id: str):
     task_lock = get_task_lock(id)
     logger.info("Starting task", extra={"task_id": id})
-    asyncio.run(task_lock.put_queue(ActionStartData(action=Action.start)))
+    _queue_action_from_worker(
+        task_lock,
+        ActionStartData(action=Action.start),
+        "start task queue action",
+    )
     logger.info("Task started successfully", extra={"task_id": id})
     return Response(status_code=201)
 
@@ -58,26 +82,45 @@ def put(id: str, data: UpdateData):
         extra={"task_id": id, "data": data.model_dump_json()},
     )
     task_lock = get_task_lock(id)
-    asyncio.run(
-        task_lock.put_queue(
-            ActionUpdateTaskData(action=Action.update_task, data=data)
-        )
+    _queue_action_from_worker(
+        task_lock,
+        ActionUpdateTaskData(action=Action.update_task, data=data),
+        "update task queue action",
     )
     logger.info("Task updated successfully", extra={"task_id": id})
     return Response(status_code=201)
 
 
 class TakeControl(BaseModel):
-    action: Literal[Action.pause, Action.resume]
+    action: Literal[Action.pause, Action.resume, Action.stop]
 
 
-@router.put("/task/{id}/take-control", name="take control pause or resume")
+@router.put(
+    "/task/{id}/take-control", name="take control pause, resume or stop"
+)
 def take_control(id: str, data: TakeControl):
     logger.info(
         "Task control action", extra={"task_id": id, "action": data.action}
     )
-    task_lock = get_task_lock(id)
-    asyncio.run(task_lock.put_queue(ActionTakeControl(action=data.action)))
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is None:
+        logger.warning(
+            "Task lock not found for take-control, may already be stopped",
+            extra={"task_id": id},
+        )
+        return Response(status_code=204)
+    if data.action == Action.stop:
+        _queue_action_from_worker(
+            task_lock,
+            ActionStopData(action=Action.stop),
+            "take-control stop queue action",
+        )
+    else:
+        _queue_action_from_worker(
+            task_lock,
+            ActionTakeControl(action=data.action),
+            "take-control queue action",
+        )
     logger.info(
         "Task control action completed",
         extra={"task_id": id, "action": data.action},
@@ -101,8 +144,10 @@ def add_agent(id: str, data: NewAgent):
     safe_env_path = sanitize_env_path(data.env_path)
     if safe_env_path:
         load_dotenv(dotenv_path=safe_env_path)
-    asyncio.run(
-        get_task_lock(id).put_queue(ActionNewAgent(**data.model_dump()))
+    _queue_action_from_worker(
+        get_task_lock(id),
+        ActionNewAgent(**data.model_dump()),
+        "add agent queue action",
     )
     logger.info(
         "Agent added to task", extra={"task_id": id, "agent_name": data.name}
@@ -114,6 +159,10 @@ def add_agent(id: str, data: NewAgent):
 def stop_all():
     logger.warning("Stopping all tasks", extra={"task_count": len(task_locks)})
     for task_lock in task_locks.values():
-        asyncio.run(task_lock.put_queue(ActionStopData()))
+        _queue_action_from_worker(
+            task_lock,
+            ActionStopData(),
+            "stop all queue action",
+        )
     logger.info("All tasks stopped", extra={"task_count": len(task_locks)})
     return Response(status_code=204)

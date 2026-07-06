@@ -25,7 +25,7 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
-from app.component.environment import auto_import, env_not_empty
+from app.core.environment import auto_import, env_not_empty
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -44,7 +44,12 @@ auto_import("app.model.user")
 auto_import("app.model.config")
 auto_import("app.model.chat")
 auto_import("app.model.provider")
+auto_import("app.model.remote_sub_agent")
+auto_import("app.model.remote_control")
 auto_import("app.model.trigger")
+auto_import("app.model.space")
+auto_import("app.model.project")
+auto_import("app.model.memory")
 
 # target_metadata = mymodel.Base.metadata
 target_metadata = SQLModel.metadata

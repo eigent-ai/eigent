@@ -32,46 +32,65 @@ export interface AgentDisplayInfo {
   bgColorLight: string;
 }
 
+/**
+ * Classes for the small top-right role badge on agent tiles. Must be full literal
+ * strings (including `!`) so Tailwind emits them, and `!text-*` beats
+ * `button .lucide` in `src/style/index.css`.
+ */
+export const WORKFLOW_AGENT_SUB_ICON_CLASS: Record<WorkflowAgentType, string> =
+  {
+    developer_agent:
+      '!h-[10px] !w-[10px] shrink-0 !text-ds-text-terminal-default-default',
+    browser_agent: '!h-[10px] !w-[10px] shrink-0 !text-blue-700',
+    document_agent: '!h-[10px] !w-[10px] shrink-0 !text-yellow-700',
+    multi_modal_agent: '!h-[10px] !w-[10px] shrink-0 !text-fuchsia-700',
+    social_media_agent: '!h-[10px] !w-[10px] shrink-0 !text-purple-700',
+  };
+
 export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   developer_agent: {
     name: 'Developer Agent',
-    icon: <CodeXml size={16} className="text-text-primary" />,
-    textColor: 'text-text-developer',
-    bgColor: 'bg-bg-fill-coding-active',
-    shapeColor: 'bg-bg-fill-coding-default',
-    borderColor: 'border-bg-fill-coding-active',
+    icon: (
+      <CodeXml size={16} className="text-ds-text-neutral-default-default" />
+    ),
+    textColor: 'text-ds-text-terminal-default-default',
+    bgColor: 'bg-ds-bg-terminal-default-default',
+    shapeColor: 'bg-ds-bg-terminal-subtle-default',
+    borderColor: 'border-ds-border-terminal-default-default',
     bgColorLight: 'bg-emerald-200',
   },
   browser_agent: {
     name: 'Browser Agent',
-    icon: <Globe size={16} className="text-text-primary" />,
+    icon: <Globe size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-blue-700',
-    bgColor: 'bg-bg-fill-browser-active',
-    shapeColor: 'bg-bg-fill-browser-default',
-    borderColor: 'border-bg-fill-browser-active',
+    bgColor: 'bg-ds-bg-browser-default-default',
+    shapeColor: 'bg-ds-bg-browser-subtle-default',
+    borderColor: 'border-ds-border-browser-default-default',
     bgColorLight: 'bg-blue-200',
   },
   document_agent: {
     name: 'Document Agent',
-    icon: <FileText size={16} className="text-text-primary" />,
+    icon: (
+      <FileText size={16} className="text-ds-text-neutral-default-default" />
+    ),
     textColor: 'text-yellow-700',
-    bgColor: 'bg-bg-fill-writing-active',
-    shapeColor: 'bg-bg-fill-writing-default',
-    borderColor: 'border-bg-fill-writing-active',
+    bgColor: 'bg-ds-bg-document-default-default',
+    shapeColor: 'bg-ds-bg-document-subtle-default',
+    borderColor: 'border-ds-border-document-default-default',
     bgColorLight: 'bg-yellow-200',
   },
   multi_modal_agent: {
     name: 'Multi Modal Agent',
-    icon: <Image size={16} className="text-text-primary" />,
+    icon: <Image size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-fuchsia-700',
-    bgColor: 'bg-bg-fill-multimodal-active',
-    shapeColor: 'bg-bg-fill-multimodal-default',
-    borderColor: 'border-bg-fill-multimodal-active',
+    bgColor: 'bg-ds-bg-neutral-default-default',
+    shapeColor: 'bg-ds-bg-neutral-subtle-default',
+    borderColor: 'border-ds-border-neutral-default-default',
     bgColorLight: 'bg-fuchsia-200',
   },
   social_media_agent: {
     name: 'Social Media Agent',
-    icon: <Bird size={16} className="text-text-primary" />,
+    icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
     textColor: 'text-purple-700',
     bgColor: 'bg-violet-700',
     shapeColor: 'bg-violet-300',

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Progress } from '@/components/ui/progress';
+import { useHost } from '@/host';
 import type { ProgressInfo } from 'electron-updater';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,33 +23,18 @@ const Update = () => {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const { t } = useTranslation();
+  const host = useHost();
+  const ipc = host?.ipcRenderer;
 
-  const checkUpdate = () => {
-    window.ipcRenderer.invoke('check-update');
-  };
-
-  const onUpdateCanAvailable = useCallback(
-    (_event: Electron.IpcRendererEvent, info: VersionInfo) => {
-      if (info.update) {
-        toast(t('update.new-version-available'), {
-          description: `v${info.version} → v${info.newVersion}`,
-          action: {
-            label: t('update.download'),
-            onClick: () => {
-              setIsDownloading(true);
-              setDownloadProgress(0);
-              window.ipcRenderer.invoke('start-download');
-            },
-          },
-          duration: Infinity,
-        });
-      }
-    },
-    [t]
-  );
+  const checkUpdate = useCallback(() => {
+    void ipc?.invoke('check-update');
+  }, [ipc]);
 
   const onUpdateError = useCallback(
     (_event: Electron.IpcRendererEvent, err: ErrorType) => {
+      toast.dismiss('download-progress');
+      setIsDownloading(false);
+      setDownloadProgress(0);
       toast.error(t('update.update-error'), {
         description: err.message,
       });
@@ -58,7 +44,7 @@ const Update = () => {
 
   const onDownloadProgress = useCallback(
     (_event: Electron.IpcRendererEvent, progress: ProgressInfo) => {
-      console.log('Download progress received:', progress);
+      setIsDownloading(true);
       setDownloadProgress(progress.percent ?? 0);
     },
     []
@@ -69,7 +55,7 @@ const Update = () => {
     if (isDownloading) {
       toast.custom(
         (_toastId) => (
-          <div className="w-[300px] rounded-lg bg-white-100% p-4 shadow-lg">
+          <div className="rounded-lg bg-ds-bg-neutral-inverse-default p-4 shadow-lg w-[300px]">
             <div className="mb-2 text-sm font-medium">
               {t('update.downloading-update')}
             </div>
@@ -82,6 +68,7 @@ const Update = () => {
         {
           id: 'download-progress',
           duration: Infinity,
+          position: 'bottom-right',
         }
       );
     }
@@ -95,12 +82,12 @@ const Update = () => {
         description: t('update.click-to-install-update'),
         action: {
           label: t('update.install'),
-          onClick: () => window.ipcRenderer.invoke('quit-and-install'),
+          onClick: () => void ipc?.invoke('quit-and-install'),
         },
         duration: Infinity,
       });
     },
-    [t]
+    [t, ipc]
   );
 
   useEffect(() => {
@@ -109,24 +96,17 @@ const Update = () => {
     }
     sessionStorage.setItem('updateElectronShown', '1');
 
-    window.ipcRenderer?.on('update-can-available', onUpdateCanAvailable);
-    window.ipcRenderer?.on('update-error', onUpdateError);
-    window.ipcRenderer?.on('download-progress', onDownloadProgress);
-    window.ipcRenderer?.on('update-downloaded', onUpdateDownloaded);
+    ipc?.on('update-error', onUpdateError);
+    ipc?.on('download-progress', onDownloadProgress);
+    ipc?.on('update-downloaded', onUpdateDownloaded);
     checkUpdate();
 
     return () => {
-      window.ipcRenderer?.off('update-can-available', onUpdateCanAvailable);
-      window.ipcRenderer?.off('update-error', onUpdateError);
-      window.ipcRenderer?.off('download-progress', onDownloadProgress);
-      window.ipcRenderer?.off('update-downloaded', onUpdateDownloaded);
+      ipc?.off('update-error', onUpdateError);
+      ipc?.off('download-progress', onDownloadProgress);
+      ipc?.off('update-downloaded', onUpdateDownloaded);
     };
-  }, [
-    onUpdateCanAvailable,
-    onUpdateError,
-    onDownloadProgress,
-    onUpdateDownloaded,
-  ]);
+  }, [ipc, onUpdateError, onDownloadProgress, onUpdateDownloaded, checkUpdate]);
 
   return null;
 };

@@ -19,12 +19,14 @@ import pytest
 from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
 from camel.messages import BaseMessage
+from camel.models import ModelProcessingError
 from camel.responses import ChatAgentResponse
 from camel.toolkits import FunctionTool
 from camel.types.agents import ToolCallingRecord
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.model.chat import Chat
+from app.service.task import process_task
 
 _LCA = "app.agent.listen_chat_agent"
 
@@ -108,6 +110,100 @@ class TestListenChatAgent:
                 assert args[0] == "Test input message"
                 # Should queue activation notification
                 mock_task_lock.put_queue.assert_called()
+
+    def test_listen_chat_agent_reloads_model_once_on_auth_error(
+        self, mock_task_lock
+    ):
+        """Codex subscription agents can refresh and retry one 401."""
+        api_task_id = "test_api_task_123"
+        agent_name = "TestAgent"
+        reload_callback = MagicMock()
+
+        with (
+            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch("camel.models.ModelFactory.create") as mock_create_model,
+        ):
+            mock_backend = MagicMock()
+            mock_backend.model_type = "gpt-4"
+            mock_backend.current_model = MagicMock()
+            mock_backend.current_model.model_type = "gpt-4"
+            mock_create_model.return_value = mock_backend
+            reload_callback.return_value = mock_backend
+
+            agent = ListenChatAgent(
+                api_task_id=api_task_id,
+                agent_name=agent_name,
+                model="gpt-4",
+                model_reload_callback=reload_callback,
+            )
+            agent.process_task_id = "test_process_task"
+
+            mock_response = MagicMock(spec=ChatAgentResponse)
+            mock_response.msg = MagicMock()
+            mock_response.msg.content = "Retried response"
+            mock_response.info = {"usage": {"total_tokens": 42}}
+
+            with patch.object(
+                ChatAgent,
+                "step",
+                side_effect=[
+                    ModelProcessingError("401 Unauthorized"),
+                    mock_response,
+                ],
+            ) as mock_parent_step:
+                result = agent.step("Test input message")
+
+            assert result is mock_response
+            assert mock_parent_step.call_count == 2
+            reload_callback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_listen_chat_agent_async_reloads_model_once_on_auth_error(
+        self, mock_task_lock
+    ):
+        api_task_id = "test_api_task_123"
+        agent_name = "TestAgent"
+        reload_callback = MagicMock()
+
+        with (
+            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch("camel.models.ModelFactory.create") as mock_create_model,
+        ):
+            mock_backend = MagicMock()
+            mock_backend.model_type = "gpt-4"
+            mock_backend.current_model = MagicMock()
+            mock_backend.current_model.model_type = "gpt-4"
+            mock_create_model.return_value = mock_backend
+            reload_callback.return_value = mock_backend
+
+            agent = ListenChatAgent(
+                api_task_id=api_task_id,
+                agent_name=agent_name,
+                model="gpt-4",
+                model_reload_callback=reload_callback,
+            )
+            agent.process_task_id = "test_process_task"
+
+            mock_response = MagicMock()
+            mock_response.msg = MagicMock()
+            mock_response.msg.content = "Retried async response"
+            mock_response.info = {"usage": {"total_tokens": 43}}
+
+            with patch.object(
+                ChatAgent,
+                "astep",
+                new=AsyncMock(
+                    side_effect=[
+                        ModelProcessingError("401 Unauthorized"),
+                        mock_response,
+                    ]
+                ),
+            ) as mock_parent_astep:
+                result = await agent.astep("Test async input")
+
+            assert result is mock_response
+            assert mock_parent_astep.call_count == 2
+            reload_callback.assert_called_once()
 
     def test_listen_chat_agent_step_with_base_message_input(
         self, mock_task_lock
@@ -305,6 +401,57 @@ class TestListenChatAgent:
                 # Should queue toolkit activation
                 # and deactivation notifications
                 assert mock_task_lock.put_queue.call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_streaming_tool_execution_preserves_process_task_context(
+        self, mock_task_lock
+    ):
+        """Streaming tool calls should use the current follow-up task id."""
+        api_task_id = "test_api_task_123"
+        agent_name = "TestAgent"
+        observed_process_task_ids: list[str] = []
+
+        class SyncTool:
+            is_async = False
+
+            def func(self):
+                return None
+
+            def __call__(self, **kwargs):
+                observed_process_task_ids.append(process_task.get(""))
+                return f"ok:{kwargs['arg1']}"
+
+        with (
+            patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch("camel.models.ModelFactory.create") as mock_create_model,
+        ):
+            mock_backend = MagicMock()
+            mock_backend.model_type = "gpt-4"
+            mock_backend.current_model = MagicMock()
+            mock_backend.current_model.model_type = "gpt-4"
+            mock_create_model.return_value = mock_backend
+
+            agent = ListenChatAgent(
+                api_task_id=api_task_id, agent_name=agent_name, model="gpt-4"
+            )
+            agent.process_task_id = "follow_up_task_123"
+            agent._internal_tools = {"stream_tool": SyncTool()}
+
+            result = await agent._aexecute_tool_from_stream_data(
+                {
+                    "id": "stream_tool_call_123",
+                    "function": {
+                        "name": "stream_tool",
+                        "arguments": '{"arg1": "value1"}',
+                    },
+                }
+            )
+
+            assert result is not None
+            assert result.tool_name == "stream_tool"
+            assert result.result == "ok:value1"
+            assert observed_process_task_ids == ["follow_up_task_123"]
+            assert mock_task_lock.put_queue.call_count >= 2
 
     def test_listen_chat_agent_clone(self, mock_task_lock):
         """Test ListenChatAgent clone method."""

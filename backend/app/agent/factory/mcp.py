@@ -11,27 +11,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
-import asyncio
-import uuid
+from camel.toolkits import ToolkitMessageIntegration
 
-from camel.models import ModelFactory
-
-from app.agent.listen_chat_agent import ListenChatAgent, logger
+from app.agent.agent_model import agent_model
+from app.agent.factory.remote_sub_agent import (
+    attach_remote_sub_agent_if_enabled,
+    remote_sub_agent_enabled,
+)
+from app.agent.listen_chat_agent import logger
 from app.agent.prompt import MCP_SYS_PROMPT
+from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
 from app.model.chat import Chat
-from app.service.task import ActionCreateAgentData, Agents, get_task_lock
+from app.service.task import Agents
+from app.utils.file_utils import get_working_directory
 
 
 async def mcp_agent(options: Chat):
+    working_directory = get_working_directory(options)
     logger.info(
         f"Creating MCP agent for project: {options.project_id} "
         f"with {len(options.installed_mcp['mcpServers'])} MCP servers"
     )
+    message_integration = None
+    if remote_sub_agent_enabled(options, working_directory):
+        message_integration = ToolkitMessageIntegration(
+            message_handler=HumanToolkit(
+                options.project_id, Agents.mcp_agent
+            ).send_message_to_user
+        )
     tools = [
         *McpSearchToolkit(options.project_id).get_tools(),
     ]
+    tool_names = [McpSearchToolkit.toolkit_name()]
     if len(options.installed_mcp["mcpServers"]) > 0:
         try:
             mcp_tools = await get_mcp_tools(options.installed_mcp)
@@ -40,7 +53,7 @@ async def mcp_agent(options: Chat):
                 f"for task {options.project_id}"
             )
             if mcp_tools:
-                tool_names = [
+                mcp_tool_names = [
                     (
                         tool.get_function_name()
                         if hasattr(tool, "get_function_name")
@@ -48,55 +61,27 @@ async def mcp_agent(options: Chat):
                     )
                     for tool in mcp_tools
                 ]
-                logger.debug(f"MCP tools: {tool_names}")
+                logger.debug(f"MCP tools: {mcp_tool_names}")
+                tool_names.extend(mcp_tool_names)
             tools = [*tools, *mcp_tools]
         except Exception as e:
             logger.debug(repr(e))
 
-    task_lock = get_task_lock(options.project_id)
-    agent_id = str(uuid.uuid4())
-    logger.info(
-        f"Creating MCP agent: {Agents.mcp_agent} with id: "
-        f"{agent_id} for task: {options.project_id}"
-    )
-    asyncio.create_task(
-        task_lock.put_queue(
-            ActionCreateAgentData(
-                data={
-                    "agent_name": Agents.mcp_agent,
-                    "agent_id": agent_id,
-                    "tools": [
-                        key
-                        for key in options.installed_mcp["mcpServers"].keys()
-                    ],
-                }
-            )
-        )
-    )
-    return ListenChatAgent(
-        options.project_id,
-        Agents.mcp_agent,
-        system_message=MCP_SYS_PROMPT,
-        model=ModelFactory.create(
-            model_platform=options.model_platform,
-            model_type=options.model_type,
-            api_key=options.api_key,
-            url=options.api_url,
-            model_config_dict=(
-                {
-                    "user": str(options.project_id),
-                }
-                if options.is_cloud()
-                else None
-            ),
-            timeout=600,  # 10 minutes
-            **{
-                k: v
-                for k, v in (options.extra_params or {}).items()
-                if k not in ["model_platform", "model_type", "api_key", "url"]
-            },
-        ),
-        # output_language=options.language,
+    system_message = attach_remote_sub_agent_if_enabled(
+        options=options,
+        agent_name=Agents.mcp_agent,
+        working_directory=working_directory,
         tools=tools,
-        agent_id=agent_id,
+        tool_names=tool_names,
+        system_message=MCP_SYS_PROMPT,
+        local_tool_description="local MCP or search tools",
+        message_integration=message_integration,
+    )
+
+    return agent_model(
+        Agents.mcp_agent,
+        system_message,
+        options,
+        tools,
+        tool_names=[key for key in options.installed_mcp["mcpServers"].keys()],
     )

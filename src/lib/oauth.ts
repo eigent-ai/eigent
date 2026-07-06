@@ -12,9 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createHost } from '@/host';
+
 const EnvOauthInfoMap = {
   notion: 'NOTION_TOKEN',
 };
+
+const getElectronAPI = () => createHost().electronAPI;
 
 export class OAuth {
   public client_name: string = 'Eigent';
@@ -45,7 +49,7 @@ export class OAuth {
     this.url = mcp.url;
     this.provider = mcp.provider;
     this.redirect_uris = [
-      `https://dev.eigent.ai/api/oauth/${this.provider}/callback`,
+      `https://dev.eigent.ai/api/v1/oauth/${this.provider}/callback`,
     ];
     this.authServerUrl = new URL(mcp.url).origin;
     this.resourcePath = mcp?.resourcePath || this.resourcePath;
@@ -165,8 +169,9 @@ export class OAuth {
       body: params.toString(),
     }).then((res) => res.json());
 
-    if (window.electronAPI?.envWrite) {
-      await window.electronAPI.envWrite(email, {
+    const electronAPI = getElectronAPI();
+    if (electronAPI?.envWrite) {
+      await electronAPI.envWrite(email, {
         key: EnvOauthInfoMap[provider as keyof typeof EnvOauthInfoMap],
         value: newToken.access_token,
       });

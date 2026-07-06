@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
-import os
 from typing import Any
 
 import httpx
@@ -94,6 +93,102 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     # ) -> dict[str, Any]:
     #     return super().search_linkup(query, depth, output_type, structured_output_schema)
 
+    def _search_google_with_config(
+        self,
+        query: str,
+        search_type: str,
+        number_of_result_pages: int,
+        start_page: int,
+        google_api_key: str,
+        search_engine_id: str,
+    ) -> list[dict[str, Any]]:
+        if start_page < 1:
+            raise ValueError("start_page must be a positive integer")
+        if number_of_result_pages < 1:
+            raise ValueError(
+                "number_of_result_pages must be a positive integer"
+            )
+        if number_of_result_pages > 10:
+            logger.warning(
+                "Google API limits results to 10 per request. "
+                "Using 10 instead."
+            )
+            number_of_result_pages = 10
+        if search_type not in ("web", "image"):
+            raise ValueError("search_type must be either 'web' or 'image'")
+
+        modified_query = query
+        if self.exclude_domains:
+            exclusion_terms = " ".join(
+                f"-site:{domain}" for domain in self.exclude_domains
+            )
+            modified_query = f"{query} {exclusion_terms}"
+
+        params: dict[str, str | int] = {
+            "key": google_api_key,
+            "cx": search_engine_id,
+            "q": modified_query,
+            "start": start_page,
+            "lr": "en",
+            "num": number_of_result_pages,
+        }
+        if search_type == "image":
+            params["searchType"] = "image"
+
+        try:
+            response = httpx.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params=params,
+                timeout=self.timeout,
+            )
+            data = response.json()
+        except Exception as exc:
+            return [{"error": f"google search failed: {exc!s}"}]
+
+        items = data.get("items")
+        if not items:
+            if "error" in data:
+                return [
+                    {
+                        "error": "Google search failed - "
+                        f"API response: {data.get('error', {})}"
+                    }
+                ]
+            return []
+
+        results: list[dict[str, Any]] = []
+        for index, item in enumerate(items, start=1):
+            if search_type == "image":
+                image_info = item.get("image", {})
+                result: dict[str, Any] = {
+                    "result_id": index,
+                    "title": item.get("title"),
+                    "image_url": item.get("link"),
+                    "display_link": item.get("displayLink"),
+                    "context_url": image_info.get("contextLink", ""),
+                }
+                if image_info.get("width"):
+                    result["width"] = int(image_info["width"])
+                if image_info.get("height"):
+                    result["height"] = int(image_info["height"])
+                results.append(result)
+                continue
+
+            metatags = item.get("pagemap", {}).get("metatags", [])
+            long_description = (
+                metatags[0].get("og:description") if metatags else "N/A"
+            )
+            results.append(
+                {
+                    "result_id": index,
+                    "title": item.get("title"),
+                    "description": item.get("snippet"),
+                    "long_description": long_description or "N/A",
+                    "url": item.get("link"),
+                }
+            )
+        return results
+
     @listen_toolkit(
         BaseSearchToolkit.search_google,
         lambda _,
@@ -115,27 +210,14 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         # If user has configured their own Google API keys, use them
         if self._user_google_api_key and self._user_search_engine_id:
             logger.info("Using user-configured Google Search API")
-            # Temporarily set environment variables for this search
-            old_google_key = os.environ.get("GOOGLE_API_KEY")
-            old_search_id = os.environ.get("SEARCH_ENGINE_ID")
-
-            try:
-                os.environ["GOOGLE_API_KEY"] = self._user_google_api_key
-                os.environ["SEARCH_ENGINE_ID"] = self._user_search_engine_id
-                return super().search_google(
-                    query, search_type, number_of_result_pages, start_page
-                )
-            finally:
-                # Restore original environment variables
-                if old_google_key is not None:
-                    os.environ["GOOGLE_API_KEY"] = old_google_key
-                elif "GOOGLE_API_KEY" in os.environ:
-                    del os.environ["GOOGLE_API_KEY"]
-
-                if old_search_id is not None:
-                    os.environ["SEARCH_ENGINE_ID"] = old_search_id
-                elif "SEARCH_ENGINE_ID" in os.environ:
-                    del os.environ["SEARCH_ENGINE_ID"]
+            return self._search_google_with_config(
+                query,
+                search_type,
+                number_of_result_pages,
+                start_page,
+                self._user_google_api_key,
+                self._user_search_engine_id,
+            )
         else:
             # Fallback to cloud search
             logger.info(

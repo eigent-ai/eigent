@@ -16,7 +16,7 @@
 Skill Toolkit with multi-tier hierarchy:
 
 Agent access control is managed via skills-config.json.
-User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
 """
 
 import json
@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import TypedDict
 
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
+
+from app.service.skill_config_service import canonical_skill_config_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +54,9 @@ def _get_user_config_path(user_id: str | None = None) -> Path:
         Path to user's config file
     """
     if user_id:
-        # User-specific config: ~/.eigent/<user_id>/skills-config.json
-        return Path.home() / ".eigent" / str(user_id) / SKILL_CONFIG_FILENAME
+        # User-specific config: ~/.eigent/user_<id>/skills-config.json
+        user_key = canonical_skill_config_user_id(user_id)
+        return Path.home() / ".eigent" / user_key / SKILL_CONFIG_FILENAME
     else:
         # Legacy global config: ~/.eigent/skills-config.json
         return Path.home() / ".eigent" / SKILL_CONFIG_FILENAME
@@ -223,7 +226,7 @@ class SkillToolkit(BaseSkillToolkit):
     3. System scope: /etc/camel/skills
 
     Agent access control is managed via skills-config.json (agents field).
-    User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+    User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
     """
 
     @classmethod

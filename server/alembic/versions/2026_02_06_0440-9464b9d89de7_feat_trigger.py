@@ -24,12 +24,12 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
-from app.type.trigger_types import ExecutionStatus
-from app.type.trigger_types import ExecutionType
-from app.type.trigger_types import ListenerType
-from app.type.trigger_types import RequestType
-from app.type.trigger_types import TriggerStatus
-from app.type.trigger_types import TriggerType
+from app.shared.types.trigger_types import ExecutionStatus
+from app.shared.types.trigger_types import ExecutionType
+from app.shared.types.trigger_types import ListenerType
+from app.shared.types.trigger_types import RequestType
+from app.shared.types.trigger_types import TriggerStatus
+from app.shared.types.trigger_types import TriggerType
 from sqlalchemy_utils.types import ChoiceType
 
 # revision identifiers, used by Alembic.

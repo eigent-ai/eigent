@@ -961,7 +961,8 @@ export function ensureNpmWrappersForBrowserToolkit(
   const eigentBinDir = path.join(os.homedir(), '.eigent', 'bin');
   fs.mkdirSync(eigentBinDir, { recursive: true });
 
-  const wrapperVersion = '1';
+  // Store wrapper target so wrappers are recreated when venv path changes (e.g. app upgrade)
+  const wrapperVersion = `wrapper:${pythonPath}`;
   const versionFile = path.join(eigentBinDir, '.npm_wrapper_version');
   const storedVersion = fs.existsSync(versionFile)
     ? fs.readFileSync(versionFile, 'utf-8').trim()
@@ -976,10 +977,14 @@ export function ensureNpmWrappersForBrowserToolkit(
     process.platform === 'win32' ? 'npx.cmd' : 'npx'
   );
 
+  // Recreate wrappers when: version changed, wrappers missing, or existing shebang points to wrong Python
   const needsUpdate =
     storedVersion !== wrapperVersion ||
     !fs.existsSync(npmWrapper) ||
-    !fs.existsSync(npxWrapper);
+    !fs.existsSync(npxWrapper) ||
+    (process.platform !== 'win32' &&
+      fs.existsSync(npmWrapper) &&
+      !fs.readFileSync(npmWrapper, 'utf-8').startsWith(`#!${pythonPath}`));
 
   if (needsUpdate) {
     try {

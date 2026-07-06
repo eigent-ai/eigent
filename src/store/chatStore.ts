@@ -20,12 +20,20 @@ import {
   proxyFetchGet,
   proxyFetchPost,
   proxyFetchPut,
+  sseTransport,
   uploadFile,
   waitForBackendReady,
 } from '@/api/http';
 import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
+import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
+import {
+  normalizeRemoteSubAgentProvider,
+  REMOTE_SUB_AGENT_PROVIDER_ID,
+  toRemoteSubAgentRuntimeConfig,
+} from '@/lib/remoteSubAgent';
+import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -33,17 +41,224 @@ import {
   AgentStatusValue,
   AgentStep,
   ChatTaskStatus,
+  SessionMode,
   TaskStatus,
   type ChatTaskStatusType,
+  type SessionModeType,
 } from '@/types/constants';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
+import { getCloudModelStore } from './cloudModelStore';
+import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
+import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
+
+const API_CODE_TRIAL_LIMIT = '22';
+const PROJECT_CONTEXT_MAX_CHARS = 24_000;
+const PROJECT_CONTEXT_MAX_RUNS = 8;
+
+type ConfirmedUserPromptSources = {
+  lastMessageContent?: unknown;
+  messageContent?: unknown;
+  question?: unknown;
+  isFollowUpConfirm: boolean;
+};
+
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+export function resolveConfirmedUserMessageContent({
+  lastMessageContent,
+  messageContent,
+  question,
+  isFollowUpConfirm,
+}: ConfirmedUserPromptSources): string {
+  const optimisticMessage = nonEmptyString(lastMessageContent);
+  if (optimisticMessage) return optimisticMessage;
+
+  const capturedStartMessage = nonEmptyString(messageContent);
+  const eventQuestion = nonEmptyString(question);
+
+  if (isFollowUpConfirm) {
+    return eventQuestion || capturedStartMessage || '';
+  }
+
+  return capturedStartMessage || eventQuestion || '';
+}
+
+const hasApiCode = (value: unknown, code: string) =>
+  typeof value === 'object' &&
+  value !== null &&
+  String((value as { code?: unknown }).code) === code;
+
+let _host: AppHost | null = null;
+
+export function injectHost(host: AppHost | null): void {
+  _host = host;
+}
+
+function normalizeServerApiBaseUrl(url?: string): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  const trimmed = url.replace(/\/$/, '');
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.endsWith('/api/v1')) {
+    return trimmed;
+  }
+
+  return `${trimmed}/api/v1`;
+}
+
+function resolveSpaceIdForProject(
+  projectId?: string | null
+): string | undefined {
+  const authStore = getAuthStore();
+  const project = projectId
+    ? useProjectStore.getState().getProjectById(projectId)
+    : null;
+  const spaceStore = useSpaceStore.getState();
+  const activeSpace = spaceStore.getActiveSpace();
+  const candidateSpaceId = project?.spaceId || activeSpace?.id || null;
+
+  if (!candidateSpaceId) {
+    return undefined;
+  }
+
+  if (
+    candidateSpaceId === legacySpaceIdForUser('local') ||
+    candidateSpaceId.startsWith('legacy_')
+  ) {
+    return undefined;
+  }
+
+  const candidateSpace = spaceStore.getSpaceById(candidateSpaceId);
+  if (!candidateSpace) {
+    return undefined;
+  }
+
+  const currentUserId =
+    authStore.user_id === undefined || authStore.user_id === null
+      ? null
+      : String(authStore.user_id);
+  if (
+    currentUserId &&
+    candidateSpace.userId &&
+    String(candidateSpace.userId) !== currentUserId
+  ) {
+    return undefined;
+  }
+
+  return candidateSpaceId;
+}
+
+function getDirectServerApiBaseUrl(): string | undefined {
+  if (import.meta.env.DEV) {
+    return normalizeServerApiBaseUrl(
+      import.meta.env.VITE_PROXY_URL || 'http://localhost:3001'
+    );
+  }
+
+  return normalizeServerApiBaseUrl(import.meta.env.VITE_BASE_URL);
+}
+
+function getHostElectronAPI() {
+  return _host?.electronAPI ?? null;
+}
+
+function getHostIpcRenderer() {
+  return _host?.ipcRenderer ?? null;
+}
+
+function includesBrowserAgent(workerList: Agent[]): boolean {
+  return workerList.some((worker) => {
+    if (worker.type === 'browser_agent' || worker.agent_id === 'browser_agent')
+      return true;
+    const tools = worker.workerInfo?.tools || worker.tools || [];
+    return Array.isArray(tools) && tools.includes('Browser Toolkit');
+  });
+}
+
+function shouldEnsureBrowserForRequest(
+  workerList: Agent[],
+  sessionMode: SessionModeType,
+  messageContent?: string
+): boolean {
+  if (includesBrowserAgent(workerList)) return true;
+  if (sessionMode !== SessionMode.SINGLE_AGENT) return false;
+
+  const content = messageContent || '';
+  const explicitBrowserIntent =
+    /\b(?:browser agent|use\s+(?:the\s+)?browser|open\s+(?:the\s+)?(?:browser|url|page|website|site)|visit\s+(?:the\s+)?(?:url|page|website|site))\b/i;
+  return /https?:\/\//i.test(content) || explicitBrowserIntent.test(content);
+}
+
+function getPersistedStepTimeMs(message: AgentMessage): number | null {
+  if (
+    typeof message.timestamp === 'number' &&
+    Number.isFinite(message.timestamp)
+  ) {
+    return message.timestamp < 1_000_000_000_000
+      ? message.timestamp * 1000
+      : message.timestamp;
+  }
+
+  if (message.created_at) {
+    const parsed = Date.parse(message.created_at);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return null;
+}
+
+async function resolveCdpBrowsersForRequest(
+  shouldEnsureBrowser: boolean
+): Promise<{
+  browser_port?: number;
+  cdp_browsers: any[];
+}> {
+  const ipc = getHostIpcRenderer();
+  if (!ipc?.invoke) {
+    return { cdp_browsers: [] };
+  }
+
+  const browser_port = await ipc.invoke('get-browser-port');
+  let cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+
+  if (shouldEnsureBrowser && cdp_browsers.length === 0) {
+    const launchResult = await ipc.invoke('launch-cdp-browser');
+    if (launchResult?.success) {
+      cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
+      if (cdp_browsers.length === 0 && launchResult.port) {
+        cdp_browsers = [
+          {
+            id: `launched-${launchResult.port}`,
+            port: launchResult.port,
+            isExternal: false,
+            name: `Launched Browser (${launchResult.port})`,
+          },
+        ];
+      }
+    } else {
+      console.warn(
+        'Failed to launch managed CDP browser:',
+        launchResult?.error || launchResult
+      );
+    }
+  }
+
+  return { browser_port, cdp_browsers };
+}
 
 interface Task {
+  source: 'user' | 'trigger';
+  sessionMode?: SessionModeType;
   messages: Message[];
   type: string;
   summaryTask: string;
@@ -73,13 +288,349 @@ interface Task {
   snapshots: any[];
   snapshotsTemp: any[];
   isTakeControl: boolean;
-  isTaskEdit: boolean;
+  planDirty: boolean;
+  autoConfirmDeadline: number | null;
   isContextExceeded?: boolean;
   // Streaming decompose text - stored separately to avoid frequent re-renders
   streamingDecomposeText: string;
   // Trigger execution ID for tracking trigger task completion
   executionId?: string;
   nextExecutionId?: string;
+  /** Unix ms timestamp when this task was created — used for TurnTabs ordering. */
+  createdAt: number;
+}
+
+type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
+
+interface UploadCandidate {
+  path: string;
+  name: string;
+  uploadName: string;
+  source: UploadFileSource;
+}
+
+interface GeneratedUploadFile {
+  path?: string;
+  name?: string;
+  isFolder?: boolean;
+  relativePath?: string;
+  source?: Exclude<UploadFileSource, 'user_attachment'>;
+}
+
+interface UploadOutcome {
+  success: boolean;
+  fileName: string;
+  source: UploadFileSource;
+  response?: unknown;
+  error?: unknown;
+}
+
+function getFileNameFromPath(filePath: string): string {
+  const segments = filePath.split(/[\\/]/).filter(Boolean);
+  return segments.at(-1) || 'file';
+}
+
+function isReadableLocalPath(filePath?: string): filePath is string {
+  if (!filePath) return false;
+  return !/^(https?:|file:|blob:|data:)/i.test(filePath);
+}
+
+function buildUploadName(
+  fileName: string,
+  source: UploadFileSource,
+  taskId: string,
+  attachmentIndex: number,
+  relativePath?: string
+): string {
+  if (source === 'camel_log') {
+    if (relativePath) {
+      return `camel_log/${relativePath}/${fileName}`;
+    }
+    return `camel_log/${fileName}`;
+  }
+
+  if (source === 'user_attachment') {
+    return `user_attachment/${fileName}`;
+  }
+
+  return `project_output/${fileName}`;
+}
+
+function syncProjectDisplayName(
+  projectId: string | null | undefined,
+  name?: string
+) {
+  const displayName = (name ?? '').trim();
+  if (!projectId || !displayName) return;
+  useSpaceStore.getState().updateProjectMeta(projectId, { name: displayName });
+  useProjectStore.getState().updateProject(projectId, { name: displayName });
+}
+
+const compactContextText = (value?: string | null) =>
+  (value ?? '').replace(/\s+/g, ' ').trim();
+
+const stripSummaryTag = (value?: string | null) =>
+  compactContextText(value?.replace(/<summary>.*?<\/summary>/gs, ''));
+
+function taskContextResult(task: Task): string {
+  const summaryParts = (task.summaryTask || '').split('|');
+  const summary = compactContextText(summaryParts[1] || summaryParts[0]);
+  if (summary) return summary;
+
+  const endMessage = [...task.messages]
+    .reverse()
+    .find((message) => message.step === AgentStep.END && message.content);
+  if (endMessage) return stripSummaryTag(endMessage.content);
+
+  const agentMessage = [...task.messages]
+    .reverse()
+    .find((message) => message.role === 'agent' && message.content);
+  return compactContextText(agentMessage?.content);
+}
+
+export function extractEndPayloadText(endData: unknown): string {
+  if (typeof endData === 'string') {
+    return endData;
+  }
+  if (!endData || typeof endData !== 'object') {
+    return '';
+  }
+
+  for (const key of ['message', 'content', 'result', 'summary']) {
+    const value = (endData as Record<string, unknown>)[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function completedSubtaskReportFallback(task?: Task): string {
+  if (!task) return '';
+
+  const reports =
+    task.taskAssigning
+      ?.flatMap((agent) => agent.tasks || [])
+      .map((subtask) => compactContextText(subtask.report))
+      .filter(Boolean) || [];
+
+  if (reports.length <= 1) {
+    return reports[0] || '';
+  }
+
+  return reports
+    .map((report, index) => `**Subtask ${index + 1}**\n${report}`)
+    .join('\n\n');
+}
+
+export function resolveEndMessageText(
+  rawEndPayload: string,
+  messages: Message[],
+  task?: Task
+) {
+  const summary = rawEndPayload.match(/<summary>(.*?)<\/summary>/s)?.[1];
+  if (summary) return summary;
+
+  if (rawEndPayload.trim()) {
+    return rawEndPayload;
+  }
+
+  const agentSummaryEnd = messages.findLast(
+    (message) => message.step === AgentStep.AGENT_SUMMARY_END
+  );
+  return agentSummaryEnd?.summary || completedSubtaskReportFallback(task);
+}
+
+export function buildProjectContinuationContext(
+  projectId?: string | null,
+  excludeTaskId?: string | null
+): string | undefined {
+  if (!projectId) return undefined;
+
+  const projectStore = useProjectStore.getState();
+  const runs: string[] = [];
+
+  for (const { chatStore } of projectStore.getAllChatStores(projectId)) {
+    const state = chatStore.getState();
+    for (const [taskId, task] of Object.entries(state.tasks)) {
+      if (taskId === excludeTaskId) continue;
+      const userMessage = task.messages.find(
+        (message) => message.role === 'user' && message.content
+      );
+      const request = compactContextText(userMessage?.content);
+      const result = taskContextResult(task);
+      if (!request && !result) continue;
+      runs.push(
+        [
+          `Run ${runs.length + 1}:`,
+          request ? `User request: ${request}` : '',
+          result ? `Result: ${result}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+    }
+  }
+
+  if (runs.length === 0) return undefined;
+  const selectedRuns = runs.slice(-PROJECT_CONTEXT_MAX_RUNS);
+  const context = selectedRuns.join('\n\n');
+  return context.length > PROJECT_CONTEXT_MAX_CHARS
+    ? context.slice(context.length - PROJECT_CONTEXT_MAX_CHARS)
+    : context;
+}
+
+export function collectTaskUploadFiles(
+  generatedFiles: GeneratedUploadFile[],
+  messages: Message[],
+  pendingAttaches: File[] = [],
+  taskId = 'unknown_task',
+  taskOutputFiles: FileInfo[] = []
+): UploadCandidate[] {
+  const uploadCandidates: Array<
+    Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
+  > = [];
+
+  for (const file of generatedFiles) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+    });
+  }
+
+  for (const file of taskOutputFiles) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
+    });
+  }
+
+  for (const file of messages.flatMap((message) => message.fileList || [])) {
+    if (!file?.path || !file?.name || file.isFolder) continue;
+    if (!isReadableLocalPath(file.path)) continue;
+    uploadCandidates.push({
+      path: file.path,
+      name: file.name,
+      relativePath: file.relativePath,
+      source: 'project_output',
+    });
+  }
+
+  const attachmentFiles = [
+    ...messages.flatMap((message) => message.attaches || []),
+    ...pendingAttaches,
+  ];
+
+  for (const attachment of attachmentFiles) {
+    if (!isReadableLocalPath(attachment?.filePath)) continue;
+    uploadCandidates.push({
+      path: attachment.filePath,
+      name:
+        attachment.fileName?.trim() || getFileNameFromPath(attachment.filePath),
+      source: 'user_attachment',
+    });
+  }
+
+  const uniqueCandidates = new Map<string, UploadCandidate>();
+  let attachmentIndex = 1;
+  for (const file of uploadCandidates) {
+    if (!uniqueCandidates.has(file.path)) {
+      const { relativePath, ...rest } = file;
+      uniqueCandidates.set(file.path, {
+        ...rest,
+        uploadName: buildUploadName(
+          file.name,
+          file.source,
+          taskId,
+          file.source === 'user_attachment' ? attachmentIndex++ : 0,
+          relativePath
+        ),
+      });
+    }
+  }
+
+  return Array.from(uniqueCandidates.values());
+}
+
+async function uploadTaskFiles(
+  files: UploadCandidate[],
+  uploadTargetId: string
+): Promise<UploadOutcome[]> {
+  const results: UploadOutcome[] = [];
+  const hostIpcRenderer = getHostIpcRenderer();
+
+  for (const file of files) {
+    try {
+      if (!hostIpcRenderer?.invoke) {
+        results.push({
+          success: false,
+          fileName: file.name,
+          source: file.source,
+          error: 'IPC renderer is unavailable',
+        });
+        continue;
+      }
+      const result = await hostIpcRenderer.invoke('read-file', file.path);
+      if (!result.success || !result.data) {
+        results.push({
+          success: false,
+          fileName: file.name,
+          source: file.source,
+          error: result.error || 'Failed to read file',
+        });
+        continue;
+      }
+
+      const formData = new FormData();
+      const blob = new Blob([result.data], {
+        type: 'application/octet-stream',
+      });
+      formData.append('file', blob, file.uploadName);
+      // TODO(file): rename endpoint to use project_id
+      formData.append('task_id', uploadTargetId);
+
+      const uploadResponse = await uploadFile(
+        '/api/v1/chat/files/upload',
+        formData
+      );
+      console.log('File uploaded successfully:', {
+        fileName: file.uploadName,
+        source: file.source,
+        uploadTargetId,
+        response: uploadResponse,
+      });
+      results.push({
+        success: true,
+        fileName: file.uploadName,
+        source: file.source,
+        response: uploadResponse,
+      });
+    } catch (error) {
+      console.error('File upload failed:', file.uploadName, file.source, error);
+      results.push({
+        success: false,
+        fileName: file.uploadName,
+        source: file.source,
+        error,
+      });
+    }
+  }
+
+  return results;
+}
+
+export interface StartTaskOptions {
+  preserveTaskId?: boolean;
+  skipHistoryCreate?: boolean;
+  historyId?: string | number | null;
 }
 
 export interface ChatStore {
@@ -88,10 +639,18 @@ export interface ChatStore {
   nextTaskId: string | null;
   tasks: { [key: string]: Task };
   create: (id?: string, type?: any) => string;
+  /**
+   * Replace a task's full state in one commit — used by the IDB-backed
+   * project cache to skip the SSE replay path when we already have a
+   * reconstructed final state from a previous session. Volatile fields
+   * (pending/streaming/timers) are forced to safe defaults.
+   */
+  hydrateTask: (taskId: string, state: Task) => void;
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
+  setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (taskId: string, question: string, time: number) => Promise<void>;
   startTask: (
     taskId: string,
@@ -101,7 +660,9 @@ export interface ChatStore {
     messageContent?: string,
     messageAttaches?: File[],
     executionId?: string,
-    projectId?: string
+    projectId?: string,
+    sessionMode?: SessionModeType,
+    options?: StartTaskOptions
   ) => Promise<void>;
   handleConfirmTask: (
     project_id: string,
@@ -159,7 +720,7 @@ export interface ChatStore {
   setElapsed: (taskId: string, taskTime: number) => void;
   getFormattedTaskTime: (taskId: string) => string;
   addTokens: (taskId: string, tokens: number) => void;
-  getTokens: (taskId: string) => void;
+  getTokens: (taskId: string) => number;
   setUpdateCount: () => void;
   setCotList: (taskId: string, cotList: string[]) => void;
   setHasAddWorker: (taskId: string, hasAddWorker: boolean) => void;
@@ -170,13 +731,16 @@ export interface ChatStore {
   setSnapshots: (taskId: string, snapshots: any[]) => void;
   setIsTakeControl: (taskId: string, isTakeControl: boolean) => void;
   setSnapshotsTemp: (taskId: string, snapshot: any) => void;
-  setIsTaskEdit: (taskId: string, isTaskEdit: boolean) => void;
+  setPlanDirty: (taskId: string, dirty: boolean) => void;
+  setAutoConfirmDeadline: (taskId: string, deadline: number | null) => void;
+  savePlan: (taskId: string) => Promise<void>;
   clearTasks: () => void;
   setIsContextExceeded: (taskId: string, isContextExceeded: boolean) => void;
   setNextTaskId: (taskId: string | null) => void;
   setStreamingDecomposeText: (taskId: string, text: string) => void;
   clearStreamingDecomposeText: (taskId: string) => void;
   setExecutionId: (taskId: string, executionId: string | undefined) => void;
+  setTaskSource: (taskId: string, source: 'user' | 'trigger') => void;
   setNextExecutionId: (
     taskId: string,
     nextExecutionId: string | undefined
@@ -190,9 +754,185 @@ export type VanillaChatStore = {
 
 // Track auto-confirm timers per task to avoid reusing stale timers across rounds
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
 // Track active SSE connections for proper cleanup
 const activeSSEControllers: Record<string, AbortController> = {};
+
+const FINAL_OUTPUT_FILE_PATH_REGEX =
+  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
+  'csv',
+  'doc',
+  'docx',
+  'gif',
+  'htm',
+  'html',
+  'jpeg',
+  'jpg',
+  'json',
+  'log',
+  'md',
+  'pdf',
+  'png',
+  'ppt',
+  'pptx',
+  'svg',
+  'tsv',
+  'txt',
+  'webp',
+  'xls',
+  'xlsx',
+  'xml',
+  'zip',
+]);
+
+function normalizeOutputPath(path: string): string {
+  return path.replace(/\\/g, '/').trim();
+}
+
+function getOutputFileNameFromPath(path: string): string {
+  return normalizeOutputPath(path).split('/').pop() || '';
+}
+
+function getFileTypeFromName(name: string): string {
+  const extension = name.split('.').pop()?.toLowerCase() || '';
+  return extension === name.toLowerCase() ? '' : extension;
+}
+
+function getProjectRelativeFilePath(
+  filePath: string,
+  projectId?: string
+): string | undefined {
+  const normalizedPath = normalizeOutputPath(filePath);
+  if (projectId) {
+    const projectMarker = `/project_${projectId}/`;
+    const projectIndex = normalizedPath.indexOf(projectMarker);
+    if (projectIndex !== -1) {
+      return normalizedPath.slice(projectIndex + projectMarker.length);
+    }
+  }
+
+  return normalizedPath.match(/\/project_[^/]+\/(.+)$/)?.[1];
+}
+
+function buildRemoteFileInfoPath({
+  baseURL,
+  email,
+  projectId,
+  relativePath,
+}: {
+  baseURL?: string;
+  email?: string;
+  projectId?: string;
+  relativePath?: string;
+}): string | undefined {
+  if (!baseURL || !email || !projectId || !relativePath) {
+    return undefined;
+  }
+
+  const params = new URLSearchParams({
+    path: relativePath,
+    project_id: projectId,
+    email,
+  });
+
+  return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
+}
+
+function extractFinalOutputFileList(
+  content: string,
+  projectId?: string,
+  email?: string,
+  baseURL?: string
+): FileInfo[] {
+  if (!content) {
+    return [];
+  }
+
+  const fileInfos: FileInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+    const filePath = normalizeOutputPath(match[0]);
+    if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
+      continue;
+    }
+
+    const name = getOutputFileNameFromPath(filePath);
+    const type = getFileTypeFromName(name);
+    if (!name || !FINAL_OUTPUT_FILE_EXTENSIONS.has(type)) {
+      continue;
+    }
+
+    const relativePath = getProjectRelativeFilePath(filePath, projectId);
+    const remotePath = buildRemoteFileInfoPath({
+      baseURL,
+      email,
+      projectId,
+      relativePath,
+    });
+    const identity = normalizeOutputPath(relativePath || filePath);
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    fileInfos.push({
+      name,
+      type,
+      path: remotePath || filePath,
+      icon: FileText,
+      relativePath,
+      isRemote: Boolean(remotePath),
+    });
+  }
+
+  return fileInfos;
+}
+
+function getFileInfoIdentities(file: FileInfo): string[] {
+  return [
+    file.relativePath,
+    file.path,
+    file.name,
+    getOutputFileNameFromPath(file.path || ''),
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeOutputPath(value as string).toLowerCase());
+}
+
+function mergeFileInfoLists(
+  existingFileList: FileInfo[],
+  extractedFileList: FileInfo[]
+): FileInfo[] {
+  const merged = [...existingFileList];
+  const mergedIdentities = merged.map(getFileInfoIdentities);
+
+  extractedFileList.forEach((file) => {
+    const identities = getFileInfoIdentities(file);
+    const existingIndex = mergedIdentities.findIndex((existingIdentities) =>
+      identities.some((identity) => existingIdentities.includes(identity))
+    );
+
+    if (existingIndex === -1) {
+      merged.push(file);
+      mergedIdentities.push(identities);
+      return;
+    }
+
+    if (file.isRemote && !merged[existingIndex].isRemote) {
+      merged[existingIndex] = {
+        ...merged[existingIndex],
+        ...file,
+      };
+      mergedIdentities[existingIndex] = identities;
+    }
+  });
+
+  return merged;
+}
 
 const normalizeToolkitMessage = (value: unknown) => {
   if (typeof value === 'string') return value;
@@ -204,15 +944,39 @@ const normalizeToolkitMessage = (value: unknown) => {
   }
 };
 
+const isSingleAgentEventName = (value: unknown) =>
+  typeof value === 'string' &&
+  (value === 'single_agent' ||
+    value === 'Agents.single_agent' ||
+    value.endsWith('.single_agent'));
+
+const ensureSingleAgentAssignment = (
+  taskAssigning: Agent[],
+  taskId: string,
+  agentId?: string
+) => {
+  const existingIndex = taskAssigning.findIndex(
+    (agent) => agent.type === 'single_agent'
+  );
+  if (existingIndex !== -1) return existingIndex;
+  taskAssigning.push({
+    agent_id: agentId || `${taskId}-single-agent`,
+    name: 'CAMEL Agent',
+    type: 'single_agent',
+    status: AgentStatusValue.RUNNING,
+    tasks: [],
+    log: [],
+  });
+  return taskAssigning.length - 1;
+};
+
 /** Persist subtask edits to backend via PUT /task/{project_id}. */
-const persistSubtaskEdits = (taskInfo: TaskInfo[]) => {
+const persistSubtaskEdits = async (taskInfo: TaskInfo[]) => {
   const projectId = useProjectStore.getState().activeProjectId;
   if (!projectId) return;
 
   const nonEmpty = taskInfo.filter((t) => t.content !== '');
-  fetchPut(`/task/${projectId}`, { task: nonEmpty }).catch((err) =>
-    console.error('Failed to persist subtask edits:', err)
-  );
+  await fetchPut(`/task/${projectId}`, { task: nonEmpty });
 };
 
 const resolveProcessTaskIdForToolkitEvent = (
@@ -221,12 +985,32 @@ const resolveProcessTaskIdForToolkitEvent = (
   agentName: string | undefined,
   processTaskId: unknown
 ) => {
-  const direct = typeof processTaskId === 'string' ? processTaskId : '';
-  if (direct) return direct;
+  const currentTask = tasksById[currentTaskId];
+  const taskRunning = currentTask?.taskRunning ?? [];
+  const taskInfo = currentTask?.taskInfo ?? [];
+  const taskAssigning = currentTask?.taskAssigning ?? [];
 
-  const running = tasksById[currentTaskId]?.taskRunning ?? [];
+  const hasTaskId = (id: string) =>
+    taskRunning.some((task) => task.id === id) ||
+    taskInfo.some((task) => task.id === id) ||
+    taskAssigning.some((agent) => agent.tasks.some((task) => task.id === id));
+
+  const singleAgent = taskAssigning.find(
+    (agent) => agent.type === 'single_agent'
+  );
+  const singleAgentTasks = singleAgent?.tasks ?? [];
+  const singleAgentRunning =
+    singleAgentTasks.find((task) => task.status === TaskStatus.RUNNING) ||
+    taskRunning.find((task) => task.status === TaskStatus.RUNNING) ||
+    singleAgentTasks.find((task) => task.status !== TaskStatus.COMPLETED) ||
+    taskRunning.find((task) => task.status !== TaskStatus.COMPLETED);
+
+  const direct = typeof processTaskId === 'string' ? processTaskId : '';
+  if (direct && hasTaskId(direct)) return direct;
+  if (singleAgentRunning?.id) return singleAgentRunning.id;
+
   // Prefer a task owned by the same agent
-  const match = running.findLast(
+  const match = taskRunning.findLast(
     (t: any) =>
       typeof t?.id === 'string' &&
       t.id &&
@@ -234,8 +1018,9 @@ const resolveProcessTaskIdForToolkitEvent = (
   );
   if (match?.id) return match.id as string;
   // Fallback to the latest running task id
-  const last = running.at(-1);
+  const last = taskRunning.at(-1);
   if (typeof last?.id === 'string' && last.id) return last.id;
+  if (direct) return direct;
   return '';
 };
 // Throttle streaming decompose text updates to prevent excessive re-renders
@@ -329,6 +1114,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     nextTaskId: null,
     tasks: initial?.tasks ?? {},
     updateCount: 0,
+    hydrateTask(taskId: string, state: Task) {
+      set((s) => ({
+        activeTaskId: taskId,
+        tasks: {
+          ...s.tasks,
+          [taskId]: {
+            ...state,
+            // Never resurrect a task as pending / awaiting confirmation
+            // from a cached snapshot — those are in-flight flags only.
+            isPending: false,
+            autoConfirmDeadline: null,
+            streamingDecomposeText: '',
+            // File handles can't round-trip through JSON, so cached
+            // attaches always come back empty.
+            attaches: [],
+          },
+        },
+      }));
+    },
     create(id?: string, type?: any) {
       const taskId = id ? id : generateUniqueId();
       console.log('Create Task', taskId);
@@ -338,6 +1142,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ...state.tasks,
           [taskId]: {
             type: type,
+            source: 'user',
             messages: [],
             summaryTask: '',
             taskInfo: [],
@@ -366,9 +1171,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             snapshots: [],
             snapshotsTemp: [],
             isTakeControl: false,
-            isTaskEdit: false,
+            planDirty: false,
+            autoConfirmDeadline: null,
             streamingDecomposeText: '',
             executionId: undefined,
+            createdAt: Date.now(),
           },
         },
       }));
@@ -395,6 +1202,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in removeTask:', error);
       }
@@ -466,6 +1274,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in stopTask:', error);
       }
@@ -505,40 +1314,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       messageContent?: string,
       messageAttaches?: File[],
       executionId?: string,
-      projectId?: string
+      projectId?: string,
+      sessionMode?: SessionModeType,
+      options?: StartTaskOptions
     ) => {
-      // ✅ Wait for backend to be ready before starting task (except for replay/share)
-      if (!type || type === 'normal') {
-        console.log('[startTask] Checking if backend is ready...');
-        const isBackendReady = await waitForBackendReady(60000, 500); // Wait up to 60 seconds
-
-        if (!isBackendReady) {
-          console.error('[startTask] Backend is not ready, cannot start task');
-          const { addMessages } = get();
-          addMessages(taskId, {
-            id: generateUniqueId(),
-            role: 'agent',
-            content:
-              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
-          });
-          return;
-        }
-        console.log('[startTask] Backend is ready, proceeding with task...');
-      }
-
-      const { token, language, modelType, cloud_model_type, email } =
-        getAuthStore();
-      const workerList = getWorkerList();
-      const {
-        getLastUserMessage: _getLastUserMessage,
-        setDelayTime,
-        setType,
-      } = get();
-      const baseURL = await getBaseURL();
-      let systemLanguage = language;
-      if (language === 'system') {
-        systemLanguage = await window.ipcRenderer.invoke('get-system-language');
-      }
+      const { setDelayTime, setType } = get();
       if (type === 'replay') {
         setDelayTime(taskId, delayTime as number);
         setType(taskId, type);
@@ -546,7 +1326,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       //ProjectStore must exist as chatStore is already
       const projectStore = useProjectStore.getState();
-      const project_id = projectId || projectStore.activeProjectId;
+      const isLiveTask = !type || type === 'normal';
+      const project_id = isLiveTask
+        ? projectId
+        : projectId || projectStore.activeProjectId;
+      if (isLiveTask && !project_id) {
+        throw new Error('No active Project selected.');
+      }
+      const startOptions = options || {};
+      const project =
+        isLiveTask && project_id
+          ? projectStore.getProjectById(project_id)
+          : null;
+      if (isLiveTask && !project) {
+        throw new Error('Selected Project is not available.');
+      }
+      const sessionModeForRequest =
+        sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      if (project_id && !project?.mode) {
+        useSpaceStore
+          .getState()
+          .updateProjectMeta(project_id, { mode: sessionModeForRequest });
+      }
       //Create a new chatStore on Start
       let newTaskId = taskId;
       let targetChatStore = { getState: () => get() }; // Default to current store
@@ -555,7 +1356,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
        */
       if (project_id && type !== 'replay') {
         console.log('Creating a new Chat Instance for current project on end');
-        const newChatResult = projectStore.appendInitChatStore(project_id);
+        const newChatResult = projectStore.appendInitChatStore(
+          project_id,
+          startOptions.preserveTaskId ? taskId : undefined
+        );
 
         if (newChatResult) {
           newTaskId = newChatResult.taskId;
@@ -565,6 +1369,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // Set executionId if this is a trigger-initiated task
           if (executionId) {
             targetChatStore.getState().setExecutionId(newTaskId, executionId);
+            targetChatStore.getState().setTaskSource(newTaskId, 'trigger');
+          } else {
+            targetChatStore.getState().setTaskSource(newTaskId, 'user');
           }
 
           //From handleSend if message is given
@@ -580,25 +1387,107 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         }
       }
+      // For replay/share playback the real session mode is unknown until the
+      // playback re-emits `todo_state` / `to_sub_tasks`. Pre-setting it here
+      // would flash the wrong side panel when loading a saved session, so
+      // only seed it for live tasks; playback resolves it from the events.
+      if (!type || type === 'normal') {
+        targetChatStore
+          .getState()
+          .setTaskSessionMode(newTaskId, sessionModeForRequest);
+      }
 
-      const base_Url = import.meta.env.DEV
-        ? import.meta.env.VITE_PROXY_URL
+      const finishStartupFailure = () => {
+        if (!isLiveTask) return;
+        const targetState = targetChatStore.getState();
+        const task = targetState.tasks[newTaskId];
+        if (!task) return;
+        if (activeSSEControllers[newTaskId]) {
+          try {
+            activeSSEControllers[newTaskId].abort();
+          } catch {
+            // Ignore abort errors while cleaning up a failed startup.
+          }
+          delete activeSSEControllers[newTaskId];
+        }
+        if (task.isPending) {
+          targetState.setIsPending(newTaskId, false);
+        }
+        if (task.status !== ChatTaskStatus.FINISHED) {
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+        }
+      };
+
+      // Render the new turn before waiting for Brain. This keeps the project
+      // page responsive and locks the composer through the task's pending state.
+      if (!type || type === 'normal') {
+        console.log('[startTask] Checking if backend is ready...');
+        const isBackendReady = await waitForBackendReady(60000, 500);
+
+        if (!isBackendReady) {
+          console.error('[startTask] Backend is not ready, cannot start task');
+          const targetState = targetChatStore.getState();
+          targetState.addMessages(newTaskId, {
+            id: generateUniqueId(),
+            role: 'agent',
+            content:
+              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+          });
+          targetState.setIsPending(newTaskId, false);
+          targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+          return;
+        }
+        console.log('[startTask] Backend is ready, proceeding with task...');
+      }
+
+      const {
+        token,
+        language,
+        modelType,
+        cloud_model_type,
+        codex_model_type,
+        email,
+        user_id,
+      } = getAuthStore();
+      const workerList = getWorkerList();
+      const { getLastUserMessage: _getLastUserMessage } = get();
+      let systemLanguage = language;
+      if (language === 'system') {
+        try {
+          systemLanguage =
+            (await getHostIpcRenderer()?.invoke?.('get-system-language')) ??
+            'en';
+        } catch {
+          systemLanguage = 'en';
+        }
+      }
+
+      // Replay/share APIs live on the server side, not Brain.
+      const serverBaseUrl = import.meta.env.DEV
+        ? window.location.origin
         : import.meta.env.VITE_BASE_URL;
       const api =
         type == 'share'
-          ? `${base_Url}/api/chat/share/playback/${shareToken}?delay_time=${delayTime}`
+          ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${base_Url}/api/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
-            : `${baseURL}/chat`;
+            ? `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            : '/chat';
 
       const { tasks: _tasks } = get();
-      let historyId: string | null = projectStore.getHistoryId(project_id);
+      let historyId: string | null =
+        startOptions.historyId != null
+          ? String(startOptions.historyId)
+          : project_id
+            ? projectStore.getHistoryId(project_id)
+            : null;
       let snapshots: any = [];
       let skipFirstConfirm = true;
+      let playbackFirstStepTimeMs: number | null = null;
+      let playbackLastStepTimeMs: number | null = null;
 
       // replay or share request
       if (type) {
-        const res = await proxyFetchGet(`/api/chat/snapshots`, {
+        const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
         if (res) {
@@ -617,9 +1506,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         model_platform: '',
         api_url: '',
         extra_params: {},
+        auth_source: undefined as 'codex_subscription' | undefined,
       };
-      if (modelType === 'custom' || modelType === 'local') {
-        const res = await proxyFetchGet('/api/providers', {
+      if (!type && (modelType === 'custom' || modelType === 'local')) {
+        const res = await proxyFetchGet('/api/v1/providers', {
           prefer: true,
         });
         const providerList = res.items || [];
@@ -627,6 +1517,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const provider = providerList[0];
 
         if (!provider) {
+          finishStartupFailure();
           throw new Error(
             'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
           );
@@ -638,33 +1529,94 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: provider.provider_name,
           api_url: provider.endpoint_url || provider.api_url,
           extra_params: provider.encrypted_config,
+          auth_source: undefined,
         };
-      } else if (modelType === 'cloud') {
-        // get current model
-        const res = await proxyFetchGet('/api/user/key');
+      } else if (!type && modelType === 'cloud') {
+        const cloudModelStore = getCloudModelStore();
+        let resolvedCloudModel =
+          cloudModelStore.resolveCloudModel(cloud_model_type);
+        if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
+          await cloudModelStore.fetchCloudModels(true);
+          resolvedCloudModel =
+            getCloudModelStore().resolveCloudModel(cloud_model_type);
+        }
+        if (!resolvedCloudModel) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to resolve cloud model. Please try again or choose another model in Agents > Models.'
+          );
+        }
+        if (
+          resolvedCloudModel.source === 'default' &&
+          resolvedCloudModel.requestedModelId
+        ) {
+          const message = `Model ${resolvedCloudModel.requestedModelId} is no longer available; switched to ${resolvedCloudModel.model.display_name}.`;
+          console.warn(message);
+          toast.warning(message);
+        }
+        if (resolvedCloudModel.model.id !== cloud_model_type) {
+          getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
+        }
+
+        let res: any;
+        try {
+          res = await proxyFetchGet('/api/v1/user/key');
+        } catch (error: any) {
+          finishStartupFailure();
+          const responseData = error?.response?.data;
+          if (
+            hasApiCode(responseData, API_CODE_TRIAL_LIMIT) ||
+            hasApiCode(error, API_CODE_TRIAL_LIMIT)
+          ) {
+            throw new Error(
+              responseData?.text ||
+                error?.message ||
+                'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+            );
+          }
+          throw error;
+        }
+        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+          finishStartupFailure();
+          throw new Error(
+            res.text ||
+              'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+          );
+        }
+        if (!res.value) {
+          finishStartupFailure();
+          throw new Error(
+            res.text ||
+              'Failed to get cloud model key. Please check your account or model settings.'
+          );
+        }
         if (res.warning_code && res.warning_code === '21') {
           showStorageToast();
         }
         apiModel = {
           api_key: res.value,
-          model_type: cloud_model_type,
-          model_platform: cloud_model_type.includes('gpt')
-            ? 'openai'
-            : cloud_model_type.includes('claude')
-              ? 'aws-bedrock'
-              : cloud_model_type.includes('gemini')
-                ? 'gemini'
-                : 'openai-compatible-model',
+          model_type: resolvedCloudModel.model.model_type,
+          model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
           extra_params: {},
+          auth_source: undefined,
+        };
+      } else if (!type && modelType === 'codex_subscription') {
+        apiModel = {
+          api_key: '',
+          model_type: codex_model_type || 'gpt-5.5',
+          model_platform: 'openai',
+          api_url: '',
+          extra_params: {},
+          auth_source: 'codex_subscription',
         };
       }
 
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
-      if (modelType === 'custom') {
+      if (!type && modelType === 'custom') {
         try {
-          const configsRes = await proxyFetchGet('/api/configs');
+          const configsRes = await proxyFetchGet('/api/v1/configs');
           const configs = Array.isArray(configsRes) ? configsRes : [];
 
           // Extract Google Search API keys
@@ -692,6 +1644,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      let remoteSubAgentConfig = null;
+      if (!type) {
+        try {
+          const providersRes = await proxyFetchGet(
+            '/api/v1/remote-sub-agent-providers',
+            { provider_name: REMOTE_SUB_AGENT_PROVIDER_ID, enabled: true }
+          );
+          const providerList = Array.isArray(providersRes)
+            ? providersRes
+            : providersRes.items || [];
+          const remoteSubAgentProvider = providerList[0];
+          remoteSubAgentConfig = toRemoteSubAgentRuntimeConfig(
+            normalizeRemoteSubAgentProvider(remoteSubAgentProvider)
+          );
+        } catch (error) {
+          console.error(
+            'Failed to load remote sub agent configuration:',
+            error
+          );
+        }
+      }
+
       const addWorkers = workerList.map((worker) => {
         return {
           name: worker.workerInfo?.name,
@@ -701,22 +1675,42 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
 
-      // get env path
+      // get env path (Electron only)
       let envPath = '';
-      try {
-        envPath = await window.ipcRenderer.invoke('get-env-path', email);
-      } catch (error) {
-        console.log('get-env-path error', error);
+      if (!type) {
+        try {
+          envPath =
+            (await getHostIpcRenderer()?.invoke?.('get-env-path', email)) ?? '';
+        } catch (error) {
+          console.log('get-env-path error', error);
+        }
       }
 
       // create history
-      if (!type) {
+      const spaceId = resolveSpaceIdForProject(project_id);
+      if (spaceId && project_id && project?.spaceId !== spaceId) {
+        projectStore.setProjectSpace(project_id, spaceId);
+      }
+      const requestSpace = spaceId
+        ? useSpaceStore.getState().getSpaceById(spaceId)
+        : null;
+      const spaceRootPath = isLocalWorkspaceSpace(requestSpace)
+        ? requestSpace?.rootPath || undefined
+        : undefined;
+      if (!type && !startOptions.skipHistoryCreate) {
         const authStore = getAuthStore();
 
         const obj = {
+          space_id: spaceId,
           project_id: project_id,
           task_id: newTaskId,
+          run_id: newTaskId,
           user_id: authStore.user_id,
+          // Persist Project execution mode on the server so reload reflects
+          // the user's last choice (workforce vs single-agent). Without this
+          // Project.mode stays NULL and the picker defaults back to single.
+          mode: sessionModeForRequest,
+          workdir_mode: project?.workdirMode || undefined,
           question:
             messageContent ||
             (targetChatStore.getState().tasks[newTaskId]?.messages[0]
@@ -732,7 +1726,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           status: 1,
           tokens: 0,
         };
-        await proxyFetchPost(`/api/chat/history`, obj).then((res) => {
+        await proxyFetchPost(`/api/v1/chat/history`, obj).then((res) => {
           historyId = res.id;
 
           /**Save history id for replay reuse purposes.
@@ -742,9 +1736,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (project_id && historyId)
             projectStore.setHistoryId(project_id, historyId);
         });
+      } else if (!type && project_id && historyId) {
+        projectStore.setHistoryId(project_id, historyId);
       }
-      const browser_port = await window.ipcRenderer.invoke('get-browser-port');
-      const cdp_browsers = await window.ipcRenderer.invoke('get-cdp-browsers');
+      let browser_port: number | undefined;
+      let cdp_browsers: any[] = [];
+      if (!type) {
+        try {
+          ({ browser_port, cdp_browsers } = await resolveCdpBrowsersForRequest(
+            shouldEnsureBrowserForRequest(
+              workerList,
+              sessionModeForRequest,
+              messageContent
+            )
+          ));
+        } catch {
+          // Web mode: no CDP
+        }
+      }
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
@@ -787,47 +1796,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         lockedTaskId = newTaskId;
       };
 
-      const ssePromise = fetchEventSource(api, {
+      const requestBody = !type
+        ? {
+            space_id: spaceId,
+            project_id: project_id,
+            task_id: newTaskId,
+            run_id: newTaskId,
+            space_root_path: spaceRootPath,
+            workdir_mode: project?.workdirMode || undefined,
+            question:
+              messageContent ||
+              targetChatStore.getState().getLastUserMessage()?.content,
+            model_platform: apiModel.model_platform,
+            email,
+            user_id: getAuthStore().user_id,
+            model_type: apiModel.model_type,
+            api_key: apiModel.api_key,
+            api_url: apiModel.api_url,
+            extra_params: apiModel.extra_params,
+            auth_source: apiModel.auth_source,
+            installed_mcp: { mcpServers: {} },
+            language: systemLanguage,
+            allow_local_system: true,
+            attaches: (
+              messageAttaches ||
+              targetChatStore.getState().tasks[newTaskId]?.attaches ||
+              []
+            ).map((f) => f.filePath),
+            summary_prompt: ``,
+            new_agents: [...addWorkers],
+            browser_port: browser_port,
+            cdp_browsers: cdp_browsers,
+            env_path: envPath,
+            search_config: searchConfig,
+            server_url: getDirectServerApiBaseUrl(),
+            session_mode: sessionModeForRequest,
+            remote_sub_agent_config: remoteSubAgentConfig,
+            project_context: buildProjectContinuationContext(
+              project_id,
+              newTaskId
+            ),
+          }
+        : undefined;
+
+      const ssePromise = sseTransport({
+        url: api,
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
-        signal: abortController.signal, // Add abort signal for proper cleanup
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:
-            type == 'replay'
-              ? `Bearer ${token}`
-              : (undefined as unknown as string),
-        },
-        body: !type
-          ? JSON.stringify({
-              project_id: project_id,
-              task_id: newTaskId,
-              question:
-                messageContent ||
-                targetChatStore.getState().getLastUserMessage()?.content,
-              model_platform: apiModel.model_platform,
-              email,
-              model_type: apiModel.model_type,
-              api_key: apiModel.api_key,
-              api_url: apiModel.api_url,
-              extra_params: apiModel.extra_params,
-              installed_mcp: { mcpServers: {} },
-              language: systemLanguage,
-              allow_local_system: true,
-              attaches: (
-                messageAttaches ||
-                targetChatStore.getState().tasks[newTaskId]?.attaches ||
-                []
-              ).map((f) => f.filePath),
-              summary_prompt: ``,
-              new_agents: [...addWorkers],
-              browser_port: browser_port,
-              cdp_browsers: cdp_browsers,
-              env_path: envPath,
-              search_config: searchConfig,
-            })
-          : undefined,
-
+        signal: abortController.signal,
+        body: requestBody,
+        extraHeaders:
+          type == 'replay' && token
+            ? { Authorization: `Bearer ${token}` }
+            : undefined,
         async onmessage(event: any) {
           let agentMessages: AgentMessage;
 
@@ -847,6 +1868,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               role: 'agent',
               content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
             });
+            return;
+          }
+
+          if (type) {
+            const stepTimeMs = getPersistedStepTimeMs(agentMessages);
+            if (stepTimeMs !== null) {
+              playbackFirstStepTimeMs ??= stepTimeMs;
+              playbackLastStepTimeMs = stepTimeMs;
+            }
+          }
+
+          if (
+            agentMessages &&
+            typeof agentMessages === 'object' &&
+            'error' in agentMessages &&
+            !('step' in agentMessages)
+          ) {
+            const currentStore = getCurrentChatStore();
+            const currentTaskId = getCurrentTaskId();
+            const errorText =
+              typeof (agentMessages as any).error === 'string'
+                ? (agentMessages as any).error
+                : 'Replay data is unavailable for this task.';
+
+            currentStore.addMessages(currentTaskId, {
+              id: generateUniqueId(),
+              role: 'agent',
+              content: errorText,
+            });
+            currentStore.setIsPending(currentTaskId, false);
+            currentStore.setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             return;
           }
 
@@ -895,6 +1947,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             document_agent: 'Document Agent',
             multi_modal_agent: 'Multi Modal Agent',
             social_media_agent: 'Social Media Agent',
+            single_agent: 'CAMEL Agent',
           };
 
           /**
@@ -947,6 +2000,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   newChatStore.getState().setType(newTaskId, 'replay');
                 }
 
+                const isFollowUpConfirm = Boolean(previousChatStore.nextTaskId);
                 const lastMessage =
                   previousChatStore.tasks[currentTaskId]?.messages.at(-1);
                 if (lastMessage?.role === 'user' && lastMessage?.id) {
@@ -965,12 +2019,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         ...(messageAttaches || []),
                       ];
 
-                //Trick: by the time the question is retrieved from event,
-                //the last message from previous chatStore is at display
+                // Three candidate sources for the user prompt body.
+                //   1. lastMessage.content -- the prompt ChatBox.handleSend
+                //      just added to the previous chatStore. This is what
+                //      the user actually typed *this turn* and is therefore
+                //      authoritative for both startTask and improve flows.
+                //   2. question -- the SSE CONFIRMED event's question field.
+                //      This is the current improve/follow-up prompt.
+                //   3. messageContent -- the closure-captured arg passed to
+                //      the original startTask call. It is accurate for the
+                //      first run but stale for improve turns because the SSE
+                //      consumer remains alive across the whole Project.
+                //
+                // So the fallback order depends on the lifecycle:
+                // - first startTask confirmed: messageContent before question
+                // - follow-up confirmed: question before stale messageContent
+                const userMessageContent = resolveConfirmedUserMessageContent({
+                  lastMessageContent:
+                    lastMessage?.role === 'user'
+                      ? lastMessage.content
+                      : undefined,
+                  messageContent,
+                  question,
+                  isFollowUpConfirm,
+                });
                 newChatStore.getState().addMessages(newTaskId, {
                   id: generateUniqueId(),
                   role: 'user',
-                  content: question || (messageContent as string),
+                  content: userMessageContent,
                   attaches: attachesForNewMessage,
                 });
                 console.log('[NEW CHATSTORE] Created for ', project_id);
@@ -980,15 +2056,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   const authStore = getAuthStore();
 
                   const obj = {
+                    space_id: spaceId,
                     project_id: project_id,
                     task_id: newTaskId,
+                    run_id: newTaskId,
                     user_id: authStore.user_id,
+                    mode: sessionModeForRequest,
+                    // Mirror the user-message-content priority above: prefer
+                    // what we just wrote into the new task (the prompt the
+                    // user actually typed), and only fall back to SSE
+                    // `question` / closure `messageContent` if the new task
+                    // somehow has no user message yet.
                     question:
-                      question ||
-                      messageContent ||
-                      (targetChatStore.getState().tasks[newTaskId]?.messages[0]
-                        ?.content ??
-                        ''),
+                      (newChatStore.getState().tasks[newTaskId]?.messages[0]
+                        ?.content as string) ||
+                      userMessageContent ||
+                      '',
                     language: systemLanguage,
                     model_platform: apiModel.model_platform,
                     model_type: apiModel.model_type,
@@ -999,16 +2082,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     status: 1,
                     tokens: 0,
                   };
-                  await proxyFetchPost(`/api/chat/history`, obj).then((res) => {
-                    historyId = res.id;
+                  await proxyFetchPost(`/api/v1/chat/history`, obj).then(
+                    (res) => {
+                      historyId = res.id;
 
-                    /**Save history id for replay reuse purposes.
-                     * TODO(history): Remove historyId handling to support per projectId
-                     * instead in history api
-                     */
-                    if (project_id && historyId)
-                      projectStore.setHistoryId(project_id, historyId);
-                  });
+                      /**Save history id for replay reuse purposes.
+                       * TODO(history): Remove historyId handling to support per projectId
+                       * instead in history api
+                       */
+                      if (project_id && historyId)
+                        projectStore.setHistoryId(project_id, historyId);
+                    }
+                  );
 
                   const currentTaskId = getCurrentTaskId();
                   // Update trigger execution status to Completed for connection closed by server
@@ -1056,11 +2141,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             addWebViewUrl,
             setIsPending,
             addMessages,
+            updateMessage,
             setHasWaitComfirm,
             setSummaryTask,
             setTaskAssigning,
             setTaskInfo,
             setTaskRunning,
+            setTaskSessionMode,
             addTerminal,
             addFileList,
             setActiveAsk,
@@ -1073,7 +2160,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setIsContextExceeded,
             setStreamingDecomposeText,
             clearStreamingDecomposeText,
-            setIsTaskEdit,
+            setPlanDirty,
+            setAutoConfirmDeadline,
           } = getCurrentChatStore();
 
           currentTaskId = getCurrentTaskId();
@@ -1092,8 +2180,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const ttft =
                 performance.now() - ttftTracking[currentId].confirmedAt;
               console.log(
-                `%c[TTFT] 🚀 Time to First Token: ${ttft.toFixed(2)}ms - First streaming token received for task ${currentId}`,
-                'color: #4CAF50; font-weight: bold'
+                `[TTFT] Time to First Token: ${ttft.toFixed(2)}ms - first streaming token for task ${currentId}`
               );
             }
 
@@ -1130,6 +2217,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.TO_SUB_TASKS) {
+            setTaskSessionMode(currentTaskId, SessionMode.WORKFORCE);
             // Clear streaming decompose text when task splitting is done
             clearStreamingDecomposeText(currentTaskId);
             // Clean up TTFT tracking
@@ -1155,7 +2243,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             }
 
             // Each splitting round starts in a clean editing state
-            setIsTaskEdit(currentTaskId, false);
+            setPlanDirty(currentTaskId, false);
 
             const messages = [...tasks[currentTaskId].messages];
             const toSubTaskIndex = messages.findLastIndex(
@@ -1170,45 +2258,68 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   clearTimeout(autoConfirmTimers[currentTaskId]);
                   delete autoConfirmTimers[currentTaskId];
                 }
+                setAutoConfirmDeadline(currentTaskId, null);
               } catch (error) {
                 console.warn('Error clearing auto-confirm timer:', error);
               }
 
               // 30 seconds auto confirm
               try {
-                autoConfirmTimers[currentTaskId] = setTimeout(() => {
+                setAutoConfirmDeadline(
+                  currentTaskId,
+                  Date.now() + AUTO_CONFIRM_TIMEOUT_MS
+                );
+                const scheduledTaskId = currentTaskId;
+                const scheduledProjectId = project_id;
+                const scheduledType = type;
+                autoConfirmTimers[scheduledTaskId] = setTimeout(async () => {
                   try {
                     const currentStore = getCurrentChatStore();
-                    const currentId = getCurrentTaskId();
-                    const { tasks, handleConfirmTask, setIsTaskEdit } =
-                      currentStore;
-                    const message = tasks[currentId].messages.findLast(
+                    const {
+                      tasks,
+                      handleConfirmTask,
+                      setPlanDirty,
+                      setAutoConfirmDeadline,
+                    } = currentStore;
+                    const latestTask = tasks[scheduledTaskId];
+                    if (!latestTask) {
+                      delete autoConfirmTimers[scheduledTaskId];
+                      return;
+                    }
+                    const message = latestTask.messages.findLast(
                       (item) => item.step === AgentStep.TO_SUB_TASKS
                     );
                     const isConfirm = message?.isConfirm || false;
-                    const isTakeControl = tasks[currentId].isTakeControl;
+                    const isTakeControl = latestTask.isTakeControl;
 
                     if (
-                      project_id &&
+                      scheduledProjectId &&
                       !isConfirm &&
                       !isTakeControl &&
-                      !tasks[currentId].isTaskEdit
+                      !latestTask.planDirty
                     ) {
-                      handleConfirmTask(project_id, currentId, type);
+                      await handleConfirmTask(
+                        scheduledProjectId,
+                        scheduledTaskId,
+                        scheduledType
+                      );
                     }
-                    setIsTaskEdit(currentId, false);
-                    delete autoConfirmTimers[currentId];
+                    setPlanDirty(scheduledTaskId, false);
+                    setAutoConfirmDeadline(scheduledTaskId, null);
+                    delete autoConfirmTimers[scheduledTaskId];
                   } catch (error) {
                     console.error(
                       'Error in auto-confirm timeout handler:',
                       error
                     );
                     // Clean up the timer reference even if there's an error
-                    delete autoConfirmTimers[currentTaskId];
+                    setAutoConfirmDeadline(scheduledTaskId, null);
+                    delete autoConfirmTimers[scheduledTaskId];
                   }
-                }, 30000);
+                }, AUTO_CONFIRM_TIMEOUT_MS);
               } catch (error) {
                 console.error('Error setting auto-confirm timer:', error);
+                setAutoConfirmDeadline(currentTaskId, null);
               }
 
               const newNoticeMessage: Message = {
@@ -1239,6 +2350,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               type !== 'replay' &&
                 agentMessages.data.sub_tasks?.push(newTaskInfo);
             }
+            // Sub-tasks arrive from the backend with a camel `state` field
+            // (OPEN/RUNNING/DONE/FAILED), not the frontend's `status`. Seed
+            // every entry with EMPTY so the badge renders as Pending; later
+            // SSE events (ASSIGN_TASK, TASK_STATE, …) drive the real status.
+            // Replay finalization happens in the END handler below.
             agentMessages.data.sub_tasks = agentMessages.data.sub_tasks?.map(
               (item) => {
                 item.status = TaskStatus.EMPTY;
@@ -1247,14 +2363,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
 
             if (!type && historyId) {
+              const projectName =
+                agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
-                project_name:
-                  agentMessages.data!.summary_task?.split('|')[0] || '',
+                project_name: projectName,
                 summary: agentMessages.data!.summary_task?.split('|')[1] || '',
                 status: 1,
                 tokens: getTokens(currentTaskId),
               };
-              proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+              syncProjectDisplayName(project_id, projectName);
+              proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
             }
             setSummaryTask(
               currentTaskId,
@@ -1295,11 +2413,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 let activeWebviewIds: any = [];
                 if (agent_name == 'browser_agent') {
                   snapshots.forEach((item: any) => {
-                    const imgurl = !item.image_path.includes('/public')
-                      ? item.image_path
+                    const snapshotUrl = item.image_url || item.image_path || '';
+                    if (!snapshotUrl) return;
+                    const imgurl = !snapshotUrl.includes('/public')
+                      ? snapshotUrl
                       : (import.meta.env.DEV
                           ? import.meta.env.VITE_PROXY_URL
-                          : import.meta.env.VITE_BASE_URL) + item.image_path;
+                          : import.meta.env.VITE_BASE_URL) + snapshotUrl;
                     activeWebviewIds.push({
                       id: item.id,
                       img: imgurl,
@@ -1376,6 +2496,89 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             return;
           }
+          if (agentMessages.step === AgentStep.TODO_STATE) {
+            setTaskSessionMode(currentTaskId, SessionMode.SINGLE_AGENT);
+            const todos = agentMessages.data.todos || [];
+            const agentId =
+              agentMessages.data.agent_id || `${currentTaskId}-single-agent`;
+            const existingAgents = [...tasks[currentTaskId].taskAssigning];
+            const existingIndex = existingAgents.findIndex(
+              (agent) =>
+                agent.agent_id === agentId || agent.type === 'single_agent'
+            );
+            const previousTasks = [
+              ...(existingIndex === -1
+                ? []
+                : existingAgents[existingIndex].tasks || []),
+              ...(tasks[currentTaskId].taskRunning || []),
+              ...(tasks[currentTaskId].taskInfo || []),
+            ];
+            const previousTaskById = new Map(
+              previousTasks.map((task) => [task.id, task])
+            );
+            const todoTasks: TaskInfo[] = todos.map((todo, index) => {
+              const id = todo.id || `todo_${index + 1}`;
+              const previous = previousTaskById.get(id);
+              return {
+                ...previous,
+                id,
+                content:
+                  todo.status === 'in_progress' && todo.active_form
+                    ? todo.active_form
+                    : todo.content,
+                status:
+                  todo.status === 'completed'
+                    ? TaskStatus.COMPLETED
+                    : todo.status === 'in_progress'
+                      ? TaskStatus.RUNNING
+                      : TaskStatus.EMPTY,
+                toolkits: previous?.toolkits,
+                terminal: previous?.terminal,
+                fileList: previous?.fileList,
+                report: previous?.report,
+                failure_count: previous?.failure_count,
+              };
+            });
+            const singleAgent: Agent =
+              existingIndex === -1
+                ? {
+                    agent_id: agentId,
+                    name: 'CAMEL Agent',
+                    type: 'single_agent',
+                    tasks: todoTasks,
+                    log: [],
+                    img: [],
+                    tools: ['TodoToolkit'],
+                    activeWebviewIds: [],
+                  }
+                : {
+                    ...existingAgents[existingIndex],
+                    agent_id: existingAgents[existingIndex].agent_id || agentId,
+                    name: existingAgents[existingIndex].name || 'CAMEL Agent',
+                    type: 'single_agent',
+                    tasks: todoTasks,
+                  };
+
+            if (existingIndex === -1) {
+              existingAgents.push(singleAgent);
+            } else {
+              existingAgents[existingIndex] = singleAgent;
+            }
+
+            setTaskInfo(currentTaskId, todoTasks);
+            setTaskRunning(currentTaskId, todoTasks);
+            setTaskAssigning(currentTaskId, existingAgents);
+            if (tasks[currentTaskId].status !== ChatTaskStatus.FINISHED) {
+              // Single-agent tasks have no confirm step, so `taskTime` is never
+              // seeded by `handleConfirmTask`. Start the work-log clock here on
+              // the first `todo_state`; the `=== 0` guard keeps it idempotent.
+              if (tasks[currentTaskId].taskTime === 0) {
+                setTaskTime(currentTaskId, Date.now());
+              }
+              setStatus(currentTaskId, ChatTaskStatus.RUNNING);
+            }
+            return;
+          }
           // Task State
           if (agentMessages.step === AgentStep.TASK_STATE) {
             const { state, task_id, result, failure_count } =
@@ -1414,7 +2617,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   let removeList: number[] = [];
                   item.activeWebviewIds.map((webview, index) => {
                     if (webview.processTaskId === task_id) {
-                      window.electronAPI.webviewDestroy(webview.id);
+                      getHostElectronAPI()?.webviewDestroy?.(webview.id);
                       removeList.push(index);
                     }
                   });
@@ -1551,13 +2754,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               }
 
               if (!type && historyId) {
+                const projectName =
+                  tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
-                  project_name: tasks[currentTaskId].summaryTask.split('|')[0],
+                  project_name: projectName,
                   summary: tasks[currentTaskId].summaryTask.split('|')[1],
                   status: 1,
                   tokens: getTokens(currentTaskId),
                 };
-                proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+                syncProjectDisplayName(project_id, projectName);
+                proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
               }
 
               // Check if this is a quick reply completion (simple question answered directly)
@@ -1781,6 +2987,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 (agent: Agent) => agent.type === agentMessages.data.agent_name
               );
             }
+            if (
+              assigneeAgentIndex === -1 &&
+              (isSingleAgentEventName(agentMessages.data.agent_name) ||
+                tasks[currentTaskId].sessionMode === SessionMode.SINGLE_AGENT)
+            ) {
+              assigneeAgentIndex = ensureSingleAgentAssignment(
+                taskAssigning,
+                currentTaskId,
+                agentMessages.data.agent_id
+              );
+            }
 
             if (assigneeAgentIndex !== -1) {
               const message = filterMessage(agentMessages);
@@ -1896,12 +3113,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               agentMessages.data.process_task_id
             );
 
-            const assigneeAgentIndex = taskAssigning!.findIndex(
-              (agent: Agent) =>
-                agent.tasks.find(
-                  (task: TaskInfo) => task.id === resolvedProcessTaskId
-                )
+            let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) =>
+              agent.tasks.find(
+                (task: TaskInfo) => task.id === resolvedProcessTaskId
+              )
             );
+            if (
+              assigneeAgentIndex === -1 &&
+              (isSingleAgentEventName(agentMessages.data.agent_name) ||
+                tasks[currentTaskId].sessionMode === SessionMode.SINGLE_AGENT)
+            ) {
+              assigneeAgentIndex = ensureSingleAgentAssignment(
+                taskAssigning,
+                currentTaskId,
+                agentMessages.data.agent_id
+              );
+            }
             if (assigneeAgentIndex !== -1) {
               const message = filterMessage(agentMessages);
               if (message) {
@@ -1946,9 +3173,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             const { toolkit_name, method_name, message } = agentMessages.data;
             const taskIndex = taskRunning.findIndex(
-              (task) =>
-                task.agent?.type === agentMessages.data.agent_name &&
-                task.toolkits?.at(-1)?.toolkitName === toolkit_name
+              (task) => task.id === resolvedProcessTaskId
             );
 
             if (taskIndex !== -1) {
@@ -1956,14 +3181,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const targetMessage = filterMessage(agentMessages);
 
                 if (targetMessage) {
-                  taskRunning![taskIndex].toolkits?.unshift({
-                    toolkitName: toolkit_name,
-                    toolkitMethods: method_name,
-                    message: normalizeToolkitMessage(
-                      targetMessage.data.message
-                    ),
-                    toolkitStatus: AgentStatusValue.COMPLETED,
-                  });
+                  const runningToolkitIndex = taskRunning[
+                    taskIndex
+                  ].toolkits?.findLastIndex(
+                    (toolkit) =>
+                      toolkit.toolkitName === toolkit_name &&
+                      toolkit.toolkitMethods === method_name &&
+                      toolkit.toolkitStatus === AgentStatusValue.RUNNING
+                  );
+                  if (
+                    taskRunning[taskIndex].toolkits &&
+                    runningToolkitIndex !== undefined &&
+                    runningToolkitIndex !== -1
+                  ) {
+                    taskRunning[taskIndex].toolkits[
+                      runningToolkitIndex
+                    ].message =
+                      `${normalizeToolkitMessage(taskRunning[taskIndex].toolkits[runningToolkitIndex].message)}\n${normalizeToolkitMessage(targetMessage.data.message)}`.trim();
+                    taskRunning[taskIndex].toolkits[
+                      runningToolkitIndex
+                    ].toolkitStatus = AgentStatusValue.COMPLETED;
+                  } else {
+                    taskRunning![taskIndex].toolkits ??= [];
+                    taskRunning![taskIndex].toolkits?.push({
+                      toolkitName: toolkit_name,
+                      toolkitMethods: method_name,
+                      message: normalizeToolkitMessage(
+                        targetMessage.data.message
+                      ),
+                      toolkitStatus: AgentStatusValue.COMPLETED,
+                    });
+                  }
                 }
               }
             }
@@ -1973,9 +3221,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Terminal
           if (agentMessages.step === AgentStep.TERMINAL) {
+            const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+              tasks,
+              currentTaskId,
+              agentMessages.data.agent_name,
+              agentMessages.data.process_task_id
+            );
             addTerminal(
               currentTaskId,
-              agentMessages.data.process_task_id as string,
+              resolvedProcessTaskId,
               agentMessages.data.output as string
             );
             return;
@@ -1984,6 +3238,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.WRITE_FILE) {
             console.log('write_to_file', agentMessages.data);
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
+            const { activeWorkspaceTab, markTabAsUnviewed } =
+              usePageTabStore.getState();
+            if (activeWorkspaceTab !== 'inbox' && project_id) {
+              markTabAsUnviewed('inbox', project_id);
+            }
             const { file_path } = agentMessages.data;
             const fileName =
               file_path?.replace(/\\/g, '/').split('/').pop() || '';
@@ -1994,11 +3253,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               path: file_path || '',
               icon: FileText,
             };
-            addFileList(
+            const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
+              tasks,
               currentTaskId,
-              agentMessages.data.process_task_id as string,
-              fileInfo
+              agentMessages.data.agent_name,
+              agentMessages.data.process_task_id
             );
+            addFileList(currentTaskId, resolvedProcessTaskId, fileInfo);
             return;
           }
 
@@ -2051,6 +3312,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   ? agentMessages.data
                   : null) ||
                 'An error occurred while processing your request';
+              const isProjectBusyError =
+                errorMessage === 'Single Agent is already processing a task.';
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -2106,11 +3369,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 errorMessage
               );
 
-              // Stop the workforce
-              try {
-                await fetchDelete(`/chat/${project_id}`);
-              } catch (error) {
-                console.log('Task may not exist on backend:', error);
+              // A busy Project means another run in the same long conversation
+              // is still active. Do not stop that active Project while marking
+              // only this rejected run as failed.
+              if (!isProjectBusyError) {
+                try {
+                  await fetchDelete(`/chat/${project_id}`);
+                } catch (error) {
+                  console.log('Task may not exist on backend:', error);
+                }
               }
             } catch (error) {
               console.error('Failed to handle model error:', error);
@@ -2221,6 +3488,39 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.END) {
+            const endData: unknown = agentMessages.data;
+            const endMessageText = extractEndPayloadText(endData);
+            const endTokens =
+              typeof endData === 'object' &&
+              endData !== null &&
+              typeof (endData as { tokens?: unknown }).tokens === 'number'
+                ? (endData as { tokens: number }).tokens
+                : 0;
+            if (endTokens > 0 && getTokens(currentTaskId) === 0) {
+              addTokens(currentTaskId, endTokens);
+            }
+            if (!currentTaskId || !tasks[currentTaskId]) return;
+
+            const endMessage = resolveEndMessageText(
+              endMessageText,
+              tasks[currentTaskId].messages,
+              tasks[currentTaskId]
+            );
+            const endMessageId = generateUniqueId();
+            const endUiMessage: Message = {
+              id: endMessageId,
+              role: 'agent',
+              content: endMessage || '',
+              step: agentMessages.step,
+              isConfirm: false,
+              fileList: [],
+            };
+
+            addMessages(currentTaskId, endUiMessage);
+            setIsPending(currentTaskId, false);
+            setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            setUpdateCount();
+
             // compute task time
             console.log(
               'tasks[taskId].snapshotsTemp',
@@ -2228,98 +3528,113 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             Promise.all(
               tasks[currentTaskId].snapshotsTemp.map((snapshot) =>
-                proxyFetchPost(`/api/chat/snapshots`, { ...snapshot })
+                proxyFetchPost(`/api/v1/chat/snapshots`, { ...snapshot })
               )
             );
 
-            // Async file upload
-            let res = await window.ipcRenderer.invoke(
-              'get-file-list',
-              email,
-              currentTaskId,
-              (project_id || projectStore.activeProjectId) as string
-            );
-            if (
-              !type &&
-              import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
-              res.length > 0
-            ) {
-              // Upload files sequentially to avoid overwhelming the server
-              const uploadResults = await Promise.allSettled(
-                res
-                  .filter((file: any) => !file.isFolder)
-                  .map(async (file: any) => {
-                    try {
-                      // Read file content using Electron API
-                      const result = await window.ipcRenderer.invoke(
-                        'read-file',
-                        file.path
+            const uploadTargetId = (project_id ||
+              projectStore.activeProjectId) as string | undefined;
+            if (!type && import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+              if (!uploadTargetId) {
+                console.warn(
+                  'Skip file upload because no active project ID was found'
+                );
+              } else {
+                const hostIpcRenderer = getHostIpcRenderer();
+                if (!hostIpcRenderer?.invoke) {
+                  console.warn(
+                    'Skip file upload because IPC renderer is unavailable'
+                  );
+                } else {
+                  try {
+                    const generatedFiles =
+                      ((await hostIpcRenderer.invoke(
+                        'get-file-list',
+                        email,
+                        currentTaskId,
+                        uploadTargetId,
+                        user_id
+                      )) as GeneratedUploadFile[]) || [];
+                    const taskOutputFiles = tasks[
+                      currentTaskId
+                    ].taskAssigning.flatMap((agent) =>
+                      agent.tasks.flatMap((task) => task.fileList || [])
+                    );
+                    const filesToUpload = collectTaskUploadFiles(
+                      generatedFiles,
+                      tasks[currentTaskId].messages,
+                      tasks[currentTaskId].attaches,
+                      currentTaskId,
+                      taskOutputFiles
+                    );
+                    console.log('Task upload files collected:', {
+                      generatedFileCount: generatedFiles.length,
+                      taskOutputFileCount: taskOutputFiles.length,
+                      uploadCandidateCount: filesToUpload.length,
+                      uploadTargetId,
+                      taskId: currentTaskId,
+                    });
+
+                    if (filesToUpload.length > 0) {
+                      const uploadResults = await uploadTaskFiles(
+                        filesToUpload,
+                        uploadTargetId
                       );
-                      if (result.success && result.data) {
-                        // Create FormData for file upload
-                        const formData = new FormData();
-                        const blob = new Blob([result.data], {
-                          type: 'application/octet-stream',
-                        });
-                        formData.append('file', blob, file.name);
-                        //TODO(file): rename endpoint to use project_id
-                        formData.append(
-                          'task_id',
-                          (project_id || projectStore.activeProjectId) as string
-                        );
-
-                        // Upload file
-                        await uploadFile('/api/chat/files/upload', formData);
-                        console.log('File uploaded successfully:', file.name);
-                        return { success: true, fileName: file.name };
-                      } else {
-                        console.error('Failed to read file:', result.error);
-                        return {
-                          success: false,
-                          fileName: file.name,
-                          error: result.error,
-                        };
+                      const failedUploads = uploadResults.filter(
+                        (result) => !result.success
+                      );
+                      if (failedUploads.length > 0) {
+                        console.error('Failed to upload files:', failedUploads);
                       }
-                    } catch (error) {
-                      console.error('File upload failed:', error);
-                      return { success: false, fileName: file.name, error };
+
+                      const generatedSuccessCount = uploadResults.filter(
+                        (result) =>
+                          result.success && result.source === 'project_output'
+                      ).length;
+
+                      if (generatedSuccessCount > 0) {
+                        proxyFetchPost(`/api/v1/user/stat`, {
+                          action: 'file_generate_count',
+                          value: generatedSuccessCount,
+                        });
+                      }
                     }
-                  })
-              );
-
-              // Count successful uploads
-              const successCount = uploadResults.filter(
-                (result) =>
-                  result.status === 'fulfilled' && result.value.success
-              ).length;
-
-              // Log failures
-              const failures = uploadResults.filter(
-                (result) =>
-                  result.status === 'rejected' ||
-                  (result.status === 'fulfilled' && !result.value.success)
-              );
-              if (failures.length > 0) {
-                console.error('Failed to upload files:', failures);
-              }
-
-              // add remote file count for successful uploads only
-              if (successCount > 0) {
-                proxyFetchPost(`/api/user/stat`, {
-                  action: 'file_generate_count',
-                  value: successCount,
-                });
+                  } catch (error) {
+                    console.error(
+                      'Failed to prepare task files for upload:',
+                      error
+                    );
+                  }
+                }
               }
             }
 
             if (!type && historyId) {
-              const obj = {
-                project_name: tasks[currentTaskId].summaryTask.split('|')[0],
-                summary: tasks[currentTaskId].summaryTask.split('|')[1],
-                status: 2,
-                tokens: getTokens(currentTaskId),
-              };
-              proxyFetchPut(`/api/chat/history/${historyId}`, obj);
+              try {
+                const st = tasks[currentTaskId].summaryTask || '';
+                const parts = st.split('|');
+                const rawEndPayload = endMessageText;
+                const completionSummary = rawEndPayload || parts[1] || '';
+                // The Stop button hits backend's Action.skip_task, which
+                // also yields an `end` SSE event with this fixed sentinel.
+                // Treat the run as ongoing so chat_history.status accurately
+                // reflects whether the project actually completed; the
+                // history-replay polish keys off this flag.
+                const wasStoppedByUser = rawEndPayload.startsWith(
+                  '<summary>Task stopped</summary>'
+                );
+                const projectName = parts[0] || '';
+                const obj = {
+                  project_name: projectName,
+                  summary: completionSummary,
+                  status: wasStoppedByUser ? 1 : 2,
+                  tokens: getTokens(currentTaskId),
+                };
+                syncProjectDisplayName(project_id, projectName);
+                proxyFetchPut(`/api/v1/chat/history/${historyId}`, obj);
+              } catch (e) {
+                console.warn('History update failed on END:', e);
+              }
             }
             uploadLog(currentTaskId, type);
 
@@ -2340,7 +3655,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             });
 
             taskRunning = taskRunning.map((task) => {
-              console.log('task.status', task.status);
               if (
                 task.status !== TaskStatus.COMPLETED &&
                 task.status !== TaskStatus.FAILED &&
@@ -2353,13 +3667,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskAssigning(currentTaskId, [...taskAssigning]);
             setTaskRunning(currentTaskId, [...taskRunning]);
 
-            if (!currentTaskId || !tasks[currentTaskId]) return 'N/A';
-
             const task = tasks[currentTaskId];
             let taskTime = task.taskTime;
             let elapsed = task.elapsed;
-            // if task is running, compute current time
-            if (taskTime !== 0) {
+            const playbackElapsed =
+              type &&
+              playbackFirstStepTimeMs !== null &&
+              playbackLastStepTimeMs !== null
+                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                : null;
+            if (playbackElapsed !== null) {
+              elapsed = playbackElapsed;
+            } else if (taskTime !== 0) {
               const currentTime = Date.now();
               elapsed += currentTime - taskTime;
             }
@@ -2375,36 +3694,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   .flat();
               })
               .flat();
-            let endMessage = agentMessages.data as string;
-            let summary = endMessage.match(/<summary>(.*?)<\/summary>/)?.[1];
-            let newMessage: Message | null = null;
-            const agent_summary_end = tasks[currentTaskId].messages.findLast(
-              (message: Message) => message.step === AgentStep.AGENT_SUMMARY_END
+
+            const outputProjectId =
+              project_id || projectStore.activeProjectId || undefined;
+            const outputBaseURL = await getBaseURL().catch(() => '');
+            const finalOutputFileList = extractFinalOutputFileList(
+              endMessage,
+              outputProjectId,
+              email || undefined,
+              outputBaseURL || undefined
             );
-            console.log('summary', summary);
-            if (summary) {
-              endMessage = summary;
-            } else if (agent_summary_end) {
-              console.log('agent_summary_end', agent_summary_end);
-              endMessage = agent_summary_end.summary || '';
-            }
+            const mergedFileList = mergeFileInfoLists(
+              fileList,
+              finalOutputFileList
+            );
 
             console.log('endMessage', endMessage);
-            newMessage = {
-              id: generateUniqueId(),
-              role: 'agent',
-              content: endMessage || '',
-              step: agentMessages.step,
-              isConfirm: false,
-              fileList: fileList,
-            };
-
-            addMessages(currentTaskId, newMessage);
-
-            setIsPending(currentTaskId, false);
-            setStatus(currentTaskId, ChatTaskStatus.FINISHED);
-            // completed tasks move to history
-            setUpdateCount();
+            updateMessage(currentTaskId, endMessageId, {
+              ...endUiMessage,
+              fileList: mergedFileList,
+            });
 
             console.log(tasks[currentTaskId], 'end');
 
@@ -2414,7 +3723,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               project_id,
               currentTaskId,
               ExecutionStatus.Completed,
-              tasks[currentTaskId]?.tokens || 0
+              getTokens(currentTaskId)
             );
 
             return;
@@ -2430,7 +3739,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       task.id === agentMessages.data.process_task_id
                   )
               );
-              const task = taskAssigning[assigneeAgentIndex].tasks.find(
+              // Single-agent runs never emit `assign_task`, so no agent
+              // ever owns this notice's process_task_id and the findIndex
+              // above returns -1. Optional chaining keeps the access safe;
+              // the existing guard at the bottom of this block already
+              // skips the toolkit push when the index is -1.
+              const task = taskAssigning[assigneeAgentIndex]?.tasks.find(
                 (task: TaskInfo) =>
                   task.id === agentMessages.data.process_task_id
               );
@@ -2444,6 +3758,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (assigneeAgentIndex !== -1 && task) {
                 task.toolkits ??= [];
                 task.toolkits.push({ ...toolkit });
+                // Mirror the notice onto the agent log so the work-log
+                // timeline can render it inline alongside tool calls.
+                taskAssigning[assigneeAgentIndex].log.push(agentMessages);
               }
               setTaskAssigning(currentTaskId, [...taskAssigning]);
             } else {
@@ -2589,6 +3906,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          if (type) {
+            const currentStore = getCurrentChatStore();
+            const currentTaskId = getCurrentTaskId();
+            const currentTask = currentStore.tasks[currentTaskId];
+            if (currentTask?.isPending) {
+              currentStore.setIsPending(currentTaskId, false);
+            }
+            if (currentTask && currentTask.status !== ChatTaskStatus.FINISHED) {
+              currentStore.setStatus(currentTaskId, ChatTaskStatus.FINISHED);
+            }
+          }
           // Abort to resolve fetchEventSource promise (for replay/load - allows awaiting completion)
           try {
             abortController.abort();
@@ -2634,6 +3962,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         startTask,
         setActiveTaskId,
         handleConfirmTask,
+        setIsPending,
+        setStatus,
       } = get();
       //get project id
       const project_id = useProjectStore.getState().activeProjectId;
@@ -2650,9 +3980,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         content: question.split('|')[0],
       });
 
-      await startTask(taskId, 'replay', undefined, time);
-      setActiveTaskId(taskId);
-      handleConfirmTask(project_id, taskId, 'replay');
+      try {
+        await startTask(taskId, 'replay', undefined, time);
+        setActiveTaskId(taskId);
+        handleConfirmTask(project_id, taskId, 'replay');
+      } catch (error) {
+        console.error(`Failed to replay task ${taskId}:`, error);
+        const task = get().tasks[taskId];
+        if (task) {
+          if (task.isPending) {
+            setIsPending(taskId, false);
+          }
+          if (task.status !== ChatTaskStatus.FINISHED) {
+            setStatus(taskId, ChatTaskStatus.FINISHED);
+          }
+          const hasReplayErrorMessage = task.messages.some(
+            (message) =>
+              message.role === 'agent' &&
+              typeof message.content === 'string' &&
+              message.content.includes('Unable to replay this legacy task')
+          );
+          if (!hasReplayErrorMessage) {
+            addMessages(taskId, {
+              id: generateUniqueId(),
+              role: 'agent',
+              content:
+                'Unable to replay this legacy task. The saved playback data could not be loaded.',
+            });
+          }
+        }
+        throw error;
+      }
     },
     setUpdateCount() {
       set((state) => ({
@@ -2663,6 +4021,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     setActiveTaskId: (taskId: string) => {
       set({
         activeTaskId: taskId,
+      });
+    },
+    setTaskSessionMode: (taskId: string, mode: SessionModeType) => {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task || task.sessionMode === mode) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              sessionMode: mode,
+            },
+          },
+        };
       });
     },
     addMessages(taskId, message) {
@@ -2874,9 +4248,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setTaskTime,
         setTaskInfo,
         setTaskRunning,
-        setIsTaskEdit,
+        setPlanDirty,
+        setAutoConfirmDeadline,
       } = get();
       if (!taskId) return;
+      const task = tasks[taskId];
+      if (!task) return;
+
+      const setLatestPlanConfirmed = (isConfirm: boolean) => {
+        const latestTask = get().tasks[taskId];
+        if (!latestTask) return;
+        const messages = [...latestTask.messages];
+        const cardTaskIndex = messages.findLastIndex(
+          (message) => message.step === AgentStep.TO_SUB_TASKS
+        );
+        if (cardTaskIndex === -1) return;
+        messages[cardTaskIndex] = {
+          ...messages[cardTaskIndex],
+          isConfirm,
+          taskType: isConfirm ? 2 : messages[cardTaskIndex].taskType,
+        };
+        setMessages(taskId, messages);
+      };
 
       // Stop any pending auto-confirm timers for this task (manual confirmation)
       try {
@@ -2884,6 +4277,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           clearTimeout(autoConfirmTimers[taskId]);
           delete autoConfirmTimers[taskId];
         }
+        setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn(
           'Error clearing auto-confirm timer in handleConfirmTask:',
@@ -2894,9 +4288,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // record task start time
       setTaskTime(taskId, Date.now());
       // Filter out empty tasks from the user-edited taskInfo
-      const taskInfo = tasks[taskId].taskInfo.filter(
-        (task) => task.content !== ''
-      );
+      const taskInfo = task.taskInfo.filter((task) => task.content !== '');
       setTaskInfo(taskId, taskInfo);
       // Sync taskRunning with the filtered taskInfo (user edits should be reflected
       setTaskRunning(
@@ -2906,31 +4298,29 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // IMPORTANT: Set isConfirm BEFORE sending API requests to prevent race condition
       // where backend sends to_sub_tasks SSE event before we mark task as confirmed
-      let messages = [...tasks[taskId].messages];
-      const cardTaskIndex = messages.findLastIndex(
-        (message) => message.step === AgentStep.TO_SUB_TASKS
-      );
-      if (cardTaskIndex !== -1) {
-        messages[cardTaskIndex] = {
-          ...messages[cardTaskIndex],
-          isConfirm: true,
-          taskType: 2,
-        };
-        setMessages(taskId, messages);
-      }
+      setLatestPlanConfirmed(true);
 
       if (!type) {
-        await fetchPut(`/task/${project_id}`, {
-          task: taskInfo,
-        });
-        await fetchPost(`/task/${project_id}/start`, {});
+        try {
+          await fetchPut(`/task/${project_id}`, {
+            task: taskInfo,
+          });
+          await fetchPost(`/task/${project_id}/start`, {});
 
-        setActiveWorkspace(taskId, 'workflow');
-        setStatus(taskId, ChatTaskStatus.RUNNING);
+          setActiveWorkspace(taskId, 'workflow');
+          setStatus(taskId, ChatTaskStatus.RUNNING);
+        } catch (error) {
+          console.error('Failed to confirm and start task:', error);
+          setLatestPlanConfirmed(false);
+          setStatus(taskId, ChatTaskStatus.PENDING);
+          setTaskTime(taskId, 0);
+          toast.error('Failed to start task. Please try again.');
+          return;
+        }
       }
 
       // Reset editing state after manual confirmation so next round can auto-start
-      setIsTaskEdit(taskId, false);
+      setPlanDirty(taskId, false);
     },
     addTaskInfo() {
       const { tasks, activeTaskId, setTaskInfo } = get();
@@ -2991,33 +4381,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
     },
     setIsPending(taskId: string, isPending: boolean) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            isPending,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              isPending,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveWorkspace(taskId: string, activeWorkspace: string) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            activeWorkspace,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              activeWorkspace,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setActiveAgent(taskId: string, agent_id: string) {
       console.log('setActiveAgent', taskId, agent_id);
 
       set((state) => {
+        if (!state.tasks[taskId]) return state;
         if (state.tasks[taskId]?.activeAgent === agent_id) {
           return state;
         }
@@ -3119,7 +4516,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const targetTaskInfo = [...tasks[activeTaskId].taskInfo];
       targetTaskInfo.splice(index, 1);
       setTaskInfo(activeTaskId, targetTaskInfo);
-      persistSubtaskEdits(targetTaskInfo);
     },
     getLastUserMessage() {
       const { activeTaskId, tasks } = get();
@@ -3227,16 +4623,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       return tasks[taskId]?.tokens ?? 0;
     },
     setSelectedFile(taskId: string, selectedFile: FileInfo | null) {
-      set((state) => ({
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [taskId]: {
-            ...state.tasks[taskId],
-            selectedFile: selectedFile,
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              selectedFile: selectedFile,
+            },
           },
-        },
-      }));
+        };
+      });
     },
     setSnapshots(taskId: string, snapshots: any[]) {
       set((state) => ({
@@ -3268,17 +4667,96 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
       });
     },
-    setIsTaskEdit(taskId: string, isTaskEdit: boolean) {
+    setPlanDirty(taskId: string, dirty: boolean) {
       set((state) => ({
         ...state,
         tasks: {
           ...state.tasks,
           [taskId]: {
             ...state.tasks[taskId],
-            isTaskEdit,
+            planDirty: dirty,
           },
         },
       }));
+    },
+    setAutoConfirmDeadline(taskId: string, deadline: number | null) {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              autoConfirmDeadline: deadline,
+            },
+          },
+        };
+      });
+    },
+    async savePlan(taskId: string) {
+      const { tasks, setPlanDirty, setAutoConfirmDeadline } = get();
+      const task = tasks[taskId];
+      if (!task) return;
+      try {
+        await persistSubtaskEdits(task.taskInfo);
+        setPlanDirty(taskId, false);
+      } catch (err) {
+        console.error('Failed to persist subtask edits:', err);
+        return;
+      }
+
+      // After Save, restart the 30-second auto-confirm timer for predictable UX.
+      const projectId = useProjectStore.getState().activeProjectId;
+      const lastToSubTasks = task.messages.findLast(
+        (m: Message) => m.step === AgentStep.TO_SUB_TASKS
+      );
+      if (
+        !projectId ||
+        !lastToSubTasks ||
+        lastToSubTasks.isConfirm ||
+        task.isTakeControl
+      ) {
+        return;
+      }
+
+      try {
+        if (autoConfirmTimers[taskId]) {
+          clearTimeout(autoConfirmTimers[taskId]);
+          delete autoConfirmTimers[taskId];
+        }
+        setAutoConfirmDeadline(taskId, null);
+      } catch (error) {
+        console.warn('Error clearing auto-confirm timer in savePlan:', error);
+      }
+
+      setAutoConfirmDeadline(taskId, Date.now() + AUTO_CONFIRM_TIMEOUT_MS);
+      autoConfirmTimers[taskId] = setTimeout(() => {
+        try {
+          const latestState = get();
+          const latest = latestState.tasks[taskId];
+          if (!latest) {
+            delete autoConfirmTimers[taskId];
+            return;
+          }
+          const message = latest.messages.findLast(
+            (item: Message) => item.step === AgentStep.TO_SUB_TASKS
+          );
+          const isConfirm = message?.isConfirm || false;
+          const isTakeControl = latest.isTakeControl;
+
+          if (projectId && !isConfirm && !isTakeControl && !latest.planDirty) {
+            latestState.handleConfirmTask(projectId, taskId);
+          }
+          latestState.setPlanDirty(taskId, false);
+          latestState.setAutoConfirmDeadline(taskId, null);
+          delete autoConfirmTimers[taskId];
+        } catch (error) {
+          console.error('Error in savePlan auto-confirm handler:', error);
+          get().setAutoConfirmDeadline(taskId, null);
+          delete autoConfirmTimers[taskId];
+        }
+      }, AUTO_CONFIRM_TIMEOUT_MS);
     },
     clearTasks: () => {
       const { create } = get();
@@ -3319,14 +4797,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         console.error('Error during SSE cleanup in clearTasks:', error);
       }
 
-      window.ipcRenderer
-        .invoke('restart-backend')
-        .then((res: unknown) => {
-          console.log('restart-backend', res);
-        })
-        .catch((error: unknown) => {
-          console.error('Error in clearTasks cleanup:', error);
-        });
+      const restartPromise = getHostIpcRenderer()?.invoke?.('restart-backend');
+      if (restartPromise) {
+        restartPromise
+          .then((res: unknown) => {
+            console.log('restart-backend', res);
+          })
+          .catch((error: unknown) => {
+            console.error('Error in clearTasks cleanup:', error);
+          });
+      }
 
       // Immediately create new task to maintain UI responsiveness
       const newTaskId = create();
@@ -3404,6 +4884,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             [taskId]: {
               ...state.tasks[taskId],
               executionId,
+            },
+          },
+        };
+      });
+    },
+    setTaskSource: (taskId, source) => {
+      set((state) => {
+        if (!state.tasks[taskId]) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...state.tasks[taskId],
+              source,
             },
           },
         };

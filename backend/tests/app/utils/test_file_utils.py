@@ -289,6 +289,7 @@ def test_get_working_directory_no_new_folder_path_uses_env(temp_dir):
     options = MagicMock()
     task_lock = MagicMock()
     task_lock.new_folder_path = None
+    task_lock.working_directory = None
     with patch("app.utils.file_utils.env", return_value=str(temp_dir)):
         result = get_working_directory(options, task_lock)
     assert os.path.realpath(result) == os.path.realpath(str(temp_dir))

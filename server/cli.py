@@ -14,7 +14,7 @@
 
 from app.command import cli
 
-from app.component.environment import auto_import
+from app.core.environment import auto_import
 
 auto_import("app.command")
 

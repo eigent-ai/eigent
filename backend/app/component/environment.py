@@ -17,10 +17,11 @@ import importlib.util
 import logging
 import os
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, overload
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from fastapi import APIRouter, FastAPI
 
 logger = logging.getLogger("env")
@@ -28,12 +29,88 @@ logger = logging.getLogger("env")
 # Thread-local storage for user-specific environment
 _thread_local = threading.local()
 
-# Default global environment path
-default_env_path = os.path.join(os.path.expanduser("~"), ".eigent", ".env")
-load_dotenv(dotenv_path=default_env_path)
+# Keys present before dotenv files are loaded remain authoritative. Values
+# loaded from dotenv files can be refreshed from disk by env().
+_process_env_keys = set(os.environ.keys())
 
 # Safe base directory for user environment files
 env_base_dir = os.path.join(os.path.expanduser("~"), ".eigent")
+
+# Default global environment path
+default_env_path = os.path.join(env_base_dir, ".env")
+
+
+def _resolve_initial_env_paths() -> tuple[Path, ...]:
+    backend_dir = Path(__file__).resolve().parents[2]
+    repo_root = backend_dir.parent
+    return (
+        Path(default_env_path),
+        backend_dir / ".env",
+        backend_dir / ".env.development",
+        repo_root / ".env",
+        repo_root / ".env.development",
+    )
+
+
+def _load_initial_env_files(paths: Iterable[Path]) -> list[Path]:
+    """
+    Load backend env files for both Electron and standalone web development.
+
+    Precedence is:
+    1. Real process environment, always highest.
+    2. Later files in `paths`.
+    3. Earlier files in `paths`.
+    """
+    original_env = dict(os.environ)
+    global _process_env_keys
+    _process_env_keys = set(original_env.keys())
+    loaded_paths: list[Path] = []
+    seen: set[str] = set()
+
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        resolved_key = str(resolved)
+        if resolved_key in seen:
+            continue
+        seen.add(resolved_key)
+        if not resolved.exists():
+            continue
+        load_dotenv(dotenv_path=resolved, override=True)
+        loaded_paths.append(resolved)
+
+    # Keep shell / service-manager env vars authoritative over dotenv files.
+    for key, value in original_env.items():
+        os.environ[key] = value
+
+    if loaded_paths:
+        logger.info(
+            "Loaded backend env files: %s",
+            ", ".join(str(path) for path in loaded_paths),
+        )
+    return loaded_paths
+
+
+def _load_live_env_values(paths: Iterable[Path]) -> dict[str, str]:
+    values: dict[str, str] = {}
+    seen: set[str] = set()
+
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        resolved_key = str(resolved)
+        if resolved_key in seen:
+            continue
+        seen.add(resolved_key)
+        if not resolved.exists():
+            continue
+
+        for key, value in dotenv_values(resolved).items():
+            if value is not None:
+                values[key] = value
+
+    return values
+
+
+_load_initial_env_files(_resolve_initial_env_paths())
 
 
 def sanitize_env_path(env_path: str | None) -> str | None:
@@ -162,6 +239,23 @@ def env(key: str, default=None):
 
     Security: Re-validates path at point of use to ensure integrity.
     """
+    # Run-scoped values are the first source of truth for mutable runtime
+    # settings. This keeps legacy `env("file_save_path")` call sites working
+    # without relying on process-global os.environ during concurrent runs.
+    try:
+        # Inline import avoids a startup cycle: run_context imports no env
+        # helpers, but many early modules import env before the runtime package.
+        from app.run_context import get_run_env_override
+
+        run_value = get_run_env_override(key)
+        if run_value is not None:
+            logger.debug(
+                f"Environment variable retrieved from RunContext: key={key}"
+            )
+            return run_value
+    except ImportError:
+        pass
+
     # If we have a user-specific environment path, try to reload it
     # to get latest values.
     if hasattr(_thread_local, "env_path"):
@@ -190,8 +284,27 @@ def env(key: str, default=None):
             )
             delattr(_thread_local, "env_path")
 
-    # Fall back to global environment
-    value = os.getenv(key, default)
+    # Keep real process / service-manager env vars authoritative, but allow
+    # dotenv-backed values to be refreshed after Electron writes them.
+    if key in _process_env_keys and key in os.environ:
+        value = os.environ[key]
+        logger.debug(
+            f"Environment variable retrieved from process env: key={key}, "
+            f"has_value={value is not None}"
+        )
+        return value
+
+    live_env_values = _load_live_env_values(_resolve_initial_env_paths())
+    if key in live_env_values:
+        value = live_env_values[key]
+        logger.debug(
+            f"Environment variable retrieved from live dotenv config: "
+            f"key={key}, has_value={value is not None}"
+        )
+        return value
+
+    # Fall back to any value set programmatically after startup.
+    value = os.environ.get(key, default)
     logger.debug(
         f"Environment variable retrieved from global config: key={key}, "
         f"has_value={value is not None}, using_default={value == default}"

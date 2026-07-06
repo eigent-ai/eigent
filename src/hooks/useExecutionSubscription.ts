@@ -224,7 +224,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
       // Convert http/https to ws/wss
       const wsProtocol = baseURL.startsWith('https') ? 'wss' : 'ws';
       const wsURL = baseURL.replace(/^https?:\/\//, ''); // Remove protocol
-      const fullURL = `${wsProtocol}://${wsURL}/api/execution/subscribe`;
+      const fullURL = `${wsProtocol}://${wsURL}/api/v1/execution/subscribe`;
 
       console.log('[ExecutionSubscription] Connecting to:', fullURL);
 

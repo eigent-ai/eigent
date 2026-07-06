@@ -33,9 +33,9 @@ from sqlmodel import (
     text,
 )
 
-from app.component import code
-from app.component.database import engine
-from app.exception.exception import UserException
+from app.core import code
+from app.core.database import engine
+from app.shared.exception import UserException
 
 logger = logging.getLogger("abstract_model")
 
