@@ -18,6 +18,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
+import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
@@ -56,10 +57,17 @@ const Layout = () => {
     if (!host?.ipcRenderer || !host?.electronAPI) return;
 
     const handleBeforeClose = () => {
+      // Closing the window severs every run's SSE stream and the backend
+      // aborts the in-flight work, so check all Projects' live runs --
+      // checking only the active task missed runs streaming in other
+      // Projects and let the window close without any warning.
       const currentStatus = chatStore?.activeTaskId
         ? chatStore.tasks[chatStore.activeTaskId]?.status
         : undefined;
-      if (currentStatus && ['running', 'pause'].includes(currentStatus)) {
+      const activeTaskBusy = Boolean(
+        currentStatus && ['running', 'pause'].includes(currentStatus)
+      );
+      if (activeTaskBusy || hasAnyActiveRun()) {
         setNoticeOpen(true);
       } else {
         host.electronAPI.closeWindow(true);

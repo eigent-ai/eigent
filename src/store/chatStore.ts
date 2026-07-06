@@ -4949,6 +4949,16 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
 }
 
+/**
+ * Returns true when any run, in any Project, still has a live SSE
+ * connection. Closing the window kills these streams and the backend
+ * aborts the in-flight work, so the close guard must consider every
+ * Project, not just the active one.
+ */
+export function hasAnyActiveRun(): boolean {
+  return Object.keys(activeSSEControllers).length > 0;
+}
+
 /** Close SSE for given tasks (e.g. after completion, so triggers can start fresh). */
 export function closeSSEConnectionsForTasks(taskIds: string[]): void {
   for (const taskId of taskIds) {
