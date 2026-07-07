@@ -2771,8 +2771,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              const hasTokens =
-                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              // Use the task's accumulated total rather than the per-event
+              // deactivate_agent.tokens: once request-level usage reporting is
+              // active the backend zeroes that per-event field (tokens are
+              // reported via request_usage instead), so relying on it here would
+              // always be false.
+              const hasTokens = getTokens(currentTaskId) > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
