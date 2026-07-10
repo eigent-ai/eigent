@@ -32,6 +32,75 @@ export const WorkspaceTab = {
 
 export type WorkspaceTabId = (typeof WorkspaceTab)[keyof typeof WorkspaceTab];
 
+export interface SessionBrowserNavigationState {
+  url: string;
+  title: string;
+  isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface SessionBrowserTab {
+  id: string;
+  type: 'browser';
+  title: string;
+  url: string;
+  webviewId: string;
+  navigation: SessionBrowserNavigationState;
+}
+
+export interface SessionFileTab {
+  id: string;
+  type: 'file';
+  title: string;
+  file: FileInfo | null;
+}
+
+export type SessionPreviewTab = SessionBrowserTab | SessionFileTab;
+
+let sessionPreviewTabSequence = 0;
+
+function nextSessionPreviewTabId(type: SessionPreviewTab['type']): string {
+  sessionPreviewTabSequence += 1;
+  return `${type}-${sessionPreviewTabSequence}`;
+}
+
+function createBrowserPreviewTab(): SessionBrowserTab {
+  const id = nextSessionPreviewTabId('browser');
+  return {
+    id,
+    type: 'browser',
+    title: 'New tab',
+    url: '',
+    webviewId: `session-preview:${id}`,
+    navigation: {
+      url: '',
+      title: '',
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+    },
+  };
+}
+
+function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
+  return {
+    id: nextSessionPreviewTabId('file'),
+    type: 'file',
+    title: file?.name || 'Open file',
+    file,
+  };
+}
+
+function createInitialSessionPreviewTabs(): {
+  tabs: SessionPreviewTab[];
+  activeTabId: string;
+} {
+  const browserTab = createBrowserPreviewTab();
+  const fileTab = createFilePreviewTab();
+  return { tabs: [browserTab, fileTab], activeTabId: browserTab.id };
+}
+
 interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
@@ -135,17 +204,26 @@ interface PageTabState {
     request: { projectId: string; taskId: string } | null
   ) => void;
 
-  // ── Inline file preview (project page) ───────────────────────────────────
-  /** Whether the inline file preview column is open beside the chat content. */
-  filePreviewOpen: boolean;
-  /** File currently shown in the inline preview, or null for the empty state. */
-  filePreviewFile: FileInfo | null;
-  /** Open the preview column. Pass a file to show it, or null for the empty state. */
+  // ── Inline session preview (project page) ─────────────────────────────────
+  sessionPreviewOpen: boolean;
+  sessionPreviewTabs: SessionPreviewTab[];
+  activeSessionPreviewTabId: string | null;
+  /** Toggle the unified browser/file preview panel. */
+  toggleSessionPreview: () => void;
+  /** Add and activate a blank browser tab. */
+  addBrowserPreviewTab: () => void;
+  /** Add and activate an empty file tab. */
+  addFilePreviewTab: () => void;
+  /** Open a file in a deduplicated file tab. */
   openFilePreview: (file?: FileInfo | null) => void;
-  /** Close the preview column (keeps the last file for a subsequent re-open). */
-  closeFilePreview: () => void;
-  /** Toggle the preview column open/closed without changing the selected file. */
-  toggleFilePreview: () => void;
+  selectSessionPreviewTab: (tabId: string) => void;
+  closeSessionPreviewTab: (tabId: string) => void;
+  updateBrowserPreviewTab: (
+    tabId: string,
+    patch: Partial<Omit<SessionBrowserTab, 'id' | 'type' | 'webviewId'>>
+  ) => void;
+  closeSessionPreview: () => void;
+  resetSessionPreview: () => void;
 }
 
 export const usePageTabStore = create<PageTabState>()(
@@ -334,16 +412,150 @@ export const usePageTabStore = create<PageTabState>()(
       setScrollToTurnRequest: (request) =>
         set({ scrollToTurnRequest: request }),
 
-      filePreviewOpen: false,
-      filePreviewFile: null,
+      sessionPreviewOpen: false,
+      sessionPreviewTabs: [],
+      activeSessionPreviewTabId: null,
+      toggleSessionPreview: () =>
+        set((state) => {
+          if (state.sessionPreviewOpen) {
+            return { sessionPreviewOpen: false };
+          }
+          if (state.sessionPreviewTabs.length > 0) {
+            return { sessionPreviewOpen: true };
+          }
+          const initial = createInitialSessionPreviewTabs();
+          return {
+            sessionPreviewOpen: true,
+            sessionPreviewTabs: initial.tabs,
+            activeSessionPreviewTabId: initial.activeTabId,
+          };
+        }),
+      addBrowserPreviewTab: () =>
+        set((state) => {
+          const tab = createBrowserPreviewTab();
+          return {
+            sessionPreviewOpen: true,
+            sessionPreviewTabs: [...state.sessionPreviewTabs, tab],
+            activeSessionPreviewTabId: tab.id,
+          };
+        }),
+      addFilePreviewTab: () =>
+        set((state) => {
+          const tab = createFilePreviewTab();
+          return {
+            sessionPreviewOpen: true,
+            sessionPreviewTabs: [...state.sessionPreviewTabs, tab],
+            activeSessionPreviewTabId: tab.id,
+          };
+        }),
       openFilePreview: (file) =>
+        set((state) => {
+          const targetFile = file ?? null;
+          const initial =
+            state.sessionPreviewTabs.length === 0
+              ? createInitialSessionPreviewTabs()
+              : null;
+          const previewTabs = initial?.tabs ?? state.sessionPreviewTabs;
+          const matchingTab = targetFile
+            ? previewTabs.find(
+                (tab) =>
+                  tab.type === 'file' && tab.file?.path === targetFile.path
+              )
+            : previewTabs.find(
+                (tab) => tab.type === 'file' && tab.file === null
+              );
+          if (matchingTab) {
+            return {
+              sessionPreviewOpen: true,
+              sessionPreviewTabs: previewTabs,
+              activeSessionPreviewTabId: matchingTab.id,
+            };
+          }
+
+          const emptyFileTabIndex = targetFile
+            ? (() => {
+                const activeIndex = previewTabs.findIndex(
+                  (tab) =>
+                    tab.id === state.activeSessionPreviewTabId &&
+                    tab.type === 'file' &&
+                    tab.file === null
+                );
+                return activeIndex >= 0
+                  ? activeIndex
+                  : previewTabs.findIndex(
+                      (tab) => tab.type === 'file' && tab.file === null
+                    );
+              })()
+            : -1;
+          if (emptyFileTabIndex >= 0) {
+            const tabs = [...previewTabs];
+            const current = tabs[emptyFileTabIndex] as SessionFileTab;
+            const replacement: SessionFileTab = {
+              ...current,
+              title: targetFile?.name || 'Open file',
+              file: targetFile,
+            };
+            tabs[emptyFileTabIndex] = replacement;
+            return {
+              sessionPreviewOpen: true,
+              sessionPreviewTabs: tabs,
+              activeSessionPreviewTabId: replacement.id,
+            };
+          }
+
+          const tab = createFilePreviewTab(targetFile);
+          return {
+            sessionPreviewOpen: true,
+            sessionPreviewTabs: [...previewTabs, tab],
+            activeSessionPreviewTabId: tab.id,
+          };
+        }),
+      selectSessionPreviewTab: (tabId) =>
+        set((state) =>
+          state.sessionPreviewTabs.some((tab) => tab.id === tabId)
+            ? { activeSessionPreviewTabId: tabId }
+            : state
+        ),
+      closeSessionPreviewTab: (tabId) =>
+        set((state) => {
+          const closingIndex = state.sessionPreviewTabs.findIndex(
+            (tab) => tab.id === tabId
+          );
+          if (closingIndex < 0) return state;
+          const tabs = state.sessionPreviewTabs.filter(
+            (tab) => tab.id !== tabId
+          );
+          if (tabs.length === 0) {
+            return {
+              sessionPreviewOpen: false,
+              sessionPreviewTabs: [],
+              activeSessionPreviewTabId: null,
+            };
+          }
+          if (state.activeSessionPreviewTabId !== tabId) {
+            return { sessionPreviewTabs: tabs };
+          }
+          const nextTab = tabs[Math.min(closingIndex, tabs.length - 1)];
+          return {
+            sessionPreviewTabs: tabs,
+            activeSessionPreviewTabId: nextTab.id,
+          };
+        }),
+      updateBrowserPreviewTab: (tabId, patch) =>
         set((state) => ({
-          filePreviewOpen: true,
-          filePreviewFile: file === undefined ? state.filePreviewFile : file,
+          sessionPreviewTabs: state.sessionPreviewTabs.map((tab) =>
+            tab.id === tabId && tab.type === 'browser'
+              ? { ...tab, ...patch }
+              : tab
+          ),
         })),
-      closeFilePreview: () => set({ filePreviewOpen: false }),
-      toggleFilePreview: () =>
-        set((state) => ({ filePreviewOpen: !state.filePreviewOpen })),
+      closeSessionPreview: () => set({ sessionPreviewOpen: false }),
+      resetSessionPreview: () =>
+        set({
+          sessionPreviewOpen: false,
+          sessionPreviewTabs: [],
+          activeSessionPreviewTabId: null,
+        }),
     }),
     {
       name: 'eigent-page-tab',

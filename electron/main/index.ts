@@ -2009,6 +2009,14 @@ function registerIpcHandlers() {
     { name: 'set-size', method: 'setSize' },
     { name: 'get-show-webview', method: 'getShowWebview' },
     { name: 'webview-destroy', method: 'destroyWebview' },
+    { name: 'navigate-webview', method: 'navigateWebview' },
+    { name: 'go-back-webview', method: 'goBackWebview' },
+    { name: 'go-forward-webview', method: 'goForwardWebview' },
+    { name: 'reload-webview', method: 'reloadWebview' },
+    {
+      name: 'get-preview-webview-navigation-state',
+      method: 'getPreviewWebviewNavigationState',
+    },
   ];
 
   webviewHandlers.forEach(({ name, method }) => {
