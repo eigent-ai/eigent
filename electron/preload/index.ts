@@ -75,36 +75,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getShowWebview: () => ipcRenderer.invoke('get-show-webview'),
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
-  navigateWebview: (webviewId: string, url: string) =>
-    ipcRenderer.invoke('navigate-webview', webviewId, url),
-  goBackWebview: (webviewId: string) =>
-    ipcRenderer.invoke('go-back-webview', webviewId),
-  goForwardWebview: (webviewId: string) =>
-    ipcRenderer.invoke('go-forward-webview', webviewId),
-  reloadWebview: (webviewId: string) =>
-    ipcRenderer.invoke('reload-webview', webviewId),
-  getPreviewWebviewNavigationState: (webviewId: string) =>
-    ipcRenderer.invoke('get-preview-webview-navigation-state', webviewId),
-  onPreviewWebviewStateChanged: (
-    callback: (
-      webviewId: string,
-      state: {
-        url: string;
-        title: string;
-        isLoading: boolean;
-        canGoBack: boolean;
-        canGoForward: boolean;
-      }
-    ) => void
-  ) => {
-    const channel = 'preview-webview-state-changed';
-    const listener = (event: any, webviewId: string, state: any) =>
-      callback(webviewId, state);
-    ipcRenderer.on(channel, listener);
-    return () => {
-      ipcRenderer.off(channel, listener);
-    };
-  },
   exportLog: () => ipcRenderer.invoke('export-log'),
   getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
   exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>

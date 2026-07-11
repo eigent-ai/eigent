@@ -18,7 +18,6 @@ import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
-import { useHost } from '@/host';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -57,12 +56,21 @@ interface SessionProps {
 
 export default function Session({ isNewProject = false }: SessionProps) {
   const { chatStore, projectStore } = useChatStoreAdapter();
-  const host = useHost();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const previewOpen = usePageTabStore((s) => s.sessionPreviewOpen);
   const closeSessionPreview = usePageTabStore((s) => s.closeSessionPreview);
-  const resetSessionPreview = usePageTabStore((s) => s.resetSessionPreview);
+  const setSessionPreviewProject = usePageTabStore(
+    (s) => s.setSessionPreviewProject
+  );
+  const sessionPreviewProjectId = usePageTabStore(
+    (s) => s.sessionPreviewProjectId
+  );
+  // Only trust the preview mirror once it points at this project — on switch
+  // the scope effect below lags the first render by one frame, and rendering
+  // the stale slice would flash (and re-show) the previous project's browser.
+  const previewOpen =
+    usePageTabStore((s) => s.sessionPreviewOpen) &&
+    sessionPreviewProjectId === (projectStore.activeProjectId ?? null);
   const activeProjectId = projectStore.activeProjectId;
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
     activeProjectId
@@ -234,21 +242,13 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const chatRowRef = useRef<HTMLDivElement>(null);
   const [chatWidth, setChatWidth] = useState(CHAT_PRIORITY_WIDTH);
   const [isResizingPreview, setIsResizingPreview] = useState(false);
-  const prevProjectIdRef = useRef<string | null>(activeProjectId);
 
+  // Point the preview store at this project. Its saved tabs (and, within this
+  // app run, the live webviews behind them) are restored on switch-back —
+  // webviews are intentionally NOT destroyed here so history survives.
   useEffect(() => {
-    const previousProjectId = prevProjectIdRef.current;
-    if (previousProjectId && previousProjectId !== activeProjectId) {
-      usePageTabStore
-        .getState()
-        .sessionPreviewTabs.filter((tab) => tab.type === 'browser')
-        .forEach((tab) => {
-          void host?.electronAPI?.webviewDestroy?.(tab.webviewId);
-        });
-      resetSessionPreview();
-    }
-    prevProjectIdRef.current = activeProjectId;
-  }, [activeProjectId, host, resetSessionPreview]);
+    setSessionPreviewProject(activeProjectId ?? null);
+  }, [activeProjectId, setSessionPreviewProject]);
 
   // Opening display auto-folds the session side panel and collapses chat.
   useEffect(() => {
@@ -257,14 +257,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
       setChatWidth(CHAT_MIN_WIDTH);
     }
   }, [previewOpen]);
-
-  // The preview is a project-page concern; close it when leaving that tab or
-  // switching projects so it never lingers over an unrelated view.
-  useEffect(() => {
-    if (activeWorkspaceTab !== 'project') {
-      closeSessionPreview();
-    }
-  }, [activeWorkspaceTab, closeSessionPreview]);
 
   const handlePreviewResizeStart = useCallback(
     (e: React.PointerEvent) => {

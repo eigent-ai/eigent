@@ -63,38 +63,6 @@ interface ElectronAPI {
   hideAllWebview: () => Promise<any>;
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
-  navigateWebview: (
-    webviewId: string,
-    url: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  goBackWebview: (
-    webviewId: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  goForwardWebview: (
-    webviewId: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  reloadWebview: (
-    webviewId: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  getPreviewWebviewNavigationState: (webviewId: string) => Promise<{
-    url: string;
-    title: string;
-    isLoading: boolean;
-    canGoBack: boolean;
-    canGoForward: boolean;
-  } | null>;
-  onPreviewWebviewStateChanged: (
-    callback: (
-      webviewId: string,
-      state: {
-        url: string;
-        title: string;
-        isLoading: boolean;
-        canGoBack: boolean;
-        canGoForward: boolean;
-      }
-    ) => void
-  ) => () => void;
   exportLog: () => Promise<any>;
   getDiagnosticsInfo: () => Promise<{
     version: string;

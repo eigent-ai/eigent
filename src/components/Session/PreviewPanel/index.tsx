@@ -12,53 +12,38 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { FilePreview } from '@/components/Folder/FilePreview';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
-import { normalizeBrowserUrl } from '@/lib/browserUrl';
 import { cn } from '@/lib/utils';
-import {
-  type SessionBrowserNavigationState,
-  type SessionBrowserTab,
-  usePageTabStore,
-} from '@/store/pageTabStore';
-import {
-  ArrowLeft,
-  ArrowRight,
-  ExternalLink,
-  FileText,
-  Globe,
-  Plus,
-  RefreshCw,
-  X,
-} from 'lucide-react';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { previewTabIcon } from './tabKinds';
+import { BrowserTab } from './tabs/browser/BrowserTab';
+import { CanvasTab } from './tabs/CanvasTab';
+import { ChooserTab } from './tabs/ChooserTab';
+import { FileTab } from './tabs/FileTab';
+import { ReviewTab } from './tabs/ReviewTab';
+import { TerminalTab } from './tabs/TerminalTab';
 
-const BLANK_URL = 'about:blank?use=0';
-
-function browserTitle(state: SessionBrowserNavigationState): string {
-  const explicitTitle = state.title.trim();
-  if (explicitTitle) return explicitTitle;
-  if (!state.url || state.url.startsWith('about:')) return 'New tab';
-  try {
-    return new URL(state.url).hostname || 'New tab';
-  } catch {
-    return 'New tab';
-  }
-}
+// Tabs render at a comfortable default width and shrink evenly as more are
+// added, down to a minimum that keeps the title/close affordance legible.
+// Once every tab is at its minimum the tab list scrolls horizontally.
+const TAB_DEFAULT_WIDTH = 176;
+const TAB_MIN_WIDTH = 92;
 
 export interface PreviewPanelProps {
   onJumpToContext?: (file: FileInfo | null) => void;
 }
 
+/**
+ * Unified preview panel: a tab strip plus a content router that dispatches to
+ * one component per tab kind (chooser / browser / file / review / terminal /
+ * canvas). Embedded browsers live in the always-mounted PreviewBrowserLayer;
+ * this panel only renders their chrome via BrowserTab.
+ */
 export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
   const { t } = useTranslation();
   const host = useHost();
@@ -66,444 +51,190 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
   const activeTabId = usePageTabStore(
     (state) => state.activeSessionPreviewTabId
   );
-  const addBrowserPreviewTab = usePageTabStore(
-    (state) => state.addBrowserPreviewTab
+  const addChooserPreviewTab = usePageTabStore(
+    (state) => state.addChooserPreviewTab
   );
-  const addFilePreviewTab = usePageTabStore((state) => state.addFilePreviewTab);
+  const choosePreviewTabType = usePageTabStore(
+    (state) => state.choosePreviewTabType
+  );
   const selectSessionPreviewTab = usePageTabStore(
     (state) => state.selectSessionPreviewTab
   );
   const closeSessionPreviewTab = usePageTabStore(
     (state) => state.closeSessionPreviewTab
   );
-  const updateBrowserPreviewTab = usePageTabStore(
-    (state) => state.updateBrowserPreviewTab
-  );
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [activeTabId, tabs]
   );
-  const browserTabs = useMemo(
-    () =>
-      tabs.filter((tab): tab is SessionBrowserTab => tab.type === 'browser'),
-    [tabs]
-  );
-  const browserWebviewIds = browserTabs.map((tab) => tab.webviewId).join('|');
-  const activeBrowserTab = activeTab?.type === 'browser' ? activeTab : null;
-  const activeBrowserWebviewId = activeBrowserTab?.webviewId ?? '';
-  const isDesktop = Boolean(host?.electronAPI?.navigateWebview);
-  const browserContainerRef = useRef<HTMLDivElement>(null);
-  const activeBrowserUrl = activeBrowserTab?.url ?? '';
-  const [addressInput, setAddressInput] = useState(activeBrowserUrl);
-  const [addressError, setAddressError] = useState<string | null>(null);
+  // Embedded browsing relies on the desktop host's <webview> tag; on the web
+  // the panel still works but URLs open in a regular browser tab.
+  const isDesktop = Boolean(host?.electronAPI);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const [tabOverflow, setTabOverflow] = useState({ start: false, end: false });
 
-  const syncBounds = useCallback(
-    (webviewId: string) => {
-      if (!isDesktop || !browserContainerRef.current) return;
-      const rect = browserContainerRef.current.getBoundingClientRect();
-      void host?.electronAPI?.changeViewSize?.(webviewId, {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
-    },
-    [host, isDesktop]
-  );
-
-  const showBrowserTab = useCallback(
-    async (tab: SessionBrowserTab) => {
-      if (!isDesktop || !tab.url) return;
-      await host?.electronAPI?.showWebview?.(tab.webviewId);
-      syncBounds(tab.webviewId);
-    },
-    [host, isDesktop, syncBounds]
-  );
-
-  const navigateTo = useCallback(
-    async (tab: SessionBrowserTab, rawUrl: string) => {
-      const normalized = normalizeBrowserUrl(rawUrl);
-      if (!normalized.ok) {
-        setAddressError(normalized.error);
-        return;
-      }
-
-      setAddressError(null);
-      setAddressInput(normalized.url);
-      updateBrowserPreviewTab(tab.id, { url: normalized.url });
-
-      if (!isDesktop) {
-        window.open(normalized.url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      await host?.electronAPI?.createWebView?.(tab.webviewId, BLANK_URL);
-      const result = await host?.electronAPI?.navigateWebview?.(
-        tab.webviewId,
-        normalized.url
-      );
-      if (result?.success === false) {
-        setAddressError(result.error || 'Unable to open this URL');
-        return;
-      }
-      await host?.electronAPI?.showWebview?.(tab.webviewId);
-      syncBounds(tab.webviewId);
-    },
-    [host, isDesktop, syncBounds, updateBrowserPreviewTab]
-  );
-
-  const openExternal = useCallback((rawUrl: string) => {
-    const normalized = normalizeBrowserUrl(rawUrl);
-    if (!normalized.ok) {
-      setAddressError(normalized.error);
-      return;
-    }
-    setAddressError(null);
-    window.open(normalized.url, '_blank', 'noopener,noreferrer');
+  const updateTabOverflow = useCallback(() => {
+    const el = tabListRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setTabOverflow({
+      start: scrollLeft > 1,
+      end: scrollLeft + clientWidth < scrollWidth - 1,
+    });
   }, []);
 
   useEffect(() => {
-    setAddressInput(activeBrowserUrl);
-    setAddressError(null);
-  }, [activeBrowserUrl, activeTab?.id]);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-
-    const state = usePageTabStore.getState();
-    const currentActiveTab = state.sessionPreviewTabs.find(
-      (tab) => tab.id === state.activeSessionPreviewTabId
-    );
-    const currentBrowserTabs = state.sessionPreviewTabs.filter(
-      (tab): tab is SessionBrowserTab => tab.type === 'browser'
-    );
-
-    currentBrowserTabs.forEach((tab) => {
-      if (tab.id !== currentActiveTab?.id) {
-        void host?.electronAPI?.hideWebView?.(tab.webviewId);
-      }
-    });
-
-    if (currentActiveTab?.type !== 'browser') return;
-
-    let cancelled = false;
-    const activate = async () => {
-      const result = await host?.electronAPI?.createWebView?.(
-        currentActiveTab.webviewId,
-        BLANK_URL
-      );
-      if (cancelled || !currentActiveTab.url) return;
-      if (result?.success) {
-        await host?.electronAPI?.navigateWebview?.(
-          currentActiveTab.webviewId,
-          currentActiveTab.url
-        );
-      }
-      if (!cancelled) await showBrowserTab(currentActiveTab);
-    };
-    void activate();
-
+    const el = tabListRef.current;
+    if (!el) return;
+    updateTabOverflow();
+    const observer = new ResizeObserver(updateTabOverflow);
+    observer.observe(el);
+    el.addEventListener('scroll', updateTabOverflow, { passive: true });
     return () => {
-      cancelled = true;
-      void host?.electronAPI?.hideWebView?.(currentActiveTab.webviewId);
+      observer.disconnect();
+      el.removeEventListener('scroll', updateTabOverflow);
     };
-  }, [
-    activeBrowserTab?.id,
-    browserWebviewIds,
-    host,
-    isDesktop,
-    showBrowserTab,
-  ]);
-
-  useEffect(() => {
-    if (!isDesktop || !activeBrowserUrl || !activeBrowserWebviewId) return;
-    const container = browserContainerRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(() =>
-      syncBounds(activeBrowserWebviewId)
-    );
-    observer.observe(container);
-    syncBounds(activeBrowserWebviewId);
-    return () => observer.disconnect();
-  }, [activeBrowserUrl, activeBrowserWebviewId, isDesktop, syncBounds]);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    return host?.electronAPI?.onPreviewWebviewStateChanged?.(
-      (webviewId: string, state: SessionBrowserNavigationState) => {
-        const tab = usePageTabStore
-          .getState()
-          .sessionPreviewTabs.find(
-            (candidate) =>
-              candidate.type === 'browser' && candidate.webviewId === webviewId
-          );
-        if (!tab) return;
-        const url = state.url.startsWith('about:') ? '' : state.url;
-        updateBrowserPreviewTab(tab.id, {
-          title: browserTitle(state),
-          url,
-          navigation: { ...state, url },
-        });
-      }
-    );
-  }, [host, isDesktop, updateBrowserPreviewTab]);
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      const tab = tabs.find((candidate) => candidate.id === tabId);
-      if (tab?.type === 'browser') {
-        void host?.electronAPI?.webviewDestroy?.(tab.webviewId);
-      }
-      closeSessionPreviewTab(tabId);
-    },
-    [closeSessionPreviewTab, host, tabs]
-  );
+  }, [updateTabOverflow, tabs.length]);
 
   if (!activeTab) return null;
 
-  const nav = activeTab.type === 'browser' ? activeTab.navigation : undefined;
+  const renderActiveContent = () => {
+    switch (activeTab.type) {
+      case 'chooser':
+        return (
+          <ChooserTab
+            onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
+          />
+        );
+      case 'browser':
+        // Keyed so each browser tab keeps its own address state.
+        return (
+          <BrowserTab
+            key={activeTab.id}
+            tab={activeTab}
+            isDesktop={isDesktop}
+          />
+        );
+      case 'file':
+        return <FileTab tab={activeTab} onJumpToContext={onJumpToContext} />;
+      case 'review':
+        return <ReviewTab />;
+      case 'terminal':
+        return <TerminalTab />;
+      case 'canvas':
+        return <CanvasTab key={activeTab.id} />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-2">
-      <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1">
-        <div
-          role="tablist"
-          aria-label={t('layout.preview-tabs', {
-            defaultValue: 'Preview tabs',
-          })}
-          className="scrollbar-hide flex h-7 min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden"
-        >
-          {tabs.map((tab) => {
-            const selected = tab.id === activeTab.id;
-            return (
-              <div
-                key={tab.id}
-                className={cn(
-                  'group relative h-7 w-fit max-w-[220px] shrink-0 rounded-lg',
-                  selected
-                    ? 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
-                    : 'text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
-                )}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => selectSessionPreviewTab(tab.id)}
-                  className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 text-left text-inherit"
-                >
-                  {tab.type === 'browser' ? (
-                    <Globe className="h-4 w-4 shrink-0" aria-hidden />
-                  ) : (
-                    <FileText className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  <span className="truncate text-sm font-medium">
-                    {tab.title}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={t('layout.close-preview-tab', {
-                    defaultValue: 'Close tab',
-                  })}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleCloseTab(tab.id);
+      <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1.5">
+        <div className="relative flex min-w-0 items-center">
+          <div
+            ref={tabListRef}
+            role="tablist"
+            aria-label={t('layout.preview-tabs', {
+              defaultValue: 'Preview tabs',
+            })}
+            className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden"
+          >
+            {tabs.map((tab) => {
+              const selected = tab.id === activeTab.id;
+              const Icon = previewTabIcon(tab.type);
+              return (
+                <div
+                  key={tab.id}
+                  style={{
+                    flex: `0 1 ${TAB_DEFAULT_WIDTH}px`,
+                    minWidth: TAB_MIN_WIDTH,
+                    maxWidth: TAB_DEFAULT_WIDTH,
                   }}
                   className={cn(
-                    'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
+                    'group relative h-7 rounded-lg bg-ds-bg-neutral-subtle-default',
                     selected
-                      ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
-                      : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
+                      ? 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
+                      : 'text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
                   )}
                 >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </div>
-            );
-          })}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => selectSessionPreviewTab(tab.id)}
+                    className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 text-left text-inherit"
+                  >
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="truncate text-sm font-medium">
+                      {tab.title}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t('layout.close-preview-tab', {
+                      defaultValue: 'Close tab',
+                    })}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeSessionPreviewTab(tab.id);
+                    }}
+                    className={cn(
+                      'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
+                      'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
+                    )}
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-y-0 left-0 w-6 backdrop-blur-[2px] transition-opacity duration-150',
+              tabOverflow.start ? 'opacity-100' : 'opacity-0'
+            )}
+            style={{
+              maskImage: 'linear-gradient(to right, black, transparent)',
+              WebkitMaskImage: 'linear-gradient(to right, black, transparent)',
+            }}
+          />
+          <div
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-y-0 right-0 w-8 backdrop-blur-[2px] transition-opacity duration-150',
+              tabOverflow.end ? 'opacity-100' : 'opacity-0'
+            )}
+            style={{
+              maskImage: 'linear-gradient(to left, black, transparent)',
+              WebkitMaskImage: 'linear-gradient(to left, black, transparent)',
+            }}
+          />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              aria-label={t('layout.add-preview-tab', {
-                defaultValue: 'Add display tab',
-              })}
-              className="shrink-0"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={6}>
-            <DropdownMenuItem onSelect={addBrowserPreviewTab}>
-              <Globe aria-hidden />
-              {t('layout.add-browser-tab', {
-                defaultValue: 'New browser',
-              })}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={addFilePreviewTab}>
-              <FileText aria-hidden />
-              {t('layout.add-file-tab', { defaultValue: 'New file' })}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TooltipSimple
+          content={t('layout.add-preview-tab', { defaultValue: 'New tab' })}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            onClick={addChooserPreviewTab}
+            aria-label={t('layout.add-preview-tab', {
+              defaultValue: 'New tab',
+            })}
+            className="shrink-0"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </Button>
+        </TooltipSimple>
       </div>
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default">
-        {activeTab.type === 'browser' ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex h-[44px] shrink-0 items-center gap-1.5 px-2">
-              <TooltipSimple
-                content={t('layout.browser-back', { defaultValue: 'Back' })}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  disabled={!isDesktop || !nav?.canGoBack}
-                  onClick={() =>
-                    host?.electronAPI?.goBackWebview?.(activeTab.webviewId)
-                  }
-                  aria-label={t('layout.browser-back', {
-                    defaultValue: 'Back',
-                  })}
-                >
-                  <ArrowLeft className="h-4 w-4" aria-hidden />
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.browser-forward', {
-                  defaultValue: 'Forward',
-                })}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  disabled={!isDesktop || !nav?.canGoForward}
-                  onClick={() =>
-                    host?.electronAPI?.goForwardWebview?.(activeTab.webviewId)
-                  }
-                  aria-label={t('layout.browser-forward', {
-                    defaultValue: 'Forward',
-                  })}
-                >
-                  <ArrowRight className="h-4 w-4" aria-hidden />
-                </Button>
-              </TooltipSimple>
-              <TooltipSimple
-                content={t('layout.browser-reload', { defaultValue: 'Reload' })}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  disabled={!isDesktop || !activeTab.url}
-                  onClick={() =>
-                    host?.electronAPI?.reloadWebview?.(activeTab.webviewId)
-                  }
-                  aria-label={t('layout.browser-reload', {
-                    defaultValue: 'Reload',
-                  })}
-                >
-                  <RefreshCw
-                    className={cn('h-4 w-4', nav?.isLoading && 'animate-spin')}
-                    aria-hidden
-                  />
-                </Button>
-              </TooltipSimple>
-              <form
-                className="flex min-w-0 flex-1 items-center"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void navigateTo(activeTab, addressInput);
-                }}
-              >
-                <input
-                  type="text"
-                  value={addressInput}
-                  onChange={(event) => {
-                    setAddressInput(event.target.value);
-                    if (addressError) setAddressError(null);
-                  }}
-                  placeholder={t('layout.browser-url-placeholder', {
-                    defaultValue: 'Enter a URL',
-                  })}
-                  aria-label={t('layout.browser-url-placeholder', {
-                    defaultValue: 'Enter a URL',
-                  })}
-                  aria-invalid={Boolean(addressError)}
-                  className={cn(
-                    'placeholder:text-input-label-default/10 h-[28px] w-full min-w-0 rounded-xl border-none bg-ds-bg-neutral-subtle-default px-3 text-body-sm text-ds-text-neutral-default-default outline-none transition-colors',
-                    'hover:bg-ds-bg-neutral-subtle-default hover:ring-1 hover:ring-ds-ring-neutral-strong-default hover:ring-offset-0',
-                    'focus:bg-ds-bg-neutral-subtle-default focus:ring-1 focus:ring-ds-ring-brand-default-focus focus:ring-offset-0',
-                    addressError
-                      ? 'border-ds-border-status-error-default-default'
-                      : 'border-ds-border-neutral-default-default'
-                  )}
-                />
-              </form>
-              <TooltipSimple
-                content={t('layout.browser-open-external', {
-                  defaultValue: 'Open externally',
-                })}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  buttonContent="icon-only"
-                  disabled={!addressInput}
-                  onClick={() => openExternal(addressInput)}
-                  aria-label={t('layout.browser-open-external', {
-                    defaultValue: 'Open externally',
-                  })}
-                >
-                  <ExternalLink className="h-4 w-4" aria-hidden />
-                </Button>
-              </TooltipSimple>
-            </div>
-            {addressError ? (
-              <p className="text-ds-text-danger-default-default shrink-0 px-3 py-1 text-xs">
-                {addressError}
-              </p>
-            ) : null}
-            <div
-              ref={browserContainerRef}
-              className="relative min-h-0 flex-1 overflow-hidden bg-ds-bg-neutral-strong-default"
-            >
-              {!activeTab.url ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
-                  {t('layout.browser-blank', {
-                    defaultValue: 'Enter a URL to start browsing.',
-                  })}
-                </div>
-              ) : !isDesktop ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
-                  {t('layout.browser-desktop-only', {
-                    defaultValue:
-                      'Embedded browsing is available in the desktop app. This URL opened in your system browser.',
-                  })}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <FilePreview
-            file={activeTab.file}
-            embedded
-            surfaceClassName="bg-ds-bg-neutral-default-default"
-            onJumpToContext={onJumpToContext}
-          />
-        )}
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default">
+        {renderActiveContent()}
       </div>
     </div>
   );

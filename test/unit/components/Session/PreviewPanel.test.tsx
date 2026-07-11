@@ -13,9 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
+import {
+  registerPreviewWebview,
+  unregisterPreviewWebview,
+} from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,47 +29,15 @@ vi.mock('@/components/Folder/FilePreview', () => ({
   ),
 }));
 
-const createWebView = vi.fn().mockResolvedValue({ success: true });
-const showWebview = vi.fn().mockResolvedValue({ success: true });
-const hideWebView = vi.fn().mockResolvedValue({ success: true });
-const changeViewSize = vi.fn().mockResolvedValue({ success: true });
-const webviewDestroy = vi.fn().mockResolvedValue({ success: true });
-const navigateWebview = vi.fn().mockResolvedValue({ success: true });
-const goBackWebview = vi.fn().mockResolvedValue({ success: true });
-const goForwardWebview = vi.fn().mockResolvedValue({ success: true });
-const reloadWebview = vi.fn().mockResolvedValue({ success: true });
-let navigationListener:
-  | ((
-      webviewId: string,
-      state: {
-        url: string;
-        title: string;
-        isLoading: boolean;
-        canGoBack: boolean;
-        canGoForward: boolean;
-      }
-    ) => void)
-  | undefined;
-const onPreviewWebviewStateChanged = vi.fn((listener) => {
-  navigationListener = listener;
-  return vi.fn();
-});
+// React Flow needs layout APIs jsdom lacks; the canvas tab is exercised
+// elsewhere, so stub it to keep this suite focused on the router/tab strip.
+vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
+  CanvasTab: () => <div data-testid="canvas-tab" />,
+}));
 
-const host = {
-  ipcRenderer: null,
-  electronAPI: {
-    createWebView,
-    showWebview,
-    hideWebView,
-    changeViewSize,
-    webviewDestroy,
-    navigateWebview,
-    goBackWebview,
-    goForwardWebview,
-    reloadWebview,
-    onPreviewWebviewStateChanged,
-  },
-};
+// The desktop host is detected by electronAPI presence; embedded browsing
+// itself is <webview>-tag based and driven through the webview registry.
+const host = { ipcRenderer: null, electronAPI: {} };
 
 function renderPanel() {
   return render(
@@ -75,49 +47,55 @@ function renderPanel() {
   );
 }
 
+function activeType() {
+  const state = usePageTabStore.getState();
+  return state.sessionPreviewTabs.find(
+    (tab) => tab.id === state.activeSessionPreviewTabId
+  )?.type;
+}
+
 describe('PreviewPanel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    navigationListener = undefined;
     usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
       sessionPreviewOpen: false,
       sessionPreviewTabs: [],
       activeSessionPreviewTabId: null,
+      previewBrowserViewport: null,
     });
+    usePageTabStore.getState().setSessionPreviewProject('project-test');
     usePageTabStore.getState().toggleSessionPreview();
   });
 
-  it('renders tabs and adds browser or file tabs from the add menu', async () => {
+  it('opens on the chooser tab listing every content kind', () => {
+    renderPanel();
+    expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
+    // Five vertical options (test i18n echoes the key, not the label).
+    for (const kind of ['browser', 'file', 'review', 'terminal', 'canvas']) {
+      expect(
+        screen.getByRole('button', {
+          name: new RegExp(`preview-kind-${kind}\\b`),
+        })
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('picking a chooser option turns the tab into that content kind', async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Open file' })).toBeInTheDocument();
-
     await user.click(
-      screen.getByRole('button', { name: 'layout.add-preview-tab' })
+      screen.getByRole('button', { name: /preview-kind-browser\b/ })
     );
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'layout.add-browser-tab' })
-    );
-
-    expect(screen.getAllByRole('tab', { name: 'New tab' })).toHaveLength(2);
-    expect(screen.getAllByRole('tab', { name: 'New tab' })[1]).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-
-    await user.click(
-      screen.getByRole('button', { name: 'layout.add-preview-tab' })
-    );
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'layout.add-file-tab' })
-    );
-
-    expect(screen.getAllByRole('tab', { name: 'Open file' })).toHaveLength(2);
+    expect(activeType()).toBe('browser');
+    // Address bar of the browser tab is now shown.
+    expect(
+      screen.getByRole('textbox', { name: 'layout.browser-url-placeholder' })
+    ).toBeInTheDocument();
   });
 
-  it('shows the current file and reuses its tab by path', () => {
+  it('routes to the file tab and reuses its tab by path', () => {
     const file = { name: 'notes.md', path: '/tmp/notes.md' } as FileInfo;
     usePageTabStore.getState().openFilePreview(file);
     usePageTabStore.getState().openFilePreview({ ...file });
@@ -127,60 +105,99 @@ describe('PreviewPanel', () => {
     expect(screen.getAllByRole('tab', { name: 'notes.md' })).toHaveLength(1);
   });
 
-  it('normalizes and navigates to URLs through the existing webview API', async () => {
-    const user = userEvent.setup();
-    renderPanel();
-    const address = screen.getByRole('textbox', {
-      name: 'layout.browser-url-placeholder',
-    });
+  it('routes review, terminal, and canvas tabs to their surfaces', () => {
+    const store = usePageTabStore.getState();
+    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    act(() => store.choosePreviewTabType(chooserId, 'canvas'));
+    const { rerender } = renderPanel();
+    expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
 
-    await user.type(address, 'example.com/docs{Enter}');
-
-    await waitFor(() =>
-      expect(navigateWebview).toHaveBeenCalledWith(
-        expect.stringMatching(/^session-preview:/),
-        'https://example.com/docs'
+    act(() =>
+      store.choosePreviewTabType(
+        usePageTabStore.getState().activeSessionPreviewTabId!,
+        'terminal'
       )
     );
-    expect(showWebview).toHaveBeenCalled();
+    rerender(
+      <HostProvider host={host}>
+        <PreviewPanel />
+      </HostProvider>
+    );
+    expect(screen.getByText('Eigent:~$')).toBeInTheDocument();
   });
 
-  it('updates the browser tab title from native navigation state', async () => {
-    renderPanel();
-    const browserTab = usePageTabStore
-      .getState()
-      .sessionPreviewTabs.find((tab) => tab.type === 'browser');
-    expect(browserTab?.type).toBe('browser');
-
-    act(() => {
-      navigationListener?.(browserTab!.webviewId, {
-        url: 'https://example.com/report',
-        title: 'Quarterly report',
-        isLoading: false,
-        canGoBack: true,
-        canGoForward: false,
-      });
-    });
-
-    expect(
-      await screen.findByRole('tab', { name: 'Quarterly report' })
-    ).toBeInTheDocument();
-  });
-
-  it('destroys a preview-owned webview when its tab closes', async () => {
+  it('the + button adds a new chooser tab', async () => {
     const user = userEvent.setup();
     renderPanel();
-    const browserTab = usePageTabStore
-      .getState()
-      .sessionPreviewTabs.find((tab) => tab.type === 'browser');
 
     await user.click(
-      screen.getAllByRole('button', { name: 'layout.close-preview-tab' })[0]
+      screen.getByRole('button', { name: 'layout.add-preview-tab' })
+    );
+    expect(screen.getAllByRole('tab', { name: 'New tab' })).toHaveLength(2);
+    expect(activeType()).toBe('chooser');
+  });
+
+  it('drives back/forward/reload on the registered guest element', async () => {
+    const user = userEvent.setup();
+    const store = usePageTabStore.getState();
+    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    act(() => store.choosePreviewTabType(chooserId, 'browser'));
+    const browserTab = usePageTabStore
+      .getState()
+      .sessionPreviewTabs.find((tab) => tab.type === 'browser')!;
+    act(() =>
+      store.updateBrowserPreviewTab(browserTab.id, {
+        url: 'https://example.com/a',
+        navigation: {
+          url: 'https://example.com/a',
+          title: 'A',
+          isLoading: false,
+          canGoBack: true,
+          canGoForward: true,
+        },
+      })
+    );
+    const goBack = vi.fn();
+    const goForward = vi.fn();
+    const reload = vi.fn();
+    registerPreviewWebview(browserTab.webviewId, {
+      goBack,
+      goForward,
+      reload,
+    } as unknown as HTMLElement & { goBack: typeof goBack });
+
+    try {
+      renderPanel();
+      await user.click(
+        screen.getByRole('button', { name: 'layout.browser-back' })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'layout.browser-forward' })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'layout.browser-reload' })
+      );
+
+      expect(goBack).toHaveBeenCalled();
+      expect(goForward).toHaveBeenCalled();
+      expect(reload).toHaveBeenCalled();
+    } finally {
+      unregisterPreviewWebview(browserTab.webviewId);
+    }
+  });
+
+  it('closing the final tab closes the panel', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      screen.getByRole('button', { name: 'layout.close-preview-tab' })
     );
 
-    expect(webviewDestroy).toHaveBeenCalledWith(browserTab!.webviewId);
-    expect(
-      screen.queryByRole('tab', { name: 'New tab' })
-    ).not.toBeInTheDocument();
+    expect(usePageTabStore.getState()).toMatchObject({
+      sessionPreviewOpen: false,
+      sessionPreviewTabs: [],
+      activeSessionPreviewTabId: null,
+    });
   });
 });

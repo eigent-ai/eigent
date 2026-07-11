@@ -2009,14 +2009,6 @@ function registerIpcHandlers() {
     { name: 'set-size', method: 'setSize' },
     { name: 'get-show-webview', method: 'getShowWebview' },
     { name: 'webview-destroy', method: 'destroyWebview' },
-    { name: 'navigate-webview', method: 'navigateWebview' },
-    { name: 'go-back-webview', method: 'goBackWebview' },
-    { name: 'go-forward-webview', method: 'goForwardWebview' },
-    { name: 'reload-webview', method: 'reloadWebview' },
-    {
-      name: 'get-preview-webview-navigation-state',
-      method: 'getPreviewWebviewNavigationState',
-    },
   ];
 
   webviewHandlers.forEach(({ name, method }) => {
@@ -2385,6 +2377,19 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // Renderer <webview> guests (session preview browser): route window.open /
+  // target=_blank into the same guest instead of spawning popup windows, and
+  // only allow web URLs. The guests are sandboxed tags declared in the
+  // renderer; this is the only main-process involvement they need.
+  win.webContents.on('did-attach-webview', (_event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//i.test(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
   });
 
   if (process.platform === 'darwin') {

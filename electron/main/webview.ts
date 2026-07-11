@@ -30,28 +30,6 @@ interface Size {
   height: number;
 }
 
-export interface PreviewWebviewNavigationState {
-  url: string;
-  title: string;
-  isLoading: boolean;
-  canGoBack: boolean;
-  canGoForward: boolean;
-}
-
-const PREVIEW_WEBVIEW_PREFIX = 'session-preview:';
-
-export const isPreviewWebviewId = (id: string) =>
-  id.startsWith(PREVIEW_WEBVIEW_PREFIX);
-
-function isSupportedWebUrl(input: string): boolean {
-  try {
-    const parsed = new URL(input);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>();
   private win: BrowserWindow | null = null;
@@ -77,35 +55,10 @@ export class WebViewManager {
     this.win = window;
   }
 
-  private getPreviewNavigationState(
-    webViewInfo: WebViewInfo
-  ): PreviewWebviewNavigationState {
-    const contents = webViewInfo.view.webContents;
-    return {
-      url: contents.getURL(),
-      title: contents.getTitle(),
-      isLoading: contents.isLoading(),
-      canGoBack: contents.navigationHistory.canGoBack(),
-      canGoForward: contents.navigationHistory.canGoForward(),
-    };
-  }
-
-  private emitPreviewNavigationState(webViewInfo: WebViewInfo) {
-    if (!isPreviewWebviewId(webViewInfo.id)) return;
-    if (!this.win || this.win.isDestroyed()) return;
-    if (webViewInfo.view.webContents.isDestroyed()) return;
-    this.win.webContents.send(
-      'preview-webview-state-changed',
-      webViewInfo.id,
-      this.getPreviewNavigationState(webViewInfo)
-    );
-  }
-
   // Remove automatic IPC handler registration from constructor
   // IPC handlers should be registered once in the main process
 
   public async captureWebview(webviewId: string) {
-    if (isPreviewWebviewId(webviewId)) return null;
     const webViewInfo = this.webViews.get(webviewId);
     if (!webViewInfo) return null;
 
@@ -166,7 +119,7 @@ export class WebViewManager {
 
   public getActiveWebview() {
     const activeWebviews = Array.from(this.webViews.values()).filter(
-      (webview) => webview.isActive && !isPreviewWebviewId(webview.id)
+      (webview) => webview.isActive
     );
 
     return activeWebviews.map((webview) => webview.id);
@@ -324,20 +277,7 @@ export class WebViewManager {
       //   win?.webContents.send("url-updated", url);
       // });
 
-      if (isPreviewWebviewId(id)) {
-        const notifyPreviewState = () =>
-          this.emitPreviewNavigationState(webViewInfo);
-        view.webContents.on('did-start-loading', notifyPreviewState);
-        view.webContents.on('did-stop-loading', notifyPreviewState);
-        view.webContents.on('page-title-updated', notifyPreviewState);
-      }
-
       view.webContents.on('did-navigate-in-page', (event, url) => {
-        if (isPreviewWebviewId(id)) {
-          webViewInfo.currentUrl = url;
-          this.emitPreviewNavigationState(webViewInfo);
-          return;
-        }
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
@@ -356,10 +296,6 @@ export class WebViewManager {
           webViewInfo.isActive = true;
         }
         console.log(`Webview ${id} navigated to: ${navigationUrl}`);
-        if (isPreviewWebviewId(id)) {
-          this.emitPreviewNavigationState(webViewInfo);
-          return;
-        }
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
@@ -372,9 +308,7 @@ export class WebViewManager {
         }
         webViewInfo.view.setBounds(this.getHiddenBounds(id, 1920, 1080));
         const activeSize = this.getActiveWebview().length;
-        const allSize = Array.from(this.webViews.values()).filter(
-          (webview) => !isPreviewWebviewId(webview.id)
-        ).length;
+        const allSize = Array.from(this.webViews.values()).length;
         const inactiveSize = allSize - activeSize;
 
         // Clean up inactive webviews if too many
@@ -412,9 +346,6 @@ export class WebViewManager {
       });
 
       view.webContents.setWindowOpenHandler(({ url }) => {
-        if (isPreviewWebviewId(id) && !isSupportedWebUrl(url)) {
-          return { action: 'deny' };
-        }
         view.webContents.loadURL(url);
 
         return { action: 'deny' };
@@ -428,76 +359,6 @@ export class WebViewManager {
       console.error(`Failed to create hidden webview ${id}:`, error);
       return { success: false, error: error.message };
     }
-  }
-
-  public async navigateWebview(id: string, url: string) {
-    if (!isPreviewWebviewId(id)) {
-      return { success: false, error: 'Navigation is limited to preview tabs' };
-    }
-    if (!isSupportedWebUrl(url)) {
-      return {
-        success: false,
-        error: 'Only HTTP and HTTPS URLs are supported',
-      };
-    }
-    const webViewInfo = this.webViews.get(id);
-    if (!webViewInfo) {
-      return { success: false, error: `Webview with id ${id} not found` };
-    }
-    webViewInfo.isActive = true;
-    await webViewInfo.view.webContents.loadURL(url);
-    webViewInfo.currentUrl = url;
-    this.emitPreviewNavigationState(webViewInfo);
-    return { success: true };
-  }
-
-  public goBackWebview(id: string) {
-    const webViewInfo = this.webViews.get(id);
-    if (!webViewInfo || !isPreviewWebviewId(id)) {
-      return {
-        success: false,
-        error: `Preview webview with id ${id} not found`,
-      };
-    }
-    if (webViewInfo.view.webContents.navigationHistory.canGoBack()) {
-      webViewInfo.view.webContents.navigationHistory.goBack();
-    }
-    this.emitPreviewNavigationState(webViewInfo);
-    return { success: true };
-  }
-
-  public goForwardWebview(id: string) {
-    const webViewInfo = this.webViews.get(id);
-    if (!webViewInfo || !isPreviewWebviewId(id)) {
-      return {
-        success: false,
-        error: `Preview webview with id ${id} not found`,
-      };
-    }
-    if (webViewInfo.view.webContents.navigationHistory.canGoForward()) {
-      webViewInfo.view.webContents.navigationHistory.goForward();
-    }
-    this.emitPreviewNavigationState(webViewInfo);
-    return { success: true };
-  }
-
-  public reloadWebview(id: string) {
-    const webViewInfo = this.webViews.get(id);
-    if (!webViewInfo || !isPreviewWebviewId(id)) {
-      return {
-        success: false,
-        error: `Preview webview with id ${id} not found`,
-      };
-    }
-    webViewInfo.view.webContents.reload();
-    this.emitPreviewNavigationState(webViewInfo);
-    return { success: true };
-  }
-
-  public getPreviewWebviewNavigationState(id: string) {
-    const webViewInfo = this.webViews.get(id);
-    if (!webViewInfo || !isPreviewWebviewId(id)) return null;
-    return this.getPreviewNavigationState(webViewInfo);
   }
 
   public changeViewSize(id: string, size: Size) {
@@ -568,9 +429,7 @@ export class WebViewManager {
     }
 
     const currentUrl = webViewInfo.view.webContents.getURL();
-    if (!isPreviewWebviewId(id)) {
-      this.win?.webContents.send('url-updated', currentUrl);
-    }
+    this.win?.webContents.send('url-updated', currentUrl);
     webViewInfo.isShow = true;
     this.changeViewSize(id, this.size);
     console.log('showWebview', id, this.size);
@@ -582,11 +441,9 @@ export class WebViewManager {
       webViewInfo.view.webContents.setBackgroundThrottling(false);
     }
 
-    if (!isPreviewWebviewId(id) && this.win && !this.win.isDestroyed()) {
+    if (this.win && !this.win.isDestroyed()) {
       this.win.webContents.send('webview-show', id);
     }
-
-    this.emitPreviewNavigationState(webViewInfo);
 
     return { success: true };
   }
@@ -647,7 +504,6 @@ export class WebViewManager {
     const inactiveWebviews = Array.from(this.webViews.entries())
       .filter(
         ([_id, info]) =>
-          !isPreviewWebviewId(info.id) &&
           !info.isActive &&
           !info.isShow &&
           info.currentUrl === 'about:blank?use=0'
