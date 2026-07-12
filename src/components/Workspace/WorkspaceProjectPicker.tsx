@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { SpaceSwitchDropdown } from '@/components/Sidebar/SpaceSwitchDropdown';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

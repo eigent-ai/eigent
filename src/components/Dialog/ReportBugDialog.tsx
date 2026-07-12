@@ -145,16 +145,16 @@ export default function ReportBugDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         size="md"
-        className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[560px] border"
+        className="gap-0 !rounded-xl border border-ds-border-neutral-strong-default !bg-ds-bg-neutral-subtle-default p-0 shadow-sm sm:max-w-[560px]"
       >
-        <div className="bg-ds-bg-neutral-strong-default rounded-t-xl pl-md pr-12 pt-md pb-2 w-full text-left">
-          <DialogTitle className="m-0 text-body-md font-bold text-ds-text-neutral-default-default block w-full text-left">
+        <div className="w-full rounded-t-xl bg-ds-bg-neutral-subtle-default pb-2 pl-md pr-12 pt-md text-left">
+          <DialogTitle className="m-0 block w-full text-left text-body-md font-bold text-ds-text-neutral-default-default">
             {t('layout.report-bug-dialog-title')}
           </DialogTitle>
         </div>
-        <div className="gap-md bg-ds-bg-neutral-strong-default px-md pt-2 pb-md flex max-h-[min(70vh,520px)] flex-col text-left">
+        <div className="flex max-h-[min(70vh,520px)] flex-col gap-md bg-ds-bg-neutral-subtle-default px-md pb-md pt-2 text-left">
           {meta && (
-            <p className="text-body-sm text-ds-text-neutral-subtle-default m-0">
+            <p className="m-0 text-body-sm text-ds-text-neutral-subtle-default">
               {t('layout.report-bug-meta', {
                 version: meta.version,
                 os: meta.platform,
@@ -189,16 +189,16 @@ export default function ReportBugDialog({
             className="min-h-[72px] resize-y"
           />
         </div>
-        <DialogFooter className="!rounded-b-xl p-md gap-sm sm:!flex-col flex !flex-col !border-0 !border-t-0 bg-transparent shadow-none">
+        <DialogFooter className="flex !flex-col gap-sm !rounded-b-xl !border-0 !border-t-0 bg-transparent p-md shadow-none sm:!flex-col">
           {hasElectron && (
-            <p className="text-body-xs text-ds-text-neutral-subtle-default m-0 w-full text-right">
+            <p className="m-0 w-full text-right text-body-xs text-ds-text-neutral-subtle-default">
               {t('layout.report-bug-zip-hint', {
                 defaultValue:
                   'A diagnostics zip will be saved — attach it to the issue.',
               })}
             </p>
           )}
-          <div className="gap-sm flex w-full flex-row justify-end">
+          <div className="flex w-full flex-row justify-end gap-sm">
             <Button
               variant="ghost"
               size="md"
@@ -215,7 +215,7 @@ export default function ReportBugDialog({
             >
               {submitting ? (
                 <Loader2
-                  className="h-4 w-4 animate-spin shrink-0"
+                  className="h-4 w-4 shrink-0 animate-spin"
                   aria-hidden
                 />
               ) : (

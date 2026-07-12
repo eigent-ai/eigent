@@ -20,6 +20,8 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectStore } from '@/store/projectStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -39,6 +41,14 @@ export function HeaderBox({
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeProjectMeta = useSpaceStore((s) =>
+    activeProjectId ? s.getProjectMeta(activeProjectId) : null
+  );
+  const projectName =
+    activeProjectMeta?.name && activeProjectMeta.name !== 'new project'
+      ? activeProjectMeta.name
+      : t('layout.new-project');
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const filePreviewOpen = usePageTabStore((s) => s.filePreviewOpen);
   const toggleFilePreview = usePageTabStore((s) => s.toggleFilePreview);
@@ -53,7 +63,7 @@ export function HeaderBox({
   if (empty) {
     return (
       <div
-        className={`px-3 flex h-[44px] w-full shrink-0 flex-row items-center justify-between ${className || ''}`}
+        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
         aria-hidden
       />
     );
@@ -61,10 +71,10 @@ export function HeaderBox({
 
   return (
     <div
-      className={`pl-3 pr-1.5 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
+      className={`flex h-[44px] w-full flex-row items-center justify-between pl-3 pr-1.5 ${className || ''}`}
     >
       {/* Left: return to project workspace */}
-      <div className="gap-2 flex items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <TooltipSimple content={backToWorkspaceTooltip}>
           <Button
             type="button"
@@ -72,17 +82,20 @@ export function HeaderBox({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
             aria-label={backToWorkspaceTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
+        <span className="min-w-0 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+          {projectName}
+        </span>
       </div>
 
       {/* Right: project total token count + file preview toggle */}
-      <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
-        <div className="gap-1 flex items-center">
+      <div className="flex shrink-0 items-center gap-2 text-ds-text-neutral-muted-default">
+        <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
             {t('chat.token-total-label')}{' '}
@@ -97,7 +110,7 @@ export function HeaderBox({
             buttonContent="icon-only"
             onClick={toggleFilePreview}
             className={cn(
-              'no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0',
+              'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
               filePreviewOpen &&
                 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
             )}

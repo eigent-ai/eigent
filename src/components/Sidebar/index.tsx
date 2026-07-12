@@ -62,15 +62,15 @@ import {
 } from './NavTab';
 import { ProjectNavList } from './ProjectNavList';
 
-export interface ProjectPageSidebarProps {
+export interface SidebarProps {
   chatStore: ChatStore | null;
   className?: string;
 }
 
-export default function ProjectPageSidebar({
+export default function Sidebar({
   chatStore: _chatStore,
   className,
-}: ProjectPageSidebarProps) {
+}: SidebarProps) {
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const requestWorkspaceChatFocus = usePageTabStore(
@@ -79,7 +79,6 @@ export default function ProjectPageSidebar({
   const requestOpenTriggerAddDialog = usePageTabStore(
     (s) => s.requestOpenTriggerAddDialog
   );
-  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
   const inboxUnviewedForProjects = usePageTabStore(
     (s) => s.inboxUnviewedForProjects
@@ -459,7 +458,7 @@ export default function ProjectPageSidebar({
         );
       } catch (error) {
         console.warn(
-          `[ProjectPageSidebar] No grouped history for project ${projectId}:`,
+          `[Sidebar] No grouped history for project ${projectId}:`,
           error
         );
       }
@@ -474,7 +473,7 @@ export default function ProjectPageSidebar({
             proxyFetchDelete(`/api/v1/chat/history/${task.id}`).catch(
               (error) => {
                 console.warn(
-                  `[ProjectPageSidebar] Failed to delete history task ${task.task_id}:`,
+                  `[Sidebar] Failed to delete history task ${task.task_id}:`,
                   error
                 );
               }
@@ -491,7 +490,7 @@ export default function ProjectPageSidebar({
                 )
                 .catch((error: unknown) => {
                   console.warn(
-                    `[ProjectPageSidebar] Local file cleanup failed for task ${task.task_id}:`,
+                    `[Sidebar] Local file cleanup failed for task ${task.task_id}:`,
                     error
                   );
                 })
@@ -516,7 +515,7 @@ export default function ProjectPageSidebar({
           });
         } catch (error) {
           console.warn(
-            `[ProjectPageSidebar] Failed to archive server project ${projectId}:`,
+            `[Sidebar] Failed to archive server project ${projectId}:`,
             error
           );
         }
@@ -531,7 +530,7 @@ export default function ProjectPageSidebar({
 
       toast.success(t('layout.delete-project'));
     } catch (error) {
-      console.error('[ProjectPageSidebar] Failed to delete project:', error);
+      console.error('[Sidebar] Failed to delete project:', error);
       toast.error(t('layout.delete-project'));
     } finally {
       setDeleteProjectLoading(false);
@@ -585,7 +584,7 @@ export default function ProjectPageSidebar({
         closeButton: true,
       });
     } catch (error) {
-      console.error('[ProjectPageSidebar] Failed to achieve project:', error);
+      console.error('[Sidebar] Failed to achieve project:', error);
       toast.error(t('layout.failed-to-end-project'), {
         closeButton: true,
       });
@@ -641,14 +640,14 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 p-1 bg-ds-bg-neutral-default-default rounded-2xl box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden p-1',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-1 flex w-full shrink-0 flex-col">
-              <div className="min-w-0 gap-1 flex w-full flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-1">
+              <div className="flex w-full min-w-0 flex-col gap-1">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -657,8 +656,6 @@ export default function ProjectPageSidebar({
                   }
                   label={t('layout.workspace-tab')}
                   tooltip={t('layout.workspace-tab')}
-                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
-                  folded={projectSidebarFolded}
                   ariaLabel={t('layout.workspace-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'workforce'}
                 />
@@ -667,11 +664,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -682,7 +679,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
+                          'flex shrink-0 flex-col items-center rounded-lg bg-ds-bg-neutral-muted-default px-1.5',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -717,8 +714,7 @@ export default function ProjectPageSidebar({
                   }
                   // Render the tooltip even when disabled so users get a hint
                   // instead of relying on the toast that only fires on click.
-                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
-                  folded={projectSidebarFolded}
+                  tooltipEnabledWhenCollapsed
                   ariaLabel={t('layout.context-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'inbox'}
                 />
@@ -757,8 +753,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-lg hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -780,8 +776,6 @@ export default function ProjectPageSidebar({
                     )
                   }
                   tooltip={triggersTabTooltip}
-                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
-                  folded={projectSidebarFolded}
                   ariaLabel={triggersTabAriaLabel}
                   ariaCurrentPage={activeWorkspaceTab === 'triggers'}
                 />
@@ -791,21 +785,19 @@ export default function ProjectPageSidebar({
                   leading={<Cast className="h-4 w-4 shrink-0" aria-hidden />}
                   label={t('layout.dispatch-tab')}
                   tooltip={t('layout.dispatch-tab')}
-                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
-                  folded={projectSidebarFolded}
                   ariaLabel={t('layout.dispatch-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
                 />
               </div>
             </div>
 
-            <div className="px-3 my-2">
-              <div className="bg-ds-border-neutral-default-default h-px w-full" />
+            <div className="my-2 px-3">
+              <div className="h-px w-full bg-ds-border-neutral-default-default" />
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="min-h-0 flex flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
@@ -816,7 +808,7 @@ export default function ProjectPageSidebar({
                 onPinProject={handlePinProject}
                 onNewProject={handleNewProject}
                 newProjectActive={activeWorkspaceTab === 'new-project'}
-                folded={projectSidebarFolded}
+                folded={false}
               />
             </div>
           </div>

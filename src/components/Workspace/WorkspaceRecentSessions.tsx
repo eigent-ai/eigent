@@ -16,7 +16,7 @@ import {
   NAV_LIST_PROJECTS_RECENT_MAX,
   ProjectNavListRows,
   type ProjectNavItem,
-} from '@/components/ProjectPageSidebar/ProjectNavListRows';
+} from '@/components/Sidebar/ProjectNavListRows';
 
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';

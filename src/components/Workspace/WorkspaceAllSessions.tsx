@@ -15,7 +15,7 @@
 import {
   ProjectNavListRows,
   type ProjectNavItem,
-} from '@/components/ProjectPageSidebar/ProjectNavListRows';
+} from '@/components/Sidebar/ProjectNavListRows';
 import { useTranslation } from 'react-i18next';
 
 interface WorkspaceAllSessionsProps {

@@ -22,12 +22,8 @@ import {
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
-import ProjectPageSidebar from '@/components/ProjectPageSidebar';
-import {
-  PROJECT_SIDEBAR_FOLD_SPRING,
-  PROJECT_SIDEBAR_RAIL_WIDTH_PX,
-} from '@/components/ProjectPageSidebar/constants';
 import SessionGroup from '@/components/Session/SessionGroup';
+import Sidebar from '@/components/Sidebar';
 import TriggerPanel from '@/components/Trigger';
 import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
@@ -37,7 +33,7 @@ import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   useCallback,
   useEffect,
@@ -67,8 +63,20 @@ import type {
   ImperativePanelHandle,
 } from 'react-resizable-panels';
 
-/** Same spring as project sidebar fold animation. */
-const HOME_MAIN_LAYOUT_SPRING = PROJECT_SIDEBAR_FOLD_SPRING;
+/**
+ * Fold/expand timing. The panel width (driven imperatively by the rAF loop in
+ * `setShellPanelLayout`) and the sidebar content slide must share one curve so
+ * the panel edge and its contents move as a single object. Both use easeOutCubic
+ * over 260ms — the tween equivalent of the rAF's `1 - (1 - p)^3`.
+ */
+const FOLD_DURATION_MS = 260;
+const FOLD_DURATION_S = FOLD_DURATION_MS / 1000;
+/** easeOutCubic bezier — matches the rAF easing exactly. */
+const FOLD_EASE_OUT_CUBIC: [number, number, number, number] = [
+  0.33, 1, 0.68, 1,
+];
+/** Snappy tab-content crossfade — frequent action, so kept short. */
+const TAB_FADE_DURATION_S = 0.15;
 
 /** Sidebar width bounds (react-resizable-panels uses %; derived from shell width). */
 const SIDEBAR_MIN_PX = 230;
@@ -127,6 +135,7 @@ export default function WorkspacePage() {
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
+  const reduceMotion = useReducedMotion();
 
   const [, setActiveWebviewId] = useState<string | null>(null);
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
@@ -156,11 +165,10 @@ export default function WorkspacePage() {
   const persistSidebarWidthTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  /** Percent constraints for the sidebar panel (1–100). `rail` = folded rail width. */
+  /** Percent constraints for the sidebar panel (1–100). */
   const [sidebarPct, setSidebarPct] = useState({
     min: 18,
     max: 35,
-    rail: 4,
   });
 
   const mainPanelPct = useMemo(() => {
@@ -169,13 +177,8 @@ export default function WorkspacePage() {
     return { min, max };
   }, [sidebarPct.min, sidebarPct.max]);
 
-  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks the rail-width sidebar. */
-  const mainPanelMaxSize = useMemo(() => {
-    if (projectSidebarFolded) {
-      return Math.min(99, 100 - sidebarPct.rail);
-    }
-    return mainPanelPct.max;
-  }, [projectSidebarFolded, sidebarPct.rail, mainPanelPct.max]);
+  /** When folded, main panel fills the shell; otherwise respect expanded max. */
+  const mainPanelMaxSize = projectSidebarFolded ? 100 : mainPanelPct.max;
 
   const schedulePersistSidebarWidth = useCallback((px: number) => {
     if (persistSidebarWidthTimeoutRef.current) {
@@ -227,7 +230,7 @@ export default function WorkspacePage() {
       }
 
       const from = [...current];
-      const durationMs = 260;
+      const durationMs = FOLD_DURATION_MS;
       const start = performance.now();
 
       const tick = (now: number) => {
@@ -286,16 +289,14 @@ export default function WorkspacePage() {
       if (!folded && sidebarPx < SIDEBAR_MIN_PX - 0.5) {
         applyingSidebarLayoutRef.current = true;
         setProjectSidebarFolded(true);
-        const rail = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / shellW) * 100);
-        const main = Math.min(99, Math.max(0, 100 - rail));
-        shellPanelGroupImperativeRef.current?.setLayout([rail, main]);
+        shellPanelGroupImperativeRef.current?.setLayout([0, 100]);
         requestAnimationFrame(() => {
           applyingSidebarLayoutRef.current = false;
         });
         return;
       }
 
-      if (folded && sidebarPx > PROJECT_SIDEBAR_RAIL_WIDTH_PX + 1.5) {
+      if (folded && sidebarPx > 1) {
         applyingSidebarLayoutRef.current = true;
         setProjectSidebarFolded(false);
         requestAnimationFrame(() => {
@@ -318,21 +319,23 @@ export default function WorkspacePage() {
   /** Expanded: apply stored px width when leaving folded or on first paint. */
   useLayoutEffect(() => {
     if (projectSidebarFolded) return;
-    applyExpandedSidebarLayout(hasInitializedSidebarLayoutRef.current);
-    hasInitializedSidebarLayoutRef.current = true;
-  }, [projectSidebarFolded, applyExpandedSidebarLayout]);
-
-  /** Folded: exact rail + main split (`setLayout`); update when shell width changes rail %. */
-  useLayoutEffect(() => {
-    if (!projectSidebarFolded) return;
-    const rail = sidebarPct.rail;
-    const main = Math.min(99, Math.max(0, 100 - rail));
-    setShellPanelLayout(
-      [rail, main],
-      hasInitializedSidebarLayoutRef.current && sidebarWidthPxRef.current > 0
+    applyExpandedSidebarLayout(
+      hasInitializedSidebarLayoutRef.current && !reduceMotion
     );
     hasInitializedSidebarLayoutRef.current = true;
-  }, [projectSidebarFolded, sidebarPct.rail, setShellPanelLayout]);
+  }, [projectSidebarFolded, applyExpandedSidebarLayout, reduceMotion]);
+
+  /** Folded: collapse sidebar to 0 width so main fills the shell. */
+  useLayoutEffect(() => {
+    if (!projectSidebarFolded) return;
+    setShellPanelLayout(
+      [0, 100],
+      hasInitializedSidebarLayoutRef.current &&
+        sidebarWidthPxRef.current > 0 &&
+        !reduceMotion
+    );
+    hasInitializedSidebarLayoutRef.current = true;
+  }, [projectSidebarFolded, setShellPanelLayout, reduceMotion]);
 
   useEffect(() => {
     const el = shellPanelGroupRef.current;
@@ -345,11 +348,9 @@ export default function WorkspacePage() {
       shellWidthRef.current = w;
       const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
       const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
-      const railPct = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / w) * 100);
       setSidebarPct({
         min: minPct,
         max: Math.max(minPct, maxPct),
-        rail: railPct,
       });
 
       if (
@@ -752,32 +753,50 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
-      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
+      <div className="flex h-full min-h-0 flex-row overflow-hidden pt-10">
         <div
           ref={shellPanelGroupRef}
-          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-subtle-default h-full w-full flex-1"
+          className="h-full min-h-0 w-full min-w-0 flex-1 border-x-0 border-b-0 border-t-[1px] border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
             id="home-shell-panel-group"
             direction="horizontal"
-            className="min-h-0 gap-0 h-full w-full"
+            className="h-full min-h-0 w-full gap-0"
             onLayout={handleShellPanelLayout}
           >
             <ResizablePanel
               ref={projectSidebarPanelRef}
               defaultSize={24}
-              minSize={sidebarPct.rail}
-              maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 pl-1 py-1"
+              minSize={projectSidebarFolded ? 0 : sidebarPct.min}
+              maxSize={projectSidebarFolded ? 0 : sidebarPct.max}
+              className="min-h-0 min-w-0 overflow-hidden bg-ds-bg-neutral-default-default"
             >
-              <ProjectPageSidebar chatStore={chatStore} />
+              <motion.div
+                className="h-full w-full"
+                style={{ minWidth: SIDEBAR_MIN_PX }}
+                initial={false}
+                animate={{
+                  transform: projectSidebarFolded
+                    ? 'translateX(-100%)'
+                    : 'translateX(0%)',
+                }}
+                transition={
+                  reduceMotion
+                    ? { duration: 0 }
+                    : { duration: FOLD_DURATION_S, ease: FOLD_EASE_OUT_CUBIC }
+                }
+              >
+                <Sidebar chatStore={chatStore} />
+              </motion.div>
             </ResizablePanel>
             <ResizableHandle
+              disabled={projectSidebarFolded}
               className={cn(
-                'after:bg-ds-bg-neutral-default-default w-[2px] shrink-0 bg-transparent after:transition-all',
-                'hover:bg-ds-bg-brand-subtle-default transition-all',
-                'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
+                'w-[1px] shrink-0 bg-ds-border-neutral-subtle-default after:bg-ds-bg-neutral-default-default after:transition-all',
+                'transition-all hover:bg-ds-bg-brand-subtle-default',
+                'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus',
+                projectSidebarFolded && 'hidden w-0 min-w-0 overflow-hidden'
               )}
             />
             <ResizablePanel
@@ -786,15 +805,26 @@ export default function WorkspacePage() {
               maxSize={mainPanelMaxSize}
               className="min-h-0 min-w-[300px]"
             >
-              <motion.div
-                layout
-                transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
-              >
+              <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden">
                 <div className={mainPanelShellClass}>
-                  {renderActiveWorkspaceTab()}
+                  <motion.div
+                    key={activeWorkspaceTab}
+                    className="flex min-h-0 min-w-0 flex-1 flex-col"
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={
+                      reduceMotion
+                        ? { duration: 0 }
+                        : {
+                            duration: TAB_FADE_DURATION_S,
+                            ease: FOLD_EASE_OUT_CUBIC,
+                          }
+                    }
+                  >
+                    {renderActiveWorkspaceTab()}
+                  </motion.div>
                 </div>
-              </motion.div>
+              </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
