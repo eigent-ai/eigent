@@ -29,7 +29,6 @@ import {
 } from '@/components/ProjectPageSidebar/constants';
 import SessionGroup from '@/components/Session/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
-import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -752,16 +751,16 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
-      <div className="min-h-0 px-1 pb-1 pt-10 flex h-full flex-row overflow-hidden">
+      <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
         <div
           ref={shellPanelGroupRef}
-          className="min-h-0 min-w-0 rounded-2xl bg-ds-bg-neutral-subtle-default h-full w-full flex-1"
+          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-subtle-default"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
             id="home-shell-panel-group"
             direction="horizontal"
-            className="min-h-0 gap-0 h-full w-full"
+            className="h-full min-h-0 w-full gap-0"
             onLayout={handleShellPanelLayout}
           >
             <ResizablePanel
@@ -769,14 +768,14 @@ export default function WorkspacePage() {
               defaultSize={24}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 pl-1 py-1"
+              className="min-h-0 min-w-0 py-1 pl-1"
             >
               <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'after:bg-ds-bg-neutral-default-default w-[2px] shrink-0 bg-transparent after:transition-all',
-                'hover:bg-ds-bg-brand-subtle-default transition-all',
+                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-all',
+                'transition-all hover:bg-ds-bg-brand-subtle-default',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
@@ -789,7 +788,7 @@ export default function WorkspacePage() {
               <motion.div
                 layout
                 transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="min-h-0 min-w-0 gap-4 relative flex h-full w-full flex-col overflow-hidden"
+                className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
               >
                 <div className={mainPanelShellClass}>
                   {renderActiveWorkspaceTab()}
@@ -798,7 +797,6 @@ export default function WorkspacePage() {
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
-        <UpdateElectron />
       </div>
     </ReactFlowProvider>
   );

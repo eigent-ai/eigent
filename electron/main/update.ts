@@ -164,6 +164,30 @@ export function registerUpdateIpcHandlers() {
   ipcMain.handle('quit-and-install', () => {
     autoUpdater.quitAndInstall(false, true);
   });
+
+  // Dev-only: replay updater events from DevTools to exercise the top-bar
+  // update UI, e.g.
+  //   window.ipcRenderer.invoke('debug-update-event', 'download-progress', { percent: 40 })
+  if (!app.isPackaged) {
+    const allowedChannels = [
+      'update-can-available',
+      'download-progress',
+      'update-downloaded',
+      'update-error',
+    ];
+    ipcMain.handle(
+      'debug-update-event',
+      (
+        event: Electron.IpcMainInvokeEvent,
+        channel: string,
+        payload?: unknown
+      ) => {
+        if (!allowedChannels.includes(channel)) return false;
+        event.sender.send(channel, payload);
+        return true;
+      }
+    );
+  }
 }
 
 function startDownload(

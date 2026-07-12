@@ -92,7 +92,7 @@ function App() {
       return (
         <StackProvider app={stackClientApp}>
           <StackTheme>{content}</StackTheme>
-          <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
+          <Toaster style={{ zIndex: 999999, position: 'fixed' }} />
         </StackProvider>
       );
     }
