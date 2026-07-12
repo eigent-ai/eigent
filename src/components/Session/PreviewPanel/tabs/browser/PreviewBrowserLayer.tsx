@@ -45,6 +45,16 @@ import {
 const GUEST_Z_INDEX = 30;
 /** Matches the preview panel's rounded-xl browser container. */
 const GUEST_RADIUS = 12;
+/** Guest fade when (un)covering its viewport — softens show/park hops. */
+const GUEST_FADE_MS = 160;
+/**
+ * Guests of projects that have been out of scope this long are destroyed to
+ * reclaim their renderer processes. The tab's URL is persisted, so returning
+ * to an evicted project simply reloads its pages (history is lost — the price
+ * of not keeping every visited project's Chromium processes alive forever).
+ */
+const IDLE_PROJECT_EVICT_MS = 10 * 60_000;
+const EVICT_SWEEP_INTERVAL_MS = 60_000;
 
 const PARKED_STYLE: React.CSSProperties = {
   position: 'fixed',
@@ -56,7 +66,10 @@ const PARKED_STYLE: React.CSSProperties = {
   pointerEvents: 'none',
 };
 
-function visibleStyle(viewport: PreviewBrowserViewport): React.CSSProperties {
+function visibleStyle(
+  viewport: PreviewBrowserViewport,
+  shown: boolean
+): React.CSSProperties {
   return {
     position: 'fixed',
     left: viewport.x,
@@ -66,6 +79,8 @@ function visibleStyle(viewport: PreviewBrowserViewport): React.CSSProperties {
     zIndex: GUEST_Z_INDEX,
     borderRadius: GUEST_RADIUS,
     overflow: 'hidden',
+    opacity: shown ? 1 : 0,
+    transition: `opacity ${GUEST_FADE_MS}ms ease`,
   };
 }
 
@@ -111,6 +126,37 @@ function PreviewGuest({
   useEffect(() => {
     tabIdRef.current = tab.id;
   }, [tab.id]);
+
+  // Show/park with a short opacity fade instead of an instant hop:
+  // 'parked' → offscreen, 'faded' → over the viewport at opacity 0,
+  // 'shown' → opacity 1. `lastViewport` remembers the rect the guest was
+  // last shown at so the fade-out happens in place even after the panel
+  // stops publishing a viewport (tab switch / project switch unmounts the
+  // publisher in the same commit that hides the guest).
+  const showing = visible && viewport !== null;
+  const [lastViewport, setLastViewport] =
+    useState<PreviewBrowserViewport | null>(null);
+  useEffect(() => {
+    if (viewport) setLastViewport(viewport);
+  }, [viewport]);
+  const [phase, setPhase] = useState<'parked' | 'faded' | 'shown'>('parked');
+  useEffect(() => {
+    if (showing) {
+      setPhase('faded');
+      // Double rAF so the opacity-0 frame commits before the fade-in starts.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setPhase('shown'));
+      });
+      return () => {
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
+    }
+    setPhase((current) => (current === 'parked' ? 'parked' : 'faded'));
+    const timer = window.setTimeout(() => setPhase('parked'), GUEST_FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [showing]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -165,11 +211,16 @@ function PreviewGuest({
     };
   }, [projectId, tab.webviewId]);
 
+  const rect = viewport ?? lastViewport;
   return (
     <div
       ref={containerRef}
       data-preview-webview-id={tab.webviewId}
-      style={visible && viewport ? visibleStyle(viewport) : PARKED_STYLE}
+      style={
+        phase === 'parked' || !rect
+          ? PARKED_STYLE
+          : visibleStyle(rect, phase === 'shown')
+      }
     />
   );
 }
@@ -194,6 +245,40 @@ export function PreviewBrowserLayer() {
       return next;
     });
   }, [scopeProjectId]);
+
+  // Each guest is a full renderer process, so don't keep every visited
+  // project's guests alive forever: track when a project leaves scope and
+  // deactivate it (unmounting its guests) once it has idled long enough.
+  const idleSinceRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!scopeProjectId) return;
+    const idleSince = idleSinceRef.current;
+    idleSince.delete(scopeProjectId);
+    return () => {
+      idleSince.set(scopeProjectId, Date.now());
+    };
+  }, [scopeProjectId]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActivatedProjects((current) => {
+        let next: Set<string> | null = null;
+        for (const projectId of current) {
+          const idleSince = idleSinceRef.current.get(projectId);
+          if (
+            idleSince === undefined ||
+            Date.now() - idleSince < IDLE_PROJECT_EVICT_MS
+          ) {
+            continue;
+          }
+          next ??= new Set(current);
+          next.delete(projectId);
+          idleSinceRef.current.delete(projectId);
+        }
+        return next ?? current;
+      });
+    }, EVICT_SWEEP_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Embedded browsing needs the desktop host's <webview> tag.
   if (!host?.electronAPI) return null;

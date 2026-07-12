@@ -12,59 +12,60 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it } from 'vitest';
+
+/** The preview slice for the currently scoped project. */
+function slice() {
+  return getSessionPreviewSlice(usePageTabStore.getState());
+}
 
 describe('pageTabStore session preview', () => {
   beforeEach(() => {
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
     });
+    usePageTabStore.getState().setSessionPreviewProject('project-a');
   });
 
   it('opens onto a single chooser tab', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
 
-    const state = usePageTabStore.getState();
-    expect(state.sessionPreviewOpen).toBe(true);
-    expect(state.sessionPreviewTabs.map((tab) => tab.type)).toEqual([
-      'chooser',
-    ]);
-    expect(state.activeSessionPreviewTabId).toBe(
-      state.sessionPreviewTabs[0].id
-    );
+    expect(slice().open).toBe(true);
+    expect(slice().tabs.map((tab) => tab.type)).toEqual(['chooser']);
+    expect(slice().activeTabId).toBe(slice().tabs[0].id);
+  });
+
+  it('drops mutations when no project is scoped', () => {
+    const store = usePageTabStore.getState();
+    store.setSessionPreviewProject(null);
+    store.toggleSessionPreview();
+
+    expect(slice()).toMatchObject({ open: false, tabs: [] });
+    expect(usePageTabStore.getState().sessionPreviewByProject).toEqual({});
   });
 
   it('turns the chooser into the chosen content kind in place', () => {
     const store = usePageTabStore.getState();
-    store.setSessionPreviewProject('project-a');
     store.toggleSessionPreview();
-    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    const chooserId = slice().tabs[0].id;
 
     store.choosePreviewTabType(chooserId, 'browser');
-    let state = usePageTabStore.getState();
-    expect(state.sessionPreviewTabs).toHaveLength(1);
-    const browser = state.sessionPreviewTabs[0];
+    expect(slice().tabs).toHaveLength(1);
+    const browser = slice().tabs[0];
     expect(browser.type).toBe('browser');
-    expect(state.activeSessionPreviewTabId).toBe(browser.id);
+    expect(slice().activeTabId).toBe(browser.id);
     expect(browser.type === 'browser' && browser.webviewId).toContain(
       'session-preview:project-a:'
     );
 
     // A new chooser (via "+") can become other kinds too.
     store.addChooserPreviewTab();
-    const newChooserId = usePageTabStore.getState().activeSessionPreviewTabId!;
+    const newChooserId = slice().activeTabId!;
     store.choosePreviewTabType(newChooserId, 'canvas');
-    state = usePageTabStore.getState();
-    expect(state.sessionPreviewTabs.map((tab) => tab.type)).toEqual([
-      'browser',
-      'canvas',
-    ]);
+    expect(slice().tabs.map((tab) => tab.type)).toEqual(['browser', 'canvas']);
   });
 
   it('exposes every content kind via choosePreviewTabType', () => {
@@ -72,14 +73,9 @@ describe('pageTabStore session preview', () => {
     store.toggleSessionPreview();
     (['file', 'review', 'terminal', 'canvas'] as const).forEach((kind) => {
       store.addChooserPreviewTab();
-      const id = usePageTabStore.getState().activeSessionPreviewTabId!;
+      const id = slice().activeTabId!;
       store.choosePreviewTabType(id, kind);
-      const active = usePageTabStore
-        .getState()
-        .sessionPreviewTabs.find(
-          (tab) =>
-            tab.id === usePageTabStore.getState().activeSessionPreviewTabId
-        );
+      const active = slice().tabs.find((tab) => tab.id === slice().activeTabId);
       expect(active?.type).toBe(kind);
     });
   });
@@ -90,10 +86,9 @@ describe('pageTabStore session preview', () => {
     const file = { name: 'doc.txt', path: '/tmp/doc.txt' } as FileInfo;
     store.openFilePreview(file);
 
-    const state = usePageTabStore.getState();
     // Chooser replaced in place — no extra tab piled up.
-    expect(state.sessionPreviewTabs).toHaveLength(1);
-    expect(state.sessionPreviewTabs[0]).toMatchObject({
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
       type: 'file',
       title: 'doc.txt',
       file,
@@ -103,44 +98,73 @@ describe('pageTabStore session preview', () => {
   it('reuses the empty file tab and deduplicates files by path', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
-    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    const chooserId = slice().tabs[0].id;
     store.choosePreviewTabType(chooserId, 'file');
 
     const file = { name: 'doc.txt', path: '/tmp/doc.txt' } as FileInfo;
     store.openFilePreview(file);
     store.openFilePreview({ ...file });
 
-    const state = usePageTabStore.getState();
-    const fileTabs = state.sessionPreviewTabs.filter(
-      (tab) => tab.type === 'file'
-    );
+    const fileTabs = slice().tabs.filter((tab) => tab.type === 'file');
     expect(fileTabs).toHaveLength(1);
     expect(fileTabs[0]).toMatchObject({ title: 'doc.txt', file });
-    expect(state.activeSessionPreviewTabId).toBe(fileTabs[0].id);
+    expect(slice().activeTabId).toBe(fileTabs[0].id);
+  });
+
+  it('opens chat links in a browser tab of the current project preview', () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('https://example.com/docs');
+
+    expect(slice().open).toBe(true);
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
+      type: 'browser',
+      url: 'https://example.com/docs',
+      title: 'example.com',
+    });
+    expect(slice().activeTabId).toBe(slice().tabs[0].id);
+
+    // Invalid destinations are ignored.
+    store.openBrowserPreview('javascript:alert(1)');
+    expect(slice().tabs).toHaveLength(1);
+  });
+
+  it('reuses the chooser and deduplicates browser tabs by URL', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.openBrowserPreview('https://example.com/docs');
+
+    // Chooser replaced in place — no extra tab piled up.
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0].type).toBe('browser');
+
+    // The same URL (modulo trailing slash) focuses the existing tab…
+    store.openBrowserPreview('https://example.com/docs/');
+    expect(slice().tabs).toHaveLength(1);
+
+    // …while a different URL opens alongside it.
+    store.openBrowserPreview('https://other.example.com');
+    expect(slice().tabs).toHaveLength(2);
+    expect(slice().activeTabId).toBe(slice().tabs[1].id);
   });
 
   it('selects a neighboring tab and closes the panel after the final tab', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
-    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    const chooserId = slice().tabs[0].id;
     store.choosePreviewTabType(chooserId, 'browser');
     store.addChooserPreviewTab();
-    store.choosePreviewTabType(
-      usePageTabStore.getState().activeSessionPreviewTabId!,
-      'file'
-    );
-    const [browserTab, fileTab] = usePageTabStore.getState().sessionPreviewTabs;
+    store.choosePreviewTabType(slice().activeTabId!, 'file');
+    const [browserTab, fileTab] = slice().tabs;
 
     store.closeSessionPreviewTab(browserTab.id);
-    expect(usePageTabStore.getState().activeSessionPreviewTabId).toBe(
-      fileTab.id
-    );
+    expect(slice().activeTabId).toBe(fileTab.id);
 
     store.closeSessionPreviewTab(fileTab.id);
-    expect(usePageTabStore.getState()).toMatchObject({
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
+    expect(slice()).toMatchObject({
+      open: false,
+      tabs: [],
+      activeTabId: null,
     });
   });
 
@@ -148,54 +172,50 @@ describe('pageTabStore session preview', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
     store.closeSessionPreview();
-    expect(usePageTabStore.getState().sessionPreviewTabs).toHaveLength(1);
+    expect(slice().open).toBe(false);
+    expect(slice().tabs).toHaveLength(1);
 
     store.resetSessionPreview();
-    expect(usePageTabStore.getState()).toMatchObject({
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
+    expect(slice()).toMatchObject({
+      open: false,
+      tabs: [],
+      activeTabId: null,
     });
   });
 
   it('keeps preview state per project and restores it on switch-back', () => {
     const store = usePageTabStore.getState();
-    store.setSessionPreviewProject('project-a');
     store.toggleSessionPreview();
-    const projectATabs = usePageTabStore.getState().sessionPreviewTabs;
+    const projectATabs = slice().tabs;
     expect(projectATabs).toHaveLength(1);
 
     // Switching projects swaps in the other project's (empty) slice…
     store.setSessionPreviewProject('project-b');
-    expect(usePageTabStore.getState()).toMatchObject({
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
+    expect(slice()).toMatchObject({
+      open: false,
+      tabs: [],
+      activeTabId: null,
     });
 
     // …and switching back restores tabs, active tab, and the open flag.
     store.setSessionPreviewProject('project-a');
-    const restored = usePageTabStore.getState();
-    expect(restored.sessionPreviewOpen).toBe(true);
-    expect(restored.sessionPreviewTabs).toEqual(projectATabs);
-    expect(restored.activeSessionPreviewTabId).toBe(projectATabs[0].id);
+    expect(slice().open).toBe(true);
+    expect(slice().tabs).toEqual(projectATabs);
+    expect(slice().activeTabId).toBe(projectATabs[0].id);
   });
 
   it('records mutations into the per-project slice for persistence', () => {
     const store = usePageTabStore.getState();
-    store.setSessionPreviewProject('project-a');
     store.toggleSessionPreview();
     const file = { name: 'doc.txt', path: '/tmp/doc.txt' } as FileInfo;
     store.openFilePreview(file);
 
-    const slice =
+    const persisted =
       usePageTabStore.getState().sessionPreviewByProject['project-a'];
-    expect(slice.open).toBe(true);
+    expect(persisted.open).toBe(true);
     expect(
-      slice.tabs.filter((tab) => tab.type === 'file' && tab.file !== null)
+      persisted.tabs.filter((tab) => tab.type === 'file' && tab.file !== null)
     ).toHaveLength(1);
-    expect(slice.activeTabId).toBe(
-      usePageTabStore.getState().activeSessionPreviewTabId
-    );
+    expect(persisted.activeTabId).toBe(slice().activeTabId);
   });
 });

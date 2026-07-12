@@ -37,6 +37,11 @@ export interface PreviewKindMeta {
 /**
  * The content kinds the chooser offers, in display order. Single source of
  * truth for icon + copy so the tab strip and chooser never drift.
+ *
+ * `review`, `terminal`, and `canvas` are reserved tab types (their components
+ * and store plumbing exist, and persisted tabs still render) but are hidden
+ * from the chooser until a later version ships their content. Re-add their
+ * entries here when that lands.
  */
 export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   {
@@ -54,30 +59,6 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultLabel: 'Files',
     descriptionKey: 'layout.preview-kind-file-desc',
     defaultDescription: 'Preview files produced or referenced in this session.',
-  },
-  {
-    kind: 'review',
-    icon: ClipboardCheck,
-    labelKey: 'layout.preview-kind-review',
-    defaultLabel: 'Review',
-    descriptionKey: 'layout.preview-kind-review-desc',
-    defaultDescription: 'Review changes and diffs before applying them.',
-  },
-  {
-    kind: 'terminal',
-    icon: SquareTerminal,
-    labelKey: 'layout.preview-kind-terminal',
-    defaultLabel: 'Terminal',
-    descriptionKey: 'layout.preview-kind-terminal-desc',
-    defaultDescription: 'Inspect command output from the running task.',
-  },
-  {
-    kind: 'canvas',
-    icon: Shapes,
-    labelKey: 'layout.preview-kind-canvas',
-    defaultLabel: 'Canvas',
-    descriptionKey: 'layout.preview-kind-canvas-desc',
-    defaultDescription: 'Sketch, connect, and arrange ideas on a free canvas.',
   },
 ];
 

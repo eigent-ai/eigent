@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { ArrowLeft, GalleryThumbnails } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -40,13 +40,17 @@ export function HeaderBox({
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const sessionPreviewOpen = usePageTabStore((s) => s.sessionPreviewOpen);
+  const sessionPreviewOpen = usePageTabStore(
+    (s) => getSessionPreviewSlice(s).open
+  );
   const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
     defaultValue: 'Back to workspace',
   });
-  const windowPreviewTooltip = t('layout.toggle-file-preview-tooltip', {
+  // Own key (not the old file-preview one): the control's meaning changed, so
+  // stale translations must not carry over.
+  const windowPreviewTooltip = t('layout.toggle-window-preview-tooltip', {
     defaultValue: 'Toggle window preview',
   });
 

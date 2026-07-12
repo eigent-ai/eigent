@@ -26,6 +26,12 @@ export interface BrowserTabProps {
   tab: SessionBrowserTab;
   /** Desktop host embeds a real <webview>; web falls back to opening tabs. */
   isDesktop: boolean;
+  /**
+   * False while the display panel is still animating open. The viewport is
+   * only published once settled so the fixed-position guest (which the panel's
+   * clip-path can't clip) doesn't appear over the chat mid-animation.
+   */
+  viewportSettled?: boolean;
 }
 
 /**
@@ -35,7 +41,11 @@ export interface BrowserTabProps {
  * navigation through the webview registry. Keyed by tab id upstream so each
  * browser tab keeps its own address state.
  */
-export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
+export function BrowserTab({
+  tab,
+  isDesktop,
+  viewportSettled = true,
+}: BrowserTabProps) {
   const { t } = useTranslation();
   const updateBrowserPreviewTab = usePageTabStore(
     (state) => state.updateBrowserPreviewTab
@@ -47,12 +57,17 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [addressInput, setAddressInput] = useState(tab.url);
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [addressFocused, setAddressFocused] = useState(false);
   const nav = tab.navigation;
 
+  // Follow the page's URL in the address bar — but never while the user is in
+  // the field, so redirects/SPA navigation events can't clobber their typing.
+  // (Unsubmitted edits revert to the page URL on blur.)
   useEffect(() => {
+    if (addressFocused) return;
     setAddressInput(tab.url);
     setAddressError(null);
-  }, [tab.url, tab.id]);
+  }, [tab.url, addressFocused]);
 
   const navigateTo = useCallback(
     async (rawUrl: string) => {
@@ -100,9 +115,10 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
   }, []);
 
   // Publish this container's rect so the layer can position the guest over it.
-  // Cleared on unmount (switching tabs / closing) so guests park, not float.
+  // Held back until the panel animation settles; cleared on unmount (switching
+  // tabs / closing) so guests park, not float.
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!isDesktop || !viewportSettled) return;
     const container = containerRef.current;
     if (!container) {
       setPreviewBrowserViewport(null);
@@ -126,9 +142,7 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
       window.removeEventListener('resize', publish);
       setPreviewBrowserViewport(null);
     };
-  }, [isDesktop, tab.id, setPreviewBrowserViewport]);
-
-  const element = isDesktop ? getPreviewWebview(tab.webviewId) : undefined;
+  }, [isDesktop, viewportSettled, tab.id, setPreviewBrowserViewport]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -142,7 +156,7 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !nav?.canGoBack}
-            onClick={() => element?.goBack?.()}
+            onClick={() => getPreviewWebview(tab.webviewId)?.goBack?.()}
             aria-label={t('layout.browser-back', { defaultValue: 'Back' })}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -157,7 +171,7 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !nav?.canGoForward}
-            onClick={() => element?.goForward?.()}
+            onClick={() => getPreviewWebview(tab.webviewId)?.goForward?.()}
             aria-label={t('layout.browser-forward', {
               defaultValue: 'Forward',
             })}
@@ -174,7 +188,7 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !tab.url}
-            onClick={() => element?.reload?.()}
+            onClick={() => getPreviewWebview(tab.webviewId)?.reload?.()}
             aria-label={t('layout.browser-reload', { defaultValue: 'Reload' })}
           >
             <RefreshCw
@@ -197,6 +211,8 @@ export function BrowserTab({ tab, isDesktop }: BrowserTabProps) {
               setAddressInput(event.target.value);
               if (addressError) setAddressError(null);
             }}
+            onFocus={() => setAddressFocused(true)}
+            onBlur={() => setAddressFocused(false)}
             placeholder={t('layout.browser-url-placeholder', {
               defaultValue: 'Enter a URL',
             })}

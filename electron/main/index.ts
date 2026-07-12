@@ -2379,10 +2379,23 @@ async function createWindow() {
     },
   });
 
-  // Renderer <webview> guests (session preview browser): route window.open /
-  // target=_blank into the same guest instead of spawning popup windows, and
-  // only allow web URLs. The guests are sandboxed tags declared in the
-  // renderer; this is the only main-process involvement they need.
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    if (!/^https?:\/\//i.test(params.src ?? '')) {
+      event.preventDefault();
+    }
+  });
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
   win.webContents.on('did-attach-webview', (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//i.test(url)) {

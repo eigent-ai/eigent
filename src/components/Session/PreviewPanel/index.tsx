@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +36,12 @@ const TAB_MIN_WIDTH = 92;
 
 export interface PreviewPanelProps {
   onJumpToContext?: (file: FileInfo | null) => void;
+  /**
+   * False while the display panel's open animation is still running. Browser
+   * tabs hold their fixed-position webview guest parked until it settles so
+   * the page doesn't pop in over the chat mid-animation.
+   */
+  displaySettled?: boolean;
 }
 
 /**
@@ -44,12 +50,15 @@ export interface PreviewPanelProps {
  * canvas). Embedded browsers live in the always-mounted PreviewBrowserLayer;
  * this panel only renders their chrome via BrowserTab.
  */
-export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
+export function PreviewPanel({
+  onJumpToContext,
+  displaySettled = true,
+}: PreviewPanelProps) {
   const { t } = useTranslation();
   const host = useHost();
-  const tabs = usePageTabStore((state) => state.sessionPreviewTabs);
+  const tabs = usePageTabStore((state) => getSessionPreviewSlice(state).tabs);
   const activeTabId = usePageTabStore(
-    (state) => state.activeSessionPreviewTabId
+    (state) => getSessionPreviewSlice(state).activeTabId
   );
   const addChooserPreviewTab = usePageTabStore(
     (state) => state.addChooserPreviewTab
@@ -99,6 +108,35 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
 
   if (!activeTab) return null;
 
+  // Roving tabindex: only the selected tab is in the Tab order; Left/Right
+  // (and Home/End) move both selection and focus along the strip.
+  const handleTabListKeyDown = (event: React.KeyboardEvent) => {
+    const currentIndex = tabs.findIndex((tab) => tab.id === activeTab.id);
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+        nextIndex = Math.max(0, currentIndex - 1);
+        break;
+      case 'ArrowRight':
+        nextIndex = Math.min(tabs.length - 1, currentIndex + 1);
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (nextIndex === currentIndex) return;
+    selectSessionPreviewTab(tabs[nextIndex].id);
+    tabListRef.current
+      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      [nextIndex]?.focus();
+  };
+
   const renderActiveContent = () => {
     switch (activeTab.type) {
       case 'chooser':
@@ -114,6 +152,7 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
             key={activeTab.id}
             tab={activeTab}
             isDesktop={isDesktop}
+            viewportSettled={displaySettled}
           />
         );
       case 'file':
@@ -139,6 +178,7 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
             aria-label={t('layout.preview-tabs', {
               defaultValue: 'Preview tabs',
             })}
+            onKeyDown={handleTabListKeyDown}
             className="scrollbar-hide flex h-7 w-full min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden"
           >
             {tabs.map((tab) => {
@@ -153,16 +193,18 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
                     maxWidth: TAB_DEFAULT_WIDTH,
                   }}
                   className={cn(
-                    'group relative h-7 rounded-lg bg-ds-bg-neutral-subtle-default',
-                    selected
-                      ? 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
-                      : 'text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
+                    // Every tab uses the selected colors; unselected tabs are
+                    // just dimmed (40% at rest, 80% on hover) so selection
+                    // reads as full opacity rather than a color change.
+                    'group relative h-7 rounded-lg bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default transition-opacity',
+                    selected ? 'opacity-100' : 'opacity-40 hover:opacity-80'
                   )}
                 >
                   <button
                     type="button"
                     role="tab"
                     aria-selected={selected}
+                    tabIndex={selected ? 0 : -1}
                     onClick={() => selectSessionPreviewTab(tab.id)}
                     className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 text-left text-inherit"
                   >
@@ -182,6 +224,8 @@ export function PreviewPanel({ onJumpToContext }: PreviewPanelProps) {
                     }}
                     className={cn(
                       'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
+                      // Keyboard users can't hover — reveal on focus too.
+                      'focus-visible:opacity-100 group-focus-within:opacity-100',
                       'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
                     )}
                   >

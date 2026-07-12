@@ -70,3 +70,6 @@ storybook-static
 nul
 
 backend/benchmark/jobs/
+
+# TypeScript incremental build info
+*.tsbuildinfo

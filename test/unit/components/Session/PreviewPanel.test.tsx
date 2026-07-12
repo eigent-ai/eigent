@@ -18,7 +18,7 @@ import {
   unregisterPreviewWebview,
 } from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,11 +47,13 @@ function renderPanel() {
   );
 }
 
+function previewSlice() {
+  return getSessionPreviewSlice(usePageTabStore.getState());
+}
+
 function activeType() {
-  const state = usePageTabStore.getState();
-  return state.sessionPreviewTabs.find(
-    (tab) => tab.id === state.activeSessionPreviewTabId
-  )?.type;
+  const slice = previewSlice();
+  return slice.tabs.find((tab) => tab.id === slice.activeTabId)?.type;
 }
 
 describe('PreviewPanel', () => {
@@ -59,25 +61,30 @@ describe('PreviewPanel', () => {
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
       previewBrowserViewport: null,
     });
     usePageTabStore.getState().setSessionPreviewProject('project-test');
     usePageTabStore.getState().toggleSessionPreview();
   });
 
-  it('opens on the chooser tab listing every content kind', () => {
+  it('opens on the chooser tab listing the available content kinds', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
-    // Five vertical options (test i18n echoes the key, not the label).
-    for (const kind of ['browser', 'file', 'review', 'terminal', 'canvas']) {
+    // Vertical options (test i18n echoes the key, not the label).
+    for (const kind of ['browser', 'file']) {
       expect(
         screen.getByRole('button', {
           name: new RegExp(`preview-kind-${kind}\\b`),
         })
       ).toBeInTheDocument();
+    }
+    // Reserved kinds stay hidden from the chooser until a later version.
+    for (const kind of ['review', 'terminal', 'canvas']) {
+      expect(
+        screen.queryByRole('button', {
+          name: new RegExp(`preview-kind-${kind}\\b`),
+        })
+      ).not.toBeInTheDocument();
     }
   });
 
@@ -107,16 +114,13 @@ describe('PreviewPanel', () => {
 
   it('routes review, terminal, and canvas tabs to their surfaces', () => {
     const store = usePageTabStore.getState();
-    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    const chooserId = previewSlice().tabs[0].id;
     act(() => store.choosePreviewTabType(chooserId, 'canvas'));
     const { rerender } = renderPanel();
     expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
 
     act(() =>
-      store.choosePreviewTabType(
-        usePageTabStore.getState().activeSessionPreviewTabId!,
-        'terminal'
-      )
+      store.choosePreviewTabType(previewSlice().activeTabId!, 'terminal')
     );
     rerender(
       <HostProvider host={host}>
@@ -140,11 +144,11 @@ describe('PreviewPanel', () => {
   it('drives back/forward/reload on the registered guest element', async () => {
     const user = userEvent.setup();
     const store = usePageTabStore.getState();
-    const chooserId = usePageTabStore.getState().sessionPreviewTabs[0].id;
+    const chooserId = previewSlice().tabs[0].id;
     act(() => store.choosePreviewTabType(chooserId, 'browser'));
-    const browserTab = usePageTabStore
-      .getState()
-      .sessionPreviewTabs.find((tab) => tab.type === 'browser')!;
+    const browserTab = previewSlice().tabs.find(
+      (tab) => tab.type === 'browser'
+    )!;
     act(() =>
       store.updateBrowserPreviewTab(browserTab.id, {
         url: 'https://example.com/a',
@@ -194,10 +198,10 @@ describe('PreviewPanel', () => {
       screen.getByRole('button', { name: 'layout.close-preview-tab' })
     );
 
-    expect(usePageTabStore.getState()).toMatchObject({
-      sessionPreviewOpen: false,
-      sessionPreviewTabs: [],
-      activeSessionPreviewTabId: null,
+    expect(previewSlice()).toMatchObject({
+      open: false,
+      tabs: [],
+      activeTabId: null,
     });
   });
 });

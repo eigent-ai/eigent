@@ -24,7 +24,7 @@ describe('normalizeBrowserUrl', () => {
     });
   });
 
-  it('normalizes localhost and IP destinations to HTTP', () => {
+  it('normalizes localhost and private-network destinations to HTTP', () => {
     expect(normalizeBrowserUrl('localhost:3000')).toEqual({
       ok: true,
       url: 'http://localhost:3000/',
@@ -32,6 +32,37 @@ describe('normalizeBrowserUrl', () => {
     expect(normalizeBrowserUrl('127.0.0.1:8080/docs')).toEqual({
       ok: true,
       url: 'http://127.0.0.1:8080/docs',
+    });
+    expect(normalizeBrowserUrl('192.168.1.20')).toEqual({
+      ok: true,
+      url: 'http://192.168.1.20/',
+    });
+    expect(normalizeBrowserUrl('10.0.0.5:9000')).toEqual({
+      ok: true,
+      url: 'http://10.0.0.5:9000/',
+    });
+  });
+
+  it('defaults public IPs (like hostnames) to HTTPS', () => {
+    expect(normalizeBrowserUrl('8.8.8.8')).toEqual({
+      ok: true,
+      url: 'https://8.8.8.8/',
+    });
+  });
+
+  it('turns non-URL input into a web search', () => {
+    expect(normalizeBrowserUrl('hello world')).toEqual({
+      ok: true,
+      url: `https://www.google.com/search?q=${encodeURIComponent('hello world')}`,
+    });
+    expect(normalizeBrowserUrl('golang')).toEqual({
+      ok: true,
+      url: 'https://www.google.com/search?q=golang',
+    });
+    // Anything host-like still navigates instead of searching.
+    expect(normalizeBrowserUrl('intranet:8080')).toEqual({
+      ok: true,
+      url: 'https://intranet:8080/',
     });
   });
 

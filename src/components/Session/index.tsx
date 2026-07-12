@@ -20,7 +20,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -43,6 +43,8 @@ const CHAT_MIN_WIDTH = 360;
 /** Keep at least this much room for the preview when the chat is widened. */
 const PREVIEW_MIN_WIDTH = 320;
 const DISPLAY_PANEL_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+/** Display panel open/close animation duration (framer transition below). */
+const DISPLAY_PANEL_ANIMATION_MS = 300;
 
 /**
  * Active Project: header + chat (left) and a mode-dependent side panel (right).
@@ -65,11 +67,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const sessionPreviewProjectId = usePageTabStore(
     (s) => s.sessionPreviewProjectId
   );
-  // Only trust the preview mirror once it points at this project — on switch
-  // the scope effect below lags the first render by one frame, and rendering
-  // the stale slice would flash (and re-show) the previous project's browser.
+  // Only trust the preview slice once the scope points at this project — on
+  // switch the scope effect below lags the first render by one frame, and
+  // rendering the stale slice would flash the previous project's browser.
   const previewOpen =
-    usePageTabStore((s) => s.sessionPreviewOpen) &&
+    usePageTabStore((s) => getSessionPreviewSlice(s).open) &&
     sessionPreviewProjectId === (projectStore.activeProjectId ?? null);
   const activeProjectId = projectStore.activeProjectId;
   const isHistoryLoadingActiveProject = useProjectRuntimeStore((s) =>
@@ -250,12 +252,34 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setSessionPreviewProject(activeProjectId ?? null);
   }, [activeProjectId, setSessionPreviewProject]);
 
-  // Opening display auto-folds the session side panel and collapses chat.
+  // Last chat width the user dragged to; reopening display restores it instead
+  // of resetting to the minimum.
+  const userChatWidthRef = useRef<number | null>(null);
+
+  // Opening display auto-folds the session side panel and collapses chat
+  // (to the user's remembered width, if they resized before).
   useEffect(() => {
     if (previewOpen) {
       setIsSidePanelVisible(false);
-      setChatWidth(CHAT_MIN_WIDTH);
+      setChatWidth(userChatWidthRef.current ?? CHAT_MIN_WIDTH);
     }
+  }, [previewOpen]);
+
+  // Embedded browser guests are `position: fixed` in a separate layer, so the
+  // panel's clip-path entrance can't clip them. Hold the guest parked until
+  // the entrance finishes (then it fades in over the settled rect) instead of
+  // letting the page pop in full-size over the chat mid-animation.
+  const [displaySettled, setDisplaySettled] = useState(false);
+  useEffect(() => {
+    if (!previewOpen) {
+      setDisplaySettled(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setDisplaySettled(true),
+      DISPLAY_PANEL_ANIMATION_MS + 20
+    );
+    return () => window.clearTimeout(timer);
   }, [previewOpen]);
 
   const handlePreviewResizeStart = useCallback(
@@ -284,6 +308,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
           maxChat,
           Math.max(CHAT_MIN_WIDTH, startWidth + (ev.clientX - startX))
         );
+        userChatWidthRef.current = next;
         setChatWidth(next);
       };
       const onUp = () => {
@@ -434,7 +459,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
             {/* Display content: middle column between chat and session. */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {activeProjectId ? (
-                <PreviewPanel onJumpToContext={handleJumpToContext} />
+                <PreviewPanel
+                  displaySettled={displaySettled}
+                  onJumpToContext={handleJumpToContext}
+                />
               ) : null}
             </div>
           </motion.div>
