@@ -397,7 +397,9 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 10,
+      // Bump so migrate re-runs for existing sessions that still need the
+      // user-id repair; a matching version skips migrate and stays unrepaired.
+      version: 11,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
