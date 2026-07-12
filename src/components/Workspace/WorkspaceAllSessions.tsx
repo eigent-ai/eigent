@@ -43,7 +43,6 @@ export function WorkspaceAllSessions({
             projects={projects}
             activeProjectId={activeProjectId}
             onProjectClick={onProjectClick}
-            folded={false}
             panelListHover
             showRowMenu={false}
           />

@@ -17,6 +17,7 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -46,7 +47,9 @@ export function HeaderBox({
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const projectName =
-    activeProjectMeta?.name && activeProjectMeta.name !== 'new project'
+    activeProjectId &&
+    activeProjectMeta?.name &&
+    !isPlaceholderProjectName(activeProjectMeta.name, activeProjectId)
       ? activeProjectMeta.name
       : t('layout.new-project');
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);

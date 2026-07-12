@@ -18,8 +18,6 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
 import { Archive, Pin, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
-import { workspaceTabButtonClass } from './NavTab';
 
 export interface ProjectNavItem {
   id: string;
@@ -41,8 +39,6 @@ export interface ProjectNavListRowsProps {
   onDeleteProject?: (projectId: string) => void;
   onAchieveProject?: (projectId: string) => void;
   onPinProject?: (projectId: string) => void;
-  /** Icon rail: one icon per row. */
-  folded: boolean;
   /** If set, only the first N projects are rendered. */
   maxItems?: number;
   /**
@@ -66,7 +62,6 @@ export function ProjectNavListRows({
   onDeleteProject: _onDeleteProject,
   onAchieveProject,
   onPinProject,
-  folded,
   maxItems,
   panelListHover = false,
   showRowMenu = true,
@@ -89,33 +84,6 @@ export function ProjectNavListRows({
           project.sessionLead.iconClassName,
           project.sessionLead.spin && 'animate-spin'
         );
-
-        if (folded) {
-          return (
-            <div key={project.id} className="min-w-0">
-              <TooltipSimple
-                content={project.title}
-                side="right"
-                align="center"
-                enabled
-                className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
-              >
-                <button
-                  type="button"
-                  onClick={() => onProjectClick?.(project.id)}
-                  className={cn(
-                    workspaceTabButtonClass(active),
-                    'w-full min-w-0 gap-0'
-                  )}
-                  aria-label={project.title}
-                  aria-current={active ? 'true' : undefined}
-                >
-                  <LeadIcon className={leadClassName} aria-hidden />
-                </button>
-              </TooltipSimple>
-            </div>
-          );
-        }
 
         return (
           <div key={project.id} className="min-w-0">
@@ -240,7 +208,6 @@ export interface NavListSessionRowsProps {
   activeSessionId?: string | null;
   onSessionClick?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
-  folded: boolean;
   maxItems?: number;
   panelListHover?: boolean;
   showRowMenu?: boolean;

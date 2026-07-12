@@ -69,7 +69,6 @@ export function WorkspaceRecentSessions({
           projects={projects}
           activeProjectId={activeProjectId}
           onProjectClick={onProjectClick}
-          folded={false}
           maxItems={NAV_LIST_PROJECTS_RECENT_MAX}
           panelListHover
           showRowMenu={false}

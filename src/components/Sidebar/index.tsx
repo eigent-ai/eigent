@@ -123,7 +123,6 @@ export default function Sidebar({
   });
 
   const scheduledTabLabel = t('layout.scheduled-tab');
-  const triggersTabTooltip = scheduledTabLabel;
 
   const triggersTabAriaLabel = useMemo(() => {
     const base = scheduledTabLabel;
@@ -655,7 +654,6 @@ export default function Sidebar({
                     <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
                   }
                   label={t('layout.workspace-tab')}
-                  tooltip={t('layout.workspace-tab')}
                   ariaLabel={t('layout.workspace-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'workforce'}
                 />
@@ -707,14 +705,15 @@ export default function Sidebar({
                       </div>
                     ) : undefined
                   }
+                  // Only the disabled state gets a tooltip: it explains why the
+                  // tab is inert without relying on the toast that only fires
+                  // on click. When bound, the trailing chip carries its own
+                  // tooltip and the label speaks for itself.
                   tooltip={
                     isActiveSpaceUnbound
                       ? t('layout.context-tab-unbound-tooltip')
-                      : (contextTabBinding?.tooltip ?? t('layout.context-tab'))
+                      : undefined
                   }
-                  // Render the tooltip even when disabled so users get a hint
-                  // instead of relying on the toast that only fires on click.
-                  tooltipEnabledWhenCollapsed
                   ariaLabel={t('layout.context-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'inbox'}
                 />
@@ -775,7 +774,6 @@ export default function Sidebar({
                       />
                     )
                   }
-                  tooltip={triggersTabTooltip}
                   ariaLabel={triggersTabAriaLabel}
                   ariaCurrentPage={activeWorkspaceTab === 'triggers'}
                 />
@@ -784,7 +782,6 @@ export default function Sidebar({
                   onClick={() => setActiveWorkspaceTab('dispatch')}
                   leading={<Cast className="h-4 w-4 shrink-0" aria-hidden />}
                   label={t('layout.dispatch-tab')}
-                  tooltip={t('layout.dispatch-tab')}
                   ariaLabel={t('layout.dispatch-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
                 />
@@ -808,7 +805,6 @@ export default function Sidebar({
                 onPinProject={handlePinProject}
                 onNewProject={handleNewProject}
                 newProjectActive={activeWorkspaceTab === 'new-project'}
-                folded={false}
               />
             </div>
           </div>

@@ -106,7 +106,6 @@ export default function Sessions({
             activeSessionId={activeSessionId}
             onSessionClick={onSelectSession}
             onDeleteSession={onDeleteSession}
-            folded={false}
             panelListHover
           />
         )}

@@ -15,17 +15,13 @@
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WebSocketConnectionStatus } from '@/store/triggerStore';
-import { motion } from 'framer-motion';
 import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-  PROJECT_SIDEBAR_FOLD_SPRING,
-  SIDEBAR_TOOLTIP_CONTENT_CLASS,
-} from './constants';
+import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 
-/** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
+/** Workspace tabs: leading icon column stays fixed; text truncates as the sidebar narrows. */
 export function workspaceTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-lg cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
@@ -127,17 +123,18 @@ export interface NavTabProps {
   endAction?: ReactNode;
   /** Override the max-width reveal class on the endAction wrapper (default: `group-hover:max-w-10`). */
   endActionMaxWidthClass?: string;
-  tooltip: string;
-  /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
-  tooltipEnabledWhenCollapsed?: boolean;
+  /**
+   * Hover hint shown whenever provided (e.g. a disabled-state explanation).
+   * Labels are always visible in the sidebar, so omit when the tooltip would
+   * just repeat `label`.
+   */
+  tooltip?: string;
   ariaLabel?: string;
   ariaCurrentPage?: boolean;
   /** Merged onto the outer control (`button` when simple, shell `div` when split). */
   className?: string;
   /** When `layout="split"`, extra classes on the primary `button` only. */
   mainButtonClassName?: string;
-  /** Icon-only rail: fade/shrink label, trailing, and dot; keep leading icon fixed. */
-  folded?: boolean;
   disabled?: boolean;
 }
 
@@ -148,7 +145,6 @@ function tabMainInner({
   showNotificationDot,
   notificationDotClassName,
   notificationDotTone = 'default',
-  folded = false,
 }: Pick<
   NavTabProps,
   | 'leading'
@@ -157,22 +153,11 @@ function tabMainInner({
   | 'showNotificationDot'
   | 'notificationDotClassName'
   | 'notificationDotTone'
-  | 'folded'
 >): ReactNode {
   return (
     <>
       {leading}
-      <motion.div
-        className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden"
-        initial={false}
-        animate={{
-          opacity: folded ? 0 : 1,
-          maxWidth: folded ? 0 : 1600,
-        }}
-        transition={PROJECT_SIDEBAR_FOLD_SPRING}
-        aria-hidden={folded}
-        style={{ pointerEvents: folded ? 'none' : undefined }}
-      >
+      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
         <span className={WORKSPACE_TAB_LABEL_CLASS}>{label}</span>
         {trailing}
         {showNotificationDot && (
@@ -187,13 +172,13 @@ function tabMainInner({
             aria-hidden
           />
         )}
-      </motion.div>
+      </div>
     </>
   );
 }
 
 /**
- * Project page sidebar rail tab: leading icon, label, optional trailing chip, optional dot, optional split suffix.
+ * Project page sidebar tab: leading icon, label, optional trailing chip, optional dot, optional split suffix.
  * Add new tabs by composing `leading` / `trailing` / `suffix`; use `layout="split"` when the row needs a separate end control.
  */
 export function NavTab({
@@ -208,12 +193,10 @@ export function NavTab({
   layout = 'simple',
   suffix,
   tooltip,
-  tooltipEnabledWhenCollapsed = false,
   ariaLabel,
   ariaCurrentPage,
   className,
   mainButtonClassName,
-  folded = false,
   endAction,
   endActionMaxWidthClass,
   disabled = false,
@@ -225,88 +208,56 @@ export function NavTab({
     showNotificationDot,
     notificationDotClassName,
     notificationDotTone,
-    folded,
   });
 
-  const tooltipEnabled = folded || !tooltipEnabledWhenCollapsed;
-
-  if (layout === 'split') {
-    return (
-      <TooltipSimple
-        content={tooltip}
-        side="right"
-        align="center"
-        enabled={tooltipEnabled}
-        className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+  const control =
+    layout === 'split' ? (
+      <div
+        className={cn(
+          workspaceTabButtonClass(active),
+          SPLIT_OUTER_EXTRA_CLASS,
+          'group',
+          className
+        )}
       >
-        <div
+        <button
+          type="button"
+          onClick={() => {
+            if (disabled) return;
+            onClick();
+          }}
           className={cn(
-            workspaceTabButtonClass(active),
-            SPLIT_OUTER_EXTRA_CLASS,
-            'group',
-            className
+            SPLIT_MAIN_BUTTON_CLASS,
+            disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+            mainButtonClassName
           )}
+          aria-label={ariaLabel}
+          aria-current={ariaCurrentPage ? 'page' : undefined}
+          aria-disabled={disabled || undefined}
         >
-          <button
-            type="button"
-            onClick={() => {
-              if (disabled) return;
-              onClick();
-            }}
-            className={cn(
-              SPLIT_MAIN_BUTTON_CLASS,
-              folded && '!gap-0',
-              disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
-              mainButtonClassName
-            )}
-            aria-label={ariaLabel}
-            aria-current={ariaCurrentPage ? 'page' : undefined}
-            aria-disabled={disabled || undefined}
-          >
-            {inner}
-          </button>
-          {suffix || endAction ? (
-            <motion.div
-              className="flex min-h-8 min-w-0 items-stretch overflow-hidden"
-              initial={false}
-              animate={{
-                opacity: folded ? 0 : 1,
-                maxWidth: folded ? 0 : 160,
-              }}
-              transition={PROJECT_SIDEBAR_FOLD_SPRING}
-              aria-hidden={folded}
-              style={{ pointerEvents: folded ? 'none' : undefined }}
-            >
-              {suffix}
-              {endAction ? (
-                <div
-                  className={cn(
-                    'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 ease-out',
-                    'pointer-events-none opacity-0',
-                    'group-hover:pointer-events-auto group-hover:opacity-100',
-                    endActionMaxWidthClass ??
-                      'focus-within:max-w-10 group-hover:max-w-10',
-                    'focus-within:pointer-events-auto focus-within:opacity-100'
-                  )}
-                >
-                  {endAction}
-                </div>
-              ) : null}
-            </motion.div>
-          ) : null}
-        </div>
-      </TooltipSimple>
-    );
-  }
-
-  return (
-    <TooltipSimple
-      content={tooltip}
-      side="right"
-      align="center"
-      enabled={tooltipEnabled}
-      className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
-    >
+          {inner}
+        </button>
+        {suffix || endAction ? (
+          <div className="flex min-h-8 min-w-0 max-w-40 items-stretch overflow-hidden">
+            {suffix}
+            {endAction ? (
+              <div
+                className={cn(
+                  'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0 transition-[max-width,opacity] duration-150 ease-out',
+                  'pointer-events-none opacity-0',
+                  'group-hover:pointer-events-auto group-hover:opacity-100',
+                  endActionMaxWidthClass ??
+                    'focus-within:max-w-10 group-hover:max-w-10',
+                  'focus-within:pointer-events-auto focus-within:opacity-100'
+                )}
+              >
+                {endAction}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    ) : (
       <button
         type="button"
         onClick={() => {
@@ -315,7 +266,6 @@ export function NavTab({
         }}
         className={cn(
           workspaceTabButtonClass(active),
-          folded && 'gap-0',
           disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
           className
         )}
@@ -325,6 +275,20 @@ export function NavTab({
       >
         {inner}
       </button>
+    );
+
+  if (!tooltip) {
+    return control;
+  }
+
+  return (
+    <TooltipSimple
+      content={tooltip}
+      side="right"
+      align="center"
+      className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+    >
+      {control}
     </TooltipSimple>
   );
 }

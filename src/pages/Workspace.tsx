@@ -171,14 +171,11 @@ export default function WorkspacePage() {
     max: 35,
   });
 
-  const mainPanelPct = useMemo(() => {
-    const min = Math.max(1, 100 - sidebarPct.max);
-    const max = Math.max(min, Math.min(99, 100 - sidebarPct.min));
-    return { min, max };
-  }, [sidebarPct.min, sidebarPct.max]);
-
-  /** When folded, main panel fills the shell; otherwise respect expanded max. */
-  const mainPanelMaxSize = projectSidebarFolded ? 100 : mainPanelPct.max;
+  /** Main panel lower bound — the counterpart of the sidebar's max width. */
+  const mainPanelMinPct = useMemo(
+    () => Math.max(1, 100 - sidebarPct.max),
+    [sidebarPct.max]
+  );
 
   const schedulePersistSidebarWidth = useCallback((px: number) => {
     if (persistSidebarWidthTimeoutRef.current) {
@@ -765,11 +762,19 @@ export default function WorkspacePage() {
             className="h-full min-h-0 w-full gap-0"
             onLayout={handleShellPanelLayout}
           >
+            {/* Constraints must be identical folded and expanded: the library
+                re-clamps the layout the moment a panel's min/max props change
+                and validates every imperative setLayout() frame, so flipping
+                to min/max 0 on fold would snap the panel shut before the rAF
+                tween in setShellPanelLayout runs a single frame. The panel is
+                therefore always allowed to reach 0; the expanded minimum is
+                enforced by handleShellPanelLayout, which folds the sidebar
+                when a drag takes it below SIDEBAR_MIN_PX. */}
             <ResizablePanel
               ref={projectSidebarPanelRef}
               defaultSize={24}
-              minSize={projectSidebarFolded ? 0 : sidebarPct.min}
-              maxSize={projectSidebarFolded ? 0 : sidebarPct.max}
+              minSize={0}
+              maxSize={sidebarPct.max}
               className="min-h-0 min-w-0 overflow-hidden bg-ds-bg-neutral-default-default"
             >
               <motion.div
@@ -801,8 +806,8 @@ export default function WorkspacePage() {
             />
             <ResizablePanel
               defaultSize={76}
-              minSize={mainPanelPct.min}
-              maxSize={mainPanelMaxSize}
+              minSize={mainPanelMinPct}
+              maxSize={100}
               className="min-h-0 min-w-[300px]"
             >
               <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden">
