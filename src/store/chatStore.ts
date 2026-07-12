@@ -3718,6 +3718,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               getTokens(currentTaskId)
             );
 
+            // The run is finished; drop its SSE controller so a completed
+            // task no longer counts as an active run (e.g. the close guard).
+            delete activeSSEControllers[newTaskId];
+
             return;
           }
           if (agentMessages.step === AgentStep.NOTICE) {
