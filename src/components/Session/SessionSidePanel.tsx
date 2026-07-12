@@ -63,11 +63,11 @@ export function SessionSidePanel({
         });
 
   return (
-    <div className="group min-h-0 relative h-full w-full overflow-hidden">
+    <div className="group relative h-full min-h-0 w-full overflow-hidden">
       {/* Full logical width; outer #session-side-panel clips to 40px when folded */}
       <div
         className={cn(
-          'min-h-0 flex h-full flex-shrink-0 flex-col overflow-hidden',
+          'flex h-full min-h-0 flex-shrink-0 flex-col overflow-hidden',
           SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS,
           isFolded &&
             'pointer-events-none opacity-40 transition-opacity duration-200 group-hover:opacity-80'
@@ -105,7 +105,11 @@ export function SessionSidePanel({
       </div>
 
       {isFolded && (
-        <TooltipSimple content={expandFoldedTooltip} side="left">
+        <TooltipSimple
+          content={expandFoldedTooltip}
+          side="left"
+          variant="instant"
+        >
           <button
             type="button"
             onClick={onToggleSidePanel}
@@ -113,14 +117,14 @@ export function SessionSidePanel({
             aria-expanded={isSidePanelVisible}
             aria-controls="session-side-panel"
             className={cn(
-              'focus-visible:ring-ds-border-neutral-strong-default inset-0 absolute z-20 flex items-center justify-center',
-              'p-0 cursor-pointer border-0 bg-transparent outline-none',
-              'focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:ring-2 focus-visible:ring-offset-1',
+              'absolute inset-0 z-20 flex items-center justify-center focus-visible:ring-ds-border-neutral-strong-default',
+              'cursor-pointer border-0 bg-transparent p-0 outline-none',
+              'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-ds-bg-neutral-default-default',
               'text-ds-text-neutral-default-default'
             )}
           >
             <ChevronLeft
-              className="h-4 w-4 pointer-events-none shrink-0"
+              className="pointer-events-none h-4 w-4 shrink-0"
               aria-hidden
             />
           </button>
