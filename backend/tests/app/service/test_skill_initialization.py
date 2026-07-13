@@ -210,7 +210,9 @@ def test_skill_toolkit_allows_single_agent_aliases():
             },
         }
     }
-    assert agent_skill_toolkit._is_agent_allowed("demo", "single_agent", config)
+    assert agent_skill_toolkit._is_agent_allowed(
+        "demo", "single_agent", config
+    )
     assert agent_skill_toolkit._is_agent_allowed(
         "demo", "Agents.single_agent", config
     )
@@ -229,4 +231,6 @@ def test_skill_toolkit_normalizes_selected_agent_aliases():
             },
         }
     }
-    assert agent_skill_toolkit._is_agent_allowed("demo", "single_agent", config)
+    assert agent_skill_toolkit._is_agent_allowed(
+        "demo", "single_agent", config
+    )
