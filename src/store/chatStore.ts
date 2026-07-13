@@ -99,6 +99,14 @@ let _host: AppHost | null = null;
 // because deactivate_agent.tokens is zeroed under request-level reporting.
 const requestUsageStepTokens = new Map<string, number>();
 
+const clearRequestUsageStepTokens = (taskId: string) => {
+  for (const key of requestUsageStepTokens.keys()) {
+    if (key.startsWith(`${taskId}:`)) {
+      requestUsageStepTokens.delete(key);
+    }
+  }
+};
+
 export function injectHost(host: AppHost | null): void {
   _host = host;
 }
@@ -2703,6 +2711,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
             }
+            // Consume the step's request_usage tokens before any early
+            // return below, so entries are cleaned up even for agents that
+            // never appear in taskAssigning.
+            let stepTokens = 0;
+            if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
+            }
             const { state, agent_id, process_task_id } = agentMessages.data;
             if (!state && !agent_id && !process_task_id) return;
             const agentIndex = taskAssigning.findIndex(
@@ -2784,12 +2804,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 agentMessages.data.agent_name === 'question_confirm_agent';
               // Per-step tokens (not the task total) so an errored/empty
               // step is not mistaken for a real reply.
-              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
-              const stepTokens =
-                agentMessages.data.tokens ||
-                requestUsageStepTokens.get(stepKey) ||
-                0;
-              requestUsageStepTokens.delete(stepKey);
               const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
@@ -3517,6 +3531,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
 
             const endMessage = resolveEndMessageText(

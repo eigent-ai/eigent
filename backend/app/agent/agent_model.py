@@ -237,7 +237,11 @@ def agent_model(
         # Ensure streaming steps still report token usage. OpenAI-family
         # providers omit usage from streamed responses unless include_usage
         # is set, which would otherwise make request-level accounting count 0.
-        if model_config.get("stream") and (
+        # `stream_options: false` in extra_params opts out entirely, for
+        # endpoints that reject the parameter (e.g. older vLLM/Azure).
+        if model_config.get("stream_options") is False:
+            model_config.pop("stream_options")
+        elif model_config.get("stream") and (
             effective_config["model_platform"].lower()
             not in _NATIVE_STREAM_USAGE_PLATFORMS
         ):
