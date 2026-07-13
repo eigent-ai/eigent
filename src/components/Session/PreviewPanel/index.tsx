@@ -26,7 +26,7 @@ import { CanvasTab } from './tabs/CanvasTab';
 import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
-import { TerminalTab } from './tabs/TerminalTab';
+import { TerminalTab } from './tabs/terminal/TerminalTab';
 
 // Tabs render at a comfortable default width and shrink evenly as more are
 // added, down to a minimum that keeps the title/close affordance legible.
@@ -160,7 +160,8 @@ export function PreviewPanel({
       case 'review':
         return <ReviewTab />;
       case 'terminal':
-        return <TerminalTab />;
+        // Keyed so each terminal tab keeps its own pinned-stream state.
+        return <TerminalTab key={activeTab.id} />;
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:
