@@ -1001,9 +1001,7 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('SSE request usage events', () => {
-    // The file-level beforeEach only clears calls (vi.clearAllMocks), so the
-    // event-pushing implementation installed below would leak into every
-    // later startTask test without this reset.
+    // clearAllMocks doesn't reset implementations; avoid leaking into later tests.
     afterEach(() => {
       vi.mocked(fetchEventSource).mockReset();
     });

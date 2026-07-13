@@ -95,10 +95,8 @@ const hasApiCode = (value: unknown, code: string) =>
 
 let _host: AppHost | null = null;
 
-// request_usage tokens for the step currently running on each agent, keyed
-// by `${taskId}:${agentId}`. Once request-level reporting is active the
-// backend zeroes deactivate_agent.tokens, so this preserves the per-step
-// "did this agent actually generate a response" signal.
+// Per-step request_usage tokens keyed by `${taskId}:${agentId}`; needed
+// because deactivate_agent.tokens is zeroed under request-level reporting.
 const requestUsageStepTokens = new Map<string, number>();
 
 export function injectHost(host: AppHost | null): void {
@@ -2784,11 +2782,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              // deactivate_agent.tokens is zeroed once request-level usage
-              // reporting is active, so fall back to the tokens this agent's
-              // current step reported via request_usage. Keeping the check
-              // per-step (not the task's accumulated total) is what lets an
-              // errored/empty step be told apart from a real reply.
+              // Per-step tokens (not the task total) so an errored/empty
+              // step is not mistaken for a real reply.
               const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
               const stepTokens =
                 agentMessages.data.tokens ||
