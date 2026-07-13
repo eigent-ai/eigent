@@ -16,13 +16,17 @@
  * rule matches xterm's glyph spans directly, so they render in proportional
  * Inter while xterm positions them on the monospace character cells it
  * measured — glyphs drift apart and overlap. Pin everything inside the
- * terminal screen to the design system's mono stack (tailwind `font-mono`),
- * the same stack xterm measures with (TERMINAL_FONT_FAMILY). */
+ * terminal screen to the same code stack markdown code blocks use
+ * (`.markdown-body code`): the system default code font first, then explicit
+ * fallbacks. Must match TERMINAL_FONT_FAMILY in terminalTheme.ts, which xterm
+ * measures with. */
 /* Scoped to xterm's own DOM so design-system UI overlaid on the screen
  * (e.g. the shell-exited notice bar) keeps the app font. */
 .preview-terminal-screen .xterm,
 .preview-terminal-screen .xterm * {
-  font-family: SFMono-Regular, Menlo, monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
   font-variant-ligatures: none;
 }
 

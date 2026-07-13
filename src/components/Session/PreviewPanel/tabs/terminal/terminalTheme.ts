@@ -27,11 +27,15 @@ export const TERMINAL_BASE_THEME = {
 };
 
 /**
- * Must stay in sync with `previewTerminal.css` and tailwind's `font-mono`
- * stack: xterm measures character cells with this family, and the CSS pins
- * the rendered glyphs to the same one (the app's global `* { font-family:
- * 'Inter' }` rule would otherwise repaint them proportionally).
+ * Same code stack as markdown code blocks (`.markdown-body code` in
+ * markdown-styles.css): the system default code font (`ui-monospace`) first,
+ * then explicit fallbacks per platform. Must stay in sync with
+ * `previewTerminal.css`: xterm measures character cells with this family, and
+ * the CSS pins the rendered glyphs to the same one (the app's global
+ * `* { font-family: 'Inter' }` rule would otherwise repaint them
+ * proportionally).
  */
-export const TERMINAL_FONT_FAMILY = 'SFMono-Regular, Menlo, monospace';
+export const TERMINAL_FONT_FAMILY =
+  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 export const TERMINAL_FONT_SIZE = 12;
 export const TERMINAL_LINE_HEIGHT = 1.2;
