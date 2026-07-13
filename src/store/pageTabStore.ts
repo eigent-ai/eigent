@@ -75,6 +75,16 @@ export interface SessionTerminalTab {
   id: string;
   type: 'terminal';
   title: string;
+  /**
+   * Backing PTY id for an interactive local shell (the default terminal tab).
+   * Project-scoped so the shell survives tab switches within an app run.
+   */
+  shellId?: string;
+  /**
+   * When set, the tab shows this agent terminal stream (read-only) instead of
+   * a local shell. Ids come from `collectTerminalSources`.
+   */
+  agentSourceId?: string;
 }
 
 /** Free-form React Flow canvas. */
@@ -209,12 +219,17 @@ function createPreviewTabOfKind(
         type: 'review',
         title: 'Review',
       };
-    case 'terminal':
+    case 'terminal': {
+      const id = nextSessionPreviewTabId('terminal');
       return {
-        id: nextSessionPreviewTabId('terminal'),
+        id,
         type: 'terminal',
         title: 'Terminal',
+        // Stable per-tab PTY id: the shell keeps running while the user
+        // switches preview tabs, and dies when the tab is closed.
+        shellId: `session-shell:${projectId ?? 'global'}:${id}`,
       };
+    }
     case 'canvas':
       return {
         id: nextSessionPreviewTabId('canvas'),
@@ -406,6 +421,16 @@ interface PageTabState {
    * a blank starter tab (chooser or empty browser); otherwise appends.
    */
   openBrowserPreview: (url: string) => void;
+  /**
+   * Open an agent terminal stream (read-only) in a terminal tab. Reuses a tab
+   * already showing that stream; otherwise converts `fromTabId` (the chooser
+   * row the user clicked) in place, falling back to appending.
+   */
+  openAgentTerminalPreview: (
+    sourceId: string,
+    title: string,
+    fromTabId?: string
+  ) => void;
   selectSessionPreviewTab: (tabId: string) => void;
   closeSessionPreviewTab: (tabId: string) => void;
   updateBrowserPreviewTab: (
@@ -801,6 +826,34 @@ export const usePageTabStore = create<PageTabState>()(
             tabs: [...slice.tabs, tab],
             activeTabId: tab.id,
           };
+        }),
+      openAgentTerminalPreview: (sourceId, title, fromTabId) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const existing = slice.tabs.find(
+            (tab) => tab.type === 'terminal' && tab.agentSourceId === sourceId
+          );
+          if (existing) {
+            return { ...slice, open: true, activeTabId: existing.id };
+          }
+          const tab: SessionTerminalTab = {
+            id: nextSessionPreviewTabId('terminal'),
+            type: 'terminal',
+            title: title || 'Terminal',
+            agentSourceId: sourceId,
+          };
+          const replaceIndex = fromTabId
+            ? slice.tabs.findIndex(
+                (candidate) =>
+                  candidate.id === fromTabId && candidate.type === 'chooser'
+              )
+            : -1;
+          const tabs = [...slice.tabs];
+          if (replaceIndex >= 0) {
+            tabs[replaceIndex] = tab;
+          } else {
+            tabs.push(tab);
+          }
+          return { open: true, tabs, activeTabId: tab.id };
         }),
       selectSessionPreviewTab: (tabId) =>
         setSessionPreviewSlice(set, (slice) =>

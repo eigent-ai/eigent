@@ -13,49 +13,115 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { usePageTabStore } from '@/store/pageTabStore';
+import { useHost } from '@/host';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
 import { Check, Copy, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ShellTerminal } from './ShellTerminal';
 import type { TerminalSource } from './terminalSources';
 import { useSessionTerminalSources } from './useSessionTerminalSources';
 import { XtermViewer } from './XtermViewer';
 
+export interface TerminalTabProps {
+  tab: SessionTerminalTab;
+}
+
+/**
+ * Terminal surface router. A plain terminal tab is a real interactive local
+ * shell (a main-process PTY running the user's login shell). A tab opened
+ * from the chooser's project section shows that agent stream read-only.
+ */
+export function TerminalTab({ tab }: TerminalTabProps) {
+  if (tab.agentSourceId) {
+    return <AgentStreamTerminal sourceId={tab.agentSourceId} />;
+  }
+  return <LocalShellTerminal tab={tab} />;
+}
+
 /** One-line label for a stream: agent name, then the subtask it ran for. */
-function sourceLabel(source: TerminalSource): string {
+export function terminalSourceLabel(source: TerminalSource): string {
   return source.taskLabel
     ? `${source.agentName} · ${source.taskLabel}`
     : source.agentName;
 }
 
-/**
- * Live terminal output from the session's agents. Every subtask that ran
- * commands is a selectable stream; by default the tab follows the newest
- * stream as agents keep working, and picking an older one pins it (picking
- * the newest again resumes following).
- */
-export function TerminalTab() {
+/** Interactive local shell, started in the project's working folder. */
+function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
+  const { t } = useTranslation();
+  const host = useHost();
+  const openBrowserPreview = usePageTabStore(
+    (state) => state.openBrowserPreview
+  );
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const email = useAuthStore((state) => state.email);
+  const isDesktop = Boolean(host?.electronAPI?.terminalCreate);
+
+  // Resolve the project folder before spawning so the shell opens there
+  // (falls back to the home directory when unavailable).
+  const [cwd, setCwd] = useState<string | undefined>(undefined);
+  const [cwdResolved, setCwdResolved] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const api = host?.electronAPI;
+    if (!api?.getProjectFolderPath || !email || !projectId) {
+      setCwdResolved(true);
+      return;
+    }
+    api
+      .getProjectFolderPath(email, projectId)
+      .then((folderPath: string) => {
+        if (cancelled) return;
+        setCwd(folderPath || undefined);
+        setCwdResolved(true);
+      })
+      .catch(() => {
+        if (!cancelled) setCwdResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [host, email, projectId]);
+
+  if (!isDesktop) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
+        <SquareTerminal
+          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+          aria-hidden
+        />
+        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+          {t('layout.terminal-desktop-only', {
+            defaultValue: 'The terminal is available in the desktop app.',
+          })}
+        </p>
+      </div>
+    );
+  }
+  if (!cwdResolved) {
+    // One frame at most; avoids spawning in $HOME then "jumping" folders.
+    return <div className="h-full w-full" />;
+  }
+  return (
+    <ShellTerminal
+      shellId={tab.shellId ?? `session-shell:fallback:${tab.id}`}
+      cwd={cwd}
+      onOpenLink={openBrowserPreview}
+    />
+  );
+}
+
+/** Read-only viewer for one agent terminal stream (picked in the chooser). */
+function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   const { t } = useTranslation();
   const sources = useSessionTerminalSources();
   const openBrowserPreview = usePageTabStore(
     (state) => state.openBrowserPreview
   );
-
-  // null = follow the latest stream; a source id = pinned by the user.
-  const [pinnedSourceId, setPinnedSourceId] = useState<string | null>(null);
-  const latestSource = sources[sources.length - 1] ?? null;
-  const activeSource =
-    (pinnedSourceId
-      ? sources.find((source) => source.id === pinnedSourceId)
-      : undefined) ?? latestSource;
+  const source = sources.find((candidate) => candidate.id === sourceId);
 
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
@@ -68,9 +134,24 @@ export function TerminalTab() {
     []
   );
 
+  if (!source) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
+        <SquareTerminal
+          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+          aria-hidden
+        />
+        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+          {t('layout.terminal-stream-gone', {
+            defaultValue: 'This terminal stream is no longer available.',
+          })}
+        </p>
+      </div>
+    );
+  }
+
   const handleCopyAll = () => {
-    if (!activeSource) return;
-    void navigator.clipboard?.writeText(activeSource.lines.join('\n'));
+    void navigator.clipboard?.writeText(source.lines.join('\n'));
     setCopied(true);
     if (copiedTimerRef.current !== null) {
       window.clearTimeout(copiedTimerRef.current);
@@ -78,66 +159,21 @@ export function TerminalTab() {
     copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
   };
 
-  if (!activeSource) {
-    return (
-      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <SquareTerminal
-          className="h-8 w-8 text-ds-icon-neutral-muted-default"
-          aria-hidden
-        />
-        <p className="text-sm font-medium text-ds-text-neutral-default-default">
-          {t('layout.preview-terminal-empty', {
-            defaultValue: 'No terminal output yet',
-          })}
-        </p>
-        <p className="max-w-[360px] text-xs text-ds-text-neutral-muted-default">
-          {t('layout.preview-terminal-empty-desc', {
-            defaultValue:
-              'Commands run by agents in this session will stream here as they execute.',
-          })}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="flex h-[44px] shrink-0 items-center gap-1.5 px-2">
-        {sources.length > 1 ? (
-          <Select
-            value={activeSource.id}
-            onValueChange={(id) =>
-              // Re-picking the newest stream resumes follow-latest.
-              setPinnedSourceId(id === latestSource?.id ? null : id)
-            }
-          >
-            <SelectTrigger
-              size="sm"
-              variant="secondary"
-              className="w-auto min-w-0 max-w-[360px]"
-              aria-label={t('layout.preview-terminal-source', {
-                defaultValue: 'Terminal stream',
-              })}
-            >
-              <span className="truncate">
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {sources.map((source) => (
-                <SelectItem key={source.id} value={source.id}>
-                  <span className="block max-w-[340px] truncate">
-                    {sourceLabel(source)}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <span className="truncate px-1 text-sm text-ds-text-neutral-muted-default">
-            {sourceLabel(activeSource)}
-          </span>
-        )}
+      <div className="flex h-[44px] shrink-0 items-center gap-2 px-3">
+        <span
+          aria-hidden
+          className={cn(
+            'h-2 w-2 shrink-0 rounded-full',
+            source.status === 'running'
+              ? 'animate-pulse bg-ds-bg-status-running-default-default'
+              : 'bg-ds-bg-neutral-muted-default'
+          )}
+        />
+        <span className="truncate text-sm text-ds-text-neutral-muted-default">
+          {terminalSourceLabel(source)}
+        </span>
         <div className="min-w-0 flex-1" />
         <TooltipSimple
           content={t('layout.preview-terminal-copy', {
@@ -164,8 +200,8 @@ export function TerminalTab() {
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         <XtermViewer
-          sourceId={activeSource.id}
-          lines={activeSource.lines}
+          sourceId={source.id}
+          lines={source.lines}
           onOpenLink={openBrowserPreview}
         />
       </div>

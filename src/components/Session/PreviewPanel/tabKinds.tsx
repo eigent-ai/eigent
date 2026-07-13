@@ -67,7 +67,7 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultLabel: 'Terminal',
     descriptionKey: 'layout.preview-kind-terminal-desc',
     defaultDescription:
-      'Watch live output from commands run by this session’s agents.',
+      'Open a local terminal that starts in this project’s folder.',
   },
 ];
 

@@ -18,12 +18,13 @@ import {
   type TerminalChatEntry,
   type TerminalSource,
 } from '@/components/Session/PreviewPanel/tabs/terminal/terminalSources';
+import { HostProvider } from '@/host';
+import type { SessionTerminalTab } from '@/store/pageTabStore';
 import { fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// xterm needs real layout/canvas APIs jsdom lacks; the viewer is a thin
-// wrapper, so stub it and assert on the stream routed into it.
+// Both xterm surfaces need real layout/canvas APIs jsdom lacks; they are thin
+// wrappers, so stub them and assert on what gets routed into them.
 vi.mock('@/components/Session/PreviewPanel/tabs/terminal/XtermViewer', () => ({
   XtermViewer: ({ sourceId, lines }: { sourceId: string; lines: string[] }) => (
     <div data-testid="xterm-viewer" data-source-id={sourceId}>
@@ -31,6 +32,18 @@ vi.mock('@/components/Session/PreviewPanel/tabs/terminal/XtermViewer', () => ({
     </div>
   ),
 }));
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/terminal/ShellTerminal',
+  () => ({
+    ShellTerminal: ({ shellId, cwd }: { shellId: string; cwd?: string }) => (
+      <div
+        data-testid="shell-terminal"
+        data-shell-id={shellId}
+        data-cwd={cwd}
+      />
+    ),
+  })
+);
 
 let mockSources: TerminalSource[] = [];
 vi.mock(
@@ -40,112 +53,104 @@ vi.mock(
   })
 );
 
-// Radix Select relies on pointer-capture and scroll APIs jsdom lacks.
+// The real auth store drags i18n (and more) into the module graph; the tab
+// only reads `email` to resolve the project folder.
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (selector?: (state: { email: string }) => unknown) => {
+    const state = { email: 'test@example.com' };
+    return selector ? selector(state) : state;
+  },
+}));
+
 beforeEach(() => {
   mockSources = [];
-  window.HTMLElement.prototype.scrollIntoView = vi.fn();
-  window.HTMLElement.prototype.hasPointerCapture = vi.fn();
-  window.HTMLElement.prototype.releasePointerCapture = vi.fn();
 });
+
+const desktopHost = {
+  ipcRenderer: null,
+  electronAPI: {
+    terminalCreate: vi.fn(),
+    getProjectFolderPath: vi.fn().mockResolvedValue('/tmp/project'),
+  },
+};
+
+function shellTab(): SessionTerminalTab {
+  return {
+    id: 'tab-1',
+    type: 'terminal',
+    title: 'Terminal',
+    shellId: 'session-shell:project-1:tab-1',
+  };
+}
+
+function agentTab(sourceId: string): SessionTerminalTab {
+  return {
+    id: 'tab-2',
+    type: 'terminal',
+    title: 'Developer Agent',
+    agentSourceId: sourceId,
+  };
+}
 
 function source(
   id: string,
   agentName: string,
-  lines: string[]
+  lines: string[],
+  status: TerminalSource['status'] = 'idle'
 ): TerminalSource {
-  return { id, agentName, taskLabel: `subtask for ${id}`, lines };
+  return { id, agentName, taskLabel: `subtask for ${id}`, lines, status };
+}
+
+function renderTab(tab: SessionTerminalTab, host: unknown = desktopHost) {
+  return render(
+    <HostProvider host={host as never}>
+      <TerminalTab tab={tab} />
+    </HostProvider>
+  );
 }
 
 describe('TerminalTab', () => {
-  it('shows the empty state while no agent has produced output', () => {
-    render(<TerminalTab />);
-    expect(
-      screen.getByText('layout.preview-terminal-empty')
-    ).toBeInTheDocument();
+  it('renders an interactive local shell for a plain terminal tab', async () => {
+    renderTab(shellTab());
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-shell-id',
+      'session-shell:project-1:tab-1'
+    );
   });
 
-  it('renders the newest stream by default', () => {
-    mockSources = [
-      source('a', 'Developer Agent', ['echo one']),
-      source('b', 'Developer Agent', ['echo two']),
-    ];
-    render(<TerminalTab />);
+  it('tells web users the shell needs the desktop app', () => {
+    renderTab(shellTab(), { ipcRenderer: null, electronAPI: null });
+    expect(
+      screen.getByText('layout.terminal-desktop-only')
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
+  });
+
+  it('renders the read-only viewer for an agent stream tab', () => {
+    mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
+    renderTab(agentTab('a'));
     expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
       'data-source-id',
-      'b'
+      'a'
     );
     expect(screen.getByTestId('xterm-viewer')).toHaveTextContent('echo two');
+    expect(screen.getByText(/Developer Agent/)).toBeInTheDocument();
   });
 
-  it('pins a selected stream, then resumes follow-latest when the newest is re-picked', async () => {
-    const user = userEvent.setup();
-    mockSources = [
-      source('a', 'Developer Agent', ['echo one']),
-      source('b', 'Developer Agent', ['echo two']),
-    ];
-    const { rerender } = render(<TerminalTab />);
-
-    // Pin the older stream.
-    await user.click(
-      screen.getByRole('combobox', { name: 'layout.preview-terminal-source' })
-    );
-    await user.click(screen.getByRole('option', { name: /subtask for a/ }));
-    expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
-      'data-source-id',
-      'a'
-    );
-
-    // A new stream arrives — the pin holds.
-    mockSources = [...mockSources, source('c', 'Developer Agent', ['pwd'])];
-    rerender(<TerminalTab />);
-    expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
-      'data-source-id',
-      'a'
-    );
-
-    // Picking the newest stream resumes following later arrivals.
-    await user.click(
-      screen.getByRole('combobox', { name: 'layout.preview-terminal-source' })
-    );
-    await user.click(screen.getByRole('option', { name: /subtask for c/ }));
-    mockSources = [...mockSources, source('d', 'Developer Agent', ['ls'])];
-    rerender(<TerminalTab />);
-    expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
-      'data-source-id',
-      'd'
-    );
+  it('shows a notice when the agent stream is gone', () => {
+    mockSources = [];
+    renderTab(agentTab('missing'));
+    expect(screen.getByText('layout.terminal-stream-gone')).toBeInTheDocument();
   });
 
-  it('falls back to the latest stream when the pinned one disappears', async () => {
-    const user = userEvent.setup();
-    mockSources = [
-      source('a', 'Developer Agent', ['echo one']),
-      source('b', 'Developer Agent', ['echo two']),
-    ];
-    const { rerender } = render(<TerminalTab />);
-    await user.click(
-      screen.getByRole('combobox', { name: 'layout.preview-terminal-source' })
-    );
-    await user.click(screen.getByRole('option', { name: /subtask for a/ }));
-
-    mockSources = [source('b', 'Developer Agent', ['echo two'])];
-    rerender(<TerminalTab />);
-    expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
-      'data-source-id',
-      'b'
-    );
-  });
-
-  it('copies the visible stream to the clipboard', async () => {
-    // userEvent.setup() would install its own clipboard stub over this one,
-    // so drive the click with fireEvent instead.
+  it('copies the agent stream to the clipboard', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
       configurable: true,
     });
     mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
-    render(<TerminalTab />);
+    renderTab(agentTab('a'));
 
     fireEvent.click(
       screen.getByRole('button', { name: 'layout.preview-terminal-copy' })
@@ -171,6 +176,7 @@ describe('collectTerminalSources', () => {
                   {
                     id: 'sub-1',
                     content: 'Install deps',
+                    status: 'running',
                     terminal: ['npm install'],
                   },
                   { id: 'sub-2', content: 'No commands here' },
@@ -207,6 +213,7 @@ describe('collectTerminalSources', () => {
         agentName: 'Developer Agent',
         taskLabel: 'Install deps',
         lines: ['npm install'],
+        status: 'running',
       },
       {
         // Empty agent name falls back to the humanized type.
@@ -214,6 +221,7 @@ describe('collectTerminalSources', () => {
         agentName: 'CAMEL Agent',
         taskLabel: 'Run tests',
         lines: ['ok'],
+        status: 'idle',
       },
     ]);
   });

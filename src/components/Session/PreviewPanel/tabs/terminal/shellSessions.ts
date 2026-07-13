@@ -86,13 +86,13 @@ function notifyState(entry: ShellSessionEntry) {
 function bindIpc(api: TerminalHostApi) {
   if (ipcBound) return;
   ipcBound = true;
-  api.onTerminalData(({ id, data }) => {
+  api.onTerminalData(({ id, data }: { id: string; data: string }) => {
     const entry = sessions.get(id);
     if (!entry) return;
     appendToBuffer(entry, data);
     entry.dataListeners.forEach((listener) => listener(data));
   });
-  api.onTerminalExit(({ id, exitCode }) => {
+  api.onTerminalExit(({ id, exitCode }: { id: string; exitCode: number }) => {
     const entry = sessions.get(id);
     if (!entry) return;
     entry.exited = true;

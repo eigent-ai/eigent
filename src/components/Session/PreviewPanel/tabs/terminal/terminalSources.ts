@@ -30,6 +30,11 @@ export interface TerminalSource {
    * than rely on array identity.
    */
   lines: string[];
+  /**
+   * `running` while the owning subtask is still executing (a started server
+   * or long-running script); `idle` once it finished.
+   */
+  status: 'running' | 'idle';
 }
 
 /** The slice of a chat store's state the collector needs. */
@@ -67,6 +72,7 @@ export function collectTerminalSources(
               agent.name || AGENT_TYPE_LABELS[agent.type] || agent.type,
             taskLabel: (subtask.content || '').trim(),
             lines: subtask.terminal,
+            status: subtask.status === 'running' ? 'running' : 'idle',
           });
         }
       }

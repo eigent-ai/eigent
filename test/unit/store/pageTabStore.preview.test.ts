@@ -80,6 +80,58 @@ describe('pageTabStore session preview', () => {
     });
   });
 
+  it('gives a fresh terminal tab a project-scoped shell id', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().tabs[0].id;
+
+    store.choosePreviewTabType(chooserId, 'terminal');
+    const terminal = slice().tabs[0];
+    expect(terminal.type).toBe('terminal');
+    expect(terminal.type === 'terminal' && terminal.shellId).toContain(
+      'session-shell:project-a:'
+    );
+    expect(terminal.type === 'terminal' && terminal.agentSourceId).toBeFalsy();
+  });
+
+  it('opens agent streams in terminal tabs, converting the chooser in place', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().tabs[0].id;
+
+    store.openAgentTerminalPreview(
+      'chat-1:turn-1:sub-1',
+      'Developer Agent',
+      chooserId
+    );
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
+      type: 'terminal',
+      title: 'Developer Agent',
+      agentSourceId: 'chat-1:turn-1:sub-1',
+    });
+    const firstTabId = slice().tabs[0].id;
+
+    // Same stream again — focuses the existing tab instead of duplicating.
+    store.addChooserPreviewTab();
+    const secondChooser = slice().activeTabId!;
+    store.openAgentTerminalPreview(
+      'chat-1:turn-1:sub-1',
+      'Developer Agent',
+      secondChooser
+    );
+    expect(slice().activeTabId).toBe(firstTabId);
+    expect(slice().tabs.filter((tab) => tab.type === 'terminal')).toHaveLength(
+      1
+    );
+
+    // A different stream without a chooser reference appends a new tab.
+    store.openAgentTerminalPreview('chat-1:turn-1:sub-2', 'Developer Agent');
+    expect(slice().tabs.filter((tab) => tab.type === 'terminal')).toHaveLength(
+      2
+    );
+  });
+
   it('reuses the chooser tab when a file is opened', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();

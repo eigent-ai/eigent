@@ -16,7 +16,11 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  usePageTabStore,
+  type SessionPreviewTab,
+} from '@/store/pageTabStore';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +30,7 @@ import { CanvasTab } from './tabs/CanvasTab';
 import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
+import { disposeShellSession } from './tabs/terminal/shellSessions';
 import { TerminalTab } from './tabs/terminal/TerminalTab';
 
 // Tabs render at a comfortable default width and shrink evenly as more are
@@ -72,10 +77,25 @@ export function PreviewPanel({
   const closeSessionPreviewTab = usePageTabStore(
     (state) => state.closeSessionPreviewTab
   );
+  const openAgentTerminalPreview = usePageTabStore(
+    (state) => state.openAgentTerminalPreview
+  );
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [activeTabId, tabs]
+  );
+
+  const handleCloseTab = useCallback(
+    (tab: SessionPreviewTab) => {
+      // Closing a shell tab kills its PTY — the shell only outlives the UI
+      // across tab *switches*, never past an explicit close.
+      if (tab.type === 'terminal' && tab.shellId && host?.electronAPI) {
+        disposeShellSession(host.electronAPI, tab.shellId);
+      }
+      closeSessionPreviewTab(tab.id);
+    },
+    [closeSessionPreviewTab, host]
   );
   // Embedded browsing relies on the desktop host's <webview> tag; on the web
   // the panel still works but URLs open in a regular browser tab.
@@ -143,6 +163,13 @@ export function PreviewPanel({
         return (
           <ChooserTab
             onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
+            onChooseAgentStream={(source) =>
+              openAgentTerminalPreview(
+                source.id,
+                source.agentName,
+                activeTab.id
+              )
+            }
           />
         );
       case 'browser':
@@ -160,8 +187,8 @@ export function PreviewPanel({
       case 'review':
         return <ReviewTab />;
       case 'terminal':
-        // Keyed so each terminal tab keeps its own pinned-stream state.
-        return <TerminalTab key={activeTab.id} />;
+        // Keyed so each terminal tab keeps its own shell / stream state.
+        return <TerminalTab key={activeTab.id} tab={activeTab} />;
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:
@@ -221,7 +248,7 @@ export function PreviewPanel({
                     })}
                     onClick={(event) => {
                       event.stopPropagation();
-                      closeSessionPreviewTab(tab.id);
+                      handleCloseTab(tab);
                     }}
                     className={cn(
                       'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
