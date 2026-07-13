@@ -22,8 +22,9 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
+  buildSkillScopeAgentOptions,
   getWorkflowAgentDisplay,
-  WORKFLOW_AGENT_LIST,
+  normalizeSkillScopeAgentId,
 } from '@/components/WorkFlow/agents';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkerList } from '@/store/authStore';
@@ -64,6 +65,16 @@ type SkillListItemProps =
   | SkillListItemDefaultProps
   | SkillListItemPlaceholderProps;
 
+function selectedAgentsInclude(
+  selectedAgents: string[],
+  agentValue: string
+): boolean {
+  const target = normalizeSkillScopeAgentId(agentValue);
+  return selectedAgents.some(
+    (agent) => normalizeSkillScopeAgentId(agent) === target
+  );
+}
+
 export default function SkillListItem(props: SkillListItemProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -72,27 +83,10 @@ export default function SkillListItem(props: SkillListItemProps) {
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
 
-  type AgentOption = {
-    value: string;
-    label: string;
-  };
-
-  const allAgents = useMemo(() => {
-    const workflowAgents: AgentOption[] = WORKFLOW_AGENT_LIST.filter(
-      (a) => a.id !== 'social_media_agent'
-    ).map((a) => ({ value: a.id, label: a.name }));
-    const workerAgents: AgentOption[] = workerList.map((w) => ({
-      value: w.name,
-      label: w.name,
-    }));
-    const combined = [...workflowAgents];
-    workerAgents.forEach((agent) => {
-      if (!combined.some((a) => a.value === agent.value)) {
-        combined.push(agent);
-      }
-    });
-    return combined;
-  }, [workerList]);
+  const allAgents = useMemo(
+    () => buildSkillScopeAgentOptions(workerList),
+    [workerList]
+  );
 
   if (props.variant === 'placeholder') {
     const isClickable = props.onAddClick != null;
@@ -152,9 +146,10 @@ export default function SkillListItem(props: SkillListItemProps) {
   };
 
   const handleToggleAgent = (agentValue: string) => {
+    const canonicalValue = normalizeSkillScopeAgentId(agentValue) || agentValue;
     if (isAllAgentsSelected) {
       const newSelectedAgents = allAgents
-        .filter((a) => a.value !== agentValue)
+        .filter((a) => a.value !== canonicalValue)
         .map((a) => a.value);
       handleScopeChange({
         isGlobal: false,
@@ -163,10 +158,25 @@ export default function SkillListItem(props: SkillListItemProps) {
       return;
     }
 
-    const isSelected = skill.scope.selectedAgents.includes(agentValue);
+    const isSelected = selectedAgentsInclude(
+      skill.scope.selectedAgents,
+      canonicalValue
+    );
     const newSelectedAgents = isSelected
-      ? skill.scope.selectedAgents.filter((a) => a !== agentValue)
-      : [...skill.scope.selectedAgents, agentValue];
+      ? skill.scope.selectedAgents.filter(
+          (a) => normalizeSkillScopeAgentId(a) !== canonicalValue
+        )
+      : [
+          ...skill.scope.selectedAgents.map(
+            (a) => normalizeSkillScopeAgentId(a) || a
+          ),
+          canonicalValue,
+        ].filter(
+          (value, index, list) =>
+            list.findIndex(
+              (item) => normalizeSkillScopeAgentId(item) === normalizeSkillScopeAgentId(value)
+            ) === index
+        );
     handleScopeChange({
       isGlobal: false,
       selectedAgents: newSelectedAgents,
@@ -277,7 +287,7 @@ export default function SkillListItem(props: SkillListItemProps) {
             {allAgents.map((agent) => {
               const isSelected =
                 isAllAgentsSelected ||
-                skill.scope.selectedAgents.includes(agent.value);
+                selectedAgentsInclude(skill.scope.selectedAgents, agent.value);
               const display = getWorkflowAgentDisplay(agent.value);
               const icon = display?.icon ?? (
                 <Bot size={16} className="shrink-0 text-inherit" />
