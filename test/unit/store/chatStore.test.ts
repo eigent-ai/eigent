@@ -23,7 +23,7 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -1001,6 +1001,13 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('SSE request usage events', () => {
+    // The file-level beforeEach only clears calls (vi.clearAllMocks), so the
+    // event-pushing implementation installed below would leak into every
+    // later startTask test without this reset.
+    afterEach(() => {
+      vi.mocked(fetchEventSource).mockReset();
+    });
+
     it('should accumulate tokens from request_usage event in non-stream mode', async () => {
       vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
         url?.includes?.('snapshots')

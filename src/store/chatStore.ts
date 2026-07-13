@@ -95,6 +95,12 @@ const hasApiCode = (value: unknown, code: string) =>
 
 let _host: AppHost | null = null;
 
+// request_usage tokens for the step currently running on each agent, keyed
+// by `${taskId}:${agentId}`. Once request-level reporting is active the
+// backend zeroes deactivate_agent.tokens, so this preserves the per-step
+// "did this agent actually generate a response" signal.
+const requestUsageStepTokens = new Map<string, number>();
+
 export function injectHost(host: AppHost | null): void {
   _host = host;
 }
@@ -2678,6 +2684,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (agentMessages.step === AgentStep.REQUEST_USAGE) {
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              requestUsageStepTokens.set(
+                stepKey,
+                agentMessages.data.step_total_tokens ||
+                  (requestUsageStepTokens.get(stepKey) || 0) +
+                    agentMessages.data.tokens
+              );
             }
             return;
           }
@@ -2771,12 +2784,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              // Use the task's accumulated total rather than the per-event
-              // deactivate_agent.tokens: once request-level usage reporting is
-              // active the backend zeroes that per-event field (tokens are
-              // reported via request_usage instead), so relying on it here would
-              // always be false.
-              const hasTokens = getTokens(currentTaskId) > 0;
+              // deactivate_agent.tokens is zeroed once request-level usage
+              // reporting is active, so fall back to the tokens this agent's
+              // current step reported via request_usage. Keeping the check
+              // per-step (not the task's accumulated total) is what lets an
+              // errored/empty step be told apart from a real reply.
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              const stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
+              const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&

@@ -46,6 +46,7 @@ from app.service.task import (
     ActionDeactivateToolkitData,
     ActionRequestUsageData,
     get_task_lock,
+    get_task_lock_if_exists,
     set_process_task,
 )
 from app.utils.event_loop_utils import _schedule_async_task
@@ -145,9 +146,13 @@ class ListenChatAgent(ChatAgent):
         request_usage = payload.get("request_usage") or {}
         step_usage = payload.get("step_usage") or {}
         request_tokens = int(request_usage.get("total_tokens") or 0)
-        if request_tokens > 0:
+        # The task lock may already be gone when a model request completes
+        # after the user stopped the task; CAMEL swallows exceptions raised
+        # here, which would also silently skip the chained user callback.
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        if request_tokens > 0 and task_lock is not None:
             _schedule_async_task(
-                get_task_lock(self.api_task_id).put_queue(
+                task_lock.put_queue(
                     ActionRequestUsageData(
                         data={
                             "agent_name": self.agent_name,
@@ -231,7 +236,17 @@ class ListenChatAgent(ChatAgent):
         """
         if self._camel_has_request_usage:
             tokens = 0
-        task_lock = get_task_lock(self.api_task_id)
+        # The lock is gone when the task was stopped while the model call was
+        # in flight; the pre-refactor inline enqueues used the lock captured
+        # at step start, so a missing lock must not fail the whole step.
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        if task_lock is None:
+            logger.warning(
+                "Task lock %s missing; dropping deactivate event for %s",
+                self.api_task_id,
+                self.agent_name,
+            )
+            return
         _schedule_async_task(
             task_lock.put_queue(
                 ActionDeactivateAgentData(
