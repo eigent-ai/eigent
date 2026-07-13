@@ -601,6 +601,8 @@ describe('getBlockHeaderParts', () => {
         toolkitName: 'File Toolkit',
         method: 'open',
         detail: '',
+        input: '',
+        output: '',
         status: 'running',
       },
     ]);
@@ -620,6 +622,8 @@ describe('getBlockHeaderParts', () => {
         toolkitName: 'File Toolkit',
         method: 'open',
         detail: '',
+        input: '',
+        output: '',
         status: 'done',
       },
       {
@@ -637,6 +641,8 @@ describe('getBlockHeaderParts', () => {
         toolkitName: 'File Toolkit',
         method: 'write',
         detail: '',
+        input: '',
+        output: '',
         status: 'running',
       },
     ]);
@@ -655,6 +661,8 @@ describe('getBlockHeaderParts', () => {
           toolkitName: 'File Toolkit',
           method: 'open',
           detail: '',
+          input: '',
+          output: '',
           status: 'done',
         },
       ],
@@ -695,6 +703,8 @@ describe('getBlockHeaderParts', () => {
           toolkitName: 'A',
           method: 'register agent',
           detail: '',
+          input: '',
+          output: '',
           status: 'done',
         },
         {
@@ -704,6 +714,8 @@ describe('getBlockHeaderParts', () => {
           toolkitName: 'C',
           method: 'register agent',
           detail: '',
+          input: '',
+          output: '',
           status: 'running',
         },
       ],
@@ -748,6 +760,8 @@ describe('groupBlocksByAgent', () => {
       toolkitName: 'Toolkit',
       method: 'Method',
       detail: '',
+      input: '',
+      output: '',
       status,
     };
   }
