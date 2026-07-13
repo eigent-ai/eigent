@@ -21,6 +21,7 @@ import '@xterm/xterm/css/xterm.css';
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import './previewTerminal.css';
 import {
   ensureShellSession,
   getShellBuffer,
@@ -35,6 +36,8 @@ import {
 import {
   TERMINAL_BASE_THEME,
   TERMINAL_FONT_FAMILY,
+  TERMINAL_FONT_SIZE,
+  TERMINAL_LINE_HEIGHT,
   TERMINAL_SCREEN_BACKGROUND,
 } from './terminalTheme';
 
@@ -80,8 +83,8 @@ export function ShellTerminal({
 
     const terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 12,
-      lineHeight: 1.4,
+      fontSize: TERMINAL_FONT_SIZE,
+      lineHeight: TERMINAL_LINE_HEIGHT,
       fontFamily: TERMINAL_FONT_FAMILY,
       scrollback: 5000,
       theme: {
@@ -189,7 +192,7 @@ export function ShellTerminal({
 
   return (
     <div
-      className="relative h-full w-full"
+      className="preview-terminal-screen relative h-full w-full"
       style={{ backgroundColor: TERMINAL_SCREEN_BACKGROUND }}
     >
       <div ref={containerRef} className="h-full w-full p-3" />

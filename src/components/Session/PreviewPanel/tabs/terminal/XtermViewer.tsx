@@ -17,9 +17,12 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { useEffect, useRef } from 'react';
+import './previewTerminal.css';
 import {
   TERMINAL_BASE_THEME,
   TERMINAL_FONT_FAMILY,
+  TERMINAL_FONT_SIZE,
+  TERMINAL_LINE_HEIGHT,
   TERMINAL_SCREEN_BACKGROUND,
 } from './terminalTheme';
 
@@ -71,8 +74,8 @@ export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
       disableStdin: true,
       convertEol: true,
       cursorBlink: false,
-      fontSize: 12,
-      lineHeight: 1.4,
+      fontSize: TERMINAL_FONT_SIZE,
+      lineHeight: TERMINAL_LINE_HEIGHT,
       fontFamily: TERMINAL_FONT_FAMILY,
       scrollback: 5000,
       theme: TERMINAL_THEME,
@@ -155,7 +158,7 @@ export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
 
   return (
     <div
-      className="h-full w-full"
+      className="preview-terminal-screen h-full w-full"
       style={{ backgroundColor: TERMINAL_SCREEN_BACKGROUND }}
     >
       <div ref={containerRef} className="h-full w-full p-3" />

@@ -26,5 +26,12 @@ export const TERMINAL_BASE_THEME = {
   selectionBackground: '#3f3f46',
 };
 
-export const TERMINAL_FONT_FAMILY =
-  'ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace';
+/**
+ * Must stay in sync with `previewTerminal.css` and tailwind's `font-mono`
+ * stack: xterm measures character cells with this family, and the CSS pins
+ * the rendered glyphs to the same one (the app's global `* { font-family:
+ * 'Inter' }` rule would otherwise repaint them proportionally).
+ */
+export const TERMINAL_FONT_FAMILY = 'SFMono-Regular, Menlo, monospace';
+export const TERMINAL_FONT_SIZE = 12;
+export const TERMINAL_LINE_HEIGHT = 1.2;
