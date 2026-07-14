@@ -37,6 +37,7 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
+from app.component.environment import env
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -53,6 +54,21 @@ from app.utils.event_loop_utils import _schedule_async_task
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")
+
+
+# Default 30 minutes; long agent turns (e.g. writing many chapters in one
+# run) can legitimately exceed it, so allow tuning without a rebuild.
+# A non-positive value disables the per-step timeout entirely.
+def default_step_timeout() -> float | None:
+    raw = env("AGENT_STEP_TIMEOUT_SECONDS", "1800")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid AGENT_STEP_TIMEOUT_SECONDS value %r; using 1800", raw
+        )
+        return 1800.0
+    return value if value > 0 else None
 
 
 class ListenChatAgent(ChatAgent):
@@ -102,7 +118,7 @@ class ListenChatAgent(ChatAgent):
         pause_event: asyncio.Event | None = None,
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
-        step_timeout: float | None = 1800,  # 30 minutes
+        step_timeout: float | None = None,
         model_reload_callback: (
             Callable[[], BaseModelBackend | ModelManager] | None
         ) = None,
@@ -114,6 +130,8 @@ class ListenChatAgent(ChatAgent):
         if self._camel_has_request_usage:
             kwargs["on_request_usage"] = self._on_request_usage
 
+        if step_timeout is None:
+            step_timeout = default_step_timeout()
         super().__init__(
             system_message=system_message,
             model=model,
