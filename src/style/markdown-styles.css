@@ -53,9 +53,15 @@
   line-height: var(--lineHeight-14, 20px);
 }
 
-/* Code blocks styling */
+/* Code blocks styling.
+   The imported github-markdown-css colors code text via variables keyed to
+   the OS color scheme (prefers-color-scheme), while this file forces the
+   code backgrounds per app theme (data-theme). When the two disagree the
+   text becomes invisible (near-white on the light background and vice
+   versa), so pin the text color alongside each forced background. */
 .markdown-body pre {
   background-color: #f6f8fa;
+  color: #1f2328;
   border-radius: 6px;
   padding: 16px;
   overflow-x: auto;
@@ -81,6 +87,7 @@
 
 .markdown-body pre code {
   background-color: transparent;
+  color: inherit;
   padding: 0;
   font-size: 100%;
 }
@@ -172,6 +179,7 @@
 
 [data-theme='dark'] .markdown-body pre {
   background-color: #161b22;
+  color: #e6edf3;
 }
 
 [data-theme='dark'] .markdown-body code {
