@@ -67,6 +67,8 @@ export interface ProjectPageSidebarProps {
   className?: string;
 }
 
+let didAttemptBootSessionResume = false;
+
 export default function ProjectPageSidebar({
   chatStore: _chatStore,
   className,
@@ -313,6 +315,35 @@ export default function ProjectPageSidebar({
       setActiveWorkspaceTab,
     ]
   );
+
+  // Boot-time session resume: reopen the last visited Project (the way an
+  // editor reopens its last workspace) instead of landing on the empty home
+  // tab. One-shot per renderer boot (launch or reload; the flag is module
+  // scoped so sidebar remounts within a session never re-trigger it), and
+  // only from the pristine boot state (default tab, no active Project), so
+  // deliberately navigating home later is never hijacked. Uses the same
+  // path as clicking the Project in the sidebar.
+  useEffect(() => {
+    if (didAttemptBootSessionResume) return;
+    didAttemptBootSessionResume = true;
+
+    if (activeWorkspaceTab !== 'workforce') return;
+    if (projectStore.activeProjectId) return;
+    if (!activeSpaceId) return;
+    const lastVisitedId =
+      useSpaceStore.getState().lastVisitedProjectBySpace[activeSpaceId];
+    if (!lastVisitedId) return;
+    const lastVisitedMeta = projectMetasForActiveSpace.find(
+      (project) => project.id === lastVisitedId
+    );
+    if (!lastVisitedMeta || !shouldShowProjectInNavList(lastVisitedMeta)) {
+      return;
+    }
+    void selectProject(lastVisitedId);
+    // One-shot boot effect: later changes to these values must not
+    // re-trigger a resume.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navProjects = useMemo(
     () =>
