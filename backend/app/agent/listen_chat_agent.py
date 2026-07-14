@@ -20,7 +20,6 @@ from collections.abc import Callable
 from threading import Event
 from typing import Any
 
-from app.component.environment import env
 from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
 from camel.agents.chat_agent import (
@@ -37,6 +36,7 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
+from app.component.environment import env
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -53,7 +53,6 @@ from app.utils.event_loop_utils import _schedule_async_task
 logger = logging.getLogger("agent")
 
 
-
 # Default 30 minutes; long agent turns (e.g. writing many chapters in one
 # run) can legitimately exceed it, so allow tuning without a rebuild.
 # A non-positive value disables the per-step timeout entirely.
@@ -67,6 +66,7 @@ def default_step_timeout() -> float | None:
         )
         return 1800.0
     return value if value > 0 else None
+
 
 class ListenChatAgent(ChatAgent):
     _cdp_clone_lock = (
