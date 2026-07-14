@@ -29,6 +29,10 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
+  buildAgentModelConfigFromProvider,
+  splitProviderConfig,
+} from '@/lib/modelConfig';
+import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
@@ -1505,6 +1509,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         model_type: '',
         model_platform: '',
         api_url: '',
+        model_config_dict: {},
         extra_params: {},
         auth_source: undefined as 'codex_subscription' | undefined,
       };
@@ -1513,7 +1518,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           prefer: true,
         });
         const providerList = res.items || [];
-        console.log('providerList', providerList);
         const provider = providerList[0];
 
         if (!provider) {
@@ -1523,12 +1527,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
+        const { modelConfigDict, extraParams } = splitProviderConfig(
+          provider.encrypted_config
+        );
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
           model_platform: provider.provider_name,
           api_url: provider.endpoint_url || provider.api_url,
-          extra_params: provider.encrypted_config,
+          model_config_dict: modelConfigDict,
+          extra_params: extraParams,
           auth_source: undefined,
         };
       } else if (!type && modelType === 'cloud') {
@@ -1598,6 +1606,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_type: resolvedCloudModel.model.model_type,
           model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
+          model_config_dict: {},
           extra_params: {},
           auth_source: undefined,
         };
@@ -1607,6 +1616,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_type: codex_model_type || 'gpt-5.5',
           model_platform: 'openai',
           api_url: '',
+          model_config_dict: {},
           extra_params: {},
           auth_source: 'codex_subscription',
         };
@@ -1666,12 +1676,61 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      const workerProviderIds = !type
+        ? workerList
+            .map((worker) => worker.workerInfo?.model_provider_id)
+            .filter((providerId): providerId is number =>
+              Number.isInteger(providerId)
+            )
+        : [];
+      const workerProvidersById = new Map<number, any>();
+      if (workerProviderIds.length > 0) {
+        let workerProviderList: any[];
+        try {
+          const providersRes = await proxyFetchGet('/api/v1/providers');
+          workerProviderList = Array.isArray(providersRes)
+            ? providersRes
+            : providersRes.items || [];
+        } catch (error) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to load the model provider configured for a worker.',
+            { cause: error }
+          );
+        }
+
+        workerProviderList.forEach((provider) => {
+          workerProvidersById.set(Number(provider.id), provider);
+        });
+
+        const missingWorker = workerList.find((worker) => {
+          const providerId = worker.workerInfo?.model_provider_id;
+          return (
+            Number.isInteger(providerId) &&
+            !workerProvidersById.has(providerId as number)
+          );
+        });
+        if (missingWorker) {
+          finishStartupFailure();
+          throw new Error(
+            `The model provider configured for worker "${missingWorker.name}" is no longer available. Please edit the worker and select another model.`
+          );
+        }
+      }
+
       const addWorkers = workerList.map((worker) => {
+        const providerId = worker.workerInfo?.model_provider_id;
+        const provider = Number.isInteger(providerId)
+          ? workerProvidersById.get(providerId as number)
+          : undefined;
         return {
           name: worker.workerInfo?.name,
           description: worker.workerInfo?.description,
           tools: worker.workerInfo?.tools,
           mcp_tools: worker.workerInfo?.mcp_tools,
+          custom_model_config: provider
+            ? buildAgentModelConfigFromProvider(provider)
+            : undefined,
         };
       });
 
@@ -1813,6 +1872,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             model_type: apiModel.model_type,
             api_key: apiModel.api_key,
             api_url: apiModel.api_url,
+            model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
             auth_source: apiModel.auth_source,
             installed_mcp: { mcpServers: {} },

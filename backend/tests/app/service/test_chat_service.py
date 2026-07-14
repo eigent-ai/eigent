@@ -20,7 +20,7 @@ import pytest
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
-from app.model.chat import Chat, NewAgent
+from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.service.chat_service import (
     _extract_stream_chunk_content,
     _render_subtask_report,
@@ -1024,6 +1024,11 @@ class TestChatServiceAgentOperations:
             tools=["search", "code"],
             mcp_tools=None,
             env_path=".env",
+            custom_model_config=AgentModelConfig(
+                model_platform="aws-bedrock-converse",
+                api_key="super-secret-api-key",
+                extra_params={"aws_secret_access_key": "super-secret-aws-key"},
+            ),
         )
 
         mock_agent = MagicMock()
@@ -1038,10 +1043,23 @@ class TestChatServiceAgentOperations:
                 "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=MagicMock(),
             ),
+            patch("app.service.chat_service.logger") as mock_logger,
         ):
             result = await new_agent_model(agent_data, options)
 
             assert result is mock_agent
+            mock_logger.debug.assert_any_call(
+                "New agent data",
+                extra={
+                    "agent_name": "TestAgent",
+                    "tools": ["search", "code"],
+                    "has_mcp_tools": False,
+                    "has_custom_model_config": True,
+                },
+            )
+            logged_calls = repr(mock_logger.mock_calls)
+            assert "super-secret-api-key" not in logged_calls
+            assert "super-secret-aws-key" not in logged_calls
 
     @pytest.mark.asyncio
     async def test_construct_workforce(self, sample_chat_data, mock_task_lock):

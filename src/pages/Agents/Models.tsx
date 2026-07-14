@@ -44,9 +44,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { createHost } from '@/host/createHost';
 import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
+import {
+  buildProviderConfig,
+  formatModelConfigJson,
+  parseModelConfigJson,
+  splitProviderConfig,
+} from '@/lib/modelConfig';
 import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
@@ -161,6 +168,7 @@ export default function SettingModels() {
       apiHost: p.apiHost,
       is_valid: p.is_valid ?? false,
       model_type: p.model_type ?? '',
+      modelConfigJson: '',
       externalConfig: p.externalConfig
         ? p.externalConfig.map((ec) => ({ ...ec }))
         : undefined,
@@ -196,6 +204,7 @@ export default function SettingModels() {
       apiKey?: string;
       apiHost?: string;
       model_type?: string;
+      modelConfigJson?: string;
       externalConfig?: string;
     }[]
   >(() =>
@@ -401,6 +410,9 @@ export default function SettingModels() {
               (p: any) => p.provider_name === item.id
             );
             if (found) {
+              const { modelConfigDict } = splitProviderConfig(
+                found.encrypted_config
+              );
               return {
                 ...fi,
                 provider_id: found.id,
@@ -410,6 +422,10 @@ export default function SettingModels() {
                 is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
+                modelConfigJson:
+                  Object.keys(modelConfigDict).length > 0
+                    ? formatModelConfigJson(modelConfigDict)
+                    : '',
                 externalConfig: fi.externalConfig
                   ? fi.externalConfig.map((ec) => {
                       if (
@@ -633,9 +649,16 @@ export default function SettingModels() {
   };
 
   const handleVerify = async (idx: number) => {
-    const { apiKey, apiHost, externalConfig, model_type, provider_id } =
-      form[idx];
+    const {
+      apiKey,
+      apiHost,
+      externalConfig,
+      model_type,
+      modelConfigJson,
+      provider_id,
+    } = form[idx];
     let hasError = false;
+    let modelConfigDict: Record<string, unknown> = {};
     const newErrors = [...errors];
     if (items[idx].id !== 'local' && items[idx].id !== 'aws-bedrock-converse') {
       if (!apiKey || apiKey.trim() === '') {
@@ -657,6 +680,15 @@ export default function SettingModels() {
     } else {
       newErrors[idx].model_type = '';
     }
+    try {
+      modelConfigDict = parseModelConfigJson(modelConfigJson);
+      newErrors[idx].modelConfigJson = '';
+    } catch {
+      newErrors[idx].modelConfigJson = t(
+        'setting.model-parameters-must-be-valid-json-object'
+      );
+      hasError = true;
+    }
     setErrors(newErrors);
     if (hasError) {
       showConfigCardRing('error');
@@ -666,20 +698,34 @@ export default function SettingModels() {
     showConfigCardRing('configuring');
     setLoading(idx);
     const item = items[idx];
-    let external: any = {};
-    if (form[idx]?.externalConfig) {
-      form[idx]?.externalConfig.map((item) => {
+    const external: Record<string, unknown> = {};
+    if (externalConfig) {
+      externalConfig.forEach((item) => {
         external[item.key] = item.value;
       });
     }
 
-    console.log(form[idx]);
+    setForm((currentForm) =>
+      currentForm.map((entry, entryIdx) =>
+        entryIdx === idx
+          ? {
+              ...entry,
+              modelConfigJson:
+                Object.keys(modelConfigDict).length > 0
+                  ? formatModelConfigJson(modelConfigDict)
+                  : '',
+            }
+          : entry
+      )
+    );
+
     try {
       const res = await fetchPost('/model/validate', {
         model_platform: item.id,
         model_type: form[idx].model_type,
         api_key: form[idx].apiKey || null,
         url: form[idx].apiHost,
+        model_config_dict: modelConfigDict,
         extra_params: external,
       });
       if (res.is_tool_calls && res.is_valid) {
@@ -724,13 +770,8 @@ export default function SettingModels() {
       endpoint_url: form[idx].apiHost,
       is_valid: toProviderValidStatus(true),
       model_type: form[idx].model_type,
+      encrypted_config: buildProviderConfig(external, modelConfigDict),
     };
-    if (externalConfig) {
-      data.encrypted_config = {};
-      externalConfig.forEach((ec) => {
-        data.encrypted_config[ec.key] = ec.value;
-      });
-    }
     try {
       if (provider_id) {
         await proxyFetchPut(`/api/v1/provider/${provider_id}`, data);
@@ -747,6 +788,9 @@ export default function SettingModels() {
             (p: any) => p.provider_name === item.id
           );
           if (found) {
+            const { modelConfigDict } = splitProviderConfig(
+              found.encrypted_config
+            );
             return {
               ...fi,
               provider_id: found.id,
@@ -756,6 +800,10 @@ export default function SettingModels() {
               is_valid: getProviderValid(found),
               prefer: found.prefer ?? false,
               model_type: found.model_type ?? fi.model_type ?? '',
+              modelConfigJson:
+                Object.keys(modelConfigDict).length > 0
+                  ? formatModelConfigJson(modelConfigDict)
+                  : '',
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -1123,6 +1171,7 @@ export default function SettingModels() {
             apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
+            modelConfigJson: '',
             externalConfig: item.externalConfig
               ? item.externalConfig.map((ec) => ({ ...ec, value: '' }))
               : undefined,
@@ -1133,7 +1182,14 @@ export default function SettingModels() {
       );
       setErrors((prev) =>
         prev.map((er, i) =>
-          i === idx ? ({ apiKey: '', apiHost: '', model_type: '' } as any) : er
+          i === idx
+            ? ({
+                apiKey: '',
+                apiHost: '',
+                model_type: '',
+                modelConfigJson: '',
+              } as any)
+            : er
         )
       );
       if (activeModelIdx === idx) {
@@ -2004,6 +2060,33 @@ export default function SettingModels() {
                 }}
               />
             )}
+            <Textarea
+              id={`modelParameters-${item.id}`}
+              variant="enhanced"
+              title={t('setting.model-parameters-setting')}
+              state={errors[idx]?.modelConfigJson ? 'error' : 'default'}
+              note={errors[idx]?.modelConfigJson ?? undefined}
+              placeholder={t('setting.model-parameters-placeholder')}
+              value={form[idx].modelConfigJson}
+              rows={5}
+              spellCheck={false}
+              className="font-mono"
+              onChange={(e) => {
+                const value = e.target.value;
+                setForm((currentForm) =>
+                  currentForm.map((entry, entryIdx) =>
+                    entryIdx === idx
+                      ? { ...entry, modelConfigJson: value }
+                      : entry
+                  )
+                );
+                setErrors((currentErrors) =>
+                  currentErrors.map((entry, entryIdx) =>
+                    entryIdx === idx ? { ...entry, modelConfigJson: '' } : entry
+                  )
+                );
+              }}
+            />
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
