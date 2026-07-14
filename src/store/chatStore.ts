@@ -3350,6 +3350,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 role: 'agent',
                 content: `❌ **Error**: ${errorMessage}`,
               });
+              // Record the tokens consumed before the failure so the run's
+              // spend is not lost from the history row (a failed run
+              // otherwise stays at zero tokens forever).
+              if (!type && historyId && !isProjectBusyError) {
+                const tokensSoFar = getTokens(currentTaskId);
+                if (tokensSoFar > 0) {
+                  proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
+                    tokens: tokensSoFar,
+                  }).catch((err) => {
+                    console.warn('History token update failed on error:', err);
+                  });
+                }
+              }
               uploadLog(currentTaskId, type);
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
