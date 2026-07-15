@@ -73,11 +73,21 @@ def agent_model(
 
     if custom_model_config and custom_model_config.has_custom_config():
         for attr in config_attrs:
-            effective_config[attr] = getattr(
-                custom_model_config, attr, None
-            ) or getattr(options, attr)
+            custom_value = getattr(custom_model_config, attr, None)
+            effective_config[attr] = (
+                custom_value
+                if custom_value is not None
+                else getattr(options, attr)
+            )
         extra_params = (
-            custom_model_config.extra_params or options.extra_params or {}
+            custom_model_config.extra_params
+            if custom_model_config.extra_params is not None
+            else options.extra_params or {}
+        )
+        explicit_model_config = (
+            custom_model_config.model_config_dict
+            if custom_model_config.model_config_dict is not None
+            else options.model_config_dict or {}
         )
         logger.info(
             f"Agent {agent_name} using custom model config: "
@@ -88,6 +98,7 @@ def agent_model(
         for attr in config_attrs:
             effective_config[attr] = getattr(options, attr)
         extra_params = options.extra_params or {}
+        explicit_model_config = options.model_config_dict or {}
 
     has_explicit_custom_api_key = (
         custom_model_config is not None
@@ -100,10 +111,12 @@ def agent_model(
 
     base_effective_config = dict(effective_config)
     base_extra_params = dict(extra_params or {})
+    base_model_config = dict(explicit_model_config or {})
 
     def build_model(force_refresh: bool = False):
         effective_config = dict(base_effective_config)
         extra_params = dict(base_extra_params)
+        explicit_model_config = dict(base_model_config)
 
         if use_subscription_runtime:
             effective_config, extra_params = apply_subscription_runtime(
@@ -113,10 +126,16 @@ def agent_model(
                 force_refresh=force_refresh,
             )
 
+        effective_api_url = effective_config.get("api_url")
+        is_effective_cloud = isinstance(effective_api_url, str) and any(
+            marker in effective_api_url
+            for marker in ("eigent-proxy", "proxy.eigent.ai")
+        )
+
         # Cloud mode: inject default Bedrock region and adjust URL for proxy.
         if (
             effective_config.get("model_platform") == "aws-bedrock-converse"
-            and options.is_cloud()
+            and is_effective_cloud
         ):
             (
                 effective_config["api_url"],
@@ -128,7 +147,7 @@ def agent_model(
         # construction does not blow up when the frontend omits extra_params.
         if (
             effective_config.get("model_platform") == "azure"
-            and options.is_cloud()
+            and is_effective_cloud
         ):
             extra_params = patch_azure_cloud_config(extra_params)
         init_param_keys = {
@@ -151,8 +170,10 @@ def agent_model(
         init_params = {}
         model_config: dict[str, Any] = {}
 
-        if options.is_cloud():
-            model_config["user"] = str(options.project_id)
+        # A nested model_config_dict may arrive inside legacy extra_params
+        # while stored providers migrate to the explicit top-level field.
+        # Treat it as less specific than the explicit request field.
+        nested_model_config = extra_params.pop("model_config_dict", None)
 
         excluded_keys = {"model_platform", "model_type", "api_key", "url"}
 
@@ -168,6 +189,13 @@ def agent_model(
                 init_params[k] = v
             else:
                 model_config[k] = v
+
+        if isinstance(nested_model_config, dict):
+            model_config.update(nested_model_config)
+
+        # The explicit model config is the canonical API and wins over legacy
+        # flat values from extra_params.
+        model_config.update(explicit_model_config)
 
         # Auto-inject prompt caching based on model platform
         try:
@@ -190,6 +218,12 @@ def agent_model(
                 exc_info=True,
             )
 
+        # Runtime-owned values are applied after user configuration.
+        if is_effective_cloud:
+            model_config["user"] = str(options.project_id)
+        if use_subscription_runtime:
+            model_config["stream"] = True
+            model_config["store"] = False
         if agent_name == Agents.task_agent:
             model_config["stream"] = True
         if agent_name == Agents.browser_agent:

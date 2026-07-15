@@ -226,6 +226,9 @@
   "api-key-setting": "API Key Setting",
   "api-host-setting": "API Host Setting",
   "model-type-setting": "Model Type Setting",
+  "model-parameters-setting": "Model Parameters (JSON) (Optional)",
+  "model-parameters-placeholder": "Enter model parameters as a JSON object, e.g. {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "Model parameters must be a valid JSON object.",
   "please-select": "Please select",
   "configuring": "Configuring...",
 

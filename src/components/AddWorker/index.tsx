@@ -37,6 +37,11 @@ import { Textarea } from '@/components/ui/textarea';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { INIT_PROVODERS } from '@/lib/llm';
 import {
+  type AgentModelConfigSource,
+  buildAgentModelConfig,
+  buildAgentModelConfigFromProvider,
+} from '@/lib/modelConfig';
+import {
   getLocalPlatformName,
   LOCAL_MODEL_OPTIONS,
 } from '@/pages/Agents/localModels';
@@ -71,11 +76,10 @@ interface McpItem {
 
 type WorkerModelMode = 'eigent' | 'custom' | 'local';
 
-interface WorkerModelOption {
+interface WorkerModelOption extends AgentModelConfigSource {
   value: string;
   label: string;
-  model_platform: string;
-  model_type: string;
+  provider_id?: number;
 }
 
 export function AddWorker({
@@ -125,6 +129,7 @@ export function AddWorker({
   const [workerModelMode, setWorkerModelMode] =
     useState<WorkerModelMode>('eigent');
   const [workerModelName, setWorkerModelName] = useState('');
+  const [modelSelectionTouched, setModelSelectionTouched] = useState(false);
   const [customModelOptions, setCustomModelOptions] = useState<
     WorkerModelOption[]
   >([]);
@@ -300,6 +305,7 @@ export function AddWorker({
     setShowModelConfig(false);
     setWorkerModelMode('eigent');
     setWorkerModelName('');
+    setModelSelectionTouched(false);
     setCustomModelOptions([]);
     setLocalModelOptions([]);
   };
@@ -322,10 +328,63 @@ export function AddWorker({
     setWorkerName(workerInfo.workerInfo?.name || '');
     setWorkerDescription(workerInfo.workerInfo?.description || '');
     setSelectedTools(workerInfo.workerInfo?.selectedTools || []);
+    setWorkerModelMode('eigent');
+    setWorkerModelName('');
+    setModelSelectionTouched(false);
+    setShowModelConfig(
+      Number.isInteger(workerInfo.workerInfo?.model_provider_id)
+    );
   }, [dialogOpen, edit, workerInfo]);
 
   useEffect(() => {
+    if (
+      !dialogOpen ||
+      !edit ||
+      !showModelConfig ||
+      !workerInfo ||
+      modelSelectionTouched
+    )
+      return;
+    const providerId = workerInfo.workerInfo?.model_provider_id;
+    if (!Number.isInteger(providerId)) return;
+
+    const customOption = customModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (customOption) {
+      setWorkerModelMode('custom');
+      setWorkerModelName(customOption.value);
+      return;
+    }
+
+    const localOption = localModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (localOption) {
+      setWorkerModelMode('local');
+      setWorkerModelName(localOption.value);
+    }
+  }, [
+    customModelOptions,
+    dialogOpen,
+    edit,
+    localModelOptions,
+    modelSelectionTouched,
+    showModelConfig,
+    workerInfo,
+  ]);
+
+  useEffect(() => {
     if (!showModelConfig) return;
+    const editingProviderId = workerInfo?.workerInfo?.model_provider_id;
+    if (
+      dialogOpen &&
+      edit &&
+      Number.isInteger(editingProviderId) &&
+      !modelSelectionTouched
+    ) {
+      return;
+    }
     const options = activeWorkerModelOptions;
     if (options.length === 0) {
       setWorkerModelName('');
@@ -334,7 +393,15 @@ export function AddWorker({
     if (!options.some((opt) => opt.value === workerModelName)) {
       setWorkerModelName(options[0].value);
     }
-  }, [activeWorkerModelOptions, showModelConfig, workerModelName]);
+  }, [
+    activeWorkerModelOptions,
+    dialogOpen,
+    edit,
+    modelSelectionTouched,
+    showModelConfig,
+    workerInfo,
+    workerModelName,
+  ]);
 
   useEffect(() => {
     if (!showModelConfig) return;
@@ -358,6 +425,8 @@ export function AddWorker({
           .map((provider: any) => {
             const modelType = String(provider.model_type || '');
             const providerName = String(provider.provider_name || '');
+            const agentModelConfig =
+              buildAgentModelConfigFromProvider(provider);
             return {
               value: `${providerName}::${modelType}`,
               label: modelType
@@ -365,6 +434,11 @@ export function AddWorker({
                 : providerName,
               model_platform: providerName,
               model_type: modelType,
+              provider_id: Number(provider.id),
+              api_key: agentModelConfig.api_key,
+              api_url: agentModelConfig.api_url,
+              model_config_dict: agentModelConfig.model_config_dict,
+              extra_params: agentModelConfig.extra_params,
             };
           });
 
@@ -373,13 +447,10 @@ export function AddWorker({
             localProviderIds.has(provider.provider_name)
           )
           .map((provider: any) => {
-            const config = provider.encrypted_config || {};
-            const modelPlatform = String(
-              config.model_platform || provider.provider_name || ''
-            );
-            const modelType = String(
-              config.model_type || provider.model_type || ''
-            );
+            const agentModelConfig =
+              buildAgentModelConfigFromProvider(provider);
+            const modelPlatform = agentModelConfig.model_platform;
+            const modelType = agentModelConfig.model_type || '';
             const platformName = getLocalPlatformName(modelPlatform);
             return {
               value: `${modelPlatform}::${modelType}`,
@@ -388,6 +459,11 @@ export function AddWorker({
                 : platformName,
               model_platform: modelPlatform,
               model_type: modelType,
+              provider_id: Number(provider.id),
+              api_key: agentModelConfig.api_key,
+              api_url: agentModelConfig.api_url,
+              model_config_dict: agentModelConfig.model_config_dict,
+              extra_params: agentModelConfig.extra_params,
             };
           });
 
@@ -451,6 +527,23 @@ export function AddWorker({
         }
       }
     }
+    const selectedModelOption = workerModelOptions[workerModelMode].find(
+      (option) => option.value === workerModelName
+    );
+    const customModelConfig =
+      showModelConfig && selectedModelOption
+        ? buildAgentModelConfig(selectedModelOption)
+        : undefined;
+    const modelProviderId =
+      showModelConfig && selectedModelOption?.provider_id
+        ? selectedModelOption.provider_id
+        : showModelConfig &&
+            edit &&
+            !modelSelectionTouched &&
+            Number.isInteger(workerInfo?.workerInfo?.model_provider_id)
+          ? workerInfo?.workerInfo?.model_provider_id
+          : undefined;
+
     if (edit) {
       const newWorkerList = workerList.map((worker) => {
         if (worker.type === workerInfo?.type) {
@@ -473,6 +566,7 @@ export function AddWorker({
               tools: localTool,
               mcp_tools: mcpLocal,
               selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+              model_provider_id: modelProviderId,
             },
           };
           return {
@@ -503,22 +597,12 @@ export function AddWorker({
           tools: localTool,
           mcp_tools: mcpLocal,
           selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
         },
       };
       setWorkerList([...workerList, worker]);
     } else {
       // Add-worker custom model config is applied to this agent only.
-      const selectedModelOption = workerModelOptions[workerModelMode].find(
-        (opt) => opt.value === workerModelName
-      );
-      const customModelConfig =
-        showModelConfig && selectedModelOption
-          ? {
-              model_platform: selectedModelOption.model_platform,
-              model_type: selectedModelOption.model_type || undefined,
-            }
-          : undefined;
-
       if (activeProjectId) {
         fetchPost(`/task/${activeProjectId}/add-agent`, {
           name: workerName,
@@ -542,6 +626,7 @@ export function AddWorker({
           tools: localTool,
           mcp_tools: mcpLocal,
           selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
         },
       };
       setWorkerList([...workerList, worker]);
@@ -753,6 +838,7 @@ export function AddWorker({
                     <Switch
                       checked={showModelConfig}
                       onCheckedChange={(checked) => {
+                        setModelSelectionTouched(true);
                         setShowModelConfig(checked);
                         if (!checked) {
                           setWorkerModelName('');
@@ -771,9 +857,10 @@ export function AddWorker({
                         </label>
                         <Select
                           value={workerModelMode}
-                          onValueChange={(value) =>
-                            setWorkerModelMode(value as WorkerModelMode)
-                          }
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setWorkerModelMode(value as WorkerModelMode);
+                          }}
                         >
                           <SelectTrigger
                             className="w-full"
@@ -803,7 +890,10 @@ export function AddWorker({
                         </label>
                         <Select
                           value={workerModelName}
-                          onValueChange={setWorkerModelName}
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setWorkerModelName(value);
+                          }}
                         >
                           <SelectTrigger
                             className="w-full"
