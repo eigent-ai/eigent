@@ -95,6 +95,7 @@ declare global {
       tools: any;
       mcp_tools: any;
       selectedTools: any;
+      model_provider_id?: number;
     };
   }
 

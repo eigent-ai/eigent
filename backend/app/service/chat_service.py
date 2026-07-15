@@ -2810,7 +2810,15 @@ async def new_agent_model(
         },
     )
     logger.debug(
-        "New agent data", extra={"agent_data": data.model_dump_json()}
+        "New agent data",
+        extra={
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": (
+                getattr(data, "custom_model_config", None) is not None
+            ),
+        },
     )
     working_directory = get_working_directory(options)
     tool_names = []
