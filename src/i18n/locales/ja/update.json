@@ -8,5 +8,8 @@
   "complete": "完了",
   "download-completed": "ダウンロードが完了しました",
   "click-to-install-update": "クリックしてアップデートをインストールしてください",
-  "install": "インストール"
+  "install": "インストール",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }
