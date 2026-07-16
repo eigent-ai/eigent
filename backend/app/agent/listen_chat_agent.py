@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import json
 import logging
 import threading
@@ -36,6 +37,7 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
+from app.component.environment import env
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -43,7 +45,9 @@ from app.service.task import (
     ActionBudgetNotEnough,
     ActionDeactivateAgentData,
     ActionDeactivateToolkitData,
+    ActionRequestUsageData,
     get_task_lock,
+    get_task_lock_if_exists,
     set_process_task,
 )
 from app.utils.event_loop_utils import _schedule_async_task
@@ -52,10 +56,29 @@ from app.utils.event_loop_utils import _schedule_async_task
 logger = logging.getLogger("agent")
 
 
+# Default 30 minutes; long agent turns (e.g. writing many chapters in one
+# run) can legitimately exceed it, so allow tuning without a rebuild.
+# A non-positive value disables the per-step timeout entirely.
+def default_step_timeout() -> float | None:
+    raw = env("AGENT_STEP_TIMEOUT_SECONDS", "1800")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid AGENT_STEP_TIMEOUT_SECONDS value %r; using 1800", raw
+        )
+        return 1800.0
+    return value if value > 0 else None
+
+
 class ListenChatAgent(ChatAgent):
     _cdp_clone_lock = (
         threading.Lock()
     )  # Protects CDP URL mutation during clone
+
+    _camel_has_request_usage: bool = (
+        "on_request_usage" in inspect.signature(ChatAgent.__init__).parameters
+    )
 
     def __init__(
         self,
@@ -95,12 +118,20 @@ class ListenChatAgent(ChatAgent):
         pause_event: asyncio.Event | None = None,
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
-        step_timeout: float | None = 1800,  # 30 minutes
+        step_timeout: float | None = None,
         model_reload_callback: (
             Callable[[], BaseModelBackend | ModelManager] | None
         ) = None,
         **kwargs: Any,
     ) -> None:
+        self.api_task_id = api_task_id
+        self.agent_name = agent_name
+        self._user_on_request_usage = kwargs.pop("on_request_usage", None)
+        if self._camel_has_request_usage:
+            kwargs["on_request_usage"] = self._on_request_usage
+
+        if step_timeout is None:
+            step_timeout = default_step_timeout()
         super().__init__(
             system_message=system_message,
             model=model,
@@ -124,12 +155,38 @@ class ListenChatAgent(ChatAgent):
             step_timeout=step_timeout,
             **kwargs,
         )
-        self.api_task_id = api_task_id
-        self.agent_name = agent_name
         self._model_reload_callback = model_reload_callback
         self._model_reload_lock = threading.Lock()
 
     process_task_id: str = ""
+
+    def _on_request_usage(self, payload: dict[str, Any]) -> Any:
+        request_usage = payload.get("request_usage") or {}
+        step_usage = payload.get("step_usage") or {}
+        request_tokens = int(request_usage.get("total_tokens") or 0)
+        # Lock may be gone if the task was stopped mid-request.
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        if request_tokens > 0 and task_lock is not None:
+            _schedule_async_task(
+                task_lock.put_queue(
+                    ActionRequestUsageData(
+                        data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "agent_id": self.agent_id,
+                            "tokens": request_tokens,
+                            "request_index": payload.get("request_index", 0),
+                            "response_id": payload.get("response_id", ""),
+                            "step_total_tokens": int(
+                                step_usage.get("total_tokens") or 0
+                            ),
+                        }
+                    )
+                )
+            )
+        if self._user_on_request_usage is not None:
+            return self._user_on_request_usage(payload)
+        return None
 
     @staticmethod
     def _is_retryable_model_auth_error(error: BaseException) -> bool:
@@ -193,7 +250,17 @@ class ListenChatAgent(ChatAgent):
             message: The accumulated message content
             tokens: The total token count used
         """
-        task_lock = get_task_lock(self.api_task_id)
+        if self._camel_has_request_usage:
+            tokens = 0
+        # A missing lock (task stopped mid-step) must not fail the step.
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        if task_lock is None:
+            logger.warning(
+                "Task lock %s missing; dropping deactivate event for %s",
+                self.api_task_id,
+                self.agent_name,
+            )
+            return
         _schedule_async_task(
             task_lock.put_queue(
                 ActionDeactivateAgentData(
@@ -440,19 +507,7 @@ class ListenChatAgent(ChatAgent):
 
         assert message is not None
 
-        _schedule_async_task(
-            task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
-                )
-            )
-        )
+        self._send_agent_deactivate(message, total_tokens)
 
         if error_info is not None:
             raise error_info
@@ -567,19 +622,7 @@ class ListenChatAgent(ChatAgent):
         # Streaming responses handle deactivation in _astream_chunks
         assert message is not None
 
-        asyncio.create_task(
-            task_lock.put_queue(
-                ActionDeactivateAgentData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "agent_id": self.agent_id,
-                        "message": message,
-                        "tokens": total_tokens,
-                    },
-                )
-            )
-        )
+        self._send_agent_deactivate(message, total_tokens)
 
         if error_info is not None:
             raise error_info
@@ -977,6 +1020,10 @@ class ListenChatAgent(ChatAgent):
         else:
             cloned_tools, toolkits_to_register = self._clone_tools()
 
+        clone_kwargs: dict[str, Any] = {}
+        if self._user_on_request_usage is not None:
+            clone_kwargs["on_request_usage"] = self._user_on_request_usage
+
         new_agent = ListenChatAgent(
             api_task_id=self.api_task_id,
             agent_name=self.agent_name,
@@ -1004,6 +1051,7 @@ class ListenChatAgent(ChatAgent):
             enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
             stream_accumulate=self.stream_accumulate,
+            **clone_kwargs,
         )
 
         new_agent.process_task_id = self.process_task_id
