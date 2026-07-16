@@ -1487,8 +1487,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!isBackendReady) {
           console.error('[startTask] Backend is not ready, cannot start task');
-          captureAnalytics('app_launch_failed', {
-            reason: 'backend_not_ready',
+          // A task failure, not a launch failure — this can fire hours after
+          // a successful launch and would otherwise skew launch-failure rate.
+          captureAnalytics('task_failed', {
+            error_type: 'backend_unavailable',
+            session_mode: sessionModeForRequest,
           });
           const targetState = targetChatStore.getState();
           targetState.addMessages(newTaskId, {
