@@ -225,6 +225,9 @@
   "api-key-setting": "API 密钥设置",
   "api-host-setting": "API Host 设置",
   "model-type-setting": "模型类型设置",
+  "model-parameters-setting": "模型参数（JSON，可选）",
+  "model-parameters-placeholder": "以 JSON 对象输入模型参数，例如 {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "模型参数必须是有效的 JSON 对象。",
   "please-select": "请选择",
   "configuring": "正在配置...",
 

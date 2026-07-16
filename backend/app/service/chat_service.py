@@ -21,10 +21,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from camel.models import ModelProcessingError
-from camel.tasks import Task
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
 from camel.utils.stream_utils import (
     consume_response_content,
     consume_response_content_async,
@@ -86,6 +82,10 @@ from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
+from camel.models import ModelProcessingError
+from camel.tasks import Task
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
 
 logger = logging.getLogger("chat_service")
 
@@ -1701,6 +1701,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
                 yield sse_json("deactivate_agent", dict(item.data))
+            elif item.action == Action.request_usage:
+                yield sse_json("request_usage", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
             elif item.action == Action.activate_toolkit:
@@ -2810,7 +2812,15 @@ async def new_agent_model(
         },
     )
     logger.debug(
-        "New agent data", extra={"agent_data": data.model_dump_json()}
+        "New agent data",
+        extra={
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": (
+                getattr(data, "custom_model_config", None) is not None
+            ),
+        },
     )
     working_directory = get_working_directory(options)
     tool_names = []

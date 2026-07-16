@@ -21,7 +21,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
-from camel.tasks import Task
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -34,6 +33,7 @@ from app.model.chat import (
 )
 from app.model.enums import Status
 from app.run_context import RunContext
+from camel.tasks import Task
 
 logger = logging.getLogger("task_service")
 
@@ -52,6 +52,7 @@ class Action(str, Enum):
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
     deactivate_agent = "deactivate_agent"  # backend -> user
+    request_usage = "request_usage"  # backend -> user
     assign_task = "assign_task"  # backend -> user
     activate_toolkit = "activate_toolkit"  # backend -> user
     deactivate_toolkit = "deactivate_toolkit"  # backend -> user
@@ -158,6 +159,21 @@ class DataDict(TypedDict):
 class ActionDeactivateAgentData(BaseModel):
     action: Literal[Action.deactivate_agent] = Action.deactivate_agent
     data: DataDict
+
+
+class RequestUsageDataDict(TypedDict):
+    agent_name: str
+    agent_id: str
+    process_task_id: str
+    tokens: int
+    request_index: int
+    response_id: str
+    step_total_tokens: int
+
+
+class ActionRequestUsageData(BaseModel):
+    action: Literal[Action.request_usage] = Action.request_usage
+    data: RequestUsageDataDict
 
 
 class ActionAssignTaskData(BaseModel):
@@ -298,6 +314,7 @@ ActionData = (
     | ActionCreateAgentData
     | ActionActivateAgentData
     | ActionDeactivateAgentData
+    | ActionRequestUsageData
     | ActionAssignTaskData
     | ActionActivateToolkitData
     | ActionDeactivateToolkitData

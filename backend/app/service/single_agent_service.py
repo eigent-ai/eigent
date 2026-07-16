@@ -18,7 +18,6 @@ import os
 from typing import Any
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
-from camel.responses import ChatAgentResponse
 from fastapi import Request
 
 from app.agent.factory.single_agent import single_agent
@@ -42,6 +41,7 @@ from app.utils.agent_memory import (
     record_agent_memory_snapshot,
 )
 from app.utils.file_utils import get_working_directory
+from camel.responses import ChatAgentResponse
 
 logger = logging.getLogger("single_agent_service")
 
@@ -175,6 +175,8 @@ def _action_to_sse(item: ActionData) -> str | None:
         return sse_json("activate_agent", item.data)
     if item.action == Action.deactivate_agent:
         return sse_json("deactivate_agent", item.data)
+    if item.action == Action.request_usage:
+        return sse_json("request_usage", item.data)
     if item.action == Action.assign_task:
         return sse_json("assign_task", item.data)
     if item.action == Action.activate_toolkit:

@@ -108,6 +108,7 @@ SPACE_COMMANDS = {
     SPACE_DISCARD_PROJECT_OVERLAYS,
 }
 NON_BRAIN_COMMANDS = {SWITCH_PROJECT_VIEW, *SPACE_COMMANDS}
+REMOTE_CONTROL_HIDDEN_STEPS = ("request_usage",)
 
 
 def _now() -> datetime:
@@ -325,24 +326,39 @@ class RemoteControlService:
         return None
 
     @staticmethod
+    def _ensure_remote_control_supported_space(space: Space) -> None:
+        if space.source_type == SpaceSourceType.LEGACY:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "REMOTE_CONTROL_LEGACY_SPACE_UNSUPPORTED",
+                    "message": "Legacy Spaces do not support remote control.",
+                },
+            )
+
+    @staticmethod
     def _session_space(session: RemoteControlSession, user_id: int, db: Session) -> Space:
         if session.space_id:
-            return RemoteControlService._get_owned_space(user_id, session.space_id, db)
+            space = RemoteControlService._get_owned_space(user_id, session.space_id, db)
+            RemoteControlService._ensure_remote_control_supported_space(space)
+            return space
         project_id, _, _, _ = RemoteControlService._effective_target(session)
         if project_id:
             space = RemoteControlService._space_for_project(user_id, project_id, db)
             if space:
+                RemoteControlService._ensure_remote_control_supported_space(space)
                 session.space_id = space.id
                 session.space_name_snapshot = space.name
                 db.add(session)
                 db.flush()
                 return space
-        space = SpaceService.ensure_legacy_space(user_id, db)
-        session.space_id = space.id
-        session.space_name_snapshot = space.name
-        db.add(session)
-        db.flush()
-        return space
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                "message": "Remote control requires a non-legacy Space.",
+            },
+        )
 
     @staticmethod
     def _ensure_folder_space(space: Space) -> None:
@@ -515,9 +531,22 @@ class RemoteControlService:
         elif target_project_id:
             space = RemoteControlService._space_for_project(user_id, target_project_id, db)
             if not space:
-                space = SpaceService.ensure_legacy_space(user_id, db)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                        "message": "Remote control requires a non-legacy Space.",
+                    },
+                )
         else:
-            space = SpaceService.ensure_legacy_space(user_id, db)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "REMOTE_CONTROL_SPACE_REQUIRED",
+                    "message": "Remote control requires a non-legacy Space.",
+                },
+            )
+        RemoteControlService._ensure_remote_control_supported_space(space)
         if target_project_id:
             project = RemoteControlService._get_owned_project(user_id, target_project_id, db)
             if project and project.space_id != space.id:
@@ -1541,7 +1570,11 @@ class RemoteControlService:
                 task_ids = [legacy_history.task_id]
         if not task_ids:
             return RemoteControlStepsOut(items=[], has_more=False, next_since=since)
-        stmt = select(ChatStep).where(ChatStep.task_id.in_(task_ids), ChatStep.id > since)
+        stmt = select(ChatStep).where(
+            ChatStep.task_id.in_(task_ids),
+            ChatStep.id > since,
+            ChatStep.step.not_in(REMOTE_CONTROL_HIDDEN_STEPS),
+        )
         stmt = stmt.order_by(ChatStep.id.desc() if order == "desc" else ChatStep.id.asc()).limit(limit + 1)
         rows = list(db.exec(stmt).all())
         has_more = len(rows) > limit
@@ -1565,6 +1598,8 @@ class RemoteControlService:
 
     @staticmethod
     def publish_chat_step(step: ChatStep, db: Session) -> None:
+        if step.step in REMOTE_CONTROL_HIDDEN_STEPS:
+            return
         history = db.exec(select(ChatHistory).where(ChatHistory.task_id == step.task_id)).first()
         if not history:
             logger.warning("Skipping remote-control step publish for orphan step", extra={"task_id": step.task_id})

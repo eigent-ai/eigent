@@ -12,9 +12,17 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
+
+vi.mock('@/service/spaceApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/service/spaceApi')>();
+  return {
+    ...actual,
+    proxyUpdateSpaceProject: vi.fn().mockResolvedValue({}),
+  };
+});
 
 describe('projectStore runtime shape', () => {
   beforeEach(() => {
@@ -65,5 +73,57 @@ describe('projectStore runtime shape', () => {
     expect(tasks.task_a).toBeDefined();
     expect(tasks.task_b).toBeDefined();
     expect(firstRun?.chatStore.getState().activeTaskId).toBe('task_b');
+  });
+
+  it('stores and returns the per-project model selection', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Test Project', undefined, 'project_model_test');
+
+    expect(useProjectStore.getState().getProjectModel(projectId)).toBeNull();
+
+    useProjectStore.getState().setProjectModel(projectId, {
+      modelType: 'cloud',
+      cloud_model_type: 'model_a',
+      model_platform: 'platform_a',
+      model_type: 'model_a',
+    });
+
+    const selection = useProjectStore.getState().getProjectModel(projectId);
+    expect(selection).toEqual({
+      modelType: 'cloud',
+      cloud_model_type: 'model_a',
+      model_platform: 'platform_a',
+      model_type: 'model_a',
+    });
+
+    // The pin must also reach the persisted space meta so it survives an
+    // app restart (the runtime project store is not persisted).
+    const meta = useSpaceStore.getState().getProjectMeta(projectId);
+    expect(meta?.metadata?.modelSelection).toEqual(selection);
+  });
+
+  it('falls back to the space meta when the runtime project is gone', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Test Project', undefined, 'project_meta_fallback');
+
+    useProjectStore.getState().setProjectModel(projectId, {
+      modelType: 'custom',
+      provider_id: 7,
+      model_platform: 'platform_b',
+      model_type: 'model_b',
+    });
+
+    // Simulate a restart: runtime projects are wiped, space meta persists.
+    useProjectStore.setState({ activeProjectId: null, projects: {} });
+
+    const selection = useProjectStore.getState().getProjectModel(projectId);
+    expect(selection).toEqual({
+      modelType: 'custom',
+      provider_id: 7,
+      model_platform: 'platform_b',
+      model_type: 'model_b',
+    });
   });
 });

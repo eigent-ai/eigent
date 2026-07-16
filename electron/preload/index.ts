@@ -76,6 +76,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('export-camel-log', email, taskId, projectId, userId),
   getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
   exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
     ipcRenderer.invoke('export-diagnostics-zip', payload),
