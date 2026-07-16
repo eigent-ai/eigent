@@ -21,11 +21,20 @@ from collections.abc import Callable
 from threading import Event
 from typing import Any
 
+from camel.agents import ChatAgent
 from camel.agents._types import ToolCallRequest
 from camel.agents.chat_agent import (
     AsyncStreamingChatAgentResponse,
     StreamingChatAgentResponse,
 )
+from camel.memories import AgentMemory
+from camel.messages import BaseMessage
+from camel.models import BaseModelBackend, ModelManager, ModelProcessingError
+from camel.responses import ChatAgentResponse
+from camel.terminators import ResponseTerminator
+from camel.toolkits import FunctionTool, RegisteredAgentToolkit
+from camel.types import ModelPlatformType, ModelType
+from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
 from app.component.environment import env
@@ -42,15 +51,6 @@ from app.service.task import (
     set_process_task,
 )
 from app.utils.event_loop_utils import _schedule_async_task
-from camel.agents import ChatAgent
-from camel.memories import AgentMemory
-from camel.messages import BaseMessage
-from camel.models import BaseModelBackend, ModelManager, ModelProcessingError
-from camel.responses import ChatAgentResponse
-from camel.terminators import ResponseTerminator
-from camel.toolkits import FunctionTool, RegisteredAgentToolkit
-from camel.types import ModelPlatformType, ModelType
-from camel.types.agents import ToolCallingRecord
 
 # Logger for agent tracking
 logger = logging.getLogger("agent")

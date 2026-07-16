@@ -17,6 +17,11 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from camel.messages import BaseMessage
+from camel.models import ModelFactory
+from camel.toolkits import FunctionTool, RegisteredAgentToolkit
+from camel.types import ModelPlatformType
+
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.model_platform import (
@@ -29,10 +34,6 @@ from app.model.subscription_runtime import (
 )
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
-from camel.messages import BaseMessage
-from camel.models import ModelFactory
-from camel.toolkits import FunctionTool, RegisteredAgentToolkit
-from camel.types import ModelPlatformType
 
 # OpenAI chat-completions streaming only returns token usage when
 # `stream_options.include_usage` is requested. Without it the request-level

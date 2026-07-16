@@ -17,6 +17,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from camel.tasks import Task
 from camel.tasks.task import TaskState
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
@@ -49,7 +50,6 @@ from app.service.task import (
     ImprovePayload,
     TaskLock,
 )
-from camel.tasks import Task
 
 
 class _StreamMsg:

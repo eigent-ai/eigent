@@ -21,6 +21,9 @@ import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+from camel.toolkits.terminal_toolkit import (
+    TerminalToolkit as BaseTerminalToolkit,
+)
 from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
@@ -33,9 +36,6 @@ from app.service.task import (
     process_task,
 )
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
-from camel.toolkits.terminal_toolkit import (
-    TerminalToolkit as BaseTerminalToolkit,
-)
 
 logger = logging.getLogger("terminal_toolkit")
 

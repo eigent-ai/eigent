@@ -21,6 +21,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from camel.models import ModelProcessingError
+from camel.tasks import Task
+from camel.toolkits import ToolkitMessageIntegration
+from camel.types import ModelPlatformType
 from camel.utils.stream_utils import (
     consume_response_content,
     consume_response_content_async,
@@ -82,10 +86,6 @@ from app.utils.file_utils import get_working_directory, list_files
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
-from camel.models import ModelProcessingError
-from camel.tasks import Task
-from camel.toolkits import ToolkitMessageIntegration
-from camel.types import ModelPlatformType
 
 logger = logging.getLogger("chat_service")
 

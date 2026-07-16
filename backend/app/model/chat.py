@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
+from camel.types import ModelType, RoleType
 from pydantic import BaseModel, Field, field_validator
 
 from app.model.enums import DEFAULT_SUMMARY_PROMPT, Status  # noqa: F401
@@ -26,7 +27,6 @@ from app.model.model_platform import (
     NormalizedOptionalModelPlatform,
 )
 from app.remote_sub_agent.config import RemoteSubAgentConfig
-from camel.types import ModelType, RoleType
 
 logger = logging.getLogger("chat_model")
 
