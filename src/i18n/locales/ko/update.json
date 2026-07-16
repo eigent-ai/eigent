@@ -8,5 +8,8 @@
   "complete": "완료",
   "download-completed": "다운로드 완료",
   "click-to-install-update": "업데이트 설치를 클릭하세요",
-  "install": "설치"
+  "install": "설치",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

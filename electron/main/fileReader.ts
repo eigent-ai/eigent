@@ -853,6 +853,7 @@ export class FileReader {
       if (fs.existsSync(camelLogPath)) {
         return [toEntry(camelLogPath)];
       }
+      return [];
     }
 
     const identities = this.getStorageIdentityCandidates(email, userId);
