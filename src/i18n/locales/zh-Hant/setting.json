@@ -216,6 +216,9 @@
   "api-key-setting": "API 金鑰設定",
   "api-host-setting": "API 主機設定",
   "model-type-setting": "模型類型設定",
+  "model-parameters-setting": "模型參數（JSON，選填）",
+  "model-parameters-placeholder": "以 JSON 物件輸入模型參數，例如 {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "模型參數必須是有效的 JSON 物件。",
   "please-select": "請選擇",
   "configuring": "正在配置...",
 

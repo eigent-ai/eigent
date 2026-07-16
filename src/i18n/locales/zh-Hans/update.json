@@ -8,5 +8,8 @@
   "complete": "完成",
   "download-completed": "下载完成",
   "click-to-install-update": "点击安装更新",
-  "install": "安装"
+  "install": "安装",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

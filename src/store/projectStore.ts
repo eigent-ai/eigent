@@ -24,6 +24,7 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import type { ServerProject } from '@/service/spaceApi';
+import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
   ChatTaskStatus,
   TaskStatus,
@@ -134,6 +135,21 @@ interface TaskQueue {
   processing?: boolean;
 }
 
+/**
+ * Model selection captured for a Project so follow-up runs reuse the same
+ * model instead of the global default. Field names mirror the provider /
+ * history payloads (`model_platform`, `model_type`) and authStore state
+ * (`modelType`, `cloud_model_type`, `codex_model_type`).
+ */
+interface ProjectModelSelection {
+  modelType: 'cloud' | 'local' | 'custom' | 'codex_subscription';
+  cloud_model_type?: string;
+  codex_model_type?: string;
+  provider_id?: number;
+  model_platform?: string;
+  model_type?: string;
+}
+
 interface ProjectMetadata {
   tags?: string[];
   priority?: 'low' | 'medium' | 'high';
@@ -154,6 +170,8 @@ interface ProjectMetadata {
    */
   historyId?: string;
   historyDisplayName?: string;
+  /** Per-Project model pin; reused by startTask for follow-up runs. */
+  modelSelection?: ProjectModelSelection;
   serverSynced?: boolean;
   autoCreatedPlaceholder?: boolean;
 }
@@ -426,6 +444,13 @@ interface ProjectStore {
   //History ID
   setHistoryId: (projectId: string, historyId: string) => void;
   getHistoryId: (projectId: string | null) => string | null;
+
+  // Per-Project model selection
+  setProjectModel: (
+    projectId: string,
+    modelSelection: ProjectModelSelection
+  ) => void;
+  getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
 }
 
 // Helper function to check if a project is empty/unused
@@ -1987,6 +2012,84 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     return project.metadata?.historyId || null;
   },
 
+  setProjectModel: (
+    projectId: string,
+    modelSelection: ProjectModelSelection
+  ) => {
+    const { projects } = get();
+
+    if (!projects[projectId]) {
+      console.warn(`Project ${projectId} not found for setting model`);
+      return;
+    }
+
+    const previous = projects[projectId].metadata?.modelSelection;
+    if (
+      previous &&
+      previous.modelType === modelSelection.modelType &&
+      previous.cloud_model_type === modelSelection.cloud_model_type &&
+      previous.codex_model_type === modelSelection.codex_model_type &&
+      previous.provider_id === modelSelection.provider_id &&
+      previous.model_platform === modelSelection.model_platform &&
+      previous.model_type === modelSelection.model_type
+    ) {
+      return;
+    }
+
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          metadata: {
+            ...state.projects[projectId].metadata,
+            modelSelection,
+          },
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+    const updatedProject = get().projects[projectId];
+    if (updatedProject) {
+      upsertSpaceProjectMetaFromProject(updatedProject);
+    }
+
+    // Server metadata is shallow-merged, so persisting only the pin keeps the
+    // selection across restarts and space re-syncs (best-effort).
+    const spaceId =
+      updatedProject?.spaceId ??
+      useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
+    if (spaceId) {
+      void proxyUpdateSpaceProject(spaceId, projectId, {
+        metadata: { modelSelection },
+      }).catch((error) => {
+        console.warn(
+          `Failed to persist model selection for project ${projectId}:`,
+          error
+        );
+      });
+    }
+  },
+
+  getProjectModel: (projectId: string | null) => {
+    if (!projectId) {
+      return null;
+    }
+
+    const { projects } = get();
+    const runtimeSelection = projects[projectId]?.metadata?.modelSelection;
+    if (runtimeSelection) {
+      return runtimeSelection;
+    }
+
+    // Runtime store is not persisted; fall back to the space meta, which is
+    // persisted locally and hydrated from the server.
+    return (
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.modelSelection ?? null
+    );
+  },
+
   isEmptyProject: (project: Project) => {
     return isEmptyProject(project);
   },
@@ -2068,6 +2171,7 @@ export type {
   CreateProjectOptions,
   Project,
   ProjectMetadata,
+  ProjectModelSelection,
   ProjectStore,
   TaskQueue,
 };

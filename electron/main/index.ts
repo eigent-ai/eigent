@@ -64,7 +64,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
-import { createDiagnosticsZip, zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -1131,6 +1131,55 @@ function registerIpcHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Camel (backend) logs live per task at
+  // ~/.eigent/<identity>/[project_<id>/]task_<taskId>/camel_logs.
+  // Targets the task the user last ran when provided; otherwise exports all.
+  ipcMain.handle(
+    'export-camel-log',
+    async (
+      _event,
+      email: string,
+      taskId?: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      try {
+        if (typeof email !== 'string' || !email) {
+          return { success: false, error: 'Missing email' };
+        }
+
+        const manager = checkManagerInstance(fileReader, 'FileReader');
+        const camelLogEntries = manager.getCamelLogEntries(
+          email,
+          taskId,
+          projectId,
+          userId
+        );
+        if (camelLogEntries.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const defaultFileName = `eigent-camel-logs-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save Camel logs',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await zipDirectories(filePath, camelLogEntries);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-camel-log failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
 
   ipcMain.handle('get-diagnostics-info', async () => {
     return {

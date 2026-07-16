@@ -14,7 +14,15 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { useHost } from '@/host';
@@ -32,12 +40,29 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (
+    selector: (state: { email: string; user_id: number }) => unknown
+  ) => selector({ email: 'test@example.com', user_id: 42 }),
+}));
+
+vi.mock('@/store/projectRuntimeStore', () => ({
+  useProjectRuntimeStore: () => ({
+    activeProjectId: 'project_1',
+    peekActiveChatStore: () => ({
+      getState: () => ({ activeTaskId: 'task_9' }),
+    }),
+  }),
+}));
+
 describe('ReportBugDialog', () => {
   const mockUseHost = vi.mocked(useHost);
   const mockToast = vi.mocked(toast);
+  let openSpy: MockInstance;
 
   const mockElectronAPI = {
     exportLog: vi.fn().mockResolvedValue({ success: true }),
+    exportCamelLog: vi.fn().mockResolvedValue({ success: true }),
     getDiagnosticsInfo: vi.fn().mockResolvedValue({
       version: '1.0.0',
       platform: 'darwin',
@@ -49,10 +74,15 @@ describe('ReportBugDialog', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
     mockUseHost.mockReturnValue({ electronAPI: mockElectronAPI } as any);
   });
 
-  it('silently stops when diagnostics save is canceled', async () => {
+  afterEach(() => {
+    openSpy.mockRestore();
+  });
+
+  it('skips the saved toast when diagnostics save is canceled', async () => {
     mockElectronAPI.exportDiagnosticsZip.mockResolvedValueOnce({
       success: false,
       error: '',
@@ -65,7 +95,7 @@ describe('ReportBugDialog', () => {
       'A short repro description'
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'layout.report-bug-submit' })
+      screen.getByRole('button', { name: 'layout.report-bug-open-github' })
     );
 
     await waitFor(() => {
@@ -75,8 +105,87 @@ describe('ReportBugDialog', () => {
       });
     });
 
-    expect(mockElectronAPI.openMailto).not.toHaveBeenCalled();
     expect(mockToast.error).not.toHaveBeenCalled();
     expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('downloads the Eigent log on its own', async () => {
+    mockElectronAPI.exportLog.mockResolvedValueOnce({
+      success: true,
+      savedPath: '/tmp/eigent.log',
+    });
+
+    render(<ReportBugDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'layout.support-eigent-log' })
+    );
+
+    await waitFor(() => {
+      expect(mockElectronAPI.exportLog).toHaveBeenCalled();
+      expect(mockToast.success).toHaveBeenCalled();
+    });
+    expect(mockElectronAPI.exportCamelLog).not.toHaveBeenCalled();
+  });
+
+  it('downloads the Camel log with the signed-in email', async () => {
+    mockElectronAPI.exportCamelLog.mockResolvedValueOnce({
+      success: true,
+      savedPath: '/tmp/eigent-camel-logs.zip',
+    });
+
+    render(<ReportBugDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'layout.support-camel-log' })
+    );
+
+    await waitFor(() => {
+      expect(mockElectronAPI.exportCamelLog).toHaveBeenCalledWith(
+        'test@example.com',
+        'task_9',
+        'project_1',
+        42
+      );
+      expect(mockToast.success).toHaveBeenCalled();
+    });
+    expect(mockElectronAPI.exportLog).not.toHaveBeenCalled();
+  });
+
+  it('reports when no Camel logs exist yet', async () => {
+    mockElectronAPI.exportCamelLog.mockResolvedValueOnce({
+      success: false,
+      error: 'no log file',
+    });
+
+    render(<ReportBugDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'layout.support-camel-log' })
+    );
+
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalled();
+    });
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when the log save dialog is canceled', async () => {
+    mockElectronAPI.exportLog.mockResolvedValueOnce({
+      success: false,
+      error: '',
+    });
+
+    render(<ReportBugDialog open onOpenChange={vi.fn()} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'layout.support-eigent-log' })
+    );
+
+    await waitFor(() => {
+      expect(mockElectronAPI.exportLog).toHaveBeenCalled();
+    });
+    expect(mockToast.success).not.toHaveBeenCalled();
+    expect(mockToast.error).not.toHaveBeenCalled();
   });
 });
