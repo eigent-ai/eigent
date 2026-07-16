@@ -99,6 +99,18 @@ const hasApiCode = (value: unknown, code: string) =>
 
 let _host: AppHost | null = null;
 
+// Per-step request_usage tokens keyed by `${taskId}:${agentId}`; needed
+// because deactivate_agent.tokens is zeroed under request-level reporting.
+const requestUsageStepTokens = new Map<string, number>();
+
+const clearRequestUsageStepTokens = (taskId: string) => {
+  for (const key of requestUsageStepTokens.keys()) {
+    if (key.startsWith(`${taskId}:`)) {
+      requestUsageStepTokens.delete(key);
+    }
+  }
+};
+
 export function injectHost(host: AppHost | null): void {
   _host = host;
 }
@@ -2802,6 +2814,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          // Request-level token usage updates (non-stream mode)
+          if (agentMessages.step === AgentStep.REQUEST_USAGE) {
+            if (agentMessages.data.tokens) {
+              addTokens(currentTaskId, agentMessages.data.tokens);
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              requestUsageStepTokens.set(
+                stepKey,
+                agentMessages.data.step_total_tokens ||
+                  (requestUsageStepTokens.get(stepKey) || 0) +
+                    agentMessages.data.tokens
+              );
+            }
+            return;
+          }
+
           // Activate agent
           if (
             agentMessages.step === AgentStep.ACTIVATE_AGENT ||
@@ -2811,6 +2838,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
+            }
+            // Consume the step's request_usage tokens before any early
+            // return below, so entries are cleaned up even for agents that
+            // never appear in taskAssigning.
+            let stepTokens = 0;
+            if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
             }
             const { state, agent_id, process_task_id } = agentMessages.data;
             if (!state && !agent_id && !process_task_id) return;
@@ -2891,8 +2930,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              const hasTokens =
-                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              // Per-step tokens (not the task total) so an errored/empty
+              // step is not mistaken for a real reply.
+              const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
@@ -3632,6 +3672,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
 
             const endMessage = resolveEndMessageText(
