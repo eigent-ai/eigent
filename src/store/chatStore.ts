@@ -776,7 +776,10 @@ const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 const activeSSEControllers: Record<string, AbortController> = {};
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
-  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+  /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_SANDBOX_SCHEME_REGEX =
+  /(^|[^A-Za-z0-9_+.-])sandbox:(?=(?:[A-Za-z]:)?[\\/])/gi;
 
 const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
   'csv',
@@ -857,7 +860,7 @@ function buildRemoteFileInfoPath({
   return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
 }
 
-function extractFinalOutputFileList(
+export function extractFinalOutputFileList(
   content: string,
   projectId?: string,
   email?: string,
@@ -869,8 +872,12 @@ function extractFinalOutputFileList(
 
   const fileInfos: FileInfo[] = [];
   const seen = new Set<string>();
+  const parseableContent = content.replace(
+    FINAL_OUTPUT_SANDBOX_SCHEME_REGEX,
+    '$1'
+  );
 
-  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+  for (const match of parseableContent.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
     const filePath = normalizeOutputPath(match[0]);
     if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
       continue;
