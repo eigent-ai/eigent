@@ -48,6 +48,8 @@ import {
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import type { Provider } from '@/types';
 
 import {
@@ -67,6 +69,12 @@ import { useNavigate } from 'react-router-dom';
 export interface ChatInputModelDropdownProps {
   disabled?: boolean;
   /**
+   * Project whose pinned model this dropdown reads and writes. When set,
+   * selections update only that Project's captured model; the global
+   * default model is left untouched.
+   */
+  projectId?: string | null;
+  /**
    * When true, shows the current default model in the same shell as
    * `ProjectModeToggle` (readOnly) — no chevron, not interactive,
    * no filled background (session input bar).
@@ -82,6 +90,7 @@ const modelTriggerShellClass = cn(
 
 export function ChatInputModelDropdown({
   disabled,
+  projectId,
   readOnly = false,
 }: ChatInputModelDropdownProps) {
   const { t } = useTranslation();
@@ -105,6 +114,26 @@ export function ChatInputModelDropdown({
   const effectiveCloudModelId = useCloudModelStore((state) =>
     state.getEffectiveModelId(cloud_model_type)
   );
+  const setProjectModel = useProjectRuntimeStore(
+    (state) => state.setProjectModel
+  );
+  const runtimePinnedSelection = useProjectRuntimeStore((state) =>
+    projectId
+      ? (state.projects[projectId]?.metadata?.modelSelection ?? null)
+      : null
+  );
+  const spacePinnedSelection = useSpaceStore((state) => {
+    if (!projectId) return null;
+    const spaceId = state.projectIdIndex[projectId];
+    if (!spaceId) return null;
+    return (
+      state.projectsBySpaceId[spaceId]?.[projectId]?.metadata?.modelSelection ??
+      null
+    );
+  });
+  const pinnedSelection = projectId
+    ? (runtimePinnedSelection ?? spacePinnedSelection)
+    : null;
   const cloudModelOptions = useMemo(
     () =>
       cloudModels.map((model) => ({
@@ -276,14 +305,64 @@ export function ChatInputModelDropdown({
   }, [refreshCodexStatus]);
 
   const handleCodexSetDefault = useCallback(() => {
+    if (projectId) {
+      const codexModelId = codex_model_type || 'gpt-5.5';
+      setProjectModel(projectId, {
+        modelType: 'codex_subscription',
+        codex_model_type: codexModelId,
+        model_platform: 'openai',
+        model_type: codexModelId,
+      });
+      return;
+    }
     setCloudPrefer(false);
     setLocalPrefer(false);
     setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
     setModelType('codex_subscription');
-  }, [setModelType]);
+  }, [codex_model_type, projectId, setModelType, setProjectModel]);
 
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
+    if (pinnedSelection) {
+      if (pinnedSelection.modelType === 'codex_subscription') {
+        const pinnedCodexModelType = pinnedSelection.codex_model_type || '';
+        return `Codex Subscription${pinnedCodexModelType ? ` (${pinnedCodexModelType})` : ''}`;
+      }
+      if (pinnedSelection.modelType === 'cloud') {
+        return getCloudModelDisplayName(
+          pinnedSelection.cloud_model_type || cloud_model_type
+        );
+      }
+      if (pinnedSelection.modelType === 'custom') {
+        const idx =
+          pinnedSelection.provider_id !== undefined
+            ? form.findIndex(
+                (f) => f.provider_id === pinnedSelection.provider_id
+              )
+            : -1;
+        if (idx !== -1) {
+          const mt = form[idx].model_type || '';
+          return `${items[idx].name}${mt ? ` (${mt})` : ''}`;
+        }
+      }
+      if (pinnedSelection.modelType === 'local') {
+        const platform = Object.keys(localProviderIds).find(
+          (key) => localProviderIds[key] === pinnedSelection.provider_id
+        );
+        if (platform) {
+          const mt = localTypes[platform] || '';
+          return `${getLocalPlatformName(platform)}${mt ? ` (${mt})` : ''}`;
+        }
+      }
+      // Providers are still loading (or the pinned provider disappeared):
+      // fall back to the identifiers captured with the pin.
+      if (pinnedSelection.model_platform || pinnedSelection.model_type) {
+        const platformLabel = pinnedSelection.model_platform || '';
+        const mt = pinnedSelection.model_type || '';
+        return platformLabel ? `${platformLabel}${mt ? ` (${mt})` : ''}` : mt;
+      }
+    }
+
     if (modelType === 'codex_subscription') {
       return `Codex Subscription${codex_model_type ? ` (${codex_model_type})` : ''}`;
     }
@@ -315,8 +394,10 @@ export function ChatInputModelDropdown({
     items,
     localPrefer,
     localPlatform,
+    localProviderIds,
     localTypes,
     modelType,
+    pinnedSelection,
     t,
   ]);
 
@@ -333,6 +414,41 @@ export function ChatInputModelDropdown({
         })
       ) {
         navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+        return;
+      }
+      if (projectId) {
+        // Pin the choice to this Project only; the global default model
+        // (and the server-side preferred provider) stays unchanged.
+        if (category === 'cloud') {
+          setProjectModel(projectId, {
+            modelType: 'cloud',
+            cloud_model_type: modelId,
+          });
+          return;
+        }
+        if (category === 'custom') {
+          const idx = items.findIndex((item) => item.id === modelId);
+          const providerId = idx !== -1 ? form[idx]?.provider_id : undefined;
+          if (providerId === undefined) return;
+          setProjectModel(projectId, {
+            modelType: 'custom',
+            provider_id: providerId,
+            model_platform: modelId,
+            model_type: form[idx]?.model_type || undefined,
+          });
+          return;
+        }
+        if (category === 'local') {
+          const providerId = localProviderIds[modelId];
+          if (providerId === undefined) return;
+          setProjectModel(projectId, {
+            modelType: 'local',
+            provider_id: providerId,
+            model_platform: modelId,
+            model_type: localTypes[modelId] || undefined,
+          });
+          return;
+        }
         return;
       }
       await applyDefaultModelSelection({
@@ -358,7 +474,10 @@ export function ChatInputModelDropdown({
       form,
       localProviderIds,
       localPlatform,
+      localTypes,
       navigate,
+      projectId,
+      setProjectModel,
       setModelType,
       setCloudModelType,
       t,
@@ -482,7 +601,11 @@ export function ChatInputModelDropdown({
                   className="flex items-center justify-between"
                 >
                   <span className="text-body-sm">{model.name}</span>
-                  {cloudPrefer && effectiveCloudModelId === model.id && (
+                  {(pinnedSelection
+                    ? pinnedSelection.modelType === 'cloud' &&
+                      (pinnedSelection.cloud_model_type ||
+                        effectiveCloudModelId) === model.id
+                    : cloudPrefer && effectiveCloudModelId === model.id) && (
                     <Check className="h-4 w-4 text-ds-text-success-default-default" />
                   )}
                 </DropdownMenuItem>
@@ -524,9 +647,15 @@ export function ChatInputModelDropdown({
                 const isConfigured = isSubscriptionAuth
                   ? codexStatus.connected
                   : !!form[idx]?.provider_id;
-                const isPreferred = isSubscriptionAuth
-                  ? modelType === 'codex_subscription'
-                  : form[idx]?.prefer;
+                const isPreferred = pinnedSelection
+                  ? isSubscriptionAuth
+                    ? pinnedSelection.modelType === 'codex_subscription'
+                    : pinnedSelection.modelType === 'custom' &&
+                      pinnedSelection.provider_id !== undefined &&
+                      form[idx]?.provider_id === pinnedSelection.provider_id
+                  : isSubscriptionAuth
+                    ? modelType === 'codex_subscription'
+                    : form[idx]?.prefer;
                 const modelImage = getModelImage(item.id);
 
                 return (
@@ -604,7 +733,11 @@ export function ChatInputModelDropdown({
           >
             {LOCAL_MODEL_OPTIONS.map((model) => {
               const isConfigured = !!localProviderIds[model.id];
-              const isPreferred = localPrefer && localPlatform === model.id;
+              const isPreferred = pinnedSelection
+                ? pinnedSelection.modelType === 'local' &&
+                  pinnedSelection.provider_id !== undefined &&
+                  localProviderIds[model.id] === pinnedSelection.provider_id
+                : localPrefer && localPlatform === model.id;
               const modelImage = getModelImage(`local-${model.id}`);
 
               return (

@@ -44,6 +44,68 @@ export function zipFolder(
 
 export type DiagnosticsLogFile = { src: string; destName: string };
 
+export type LogDirectoryEntry = { src: string; destName: string };
+
+/**
+ * Zips multiple directories into one archive, each under its destName.
+ */
+export function zipDirectories(
+  outputZipPath: string,
+  dirs: LogDirectoryEntry[]
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(outputZipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', () => resolve(outputZipPath));
+
+    archive.on('error', (err: any) => {
+      log.error('Archive error:', err);
+      reject(err);
+    });
+
+    archive.pipe(output);
+    for (const dir of dirs) {
+      archive.directory(dir.src, dir.destName);
+    }
+    archive.finalize();
+  });
+}
+
+/**
+ * Finds directories named `dirName` under `rootDir`. Camel logs live at
+ * `~/.eigent/<email>/[project_<id>/]task_<taskId>/camel_logs`, so a shallow
+ * bounded walk is enough.
+ */
+export function findDirectoriesByName(
+  rootDir: string,
+  dirName: string,
+  maxDepth = 3
+): string[] {
+  const found: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.name === dirName) {
+        found.push(fullPath);
+      } else if (depth < maxDepth) {
+        walk(fullPath, depth + 1);
+      }
+    }
+  };
+  if (fs.existsSync(rootDir)) {
+    walk(rootDir, 0);
+  }
+  return found;
+}
+
 /**
  * Stages log files and bug_report.txt into a temp directory, zips to outputZipPath, then removes the staging dir.
  */
