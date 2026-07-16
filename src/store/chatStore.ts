@@ -29,6 +29,10 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
+  buildAgentModelConfigFromProvider,
+  splitProviderConfig,
+} from '@/lib/modelConfig';
+import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
@@ -94,6 +98,18 @@ const hasApiCode = (value: unknown, code: string) =>
   String((value as { code?: unknown }).code) === code;
 
 let _host: AppHost | null = null;
+
+// Per-step request_usage tokens keyed by `${taskId}:${agentId}`; needed
+// because deactivate_agent.tokens is zeroed under request-level reporting.
+const requestUsageStepTokens = new Map<string, number>();
+
+const clearRequestUsageStepTokens = (taskId: string) => {
+  for (const key of requestUsageStepTokens.keys()) {
+    if (key.startsWith(`${taskId}:`)) {
+      requestUsageStepTokens.delete(key);
+    }
+  }
+};
 
 export function injectHost(host: AppHost | null): void {
   _host = host;
@@ -1505,6 +1521,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         model_type: '',
         model_platform: '',
         api_url: '',
+        model_config_dict: {},
         extra_params: {},
         auth_source: undefined as 'codex_subscription' | undefined,
       };
@@ -1513,7 +1530,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           prefer: true,
         });
         const providerList = res.items || [];
-        console.log('providerList', providerList);
         const provider = providerList[0];
 
         if (!provider) {
@@ -1523,12 +1539,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
+        const { modelConfigDict, extraParams } = splitProviderConfig(
+          provider.encrypted_config
+        );
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
           model_platform: provider.provider_name,
           api_url: provider.endpoint_url || provider.api_url,
-          extra_params: provider.encrypted_config,
+          model_config_dict: modelConfigDict,
+          extra_params: extraParams,
           auth_source: undefined,
         };
       } else if (!type && modelType === 'cloud') {
@@ -1598,6 +1618,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_type: resolvedCloudModel.model.model_type,
           model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
+          model_config_dict: {},
           extra_params: {},
           auth_source: undefined,
         };
@@ -1607,6 +1628,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_type: codex_model_type || 'gpt-5.5',
           model_platform: 'openai',
           api_url: '',
+          model_config_dict: {},
           extra_params: {},
           auth_source: 'codex_subscription',
         };
@@ -1666,12 +1688,61 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      const workerProviderIds = !type
+        ? workerList
+            .map((worker) => worker.workerInfo?.model_provider_id)
+            .filter((providerId): providerId is number =>
+              Number.isInteger(providerId)
+            )
+        : [];
+      const workerProvidersById = new Map<number, any>();
+      if (workerProviderIds.length > 0) {
+        let workerProviderList: any[];
+        try {
+          const providersRes = await proxyFetchGet('/api/v1/providers');
+          workerProviderList = Array.isArray(providersRes)
+            ? providersRes
+            : providersRes.items || [];
+        } catch (error) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to load the model provider configured for a worker.',
+            { cause: error }
+          );
+        }
+
+        workerProviderList.forEach((provider) => {
+          workerProvidersById.set(Number(provider.id), provider);
+        });
+
+        const missingWorker = workerList.find((worker) => {
+          const providerId = worker.workerInfo?.model_provider_id;
+          return (
+            Number.isInteger(providerId) &&
+            !workerProvidersById.has(providerId as number)
+          );
+        });
+        if (missingWorker) {
+          finishStartupFailure();
+          throw new Error(
+            `The model provider configured for worker "${missingWorker.name}" is no longer available. Please edit the worker and select another model.`
+          );
+        }
+      }
+
       const addWorkers = workerList.map((worker) => {
+        const providerId = worker.workerInfo?.model_provider_id;
+        const provider = Number.isInteger(providerId)
+          ? workerProvidersById.get(providerId as number)
+          : undefined;
         return {
           name: worker.workerInfo?.name,
           description: worker.workerInfo?.description,
           tools: worker.workerInfo?.tools,
           mcp_tools: worker.workerInfo?.mcp_tools,
+          custom_model_config: provider
+            ? buildAgentModelConfigFromProvider(provider)
+            : undefined,
         };
       });
 
@@ -1813,6 +1884,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             model_type: apiModel.model_type,
             api_key: apiModel.api_key,
             api_url: apiModel.api_url,
+            model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
             auth_source: apiModel.auth_source,
             installed_mcp: { mcpServers: {} },
@@ -2674,6 +2746,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          // Request-level token usage updates (non-stream mode)
+          if (agentMessages.step === AgentStep.REQUEST_USAGE) {
+            if (agentMessages.data.tokens) {
+              addTokens(currentTaskId, agentMessages.data.tokens);
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              requestUsageStepTokens.set(
+                stepKey,
+                agentMessages.data.step_total_tokens ||
+                  (requestUsageStepTokens.get(stepKey) || 0) +
+                    agentMessages.data.tokens
+              );
+            }
+            return;
+          }
+
           // Activate agent
           if (
             agentMessages.step === AgentStep.ACTIVATE_AGENT ||
@@ -2683,6 +2770,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
+            }
+            // Consume the step's request_usage tokens before any early
+            // return below, so entries are cleaned up even for agents that
+            // never appear in taskAssigning.
+            let stepTokens = 0;
+            if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
             }
             const { state, agent_id, process_task_id } = agentMessages.data;
             if (!state && !agent_id && !process_task_id) return;
@@ -2763,8 +2862,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              const hasTokens =
-                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              // Per-step tokens (not the task total) so an errored/empty
+              // step is not mistaken for a real reply.
+              const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
@@ -3350,6 +3450,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 role: 'agent',
                 content: `❌ **Error**: ${errorMessage}`,
               });
+              // Record the tokens consumed before the failure so the run's
+              // spend is not lost from the history row (a failed run
+              // otherwise stays at zero tokens forever).
+              if (!type && historyId && !isProjectBusyError) {
+                const tokensSoFar = getTokens(currentTaskId);
+                if (tokensSoFar > 0) {
+                  proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
+                    tokens: tokensSoFar,
+                  }).catch((err) => {
+                    console.warn('History token update failed on error:', err);
+                  });
+                }
+              }
               uploadLog(currentTaskId, type);
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
@@ -3491,6 +3604,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
 
             const endMessage = resolveEndMessageText(
