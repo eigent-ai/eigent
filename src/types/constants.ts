@@ -111,3 +111,17 @@ export const SessionMode = {
 } as const;
 
 export type SessionModeType = (typeof SessionMode)[keyof typeof SessionMode];
+
+/**
+ * Reasoning/thinking effort level for the active model, low → high compute budget.
+ */
+export const ThinkingEffort = {
+  LIGHT: 'light',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  EXTRA_HIGH: 'extra_high',
+  ULTRA: 'ultra',
+} as const;
+
+export type ThinkingEffortType =
+  (typeof ThinkingEffort)[keyof typeof ThinkingEffort];
