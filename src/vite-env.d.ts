@@ -14,6 +14,10 @@
 
 /// <reference types="vite/client" />
 
+// Side-effect bundle registering the dead-clicks detector into
+// __PosthogExtensions__ (no remote script; ships without type declarations).
+declare module 'posthog-js/dist/dead-clicks-autocapture.js';
+
 interface ImportMetaEnv {
   readonly VITE_PUBLIC_POSTHOG_KEY?: string;
   readonly VITE_PUBLIC_POSTHOG_HOST?: string;

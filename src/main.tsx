@@ -18,16 +18,16 @@ import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, HashRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter, useLocation } from 'react-router-dom';
 import App from './App';
 import { ThemeProvider } from './components/Layout/ThemeProvider';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ConnectionProvider } from './context/ConnectionContext';
 import { createHost, HostProvider } from './host';
 import './i18n';
-import { initAnalytics } from './lib/analytics/posthog';
+import { initAnalytics, trackScreenView } from './lib/analytics/posthog';
 import { getAuthStore } from './store/authStore';
 import { injectHost } from './store/chatStore';
 import './style/index.css';
@@ -55,9 +55,21 @@ void (async () => {
 const Router = isWeb() ? BrowserRouter : HashRouter;
 const initialChannel = isWeb() ? 'web' : 'desktop';
 
+// Registers the current route as the analytics `screen` super property and
+// emits manual $pageview events (HashRouter changes bypass PostHog's own SPA
+// pageview detection). Renders nothing.
+function AnalyticsRouteTracker() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    trackScreenView(pathname);
+  }, [pathname]);
+  return null;
+}
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <Suspense fallback={<div></div>}>
     <Router>
+      <AnalyticsRouteTracker />
       <HostProvider host={host}>
         <ConnectionProvider channel={initialChannel}>
           <ThemeProvider>

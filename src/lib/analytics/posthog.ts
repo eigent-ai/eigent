@@ -23,6 +23,15 @@
  * What it tracks:
  *  - Autocapture: every click/input, which powers "most used feature buttons"
  *    and PostHog's built-in rage-click detection ($rageclick).
+ *  - Dead clicks ($dead_click): clicks that produce no reaction — the
+ *    "this looks clickable but isn't" confusion signal. The detector is
+ *    bundled locally (imported in init) because the renderer CSP blocks
+ *    PostHog's lazy-loaded remote extension script.
+ *  - Screen views: a `screen` session super property + manual $pageview per
+ *    route change, so every event (including $rageclick / $dead_click) can be
+ *    broken down by app screen. Electron file:// URLs are rewritten to
+ *    app://eigent/<route> in sanitize_properties — otherwise every install
+ *    reports a different absolute path and URL breakdowns are useless.
  *  - Bundled exception capture for surfacing error issues.
  *  - A named-event taxonomy (app_launched / task_submitted / task_completed /
  *    first_task_* / feature_used / *_failed …) wired at code chokepoints — see
@@ -82,15 +91,29 @@ export async function initAnalytics(
   }
 
   try {
-    const { default: posthog } = await import('posthog-js');
+    // The dead-clicks detector normally lazy-loads from PostHog's assets
+    // host, which the renderer CSP blocks — bundling it locally registers it
+    // into __PosthogExtensions__ before init so no remote script is needed.
+    const [{ default: posthog }] = await Promise.all([
+      import('posthog-js'),
+      import('posthog-js/dist/dead-clicks-autocapture.js'),
+    ]);
     posthog.init(POSTHOG_KEY, {
       api_host: POSTHOG_HOST,
       // Autocapture powers "most used buttons" + rage-click detection.
       autocapture: true,
       rageclick: true,
-      // SPA pageviews (HashRouter in Electron / BrowserRouter on web).
-      capture_pageview: true,
+      // "Clickable-looking but inert" clicks — the layout-confusion signal.
+      capture_dead_clicks: true,
+      // Pageviews are captured manually per route change (trackScreenView),
+      // because HashRouter route changes don't reliably trigger PostHog's
+      // history-based SPA detection in the Electron renderer.
+      capture_pageview: false,
       capture_pageleave: true,
+      // Collapse per-install file:// URLs to stable app://eigent/<route>
+      // URLs so screen breakdowns aggregate across machines. Also drops
+      // query strings, which can carry tokens.
+      sanitize_properties: sanitizeEventProperties,
       // NOTE: PostHog's `capture_exceptions` autocapture lazy-loads a remote
       // script from the assets host, which the renderer CSP (index.html)
       // blocks. We attach our own bundled error handlers below instead, so no
@@ -106,6 +129,8 @@ export async function initAnalytics(
     });
     client = posthog;
     attachErrorHandlers(posthog);
+    // Register the boot screen first so app_launched already carries it.
+    flushPendingScreenView();
     capture('app_launched', {
       is_first_launch: launchContext?.isFirstLaunch ?? null,
       platform: detectPlatform(),
@@ -199,6 +224,99 @@ function attachErrorHandlers(posthog: PostHog): void {
     const err = reason instanceof Error ? reason : new Error(String(reason));
     posthog.captureException(err, { mechanism: 'unhandledrejection' });
   });
+}
+
+/**
+ * Rewrite volatile URL properties before any event leaves the machine.
+ * Electron renders from file://<install path>/index.html#/route — the path
+ * prefix differs per machine, so raw URLs are useless for aggregation (and
+ * leak install paths / usernames). Rewritten to app://eigent/<route>.
+ * Query strings are dropped everywhere (they can carry share tokens).
+ */
+function sanitizeEventProperties(
+  properties: Record<string, unknown>
+): Record<string, unknown> {
+  for (const key of ['$current_url', '$referrer'] as const) {
+    const value = properties[key];
+    if (typeof value === 'string') {
+      const route = fileUrlToAppRoute(value);
+      if (route !== null) properties[key] = `app://eigent${route}`;
+    }
+  }
+  const pathname = properties['$pathname'];
+  const currentUrl = properties['$current_url'];
+  if (
+    typeof pathname === 'string' &&
+    typeof currentUrl === 'string' &&
+    currentUrl.startsWith('app://eigent')
+  ) {
+    properties['$pathname'] = currentUrl.slice('app://eigent'.length) || '/';
+  }
+  return properties;
+}
+
+/** file:///…/index.html#/route?x=1 → "/route" (null for non-file URLs). */
+function fileUrlToAppRoute(url: string): string | null {
+  if (!url.startsWith('file://')) return null;
+  const hashIndex = url.indexOf('#');
+  const rawRoute = hashIndex === -1 ? '/' : url.slice(hashIndex + 1) || '/';
+  const route = rawRoute.split('?')[0];
+  return route.startsWith('/') ? route : `/${route}`;
+}
+
+/**
+ * Collapse dynamic path segments (ids, uuids, share tokens) so `screen` stays
+ * a small enum ("/project/:id") instead of one value per project.
+ */
+function normalizeScreen(pathname: string): string {
+  const segments = pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) =>
+      /^\d+$/.test(segment) ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        segment
+      ) ||
+      /^[a-z0-9_-]{21,}$/i.test(segment)
+        ? ':id'
+        : segment
+    );
+  return `/${segments.join('/')}`;
+}
+
+let lastScreen: string | null = null;
+
+/** Route seen before the async init finished; flushed by initAnalytics. */
+let pendingScreenPath: string | null = null;
+
+export function flushPendingScreenView(): void {
+  if (pendingScreenPath === null) return;
+  const path = pendingScreenPath;
+  pendingScreenPath = null;
+  trackScreenView(path);
+}
+
+/**
+ * Record a route change: registers the normalized route as the `screen`
+ * session super property (so autocaptured clicks, $rageclick and $dead_click
+ * events can all be broken down by screen) and emits a manual $pageview.
+ * Wired to the router in main.tsx.
+ */
+export function trackScreenView(pathname: string): void {
+  if (!client) {
+    // Init is async; remember the route so the first screen isn't lost.
+    pendingScreenPath = pathname;
+    return;
+  }
+  const screen = normalizeScreen(pathname);
+  if (screen === lastScreen) return;
+  lastScreen = screen;
+  try {
+    client.register_for_session({ screen });
+    client.capture('$pageview');
+  } catch (error) {
+    console.error('[analytics] trackScreenView failed:', error);
+  }
 }
 
 /**
