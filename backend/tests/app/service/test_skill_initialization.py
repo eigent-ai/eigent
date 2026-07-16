@@ -217,11 +217,14 @@ def test_skill_toolkit_allows_single_agent_aliases():
         "demo", "Agents.single_agent", config
     )
     assert not agent_skill_toolkit._is_agent_allowed(
+        "demo", "foo.single_agent", config
+    )
+    assert not agent_skill_toolkit._is_agent_allowed(
         "demo", "developer_agent", config
     )
 
 
-def test_skill_toolkit_normalizes_selected_agent_aliases():
+def test_skill_toolkit_normalizes_selected_single_agent_aliases():
     config = {
         "demo": {
             "enabled": True,

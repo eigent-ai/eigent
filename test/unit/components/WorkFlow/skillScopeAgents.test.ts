@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { describe, expect, it } from 'vitest';
 import {
   buildSkillScopeAgentOptions,
   getWorkflowAgentDisplay,
   normalizeSkillScopeAgentId,
   SINGLE_AGENT_ID,
 } from '@/components/WorkFlow/agents';
+import { describe, expect, it } from 'vitest';
 
 describe('normalizeSkillScopeAgentId', () => {
   it('canonicalizes Single Agent aliases to single_agent', () => {
@@ -27,7 +27,7 @@ describe('normalizeSkillScopeAgentId', () => {
       SINGLE_AGENT_ID
     );
     expect(normalizeSkillScopeAgentId('foo.single_agent')).toBe(
-      SINGLE_AGENT_ID
+      'foo.single_agent'
     );
   });
 });
@@ -42,9 +42,9 @@ describe('buildSkillScopeAgentOptions', () => {
     expect(options.some((option) => option.value === 'developer_agent')).toBe(
       true
     );
-    expect(options.some((option) => option.value === 'social_media_agent')).toBe(
-      false
-    );
+    expect(
+      options.some((option) => option.value === 'social_media_agent')
+    ).toBe(false);
   });
 
   it('keeps a single Single Agent entry when workerList repeats aliases', () => {
@@ -53,6 +53,7 @@ describe('buildSkillScopeAgentOptions', () => {
       { name: 'developer_agent' },
       { name: SINGLE_AGENT_ID },
       { name: 'Agents.single_agent' },
+      { name: 'foo.single_agent' },
     ]);
 
     expect(
@@ -63,6 +64,9 @@ describe('buildSkillScopeAgentOptions', () => {
       options.filter((option) => option.value === 'developer_agent')
     ).toHaveLength(1);
     expect(options.some((option) => option.value === 'custom_worker')).toBe(
+      true
+    );
+    expect(options.some((option) => option.value === 'foo.single_agent')).toBe(
       true
     );
   });

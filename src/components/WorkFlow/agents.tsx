@@ -151,9 +151,7 @@ export const SKILL_SCOPE_AGENT_LIST: {
     id: SINGLE_AGENT_ID,
     // Product label (layout.workspace-session-single-agent). Value stays `single_agent`.
     name: 'Single Agent',
-    icon: (
-      <Bot size={16} className="text-ds-text-neutral-default-default" />
-    ),
+    icon: <Bot size={16} className="text-ds-text-neutral-default-default" />,
   },
   ...WORKFLOW_AGENT_LIST,
 ];
@@ -171,11 +169,7 @@ export function normalizeSkillScopeAgentId(agentName?: string | null): string {
   const raw = String(agentName ?? '').trim();
   if (!raw) return '';
   const lowered = raw.toLowerCase();
-  if (
-    lowered === SINGLE_AGENT_ID ||
-    lowered === 'agents.single_agent' ||
-    lowered.endsWith('.single_agent')
-  ) {
+  if (lowered === SINGLE_AGENT_ID || lowered === 'agents.single_agent') {
     return SINGLE_AGENT_ID;
   }
   return raw;

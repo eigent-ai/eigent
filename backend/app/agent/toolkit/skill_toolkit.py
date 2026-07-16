@@ -129,11 +129,7 @@ def _normalize_agent_name(agent_name: str | None) -> str | None:
     if not cleaned:
         return None
     lowered = cleaned.lower()
-    if (
-        lowered == "single_agent"
-        or lowered == "agents.single_agent"
-        or lowered.endswith(".single_agent")
-    ):
+    if lowered == "single_agent" or lowered == "agents.single_agent":
         return "single_agent"
     return cleaned
 
