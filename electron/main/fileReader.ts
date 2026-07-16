@@ -22,6 +22,7 @@ import path from 'path';
 import * as unzipper from 'unzipper';
 import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
+import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
 
 interface FileInfo {
@@ -475,6 +476,8 @@ export class FileReader {
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
+        filePath = normalizeLegacySandboxPath(filePath);
+
         // check if it is a remote file
         if (!this.isLocalFile(filePath)) {
           console.log('detect remote file, start downloading:', filePath);
