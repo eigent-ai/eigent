@@ -132,7 +132,9 @@ import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
   extractEndPayloadText,
+  extractFinalOutputFileList,
   getCloudModelPlatform,
+  mergeFileInfoLists,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   useChatStore,
@@ -220,6 +222,111 @@ describe('ChatStore - Core Functionality', () => {
           ],
         } as any)
       ).toContain('Generated ticket report with 27 rows');
+    });
+  });
+
+  describe('Final output file extraction', () => {
+    it('extracts sandbox paths without treating the scheme suffix as a drive', () => {
+      const files = extractFinalOutputFileList(
+        'Created [CSV](sandbox:/Users/test/eigent/space_123/report.csv).'
+      );
+
+      expect(files).toMatchObject([
+        {
+          name: 'report.csv',
+          path: '/Users/test/eigent/space_123/report.csv',
+          type: 'csv',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('keeps supported absolute POSIX and Windows paths', () => {
+      const files = extractFinalOutputFileList(
+        'Outputs: /Users/test/report.md and C:\\Users\\test\\report.xlsx'
+      );
+
+      expect(files.map((file) => file.path)).toEqual([
+        '/Users/test/report.md',
+        'C:/Users/test/report.xlsx',
+      ]);
+    });
+
+    it('does not turn unknown schemes or embedded drive-like text into paths', () => {
+      const files = extractFinalOutputFileList(
+        [
+          'unknown:/Users/test/report.csv',
+          'wordC:/Users/test/report.md',
+          'https://example.com/report.csv',
+          'file:///Users/test/report.md',
+        ].join(' ')
+      );
+
+      expect(files).toEqual([]);
+    });
+
+    it('still builds project stream URLs for project-scoped outputs', () => {
+      const [file] = extractFinalOutputFileList(
+        'sandbox:/tmp/project_42/results/report.csv',
+        '42',
+        'dev@example.com',
+        'http://localhost:5001/'
+      );
+
+      expect(file).toMatchObject({
+        path: 'http://localhost:5001/files/stream?path=results%2Freport.csv&project_id=42&email=dev%40example.com',
+        relativePath: 'results/report.csv',
+        isRemote: true,
+      });
+    });
+
+    it('replaces a legacy x-prefixed path when replaying old output cards', () => {
+      const extractedFiles = extractFinalOutputFileList(
+        'sandbox:/Users/test/eigent/space_123/report.csv'
+      );
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'x:/Users/test/eigent/space_123/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        extractedFiles
+      );
+
+      expect(mergedFiles).toMatchObject([
+        {
+          name: 'report.csv',
+          path: '/Users/test/eigent/space_123/report.csv',
+          type: 'csv',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('does not replace an unrelated X drive path with the same file name', () => {
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'X:/exports/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        [
+          {
+            name: 'report.csv',
+            path: '/Users/test/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ]
+      );
+
+      expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
     });
   });
 
