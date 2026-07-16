@@ -18,6 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { processDroppedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
@@ -485,69 +486,75 @@ export const Inputbox = ({
       <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
         {/* Left: add files/photos + connector picker + skill picker */}
         <div className="flex min-w-0 items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            textWeight="bold"
-            buttonRadius="lg"
-            disabled={
-              disabled ||
-              !privacy ||
-              useCloudModelInDev ||
-              typeof onAddFile !== 'function'
-            }
-            aria-label={t('chat.input-attach-add-files-or-photos')}
-            onClick={() => onAddFile?.()}
-          >
-            <Paperclip />
-          </Button>
-          {onToggleConnectorPanel && (
+          <TooltipSimple content="Attach" side="top">
             <Button
               type="button"
-              data-picker-trigger
               variant="ghost"
               size="xs"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="lg"
-              disabled={disabled}
-              aria-label={t('chat.input-add-connector', {
-                defaultValue: 'Add connectors',
-              })}
-              aria-haspopup="true"
-              aria-expanded={connectorPanelOpen}
-              className={cn(
-                connectorPanelOpen && 'bg-ds-bg-neutral-strong-default'
-              )}
-              onClick={onToggleConnectorPanel}
+              disabled={
+                disabled ||
+                !privacy ||
+                useCloudModelInDev ||
+                typeof onAddFile !== 'function'
+              }
+              aria-label={t('chat.input-attach-add-files-or-photos')}
+              onClick={() => onAddFile?.()}
             >
-              <Hammer />
+              <Paperclip />
             </Button>
+          </TooltipSimple>
+          {onToggleConnectorPanel && (
+            <TooltipSimple content="MCPs" side="top">
+              <Button
+                type="button"
+                data-picker-trigger
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                textWeight="bold"
+                buttonRadius="lg"
+                disabled={disabled}
+                aria-label={t('chat.input-add-connector', {
+                  defaultValue: 'Add connectors',
+                })}
+                aria-haspopup="true"
+                aria-expanded={connectorPanelOpen}
+                className={cn(
+                  connectorPanelOpen && 'bg-ds-bg-neutral-strong-default'
+                )}
+                onClick={onToggleConnectorPanel}
+              >
+                <Hammer />
+              </Button>
+            </TooltipSimple>
           )}
           {onToggleSkillPanel && (
-            <Button
-              type="button"
-              data-picker-trigger
-              variant="ghost"
-              size="xs"
-              buttonContent="icon-only"
-              textWeight="bold"
-              buttonRadius="lg"
-              disabled={disabled}
-              aria-label={t('chat.input-add-skill', {
-                defaultValue: 'Add skills',
-              })}
-              aria-haspopup="true"
-              aria-expanded={skillPanelOpen}
-              className={cn(
-                skillPanelOpen && 'bg-ds-bg-neutral-strong-default'
-              )}
-              onClick={onToggleSkillPanel}
-            >
-              <WandSparkles />
-            </Button>
+            <TooltipSimple content="Skills" side="top">
+              <Button
+                type="button"
+                data-picker-trigger
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                textWeight="bold"
+                buttonRadius="lg"
+                disabled={disabled}
+                aria-label={t('chat.input-add-skill', {
+                  defaultValue: 'Add skills',
+                })}
+                aria-haspopup="true"
+                aria-expanded={skillPanelOpen}
+                className={cn(
+                  skillPanelOpen && 'bg-ds-bg-neutral-strong-default'
+                )}
+                onClick={onToggleSkillPanel}
+              >
+                <WandSparkles />
+              </Button>
+            </TooltipSimple>
           )}
         </div>
 
