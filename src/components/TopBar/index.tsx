@@ -21,6 +21,7 @@ import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -167,8 +168,6 @@ function HeaderWin() {
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
-  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
-  const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -178,35 +177,6 @@ function HeaderWin() {
     const p = host.electronAPI.getPlatform();
     setPlatform(p);
   }, [host]);
-
-  useEffect(() => {
-    const ipc = ipcRenderer;
-    if (!ipc) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPackageUpdateAvailable(Boolean(info.update));
-    };
-
-    const onUpdateDownloaded = () => {
-      setPackageUpdateAvailable(false);
-    };
-
-    ipc.on('update-can-available', onUpdateCanAvailable);
-    ipc.on('update-downloaded', onUpdateDownloaded);
-    void ipc.invoke('check-update');
-
-    return () => {
-      ipc.off('update-can-available', onUpdateCanAvailable);
-      ipc.off('update-downloaded', onUpdateDownloaded);
-    };
-  }, [ipcRenderer]);
-
-  const handleStartDownload = useCallback(() => {
-    void ipcRenderer?.invoke('start-download');
-  }, [ipcRenderer]);
 
   const isHistoryRoute = useMemo(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -483,8 +453,8 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-10 min-w-0 py-1 absolute z-50 flex items-center ${
-        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
+      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
+        platform === 'darwin' ? 'pl-[68px] pr-[2px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
@@ -512,13 +482,13 @@ function HeaderWin() {
         />
       </AlertDialog>
       {/* Leading: workspace controls, or a single back button on history */}
-      <div className="no-drag gap-0.5 flex shrink-0 items-center justify-center">
+      <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
         {isHistoryRoute ? (
           // History page: one "back to workspace" button (arrow + text)
           <Button
             variant="ghost"
             size="sm"
-            className="no-drag gap-1.5 font-bold shrink-0 rounded-full"
+            className="no-drag shrink-0 gap-1.5 rounded-full font-bold"
             onClick={handleExitHistoryOrSettings}
             aria-label={t('layout.back-to-workspace', {
               defaultValue: 'Back to workspace',
@@ -575,7 +545,7 @@ function HeaderWin() {
               type="button"
               onClick={() => navigateToHistoryTab('home')}
               aria-label={t('layout.home')}
-              className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 gap-1.5 px-2 text-label-sm font-bold text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover flex min-h-[28px] items-center rounded-full transition-colors outline-none focus-visible:ring-[3px]"
+              className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
             >
               <img
                 src={
@@ -599,7 +569,7 @@ function HeaderWin() {
                 <button
                   id="active-space-title-btn"
                   type="button"
-                  className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 min-w-0 gap-1.5 px-2 text-label-sm font-bold text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover flex min-h-[28px] items-center rounded-full transition-colors outline-none focus-visible:ring-[3px]"
+                  className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
                   aria-haspopup="menu"
                   aria-label={activeSpaceTitle}
                 >
@@ -608,7 +578,7 @@ function HeaderWin() {
                     {activeSpaceTitle}
                   </span>
                   <ChevronsUpDown
-                    className="h-3.5 w-3.5 text-ds-icon-neutral-subtle-default shrink-0"
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
                     aria-hidden
                   />
                 </button>
@@ -636,9 +606,11 @@ function HeaderWin() {
       <div
         className={`${
           platform === 'darwin' && 'px-1.5'
-        } no-drag h-7 relative z-50 flex shrink-0 items-center`}
+        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
-        <div className="flex h-full shrink-0 items-center">
+        <div className="flex h-full shrink-0 items-center gap-0.5">
+          {/* Update slot: hidden → background download progress → launch new version */}
+          <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"
@@ -679,7 +651,7 @@ function HeaderWin() {
             </Button>
           </TooltipSimple>
 
-          <div className="ml-1.5 gap-1 border-ds-border-neutral-subtle-default pl-1.5 flex h-full shrink-0 items-center border-y-0 border-r-0 border-l border-solid">
+          <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
             <AnimatePresence mode="wait" initial={false}>
               {isHomeRoute ? (
                 <motion.div
@@ -736,24 +708,6 @@ function HeaderWin() {
                 </motion.div>
               )}
             </AnimatePresence>
-            {packageUpdateAvailable && (
-              <TooltipSimple
-                content={t('layout.update')}
-                side="bottom"
-                align="end"
-              >
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  className="no-drag px-3 shrink-0 rounded-full"
-                  onClick={handleStartDownload}
-                  aria-label={t('layout.update')}
-                >
-                  {t('layout.update')}
-                </Button>
-              </TooltipSimple>
-            )}
           </div>
         </div>
       </div>
@@ -766,19 +720,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />

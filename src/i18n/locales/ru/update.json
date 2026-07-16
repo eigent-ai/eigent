@@ -8,5 +8,8 @@
   "complete": "Завершено",
   "download-completed": "Загрузка завершена",
   "click-to-install-update": "Нажмите, чтобы установить обновление",
-  "install": "Установить"
+  "install": "Установить",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

@@ -92,6 +92,12 @@ export interface InputboxProps {
   onSessionModeChange?: (mode: SessionModeType) => void;
   /** Full toggle on workspace; on session chat, only the current mode is shown. */
   sessionModeSelectInteractive?: boolean;
+  /**
+   * Project whose pinned model the model dropdown reads and writes. When set,
+   * the dropdown stays interactive on session chat and changes apply to this
+   * Project only (the global default is left untouched).
+   */
+  modelSelectProjectId?: string | null;
   /** Callback when trigger is being created (for placeholder) */
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   /** Callback when trigger is created successfully */
@@ -155,6 +161,7 @@ export const Inputbox = ({
   sessionMode,
   onSessionModeChange,
   sessionModeSelectInteractive = false,
+  modelSelectProjectId,
   onTriggerCreating: _onTriggerCreating,
   onTriggerCreated: _onTriggerCreated,
 }: InputboxProps) => {
@@ -533,9 +540,11 @@ export const Inputbox = ({
           </DropdownMenu>
           <ChatInputModelDropdown
             disabled={disabled}
+            projectId={modelSelectProjectId}
             readOnly={
               sessionMode !== undefined &&
-              sessionModeSelectInteractive === false
+              sessionModeSelectInteractive === false &&
+              !modelSelectProjectId
             }
           />
         </div>
