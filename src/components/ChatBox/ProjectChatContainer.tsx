@@ -156,6 +156,19 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }, 0);
   }, [chatStore?.activeTaskId]);
 
+  // When switching projects, jump to the latest message (bottom) instead of
+  // staying at the top. Deferred so the switched-to project's messages have
+  // rendered; instant (not smooth) so we don't scroll through the whole
+  // history on every switch.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    const timer = setTimeout(() => {
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeProjectId, scrollContainerRef]);
+
   // Intersection Observer for scroll-based animations
   useEffect(() => {
     const root = scrollContainerRef.current;
@@ -341,7 +354,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div className={`relative z-10 w-full ${className}`}>
       <div
-        className="pt-0 mx-auto w-full max-w-[600px]"
+        className="mx-auto w-full max-w-[600px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         <AnimatePresence mode="popLayout">

@@ -198,6 +198,9 @@
   "api-key-setting": "إعداد مفتاح API",
   "api-host-setting": "إعداد مضيف API",
   "model-type-setting": "إعداد نوع النموذج",
+  "model-parameters-setting": "معلمات النموذج (JSON، اختياري)",
+  "model-parameters-placeholder": "أدخل معلمات النموذج ككائن JSON، مثال: {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "يجب أن تكون معلمات النموذج كائن JSON صالحًا.",
   "please-select": "يرجى الاختيار",
   "configuring": "جارٍ التكوين...",
 

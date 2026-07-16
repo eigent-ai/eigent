@@ -672,14 +672,14 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 p-1 bg-ds-bg-neutral-default-default rounded-2xl box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default p-1',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-1 flex w-full shrink-0 flex-col">
-              <div className="min-w-0 gap-1 flex w-full flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-1">
+              <div className="flex w-full min-w-0 flex-col gap-1">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -698,11 +698,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -713,7 +713,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
+                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -788,8 +788,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -830,13 +830,13 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="px-3 my-2">
-              <div className="bg-ds-border-neutral-default-default h-px w-full" />
+            <div className="my-2 px-3">
+              <div className="h-px w-full bg-ds-border-neutral-default-default" />
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="min-h-0 flex flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null
