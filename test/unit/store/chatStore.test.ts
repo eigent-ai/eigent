@@ -134,6 +134,7 @@ import {
   extractEndPayloadText,
   extractFinalOutputFileList,
   getCloudModelPlatform,
+  mergeFileInfoLists,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   useChatStore,
@@ -277,6 +278,55 @@ describe('ChatStore - Core Functionality', () => {
         relativePath: 'results/report.csv',
         isRemote: true,
       });
+    });
+
+    it('replaces a legacy x-prefixed path when replaying old output cards', () => {
+      const extractedFiles = extractFinalOutputFileList(
+        'sandbox:/Users/test/eigent/space_123/report.csv'
+      );
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'x:/Users/test/eigent/space_123/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        extractedFiles
+      );
+
+      expect(mergedFiles).toMatchObject([
+        {
+          name: 'report.csv',
+          path: '/Users/test/eigent/space_123/report.csv',
+          type: 'csv',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('does not replace an unrelated X drive path with the same file name', () => {
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'X:/exports/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        [
+          {
+            name: 'report.csv',
+            path: '/Users/test/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ]
+      );
+
+      expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
     });
   });
 

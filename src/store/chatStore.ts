@@ -926,7 +926,16 @@ function getFileInfoIdentities(file: FileInfo): string[] {
     .map((value) => normalizeOutputPath(value as string).toLowerCase());
 }
 
-function mergeFileInfoLists(
+function isLegacySandboxDrivePath(
+  existingPath: string,
+  extractedPath: string
+): boolean {
+  const normalizedExisting = normalizeOutputPath(existingPath).toLowerCase();
+  const normalizedExtracted = normalizeOutputPath(extractedPath).toLowerCase();
+  return normalizedExisting === `x:${normalizedExtracted}`;
+}
+
+export function mergeFileInfoLists(
   existingFileList: FileInfo[],
   extractedFileList: FileInfo[]
 ): FileInfo[] {
@@ -945,9 +954,13 @@ function mergeFileInfoLists(
       return;
     }
 
-    if (file.isRemote && !merged[existingIndex].isRemote) {
+    const existingFile = merged[existingIndex];
+    if (
+      (file.isRemote && !existingFile.isRemote) ||
+      isLegacySandboxDrivePath(existingFile.path, file.path)
+    ) {
       merged[existingIndex] = {
-        ...merged[existingIndex],
+        ...existingFile,
         ...file,
       };
       mergedIdentities[existingIndex] = identities;
