@@ -22,8 +22,9 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import {
+  buildSkillScopeAgentOptions,
   getWorkflowAgentDisplay,
-  WORKFLOW_AGENT_LIST,
+  normalizeSkillScopeAgentId,
 } from '@/components/WorkFlow/agents';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useWorkerList } from '@/store/authStore';
@@ -64,6 +65,16 @@ type SkillListItemProps =
   | SkillListItemDefaultProps
   | SkillListItemPlaceholderProps;
 
+function selectedAgentsInclude(
+  selectedAgents: string[],
+  agentValue: string
+): boolean {
+  const target = normalizeSkillScopeAgentId(agentValue);
+  return selectedAgents.some(
+    (agent) => normalizeSkillScopeAgentId(agent) === target
+  );
+}
+
 export default function SkillListItem(props: SkillListItemProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -72,27 +83,10 @@ export default function SkillListItem(props: SkillListItemProps) {
   const workerList = useWorkerList();
   const [scopeOpen, setScopeOpen] = useState(false);
 
-  type AgentOption = {
-    value: string;
-    label: string;
-  };
-
-  const allAgents = useMemo(() => {
-    const workflowAgents: AgentOption[] = WORKFLOW_AGENT_LIST.filter(
-      (a) => a.id !== 'social_media_agent'
-    ).map((a) => ({ value: a.id, label: a.name }));
-    const workerAgents: AgentOption[] = workerList.map((w) => ({
-      value: w.name,
-      label: w.name,
-    }));
-    const combined = [...workflowAgents];
-    workerAgents.forEach((agent) => {
-      if (!combined.some((a) => a.value === agent.value)) {
-        combined.push(agent);
-      }
-    });
-    return combined;
-  }, [workerList]);
+  const allAgents = useMemo(
+    () => buildSkillScopeAgentOptions(workerList),
+    [workerList]
+  );
 
   if (props.variant === 'placeholder') {
     const isClickable = props.onAddClick != null;
@@ -100,7 +94,7 @@ export default function SkillListItem(props: SkillListItemProps) {
       <div
         role={isClickable ? 'button' : undefined}
         tabIndex={isClickable ? 0 : undefined}
-        className={`focus-visible:ring-ring gap-3 rounded-2xl bg-ds-bg-neutral-subtle-default px-6 py-8 flex w-full flex-col flex-wrap items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 ${isClickable ? 'hover:bg-ds-bg-neutral-strong-hover cursor-pointer' : ''}`}
+        className={`focus-visible:ring-ring flex w-full flex-col flex-wrap items-center justify-center gap-3 rounded-2xl bg-ds-bg-neutral-subtle-default px-6 py-8 transition-colors focus:outline-none focus-visible:ring-2 ${isClickable ? 'cursor-pointer hover:bg-ds-bg-neutral-strong-hover' : ''}`}
         onClick={isClickable ? props.onAddClick : undefined}
         onKeyDown={
           isClickable
@@ -152,9 +146,10 @@ export default function SkillListItem(props: SkillListItemProps) {
   };
 
   const handleToggleAgent = (agentValue: string) => {
+    const canonicalValue = normalizeSkillScopeAgentId(agentValue) || agentValue;
     if (isAllAgentsSelected) {
       const newSelectedAgents = allAgents
-        .filter((a) => a.value !== agentValue)
+        .filter((a) => a.value !== canonicalValue)
         .map((a) => a.value);
       handleScopeChange({
         isGlobal: false,
@@ -163,10 +158,27 @@ export default function SkillListItem(props: SkillListItemProps) {
       return;
     }
 
-    const isSelected = skill.scope.selectedAgents.includes(agentValue);
+    const isSelected = selectedAgentsInclude(
+      skill.scope.selectedAgents,
+      canonicalValue
+    );
     const newSelectedAgents = isSelected
-      ? skill.scope.selectedAgents.filter((a) => a !== agentValue)
-      : [...skill.scope.selectedAgents, agentValue];
+      ? skill.scope.selectedAgents.filter(
+          (a) => normalizeSkillScopeAgentId(a) !== canonicalValue
+        )
+      : [
+          ...skill.scope.selectedAgents.map(
+            (a) => normalizeSkillScopeAgentId(a) || a
+          ),
+          canonicalValue,
+        ].filter(
+          (value, index, list) =>
+            list.findIndex(
+              (item) =>
+                normalizeSkillScopeAgentId(item) ===
+                normalizeSkillScopeAgentId(value)
+            ) === index
+        );
     handleScopeChange({
       isGlobal: false,
       selectedAgents: newSelectedAgents,
@@ -181,17 +193,17 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   return (
     <div
-      className={`rounded-2xl bg-ds-bg-neutral-subtle-default p-4 w-full flex-1 flex-col justify-between transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+      className={`w-full flex-1 flex-col justify-between rounded-2xl bg-ds-bg-neutral-subtle-default p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
     >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
-        <div className="min-w-0 gap-2 flex items-center">
-          <span className="text-body-base font-bold text-ds-text-neutral-default-default truncate">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-body-base truncate font-bold text-ds-text-neutral-default-default">
             {skill.name}
           </span>
         </div>
 
-        <div className="gap-md flex flex-shrink-0 items-center">
+        <div className="flex flex-shrink-0 items-center gap-md">
           <Switch
             checked={skill.enabled}
             onCheckedChange={() => toggleSkill(skill.id)}
@@ -231,17 +243,17 @@ export default function SkillListItem(props: SkillListItemProps) {
       {/* Row 2: Description - 5 lines max, hover shows full */}
       <TooltipSimple
         content={skill.description}
-        className="max-w-sm break-words whitespace-pre-wrap"
+        className="max-w-sm whitespace-pre-wrap break-words"
       >
         <div className="w-full cursor-default">
-          <p className="text-body-sm text-ds-text-neutral-muted-default line-clamp-5 overflow-hidden break-words">
+          <p className="line-clamp-5 overflow-hidden break-words text-body-sm text-ds-text-neutral-muted-default">
             {skill.description}
           </p>
         </div>
       </TooltipSimple>
 
       {/* Row 3: Added time / Skill scope */}
-      <div className="gap-2 flex flex-col items-start">
+      <div className="flex flex-col items-start gap-2">
         <Button
           variant="ghost"
           size="sm"
@@ -255,14 +267,14 @@ export default function SkillListItem(props: SkillListItemProps) {
         </Button>
 
         {scopeOpen && (
-          <div className="gap-2 border-ds-border-neutral-default-default pt-4 flex w-full flex-wrap items-center border-x-0 border-t-[0.5px] border-b-0 border-solid">
+          <div className="flex w-full flex-wrap items-center gap-2 border-x-0 border-b-0 border-t-[0.5px] border-solid border-ds-border-neutral-default-default pt-4">
             {/* All agents as first tab; then each agent toggle */}
             <button
               type="button"
               onClick={handleToggleAllAgents}
-              className={`gap-2 bg-ds-bg-neutral-subtle-default px-2 py-1 text-label-xs font-medium text-ds-text-neutral-default-default inline-flex items-center rounded-full transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
+              className={`inline-flex items-center gap-2 rounded-full bg-ds-bg-neutral-subtle-default px-2 py-1 text-label-xs font-medium text-ds-text-neutral-default-default transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                 isAllAgentsSelected
-                  ? '[&>svg]:text-ds-icon-status-completed-default-default opacity-100'
+                  ? 'opacity-100 [&>svg]:text-ds-icon-status-completed-default-default'
                   : 'opacity-60 [&>svg]:text-inherit'
               }`}
             >
@@ -277,7 +289,7 @@ export default function SkillListItem(props: SkillListItemProps) {
             {allAgents.map((agent) => {
               const isSelected =
                 isAllAgentsSelected ||
-                skill.scope.selectedAgents.includes(agent.value);
+                selectedAgentsInclude(skill.scope.selectedAgents, agent.value);
               const display = getWorkflowAgentDisplay(agent.value);
               const icon = display?.icon ?? (
                 <Bot size={16} className="shrink-0 text-inherit" />
@@ -287,9 +299,9 @@ export default function SkillListItem(props: SkillListItemProps) {
                   key={agent.value}
                   type="button"
                   onClick={() => handleToggleAgent(agent.value)}
-                  className={`gap-2 bg-ds-bg-neutral-subtle-default px-2 py-1 text-label-xs font-medium text-ds-text-neutral-default-default inline-flex items-center rounded-full transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
+                  className={`inline-flex items-center gap-2 rounded-full bg-ds-bg-neutral-subtle-default px-2 py-1 text-label-xs font-medium text-ds-text-neutral-default-default transition-opacity hover:opacity-100 [&>svg]:shrink-0 ${
                     isSelected
-                      ? '[&>svg]:text-ds-icon-status-completed-default-default opacity-100'
+                      ? 'opacity-100 [&>svg]:text-ds-icon-status-completed-default-default'
                       : 'opacity-50 [&>svg]:text-inherit'
                   }`}
                 >
