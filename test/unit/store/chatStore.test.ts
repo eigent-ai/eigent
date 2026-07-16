@@ -23,7 +23,7 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -997,6 +997,64 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       logSpy.mockRestore();
+    });
+  });
+
+  describe('SSE request usage events', () => {
+    // clearAllMocks doesn't reset implementations; avoid leaking into later tests.
+    afterEach(() => {
+      vi.mocked(fetchEventSource).mockReset();
+    });
+
+    it('should accumulate tokens from request_usage event in non-stream mode', async () => {
+      vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
+        url?.includes?.('snapshots')
+          ? Promise.resolve([])
+          : Promise.resolve({
+              value: '',
+              api_url: '',
+              items: [],
+              warning_code: null,
+            })
+      );
+
+      const mockFetchEventSource = vi.mocked(fetchEventSource);
+      mockFetchEventSource.mockImplementation(async (_url, opts) => {
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'request_usage',
+            data: { tokens: 11 },
+          }),
+        } as any);
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'deactivate_agent',
+            data: { tokens: 0 },
+          }),
+        } as any);
+        return Promise.resolve();
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      let taskId!: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId);
+        result.current.getState().setHasMessages(taskId, true);
+        result.current.getState().addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: 'Test message',
+        });
+      });
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0.2);
+      });
+
+      expect(result.current.getState().tasks[taskId].tokens).toBe(11);
     });
   });
 

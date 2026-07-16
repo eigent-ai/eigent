@@ -1295,6 +1295,7 @@ export default function ChatBox(): JSX.Element {
                     useCloudModelInDev: useCloudModelInDev,
                     sessionMode: effectiveSessionMode,
                     sessionModeSelectInteractive: false,
+                    modelSelectProjectId: activeProjectId,
                   }}
                 />
               )}
@@ -1378,6 +1379,7 @@ export default function ChatBox(): JSX.Element {
                   useCloudModelInDev: useCloudModelInDev,
                   sessionMode: displaySessionMode,
                   sessionModeSelectInteractive: false,
+                  modelSelectProjectId: activeProjectId,
                 }}
               />
             </div>
