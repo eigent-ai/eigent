@@ -514,5 +514,14 @@
   "onboarding-setup-bg-ruled": "橫線",
   "onboarding-setup-bg-dotted": "點線",
   "onboarding-setup-bg-dashed": "虛線",
-  "onboarding-setup-get-started": "開始使用"
+  "onboarding-setup-get-started": "開始使用",
+  "support-logs-heading": "Download logs",
+  "support-eigent-log": "Eigent log",
+  "support-eigent-log-desc": "Desktop app logs",
+  "support-camel-log": "Camel log",
+  "support-camel-log-desc": "Agent task logs (CAMEL backend)",
+  "support-download": "Download",
+  "support-log-saved": "Log saved to {{path}}",
+  "support-log-empty": "No log files found yet.",
+  "support-log-export-failed": "Could not export the log."
 }

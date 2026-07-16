@@ -8,5 +8,8 @@
   "complete": "Completo",
   "download-completed": "Download completato",
   "click-to-install-update": "Clicca per installare l'aggiornamento",
-  "install": "Installa"
+  "install": "Installa",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

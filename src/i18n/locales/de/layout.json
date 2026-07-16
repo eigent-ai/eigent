@@ -514,5 +514,14 @@
   "onboarding-setup-bg-ruled": "Liniert",
   "onboarding-setup-bg-dotted": "Gepunktet",
   "onboarding-setup-bg-dashed": "Gestrichelt",
-  "onboarding-setup-get-started": "Loslegen"
+  "onboarding-setup-get-started": "Loslegen",
+  "support-logs-heading": "Download logs",
+  "support-eigent-log": "Eigent log",
+  "support-eigent-log-desc": "Desktop app logs",
+  "support-camel-log": "Camel log",
+  "support-camel-log-desc": "Agent task logs (CAMEL backend)",
+  "support-download": "Download",
+  "support-log-saved": "Log saved to {{path}}",
+  "support-log-empty": "No log files found yet.",
+  "support-log-export-failed": "Could not export the log."
 }

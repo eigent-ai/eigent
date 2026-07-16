@@ -99,6 +99,18 @@ const hasApiCode = (value: unknown, code: string) =>
 
 let _host: AppHost | null = null;
 
+// Per-step request_usage tokens keyed by `${taskId}:${agentId}`; needed
+// because deactivate_agent.tokens is zeroed under request-level reporting.
+const requestUsageStepTokens = new Map<string, number>();
+
+const clearRequestUsageStepTokens = (taskId: string) => {
+  for (const key of requestUsageStepTokens.keys()) {
+    if (key.startsWith(`${taskId}:`)) {
+      requestUsageStepTokens.delete(key);
+    }
+  }
+};
+
 export function injectHost(host: AppHost | null): void {
   _host = host;
 }
@@ -1503,6 +1515,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      // Reuse the model captured on this Project (if any) so follow-up runs
+      // keep the conversation's model even when the global default changed.
+      const pinnedModelSelection =
+        !type && project_id ? projectStore.getProjectModel(project_id) : null;
+      const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
+      let resolvedProviderId: number | undefined;
+      let resolvedCloudModelId: string | undefined;
+      let resolvedCodexModelId: string | undefined;
+
       // get current model
       let apiModel = {
         api_key: '',
@@ -1513,12 +1534,35 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         extra_params: {},
         auth_source: undefined as 'codex_subscription' | undefined,
       };
-      if (!type && (modelType === 'custom' || modelType === 'local')) {
-        const res = await proxyFetchGet('/api/v1/providers', {
-          prefer: true,
-        });
-        const providerList = res.items || [];
-        const provider = providerList[0];
+      if (
+        !type &&
+        (effectiveModelType === 'custom' || effectiveModelType === 'local')
+      ) {
+        let provider: any = null;
+        if (pinnedModelSelection?.provider_id !== undefined) {
+          try {
+            const res = await proxyFetchGet('/api/v1/providers');
+            const providerList = Array.isArray(res) ? res : res.items || [];
+            provider =
+              providerList.find(
+                (p: { id: number }) => p.id === pinnedModelSelection.provider_id
+              ) || null;
+          } catch (error) {
+            console.error('Failed to load pinned model provider:', error);
+          }
+          if (!provider) {
+            toast.warning(
+              'The model used earlier in this conversation is no longer available. Falling back to the default model.'
+            );
+          }
+        }
+        if (!provider) {
+          const res = await proxyFetchGet('/api/v1/providers', {
+            prefer: true,
+          });
+          const providerList = res.items || [];
+          provider = providerList[0];
+        }
 
         if (!provider) {
           finishStartupFailure();
@@ -1539,14 +1583,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           extra_params: extraParams,
           auth_source: undefined,
         };
-      } else if (!type && modelType === 'cloud') {
+        resolvedProviderId = provider.id;
+      } else if (!type && effectiveModelType === 'cloud') {
+        const requestedCloudModelId =
+          pinnedModelSelection?.cloud_model_type || cloud_model_type;
         const cloudModelStore = getCloudModelStore();
-        let resolvedCloudModel =
-          cloudModelStore.resolveCloudModel(cloud_model_type);
+        let resolvedCloudModel = cloudModelStore.resolveCloudModel(
+          requestedCloudModelId
+        );
         if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
           await cloudModelStore.fetchCloudModels(true);
-          resolvedCloudModel =
-            getCloudModelStore().resolveCloudModel(cloud_model_type);
+          resolvedCloudModel = getCloudModelStore().resolveCloudModel(
+            requestedCloudModelId
+          );
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
@@ -1562,7 +1611,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           console.warn(message);
           toast.warning(message);
         }
-        if (resolvedCloudModel.model.id !== cloud_model_type) {
+        if (
+          !pinnedModelSelection &&
+          resolvedCloudModel.model.id !== cloud_model_type
+        ) {
           getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
         }
 
@@ -1610,21 +1662,46 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           extra_params: {},
           auth_source: undefined,
         };
-      } else if (!type && modelType === 'codex_subscription') {
+        resolvedCloudModelId = resolvedCloudModel.model.id;
+      } else if (!type && effectiveModelType === 'codex_subscription') {
+        const codexModelId =
+          pinnedModelSelection?.codex_model_type ||
+          codex_model_type ||
+          'gpt-5.5';
         apiModel = {
           api_key: '',
-          model_type: codex_model_type || 'gpt-5.5',
+          model_type: codexModelId,
           model_platform: 'openai',
           api_url: '',
           model_config_dict: {},
           extra_params: {},
           auth_source: 'codex_subscription',
         };
+        resolvedCodexModelId = codexModelId;
+      }
+
+      // Capture the resolved model on the Project so later runs (including
+      // conversations reloaded from history) keep using it.
+      if (!type && project_id && apiModel.model_platform) {
+        projectStore.setProjectModel(project_id, {
+          modelType: effectiveModelType,
+          ...(resolvedCloudModelId
+            ? { cloud_model_type: resolvedCloudModelId }
+            : {}),
+          ...(resolvedCodexModelId
+            ? { codex_model_type: resolvedCodexModelId }
+            : {}),
+          ...(resolvedProviderId !== undefined
+            ? { provider_id: resolvedProviderId }
+            : {}),
+          model_platform: apiModel.model_platform,
+          model_type: apiModel.model_type,
+        });
       }
 
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
-      if (!type && modelType === 'custom') {
+      if (!type && effectiveModelType === 'custom') {
         try {
           const configsRes = await proxyFetchGet('/api/v1/configs');
           const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -1778,7 +1855,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           language: systemLanguage,
           model_platform: apiModel.model_platform,
           model_type: apiModel.model_type,
-          api_url: modelType === 'cloud' ? 'cloud' : apiModel.api_url,
+          api_url: effectiveModelType === 'cloud' ? 'cloud' : apiModel.api_url,
           max_retries: 3,
           file_save_path: 'string',
           installed_mcp: 'string',
@@ -2135,7 +2212,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     language: systemLanguage,
                     model_platform: apiModel.model_platform,
                     model_type: apiModel.model_type,
-                    api_url: modelType === 'cloud' ? 'cloud' : apiModel.api_url,
+                    api_url:
+                      effectiveModelType === 'cloud'
+                        ? 'cloud'
+                        : apiModel.api_url,
                     max_retries: 3,
                     file_save_path: 'string',
                     installed_mcp: 'string',
@@ -2734,6 +2814,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          // Request-level token usage updates (non-stream mode)
+          if (agentMessages.step === AgentStep.REQUEST_USAGE) {
+            if (agentMessages.data.tokens) {
+              addTokens(currentTaskId, agentMessages.data.tokens);
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              requestUsageStepTokens.set(
+                stepKey,
+                agentMessages.data.step_total_tokens ||
+                  (requestUsageStepTokens.get(stepKey) || 0) +
+                    agentMessages.data.tokens
+              );
+            }
+            return;
+          }
+
           // Activate agent
           if (
             agentMessages.step === AgentStep.ACTIVATE_AGENT ||
@@ -2743,6 +2838,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
+            }
+            // Consume the step's request_usage tokens before any early
+            // return below, so entries are cleaned up even for agents that
+            // never appear in taskAssigning.
+            let stepTokens = 0;
+            if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
             }
             const { state, agent_id, process_task_id } = agentMessages.data;
             if (!state && !agent_id && !process_task_id) return;
@@ -2823,8 +2930,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              const hasTokens =
-                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              // Per-step tokens (not the task total) so an errored/empty
+              // step is not mistaken for a real reply.
+              const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
@@ -3564,6 +3672,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
 
             const endMessage = resolveEndMessageText(

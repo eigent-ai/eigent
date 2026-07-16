@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useHost } from '@/host';
 import { normalizeBrowserUrl } from '@/lib/browserUrl';
 import { cn } from '@/lib/utils';
 import { type SessionBrowserTab, usePageTabStore } from '@/store/pageTabStore';
@@ -47,6 +48,7 @@ export function BrowserTab({
   viewportSettled = true,
 }: BrowserTabProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const updateBrowserPreviewTab = usePageTabStore(
     (state) => state.updateBrowserPreviewTab
   );
@@ -104,15 +106,27 @@ export function BrowserTab({
     [isDesktop, tab.id, tab.webviewId, updateBrowserPreviewTab]
   );
 
-  const openExternal = useCallback((rawUrl: string) => {
-    const normalized = normalizeBrowserUrl(rawUrl);
-    if (!normalized.ok) {
-      setAddressError(normalized.error);
-      return;
-    }
-    setAddressError(null);
-    window.open(normalized.url, '_blank', 'noopener,noreferrer');
-  }, []);
+  const openExternal = useCallback(
+    async (rawUrl: string) => {
+      const normalized = normalizeBrowserUrl(rawUrl);
+      if (!normalized.ok) {
+        setAddressError(normalized.error);
+        return;
+      }
+      setAddressError(null);
+
+      if (isDesktop && host?.electronAPI?.openExternal) {
+        const result = await host.electronAPI.openExternal(normalized.url);
+        if (result && result.success === false) {
+          setAddressError(result.error || 'Unable to open this URL');
+        }
+        return;
+      }
+
+      window.open(normalized.url, '_blank', 'noopener,noreferrer');
+    },
+    [host?.electronAPI, isDesktop]
+  );
 
   // Publish this container's rect so the layer can position the guest over it.
   // Held back until the panel animation settles; cleared on unmount (switching

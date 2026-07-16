@@ -29,7 +29,6 @@ import {
 } from '@/components/ProjectPageSidebar/constants';
 import SessionGroup from '@/components/Session/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
-import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -799,7 +798,6 @@ export default function WorkspacePage() {
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
-        <UpdateElectron />
         {/* Always mounted: hosts preview <webview> guests so their pages and
             history survive panel close, workspace-tab hops, and project
             switches. Renders nothing on the web host. */}

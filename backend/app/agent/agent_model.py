@@ -35,6 +35,23 @@ from app.model.subscription_runtime import (
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
+# OpenAI chat-completions streaming only returns token usage when
+# `stream_options.include_usage` is requested. Without it the request-level
+# usage callback (on_request_usage) fires with 0 tokens, and because the
+# step-level deactivate is zeroed once request-level reporting is active,
+# streaming steps end up uncounted. These platforms use native (non-OpenAI)
+# SDKs that reject `stream_options` and surface streaming usage on their own,
+# so they are excluded from the injection below.
+_NATIVE_STREAM_USAGE_PLATFORMS = {
+    "anthropic",
+    "aws-bedrock",
+    "aws-bedrock-converse",
+    "cohere",
+    "mistral",
+    "reka",
+    "watsonx",
+}
+
 
 def agent_model(
     agent_name: str,
@@ -250,6 +267,21 @@ def agent_model(
         if effective_config["model_platform"].lower() == "anthropic":
             if model_config.get("max_tokens") is None:
                 model_config["max_tokens"] = 128000
+
+        # Ensure streaming steps still report token usage. OpenAI-family
+        # providers omit usage from streamed responses unless include_usage
+        # is set, which would otherwise make request-level accounting count 0.
+        # `stream_options: false` in extra_params opts out entirely, for
+        # endpoints that reject the parameter (e.g. older vLLM/Azure).
+        if model_config.get("stream_options") is False:
+            model_config.pop("stream_options")
+        elif model_config.get("stream") and (
+            effective_config["model_platform"].lower()
+            not in _NATIVE_STREAM_USAGE_PLATFORMS
+        ):
+            stream_options = model_config.setdefault("stream_options", {})
+            if isinstance(stream_options, dict):
+                stream_options.setdefault("include_usage", True)
 
         return ModelFactory.create(
             model_platform=effective_config["model_platform"],
