@@ -22,6 +22,7 @@ import path from 'path';
 import * as unzipper from 'unzipper';
 import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
+import { findDirectoriesByName } from './utils/log';
 
 interface FileInfo {
   path: string;
@@ -633,6 +634,51 @@ export class FileReader {
     }
   }
 
+  private sanitizeIdentity(identity: string): string {
+    return identity
+      .split('@')[0]
+      .replace(/[\\/*?:"<>|\s]/g, '_')
+      .replace(/^\.+|\.+$/g, '');
+  }
+
+  private getStorageIdentityCandidates(
+    email: string,
+    userId?: string | number | null
+  ): string[] {
+    const candidates = [this.sanitizeIdentity(email)];
+    if (userId !== undefined && userId !== null && userId !== '') {
+      const rawUserId = String(userId);
+      candidates.push(
+        this.sanitizeIdentity(
+          rawUserId.startsWith('user_') ? rawUserId : `user_${rawUserId}`
+        )
+      );
+    }
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  private findProjectTaskPath(
+    userHome: string,
+    rootDir: 'eigent' | '.eigent',
+    identities: string[],
+    projectId: string,
+    taskId: string
+  ): string | null {
+    for (const identity of identities) {
+      const taskPath = path.join(
+        userHome,
+        rootDir,
+        identity,
+        `project_${projectId}`,
+        `task_${taskId}`
+      );
+      if (fs.existsSync(taskPath)) {
+        return taskPath;
+      }
+    }
+    return null;
+  }
+
   private findTaskInProjects(userDir: string, taskId: string): string | null {
     try {
       if (!fs.existsSync(userDir)) {
@@ -663,35 +709,50 @@ export class FileReader {
   private resolveTaskPaths(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): {
     dirPath: string;
     logPath: string;
   } {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const safeEmail = identities[0] || this.sanitizeIdentity(email);
     const userHome = app.getPath('home');
 
     let dirPath: string;
     let logPath: string;
 
     if (projectId) {
-      dirPath = path.join(
-        userHome,
-        'eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
-      logPath = path.join(
-        userHome,
-        '.eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
+      dirPath =
+        this.findProjectTaskPath(
+          userHome,
+          'eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          'eigent',
+          safeEmail,
+          `project_${projectId}`,
+          `task_${taskId}`
+        );
+      logPath =
+        this.findProjectTaskPath(
+          userHome,
+          '.eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          '.eigent',
+          safeEmail,
+          `project_${projectId}`,
+          `task_${taskId}`
+        );
       return { dirPath, logPath };
     }
 
@@ -723,12 +784,14 @@ export class FileReader {
   public getFileList(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): FileInfo[] {
     const { dirPath, logPath } = this.resolveTaskPaths(
       email,
       taskId,
-      projectId
+      projectId,
+      userId
     );
     const camelLogPath = path.join(logPath, 'camel_logs');
 
@@ -755,6 +818,56 @@ export class FileReader {
       console.error('Load file failed:', err);
       return [];
     }
+  }
+
+  /**
+   * Resolves the `camel_logs` directories to export as `{ src, destName }`
+   * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
+   *
+   * Prefers the specific task the user last ran (via {@link resolveTaskPaths},
+   * the same resolution `get-file-list` uses). Falls back to every `camel_logs`
+   * folder under the user's identity roots when no task is supplied or its
+   * folder is missing.
+   */
+  public getCamelLogEntries(
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): { src: string; destName: string }[] {
+    const userHome = app.getPath('home');
+    const eigentRoot = path.join(userHome, '.eigent');
+    const toEntry = (dir: string) => ({
+      src: dir,
+      destName: path.relative(eigentRoot, dir) || path.basename(dir),
+    });
+
+    if (taskId) {
+      const { logPath } = this.resolveTaskPaths(
+        email,
+        taskId,
+        projectId,
+        userId
+      );
+      const camelLogPath = path.join(logPath, 'camel_logs');
+      if (fs.existsSync(camelLogPath)) {
+        return [toEntry(camelLogPath)];
+      }
+      return [];
+    }
+
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const seen = new Set<string>();
+    const entries: { src: string; destName: string }[] = [];
+    for (const identity of identities) {
+      const identityRoot = path.join(eigentRoot, identity);
+      for (const dir of findDirectoriesByName(identityRoot, 'camel_logs', 4)) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        entries.push(toEntry(dir));
+      }
+    }
+    return entries;
   }
 
   public deleteTaskFiles(

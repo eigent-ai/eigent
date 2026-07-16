@@ -17,9 +17,10 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface HeaderBoxProps {
@@ -39,9 +40,14 @@ export function HeaderBox({
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const filePreviewOpen = usePageTabStore((s) => s.filePreviewOpen);
+  const toggleFilePreview = usePageTabStore((s) => s.toggleFilePreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
     defaultValue: 'Back to workspace',
+  });
+  const filePreviewTooltip = t('layout.toggle-file-preview-tooltip', {
+    defaultValue: 'Toggle file preview',
   });
 
   if (empty) {
@@ -55,7 +61,7 @@ export function HeaderBox({
 
   return (
     <div
-      className={`px-3 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
+      className={`pl-3 pr-1.5 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
     >
       {/* Left: return to project workspace */}
       <div className="gap-2 flex items-center">
@@ -74,7 +80,7 @@ export function HeaderBox({
         </TooltipSimple>
       </div>
 
-      {/* Right: project total token count */}
+      {/* Right: project total token count + file preview toggle */}
       <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
         <div className="gap-1 flex items-center">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
@@ -83,6 +89,24 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
+        <TooltipSimple content={filePreviewTooltip}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonContent="icon-only"
+            onClick={toggleFilePreview}
+            className={cn(
+              'no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0',
+              filePreviewOpen &&
+                'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
+            )}
+            aria-label={filePreviewTooltip}
+            aria-pressed={filePreviewOpen}
+          >
+            <FileText className="h-4 w-4" aria-hidden />
+          </Button>
+        </TooltipSimple>
       </div>
     </div>
   );

@@ -21,21 +21,9 @@ import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import AlertDialog from '@/components/ui/alertDialog';
-import { Blocks } from '@/components/ui/animate-ui/icons/blocks';
-import { Bot } from '@/components/ui/animate-ui/icons/bot';
-import { Compass } from '@/components/ui/animate-ui/icons/compass';
-import { Hammer } from '@/components/ui/animate-ui/icons/hammer';
-import { AnimateIcon } from '@/components/ui/animate-ui/icons/icon';
-import { Radio } from '@/components/ui/animate-ui/icons/radio';
-import { Settings as AnimateSettings } from '@/components/ui/animate-ui/icons/settings';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
@@ -68,6 +56,7 @@ import {
   ArrowLeft,
   ChevronsUpDown,
   CircleHelp,
+  Folder,
   Minus,
   PanelLeft,
   PanelLeftClose,
@@ -75,14 +64,7 @@ import {
   Square,
   X,
 } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   NavigationType,
@@ -153,19 +135,6 @@ const topBarCrossfade = {
   ease: [0.4, 0, 0.2, 1] as const,
 };
 
-const HOME_NAV_HISTORY_MENU: {
-  id: HistoryTabId;
-  labelKey: string;
-  icon: ReactNode;
-}[] = [
-  { id: 'home', labelKey: 'layout.spaces', icon: <Blocks /> },
-  { id: 'agents', labelKey: 'layout.agents', icon: <Bot /> },
-  { id: 'channels', labelKey: 'layout.channels', icon: <Radio /> },
-  { id: 'connectors', labelKey: 'layout.connectors', icon: <Hammer /> },
-  { id: 'browser', labelKey: 'layout.browser', icon: <Compass /> },
-  { id: 'settings', labelKey: 'layout.settings', icon: <AnimateSettings /> },
-];
-
 function HeaderWin() {
   const { t } = useTranslation();
   const host = useHost();
@@ -199,9 +168,6 @@ function HeaderWin() {
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
-  const [homeNavMenuOpen, setHomeNavMenuOpen] = useState(false);
-  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
-  const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -211,35 +177,6 @@ function HeaderWin() {
     const p = host.electronAPI.getPlatform();
     setPlatform(p);
   }, [host]);
-
-  useEffect(() => {
-    const ipc = ipcRenderer;
-    if (!ipc) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPackageUpdateAvailable(Boolean(info.update));
-    };
-
-    const onUpdateDownloaded = () => {
-      setPackageUpdateAvailable(false);
-    };
-
-    ipc.on('update-can-available', onUpdateCanAvailable);
-    ipc.on('update-downloaded', onUpdateDownloaded);
-    void ipc.invoke('check-update');
-
-    return () => {
-      ipc.off('update-can-available', onUpdateCanAvailable);
-      ipc.off('update-downloaded', onUpdateDownloaded);
-    };
-  }, [ipcRenderer]);
-
-  const handleStartDownload = useCallback(() => {
-    void ipcRenderer?.invoke('start-download');
-  }, [ipcRenderer]);
 
   const isHistoryRoute = useMemo(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -304,7 +241,6 @@ function HeaderWin() {
 
   const navigateToHistoryTab = useCallback(
     (tab: HistoryTabId) => {
-      setHomeNavMenuOpen(false);
       if (tab === 'home') {
         // The Home/Spaces hub is a project-independent surface and may
         // re-select the same project the user just left. Clearing
@@ -517,8 +453,8 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag left-0 right-0 top-0 !h-10 min-w-0 py-1 absolute z-50 flex items-center ${
-        platform === 'darwin' ? 'pr-[2px] pl-[68px]' : 'pl-2'
+      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
+        platform === 'darwin' ? 'pl-[68px] pr-[2px]' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
@@ -545,47 +481,29 @@ function HeaderWin() {
           }}
         />
       </AlertDialog>
-      {/* Leading: home ↔ dashboard / new Space */}
-      <div className="no-drag flex shrink-0 items-center justify-center">
+      {/* Leading: workspace controls, or a single back button on history */}
+      <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
         {isHistoryRoute ? (
-          <TooltipSimple
-            content={t('layout.back', { defaultValue: 'Back' })}
-            side="bottom"
-            align="center"
+          // History page: one "back to workspace" button (arrow + text)
+          <Button
+            variant="ghost"
+            size="sm"
+            className="no-drag shrink-0 gap-1.5 rounded-full font-bold"
+            onClick={handleExitHistoryOrSettings}
+            aria-label={t('layout.back-to-workspace', {
+              defaultValue: 'Back to workspace',
+            })}
           >
-            <Button
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              className="no-drag shrink-0 rounded-full"
-              onClick={handleExitHistoryOrSettings}
-              aria-label={t('layout.back', { defaultValue: 'Back' })}
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-            </Button>
-          </TooltipSimple>
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            {t('layout.back-to-workspace', {
+              defaultValue: 'Back to workspace',
+            })}
+          </Button>
         ) : (
-          <TooltipSimple
-            content={
-              projectSidebarFolded
-                ? t('layout.expand-project-sidebar', {
-                    defaultValue: 'Expand sidebar',
-                  })
-                : t('layout.fold-project-sidebar', {
-                    defaultValue: 'Fold sidebar',
-                  })
-            }
-            side="bottom"
-            align="center"
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              className="no-drag shrink-0 rounded-full"
-              onClick={() => toggleProjectSidebarFolded()}
-              aria-pressed={!projectSidebarFolded}
-              aria-label={
+          <>
+            {/* Left panel: fold / expand the project sidebar */}
+            <TooltipSimple
+              content={
                 projectSidebarFolded
                   ? t('layout.expand-project-sidebar', {
                       defaultValue: 'Expand sidebar',
@@ -594,147 +512,105 @@ function HeaderWin() {
                       defaultValue: 'Fold sidebar',
                     })
               }
+              side="bottom"
+              align="center"
             >
-              {projectSidebarFolded ? (
-                <PanelLeft className="h-4 w-4" aria-hidden />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-          </TooltipSimple>
-        )}
-        {isHistoryRoute ? (
-          <div
-            className="no-drag px-2 flex min-h-[28px] items-center"
-            aria-hidden
-          >
-            <img
-              src={
-                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
-              }
-              alt=""
-              className="h-6 w-6 mt-[2px] select-none"
-              width={16}
-              height={16}
-              draggable={false}
-            />
-          </div>
-        ) : (
-          <DropdownMenu
-            modal={false}
-            open={homeNavMenuOpen}
-            onOpenChange={setHomeNavMenuOpen}
-          >
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 w-22 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] items-center rounded-full outline-none focus-visible:ring-[3px]"
-                aria-label={t('layout.home')}
-                aria-haspopup="menu"
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  setHomeNavMenuOpen(false);
-                  navigateToHistoryTab('home');
-                }}
+              <Button
+                variant="ghost"
+                size="sm"
+                buttonContent="icon-only"
+                className="no-drag shrink-0 rounded-full"
+                onClick={() => toggleProjectSidebarFolded()}
+                aria-pressed={!projectSidebarFolded}
+                aria-label={
+                  projectSidebarFolded
+                    ? t('layout.expand-project-sidebar', {
+                        defaultValue: 'Expand sidebar',
+                      })
+                    : t('layout.fold-project-sidebar', {
+                        defaultValue: 'Fold sidebar',
+                      })
+                }
               >
-                <img
-                  src={
-                    appearance === 'dark'
-                      ? eigentAppIconWhite
-                      : eigentAppIconBlack
-                  }
-                  alt=""
-                  className="h-6 w-6 mt-[2px] select-none"
-                  width={16}
-                  height={16}
-                  draggable={false}
-                />
-                {t('layout.home')}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              sideOffset={6}
-              className="min-w-32 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 duration-100"
+                {projectSidebarFolded ? (
+                  <PanelLeft className="h-4 w-4" aria-hidden />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" aria-hidden />
+                )}
+              </Button>
+            </TooltipSimple>
+
+            {/* Home button: go straight to the Home/Spaces hub */}
+            <button
+              type="button"
+              onClick={() => navigateToHistoryTab('home')}
+              aria-label={t('layout.home')}
+              className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
             >
-              {HOME_NAV_HISTORY_MENU.map(({ id, labelKey, icon }) => (
-                <AnimateIcon key={id} animateOnHover="default" asChild>
-                  <DropdownMenuItem
-                    className="gap-2 cursor-pointer"
-                    onClick={() => navigateToHistoryTab(id)}
-                  >
-                    <span className="size-4 [&_svg]:size-4 inline-flex shrink-0 items-center justify-center">
-                      {icon}
-                    </span>
-                    <span>{t(labelKey)}</span>
-                  </DropdownMenuItem>
-                </AnimateIcon>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <img
+                src={
+                  appearance === 'dark'
+                    ? eigentAppIconWhite
+                    : eigentAppIconBlack
+                }
+                alt=""
+                className="h-5 w-5 select-none"
+                width={16}
+                height={16}
+                draggable={false}
+              />
+              {t('layout.home')}
+            </button>
+
+            {/* Workspace dropdown: the whole button opens the space switcher */}
+            <SpaceSwitchDropdown
+              contentSideOffset={6}
+              trigger={
+                <button
+                  id="active-space-title-btn"
+                  type="button"
+                  className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
+                  aria-haspopup="menu"
+                  aria-label={activeSpaceTitle}
+                >
+                  <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                    {activeSpaceTitle}
+                  </span>
+                  <ChevronsUpDown
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                    aria-hidden
+                  />
+                </button>
+              }
+              spaces={activeSpaces}
+              activeSpaceId={activeSpaceId}
+              switchingSpaceId={switchingSpaceId}
+              canRenameActiveSpace={canRenameActiveSpace}
+              createSpaceMenu={{
+                onStartFromScratch: handleCreateBlankSpace,
+                onSelectFolder: handleCreateSpaceFromFolder,
+              }}
+              onRenameSpace={openRenameSpaceDialog}
+              onSpaceSelect={handleTopBarSpaceSelect}
+              contentAlign="start"
+            />
+          </>
         )}
       </div>
 
-      {/* Middle: full width on project home only (/) — nav + title */}
-      <div className="no-drag h-7 min-h-0 min-w-0 relative z-50 flex w-full">
-        <AnimatePresence initial={false}>
-          {isHomeRoute && projectSidebarFolded && (
-            <motion.div
-              key="home-middle"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={topBarCrossfade}
-              className="drag inset-0 min-w-0 absolute z-10 flex items-center"
-            >
-              <div className="ml-1 min-h-0 min-w-0 border-ds-border-neutral-subtle-default pl-1 relative z-50 flex h-full items-center border-y-0 border-r-0 border-l border-solid">
-                <SpaceSwitchDropdown
-                  contentSideOffset={6}
-                  trigger={
-                    <button
-                      id="active-space-title-btn"
-                      type="button"
-                      className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 min-w-0 gap-1.5 px-2 text-label-sm font-bold !text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active flex min-h-[28px] w-full max-w-[300px] flex-1 items-center rounded-full text-left outline-none focus-visible:ring-[3px]"
-                      aria-haspopup="menu"
-                      aria-label={activeSpaceTitle}
-                    >
-                      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                        {activeSpaceTitle}
-                      </span>
-                      <ChevronsUpDown
-                        className="h-3.5 w-3.5 text-ds-icon-neutral-subtle-default shrink-0"
-                        aria-hidden
-                      />
-                    </button>
-                  }
-                  spaces={activeSpaces}
-                  activeSpaceId={activeSpaceId}
-                  switchingSpaceId={switchingSpaceId}
-                  canRenameActiveSpace={canRenameActiveSpace}
-                  createSpaceMenu={{
-                    onStartFromScratch: handleCreateBlankSpace,
-                    onSelectFolder: handleCreateSpaceFromFolder,
-                  }}
-                  onRenameSpace={openRenameSpaceDialog}
-                  onSpaceSelect={handleTopBarSpaceSelect}
-                  contentAlign="start"
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        {(!isHomeRoute || !projectSidebarFolded) && (
-          <div className="drag min-h-0 min-w-0 flex-1" aria-hidden />
-        )}
-      </div>
+      {/* Middle: draggable spacer that pushes trailing controls to the right */}
+      <div className="drag h-7 min-h-0 min-w-0 flex-1" aria-hidden />
 
       {/* Trailing: project actions (home only) + utilities + settings/back + update */}
       <div
         className={`${
           platform === 'darwin' && 'px-1.5'
-        } no-drag h-7 relative z-50 flex shrink-0 items-center`}
+        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
-        <div className="flex h-full shrink-0 items-center">
+        <div className="flex h-full shrink-0 items-center gap-0.5">
+          {/* Update slot: hidden → background download progress → launch new version */}
+          <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"
@@ -775,7 +651,7 @@ function HeaderWin() {
             </Button>
           </TooltipSimple>
 
-          <div className="ml-1.5 gap-1 border-ds-border-neutral-subtle-default pl-1.5 flex h-full shrink-0 items-center border-y-0 border-r-0 border-l border-solid">
+          <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
             <AnimatePresence mode="wait" initial={false}>
               {isHomeRoute ? (
                 <motion.div
@@ -832,24 +708,6 @@ function HeaderWin() {
                 </motion.div>
               )}
             </AnimatePresence>
-            {packageUpdateAvailable && (
-              <TooltipSimple
-                content={t('layout.update')}
-                side="bottom"
-                align="end"
-              >
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  className="no-drag px-3 shrink-0 rounded-full"
-                  onClick={handleStartDownload}
-                  aria-label={t('layout.update')}
-                >
-                  {t('layout.update')}
-                </Button>
-              </TooltipSimple>
-            )}
           </div>
         </div>
       </div>
@@ -862,19 +720,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="leading-5 hover:bg-ds-bg-neutral-default-hover flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />

@@ -233,10 +233,13 @@ export const RichChatInput = React.forwardRef<
       plain.length === 0 ? '' : segmentsToHtml(tokenizeRichPlainText(plain));
     el.innerHTML = html || '<br />';
     if (restoreOffset !== undefined) {
-      requestAnimationFrame(() => {
-        setCaretOffset(el, Math.min(restoreOffset, plain.length));
-        scrollCaretIntoView(el);
-      });
+      // Restore the caret synchronously. Reassigning innerHTML above collapses
+      // the selection to offset 0; deferring the restore to requestAnimationFrame
+      // left a full frame during which fast keystrokes were inserted at the
+      // start (the "cursor jumps to the beginning" bug). Only the scroll, which
+      // needs layout, stays deferred.
+      setCaretOffset(el, Math.min(restoreOffset, plain.length));
+      requestAnimationFrame(() => scrollCaretIntoView(el));
     }
   }, []);
 

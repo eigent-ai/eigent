@@ -116,6 +116,38 @@ function normalizeRemoteControlUrl(url: string): string {
   return url;
 }
 
+export function parseRemoteControlLinkToken(url: string): string {
+  try {
+    const parsed = new URL(url, 'http://localhost');
+    const fragmentToken = new URLSearchParams(
+      parsed.hash.replace(/^#/, '')
+    ).get('t');
+    if (fragmentToken) {
+      return fragmentToken;
+    }
+    return parsed.searchParams.get('t') || '';
+  } catch {
+    const [, hash = ''] = url.split('#', 2);
+    const fragmentToken = new URLSearchParams(hash).get('t');
+    if (fragmentToken) {
+      return fragmentToken;
+    }
+    const [, query = ''] = url.split('?', 2);
+    return new URLSearchParams(query.split('#', 1)[0]).get('t') || '';
+  }
+}
+
+/**
+ * The revoke endpoint is not idempotent: once a session is revoked or expired
+ * server-side, a subsequent DELETE returns 410 (Gone), and a missing session
+ * returns 404. In both cases the link is already dead, so callers should treat
+ * the revoke as successful and clean up local state instead of stranding it.
+ */
+export function isRemoteControlAlreadyGoneError(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 404 || status === 410;
+}
+
 function remoteLinkHeaders(linkToken?: string | null): Record<string, string> {
   if (!linkToken) {
     return {};

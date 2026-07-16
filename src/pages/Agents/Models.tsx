@@ -19,6 +19,12 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,8 +50,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { createHost } from '@/host/createHost';
 import { SITE_URL } from '@/lib';
 import { INIT_PROVODERS } from '@/lib/llm';
+import {
+  buildProviderConfig,
+  formatModelConfigJson,
+  parseModelConfigJson,
+  splitProviderConfig,
+} from '@/lib/modelConfig';
 import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
@@ -119,8 +133,11 @@ export default function SettingModels() {
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     setModelType,
     setCloudModelType,
+    setCodexModelType,
     appearance,
   } = useAuthStore();
   const _navigate = useNavigate();
@@ -157,6 +174,7 @@ export default function SettingModels() {
       apiHost: p.apiHost,
       is_valid: p.is_valid ?? false,
       model_type: p.model_type ?? '',
+      modelConfigJson: '',
       externalConfig: p.externalConfig
         ? p.externalConfig.map((ec) => ({ ...ec }))
         : undefined,
@@ -192,6 +210,7 @@ export default function SettingModels() {
       apiKey?: string;
       apiHost?: string;
       model_type?: string;
+      modelConfigJson?: string;
       externalConfig?: string;
     }[]
   >(() =>
@@ -205,14 +224,25 @@ export default function SettingModels() {
   // Sidebar selected tab - default to cloud
   const [selectedTab, setSelectedTab] = useState<SidebarTab>('cloud');
 
-  // BYOK accordion state
-  const [byokCollapsed, setByokCollapsed] = useState(false);
+  // Subscription sub-accordion state (nested inside Custom Model)
+  const [subscriptionCollapsed, setSubscriptionCollapsed] = useState(false);
+
+  // BYOK (API key) sub-accordion state (nested inside Custom Model)
+  const [byokGroupCollapsed, setByokGroupCollapsed] = useState(false);
 
   // Local Model accordion state
   const [localCollapsed, setLocalCollapsed] = useState(false);
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);
+  const [codexBusy, setCodexBusy] = useState(false);
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+    account_label?: string | null;
+    expires_at?: string | null;
+    last_error_code?: string | null;
+  }>({ connected: false, status: 'not_connected' });
 
   // Local Model independent state - per platform
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -386,6 +416,9 @@ export default function SettingModels() {
               (p: any) => p.provider_name === item.id
             );
             if (found) {
+              const { modelConfigDict } = splitProviderConfig(
+                found.encrypted_config
+              );
               return {
                 ...fi,
                 provider_id: found.id,
@@ -395,6 +428,10 @@ export default function SettingModels() {
                 is_valid: getProviderValid(found),
                 prefer: found.prefer ?? false,
                 model_type: found.model_type ?? '',
+                modelConfigJson:
+                  Object.keys(modelConfigDict).length > 0
+                    ? formatModelConfigJson(modelConfigDict)
+                    : '',
                 externalConfig: fi.externalConfig
                   ? fi.externalConfig.map((ec) => {
                       if (
@@ -466,6 +503,10 @@ export default function SettingModels() {
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -503,6 +544,12 @@ export default function SettingModels() {
       return `${t('setting.eigent-cloud')} / ${modelName}`;
     }
 
+    if (modelType === 'codex_subscription') {
+      return `${t('setting.custom-model')} / Codex Subscription${
+        codex_model_type ? ` (${codex_model_type})` : ''
+      }`;
+    }
+
     // Check for custom model preference
     const preferredIdx = form.findIndex((f) => f.prefer);
     if (preferredIdx !== -1) {
@@ -531,6 +578,9 @@ export default function SettingModels() {
     }
     if (category === 'custom') {
       const idx = items.findIndex((item) => item.id === modelId);
+      if (idx !== -1 && items[idx].authMode === 'oauth_subscription') {
+        return codexStatus.connected;
+      }
       return idx !== -1 && !!form[idx]?.provider_id;
     }
     if (category === 'local') {
@@ -555,8 +605,13 @@ export default function SettingModels() {
         setSelectedTab('cloud');
       } else if (category === 'custom') {
         setSelectedTab(`byok-${modelId}` as SidebarTab);
-        // Expand BYOK section if collapsed
-        if (byokCollapsed) setByokCollapsed(false);
+        // Expand the relevant Custom Model sub-accordion if collapsed
+        const target = items.find((item) => item.id === modelId);
+        if (target?.authMode === 'oauth_subscription') {
+          setSubscriptionCollapsed(false);
+        } else {
+          setByokGroupCollapsed(false);
+        }
       } else if (category === 'local') {
         setSelectedTab(`local-${modelId}` as SidebarTab);
         // Expand Local section if collapsed
@@ -600,9 +655,16 @@ export default function SettingModels() {
   };
 
   const handleVerify = async (idx: number) => {
-    const { apiKey, apiHost, externalConfig, model_type, provider_id } =
-      form[idx];
+    const {
+      apiKey,
+      apiHost,
+      externalConfig,
+      model_type,
+      modelConfigJson,
+      provider_id,
+    } = form[idx];
     let hasError = false;
+    let modelConfigDict: Record<string, unknown> = {};
     const newErrors = [...errors];
     if (items[idx].id !== 'local' && items[idx].id !== 'aws-bedrock-converse') {
       if (!apiKey || apiKey.trim() === '') {
@@ -624,6 +686,15 @@ export default function SettingModels() {
     } else {
       newErrors[idx].model_type = '';
     }
+    try {
+      modelConfigDict = parseModelConfigJson(modelConfigJson);
+      newErrors[idx].modelConfigJson = '';
+    } catch {
+      newErrors[idx].modelConfigJson = t(
+        'setting.model-parameters-must-be-valid-json-object'
+      );
+      hasError = true;
+    }
     setErrors(newErrors);
     if (hasError) {
       showConfigCardRing('error');
@@ -633,20 +704,34 @@ export default function SettingModels() {
     showConfigCardRing('configuring');
     setLoading(idx);
     const item = items[idx];
-    let external: any = {};
-    if (form[idx]?.externalConfig) {
-      form[idx]?.externalConfig.map((item) => {
+    const external: Record<string, unknown> = {};
+    if (externalConfig) {
+      externalConfig.forEach((item) => {
         external[item.key] = item.value;
       });
     }
 
-    console.log(form[idx]);
+    setForm((currentForm) =>
+      currentForm.map((entry, entryIdx) =>
+        entryIdx === idx
+          ? {
+              ...entry,
+              modelConfigJson:
+                Object.keys(modelConfigDict).length > 0
+                  ? formatModelConfigJson(modelConfigDict)
+                  : '',
+            }
+          : entry
+      )
+    );
+
     try {
       const res = await fetchPost('/model/validate', {
         model_platform: item.id,
         model_type: form[idx].model_type,
         api_key: form[idx].apiKey || null,
         url: form[idx].apiHost,
+        model_config_dict: modelConfigDict,
         extra_params: external,
       });
       if (res.is_tool_calls && res.is_valid) {
@@ -691,13 +776,8 @@ export default function SettingModels() {
       endpoint_url: form[idx].apiHost,
       is_valid: toProviderValidStatus(true),
       model_type: form[idx].model_type,
+      encrypted_config: buildProviderConfig(external, modelConfigDict),
     };
-    if (externalConfig) {
-      data.encrypted_config = {};
-      externalConfig.forEach((ec) => {
-        data.encrypted_config[ec.key] = ec.value;
-      });
-    }
     try {
       if (provider_id) {
         await proxyFetchPut(`/api/v1/provider/${provider_id}`, data);
@@ -714,6 +794,9 @@ export default function SettingModels() {
             (p: any) => p.provider_name === item.id
           );
           if (found) {
+            const { modelConfigDict } = splitProviderConfig(
+              found.encrypted_config
+            );
             return {
               ...fi,
               provider_id: found.id,
@@ -723,6 +806,10 @@ export default function SettingModels() {
               is_valid: getProviderValid(found),
               prefer: found.prefer ?? false,
               model_type: found.model_type ?? fi.model_type ?? '',
+              modelConfigJson:
+                Object.keys(modelConfigDict).length > 0
+                  ? formatModelConfigJson(modelConfigDict)
+                  : '',
               externalConfig: fi.externalConfig
                 ? fi.externalConfig.map((ec) => {
                     if (
@@ -1090,6 +1177,7 @@ export default function SettingModels() {
             apiHost: item.apiHost,
             is_valid: false,
             model_type: '',
+            modelConfigJson: '',
             externalConfig: item.externalConfig
               ? item.externalConfig.map((ec) => ({ ...ec, value: '' }))
               : undefined,
@@ -1100,7 +1188,14 @@ export default function SettingModels() {
       );
       setErrors((prev) =>
         prev.map((er, i) =>
-          i === idx ? ({ apiKey: '', apiHost: '', model_type: '' } as any) : er
+          i === idx
+            ? ({
+                apiKey: '',
+                apiHost: '',
+                model_type: '',
+                modelConfigJson: '',
+              } as any)
+            : er
         )
       );
       if (activeModelIdx === idx) {
@@ -1141,14 +1236,18 @@ export default function SettingModels() {
   };
   const [credits, setCredits] = useState<any>(0);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  // True when the credits request failed (treated as "server not connected").
+  const [creditsError, setCreditsError] = useState(false);
   const updateCredits = async () => {
     try {
       setLoadingCredits(true);
       const res = await proxyFetchGet(`/api/v1/user/current_credits`);
       console.log(res?.credits);
       setCredits(res?.credits);
+      setCreditsError(false);
     } catch (error) {
       console.error(error);
+      setCreditsError(true);
     } finally {
       setLoadingCredits(false);
     }
@@ -1230,7 +1329,10 @@ export default function SettingModels() {
     modelId: string | null,
     isActive: boolean,
     isSubItem: boolean = false,
-    isConfigured: boolean = false
+    isConfigured: boolean = false,
+    // When provided, renders a connection dot with this tone (overrides the
+    // default binary "configured" green dot). `null` renders no dot.
+    dotTone?: 'success' | 'error' | 'muted' | null
   ) => {
     const modelImage = getModelImage(modelId);
     const fallbackIcon =
@@ -1277,11 +1379,158 @@ export default function SettingModels() {
             {label}
           </span>
         </div>
-        {isConfigured && (
-          <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
-        )}
+        {dotTone !== undefined
+          ? dotTone && (
+              <div
+                className={`m-1 h-2 w-2 shrink-0 rounded-full ${
+                  dotTone === 'success'
+                    ? 'bg-ds-text-success-default-default'
+                    : dotTone === 'error'
+                      ? 'bg-ds-text-error-default-default'
+                      : 'bg-ds-text-neutral-default-default opacity-10'
+                }`}
+              />
+            )
+          : isConfigured && (
+              <div className="m-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
+            )}
       </button>
     );
+  };
+
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({
+        connected: false,
+        status: 'error',
+        last_error_code: 'status_unavailable',
+      });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  const codexAuthErrorMessage = useCallback(
+    (code?: string | null): string => {
+      switch (code) {
+        case 'oauth_callback_port_in_use':
+          return t('setting.codex-port-in-use', {
+            defaultValue:
+              'The Codex sign-in port (1455) is in use. Close other Codex/ChatGPT CLI sessions or another Eigent window, then try again.',
+          });
+        case 'oauth_callback_unavailable':
+          return t('setting.codex-callback-unavailable', {
+            defaultValue:
+              'Could not start the local sign-in listener. Please try again.',
+          });
+        case 'oauth_open_browser_failed':
+          return t('setting.codex-open-browser-failed', {
+            defaultValue: 'Could not open your browser for sign-in.',
+          });
+        case 'oauth_state_expired':
+          return t('setting.codex-state-expired', {
+            defaultValue: 'Sign-in took too long. Please try again.',
+          });
+        case 'oauth_state_mismatch':
+          return t('setting.codex-state-mismatch', {
+            defaultValue: 'Sign-in could not be verified. Please try again.',
+          });
+        case 'access_denied':
+          return t('setting.codex-access-denied', {
+            defaultValue: 'Sign-in was cancelled.',
+          });
+        default:
+          return t('setting.codex-login-failed', {
+            defaultValue: 'Codex sign-in failed. Please try again.',
+          });
+      }
+    },
+    [t]
+  );
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = (_event?: unknown, payload?: { error_code?: string }) => {
+      if (payload?.error_code) {
+        toast.error(codexAuthErrorMessage(payload.error_code));
+      }
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus, codexAuthErrorMessage]);
+
+  const handleCodexLogin = async () => {
+    if (!email) {
+      toast.error(
+        t('setting.login-required', { defaultValue: 'Please sign in first.' })
+      );
+      return;
+    }
+
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionLogin?.(email);
+      if (!result?.success) {
+        throw new Error(result?.error || result?.error_code || 'login_failed');
+      }
+      await refreshCodexStatus();
+    } catch (error: any) {
+      console.error('Failed to start Codex subscription login:', error);
+      toast.error(codexAuthErrorMessage(error?.message));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexDisconnect = async () => {
+    if (!email) return;
+    try {
+      setCodexBusy(true);
+      const result =
+        await createHost().electronAPI?.codexSubscriptionDisconnect?.(email);
+      if (!result?.success) {
+        throw new Error(
+          result?.error || result?.error_code || 'disconnect_failed'
+        );
+      }
+      await refreshCodexStatus();
+      if (modelType === 'codex_subscription') {
+        setModelType('cloud');
+      }
+      toast.success(
+        t('setting.codex-disconnected', {
+          defaultValue: 'Codex subscription disconnected.',
+        })
+      );
+    } catch (error: any) {
+      console.error('Failed to disconnect Codex subscription:', error);
+      toast.error(error?.message || t('setting.reset-failed'));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
+  const handleCodexSetDefault = () => {
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
   };
 
   // Render content based on selected tab
@@ -1308,38 +1557,51 @@ export default function SettingModels() {
               <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
                 {t('setting.eigent-cloud')}
               </div>
-              {cloudPrefer ? (
-                <Button
-                  variant="primary"
-                  tone="success"
-                  size="xs"
-                  buttonContent="text"
-                  textWeight="bold"
-                  buttonRadius="full"
-                  disabled
-                >
-                  {t('setting.default')}
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  tone="neutral"
-                  size="xs"
-                  buttonContent="text"
-                  textWeight="bold"
-                  buttonRadius="full"
-                  className="!text-ds-text-neutral-muted-default"
-                  onClick={() => {
-                    setLocalPrefer(false);
-                    setActiveModelIdx(null);
-                    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
-                    setCloudPrefer(true);
-                    setModelType('cloud');
-                  }}
-                >
-                  {t('setting.set-as-default')}
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {cloudPrefer ? (
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    disabled
+                  >
+                    {t('setting.default')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    tone="neutral"
+                    size="xs"
+                    buttonContent="text"
+                    textWeight="bold"
+                    buttonRadius="full"
+                    className="!text-ds-text-neutral-muted-default"
+                    onClick={() => {
+                      setLocalPrefer(false);
+                      setActiveModelIdx(null);
+                      setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+                      setCloudPrefer(true);
+                      setModelType('cloud');
+                    }}
+                  >
+                    {t('setting.set-as-default')}
+                  </Button>
+                )}
+                {/* Connection dot: green = connected with credits,
+                    grey = server not connected, error = out of credits. */}
+                <div
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    creditsError
+                      ? 'bg-ds-text-neutral-default-default opacity-10'
+                      : Number(credits) > 0
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-error-default-default'
+                  }`}
+                />
+              </div>
             </div>
             <div className="justify-center self-stretch">
               <span className="text-body-sm text-ds-text-neutral-muted-default">
@@ -1488,7 +1750,139 @@ export default function SettingModels() {
       if (idx === -1) return null;
 
       const item = items[idx];
-      const canSwitch = !!form[idx].provider_id;
+      const isSubscriptionAuth = item.authMode === 'oauth_subscription';
+      const canSwitch = !!form[idx].provider_id && !isSubscriptionAuth;
+
+      if (isSubscriptionAuth) {
+        const isConnected = codexStatus.connected;
+        const isDefault = modelType === 'codex_subscription';
+
+        return (
+          <ConfigModelCard status={configCardRing}>
+            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+              <div className="inline-flex items-center justify-between gap-2 self-stretch">
+                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+                  {item.name}
+                </div>
+                <div className="flex items-center gap-2">
+                  {isConnected ? (
+                    isDefault ? (
+                      <Button
+                        variant="primary"
+                        tone="success"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        disabled
+                      >
+                        {t('setting.default')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        tone="neutral"
+                        size="xs"
+                        buttonContent="text"
+                        textWeight="bold"
+                        buttonRadius="full"
+                        className="!text-ds-text-neutral-muted-default"
+                        disabled={codexBusy}
+                        onClick={handleCodexSetDefault}
+                      >
+                        {t('setting.set-as-default')}
+                      </Button>
+                    )
+                  ) : null}
+                  <div
+                    className={`h-2 w-2 shrink-0 rounded-full ${
+                      isConnected
+                        ? 'bg-ds-text-success-default-default'
+                        : 'bg-ds-text-neutral-default-default opacity-10'
+                    }`}
+                  />
+                </div>
+              </div>
+              <div className="text-body-sm text-ds-text-neutral-muted-default">
+                {item.description}
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-4 px-6 pb-4">
+              {/* Login row: left status text, right action */}
+              <div className="flex w-full items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-body-sm text-ds-text-neutral-default-default">
+                    {isConnected
+                      ? codexStatus.account_label ||
+                        t('setting.connected', { defaultValue: 'Connected' })
+                      : t('setting.not-configured')}
+                  </span>
+                  {codexStatus.expires_at ? (
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.expires_at}
+                    </span>
+                  ) : null}
+                  {!isConnected && codexStatus.last_error_code ? (
+                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                      {codexStatus.last_error_code}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="ml-4 flex shrink-0 items-center gap-2">
+                  {isConnected ? (
+                    <Button
+                      variant="secondary"
+                      tone="error"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexDisconnect}
+                    >
+                      {t('setting.disconnect', { defaultValue: 'Disconnect' })}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      tone="neutral"
+                      size="sm"
+                      buttonContent="text"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      disabled={codexBusy}
+                      onClick={handleCodexLogin}
+                    >
+                      {codexBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t('layout.login', { defaultValue: 'Sign in' })
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Model type row: left label, right input */}
+              <div className="flex w-full items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center">
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+                    {t('setting.model-type')}
+                  </span>
+                </div>
+                <div className="ml-4 flex-shrink-0">
+                  <Input
+                    value={codex_model_type}
+                    onChange={(e) => setCodexModelType(e.target.value)}
+                    placeholder="gpt-5.5"
+                    className="w-[220px]"
+                  />
+                </div>
+              </div>
+            </div>
+          </ConfigModelCard>
+        );
+      }
 
       return (
         <ConfigModelCard status={configCardRing}>
@@ -1642,9 +2036,9 @@ export default function SettingModels() {
                 disabled={!form[idx].apiKey}
                 disabledReason="Enter API Key first."
                 onRefresh={() => void fetchCloudProviderModels(idx)}
-                triggerPlaceholder={`${t('setting.enter-your-model-type')} ${
-                  item.name
-                } ${t('setting.model-type')}`}
+                triggerPlaceholder={t('setting.select-model-type', {
+                  defaultValue: 'Select model type',
+                })}
               />
             ) : (
               <Input
@@ -1672,6 +2066,45 @@ export default function SettingModels() {
                 }}
               />
             )}
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="model-parameters" className="border-none">
+                <AccordionTrigger className="bg-transparent px-0 py-2 hover:no-underline">
+                  <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                    {t('setting.model-parameters-setting')}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <Textarea
+                    id={`modelParameters-${item.id}`}
+                    variant="enhanced"
+                    state={errors[idx]?.modelConfigJson ? 'error' : 'default'}
+                    note={errors[idx]?.modelConfigJson ?? undefined}
+                    placeholder={t('setting.model-parameters-placeholder')}
+                    value={form[idx].modelConfigJson}
+                    rows={5}
+                    spellCheck={false}
+                    className="font-mono"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setForm((currentForm) =>
+                        currentForm.map((entry, entryIdx) =>
+                          entryIdx === idx
+                            ? { ...entry, modelConfigJson: value }
+                            : entry
+                        )
+                      );
+                      setErrors((currentErrors) =>
+                        currentErrors.map((entry, entryIdx) =>
+                          entryIdx === idx
+                            ? { ...entry, modelConfigJson: '' }
+                            : entry
+                        )
+                      );
+                    }}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
             {/* externalConfig render */}
             {item.externalConfig &&
               form[idx].externalConfig &&
@@ -2112,16 +2545,30 @@ export default function SettingModels() {
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
                   {items.map((item, idx) => {
-                    const isConfigured = !!form[idx]?.provider_id;
-                    const isPreferred = form[idx]?.prefer;
+                    const isSubscriptionAuth =
+                      item.authMode === 'oauth_subscription';
+                    const isConfigured = isSubscriptionAuth
+                      ? codexStatus.connected
+                      : !!form[idx]?.provider_id;
+                    const isPreferred = isSubscriptionAuth
+                      ? modelType === 'codex_subscription'
+                      : form[idx]?.prefer;
                     const modelImage = getModelImage(item.id);
 
                     return (
                       <DropdownMenuItem
                         key={item.id}
-                        onClick={() =>
-                          handleDefaultModelSelect('custom', item.id)
-                        }
+                        onClick={() => {
+                          if (isSubscriptionAuth) {
+                            if (isConfigured) {
+                              handleCodexSetDefault();
+                            } else {
+                              setSelectedTab(`byok-${item.id}` as SidebarTab);
+                            }
+                            return;
+                          }
+                          handleDefaultModelSelect('custom', item.id);
+                        }}
                         className="flex items-center justify-between"
                       >
                         <div className="flex items-center gap-2">
@@ -2248,40 +2695,105 @@ export default function SettingModels() {
                       'cloud',
                       selectedTab === 'cloud',
                       false,
-                      cloudPrefer
+                      cloudPrefer,
+                      creditsError
+                        ? 'muted'
+                        : Number(credits) > 0
+                          ? 'success'
+                          : 'error'
                     )}
                 </div>
-                {/* Bring Your Own Key Section */}
+                {/* Custom Model Section */}
                 <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => setByokCollapsed(!byokCollapsed)}
-                    className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
-                  >
-                    <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-                      {t('setting.custom-model')}
-                    </div>
-                    {byokCollapsed ? (
-                      <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
-                    ) : (
-                      <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                  <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
+                    {t('setting.custom-model')}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {/* Subscription sub-accordion (OAuth login providers) */}
+                    {items.some(
+                      (item) => item.authMode === 'oauth_subscription'
+                    ) && (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() =>
+                            setSubscriptionCollapsed(!subscriptionCollapsed)
+                          }
+                          className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.subscription', {
+                              defaultValue: 'Subscription',
+                            })}
+                          </div>
+                          {subscriptionCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                            subscriptionCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item) =>
+                            item.authMode === 'oauth_subscription'
+                              ? renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  codexStatus.connected
+                                )
+                              : null
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </button>
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      byokCollapsed
-                        ? 'max-h-0 opacity-0'
-                        : 'max-h-[2000px] opacity-100'
-                    }`}
-                  >
-                    {items.map((item, idx) =>
-                      renderSidebarItem(
-                        `byok-${item.id}` as SidebarTab,
-                        item.name,
-                        item.id,
-                        selectedTab === `byok-${item.id}`,
-                        true,
-                        !!form[idx].provider_id
-                      )
+                    {/* BYOK (API key) sub-accordion */}
+                    {items.some(
+                      (item) => item.authMode !== 'oauth_subscription'
+                    ) && (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() =>
+                            setByokGroupCollapsed(!byokGroupCollapsed)
+                          }
+                          className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                        >
+                          <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                            {t('setting.byok', { defaultValue: 'BYOK' })}
+                          </div>
+                          {byokGroupCollapsed ? (
+                            <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          ) : (
+                            <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          )}
+                        </button>
+                        <div
+                          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                            byokGroupCollapsed
+                              ? 'max-h-0 opacity-0'
+                              : 'max-h-[2000px] opacity-100'
+                          }`}
+                        >
+                          {items.map((item, idx) =>
+                            item.authMode === 'oauth_subscription'
+                              ? null
+                              : renderSidebarItem(
+                                  `byok-${item.id}` as SidebarTab,
+                                  item.name,
+                                  item.id,
+                                  selectedTab === `byok-${item.id}`,
+                                  true,
+                                  !!form[idx].provider_id
+                                )
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

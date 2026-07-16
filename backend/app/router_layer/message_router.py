@@ -173,6 +173,7 @@ class DefaultMessageRouter(IRouter):
             # route_in is called from an active RunContext.
             api_key=payload.get("api_key") or env("OPENAI_API_KEY", ""),
             api_url=payload.get("api_url"),
+            auth_source=payload.get("auth_source"),
             user_id=msg.user_id,
         )
 

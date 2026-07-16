@@ -95,6 +95,7 @@ declare global {
       tools: any;
       mcp_tools: any;
       selectedTools: any;
+      model_provider_id?: number;
     };
   }
 
@@ -144,6 +145,9 @@ declare global {
       agent?: string;
       file_path?: string;
       process_task_id?: string;
+      request_index?: number;
+      response_id?: string;
+      step_total_tokens?: number;
       output?: string;
       result?: string;
       tools?: string[];

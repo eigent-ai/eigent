@@ -63,7 +63,22 @@ interface ElectronAPI {
   hideAllWebview: () => Promise<any>;
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
-  exportLog: () => Promise<any>;
+  exportLog: () => Promise<{
+    success: boolean;
+    savedPath?: string;
+    data?: string;
+    error?: string;
+  }>;
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
   getDiagnosticsInfo: () => Promise<{
     version: string;
     platform: string;
@@ -157,6 +172,27 @@ interface ElectronAPI {
   }>;
   restartApp: () => Promise<void>;
   readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
+  codexSubscriptionStatus: (email: string) => Promise<{
+    connected: boolean;
+    status:
+      | 'connected'
+      | 'connected_non_refreshable'
+      | 'expired'
+      | 'revoked'
+      | 'plan_unavailable'
+      | 'quota_exceeded'
+      | 'error'
+      | 'not_connected';
+    account_label?: string | null;
+    expires_at?: string | null;
+    last_error_code?: string | null;
+  }>;
+  codexSubscriptionLogin: (
+    email: string
+  ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
+  codexSubscriptionDisconnect: (
+    email: string
+  ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
   getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
   openInIDE: (
     folderPath: string,
