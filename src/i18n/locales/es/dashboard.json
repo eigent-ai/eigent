@@ -11,6 +11,7 @@
   "grid": "Cuadrícula",
   "table": "Tabla",
   "list": "Lista",
+  "board": "Tablero",
   "search-dialog": "Buscar Dialog",
   "search-dialog-placeholder": "Buscar o preguntar una pregunta",
   "no-results": "No se encontraron resultados.",
@@ -23,5 +24,6 @@
   "document-agent": "Agente de Documentos",
   "multi-modal-agent": "Agente Multi Modal",
   "social-media-agent": "Agente de Redes Sociales",
-  "no-projects-found": "No se encontraron proyectos."
+  "no-projects-found": "No se encontraron proyectos.",
+  "no-tasks-found": "No se encontraron tareas."
 }

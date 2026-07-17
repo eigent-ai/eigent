@@ -26,8 +26,8 @@
   font-weight: 700;
   margin-bottom: 0.5em;
   margin-top: 1em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0;
+  border-bottom: none !important;
 }
 
 .markdown-body h2 {
@@ -35,8 +35,8 @@
   font-weight: 600;
   margin-bottom: 0.5em;
   margin-top: 1em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0;
+  border-bottom: none !important;
 }
 
 .markdown-body h3 {
@@ -53,9 +53,15 @@
   line-height: var(--lineHeight-14, 20px);
 }
 
-/* Code blocks styling */
+/* Code blocks styling.
+   The imported github-markdown-css colors code text via variables keyed to
+   the OS color scheme (prefers-color-scheme), while this file forces the
+   code backgrounds per app theme (data-theme). When the two disagree the
+   text becomes invisible (near-white on the light background and vice
+   versa), so pin the text color alongside each forced background. */
 .markdown-body pre {
   background-color: #f6f8fa;
+  color: #1f2328;
   border-radius: 6px;
   padding: 16px;
   overflow-x: auto;
@@ -81,6 +87,7 @@
 
 .markdown-body pre code {
   background-color: transparent;
+  color: inherit;
   padding: 0;
   font-size: 100%;
 }
@@ -157,11 +164,12 @@
 
 /* Horizontal rule */
 .markdown-body hr {
-  height: 0.25em;
+  height: 0;
   padding: 0;
   margin: 24px 0;
-  background-color: #d0d7de;
+  background-color: transparent;
   border: 0;
+  border-top: 2px solid var(--ds-border-neutral-default-default);
 }
 
 /* Dark mode support - matches app's data-theme attribute */
@@ -169,13 +177,9 @@
   color: #e6edf3;
 }
 
-[data-theme='dark'] .markdown-body h1,
-[data-theme='dark'] .markdown-body h2 {
-  border-bottom-color: #30363d;
-}
-
 [data-theme='dark'] .markdown-body pre {
   background-color: #161b22;
+  color: #e6edf3;
 }
 
 [data-theme='dark'] .markdown-body code {
@@ -207,10 +211,6 @@
 
 [data-theme='dark'] .markdown-body a {
   color: #58a6ff;
-}
-
-[data-theme='dark'] .markdown-body hr {
-  background-color: #30363d;
 }
 
 /* Task list styling */

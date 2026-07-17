@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import logging
 
 from camel.toolkits.base import BaseToolkit
@@ -19,6 +20,7 @@ from camel.toolkits.function_tool import FunctionTool
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import (
+    TASK_LOCK_CLEANUP_SENTINEL,
     Action,
     ActionAskData,
     ActionNoticeData,
@@ -60,7 +62,6 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         credentials, file paths).
         - Ask for a decision when there are multiple viable options.
         - Seek help when you encounter an error you cannot resolve on your own.
-
         Args:
             question (str): The question to ask the user.
 
@@ -80,6 +81,17 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         )
 
         reply = await task_lock.get_human_input(self.agent_name)
+        if reply == TASK_LOCK_CLEANUP_SENTINEL:
+            logger.info(
+                "Human input wait interrupted by task cleanup",
+                extra={
+                    "task_id": self.api_task_id,
+                    "agent": self.agent_name,
+                },
+            )
+            raise asyncio.CancelledError(
+                "Task cleanup interrupted human input wait"
+            )
         logger.info(f"User reply: {reply}")
         return reply
 

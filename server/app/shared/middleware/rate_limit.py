@@ -19,13 +19,17 @@ Uses fastapi-limiter (initialized by main app lifespan).
 Provides convenient factory for common limits: login, register, webhook.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from fastapi import Depends
 from fastapi_limiter.depends import RateLimiter
 
 
-def rate_limiter_factory(times: int = 10, seconds: int = 60) -> Callable:
+def rate_limiter_factory(
+    times: int = 10,
+    seconds: int = 60,
+    identifier: Callable[..., Awaitable[str]] | None = None,
+) -> Callable:
     """
     Create a RateLimiter dependency with given limits.
 
@@ -33,7 +37,7 @@ def rate_limiter_factory(times: int = 10, seconds: int = 60) -> Callable:
     :param seconds: Window size in seconds
     :return: FastAPI Depends-compatible callable
     """
-    return Depends(RateLimiter(times=times, seconds=seconds))
+    return Depends(RateLimiter(times=times, seconds=seconds, identifier=identifier))
 
 
 # Predefined limiters for common use cases

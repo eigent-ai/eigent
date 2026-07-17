@@ -16,7 +16,7 @@ description: This guide walks you through setting up your Baidu ERNIE API key wi
 - Launch Eigent and navigate to the **Home Page**.
 - Click on the **Agent** tab, then click on the **Models** button.
 
-![Ernie 1 Pn](/docs/images/model_setting.png)
+![Ernie 1 Pn](/images/model_setting.png)
 
 #### 2. Locate Model Configuration
 
@@ -34,7 +34,7 @@ Click on the Ernie card and fill in the following fields:
   - _Example:_ `ernie-5.0`
 - **Save:** Click the **Save** button to apply your changes.
 
-![Ernie 2 Pn](/docs/images/ernie.png)
+![Ernie 2 Pn](/images/ernie.png)
 
 #### 4. Set as Default & Verify
 

@@ -35,7 +35,7 @@ from app.shared.types.trigger_types import ExecutionStatus, ExecutionType
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
 from app.core.database import session
-from app.core.redis_utils import get_redis_manager
+from app.core.redis_utils import RedisSessionManager, get_redis_manager
 from app.domains.trigger.service.trigger_crud_service import TriggerCrudService
 
 # Store active WebSocket connections per session (WebSocket objects only, metadata in Redis)
@@ -494,7 +494,11 @@ async def handle_pubsub_message(event_data: Dict[str, Any]):
 
 
 async def start_pubsub_listener():
-    """Start the Redis pub/sub listener for this worker."""
+    """Start the Redis pub/sub listener for this worker.
+
+    Each uvicorn worker needs its own Redis pub/sub connection. A dedicated
+    manager avoids sharing sockets across forked worker processes.
+    """
     global _pubsub_task
     
     if _pubsub_task is not None:
@@ -502,11 +506,11 @@ async def start_pubsub_listener():
     
     import os
     logger.info(f"[PID {os.getpid()}] Starting Redis pub/sub listener for execution events")
-    redis_manager = get_redis_manager()
+    pubsub_manager = RedisSessionManager()
     
     async def run_subscriber():
         try:
-            await redis_manager.subscribe_to_execution_events(handle_pubsub_message)
+            await pubsub_manager.subscribe_to_execution_events(handle_pubsub_message)
         except Exception as e:
             logger.error("Pub/sub listener crashed", extra={"error": str(e)}, exc_info=True)
     

@@ -39,6 +39,9 @@ export interface MockedElectronAPI {
   checkAndInstallDepsOnUpdate: ReturnType<typeof vi.fn>;
   getInstallationStatus: ReturnType<typeof vi.fn>;
   exportLog: ReturnType<typeof vi.fn>;
+  getDiagnosticsInfo: ReturnType<typeof vi.fn>;
+  exportDiagnosticsZip: ReturnType<typeof vi.fn>;
+  openMailto: ReturnType<typeof vi.fn>;
   onInstallDependenciesStart: ReturnType<typeof vi.fn>;
   onInstallDependenciesLog: ReturnType<typeof vi.fn>;
   onInstallDependenciesComplete: ReturnType<typeof vi.fn>;
@@ -197,6 +200,25 @@ export function createElectronAPIMock(): MockedElectronAPI {
         success: true,
         savedPath: '/mock/path/to/log.txt',
       };
+    }),
+
+    getDiagnosticsInfo: vi.fn().mockImplementation(async () => {
+      return {
+        version: '1.0.0',
+        platform: 'darwin',
+        arch: 'arm64',
+      };
+    }),
+
+    exportDiagnosticsZip: vi.fn().mockImplementation(async () => {
+      return {
+        success: true,
+        savedPath: '/mock/diagnostics.zip',
+      };
+    }),
+
+    openMailto: vi.fn().mockImplementation(async () => {
+      return { success: true };
     }),
 
     // Event listeners
@@ -410,6 +432,9 @@ export function createElectronAPIMock(): MockedElectronAPI {
       electronAPI.checkAndInstallDepsOnUpdate.mockClear();
       electronAPI.getInstallationStatus.mockClear();
       electronAPI.exportLog.mockClear();
+      electronAPI.getDiagnosticsInfo.mockClear();
+      electronAPI.exportDiagnosticsZip.mockClear();
+      electronAPI.openMailto.mockClear();
       electronAPI.onInstallDependenciesStart.mockClear();
       electronAPI.onInstallDependenciesLog.mockClear();
       electronAPI.onInstallDependenciesComplete.mockClear();

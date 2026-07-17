@@ -19,6 +19,7 @@ from sqlmodel import Session
 from app.core import code
 from app.core.database import session
 from app.core.encrypt import password_hash, password_verify
+from app.domains.remote_control.service.remote_control_service import RemoteControlService
 from app.model.user.user import UpdatePassword, UserOut
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
@@ -38,4 +39,5 @@ def update_password(
         raise UserException(code.error, _("The two passwords do not match"))
     model.password = password_hash(data.new_password)
     model.save(db_session)
+    RemoteControlService.revoke_user_sessions(auth.id, db_session, "password_change")
     return model

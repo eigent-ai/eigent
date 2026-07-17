@@ -25,6 +25,7 @@ import logging
 import subprocess
 from importlib.metadata import version as pkg_version
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi_pagination import add_pagination
 from loguru import logger as loguru_logger
@@ -35,12 +36,13 @@ from app import api, router
 from app.core.babel import babel_configs
 from app.core.environment import auto_include_routers, env
 from app.shared.exception.handlers import register_exception_handlers
-from app.shared.middleware import TraceIDMiddleware
+from app.shared.middleware import TraceIDMiddleware, get_cors_middleware
 from app.shared.logging import trace_filter
 
 # Register exception handlers and i18n middleware
 register_exception_handlers(api)
 api.add_middleware(BabelMiddleware, babel_configs=babel_configs)
+api.add_middleware(CORSMiddleware, **get_cors_middleware())
 
 std_logger = logging.getLogger("server_main")
 

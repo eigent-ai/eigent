@@ -13,7 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Unit tests for Chat and AgentModelConfig model configuration."""
 
+import json
+from pathlib import Path
+
 from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.service import skill_config_service
 
 
 class TestAgentModelConfig:
@@ -26,6 +30,7 @@ class TestAgentModelConfig:
         assert config.model_type is None
         assert config.api_key is None
         assert config.api_url is None
+        assert config.model_config_dict is None
         assert config.extra_params is None
 
     def test_agent_model_config_creation_with_values(self):
@@ -35,13 +40,18 @@ class TestAgentModelConfig:
             model_type="gpt-4",
             api_key="test-key",
             api_url="https://api.openai.com/v1",
-            extra_params={"temperature": 0.7},
+            model_config_dict={"temperature": 0.7, "stream": False},
+            extra_params={"api_version": "2025-01-01"},
         )
         assert config.model_platform == "openai"
         assert config.model_type == "gpt-4"
         assert config.api_key == "test-key"
         assert config.api_url == "https://api.openai.com/v1"
-        assert config.extra_params == {"temperature": 0.7}
+        assert config.model_config_dict == {
+            "temperature": 0.7,
+            "stream": False,
+        }
+        assert config.extra_params == {"api_version": "2025-01-01"}
 
     def test_has_custom_config_false_when_empty(self):
         """Test has_custom_config returns False for empty config."""
@@ -69,6 +79,36 @@ class TestAgentModelConfig:
         """Test has_custom_config returns True with only api_key."""
         config = AgentModelConfig(api_key="some-key")
         assert config.has_custom_config() is True
+
+    def test_has_custom_config_true_with_only_model_config_dict(self):
+        config = AgentModelConfig(model_config_dict={"temperature": 0.2})
+
+        assert config.has_custom_config() is True
+
+
+class TestChatModelConfig:
+    def test_chat_accepts_and_serializes_model_config_dict(
+        self, sample_chat_data
+    ):
+        chat = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {
+                    "temperature": 0.2,
+                    "top_p": 0.9,
+                    "response_format": {"type": "json_object"},
+                },
+            }
+        )
+
+        assert chat.model_config_dict == {
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "response_format": {"type": "json_object"},
+        }
+        assert chat.model_dump()["model_config_dict"] == (
+            chat.model_config_dict
+        )
 
 
 class TestNewAgentWithModelConfig:
@@ -140,6 +180,11 @@ class TestModelPlatformMapping:
         chat = self._create_chat("grok")
         assert chat.model_platform == "openai-compatible-model"
 
+    def test_chat_maps_nebius_to_openai_compatible_model(self):
+        """Test Chat maps Nebius platform alias correctly."""
+        chat = self._create_chat("nebius")
+        assert chat.model_platform == "openai-compatible-model"
+
     def test_chat_keeps_supported_platforms_unchanged(self):
         """Test Chat keeps native camel-ai platforms unchanged."""
         chat = self._create_chat("mistral")
@@ -152,9 +197,139 @@ class TestModelPlatformMapping:
         config = AgentModelConfig(model_platform="grok")
         assert config.model_platform == "openai-compatible-model"
 
+
+class TestChatSkillConfigUserId:
+    """Tests for Chat skills config owner-key derivation."""
+
+    def test_skill_config_user_id_prefers_canonical_user_dir(
+        self, tmp_path, monkeypatch
+    ):
+        eigent_root = tmp_path / ".eigent"
+        legacy_dir = eigent_root / "alice"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "skills-config.json").write_text(
+            json.dumps({"version": 1, "skills": {"pdf": {"enabled": False}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(skill_config_service, "EIGENT_ROOT", eigent_root)
+
+        chat = Chat(
+            task_id="task-1",
+            project_id="project-1",
+            question="test question",
+            email="alice@example.com",
+            user_id=42,
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test-key",
+            api_url="https://api.example.com/v1",
+        )
+
+        assert chat.skill_config_user_id() == "user_42"
+        assert not (legacy_dir / "skills-config.json").exists()
+        assert (eigent_root / "user_42" / "skills-config.json").exists()
+
+    def test_agent_model_config_maps_nebius_alias(self):
+        """Test AgentModelConfig also maps Nebius alias."""
+        config = AgentModelConfig(model_platform="nebius")
+        assert config.model_platform == "openai-compatible-model"
+
     def test_agent_model_config_keeps_supported_platforms_unchanged(self):
         """Test AgentModelConfig keeps native camel-ai platforms unchanged."""
         config = AgentModelConfig(model_platform="mistral")
         assert config.model_platform == "mistral"
         config = AgentModelConfig(model_platform="samba-nova")
         assert config.model_platform == "samba-nova"
+
+
+class TestIsCloud:
+    """Tests for Chat.is_cloud detection of eigent-managed proxy URLs."""
+
+    def _chat_with_url(self, api_url: str | None) -> Chat:
+        return Chat(
+            task_id="t",
+            project_id="p",
+            question="q",
+            email="x@y.com",
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="k",
+            api_url=api_url,
+        )
+
+    def test_is_cloud_matches_legacy_hyphenated_host(self):
+        assert self._chat_with_url(
+            "https://eigent-proxy.example.com"
+        ).is_cloud()
+
+    def test_is_cloud_matches_current_proxy_host(self):
+        # `proxy.eigent.ai` is the actual prod/dev hostname (no hyphen).
+        assert self._chat_with_url("https://proxy.eigent.ai").is_cloud()
+        assert self._chat_with_url("https://proxy.eigent.ai/").is_cloud()
+
+    def test_is_cloud_false_for_user_configured_endpoints(self):
+        assert not self._chat_with_url("https://api.openai.com/v1").is_cloud()
+        assert not self._chat_with_url(
+            "https://bedrock-runtime.us-west-2.amazonaws.com"
+        ).is_cloud()
+
+    def test_is_cloud_false_when_url_missing(self):
+        assert not self._chat_with_url(None).is_cloud()
+
+
+class TestFileSavePath:
+    """Tests for Chat file output path compatibility."""
+
+    def _chat(self) -> Chat:
+        return Chat(
+            task_id="task-1",
+            run_id="run-1",
+            project_id="project-1",
+            question="q",
+            email="alice@example.com",
+            user_id="42",
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="k",
+        )
+
+    def test_file_save_path_prefers_user_id_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        resolved = Path(self._chat().file_save_path())
+
+        assert resolved == (
+            tmp_path
+            / "eigent"
+            / "user_42"
+            / "project_project-1"
+            / "task_run-1"
+        )
+        assert resolved.exists()
+
+    def test_file_save_path_falls_back_to_legacy_email_root(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        legacy_path = (
+            tmp_path / "eigent" / "alice" / "project_project-1" / "task_run-1"
+        )
+        legacy_path.mkdir(parents=True)
+
+        resolved = Path(self._chat().file_save_path())
+
+        assert resolved == legacy_path
+
+    def test_file_save_path_keeps_legacy_root_for_subpaths(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        legacy_path = (
+            tmp_path / "eigent" / "alice" / "project_project-1" / "task_run-1"
+        )
+        legacy_path.mkdir(parents=True)
+
+        resolved = Path(self._chat().file_save_path("screenshots"))
+
+        assert resolved == legacy_path / "screenshots"
+        assert resolved.exists()

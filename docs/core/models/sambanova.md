@@ -16,7 +16,7 @@ description: This guide walks you through setting up your SambaNova API key with
 - Launch Eigent and navigate to the **Home Page**.
 - Click on the **Agent** tab，then click on the **Models** button.
 
-![SambaNova 1 Pn](/docs/images/model_setting.png)
+![SambaNova 1 Pn](/images/model_setting.png)
 
 #### 2. Locate Model Configuration
 
@@ -34,7 +34,7 @@ Click on the SambaNova card and fill in the following fields:
   - _Example:_ `DeepSeek-V3.1`
 - **Save:** Click the **Save** button to apply your changes.
 
-![SambaNova 2 Pn](/docs/images/sambanova.png)
+![SambaNova 2 Pn](/images/sambanova.png)
 
 #### 4. Set as Default & Verify
 

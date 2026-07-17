@@ -12,53 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AnimateIcon } from '@/components/animate-ui/icons/icon';
-import { Orbit } from '@/components/animate-ui/icons/orbit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-/**
- * Variant: Splitting
- */
-export interface BoxHeaderSplittingProps {
-  className?: string;
-}
-
-export const BoxHeaderSplitting = ({ className }: BoxHeaderSplittingProps) => {
-  const { t } = useTranslation();
-  return (
-    <div
-      className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
-        className
-      )}
-    >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="px-1 focus:ring-0 focus-visible:outline-none"
-        >
-          <AnimateIcon
-            animate
-            loop
-            className="h-4 w-4 items-center justify-center"
-          >
-            <Orbit size={16} className="text-icon-information" />
-          </AnimateIcon>
-        </Button>
-
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          <span className="whitespace-nowrap text-sm font-bold text-text-information">
-            {t('chat.splitting-tasks')}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 /**
  * Variant: Confirm
@@ -69,51 +27,133 @@ export interface BoxHeaderConfirmProps {
   onEdit?: () => void;
   className?: string;
   loading?: boolean;
+  autoStartDeadline?: number | null;
 }
 
 export const BoxHeaderConfirm = ({
-  subtitle,
+  subtitle: _subtitle,
   onStartTask,
   onEdit,
   className,
   loading = false,
+  autoStartDeadline = null,
 }: BoxHeaderConfirmProps) => {
+  const { t } = useTranslation();
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!autoStartDeadline) {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const updateRemainingSeconds = () => {
+      setRemainingSeconds(
+        Math.max(0, Math.ceil((autoStartDeadline - Date.now()) / 1000))
+      );
+    };
+
+    updateRemainingSeconds();
+    const intervalId = window.setInterval(updateRemainingSeconds, 250);
+    return () => window.clearInterval(intervalId);
+  }, [autoStartDeadline]);
+
+  return (
+    <div
+      className={cn(
+        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
+        className
+      )}
+    >
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
+        <Button
+          variant="ghost"
+          size="sm"
+          buttonContent="icon-only"
+          tone="neutral"
+          buttonRadius="full"
+          className="focus:ring-0 focus-visible:outline-none"
+          onClick={onEdit}
+        >
+          <ChevronLeft />
+        </Button>
+
+        <div className="gap-2 flex items-center">
+          {remainingSeconds !== null && (
+            <span
+              className="text-body-xs font-medium text-ds-text-success-default-default whitespace-nowrap tabular-nums"
+              aria-label={t('chat.auto-start-in', {
+                seconds: remainingSeconds,
+              })}
+            >
+              {t('chat.auto-start-in', { seconds: remainingSeconds })}
+            </span>
+          )}
+          <Button
+            variant="success"
+            size="sm"
+            className="rounded-full"
+            onClick={onStartTask}
+            disabled={loading}
+          >
+            {t('chat.start-task')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Variant: Save
+ *
+ * Mirrors `BoxHeaderConfirm` but the primary action is "Save" — used when the
+ * plan editor has unsaved subtask edits.
+ */
+export interface BoxHeaderSaveProps {
+  subtitle?: string;
+  onSave?: () => void;
+  onEdit?: () => void;
+  className?: string;
+  loading?: boolean;
+}
+
+export const BoxHeaderSave = ({
+  subtitle: _subtitle,
+  onSave,
+  onEdit,
+  className,
+  loading = false,
+}: BoxHeaderSaveProps) => {
   const { t } = useTranslation();
   return (
     <div
       className={cn(
-        'mb-2 flex w-full flex-col items-start justify-center gap-1',
+        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
         className
       )}
     >
-      <div className="relative box-border flex w-full items-center gap-1 px-2.5 py-0">
+      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
         <Button
           variant="ghost"
           size="sm"
-          className="px-1 focus:ring-0 focus-visible:outline-none"
+          buttonContent="icon-only"
+          tone="neutral"
+          buttonRadius="full"
+          className="focus:ring-0 focus-visible:outline-none"
           onClick={onEdit}
         >
-          <ChevronLeft size={16} className="text-icon-primary" />
+          <ChevronLeft />
         </Button>
-
-        <div className="relative flex min-h-px min-w-px flex-1 items-center gap-0.5">
-          {subtitle && (
-            <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-              <span className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal text-text-label">
-                {subtitle}
-              </span>
-            </div>
-          )}
-        </div>
 
         <Button
           variant="success"
           size="sm"
           className="rounded-full"
-          onClick={onStartTask}
+          onClick={onSave}
           disabled={loading}
         >
-          {t('chat.start-task')}
+          {t('layout.save')}
         </Button>
       </div>
     </div>

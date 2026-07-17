@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-// Global type definitions for WorkspaceMenu component
+// Global type definitions shared by workforce / workspace UI
 
 declare global {
   type WorkspaceType =

@@ -18,11 +18,13 @@ import logging
 import os
 import platform
 import shutil
+import time
 from pathlib import Path
 
 from app.component.environment import env
 from app.exception.exception import PathEscapesBaseError
 from app.model.chat import Chat
+from app.run_context import get_current_run_context
 
 logger = logging.getLogger("file_utils")
 
@@ -31,7 +33,7 @@ MAX_PATH_LENGTH_WIN = 260
 MAX_PATH_LENGTH_UNIX = 4096
 # Default directory names to skip when listing (list_files)
 DEFAULT_SKIP_DIRS = frozenset(
-    {".git", "node_modules", "__pycache__", "venv", ".venv"}
+    {".git", "node_modules", "__pycache__", "venv", ".venv", "camel_logs"}
 )
 # Default file extensions to skip when listing (list_files)
 DEFAULT_SKIP_EXTENSIONS: tuple[str, ...] = (".pyc", ".tmp", ".temp")
@@ -195,6 +197,7 @@ def list_files(
     skip_dirs: set[str] | None = None,
     skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
+    stats: dict[str, float | int] | None = None,
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
@@ -228,8 +231,19 @@ def list_files(
     except OSError:
         return []
     base_real = os.path.realpath(resolve_base)
-    skip_dirs = set(DEFAULT_SKIP_DIRS) if skip_dirs is None else skip_dirs
+    skip_dirs = set(DEFAULT_SKIP_DIRS).union(skip_dirs or set())
     result: list[str] = []
+    scan_started = time.perf_counter()
+    realpath_elapsed = 0.0
+    symlink_count = 0
+
+    def record_stats() -> None:
+        if stats is None:
+            return
+        stats["scan_elapsed_ms"] = (time.perf_counter() - scan_started) * 1000
+        stats["realpath_elapsed_ms"] = realpath_elapsed * 1000
+        stats["symlink_count"] = symlink_count
+
     try:
         for root, dirs, files in os.walk(resolved_dir, followlinks=False):
             dirs[:] = [
@@ -242,22 +256,33 @@ def list_files(
                     continue
                 try:
                     file_path = os.path.join(root, name)
-                    real_path = os.path.realpath(file_path)
-                    if not _is_under_base(real_path, base_real):
-                        logger.debug(
-                            "list_files: skipping %r (escapes base)", file_path
+                    if os.path.islink(file_path):
+                        symlink_count += 1
+                        realpath_started = time.perf_counter()
+                        real_path = os.path.realpath(file_path)
+                        realpath_elapsed += (
+                            time.perf_counter() - realpath_started
                         )
-                        continue
-                    result.append(real_path)
+                        if not _is_under_base(real_path, base_real):
+                            logger.debug(
+                                "list_files: skipping %r (escapes base)",
+                                file_path,
+                            )
+                            continue
+                        result.append(real_path)
+                    else:
+                        result.append(os.path.normpath(file_path))
                     if len(result) >= max_entries:
                         logger.debug(
                             "list_files hit max_entries=%d", max_entries
                         )
+                        record_stats()
                         return result
                 except OSError:
                     continue
     except OSError as e:
         logger.warning("list_files failed for %r: %s", dir_path, e)
+    record_stats()
     return result
 
 
@@ -280,6 +305,12 @@ def get_working_directory(options: Chat, task_lock=None) -> str:
         and task_lock.new_folder_path
     ):
         raw = Path(task_lock.new_folder_path)
+    elif task_lock and getattr(task_lock, "working_directory", None):
+        raw = Path(task_lock.working_directory)
+    elif (
+        context := get_current_run_context()
+    ) is not None and context.project_id == options.project_id:
+        raw = context.working_directory
     else:
         raw = Path(env("file_save_path", options.file_save_path()))
 

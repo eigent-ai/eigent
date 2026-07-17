@@ -1,11 +1,15 @@
 {
   "update-check-failed": "Échec de la vérification des mises à jour",
   "new-version-available": "Nouvelle version disponible",
+  "update": "Mettre à jour",
   "download": "Télécharger",
   "update-error": "Erreur de mise à jour",
   "downloading-update": "Téléchargement de la mise à jour",
   "complete": "Terminé",
   "download-completed": "Téléchargement terminé",
   "click-to-install-update": "Cliquez pour installer la mise à jour",
-  "install": "Installer"
+  "install": "Installer",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }

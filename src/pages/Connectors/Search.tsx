@@ -37,7 +37,7 @@ interface SearchEngineProvider {
 }
 
 function buildSearchEngines(
-  modelType: 'cloud' | 'local' | 'custom'
+  modelType: 'cloud' | 'local' | 'custom' | 'codex_subscription'
 ): SearchEngineProvider[] {
   if (modelType === 'custom') {
     return [
@@ -163,20 +163,20 @@ export default function Search() {
     <div className="m-auto flex h-auto w-full flex-1 flex-col">
       {/* Header Section */}
       <div className="flex w-full items-center justify-between px-6 pb-6 pt-8">
-        <div className="text-heading-sm font-bold text-text-heading">
+        <div className="text-heading-sm font-bold text-ds-text-neutral-default-default">
           {t('setting.search-engine')}
         </div>
       </div>
 
       {/* Content Section - Google configuration */}
       <div className="mb-12">
-        <div className="rounded-2xl bg-surface-secondary px-6 py-4">
+        <div className="rounded-2xl bg-ds-bg-neutral-default-default px-6 py-4">
           <div className="flex flex-col">
             <div className="flex flex-col gap-2 pb-2">
               <div className="text-label-lg font-bold">
                 {selectedProvider.name}
               </div>
-              <div className="text-label-sm font-normal text-text-label">
+              <div className="text-label-sm font-normal text-ds-text-neutral-muted-default">
                 {selectedProvider.description}
               </div>
             </div>
@@ -210,8 +210,8 @@ export default function Search() {
                   ))}
                 </div>
               ) : (
-                <div className="rounded-lg bg-surface-primary p-4">
-                  <p className="text-label-sm text-text-label">
+                <div className="rounded-lg bg-ds-bg-neutral-subtle-default p-4">
+                  <p className="text-label-sm text-ds-text-neutral-muted-default">
                     {selectedProvider.id === 'wiki'
                       ? t(
                           'setting.this-service-is-public-and-does-not-require-credentials'

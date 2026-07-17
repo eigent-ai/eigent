@@ -46,7 +46,7 @@
 					https://registry.npmmirror.com;
 				worker-src 'self' blob:;
 				child-src 'self' blob:;
-				frame-src 'self' localfile: blob: data:;
+				frame-src 'self' localfile: blob: data: http://localhost:5001 http://127.0.0.1:5001;
 			"
 		/>
 		<script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script><script src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.8.0-min.js.gz"></script><script>window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));window.amplitude.init('87ce6adbb14b24ffe1703d18bf405e40', {"autocapture":{"elementInteractions":true}});</script>

@@ -22,6 +22,8 @@ import path from 'path';
 import * as unzipper from 'unzipper';
 import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
+import { normalizeLegacySandboxPath } from './utils/filePath';
+import { findDirectoriesByName } from './utils/log';
 
 interface FileInfo {
   path: string;
@@ -474,6 +476,8 @@ export class FileReader {
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
+        filePath = normalizeLegacySandboxPath(filePath);
+
         // check if it is a remote file
         if (!this.isLocalFile(filePath)) {
           console.log('detect remote file, start downloading:', filePath);
@@ -563,6 +567,7 @@ export class FileReader {
   // Folders to hide in the Agent Folder view
   private readonly hiddenFolders = [
     'browser_agent',
+    'camel_logs',
     'developer_agent',
     'document_agent',
     'multi_modal_agent',
@@ -632,6 +637,51 @@ export class FileReader {
     }
   }
 
+  private sanitizeIdentity(identity: string): string {
+    return identity
+      .split('@')[0]
+      .replace(/[\\/*?:"<>|\s]/g, '_')
+      .replace(/^\.+|\.+$/g, '');
+  }
+
+  private getStorageIdentityCandidates(
+    email: string,
+    userId?: string | number | null
+  ): string[] {
+    const candidates = [this.sanitizeIdentity(email)];
+    if (userId !== undefined && userId !== null && userId !== '') {
+      const rawUserId = String(userId);
+      candidates.push(
+        this.sanitizeIdentity(
+          rawUserId.startsWith('user_') ? rawUserId : `user_${rawUserId}`
+        )
+      );
+    }
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  private findProjectTaskPath(
+    userHome: string,
+    rootDir: 'eigent' | '.eigent',
+    identities: string[],
+    projectId: string,
+    taskId: string
+  ): string | null {
+    for (const identity of identities) {
+      const taskPath = path.join(
+        userHome,
+        rootDir,
+        identity,
+        `project_${projectId}`,
+        `task_${taskId}`
+      );
+      if (fs.existsSync(taskPath)) {
+        return taskPath;
+      }
+    }
+    return null;
+  }
+
   private findTaskInProjects(userDir: string, taskId: string): string | null {
     try {
       if (!fs.existsSync(userDir)) {
@@ -662,35 +712,50 @@ export class FileReader {
   private resolveTaskPaths(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): {
     dirPath: string;
     logPath: string;
   } {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const safeEmail = identities[0] || this.sanitizeIdentity(email);
     const userHome = app.getPath('home');
 
     let dirPath: string;
     let logPath: string;
 
     if (projectId) {
-      dirPath = path.join(
-        userHome,
-        'eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
-      logPath = path.join(
-        userHome,
-        '.eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
+      dirPath =
+        this.findProjectTaskPath(
+          userHome,
+          'eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          'eigent',
+          safeEmail,
+          `project_${projectId}`,
+          `task_${taskId}`
+        );
+      logPath =
+        this.findProjectTaskPath(
+          userHome,
+          '.eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          '.eigent',
+          safeEmail,
+          `project_${projectId}`,
+          `task_${taskId}`
+        );
       return { dirPath, logPath };
     }
 
@@ -722,12 +787,14 @@ export class FileReader {
   public getFileList(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): FileInfo[] {
     const { dirPath, logPath } = this.resolveTaskPaths(
       email,
       taskId,
-      projectId
+      projectId,
+      userId
     );
     const camelLogPath = path.join(logPath, 'camel_logs');
 
@@ -754,6 +821,56 @@ export class FileReader {
       console.error('Load file failed:', err);
       return [];
     }
+  }
+
+  /**
+   * Resolves the `camel_logs` directories to export as `{ src, destName }`
+   * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
+   *
+   * Prefers the specific task the user last ran (via {@link resolveTaskPaths},
+   * the same resolution `get-file-list` uses). Falls back to every `camel_logs`
+   * folder under the user's identity roots when no task is supplied or its
+   * folder is missing.
+   */
+  public getCamelLogEntries(
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): { src: string; destName: string }[] {
+    const userHome = app.getPath('home');
+    const eigentRoot = path.join(userHome, '.eigent');
+    const toEntry = (dir: string) => ({
+      src: dir,
+      destName: path.relative(eigentRoot, dir) || path.basename(dir),
+    });
+
+    if (taskId) {
+      const { logPath } = this.resolveTaskPaths(
+        email,
+        taskId,
+        projectId,
+        userId
+      );
+      const camelLogPath = path.join(logPath, 'camel_logs');
+      if (fs.existsSync(camelLogPath)) {
+        return [toEntry(camelLogPath)];
+      }
+      return [];
+    }
+
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const seen = new Set<string>();
+    const entries: { src: string; destName: string }[] = [];
+    for (const identity of identities) {
+      const identityRoot = path.join(eigentRoot, identity);
+      for (const dir of findDirectoriesByName(identityRoot, 'camel_logs', 4)) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        entries.push(toEntry(dir));
+      }
+    }
+    return entries;
   }
 
   public deleteTaskFiles(
@@ -1040,41 +1157,21 @@ export class FileReader {
         return [];
       }
 
-      const allFiles: FileInfo[] = [];
-      const taskDirs = fs.readdirSync(projectPath);
+      const allFiles = this.getFilesRecursive(projectPath, projectPath).map(
+        (file) => {
+          const relativePath = path.relative(projectPath, file.path);
+          const taskMatch = relativePath.match(/^task_([^/\\]+)/);
 
-      for (const taskDir of taskDirs) {
-        if (!taskDir.startsWith('task_')) continue;
-
-        const taskPath = path.join(projectPath, taskDir);
-        const stats = fs.statSync(taskPath);
-
-        if (stats.isDirectory()) {
-          const taskId = taskDir.replace('task_', '');
-          const taskFiles = this.getFilesRecursive(taskPath, taskPath);
-
-          const enrichedFiles = taskFiles.map((file) => {
-            const fileDir = path.dirname(file.path);
-            const relativeParentPath = path.relative(projectPath, fileDir);
-
-            return {
-              ...file,
-              task_id: taskId,
-              project_id: projectId,
-              relativePath:
-                relativeParentPath === '.' ? '' : relativeParentPath,
-            };
-          });
-
-          allFiles.push(...enrichedFiles);
+          return {
+            ...file,
+            task_id: taskMatch?.[1],
+            project_id: projectId,
+            relativePath: relativePath === '.' ? '' : relativePath,
+          };
         }
-      }
+      );
 
       return allFiles.sort((a, b) => {
-        // Sort by task_id first, then by file path
-        if (a.task_id !== b.task_id) {
-          return a.task_id!.localeCompare(b.task_id!);
-        }
         return a.path.localeCompare(b.path);
       });
     } catch (err) {

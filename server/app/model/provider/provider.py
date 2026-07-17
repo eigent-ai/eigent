@@ -13,8 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import IntEnum
+from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field as PydanticField, field_validator
 from sqlalchemy import Boolean, Column, SmallInteger, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import JSON, Field
@@ -36,9 +37,9 @@ class Provider(AbstractModel, DefaultTimes, table=True):
     endpoint_url: str = ""
     encrypted_config: dict | None = Field(default=None, sa_column=Column(JSON))
     prefer: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("false")))
-    is_vaild: VaildStatus = Field(
+    is_valid: VaildStatus = Field(
         default=VaildStatus.not_valid,
-        sa_column=Column(ChoiceType(VaildStatus, SmallInteger()), server_default=text("1")),
+        sa_column=Column("is_vaild", ChoiceType(VaildStatus, SmallInteger()), server_default=text("1")),
     )
 
 
@@ -48,8 +49,18 @@ class ProviderIn(BaseModel):
     api_key: str
     endpoint_url: str
     encrypted_config: dict | None = None
-    is_vaild: VaildStatus = VaildStatus.not_valid
+    is_valid: VaildStatus = PydanticField(
+        default=VaildStatus.not_valid,
+        validation_alias=AliasChoices("is_valid", "is_vaild"),
+    )
     prefer: bool = False
+
+    @field_validator("is_valid", mode="before")
+    @classmethod
+    def normalize_is_valid(cls, value):
+        if isinstance(value, bool):
+            return VaildStatus.is_valid if value else VaildStatus.not_valid
+        return value
 
 
 class ProviderPreferIn(BaseModel):
@@ -60,4 +71,4 @@ class ProviderOut(ProviderIn):
     id: int
     user_id: int
     prefer: bool
-    model_type: str | None = None
+    model_type: Optional[str] = None
