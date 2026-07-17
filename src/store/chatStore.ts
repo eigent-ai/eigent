@@ -756,8 +756,12 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
-// Track active SSE connections for proper cleanup
-const activeSSEControllers: Record<string, AbortController> = {};
+// Track active SSE connections for proper cleanup. `live` distinguishes
+// real Brain runs from history/share playback streams.
+const activeSSEControllers: Record<
+  string,
+  { controller: AbortController; live: boolean }
+> = {};
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
   /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
@@ -1210,7 +1214,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Clean up SSE connection if it exists
       try {
         if (activeSSEControllers[taskId]) {
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1252,7 +1256,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       try {
         if (activeSSEControllers[taskId]) {
           console.log(`Stopping SSE connection for task ${taskId}`);
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1404,7 +1408,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (!task) return;
         if (activeSSEControllers[newTaskId]) {
           try {
-            activeSSEControllers[newTaskId].abort();
+            activeSSEControllers[newTaskId].controller.abort();
           } catch {
             // Ignore abort errors while cleaning up a failed startup.
           }
@@ -1767,7 +1771,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           `Task ${newTaskId} already has an active SSE connection, aborting old one`
         );
         try {
-          activeSSEControllers[newTaskId].abort();
+          activeSSEControllers[newTaskId].controller.abort();
         } catch (error) {
           console.warn('Error aborting existing SSE connection:', error);
         }
@@ -1775,7 +1779,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       const abortController = new AbortController();
-      activeSSEControllers[newTaskId] = abortController;
+      activeSSEControllers[newTaskId] = {
+        controller: abortController,
+        live: isLiveTask,
+      };
 
       // Getter functions that use the locked references instead of dynamic ones
       const getCurrentChatStore = () => {
@@ -4779,7 +4786,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         Object.keys(activeSSEControllers).forEach((taskId) => {
           try {
             if (activeSSEControllers[taskId]) {
-              activeSSEControllers[taskId].abort();
+              activeSSEControllers[taskId].controller.abort();
               delete activeSSEControllers[taskId];
             }
           } catch (error) {
@@ -4960,7 +4967,9 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
  * Project, not just the active one.
  */
 export function hasAnyActiveRun(): boolean {
-  return Object.keys(activeSSEControllers).length > 0;
+  return Object.values(activeSSEControllers).some(
+    (connection) => connection.live
+  );
 }
 
 /** Close SSE for given tasks (e.g. after completion, so triggers can start fresh). */
@@ -4972,7 +4981,7 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
         taskId
       );
       try {
-        activeSSEControllers[taskId].abort();
+        activeSSEControllers[taskId].controller.abort();
       } catch (_e) {
         // Ignore if already aborted
       }
