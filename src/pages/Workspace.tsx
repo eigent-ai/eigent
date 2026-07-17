@@ -56,6 +56,7 @@ import {
 } from '../components/Trigger/Triggers';
 
 import Session from '@/components/Session';
+import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -797,6 +798,10 @@ export default function WorkspacePage() {
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
+        {/* Always mounted: hosts preview <webview> guests so their pages and
+            history survive panel close, workspace-tab hops, and project
+            switches. Renders nothing on the web host. */}
+        <PreviewBrowserLayer />
       </div>
     </ReactFlowProvider>
   );

@@ -15,7 +15,6 @@
 import {
   fetchDelete,
   fetchPost,
-  fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
   uploadFileToBrain,
@@ -36,7 +35,11 @@ import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
-import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+} from '@/types/constants';
 import {
   useCallback,
   useEffect,
@@ -378,7 +381,7 @@ export default function ChatBox(): JSX.Element {
   }, [navigate]);
 
   // Task time tracking
-  const [taskTime, setTaskTime] = useState(
+  const [, setTaskTime] = useState(
     chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
       '00:00'
   );
@@ -1030,31 +1033,6 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  // Pause/Resume handler
-  const handlePauseResume = () => {
-    const taskId = chatStore.activeTaskId as string;
-    const task = chatStore.tasks[taskId];
-    const type = task.status === 'running' ? 'pause' : 'resume';
-
-    setIsPauseResumeLoading(true);
-    if (type === 'pause') {
-      let { taskTime, elapsed } = task;
-      const now = Date.now();
-      elapsed += now - taskTime;
-      chatStore.setElapsed(taskId, elapsed);
-      chatStore.setTaskTime(taskId, 0);
-      chatStore.setStatus(taskId, 'pause');
-    } else {
-      chatStore.setTaskTime(taskId, Date.now());
-      chatStore.setStatus(taskId, 'running');
-    }
-
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
-      action: type,
-    });
-    setIsPauseResumeLoading(false);
-  };
-
   // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
     const taskId = chatStore.activeTaskId as string;
@@ -1248,10 +1226,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -1262,7 +1240,7 @@ export default function ChatBox(): JSX.Element {
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -1293,10 +1271,10 @@ export default function ChatBox(): JSX.Element {
                     textareaRef: textareaRef,
                     allowDragDrop: true,
                     useCloudModelInDev: useCloudModelInDev,
-                    sessionMode: effectiveSessionMode,
-                    sessionModeSelectInteractive: false,
-                    modelSelectProjectId: activeProjectId,
                   }}
+                  sessionMode={effectiveSessionMode}
+                  sessionModeSelectInteractive={false}
+                  modelSelectProjectId={activeProjectId}
                 />
               )}
             </div>
@@ -1310,9 +1288,9 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="px-2 pointer-events-auto mx-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1350,10 +1328,6 @@ export default function ChatBox(): JSX.Element {
                   }
                 }}
                 onEdit={handleEditQuery}
-                taskTime={taskTime}
-                taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-                onPauseResume={handlePauseResume}
-                pauseResumeLoading={isPauseResumeLoading}
                 loading={loading}
                 inputProps={{
                   value: message,
@@ -1377,10 +1351,10 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
-                  sessionMode: displaySessionMode,
-                  sessionModeSelectInteractive: false,
-                  modelSelectProjectId: activeProjectId,
                 }}
+                sessionMode={displaySessionMode}
+                sessionModeSelectInteractive={false}
+                modelSelectProjectId={activeProjectId}
               />
             </div>
           </div>
@@ -1390,7 +1364,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

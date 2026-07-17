@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
     ipcRenderer.invoke('export-diagnostics-zip', payload),
   openMailto: (url: string) => ipcRenderer.invoke('open-mailto', url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp

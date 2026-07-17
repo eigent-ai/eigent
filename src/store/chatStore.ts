@@ -62,6 +62,18 @@ import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
 const API_CODE_TRIAL_LIMIT = '22';
 const PROJECT_CONTEXT_MAX_CHARS = 24_000;
 const PROJECT_CONTEXT_MAX_RUNS = 8;
+// chat_history.summary is a bounded database column; an over-long value
+// makes the whole history update fail server-side, which also discards the
+// status change carried by the same request (a completed run then stays
+// "ongoing"). Clamp before sending; the full text still lives in the run's
+// end step.
+const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
+const clampHistorySummary = (
+  value: string | undefined | null
+): string | undefined =>
+  typeof value === 'string'
+    ? value.slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH)
+    : undefined;
 
 type ConfirmedUserPromptSources = {
   lastMessageContent?: unknown;
@@ -772,11 +784,18 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
-// Track active SSE connections for proper cleanup
-const activeSSEControllers: Record<string, AbortController> = {};
+// Track active SSE connections for proper cleanup. `live` distinguishes
+// real Brain runs from history/share playback streams.
+const activeSSEControllers: Record<
+  string,
+  { controller: AbortController; live: boolean }
+> = {};
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
-  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+  /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_SANDBOX_SCHEME_REGEX =
+  /(^|[^A-Za-z0-9_+.-])sandbox:(?=(?:[A-Za-z]:)?[\\/])/gi;
 
 const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
   'csv',
@@ -857,7 +876,7 @@ function buildRemoteFileInfoPath({
   return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
 }
 
-function extractFinalOutputFileList(
+export function extractFinalOutputFileList(
   content: string,
   projectId?: string,
   email?: string,
@@ -869,8 +888,12 @@ function extractFinalOutputFileList(
 
   const fileInfos: FileInfo[] = [];
   const seen = new Set<string>();
+  const parseableContent = content.replace(
+    FINAL_OUTPUT_SANDBOX_SCHEME_REGEX,
+    '$1'
+  );
 
-  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+  for (const match of parseableContent.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
     const filePath = normalizeOutputPath(match[0]);
     if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
       continue;
@@ -919,7 +942,16 @@ function getFileInfoIdentities(file: FileInfo): string[] {
     .map((value) => normalizeOutputPath(value as string).toLowerCase());
 }
 
-function mergeFileInfoLists(
+function isLegacySandboxDrivePath(
+  existingPath: string,
+  extractedPath: string
+): boolean {
+  const normalizedExisting = normalizeOutputPath(existingPath).toLowerCase();
+  const normalizedExtracted = normalizeOutputPath(extractedPath).toLowerCase();
+  return normalizedExisting === `x:${normalizedExtracted}`;
+}
+
+export function mergeFileInfoLists(
   existingFileList: FileInfo[],
   extractedFileList: FileInfo[]
 ): FileInfo[] {
@@ -938,9 +970,13 @@ function mergeFileInfoLists(
       return;
     }
 
-    if (file.isRemote && !merged[existingIndex].isRemote) {
+    const existingFile = merged[existingIndex];
+    if (
+      (file.isRemote && !existingFile.isRemote) ||
+      isLegacySandboxDrivePath(existingFile.path, file.path)
+    ) {
       merged[existingIndex] = {
-        ...merged[existingIndex],
+        ...existingFile,
         ...file,
       };
       mergedIdentities[existingIndex] = identities;
@@ -1226,7 +1262,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Clean up SSE connection if it exists
       try {
         if (activeSSEControllers[taskId]) {
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1268,7 +1304,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       try {
         if (activeSSEControllers[taskId]) {
           console.log(`Stopping SSE connection for task ${taskId}`);
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1420,7 +1456,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (!task) return;
         if (activeSSEControllers[newTaskId]) {
           try {
-            activeSSEControllers[newTaskId].abort();
+            activeSSEControllers[newTaskId].controller.abort();
           } catch {
             // Ignore abort errors while cleaning up a failed startup.
           }
@@ -1898,12 +1934,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Create AbortController for this task's SSE connection
       // First check if there's already an active SSE connection for this task
+      if (activeSSEControllers[newTaskId] && type === 'replay') {
+        // A history replay must never tear down a live run's stream: the
+        // ongoing run is the fresher state, and aborting it kills the run
+        // on the backend. Leave the live connection alone.
+        console.warn(
+          `Task ${newTaskId} already has an active SSE connection, skipping history replay`
+        );
+        return;
+      }
       if (activeSSEControllers[newTaskId]) {
         console.warn(
           `Task ${newTaskId} already has an active SSE connection, aborting old one`
         );
         try {
-          activeSSEControllers[newTaskId].abort();
+          activeSSEControllers[newTaskId].controller.abort();
         } catch (error) {
           console.warn('Error aborting existing SSE connection:', error);
         }
@@ -1911,7 +1956,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       const abortController = new AbortController();
-      activeSSEControllers[newTaskId] = abortController;
+      activeSSEControllers[newTaskId] = {
+        controller: abortController,
+        live: isLiveTask,
+      };
 
       // Getter functions that use the locked references instead of dynamic ones
       const getCurrentChatStore = () => {
@@ -2507,8 +2555,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
                 project_name: projectName,
-                summary: agentMessages.data!.summary_task?.split('|')[1] || '',
-                status: 1,
+                summary: clampHistorySummary(
+                  agentMessages.data!.summary_task?.split('|')[1]
+                ),
                 tokens: getTokens(currentTaskId),
               };
               syncProjectDisplayName(project_id, projectName);
@@ -2917,8 +2966,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
                   project_name: projectName,
-                  summary: tasks[currentTaskId].summaryTask.split('|')[1],
-                  status: 1,
+                  summary: clampHistorySummary(
+                    tasks[currentTaskId].summaryTask.split('|')[1]
+                  ),
                   tokens: getTokens(currentTaskId),
                 };
                 syncProjectDisplayName(project_id, projectName);
@@ -3800,7 +3850,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const projectName = parts[0] || '';
                 const obj = {
                   project_name: projectName,
-                  summary: completionSummary,
+                  summary: clampHistorySummary(completionSummary),
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
@@ -3899,6 +3949,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ExecutionStatus.Completed,
               getTokens(currentTaskId)
             );
+
+            // The run is finished; drop its SSE controller so a completed
+            // task no longer counts as an active run (e.g. the close guard).
+            delete activeSSEControllers[newTaskId];
 
             return;
           }
@@ -4957,7 +5011,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         Object.keys(activeSSEControllers).forEach((taskId) => {
           try {
             if (activeSSEControllers[taskId]) {
-              activeSSEControllers[taskId].abort();
+              activeSSEControllers[taskId].controller.abort();
               delete activeSSEControllers[taskId];
             }
           } catch (error) {
@@ -5131,6 +5185,18 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
 }
 
+/**
+ * Returns true when any run, in any Project, still has a live SSE
+ * connection. Closing the window kills these streams and the backend
+ * aborts the in-flight work, so the close guard must consider every
+ * Project, not just the active one.
+ */
+export function hasAnyActiveRun(): boolean {
+  return Object.values(activeSSEControllers).some(
+    (connection) => connection.live
+  );
+}
+
 /** Close SSE for given tasks (e.g. after completion, so triggers can start fresh). */
 export function closeSSEConnectionsForTasks(taskIds: string[]): void {
   for (const taskId of taskIds) {
@@ -5140,7 +5206,7 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
         taskId
       );
       try {
-        activeSSEControllers[taskId].abort();
+        activeSSEControllers[taskId].controller.abort();
       } catch (_e) {
         // Ignore if already aborted
       }

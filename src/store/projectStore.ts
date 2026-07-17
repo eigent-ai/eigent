@@ -32,7 +32,11 @@ import {
 } from '@/types/constants';
 import { create } from 'zustand';
 import { getAuthStore } from './authStore';
-import { createChatStoreInstance, VanillaChatStore } from './chatStore';
+import {
+  createChatStoreInstance,
+  hasActiveSSEConnection,
+  VanillaChatStore,
+} from './chatStore';
 import {
   projectMetaFromServer,
   useSpaceStore,
@@ -1065,6 +1069,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       previousProjectId === nextProjectId ||
       !get().staleProjectIds.has(previousProjectId)
     ) {
+      return;
+    }
+    // Never evict a project that still has a live run. Eviction drops the
+    // runtime chat stores, so returning to the project rebuilds it from
+    // history and replays the ongoing task id -- which aborts the live
+    // run's stream and kills the run on the backend. Keep the stale flag
+    // so the eviction simply happens on a later, safe transition.
+    const outgoingProject = get().projects[previousProjectId];
+    const outgoingTaskIds = Object.values(
+      outgoingProject?.chatStores ?? {}
+    ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
+    if (hasActiveSSEConnection(outgoingTaskIds)) {
       return;
     }
     // _evictProjectRuntime handles staleProjectIds cleanup itself.

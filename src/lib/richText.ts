@@ -12,15 +12,31 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Shared by `RichChatInput` and `UserMessageRichContent` (URLs, #skills). */
-export type RichSegment = { type: 'text' | 'url' | 'skill'; text: string };
+/** Shared by `RichChatInput` and `UserMessageRichContent` (URLs, #skills, @connectors). */
+export type RichSegment = {
+  type: 'text' | 'url' | 'skill' | 'connector';
+  text: string;
+};
+
+/** Chip styling shared by the input HTML and the message-body renderer. */
+export const RICH_CONNECTOR_STYLE_CLASSES =
+  'text-ds-text-information-default-default bg-ds-bg-neutral-default-default';
+
+/** `@token` inserted into the input for a connector; spaces collapse to `_`. */
+export function connectorNameToToken(name: string): string {
+  const slug = name
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_-]/g, '');
+  return `@${slug || 'connector'}`;
+}
 
 /** Hash-stable palette: semantic “other” tones (not default body text). Shared by input + message body. */
 export const RICH_SKILL_STYLE_CLASSES = [
-  'text-ds-text-success-default-default bg-ds-bg-neutral-subtle-disabled',
-  'text-ds-text-warning-default-default bg-ds-bg-neutral-subtle-disabled',
-  'text-ds-text-terminal-default-default bg-ds-bg-neutral-subtle-disabled',
-  'text-ds-text-document-default-default bg-ds-bg-neutral-subtle-disabled',
+  'text-ds-text-success-default-default bg-ds-bg-neutral-default-default',
+  'text-ds-text-warning-default-default bg-ds-bg-neutral-default-default',
+  'text-ds-text-terminal-default-default bg-ds-bg-neutral-default-default',
+  'text-ds-text-document-default-default bg-ds-bg-neutral-default-default',
 ] as const;
 
 export function hashSkillLabel(label: string): number {
@@ -38,8 +54,17 @@ export function trimUrlTail(raw: string): string {
 }
 
 const URL_AT_START = /^(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/i;
+const SKILL_AT_START = /^#([a-zA-Z0-9_-]+)/;
+const CONNECTOR_AT_START = /^@([A-Za-z0-9_-]+)/;
 
-/** Plain-text tokenizer: http(s) / www URLs and #skill tokens (alphanumeric + _-). */
+/** True when `@` here begins a connector token rather than an email tail (`me@host`). */
+function isConnectorStart(text: string, at: number): boolean {
+  const prev = text[at - 1];
+  if (prev && /[A-Za-z0-9_]/.test(prev)) return false;
+  return CONNECTOR_AT_START.test(text.slice(at));
+}
+
+/** Plain-text tokenizer: URLs, #skill tokens, and @connector tokens. */
 export function tokenizeRichPlainText(text: string): RichSegment[] {
   const out: RichSegment[] = [];
   let i = 0;
@@ -62,10 +87,19 @@ export function tokenizeRichPlainText(text: string): RichSegment[] {
     }
 
     if (slice[0] === '#') {
-      const skillMatch = slice.match(/^#([a-zA-Z0-9_-]+)/);
+      const skillMatch = slice.match(SKILL_AT_START);
       if (skillMatch) {
         out.push({ type: 'skill', text: skillMatch[0] });
         i += skillMatch[0].length;
+        continue;
+      }
+    }
+
+    if (slice[0] === '@' && isConnectorStart(text, i)) {
+      const connMatch = slice.match(CONNECTOR_AT_START);
+      if (connMatch) {
+        out.push({ type: 'connector', text: connMatch[0] });
+        i += connMatch[0].length;
         continue;
       }
     }
@@ -74,7 +108,8 @@ export function tokenizeRichPlainText(text: string): RichSegment[] {
     while (j < len) {
       const tail = text.slice(j);
       if (URL_AT_START.test(tail)) break;
-      if (text[j] === '#' && /^#([a-zA-Z0-9_-]+)/.test(tail)) break;
+      if (text[j] === '#' && SKILL_AT_START.test(tail)) break;
+      if (text[j] === '@' && isConnectorStart(text, j)) break;
       j++;
     }
     out.push({ type: 'text', text: text.slice(i, j) });
@@ -127,11 +162,17 @@ export function segmentsToHtml(segments: RichSegment[]): string {
       } else {
         parts.push(safe);
       }
+    } else if (seg.type === 'connector') {
+      parts.push(
+        `<span data-rich-connector="1" contenteditable="false" class="rounded px-0.5 py-px font-medium ${RICH_CONNECTOR_STYLE_CLASSES}">${escapeHtml(
+          seg.text
+        )}</span>`
+      );
     } else {
       const idx = hashSkillLabel(seg.text) % RICH_SKILL_STYLE_CLASSES.length;
       const cls = RICH_SKILL_STYLE_CLASSES[idx];
       parts.push(
-        `<span data-rich-skill="1" class="rounded px-0.5 py-px font-medium ${cls}">${escapeHtml(seg.text)}</span>`
+        `<span data-rich-skill="1" contenteditable="false" class="rounded px-0.5 py-px font-medium ${cls}">${escapeHtml(seg.text)}</span>`
       );
     }
   }

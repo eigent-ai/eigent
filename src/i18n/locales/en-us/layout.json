@@ -523,5 +523,11 @@
   "onboarding-setup-bg-ruled": "Ruled",
   "onboarding-setup-bg-dotted": "Dotted",
   "onboarding-setup-bg-dashed": "Dashed",
-  "onboarding-setup-get-started": "Get Started"
+  "onboarding-setup-get-started": "Get Started",
+  "thinking-effort-label": "Thinking effort",
+  "thinking-effort-light": "Light",
+  "thinking-effort-medium": "Medium",
+  "thinking-effort-high": "High",
+  "thinking-effort-extra_high": "Extra High",
+  "thinking-effort-ultra": "Ultra"
 }
