@@ -1701,6 +1701,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
                 yield sse_json("deactivate_agent", dict(item.data))
+            elif item.action == Action.request_usage:
+                yield sse_json("request_usage", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
             elif item.action == Action.activate_toolkit:
@@ -2810,7 +2812,15 @@ async def new_agent_model(
         },
     )
     logger.debug(
-        "New agent data", extra={"agent_data": data.model_dump_json()}
+        "New agent data",
+        extra={
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": (
+                getattr(data, "custom_model_config", None) is not None
+            ),
+        },
     )
     working_directory = get_working_directory(options)
     tool_names = []

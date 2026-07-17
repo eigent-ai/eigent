@@ -26,6 +26,7 @@ export const AgentStep = {
   TASK_STATE: 'task_state',
   ACTIVATE_AGENT: 'activate_agent',
   DEACTIVATE_AGENT: 'deactivate_agent',
+  REQUEST_USAGE: 'request_usage',
   ASSIGN_TASK: 'assign_task',
   ACTIVATE_TOOLKIT: 'activate_toolkit',
   DEACTIVATE_TOOLKIT: 'deactivate_toolkit',
@@ -110,3 +111,17 @@ export const SessionMode = {
 } as const;
 
 export type SessionModeType = (typeof SessionMode)[keyof typeof SessionMode];
+
+/**
+ * Reasoning/thinking effort level for the active model, low → high compute budget.
+ */
+export const ThinkingEffort = {
+  LIGHT: 'light',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  EXTRA_HIGH: 'extra_high',
+  ULTRA: 'ultra',
+} as const;
+
+export type ThinkingEffortType =
+  (typeof ThinkingEffort)[keyof typeof ThinkingEffort];
