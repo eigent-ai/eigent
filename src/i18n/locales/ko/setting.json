@@ -301,6 +301,9 @@
   "api-key-setting": "API 키 설정",
   "api-host-setting": "API 호스트 설정",
   "model-type-setting": "모델 타입 설정",
+  "model-parameters-setting": "모델 매개변수(JSON, 선택 사항)",
+  "model-parameters-placeholder": "모델 매개변수를 JSON 객체로 입력하세요. 예: {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "모델 매개변수는 유효한 JSON 객체여야 합니다.",
   "please-select": "선택하세요",
   "configuring": "구성 중...",
 

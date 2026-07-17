@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Bird, CodeXml, FileText, Globe, Image } from 'lucide-react';
+import { Bird, Bot, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export type WorkflowAgentType =
@@ -21,6 +21,11 @@ export type WorkflowAgentType =
   | 'document_agent'
   | 'multi_modal_agent'
   | 'social_media_agent';
+
+/** Backend agent name used by Single Agent SkillToolkit (`Agents.single_agent`). */
+export const SINGLE_AGENT_ID = 'single_agent' as const;
+
+export type SkillScopeAgentType = WorkflowAgentType | typeof SINGLE_AGENT_ID;
 
 export interface AgentDisplayInfo {
   name: string;
@@ -132,12 +137,95 @@ export const WORKFLOW_AGENT_LIST: {
   },
 ];
 
-/** Get display info (name + icon) by agent name; returns undefined if not a workflow agent. */
+/**
+ * Agents shown in Skills "Select agent access".
+ * Always includes Single Agent first so skill scope can target `single_agent`
+ * the same way backend SkillToolkit / Agents.single_agent does.
+ */
+export const SKILL_SCOPE_AGENT_LIST: {
+  id: SkillScopeAgentType;
+  name: string;
+  icon: ReactNode;
+}[] = [
+  {
+    id: SINGLE_AGENT_ID,
+    // Product label (layout.workspace-session-single-agent). Value stays `single_agent`.
+    name: 'Single Agent',
+    icon: <Bot size={16} className="text-ds-text-neutral-default-default" />,
+  },
+  ...WORKFLOW_AGENT_LIST,
+];
+
+export type SkillScopeAgentOption = {
+  value: string;
+  label: string;
+};
+
+/**
+ * Canonicalize skill-scope agent ids so UI + backend agree.
+ * Accepts legacy aliases such as `Agents.single_agent`.
+ */
+export function normalizeSkillScopeAgentId(agentName?: string | null): string {
+  const raw = String(agentName ?? '').trim();
+  if (!raw) return '';
+  const lowered = raw.toLowerCase();
+  if (lowered === SINGLE_AGENT_ID || lowered === 'agents.single_agent') {
+    return SINGLE_AGENT_ID;
+  }
+  return raw;
+}
+
+/**
+ * Build the Skills page agent-access options:
+ * Single Agent (stable) + workforce workers + custom workers (deduped by value).
+ */
+export function buildSkillScopeAgentOptions(
+  workerList: Array<{ name: string }> = []
+): SkillScopeAgentOption[] {
+  const baseAgents: SkillScopeAgentOption[] = SKILL_SCOPE_AGENT_LIST.filter(
+    (a) => a.id !== 'social_media_agent'
+  ).map((a) => ({ value: a.id, label: a.name }));
+
+  // Guarantee Single Agent stays first even if list construction changes later.
+  const combined: SkillScopeAgentOption[] = [];
+  const seen = new Set<string>();
+  for (const agent of baseAgents) {
+    const value = normalizeSkillScopeAgentId(agent.value) || agent.value;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    combined.push({ value, label: agent.label });
+  }
+
+  for (const worker of workerList) {
+    const value = normalizeSkillScopeAgentId(worker.name);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    const label =
+      value === SINGLE_AGENT_ID
+        ? 'Single Agent'
+        : String(worker.name || value).trim() || value;
+    combined.push({ value, label });
+  }
+
+  // Last-resort: if somehow dropped, prepend Single Agent.
+  if (!combined.some((agent) => agent.value === SINGLE_AGENT_ID)) {
+    combined.unshift({ value: SINGLE_AGENT_ID, label: 'Single Agent' });
+  } else if (combined[0]?.value !== SINGLE_AGENT_ID) {
+    const single = combined.find((agent) => agent.value === SINGLE_AGENT_ID)!;
+    combined.splice(combined.indexOf(single), 1);
+    combined.unshift(single);
+  }
+
+  return combined;
+}
+
+/** Get display info (name + icon) by agent name; returns undefined if unknown. */
 export function getWorkflowAgentDisplay(
   agentName: string
 ): { name: string; icon: ReactNode } | undefined {
-  const entry = WORKFLOW_AGENT_LIST.find(
-    (a) => a.id.toLowerCase() === agentName.toLowerCase()
+  const normalized = normalizeSkillScopeAgentId(agentName);
+  const entry = SKILL_SCOPE_AGENT_LIST.find(
+    (a) => a.id.toLowerCase() === normalized.toLowerCase()
   );
   if (!entry) return undefined;
   return { name: entry.name, icon: entry.icon };

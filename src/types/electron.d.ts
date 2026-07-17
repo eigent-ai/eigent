@@ -63,7 +63,22 @@ interface ElectronAPI {
   hideAllWebview: () => Promise<any>;
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
-  exportLog: () => Promise<any>;
+  exportLog: () => Promise<{
+    success: boolean;
+    savedPath?: string;
+    data?: string;
+    error?: string;
+  }>;
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
   getDiagnosticsInfo: () => Promise<{
     version: string;
     platform: string;
@@ -78,6 +93,10 @@ interface ElectronAPI {
     error?: string;
   }>;
   openMailto: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  openExternal: (url: string) => Promise<{
     success: boolean;
     error?: string;
   }>;
