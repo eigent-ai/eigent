@@ -49,7 +49,10 @@ from app.agent.factory.remote_sub_agent import (
     remote_sub_agent_enabled,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
-from app.agent.prompt import build_remote_sub_agent_planning_notice
+from app.agent.prompt import (
+    append_connected_app_mcp_notice,
+    build_remote_sub_agent_planning_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -2867,6 +2870,9 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+    enhanced_description = append_connected_app_mcp_notice(
+        enhanced_description
+    )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, data.name

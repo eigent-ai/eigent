@@ -12,11 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ConnectorGateway from './ConnectorGateway';
 import MCP from './MCP';
 
 export default function Connectors() {
   return (
     <div className="flex h-auto w-full flex-1 flex-col">
+      <ConnectorGateway />
       <MCP />
     </div>
   );

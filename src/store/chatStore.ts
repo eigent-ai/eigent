@@ -57,9 +57,11 @@ import { getAuthStore, getWorkerList } from './authStore';
 import { getCloudModelStore } from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
+import { getServerCapabilityStore } from './serverCapabilityStore';
 import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
 
 const API_CODE_TRIAL_LIMIT = '22';
+const CONNECTOR_GATEWAY_MCP_NAME = 'connector_gateway';
 const PROJECT_CONTEXT_MAX_CHARS = 24_000;
 const PROJECT_CONTEXT_MAX_RUNS = 8;
 // chat_history.summary is a bounded database column; an over-long value
@@ -194,6 +196,84 @@ function getDirectServerApiBaseUrl(): string | undefined {
   }
 
   return normalizeServerApiBaseUrl(import.meta.env.VITE_BASE_URL);
+}
+
+function hasMcpServers(config: any): boolean {
+  return Boolean(
+    config &&
+    typeof config === 'object' &&
+    config.mcpServers &&
+    typeof config.mcpServers === 'object' &&
+    Object.keys(config.mcpServers).length > 0
+  );
+}
+
+function mergeMcpConfigs(...configs: any[]): {
+  mcpServers: Record<string, any>;
+} {
+  const mcpServers: Record<string, any> = {};
+  configs.forEach((config) => {
+    if (!hasMcpServers(config)) {
+      return;
+    }
+    Object.assign(mcpServers, config.mcpServers);
+  });
+  return { mcpServers };
+}
+
+async function buildConnectorGatewayMcpConfig(
+  token?: string | null
+): Promise<{ mcpServers: Record<string, any> } | null> {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    let connectorGatewayEnabled = false;
+
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+      // The Connectors page can stay visible in local debug mode, but chat
+      // should only mount the MCP server when eigent_server confirms it is
+      // actually configured. Otherwise CAMEL tries to connect to a disabled
+      // endpoint and connector tools silently disappear.
+      const capabilities = await proxyFetchGet('/api/v1/server/capabilities');
+      connectorGatewayEnabled =
+        capabilities?.features?.connector_gateway?.enabled === true;
+    } else {
+      const capabilities =
+        await getServerCapabilityStore().fetchCapabilities(false);
+      connectorGatewayEnabled =
+        capabilities.features.connector_gateway.enabled === true;
+    }
+
+    if (!connectorGatewayEnabled) {
+      return null;
+    }
+  } catch (error) {
+    console.warn(
+      'Failed to resolve Connector Gateway capability for MCP:',
+      error
+    );
+    return null;
+  }
+
+  const serverApiBaseUrl = getDirectServerApiBaseUrl();
+  if (!serverApiBaseUrl) {
+    return null;
+  }
+
+  return {
+    mcpServers: {
+      [CONNECTOR_GATEWAY_MCP_NAME]: {
+        type: 'streamable_http',
+        url: `${serverApiBaseUrl}/connectors/mcp`,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 180,
+      },
+    },
+  };
 }
 
 function getHostElectronAPI() {
@@ -1831,6 +1911,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      const connectorGatewayMcpConfig = !type
+        ? await buildConnectorGatewayMcpConfig(token)
+        : null;
+
       const addWorkers = workerList.map((worker) => {
         const providerId = worker.workerInfo?.model_provider_id;
         const provider = Number.isInteger(providerId)
@@ -1840,7 +1924,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           name: worker.workerInfo?.name,
           description: worker.workerInfo?.description,
           tools: worker.workerInfo?.tools,
-          mcp_tools: worker.workerInfo?.mcp_tools,
+          mcp_tools: mergeMcpConfigs(
+            worker.workerInfo?.mcp_tools,
+            connectorGatewayMcpConfig
+          ),
           custom_model_config: provider
             ? buildAgentModelConfigFromProvider(provider)
             : undefined,
@@ -2000,7 +2087,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
             auth_source: apiModel.auth_source,
-            installed_mcp: { mcpServers: {} },
+            installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
             allow_local_system: true,
             attaches: (
