@@ -68,8 +68,12 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // "ongoing"). Clamp before sending; the full text still lives in the run's
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
-const clampHistorySummary = (value: string | undefined | null): string =>
-  (value ?? '').slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH);
+const clampHistorySummary = (
+  value: string | undefined | null
+): string | undefined =>
+  typeof value === 'string'
+    ? value.slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH)
+    : undefined;
 
 type ConfirmedUserPromptSources = {
   lastMessageContent?: unknown;
@@ -2547,7 +2551,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 summary: clampHistorySummary(
                   agentMessages.data!.summary_task?.split('|')[1]
                 ),
-                status: 1,
                 tokens: getTokens(currentTaskId),
               };
               syncProjectDisplayName(project_id, projectName);
@@ -2959,7 +2962,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   summary: clampHistorySummary(
                     tasks[currentTaskId].summaryTask.split('|')[1]
                   ),
-                  status: 1,
                   tokens: getTokens(currentTaskId),
                 };
                 syncProjectDisplayName(project_id, projectName);
