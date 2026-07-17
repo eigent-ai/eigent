@@ -12,58 +12,37 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import AlertDialog from '@/components/ui/alertDialog';
 import { useHost } from '@/host';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../ui/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '../ui/dialog';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  trigger?: React.ReactNode;
 }
-export default function CloseNoticeDialog({
-  open,
-  onOpenChange,
-  trigger,
-}: Props) {
+
+// Confirming closes the window and terminates the running task, so this uses
+// the shared AlertDialog (destructive confirm) for consistency with the
+// end/delete-project confirmations.
+export default function CloseNoticeDialog({ open, onOpenChange }: Props) {
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
-  const onSubmit = useCallback(() => {
+
+  const onConfirm = useCallback(() => {
     electronAPI?.closeWindow(true);
   }, [electronAPI]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="gap-0 !rounded-xl border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[600px] border">
-        <DialogHeader className="!rounded-t-xl !bg-ds-bg-neutral-strong-default p-md">
-          <DialogTitle className="m-0">{t('layout.close-notice')}</DialogTitle>
-        </DialogHeader>
-        <div className="gap-md bg-ds-bg-neutral-strong-default p-md flex flex-col">
-          {t('layout.a-task-is-currently-running')}
-        </div>
-        <DialogFooter className="!rounded-b-xl bg-ds-bg-neutral-inverse-default p-md">
-          <DialogClose asChild>
-            <Button variant="ghost" size="md">
-              {t('layout.cancel')}
-            </Button>
-          </DialogClose>
-          <Button size="md" onClick={onSubmit} variant="primary">
-            {t('layout.yes')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AlertDialog
+      isOpen={open}
+      onClose={() => onOpenChange(false)}
+      onConfirm={onConfirm}
+      title={t('layout.close-notice')}
+      message={t('layout.a-task-is-currently-running')}
+      confirmText={t('layout.yes')}
+      cancelText={t('layout.cancel')}
+    />
   );
 }
