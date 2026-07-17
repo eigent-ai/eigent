@@ -62,9 +62,9 @@ RUN sed -i 's/\r$//' /app/celery/worker/start && chmod +x /app/celery/worker/sta
 RUN sed -i 's/\r$//' /app/celery/beat/start && chmod +x /app/celery/beat/start
 
 # Bake the latest server/ commit into the image for stale-server detection.
-# Uses --mount=type=bind to access .git without adding it to a layer.
-RUN --mount=type=bind,source=.git,target=/tmp/.git \
-    echo "EIGENT_SERVER_GIT_COMMIT=$(git --git-dir=/tmp/.git log -1 --format=%H -- server/ 2>/dev/null || echo unknown)" > /app/.image_env
+# Defaults to unknown so Docker builds do not require .git in the build context.
+ARG EIGENT_SERVER_GIT_COMMIT=unknown
+RUN echo "EIGENT_SERVER_GIT_COMMIT=${EIGENT_SERVER_GIT_COMMIT}" > /app/.image_env
 
 # Reset the entrypoint, don't invoke `uv`
 ENTRYPOINT []

@@ -45,6 +45,7 @@ services:
       dockerfile: server/Dockerfile
       args:
         database_url: postgresql://postgres:123456@postgres:5432/eigent
+        EIGENT_SERVER_GIT_COMMIT: ${EIGENT_SERVER_GIT_COMMIT:-unknown}
     container_name: eigent_api
     restart: unless-stopped
     ports:
@@ -83,6 +84,7 @@ services:
       dockerfile: server/Dockerfile
       args:
         database_url: postgresql://postgres:123456@postgres:5432/eigent
+        EIGENT_SERVER_GIT_COMMIT: ${EIGENT_SERVER_GIT_COMMIT:-unknown}
     container_name: eigent_celery_worker
     restart: unless-stopped
     command: /app/celery/worker/start
@@ -121,6 +123,7 @@ services:
       dockerfile: server/Dockerfile
       args:
         database_url: postgresql://postgres:123456@postgres:5432/eigent
+        EIGENT_SERVER_GIT_COMMIT: ${EIGENT_SERVER_GIT_COMMIT:-unknown}
     container_name: eigent_celery_beat
     restart: unless-stopped
     command: /app/celery/beat/start
