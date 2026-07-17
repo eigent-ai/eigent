@@ -61,6 +61,7 @@ export function useProjectOutputFiles(
 ): FileInfo[] {
   const host = useHost();
   const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const live = useMemo(() => isTaskLive(activeTask), [activeTask]);
 
@@ -105,6 +106,7 @@ export function useProjectOutputFiles(
             const listRes = await fetchGet('/files', {
               project_id: projectId,
               email,
+              ...(userId != null ? { user_id: String(userId) } : {}),
             });
             if (Array.isArray(listRes)) {
               nextFiles = normalizeRemoteFiles(listRes, baseURL);
@@ -141,7 +143,7 @@ export function useProjectOutputFiles(
       cancelled = true;
       clearInterval(timer);
     };
-  }, [email, host?.ipcRenderer, live, projectId, taskId]);
+  }, [email, host?.ipcRenderer, live, projectId, taskId, userId]);
 
   return files;
 }

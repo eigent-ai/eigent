@@ -40,6 +40,7 @@ WORKSPACE_ROOT = env("EIGENT_WORKSPACE", "~/.eigent/workspace")
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 FILE_LIST_SEMAPHORE = asyncio.Semaphore(4)
 SLOW_FILE_LIST_LOG_MS = 300
+_PROJECT_ROOT_FALLBACK_CACHE: dict[tuple[str, str, str], Path] = {}
 
 
 def _get_eigent_root() -> Path:
@@ -156,27 +157,50 @@ def _sanitize_email(email: str) -> str:
     return re.sub(r'[\\/*?:"<>|\s]', "_", email.split("@")[0]).strip(".")
 
 
+def _sanitize_identity(value: str | int | None) -> str:
+    if value is None:
+        return ""
+    return re.sub(r'[\\/*?:"<>|\s]', "_", str(value)).strip(".")
+
+
 def _normalize_relative_path(path: str) -> str:
     """Normalize relative path to URL-safe POSIX style."""
     return path.replace("\\", "/")
 
 
-def _get_project_root(email: str, project_id: str) -> Path:
-    """Get project root path: ~/eigent/{email}/project_{project_id}/."""
+def _get_project_root(
+    email: str, project_id: str, user_id: str | int | None = None
+) -> Path:
+    """Get project root path under the canonical user_id or legacy email key."""
     root = _get_eigent_root()
-    email_sanitized = _sanitize_email(email)
-    return root / email_sanitized / f"project_{project_id}"
+    user_key = _sanitize_identity(user_id)
+    owner_key = f"user_{user_key}" if user_key else _sanitize_email(email)
+    return root / owner_key / f"project_{project_id}"
 
 
-def _resolve_project_root(email: str, project_id: str) -> Path:
+def _resolve_project_root(
+    email: str, project_id: str, user_id: str | int | None = None
+) -> Path:
     """
-    Resolve project root, preferring the email-scoped path but falling back to
-    any local project_{project_id} directory when the stored email differs from
-    the current login identity.
+    Resolve project root, preferring the canonical user_id-scoped path when
+    available, then legacy email-scoped storage, then any local project match.
     """
-    preferred = _get_project_root(email, project_id)
+    preferred = _get_project_root(email, project_id, user_id)
     if preferred.exists():
         return preferred
+
+    user_key = _sanitize_identity(user_id)
+    if user_key:
+        legacy_preferred = _get_project_root(email, project_id)
+        if legacy_preferred.exists():
+            return legacy_preferred
+
+    cache_key = (email, project_id, user_key)
+    cached = _PROJECT_ROOT_FALLBACK_CACHE.get(cache_key)
+    if cached is not None:
+        if cached.exists():
+            return cached
+        _PROJECT_ROOT_FALLBACK_CACHE.pop(cache_key, None)
 
     root = _get_eigent_root()
     candidate_name = f"project_{project_id}"
@@ -186,6 +210,7 @@ def _resolve_project_root(email: str, project_id: str) -> Path:
                 continue
             candidate = child / candidate_name
             if candidate.exists():
+                _PROJECT_ROOT_FALLBACK_CACHE[cache_key] = candidate
                 file_logger.info(
                     "Resolved project root via fallback lookup: %s -> %s",
                     preferred,
@@ -216,7 +241,7 @@ def _resolve_file_root(
         )
         if space_root is not None:
             return space_root
-    return _resolve_project_root(email, project_id)
+    return _resolve_project_root(email, project_id, user_id)
 
 
 @router.get("/files")
