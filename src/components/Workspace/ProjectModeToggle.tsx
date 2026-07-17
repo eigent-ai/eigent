@@ -63,6 +63,8 @@ export interface ProjectModeToggleProps {
    * bar (see model read-only chip).
    */
   readOnly?: boolean;
+  /** When true, hides the text label and shows only the leading icon (narrow footer). */
+  compact?: boolean;
 }
 
 export function ProjectModeToggle({
@@ -70,6 +72,7 @@ export function ProjectModeToggle({
   onValueChange,
   className,
   readOnly = false,
+  compact = false,
 }: ProjectModeToggleProps) {
   const { t } = useTranslation();
   const chevronScale = useAnimationControls();
@@ -82,6 +85,7 @@ export function ProjectModeToggle({
   const isSingle = value === SessionMode.SINGLE_AGENT;
   const nextMode = isSingle ? SessionMode.WORKFORCE : SessionMode.SINGLE_AGENT;
   const label = isSingle ? labelSingle : labelWorkforce;
+  const LeadingIcon = isSingle ? Joystick : Gamepad2;
 
   const toggle = () => onValueChange(nextMode);
 
@@ -91,8 +95,6 @@ export function ProjectModeToggle({
       await chevronScale.start({ scale: 1, transition: CHEVRON_RELEASE });
     })();
   }, [chevronScale]);
-
-  const LeadingIcon = isSingle ? Joystick : Gamepad2;
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
@@ -116,7 +118,8 @@ export function ProjectModeToggle({
     return (
       <div
         role="status"
-        aria-label={modeAriaLabel}
+        aria-label={`${modeAriaLabel}: ${label}`}
+        title={compact ? label : undefined}
         className={cn(shellClass, 'pointer-events-none bg-transparent')}
       >
         <span className="inline-flex min-h-[1.25rem] items-center gap-1.5 overflow-hidden">
@@ -125,7 +128,9 @@ export function ProjectModeToggle({
             strokeWidth={2}
             aria-hidden
           />
-          <span className="!text-label-xs font-semibold">{label}</span>
+          {!compact && (
+            <span className="!text-label-xs font-semibold">{label}</span>
+          )}
         </span>
       </div>
     );
@@ -137,10 +142,11 @@ export function ProjectModeToggle({
     <motion.button
       type="button"
       aria-label={`${modeAriaLabel}: ${label}. ${cycleHint}`}
+      title={compact ? label : undefined}
       className={cn(
         shellClass,
         'cursor-pointer border-0 text-left',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
+        'hover:bg-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
       )}
       onPointerDown={pulseChevrons}
       onClick={toggle}
@@ -160,9 +166,11 @@ export function ProjectModeToggle({
               strokeWidth={2}
               aria-hidden
             />
-            <span className="whitespace-nowrap !text-label-xs font-semibold">
-              {label}
-            </span>
+            {!compact && (
+              <span className="whitespace-nowrap !text-label-xs font-semibold">
+                {label}
+              </span>
+            )}
           </motion.span>
         </AnimatePresence>
       </span>

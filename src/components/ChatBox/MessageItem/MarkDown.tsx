@@ -80,6 +80,7 @@ export const MarkDown = memo(
     const host = useHost();
     const electronAPI = host?.electronAPI;
     const openFilePreview = usePageTabStore((s) => s.openFilePreview);
+    const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -298,6 +299,22 @@ export const MarkDown = memo(
           if (filePath) {
             openFilePreview(fileInfoFromPath(filePath));
           }
+          return;
+        }
+        // Web links stay inside the session: open them in the preview
+        // browser of this project. (On the web host, where no embedded
+        // browser exists, fall back to a regular browser tab.)
+        const link = target.closest('a[href]');
+        if (link) {
+          const href = link.getAttribute('href') ?? '';
+          if (/^https?:\/\//i.test(href)) {
+            e.preventDefault();
+            if (electronAPI) {
+              openBrowserPreview(href);
+            } else {
+              window.open(href, '_blank', 'noopener,noreferrer');
+            }
+          }
         }
       };
 
@@ -307,7 +324,7 @@ export const MarkDown = memo(
       return () => {
         div.removeEventListener('click', handleContentClick);
       };
-    }, [html, openFilePreview]);
+    }, [html, openFilePreview, openBrowserPreview, electronAPI]);
 
     return (
       <>

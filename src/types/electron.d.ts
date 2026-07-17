@@ -96,6 +96,10 @@ interface ElectronAPI {
     success: boolean;
     error?: string;
   }>;
+  openExternal: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
   mcpInstall: (name: string, mcp: any) => Promise<any>;
   mcpRemove: (name: string) => Promise<any>;
   mcpUpdate: (name: string, mcp: any) => Promise<any>;

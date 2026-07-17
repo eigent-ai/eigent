@@ -16,6 +16,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
+const { hasActiveSSEConnectionMock } = vi.hoisted(() => ({
+  hasActiveSSEConnectionMock: vi.fn(),
+}));
+
 vi.mock('@/service/spaceApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/service/spaceApi')>();
   return {
@@ -24,11 +28,24 @@ vi.mock('@/service/spaceApi', async (importOriginal) => {
   };
 });
 
+vi.mock('./chatStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./chatStore')>();
+  return {
+    ...actual,
+    hasActiveSSEConnection: hasActiveSSEConnectionMock,
+  };
+});
+
 describe('projectStore runtime shape', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    hasActiveSSEConnectionMock.mockReturnValue(false);
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
+      navLeadByProjectId: {},
+      historyLoadingProjectIds: {},
+      staleProjectIds: new Set(),
     });
     useSpaceStore.setState({
       activeSpaceId: 'space_test',
@@ -125,5 +142,52 @@ describe('projectStore runtime shape', () => {
       model_platform: 'platform_b',
       model_type: 'model_b',
     });
+  });
+
+  it('keeps stale project runtime while one of its tasks has an active SSE stream', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_live');
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'task_live');
+    useProjectStore.setState({
+      staleProjectIds: new Set([projectId]),
+    });
+    hasActiveSSEConnectionMock.mockImplementation((taskIds: string[]) =>
+      taskIds.includes('task_live')
+    );
+
+    useProjectStore.getState()._evictStaleOnTransition('project_next');
+
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
+      true
+    );
+    expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_live'])
+    );
+  });
+
+  it('evicts a stale project runtime on a later transition after active SSE is gone', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_safe');
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'task_finished');
+    useProjectStore.setState({
+      staleProjectIds: new Set([projectId]),
+    });
+    hasActiveSSEConnectionMock.mockReturnValue(false);
+
+    useProjectStore.getState()._evictStaleOnTransition('project_next');
+
+    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
+      false
+    );
+    expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
+    expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
   });
 });

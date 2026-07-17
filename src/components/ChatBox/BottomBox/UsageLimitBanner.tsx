@@ -35,7 +35,7 @@ export function UsageLimitBanner({
   return (
     <div
       className={cn(
-        'mb-2 flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 shadow-sm',
+        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 shadow-sm',
         isDanger
           ? 'border-text-error/30 bg-surface-error-subtle text-text-error'
           : 'border-border-warning bg-surface-warning text-text-warning'

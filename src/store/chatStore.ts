@@ -1926,6 +1926,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Create AbortController for this task's SSE connection
       // First check if there's already an active SSE connection for this task
+      if (activeSSEControllers[newTaskId] && type === 'replay') {
+        // A history replay must never tear down a live run's stream: the
+        // ongoing run is the fresher state, and aborting it kills the run
+        // on the backend. Leave the live connection alone.
+        console.warn(
+          `Task ${newTaskId} already has an active SSE connection, skipping history replay`
+        );
+        return;
+      }
       if (activeSSEControllers[newTaskId]) {
         console.warn(
           `Task ${newTaskId} already has an active SSE connection, aborting old one`
