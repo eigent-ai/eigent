@@ -19,8 +19,8 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { ArrowLeft, GalleryThumbnails } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface HeaderBoxProps {
@@ -40,20 +40,24 @@ export function HeaderBox({
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const filePreviewOpen = usePageTabStore((s) => s.filePreviewOpen);
-  const toggleFilePreview = usePageTabStore((s) => s.toggleFilePreview);
+  const sessionPreviewOpen = usePageTabStore(
+    (s) => getSessionPreviewSlice(s).open
+  );
+  const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
     defaultValue: 'Back to workspace',
   });
-  const filePreviewTooltip = t('layout.toggle-file-preview-tooltip', {
-    defaultValue: 'Toggle file preview',
+  // Own key (not the old file-preview one): the control's meaning changed, so
+  // stale translations must not carry over.
+  const windowPreviewTooltip = t('layout.toggle-window-preview-tooltip', {
+    defaultValue: 'Toggle window preview',
   });
 
   if (empty) {
     return (
       <div
-        className={`px-3 flex h-[44px] w-full shrink-0 flex-row items-center justify-between ${className || ''}`}
+        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
         aria-hidden
       />
     );
@@ -61,10 +65,10 @@ export function HeaderBox({
 
   return (
     <div
-      className={`pl-3 pr-1.5 flex h-[44px] w-full flex-row items-center justify-between ${className || ''}`}
+      className={`flex h-[44px] w-full flex-row items-center justify-between pl-3 pr-1.5 ${className || ''}`}
     >
       {/* Left: return to project workspace */}
-      <div className="gap-2 flex items-center">
+      <div className="flex items-center gap-2">
         <TooltipSimple content={backToWorkspaceTooltip}>
           <Button
             type="button"
@@ -72,7 +76,7 @@ export function HeaderBox({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0"
+            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
             aria-label={backToWorkspaceTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -80,31 +84,31 @@ export function HeaderBox({
         </TooltipSimple>
       </div>
 
-      {/* Right: project total token count + file preview toggle */}
-      <div className="gap-2 text-ds-text-neutral-muted-default flex items-center">
-        <div className="gap-1 flex items-center">
+      {/* Right: project total token count + unified preview toggle */}
+      <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
+        <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
             {t('chat.token-total-label')}{' '}
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        <TooltipSimple content={filePreviewTooltip}>
+        <TooltipSimple content={windowPreviewTooltip}>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={toggleFilePreview}
+            onClick={toggleSessionPreview}
             className={cn(
-              'no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0',
-              filePreviewOpen &&
+              'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
+              sessionPreviewOpen &&
                 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
             )}
-            aria-label={filePreviewTooltip}
-            aria-pressed={filePreviewOpen}
+            aria-label={windowPreviewTooltip}
+            aria-pressed={sessionPreviewOpen}
           >
-            <FileText className="h-4 w-4" aria-hidden />
+            <GalleryThumbnails className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
       </div>

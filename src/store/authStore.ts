@@ -46,7 +46,7 @@ interface AuthInfo {
   token: string;
   username: string;
   email: string;
-  user_id: number;
+  user_id?: number | null;
 }
 
 // auth state interface
@@ -128,6 +128,23 @@ interface AuthState {
   setWorkerList: (workerList: Agent[]) => void;
   checkAgentTool: (tool: string) => void;
 }
+
+/**
+ * User id from the access token's payload. The local auto-login response
+ * carries no explicit user id, but the token it returns does; without an
+ * id every server-owned Space is filtered out client-side and the app
+ * degrades to an empty legacy-only workspace.
+ */
+const userIdFromToken = (token: string | null): number | null => {
+  if (!token) return null;
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    return typeof payload.id === 'number' ? payload.id : null;
+  } catch {
+    return null;
+  }
+};
 
 // random default model selection
 const getRandomDefaultModel = (): CloudModelType => {
@@ -213,19 +230,20 @@ const authStore = create<AuthState>()(
 
       // auth related methods
       setAuth: ({ token, username, email, user_id }) => {
+        const resolvedUserId = user_id ?? userIdFromToken(token);
         const previousUserId = get().user_id;
-        if (previousUserId != null && previousUserId !== user_id) {
+        if (previousUserId != null && previousUserId !== resolvedUserId) {
           void clearAllCachedProjects(previousUserId);
         }
-        useSpaceStore.getState().resetForUser(user_id);
+        useSpaceStore.getState().resetForUser(resolvedUserId);
         set({
           token,
           username,
           email,
-          user_id,
+          user_id: resolvedUserId,
           authEnvironmentKey: getAuthEnvironmentKey(),
         });
-        hydrateSpacesForUser(user_id);
+        hydrateSpacesForUser(resolvedUserId);
       },
 
       logout: () => {
@@ -379,7 +397,9 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      version: 10,
+      // Bump so migrate re-runs for existing sessions that still need the
+      // user-id repair; a matching version skips migrate and stays unrepaired.
+      version: 11,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -403,7 +423,12 @@ const authStore = create<AuthState>()(
         const environmentMatches =
           s.authEnvironmentKey === currentEnvironmentKey;
         const authState = environmentMatches
-          ? {}
+          ? typeof s.token === 'string' && s.user_id == null
+            ? // Existing session persisted without a user id (the local
+              // auto-login response never included one): recover it from
+              // the token so owned Spaces are not filtered out.
+              { user_id: userIdFromToken(s.token) }
+            : {}
           : {
               token: null,
               username: null,

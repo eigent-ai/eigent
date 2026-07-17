@@ -94,6 +94,18 @@ let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
 
+const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
+
+const isHttpOrHttpsUrl = (url: unknown): url is string => {
+  if (typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 // CDP Browser Pool
 interface CdpBrowser {
   id: string;
@@ -1275,6 +1287,18 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    try {
+      if (!isHttpOrHttpsUrl(url)) {
+        return { success: false, error: 'Invalid external URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle(
     'upload-log',
     async (
@@ -2426,6 +2450,55 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
+
+    if (
+      params.partition !== PREVIEW_WEBVIEW_PARTITION ||
+      !isHttpOrHttpsUrl(params.src)
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
+  win.webContents.on('did-attach-webview', (_event, contents) => {
+    const preventUnsafeNavigation = (
+      event: Electron.Event,
+      navigationUrl: string
+    ) => {
+      if (!isHttpOrHttpsUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    };
+    const guestNavigationEvents = contents as unknown as {
+      on: (
+        eventName: string,
+        listener: (event: Electron.Event, navigationUrl: string) => void
+      ) => void;
+    };
+
+    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isHttpOrHttpsUrl(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
   });
 
   if (process.platform === 'darwin') {

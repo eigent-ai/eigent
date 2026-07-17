@@ -22,6 +22,7 @@ import {
   tokenizeRichPlainText,
 } from '@/lib/richText';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Fragment, type ReactNode } from 'react';
 
 /** Same tokens as `UserMessageCard` body (13px / 20px). */
@@ -59,7 +60,13 @@ function parseContentWithTags(content: string): ContentNode[] {
   return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
 }
 
-function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
+function renderMessageRichSegments(
+  text: string,
+  keyPrefix: string,
+  /** When set, URL clicks open here (the session's preview browser) instead
+   *  of following the anchor out of the app. */
+  onOpenUrl?: (url: string) => void
+): ReactNode {
   return tokenizeRichPlainText(text).map((seg, i) => {
     const key = `${keyPrefix}-${i}`;
     if (seg.type === 'text') {
@@ -75,7 +82,13 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
             target="_blank"
             rel="noopener noreferrer"
             className="text-ds-text-information-default-default underline decoration-ds-border-information-default-default underline-offset-2"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenUrl) {
+                e.preventDefault();
+                onOpenUrl(href);
+              }
+            }}
           >
             {seg.text}
           </a>
@@ -129,12 +142,17 @@ export function UserMessageRichContent({
   className,
 }: UserMessageRichContentProps) {
   const host = useHost();
+  const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
   const contentNodes = parseContentWithTags(content);
 
   const handleOpenSkillFolder = (skillName: string) => {
     if (!isSafeSkillFolderName(skillName)) return;
     host?.electronAPI?.openSkillFolder?.(skillName);
   };
+
+  // Desktop: links open in this project's preview browser; on the web host
+  // (no embedded browser) the anchor's target=_blank fallback applies.
+  const handleOpenUrl = host?.electronAPI ? openBrowserPreview : undefined;
 
   const bodyClass =
     variant === 'card'
@@ -148,7 +166,7 @@ export function UserMessageRichContent({
           if (node.type === 'text') {
             return (
               <Fragment key={i}>
-                {renderMessageRichSegments(node.value, `n${i}`)}
+                {renderMessageRichSegments(node.value, `n${i}`, handleOpenUrl)}
               </Fragment>
             );
           }
