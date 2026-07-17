@@ -90,6 +90,7 @@ let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
+let backendStartPromise: Promise<void> | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
@@ -119,6 +120,49 @@ let cdpLastAssignedPort = 9223; // tracks the highest port ever assigned, never 
 let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
+
+type BackendStartOptions = {
+  forceRestart?: boolean;
+};
+
+function isBrokenConsolePipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ((error as NodeJS.ErrnoException).code === 'EPIPE' ||
+      (error as NodeJS.ErrnoException).code === 'ERR_STREAM_DESTROYED')
+  );
+}
+
+function disableConsoleLogTransport(): void {
+  if (log.transports.console.level !== false) {
+    log.transports.console.level = false;
+  }
+}
+
+function handleProcessPipeError(error: Error): void {
+  if (isBrokenConsolePipeError(error)) {
+    disableConsoleLogTransport();
+    return;
+  }
+
+  setImmediate(() => {
+    throw error;
+  });
+}
+
+process.stdout.on('error', handleProcessPipeError);
+process.stderr.on('error', handleProcessPipeError);
+
+function isPythonProcessRunning(): boolean {
+  return Boolean(
+    python_process &&
+      !python_process.killed &&
+      python_process.exitCode === null &&
+      python_process.signalCode === null
+  );
+}
 
 /** Persist pool to disk. */
 function saveCdpPool(): void {
@@ -979,17 +1023,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendPort) {
-        log.info('Restarting backend service...');
-        await cleanupPythonProcess();
-        await checkAndStartBackend();
-        log.info('Backend restart completed successfully');
-        return { success: true };
-      } else {
-        log.warn('No backend port found, starting fresh backend');
-        await checkAndStartBackend();
+      if (backendStartPromise) {
+        log.info('Backend startup already in progress, waiting...');
+        await backendStartPromise;
         return { success: true };
       }
+
+      if (backendPort || isPythonProcessRunning()) {
+        log.info('Restarting backend service...');
+        await checkAndStartBackend({ forceRestart: true });
+        log.info('Backend restart completed successfully');
+        return { success: true };
+      }
+
+      log.warn('No backend port found, starting fresh backend');
+      await checkAndStartBackend();
+      return { success: true };
     } catch (error) {
       log.error('Failed to restart backend:', error);
       return { success: false, error: String(error) };
@@ -2949,66 +2998,90 @@ const setupExternalLinkHandling = () => {
 };
 
 // ==================== check and start backend ====================
-const checkAndStartBackend = async () => {
-  log.info('Checking and starting backend service...');
-  try {
-    // Clean up any existing backend process before starting new one
-    if (python_process && !python_process.killed) {
-      log.info('Cleaning up existing backend process before restart...');
-      await cleanupPythonProcess();
-      python_process = null;
-    }
+const checkAndStartBackend = async (
+  options: BackendStartOptions = {}
+): Promise<void> => {
+  if (backendStartPromise) {
+    log.info('Backend startup already in progress, waiting...');
+    return backendStartPromise;
+  }
 
-    const isToolInstalled = await checkToolInstalled();
-    if (isToolInstalled.success) {
-      log.info('Tool installed, starting backend service...');
-      const codexResolverEnv = await getCodexResolverEnv();
-      const exampleSkillsDir = getExampleSkillsSourceDir();
-
-      // Start backend and wait for health check to pass
-      python_process = await startBackend(
-        (port) => {
-          backendPort = port;
-          log.info('Backend service started successfully', { port });
-        },
-        {
-          ...codexResolverEnv,
-          EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+  backendStartPromise = (async () => {
+    log.info('Checking and starting backend service...');
+    try {
+      if (isPythonProcessRunning()) {
+        if (!options.forceRestart) {
+          log.info('Backend service is already running', { port: backendPort });
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('backend-ready', {
+              success: true,
+              port: backendPort,
+            });
+          }
+          return;
         }
-      );
 
-      // Notify frontend that backend is ready
-      if (win && !win.isDestroyed()) {
-        log.info('Backend is ready, notifying frontend...');
-        win.webContents.send('backend-ready', {
-          success: true,
-          port: backendPort,
-        });
+        log.info('Cleaning up existing backend process before restart...');
+        await cleanupPythonProcess();
+      } else if (python_process) {
+        python_process = null;
       }
 
-      python_process?.on('exit', (code, signal) => {
-        log.info('Python process exited', { code, signal });
-      });
-    } else {
-      log.warn('Tool not installed, cannot start backend service');
-      // Notify frontend that backend cannot start
+      const isToolInstalled = await checkToolInstalled();
+      if (isToolInstalled.success) {
+        log.info('Tool installed, starting backend service...');
+        const codexResolverEnv = await getCodexResolverEnv();
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+
+        // Start backend and wait for health check to pass
+        python_process = await startBackend(
+          (port) => {
+            backendPort = port;
+            log.info('Backend service started successfully', { port });
+          },
+          {
+            ...codexResolverEnv,
+            EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+          }
+        );
+
+        // Notify frontend that backend is ready
+        if (win && !win.isDestroyed()) {
+          log.info('Backend is ready, notifying frontend...');
+          win.webContents.send('backend-ready', {
+            success: true,
+            port: backendPort,
+          });
+        }
+
+        python_process?.on('exit', (code, signal) => {
+          log.info('Python process exited', { code, signal });
+        });
+      } else {
+        log.warn('Tool not installed, cannot start backend service');
+        // Notify frontend that backend cannot start
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('backend-ready', {
+            success: false,
+            error: 'Tools not installed',
+          });
+        }
+      }
+    } catch (error) {
+      log.error('Failed to start backend:', error);
+      // Notify frontend of backend startup failure
       if (win && !win.isDestroyed()) {
         win.webContents.send('backend-ready', {
           success: false,
-          error: 'Tools not installed',
+          error: String(error),
         });
       }
     }
-  } catch (error) {
-    log.error('Failed to start backend:', error);
-    // Notify frontend of backend startup failure
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('backend-ready', {
-        success: false,
-        error: String(error),
-      });
-    }
-  }
+  })().finally(() => {
+    backendStartPromise = null;
+  });
+
+  return backendStartPromise;
 };
 
 // ==================== process cleanup ====================
