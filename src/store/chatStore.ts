@@ -776,7 +776,10 @@ const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 const activeSSEControllers: Record<string, AbortController> = {};
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
-  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+  /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_SANDBOX_SCHEME_REGEX =
+  /(^|[^A-Za-z0-9_+.-])sandbox:(?=(?:[A-Za-z]:)?[\\/])/gi;
 
 const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
   'csv',
@@ -857,7 +860,7 @@ function buildRemoteFileInfoPath({
   return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
 }
 
-function extractFinalOutputFileList(
+export function extractFinalOutputFileList(
   content: string,
   projectId?: string,
   email?: string,
@@ -869,8 +872,12 @@ function extractFinalOutputFileList(
 
   const fileInfos: FileInfo[] = [];
   const seen = new Set<string>();
+  const parseableContent = content.replace(
+    FINAL_OUTPUT_SANDBOX_SCHEME_REGEX,
+    '$1'
+  );
 
-  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+  for (const match of parseableContent.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
     const filePath = normalizeOutputPath(match[0]);
     if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
       continue;
@@ -919,7 +926,16 @@ function getFileInfoIdentities(file: FileInfo): string[] {
     .map((value) => normalizeOutputPath(value as string).toLowerCase());
 }
 
-function mergeFileInfoLists(
+function isLegacySandboxDrivePath(
+  existingPath: string,
+  extractedPath: string
+): boolean {
+  const normalizedExisting = normalizeOutputPath(existingPath).toLowerCase();
+  const normalizedExtracted = normalizeOutputPath(extractedPath).toLowerCase();
+  return normalizedExisting === `x:${normalizedExtracted}`;
+}
+
+export function mergeFileInfoLists(
   existingFileList: FileInfo[],
   extractedFileList: FileInfo[]
 ): FileInfo[] {
@@ -938,9 +954,13 @@ function mergeFileInfoLists(
       return;
     }
 
-    if (file.isRemote && !merged[existingIndex].isRemote) {
+    const existingFile = merged[existingIndex];
+    if (
+      (file.isRemote && !existingFile.isRemote) ||
+      isLegacySandboxDrivePath(existingFile.path, file.path)
+    ) {
       merged[existingIndex] = {
-        ...merged[existingIndex],
+        ...existingFile,
         ...file,
       };
       mergedIdentities[existingIndex] = identities;
