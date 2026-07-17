@@ -300,6 +300,9 @@
   "api-key-setting": "Настройка API-ключа",
   "api-host-setting": "Настройка API-хоста",
   "model-type-setting": "Настройка типа модели",
+  "model-parameters-setting": "Параметры модели (JSON, необязательно)",
+  "model-parameters-placeholder": "Введите параметры модели как объект JSON, например {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "Параметры модели должны быть допустимым объектом JSON.",
   "please-select": "Пожалуйста, выберите",
   "configuring": "Конфигурирование...",
 

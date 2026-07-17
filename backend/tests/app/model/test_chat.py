@@ -30,6 +30,7 @@ class TestAgentModelConfig:
         assert config.model_type is None
         assert config.api_key is None
         assert config.api_url is None
+        assert config.model_config_dict is None
         assert config.extra_params is None
 
     def test_agent_model_config_creation_with_values(self):
@@ -39,13 +40,18 @@ class TestAgentModelConfig:
             model_type="gpt-4",
             api_key="test-key",
             api_url="https://api.openai.com/v1",
-            extra_params={"temperature": 0.7},
+            model_config_dict={"temperature": 0.7, "stream": False},
+            extra_params={"api_version": "2025-01-01"},
         )
         assert config.model_platform == "openai"
         assert config.model_type == "gpt-4"
         assert config.api_key == "test-key"
         assert config.api_url == "https://api.openai.com/v1"
-        assert config.extra_params == {"temperature": 0.7}
+        assert config.model_config_dict == {
+            "temperature": 0.7,
+            "stream": False,
+        }
+        assert config.extra_params == {"api_version": "2025-01-01"}
 
     def test_has_custom_config_false_when_empty(self):
         """Test has_custom_config returns False for empty config."""
@@ -73,6 +79,36 @@ class TestAgentModelConfig:
         """Test has_custom_config returns True with only api_key."""
         config = AgentModelConfig(api_key="some-key")
         assert config.has_custom_config() is True
+
+    def test_has_custom_config_true_with_only_model_config_dict(self):
+        config = AgentModelConfig(model_config_dict={"temperature": 0.2})
+
+        assert config.has_custom_config() is True
+
+
+class TestChatModelConfig:
+    def test_chat_accepts_and_serializes_model_config_dict(
+        self, sample_chat_data
+    ):
+        chat = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {
+                    "temperature": 0.2,
+                    "top_p": 0.9,
+                    "response_format": {"type": "json_object"},
+                },
+            }
+        )
+
+        assert chat.model_config_dict == {
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "response_format": {"type": "json_object"},
+        }
+        assert chat.model_dump()["model_config_dict"] == (
+            chat.model_config_dict
+        )
 
 
 class TestNewAgentWithModelConfig:

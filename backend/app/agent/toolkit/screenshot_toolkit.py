@@ -20,6 +20,7 @@ from camel.messages import BaseMessage
 from camel.toolkits import ScreenshotToolkit as BaseScreenshotToolkit
 from PIL import Image
 
+from app.agent.listen_chat_agent import default_step_timeout
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
@@ -86,7 +87,9 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
                 tools=[],
                 toolkits_to_register_agent=None,
                 external_tools=None,
-                step_timeout=getattr(self.agent, "step_timeout", 1800),
+                step_timeout=getattr(
+                    self.agent, "step_timeout", default_step_timeout()
+                ),
             )
             response = vision_agent.step(message)
             if getattr(response, "msg", None) is not None:

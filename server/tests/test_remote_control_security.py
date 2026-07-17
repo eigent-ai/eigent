@@ -528,6 +528,98 @@ def test_list_steps_controller_returns_service_response(monkeypatch):
     assert result is expected
 
 
+def test_list_steps_excludes_request_usage(monkeypatch):
+    from app.domains.remote_control.service.remote_control_service import RemoteControlService
+
+    history = SimpleNamespace(task_id="task_1")
+    visible_step = SimpleNamespace(
+        id=12,
+        task_id="task_1",
+        step="ask",
+        data={"question": "Continue?"},
+        timestamp=12.0,
+    )
+
+    class FakeResult:
+        def __init__(self, items):
+            self.items = items
+
+        def all(self):
+            return self.items
+
+    class FakeDb:
+        def __init__(self):
+            self.calls = 0
+
+        def exec(self, statement):
+            self.calls += 1
+            if self.calls == 1:
+                return FakeResult([history])
+            sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
+            assert "request_usage" in sql
+            assert "NOT IN" in sql
+            return FakeResult([visible_step])
+
+    monkeypatch.setattr(
+        RemoteControlService,
+        "_owned_session",
+        staticmethod(lambda _session_id, _user_id, _db: SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        RemoteControlService,
+        "_effective_target",
+        staticmethod(lambda _session: ("project_1", None, None, None)),
+    )
+    monkeypatch.setattr(
+        RemoteControlService,
+        "_ensure_project_in_session_space",
+        staticmethod(lambda *_args: None),
+    )
+
+    result = RemoteControlService.list_steps(
+        "rcs_test",
+        123,
+        None,
+        0,
+        10,
+        "asc",
+        FakeDb(),
+    )
+
+    assert [item.step for item in result.items] == ["ask"]
+
+
+def test_publish_chat_step_excludes_request_usage(monkeypatch):
+    from app.domains.remote_control.service.remote_control_service import (
+        RemoteControlRedis,
+        RemoteControlService,
+    )
+
+    class FailDb:
+        def exec(self, _statement):
+            raise AssertionError("request_usage should not query or publish")
+
+    published = []
+    monkeypatch.setattr(
+        RemoteControlRedis,
+        "publish",
+        lambda channel, payload: published.append((channel, payload)),
+    )
+
+    RemoteControlService.publish_chat_step(
+        SimpleNamespace(
+            id=13,
+            task_id="task_1",
+            step="request_usage",
+            data={"tokens": 10},
+            timestamp=13.0,
+        ),
+        FailDb(),
+    )
+
+    assert published == []
+
+
 @pytest.mark.asyncio
 async def test_ws_reconnect_rate_limit_is_per_identifier(monkeypatch):
     from app.domains.remote_control.api import remote_control_controller as controller

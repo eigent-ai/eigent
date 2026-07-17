@@ -233,10 +233,13 @@ export const RichChatInput = React.forwardRef<
       plain.length === 0 ? '' : segmentsToHtml(tokenizeRichPlainText(plain));
     el.innerHTML = html || '<br />';
     if (restoreOffset !== undefined) {
-      requestAnimationFrame(() => {
-        setCaretOffset(el, Math.min(restoreOffset, plain.length));
-        scrollCaretIntoView(el);
-      });
+      // Restore the caret synchronously. Reassigning innerHTML above collapses
+      // the selection to offset 0; deferring the restore to requestAnimationFrame
+      // left a full frame during which fast keystrokes were inserted at the
+      // start (the "cursor jumps to the beginning" bug). Only the scroll, which
+      // needs layout, stays deferred.
+      setCaretOffset(el, Math.min(restoreOffset, plain.length));
+      requestAnimationFrame(() => scrollCaretIntoView(el));
     }
   }, []);
 
@@ -324,6 +327,48 @@ export const RichChatInput = React.forwardRef<
     resizeHeight();
   };
 
+  /**
+   * `#skill` / `@connector` chips are atomic (`contenteditable="false"`), so the
+   * caret can only sit immediately before or after one — never inside. Delete
+   * the whole token in one keypress instead of falling through to the browser's
+   * native "select the atomic node first" behavior, which can take two presses
+   * (or none, depending on browser) to actually remove it.
+   */
+  const handleChipAwareDelete = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): boolean => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return false;
+      const el = rootRef.current;
+      if (!el) return false;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+
+      const caret = getCaretOffset(el);
+      const segments = tokenizeRichPlainText(value);
+      let offset = 0;
+      for (const seg of segments) {
+        const start = offset;
+        const end = offset + seg.text.length;
+        const isChip = seg.type === 'skill' || seg.type === 'connector';
+        const hit =
+          isChip &&
+          ((e.key === 'Backspace' && end === caret) ||
+            (e.key === 'Delete' && start === caret));
+        if (hit) {
+          e.preventDefault();
+          const newValue = value.slice(0, start) + value.slice(end);
+          internalUpdate.current = true;
+          onChange(newValue, start);
+          applyHtml(newValue, start);
+          resizeHeight();
+          return true;
+        }
+        offset = end;
+      }
+      return false;
+    },
+    [applyHtml, onChange, resizeHeight, value]
+  );
+
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
@@ -410,7 +455,10 @@ export const RichChatInput = React.forwardRef<
         suppressContentEditableWarning
         onInput={handleInput}
         onPaste={handlePaste}
-        onKeyDown={onKeyDown}
+        onKeyDown={(e) => {
+          if (handleChipAwareDelete(e)) return;
+          onKeyDown?.(e);
+        }}
         onFocus={onFocus}
         onBlur={handleBlur}
         onCompositionStart={() => {
