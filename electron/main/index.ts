@@ -1565,7 +1565,8 @@ function registerIpcHandlers() {
           /[^\w.-]+/g,
           '_'
         );
-        const filePath = path.join(pastedDir, `${stamp}-${safeName}`);
+        const unique = crypto.randomUUID();
+        const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
         await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
         return { success: true, filePath, fileName: safeName };
       } catch (error: any) {
