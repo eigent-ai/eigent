@@ -267,18 +267,6 @@ async function assertLocalTaskOnline(command: RemoteCommand, token: string) {
   }
 }
 
-function assertDesktopOnTargetProject(command: RemoteCommand): void {
-  const targetProjectId = getCommandProjectId(command);
-  const activeProjectId = useProjectStore.getState().activeProjectId;
-  if (targetProjectId && activeProjectId === targetProjectId) {
-    return;
-  }
-  const error: any = new Error('Desktop is not on the target project yet');
-  error.code = 'BRIDGE_TARGET_NOT_ACTIVE';
-  error.details = { activeProjectId, targetProjectId };
-  throw error;
-}
-
 function ensureRemoteProjectLoaded(command: RemoteCommand): void {
   const projectId = getCommandProjectId(command);
   if (!projectId) {
@@ -292,35 +280,52 @@ function ensureRemoteProjectLoaded(command: RemoteCommand): void {
   const project = payload.project as ServerProject | undefined;
 
   if (space) {
-    spaceStore.upsertSpaces([toLocalSpace(space)], String(space.id));
+    spaceStore.upsertSpaces([toLocalSpace(space)], undefined);
   }
   if (project) {
     spaceStore.upsertProjectMetas([projectMetaFromServer(project)]);
     projectStore.upsertProjectsFromServer([project]);
   }
 
-  if (projectStore.getProjectById(projectId)) {
-    projectStore.setActiveProject(projectId);
+  if (useProjectStore.getState().projects[projectId]) {
     return;
   }
 
-  projectStore.createProject(
-    String(payload.project_name || project?.name || 'Remote Project'),
-    project?.description || '',
-    projectId,
-    undefined,
-    payload.history_id ? String(payload.history_id) : undefined,
-    true,
-    {
-      spaceId: payload.space_id
-        ? String(payload.space_id)
-        : command.space_id || project?.space_id,
-      mode:
-        (project?.mode as SessionModeType | null | undefined) ?? 'single-agent',
-      workdirMode: project?.workdir_mode ?? null,
-      metadata: project?.metadata ?? undefined,
-    }
-  );
+  const meta = useSpaceStore.getState().getProjectMeta(projectId);
+  const historyId =
+    payload.remote_history_id != null
+      ? String(payload.remote_history_id)
+      : payload.history_id != null
+        ? String(payload.history_id)
+        : meta?.metadata?.historyId;
+
+  useProjectStore
+    .getState()
+    .createProject(
+      String(
+        payload.project_name || meta?.name || project?.name || 'Remote Project'
+      ),
+      meta?.description || project?.description || '',
+      projectId,
+      undefined,
+      historyId,
+      false,
+      {
+        spaceId:
+          meta?.spaceId ||
+          (payload.space_id ? String(payload.space_id) : undefined) ||
+          command.space_id ||
+          project?.space_id,
+        mode:
+          meta?.mode ??
+          (project?.mode as SessionModeType | null | undefined) ??
+          'single-agent',
+        workdirMode: meta?.workdirMode ?? project?.workdir_mode ?? null,
+        metadata: meta?.metadata ?? project?.metadata ?? undefined,
+        createdAt: meta?.createdAt,
+        updatedAt: meta?.updatedAt,
+      }
+    );
 }
 
 async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
@@ -361,34 +366,36 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
     history_id: historyId,
   });
 
-  const startPromise = chatStore
-    .getState()
-    .startTask(
-      nextTaskId,
-      undefined,
-      undefined,
-      undefined,
-      content,
-      [],
-      undefined,
-      projectId,
-      sessionMode,
-      {
-        preserveTaskId: true,
-        skipHistoryCreate: historyId != null,
-        historyId,
-      }
-    );
-
-  startPromise.catch((error: any) => {
-    // RC-TRACE: this failure is invisible to the remote web page because the
-    // command was already acked as acknowledged (fire-and-forget by design).
+  try {
+    await chatStore
+      .getState()
+      .startTask(
+        nextTaskId,
+        undefined,
+        undefined,
+        undefined,
+        content,
+        [],
+        undefined,
+        projectId,
+        sessionMode,
+        {
+          preserveTaskId: true,
+          skipHistoryCreate: historyId != null,
+          historyId,
+        }
+      );
+  } catch (error: any) {
+    if (error && typeof error === 'object' && !error.code) {
+      error.code = 'BRIDGE_START_TASK_FAILED';
+    }
     console.error(
-      '[RemoteControlBridge][RC-TRACE] startTask FAILED after ack:',
+      '[RemoteControlBridge][RC-TRACE] startTask FAILED before ack:',
       { command_id: command.id, next_task_id: nextTaskId },
       error
     );
-  });
+    throw error;
+  }
 }
 
 function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
@@ -456,7 +463,6 @@ async function executeRemoteCommand(
 
   switch (command.type) {
     case 'user_message': {
-      assertDesktopOnTargetProject(command);
       const status = await requestBrain(
         command,
         token,
@@ -733,6 +739,11 @@ async function executeSpaceCommand(
     result: result || undefined,
   };
 }
+
+export const __remoteControlBridgeTestHooks = {
+  ensureRemoteProjectLoaded,
+  executeRemoteCommand,
+};
 
 export function useRemoteControlBridge(token: string | null | undefined) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
