@@ -62,6 +62,18 @@ import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
 const API_CODE_TRIAL_LIMIT = '22';
 const PROJECT_CONTEXT_MAX_CHARS = 24_000;
 const PROJECT_CONTEXT_MAX_RUNS = 8;
+// chat_history.summary is a bounded database column; an over-long value
+// makes the whole history update fail server-side, which also discards the
+// status change carried by the same request (a completed run then stays
+// "ongoing"). Clamp before sending; the full text still lives in the run's
+// end step.
+const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
+const clampHistorySummary = (
+  value: string | undefined | null
+): string | undefined =>
+  typeof value === 'string'
+    ? value.slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH)
+    : undefined;
 
 type ConfirmedUserPromptSources = {
   lastMessageContent?: unknown;
@@ -2543,8 +2555,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
                 project_name: projectName,
-                summary: agentMessages.data!.summary_task?.split('|')[1] || '',
-                status: 1,
+                summary: clampHistorySummary(
+                  agentMessages.data!.summary_task?.split('|')[1]
+                ),
                 tokens: getTokens(currentTaskId),
               };
               syncProjectDisplayName(project_id, projectName);
@@ -2953,8 +2966,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
                   project_name: projectName,
-                  summary: tasks[currentTaskId].summaryTask.split('|')[1],
-                  status: 1,
+                  summary: clampHistorySummary(
+                    tasks[currentTaskId].summaryTask.split('|')[1]
+                  ),
                   tokens: getTokens(currentTaskId),
                 };
                 syncProjectDisplayName(project_id, projectName);
@@ -3836,7 +3850,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const projectName = parts[0] || '';
                 const obj = {
                   project_name: projectName,
-                  summary: completionSummary,
+                  summary: clampHistorySummary(completionSummary),
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
