@@ -96,6 +96,15 @@
   "notifications-empty": "No notifications yet.",
   "notification-panel-dismiss": "Dismiss",
   "support": "Support",
+  "support-logs-heading": "Download logs",
+  "support-eigent-log": "Eigent log",
+  "support-eigent-log-desc": "Desktop app logs",
+  "support-camel-log": "Camel log",
+  "support-camel-log-desc": "Agent task logs (CAMEL backend)",
+  "support-download": "Download",
+  "support-log-saved": "Log saved to {{path}}",
+  "support-log-empty": "No log files found yet.",
+  "support-log-export-failed": "Could not export the log.",
   "log-file-empty": "Log file is empty",
   "new": "New",
   "new-project": "New Project",
@@ -514,5 +523,11 @@
   "onboarding-setup-bg-ruled": "Ruled",
   "onboarding-setup-bg-dotted": "Dotted",
   "onboarding-setup-bg-dashed": "Dashed",
-  "onboarding-setup-get-started": "Get Started"
+  "onboarding-setup-get-started": "Get Started",
+  "thinking-effort-label": "Thinking effort",
+  "thinking-effort-light": "Light",
+  "thinking-effort-medium": "Medium",
+  "thinking-effort-high": "High",
+  "thinking-effort-extra_high": "Extra High",
+  "thinking-effort-ultra": "Ultra"
 }

@@ -21,6 +21,7 @@ import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -167,8 +168,6 @@ function HeaderWin() {
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
-  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
-  const ipcRenderer = host?.ipcRenderer;
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -178,35 +177,6 @@ function HeaderWin() {
     const p = host.electronAPI.getPlatform();
     setPlatform(p);
   }, [host]);
-
-  useEffect(() => {
-    const ipc = ipcRenderer;
-    if (!ipc) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPackageUpdateAvailable(Boolean(info.update));
-    };
-
-    const onUpdateDownloaded = () => {
-      setPackageUpdateAvailable(false);
-    };
-
-    ipc.on('update-can-available', onUpdateCanAvailable);
-    ipc.on('update-downloaded', onUpdateDownloaded);
-    void ipc.invoke('check-update');
-
-    return () => {
-      ipc.off('update-can-available', onUpdateCanAvailable);
-      ipc.off('update-downloaded', onUpdateDownloaded);
-    };
-  }, [ipcRenderer]);
-
-  const handleStartDownload = useCallback(() => {
-    void ipcRenderer?.invoke('start-download');
-  }, [ipcRenderer]);
 
   const isHistoryRoute = useMemo(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -639,7 +609,9 @@ function HeaderWin() {
           platform === 'darwin' && 'px-1.5'
         } no-drag relative z-50 flex h-7 shrink-0 items-center`}
       >
-        <div className="flex h-full shrink-0 items-center">
+        <div className="flex h-full shrink-0 items-center gap-0.5">
+          {/* Update slot: hidden → background download progress → launch new version */}
+          <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"
@@ -741,25 +713,6 @@ function HeaderWin() {
                 </motion.div>
               )}
             </AnimatePresence>
-            {packageUpdateAvailable && (
-              <TooltipSimple
-                content={t('layout.update')}
-                side="bottom"
-                align="end"
-                variant="instant"
-              >
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  className="no-drag shrink-0 rounded-full px-3"
-                  onClick={handleStartDownload}
-                  aria-label={t('layout.update')}
-                >
-                  {t('layout.update')}
-                </Button>
-              </TooltipSimple>
-            )}
           </div>
         </div>
       </div>

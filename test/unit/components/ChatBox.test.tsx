@@ -28,7 +28,10 @@ import ChatBox from '../../../src/components/ChatBox/index';
 import { useAuthStore } from '../../../src/store/authStore';
 
 // Mock dependencies (use the same relative paths as the imports above)
-vi.mock('../../../src/store/authStore', () => ({ useAuthStore: vi.fn() }));
+vi.mock('../../../src/store/authStore', () => ({
+  useAuthStore: vi.fn(),
+  getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
+}));
 vi.mock('../../../src/api/http', () => ({
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
@@ -37,7 +40,10 @@ vi.mock('../../../src/api/http', () => ({
   proxyFetchDelete: vi.fn(),
 }));
 // Also mock the alias paths the component uses so the component picks up these mocks
-vi.mock('@/store/authStore', () => ({ useAuthStore: vi.fn() }));
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: vi.fn(),
+  getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
+}));
 vi.mock('@/api/http', () => ({
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
@@ -51,17 +57,41 @@ vi.mock('../../../src/lib', () => ({
 }));
 
 // Mock projectStore with proper vanilla store structure
-vi.mock('../../../src/store/projectStore', () => ({
-  useProjectStore: vi.fn(),
-}));
+vi.mock('../../../src/store/projectStore', () => {
+  const useProjectStore = vi.fn();
+  (useProjectStore as any).getState = vi.fn(() => ({
+    getAllChatStores: () => [],
+  }));
+  return { useProjectStore };
+});
+
+vi.mock('@/store/projectStore', () => {
+  const useProjectStore = vi.fn();
+  (useProjectStore as any).getState = vi.fn(() => ({
+    getAllChatStores: () => [],
+  }));
+  return { useProjectStore };
+});
 
 // Mock useChatStoreAdapter to provide both stores
 vi.mock('../../../src/hooks/useChatStoreAdapter', () => ({
   default: vi.fn(),
 }));
 
+vi.mock('@/hooks/useModelConfigCheck', () => ({
+  useModelConfigCheck: () => ({
+    hasModel: true,
+    isConfigLoaded: true,
+    cloudUsageLimitReached: false,
+  }),
+}));
+
 // Mock i18next for translations
 vi.mock('react-i18next', () => ({
+  initReactI18next: {
+    type: '3rdParty',
+    init: () => {},
+  },
   useTranslation: () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
@@ -242,7 +272,7 @@ describe('ChatBox Component', async () => {
       if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
       }
-      if (url === '/api/configs') {
+      if (url === '/api/v1/configs') {
         return Promise.resolve([
           { config_name: 'GOOGLE_API_KEY', value: 'test-key' },
           { config_name: 'SEARCH_ENGINE_ID', value: 'test-id' },
@@ -297,7 +327,7 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       await waitFor(() => {
-        expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/configs');
+        expect(mockProxyFetchGet).toHaveBeenCalledWith('/api/v1/configs');
       });
     });
   });
@@ -695,7 +725,7 @@ describe('ChatBox Component', async () => {
             items: [{ id: 'test-provider', name: 'Test' }],
           });
         }
-        if (url === '/api/configs') {
+        if (url === '/api/v1/configs') {
           return Promise.resolve([]); // No API keys
         }
         return Promise.resolve({});

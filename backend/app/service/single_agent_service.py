@@ -175,6 +175,8 @@ def _action_to_sse(item: ActionData) -> str | None:
         return sse_json("activate_agent", item.data)
     if item.action == Action.deactivate_agent:
         return sse_json("deactivate_agent", item.data)
+    if item.action == Action.request_usage:
+        return sse_json("request_usage", item.data)
     if item.action == Action.assign_task:
         return sse_json("assign_task", item.data)
     if item.action == Action.activate_toolkit:

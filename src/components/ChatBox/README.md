@@ -41,8 +41,7 @@ ChatBox/
     ├── index.tsx
     ├── InputBox.tsx
     ├── RichChatInput.tsx
-    ├── ChatInputModelDropdown.tsx
-    ├── BoxAction.tsx
+    ├── ModelSelect.tsx
     ├── BoxHeader.tsx
     └── QueuedBox.tsx
 ```
@@ -91,9 +90,8 @@ ChatBox/
 
 ## BottomBox (`BottomBox/`)
 
-- **`index.tsx`**: Wires `BoxHeader`, `InputBox` / `RichChatInput`, `BoxAction`, `QueuedBox` to task state (pending, running, confirm, etc.).
-- **`InputBox` / `RichChatInput` / `ChatInputModelDropdown`**: Text input, model picker, rich input where applicable.
-- **`BoxAction`**: Confirm, edit, send, stop, and related actions.
+- **`index.tsx`**: Wires `BoxHeader`, `InputBox` / `RichChatInput`, `QueuedBox` to task state (pending, running, confirm, etc.).
+- **`InputBox` / `RichChatInput` / `ModelSelect`**: Text input, model picker, rich input where applicable.
 - **`BoxHeader`**: Task summary, timing, and header affordances.
 - **`QueuedBox`**: Queued user messages when the task pipeline is busy.
 

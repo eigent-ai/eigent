@@ -19,8 +19,8 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { ArrowLeft, GalleryThumbnails } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface HeaderBoxProps {
@@ -40,14 +40,18 @@ export function HeaderBox({
   const { t } = useTranslation();
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const filePreviewOpen = usePageTabStore((s) => s.filePreviewOpen);
-  const toggleFilePreview = usePageTabStore((s) => s.toggleFilePreview);
+  const sessionPreviewOpen = usePageTabStore(
+    (s) => getSessionPreviewSlice(s).open
+  );
+  const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
     defaultValue: 'Back to workspace',
   });
-  const filePreviewTooltip = t('layout.toggle-file-preview-tooltip', {
-    defaultValue: 'Toggle file preview',
+  // Own key (not the old file-preview one): the control's meaning changed, so
+  // stale translations must not carry over.
+  const windowPreviewTooltip = t('layout.toggle-window-preview-tooltip', {
+    defaultValue: 'Toggle window preview',
   });
 
   if (empty) {
@@ -80,7 +84,7 @@ export function HeaderBox({
         </TooltipSimple>
       </div>
 
-      {/* Right: project total token count + file preview toggle */}
+      {/* Right: project total token count + unified preview toggle */}
       <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
@@ -89,22 +93,22 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        <TooltipSimple content={filePreviewTooltip} variant="instant">
+        <TooltipSimple content={windowPreviewTooltip} variant="instant">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={toggleFilePreview}
+            onClick={toggleSessionPreview}
             className={cn(
               'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
-              filePreviewOpen &&
+              sessionPreviewOpen &&
                 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
             )}
-            aria-label={filePreviewTooltip}
-            aria-pressed={filePreviewOpen}
+            aria-label={windowPreviewTooltip}
+            aria-pressed={sessionPreviewOpen}
           >
-            <FileText className="h-4 w-4" aria-hidden />
+            <GalleryThumbnails className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
       </div>

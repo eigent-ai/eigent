@@ -136,7 +136,13 @@ def add_agent(id: str, data: NewAgent):
     )
     logger.debug(
         "New agent data",
-        extra={"task_id": id, "agent_data": data.model_dump_json()},
+        extra={
+            "task_id": id,
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": data.custom_model_config is not None,
+        },
     )
     # Set user-specific environment path for this thread
     set_user_env_path(data.env_path)
