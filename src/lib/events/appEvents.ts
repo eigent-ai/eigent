@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export interface UserIdentity {
+  // This may include an email address so edition adapters can decide how to
+  // identify a signed-in user. The OSS build only keeps it in this bounded
+  // in-memory event buffer; it is not sent anywhere without an adapter.
   id?: string | number | null;
   email?: string | null;
   username?: string | null;
