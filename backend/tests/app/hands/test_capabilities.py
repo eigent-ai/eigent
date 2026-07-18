@@ -15,6 +15,7 @@
 import pytest
 
 from app.hands import capabilities
+from app.hands.environment_hands import EnvironmentHands
 
 
 @pytest.mark.unit
@@ -46,3 +47,22 @@ def test_has_terminal_shell_accepts_posix_sh(monkeypatch):
     monkeypatch.setattr(capabilities.shutil, "which", fake_which)
 
     assert capabilities._has_terminal_shell() is True
+
+
+@pytest.mark.unit
+def test_detect_capabilities_uses_terminal_shell_probe(monkeypatch):
+    monkeypatch.setattr(capabilities, "_is_running_in_docker", lambda: False)
+    monkeypatch.setattr(capabilities, "_probe_cdp_browser", lambda: False)
+    monkeypatch.setattr(capabilities, "_is_electron_runtime", lambda: False)
+    monkeypatch.setattr(
+        capabilities, "_can_launch_local_cdp_browser", lambda: False
+    )
+    monkeypatch.setattr(capabilities, "env", lambda _, default=None: default)
+    monkeypatch.setattr(capabilities.shutil, "which", lambda _: None)
+    monkeypatch.setattr(capabilities, "_has_terminal_shell", lambda: True)
+
+    caps = capabilities.detect_capabilities()
+    hands = EnvironmentHands(caps)
+
+    assert caps.has_terminal is True
+    assert hands.can_execute_terminal() is True
