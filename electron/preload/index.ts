@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
