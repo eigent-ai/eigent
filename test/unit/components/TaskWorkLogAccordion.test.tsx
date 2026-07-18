@@ -15,12 +15,13 @@
 import {
   buildAgentBlocks,
   getBlockHeaderParts,
+  getSingleAgentActiveForm,
   groupBlocksByAgent,
   type AgentBlock,
   type AgentGroup,
   type TimelineItem,
 } from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
-import { AgentStep, type AgentStepType } from '@/types/constants';
+import { AgentStep, TaskStatus, type AgentStepType } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
 
 type TaggedLog = Parameters<typeof buildAgentBlocks>[0][number];
@@ -50,6 +51,86 @@ function findMessage(items: TimelineItem[], idx: number) {
   const messages = items.filter((i) => i.kind === 'message');
   return messages[idx];
 }
+
+describe('getSingleAgentActiveForm', () => {
+  function taskWithAgents(
+    agents: Array<{
+      type: string;
+      tasks: Array<{ id: string; content: string; status: string }>;
+    }>
+  ): Parameters<typeof getSingleAgentActiveForm>[0] {
+    return {
+      taskAssigning: agents.map((agent, index) => ({
+        agent_id: `agent-${index}`,
+        name: agent.type,
+        type: agent.type,
+        tasks: agent.tasks,
+        log: [],
+      })) as Agent[],
+    };
+  }
+
+  it('uses the running single-agent todo content', () => {
+    const task = taskWithAgents([
+      {
+        type: 'single_agent',
+        tasks: [
+          {
+            id: 'todo-1',
+            content: 'Read the docs',
+            status: TaskStatus.COMPLETED,
+          },
+          {
+            id: 'todo-2',
+            content: 'Search for examples',
+            status: TaskStatus.RUNNING,
+          },
+        ],
+      },
+    ]);
+
+    expect(getSingleAgentActiveForm(task)).toBe('Search for examples');
+  });
+
+  it('falls back to the most recent completed single-agent todo', () => {
+    const task = taskWithAgents([
+      {
+        type: 'single_agent',
+        tasks: [
+          {
+            id: 'todo-1',
+            content: 'Read the docs',
+            status: TaskStatus.COMPLETED,
+          },
+          {
+            id: 'todo-2',
+            content: 'Summarize findings',
+            status: TaskStatus.COMPLETED,
+          },
+        ],
+      },
+    ]);
+
+    expect(getSingleAgentActiveForm(task)).toBe('Summarize findings');
+  });
+
+  it('ignores non single-agent groups', () => {
+    const task = taskWithAgents([
+      {
+        type: 'browser_agent',
+        tasks: [
+          {
+            id: 'task-1',
+            content: 'Browse',
+            status: TaskStatus.RUNNING,
+          },
+        ],
+      },
+    ]);
+
+    expect(getSingleAgentActiveForm(task)).toBe('');
+  });
+});
 
 describe('buildAgentBlocks', () => {
   it('starts a new block on ACTIVATE_AGENT and captures reasoning as the first message', () => {

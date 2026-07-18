@@ -14,6 +14,7 @@
 
 import { useHost } from '@/host';
 import {
+  RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
   hashSkillLabel,
   httpUrlOrNull,
@@ -21,6 +22,7 @@ import {
   tokenizeRichPlainText,
 } from '@/lib/richText';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Fragment, type ReactNode } from 'react';
 
 /** Same tokens as `UserMessageCard` body (13px / 20px). */
@@ -58,7 +60,13 @@ function parseContentWithTags(content: string): ContentNode[] {
   return nodes.length > 0 ? nodes : [{ type: 'text', value: content }];
 }
 
-function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
+function renderMessageRichSegments(
+  text: string,
+  keyPrefix: string,
+  /** When set, URL clicks open here (the session's preview browser) instead
+   *  of following the anchor out of the app. */
+  onOpenUrl?: (url: string) => void
+): ReactNode {
   return tokenizeRichPlainText(text).map((seg, i) => {
     const key = `${keyPrefix}-${i}`;
     if (seg.type === 'text') {
@@ -73,8 +81,14 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-ds-text-information-default-default decoration-ds-border-information-default-default underline underline-offset-2"
-            onClick={(e) => e.stopPropagation()}
+            className="text-ds-text-information-default-default underline decoration-ds-border-information-default-default underline-offset-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenUrl) {
+                e.preventDefault();
+                onOpenUrl(href);
+              }
+            }}
           >
             {seg.text}
           </a>
@@ -82,12 +96,25 @@ function renderMessageRichSegments(text: string, keyPrefix: string): ReactNode {
       }
       return <span key={key}>{seg.text}</span>;
     }
+    if (seg.type === 'connector') {
+      return (
+        <span
+          key={key}
+          className={cn(
+            'inline rounded px-0.5 align-baseline font-normal',
+            RICH_CONNECTOR_STYLE_CLASSES
+          )}
+        >
+          {seg.text}
+        </span>
+      );
+    }
     const clsIdx = hashSkillLabel(seg.text) % RICH_SKILL_STYLE_CLASSES.length;
     return (
       <span
         key={key}
         className={cn(
-          'rounded px-0.5 font-normal inline align-baseline',
+          'inline rounded px-0.5 align-baseline font-normal',
           RICH_SKILL_STYLE_CLASSES[clsIdx]
         )}
       >
@@ -115,12 +142,17 @@ export function UserMessageRichContent({
   className,
 }: UserMessageRichContentProps) {
   const host = useHost();
+  const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
   const contentNodes = parseContentWithTags(content);
 
   const handleOpenSkillFolder = (skillName: string) => {
     if (!isSafeSkillFolderName(skillName)) return;
     host?.electronAPI?.openSkillFolder?.(skillName);
   };
+
+  // Desktop: links open in this project's preview browser; on the web host
+  // (no embedded browser) the anchor's target=_blank fallback applies.
+  const handleOpenUrl = host?.electronAPI ? openBrowserPreview : undefined;
 
   const bodyClass =
     variant === 'card'
@@ -134,7 +166,7 @@ export function UserMessageRichContent({
           if (node.type === 'text') {
             return (
               <Fragment key={i}>
-                {renderMessageRichSegments(node.value, `n${i}`)}
+                {renderMessageRichSegments(node.value, `n${i}`, handleOpenUrl)}
               </Fragment>
             );
           }
@@ -151,7 +183,7 @@ export function UserMessageRichContent({
               }}
               title="Open skill folder"
               className={cn(
-                'mx-0 rounded px-0.5 font-normal inline cursor-pointer align-baseline [font:inherit] hover:opacity-90',
+                'mx-0 inline cursor-pointer rounded-lg px-1 align-baseline font-normal [font:inherit] hover:opacity-90',
                 RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >

@@ -83,6 +83,10 @@ class Chat(BaseModel):
     env_path: str | None = None
     summary_prompt: str = DEFAULT_SUMMARY_PROMPT
     new_agents: list["NewAgent"] = []
+    # Parameters forwarded with each inference request, such as temperature,
+    # top_p, or max_tokens. Constructor-only provider settings remain in
+    # extra_params for backward compatibility.
+    model_config_dict: dict[str, Any] | None = None
     # For provider-specific parameters like Azure
     extra_params: dict | None = None
     # User-specific search engine configurations
@@ -230,6 +234,7 @@ class AgentModelConfig(BaseModel):
     model_type: str | None = None
     api_key: str | None = None
     api_url: str | None = None
+    model_config_dict: dict[str, Any] | None = None
     extra_params: dict | None = None
 
     def has_custom_config(self) -> bool:
@@ -240,6 +245,7 @@ class AgentModelConfig(BaseModel):
                 self.model_type is not None,
                 self.api_key is not None,
                 self.api_url is not None,
+                self.model_config_dict is not None,
                 self.extra_params is not None,
             ]
         )

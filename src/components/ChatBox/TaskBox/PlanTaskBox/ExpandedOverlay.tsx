@@ -86,7 +86,7 @@ export function ExpandedOverlay({
       }}
     >
       <div className="flex w-full max-w-[600px] flex-col">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-splitting-subtle-default">
+        <div className="mx-2 flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-splitting-subtle-default">
           <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
             <div className="min-w-0 flex-1 text-body-sm font-bold text-ds-text-neutral-default-default">
               {t('chat.subtasks-planning')}
