@@ -514,6 +514,7 @@ function HeaderWin() {
               }
               side="bottom"
               align="center"
+              variant="instant"
             >
               <Button
                 variant="ghost"
@@ -615,6 +616,7 @@ function HeaderWin() {
             content={t('layout.support')}
             side="bottom"
             align="end"
+            variant="instant"
           >
             <Button
               type="button"
@@ -632,6 +634,7 @@ function HeaderWin() {
             content={t('layout.refer-friends')}
             side="bottom"
             align="end"
+            variant="instant"
           >
             <Button
               onClick={openInviteCodeDialog}
@@ -666,6 +669,7 @@ function HeaderWin() {
                     content={t('layout.settings')}
                     side="bottom"
                     align="end"
+                    variant="instant"
                   >
                     <Button
                       onClick={() => navigate('/history?tab=settings')}
@@ -692,6 +696,7 @@ function HeaderWin() {
                     content={t('layout.back', { defaultValue: 'Back' })}
                     side="bottom"
                     align="end"
+                    variant="instant"
                   >
                     <Button
                       type="button"

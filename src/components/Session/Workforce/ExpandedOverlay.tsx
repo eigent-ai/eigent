@@ -50,7 +50,7 @@ function WorkforceOverlayCanvas({
     return (
       <div className="flex h-full w-full flex-1 items-center justify-center">
         <div className="relative flex h-full w-full flex-col">
-          <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
+          <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
           <div className="relative z-10 h-full w-full">
             <Workflow taskAssigning={[]} />
           </div>
@@ -71,7 +71,7 @@ function WorkforceOverlayCanvas({
       {activeWorkSpace === 'workflow' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="inset-0 rounded-xl pointer-events-none absolute bg-transparent"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-transparent"></div>
             <div className="relative z-10 h-full w-full">
               <Workflow taskAssigning={activeTask.taskAssigning || []} />
             </div>
@@ -88,7 +88,7 @@ function WorkforceOverlayCanvas({
       {activeWorkSpace === 'documentWorkSpace' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -100,7 +100,7 @@ function WorkforceOverlayCanvas({
       )?.type === 'document_agent' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder
                 data={activeTask.taskAssigning?.find(
@@ -114,7 +114,7 @@ function WorkforceOverlayCanvas({
       {activeWorkSpace === 'inbox' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="backdrop-blur-sm inset-0 rounded-xl bg-ds-bg-neutral-default-default pointer-events-none absolute"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -172,7 +172,7 @@ export default function ExpandedOverlay({
       {open && (
         <motion.div
           key="workforce-expanded-overlay"
-          className="inset-0 backdrop-blur-sm bg-dialog-overlay-scrim fixed z-[200] flex items-stretch justify-stretch"
+          className="fixed inset-0 z-[200] flex items-stretch justify-stretch bg-dialog-overlay-scrim backdrop-blur-sm"
           style={{ padding: EDGE_PADDING_PX }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -182,11 +182,11 @@ export default function ExpandedOverlay({
           <button
             type="button"
             aria-label={backdropDismissLabel}
-            className="inset-0 absolute z-0 cursor-default bg-transparent"
+            className="absolute inset-0 z-0 cursor-default bg-transparent"
             onClick={onClose}
           />
           <motion.div
-            className="border-ds-border-neutral-inverse-default bg-ds-bg-neutral-muted-default min-h-0 min-w-0 rounded-2xl shadow-lg relative z-10 flex flex-1 flex-col overflow-hidden border border-solid"
+            className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-inverse-default bg-ds-bg-neutral-muted-default shadow-lg"
             role="dialog"
             aria-modal="true"
             aria-label={titleLabel}
@@ -196,16 +196,16 @@ export default function ExpandedOverlay({
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
           >
-            <div className="gap-2 p-2 relative z-50 flex w-full shrink-0 items-center justify-between">
-              <div className="min-w-0 gap-3 flex flex-1 items-center overflow-hidden">
-                <span className="text-ds-text-neutral-default-default px-1 text-body-md font-semibold shrink-0">
+            <div className="relative z-50 flex w-full shrink-0 items-center justify-between gap-2 p-2">
+              <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+                <span className="shrink-0 px-1 text-body-md font-semibold text-ds-text-neutral-default-default">
                   {titleLabel}
                 </span>
               </div>
-              <div className="gap-1 flex shrink-0 items-center">
+              <div className="flex shrink-0 items-center gap-1">
                 <TooltipSimple
                   content={backdropDismissLabel}
-                  delayDuration={300}
+                  variant="instant"
                   side="bottom"
                 >
                   <Button
@@ -223,7 +223,7 @@ export default function ExpandedOverlay({
                 </TooltipSimple>
               </div>
             </div>
-            <div className="min-h-0 min-w-0 w-full flex-1">
+            <div className="min-h-0 w-full min-w-0 flex-1">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`overlay-${workforcePanelKey}`}
@@ -231,7 +231,7 @@ export default function ExpandedOverlay({
                   animate={{ opacity: 1, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, filter: 'blur(4px)' }}
                   transition={{ duration: 0.2 }}
-                  className="min-w-0 h-full w-full"
+                  className="h-full w-full min-w-0"
                 >
                   <WorkforceOverlayCanvas selectedTurn={selectedTurn} />
                 </motion.div>
