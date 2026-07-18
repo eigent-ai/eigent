@@ -1572,6 +1572,34 @@ function registerIpcHandlers() {
     }
   );
 
+  // Persist a pasted file (e.g. a clipboard image) so it can join the
+  // path-based attachment flow; pasted File objects carry no filesystem path.
+  ipcMain.handle(
+    'save-pasted-file',
+    async (_event, fileName: string, data: ArrayBuffer) => {
+      try {
+        const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
+        await fsp.mkdir(pastedDir, { recursive: true });
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\..+/, '')
+          .replace('T', '-');
+        const safeName = (fileName || 'pasted-file').replace(
+          /[^\w.-]+/g,
+          '_'
+        );
+        const unique = crypto.randomUUID();
+        const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
+        await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
+        return { success: true, filePath, fileName: safeName };
+      } catch (error: any) {
+        log.error('Failed to save pasted file:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
   ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
       const stats = await fs.promises

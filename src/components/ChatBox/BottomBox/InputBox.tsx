@@ -19,7 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { processDroppedFiles } from '@/lib/fileUtils';
+import { processDroppedFiles, processPastedFiles } from '@/lib/fileUtils';
 import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
 import {
@@ -295,6 +295,24 @@ export const Inputbox = ({
     }
   };
 
+  const handlePasteFiles = async (pasted: File[]) => {
+    // Mirror the drag-and-drop gating: attachments are unavailable in
+    // privacy-off / cloud-model-in-dev states.
+    if (!privacy || useCloudModelInDev) return;
+    try {
+      const result = await processPastedFiles(pasted, files);
+      if (result.success) {
+        onFilesChange?.(result.files);
+        toast.success(`Added ${result.added} file(s)`);
+      } else {
+        toast.error(result.error);
+      }
+    } catch (error) {
+      console.error('[Paste] Error:', error);
+      toast.error('Failed to process pasted files');
+    }
+  };
+
   // Determine remaining files count (show max 5 files + count tag)
   const maxVisibleFiles = 5;
   const visibleFiles = files.slice(0, maxVisibleFiles);
@@ -465,6 +483,7 @@ export const Inputbox = ({
           onCompositionEnd={() => setIsComposing(false)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          onPasteFiles={handlePasteFiles}
           disabled={disabled}
           placeholder={placeholder}
           placeholders={placeholders}

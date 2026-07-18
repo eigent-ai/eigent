@@ -47,6 +47,15 @@ interface ElectronAPI {
     error?: string;
   }>;
   getPathForFile: (file: File) => string;
+  savePastedFile: (
+    fileName: string,
+    data: ArrayBuffer
+  ) => Promise<{
+    success: boolean;
+    filePath?: string;
+    fileName?: string;
+    error?: string;
+  }>;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;

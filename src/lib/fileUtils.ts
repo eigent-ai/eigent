@@ -121,3 +121,66 @@ export async function processDroppedFiles(
 
   return { success: true, files: mergedFiles, added: result.files.length };
 }
+
+/**
+ * Process files pasted from the clipboard (e.g. screenshots). Pasted File
+ * objects carry no filesystem path, so on desktop the bytes are persisted
+ * through IPC first; on web they upload like dropped files.
+ */
+export async function processPastedFiles(
+  pastedFiles: globalThis.File[],
+  existingFiles: FileAttachment[],
+  host?: AppHost | null
+): Promise<
+  | { success: true; files: FileAttachment[]; added: number }
+  | { success: false; error: string }
+> {
+  if (isWeb()) {
+    return processDroppedFiles(pastedFiles, existingFiles, host);
+  }
+
+  const electronAPI = host?.electronAPI ?? createHost().electronAPI;
+  if (!electronAPI?.savePastedFile) {
+    return {
+      success: false,
+      error: 'Desktop file access is unavailable.',
+    };
+  }
+
+  const savedFiles: FileAttachment[] = [];
+  for (const pastedFile of pastedFiles) {
+    try {
+      const data = await pastedFile.arrayBuffer();
+      const fileName =
+        pastedFile.name && pastedFile.name !== 'image.png'
+          ? pastedFile.name
+          : `pasted-image.${(pastedFile.type.split('/')[1] || 'png').replace(/[^\w]/g, '')}`;
+      const result = await electronAPI.savePastedFile(fileName, data);
+      if (result.success && result.filePath) {
+        savedFiles.push({
+          fileName: result.fileName || fileName,
+          filePath: result.filePath,
+          source: 'local',
+        });
+      } else {
+        console.error('[Paste] Save failed:', fileName, result.error);
+      }
+    } catch (error) {
+      console.error('[Paste] Failed to persist pasted file:', error);
+    }
+  }
+
+  if (savedFiles.length === 0) {
+    return { success: false, error: 'Failed to save pasted file.' };
+  }
+
+  const mergedFiles = [
+    ...existingFiles,
+    ...savedFiles.filter(
+      (saved) =>
+        !existingFiles.find((existing) => existing.filePath === saved.filePath)
+    ),
+  ];
+
+  return { success: true, files: mergedFiles, added: savedFiles.length };
+}
