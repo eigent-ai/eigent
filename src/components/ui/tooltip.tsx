@@ -25,6 +25,8 @@ const TOOLTIP_DELAY_MS = 300;
 /** Delay skipped when moving between tooltip triggers (Radix default is 300ms). */
 const TOOLTIP_SKIP_DELAY_MS = 300;
 
+const TooltipProviderPresenceContext = React.createContext(false);
+
 /**
  * The app mounts a single provider (see main.tsx) so the "warm cursor"
  * skip-delay window is shared across every tooltip. Don't nest providers
@@ -33,13 +35,18 @@ const TOOLTIP_SKIP_DELAY_MS = 300;
 const TooltipProvider = ({
   delayDuration = TOOLTIP_DELAY_MS,
   skipDelayDuration = TOOLTIP_SKIP_DELAY_MS,
+  children,
   ...props
 }: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
-  <TooltipPrimitive.Provider
-    delayDuration={delayDuration}
-    skipDelayDuration={skipDelayDuration}
-    {...props}
-  />
+  <TooltipProviderPresenceContext.Provider value>
+    <TooltipPrimitive.Provider
+      delayDuration={delayDuration}
+      skipDelayDuration={skipDelayDuration}
+      {...props}
+    >
+      {children}
+    </TooltipPrimitive.Provider>
+  </TooltipProviderPresenceContext.Provider>
 );
 
 const Tooltip = TooltipPrimitive.Root;
@@ -133,7 +140,8 @@ const TooltipSimple = React.forwardRef<
     },
     ref
   ) => {
-    return (
+    const hasTooltipProvider = React.useContext(TooltipProviderPresenceContext);
+    const tooltip = (
       <Tooltip
         delayDuration={delayDuration ?? (variant === 'instant' ? 0 : undefined)}
       >
@@ -151,6 +159,12 @@ const TooltipSimple = React.forwardRef<
           </TooltipContent>
         )}
       </Tooltip>
+    );
+
+    return hasTooltipProvider ? (
+      tooltip
+    ) : (
+      <TooltipProvider>{tooltip}</TooltipProvider>
     );
   }
 );
