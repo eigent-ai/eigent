@@ -1585,10 +1585,7 @@ function registerIpcHandlers() {
           .replace(/[-:]/g, '')
           .replace(/\..+/, '')
           .replace('T', '-');
-        const safeName = (fileName || 'pasted-file').replace(
-          /[^\w.-]+/g,
-          '_'
-        );
+        const safeName = (fileName || 'pasted-file').replace(/[^\w.-]+/g, '_');
         const unique = crypto.randomUUID();
         const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
         await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
@@ -1708,9 +1705,14 @@ function registerIpcHandlers() {
   // ==================== IDE integration handler ====================
   ipcMain.handle(
     'get-project-folder-path',
-    async (_event, email: string, projectId: string) => {
+    async (
+      _event,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      const result = manager.createProjectStructure(email, projectId);
+      const result = manager.createProjectStructure(email, projectId, userId);
       return result.path;
     }
   );
@@ -2058,9 +2060,14 @@ function registerIpcHandlers() {
   // New project management handlers
   ipcMain.handle(
     'create-project-structure',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.createProjectStructure(email, projectId);
+      return manager.createProjectStructure(email, projectId, userId);
     }
   );
 
@@ -2087,9 +2094,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-project-file-list',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getProjectFileList(email, projectId);
+      return manager.getProjectFileList(email, projectId, userId);
     }
   );
 

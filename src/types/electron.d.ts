@@ -206,7 +206,11 @@ interface ElectronAPI {
   codexSubscriptionDisconnect: (
     email: string
   ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
-  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => Promise<string>;
   openInIDE: (
     folderPath: string,
     ide: string

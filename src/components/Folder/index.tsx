@@ -1206,7 +1206,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       try {
         const folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId as string
+          projectStore.activeProjectId as string,
+          authStore.user_id
         );
         if (!cancelled) setWorkingFolderPath(folderPath || null);
       } catch {
@@ -1277,7 +1278,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           const localFiles = await ipcRenderer.invoke(
             'get-project-file-list',
             authStore.email,
-            primaryProjectId
+            primaryProjectId,
+            authStore.user_id
           );
           if (cancelled || signal?.aborted) return false;
           if (Array.isArray(localFiles)) {
@@ -1561,7 +1563,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       ) {
         folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId
+          projectStore.activeProjectId,
+          authStore.user_id
         );
       }
       if (!folderPath) return;

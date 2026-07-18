@@ -28,6 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
+from app.utils.workspace_paths import runtime_owner_key
 from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
@@ -151,51 +152,37 @@ async def upload_file(
     }
 
 
-def _sanitize_email(email: str) -> str:
-    """Sanitize email for use in path (match chat_controller logic)."""
-    return re.sub(r'[\\/*?:"<>|\s]', "_", email.split("@")[0]).strip(".")
-
-
 def _normalize_relative_path(path: str) -> str:
     """Normalize relative path to URL-safe POSIX style."""
     return path.replace("\\", "/")
 
 
-def _get_project_root(email: str, project_id: str) -> Path:
-    """Get project root path: ~/eigent/{email}/project_{project_id}/."""
-    root = _get_eigent_root()
-    email_sanitized = _sanitize_email(email)
-    return root / email_sanitized / f"project_{project_id}"
+def _get_project_root(
+    email: str, project_id: str, user_id: str | int | None = None
+) -> Path:
+    """Get project root path under the canonical user_id or legacy email key."""
+    return (
+        _get_eigent_root()
+        / runtime_owner_key(email, user_id)
+        / f"project_{project_id}"
+    )
 
 
-def _resolve_project_root(email: str, project_id: str) -> Path:
+def _resolve_project_root(
+    email: str, project_id: str, user_id: str | int | None = None
+) -> Path:
     """
-    Resolve project root, preferring the email-scoped path but falling back to
-    any local project_{project_id} directory when the stored email differs from
-    the current login identity.
+    Resolve project root, preferring the canonical user_id-scoped path when
+    available, then legacy email-scoped storage.
     """
-    preferred = _get_project_root(email, project_id)
+    preferred = _get_project_root(email, project_id, user_id)
     if preferred.exists():
         return preferred
 
-    root = _get_eigent_root()
-    candidate_name = f"project_{project_id}"
-    try:
-        for child in root.iterdir():
-            if not child.is_dir():
-                continue
-            candidate = child / candidate_name
-            if candidate.exists():
-                file_logger.info(
-                    "Resolved project root via fallback lookup: %s -> %s",
-                    preferred,
-                    candidate,
-                )
-                return candidate
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        file_logger.warning("project root fallback lookup failed: %s", e)
+    if user_id is not None and str(user_id).strip():
+        legacy_preferred = _get_project_root(email, project_id)
+        if legacy_preferred.exists():
+            return legacy_preferred
 
     return preferred
 
@@ -216,7 +203,7 @@ def _resolve_file_root(
         )
         if space_root is not None:
             return space_root
-    return _resolve_project_root(email, project_id)
+    return _resolve_project_root(email, project_id, user_id)
 
 
 @router.get("/files")
