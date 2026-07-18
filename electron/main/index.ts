@@ -1073,16 +1073,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendStartPromise || backendPort || isPythonProcessRunning()) {
-        const result = await restartBackendService();
-        if (result.success) {
-          log.info('Backend restart completed successfully');
-        }
-        return result;
+      const result = await restartBackendService();
+      if (result.success) {
+        log.info('Backend restart completed successfully');
       }
-
-      log.warn('No backend port found, starting fresh backend');
-      return await checkAndStartBackend();
+      return result;
     } catch (error) {
       log.error('Failed to restart backend:', error);
       return { success: false, error: formatErrorMessage(error) };
@@ -3466,15 +3461,18 @@ app.on('window-all-closed', () => {
 });
 
 // ==================== app activate event ====================
-app.on('activate', () => {
+app.on('activate', async () => {
   const allWindows = BrowserWindow.getAllWindows();
   log.info('activate', allWindows.length);
 
   if (allWindows.length) {
     allWindows[0].focus();
   } else {
-    cleanupPythonProcess();
-    createWindow();
+    const result = await restartBackendService();
+    if (!result.success) {
+      log.warn('Backend restart during app activation failed:', result.error);
+    }
+    await createWindow();
   }
 });
 
