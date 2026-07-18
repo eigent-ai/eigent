@@ -117,6 +117,35 @@ def _get_merged_skill_config(
     return config
 
 
+def _normalize_agent_name(agent_name: str | None) -> str | None:
+    """Canonicalize agent names for skill scope matching.
+
+    Backend Single Agent uses Agents.single_agent == "single_agent". Accept
+    legacy aliases so Skills UI bindings stay effective.
+    """
+    if agent_name is None:
+        return None
+    cleaned = str(agent_name).strip()
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if lowered == "single_agent" or lowered == "agents.single_agent":
+        return "single_agent"
+    return cleaned
+
+
+def _agent_in_list(agent_name: str | None, agents: list) -> bool:
+    normalized = _normalize_agent_name(agent_name)
+    if not normalized:
+        return False
+    selected = {
+        _normalize_agent_name(str(item))
+        for item in agents
+        if _normalize_agent_name(str(item))
+    }
+    return normalized in selected
+
+
 def _is_skill_enabled(
     skill_name: str, config: dict[str, SkillEntryConfig]
 ) -> bool:
@@ -167,7 +196,7 @@ def _is_agent_allowed(
             )
             return False
 
-        return agent_name in selected_agents
+        return _agent_in_list(agent_name, selected_agents)
 
     allowed_agents = skill_config.get("agents", [])
 
@@ -182,7 +211,7 @@ def _is_agent_allowed(
         )
         return False
 
-    return agent_name in allowed_agents
+    return _agent_in_list(agent_name, allowed_agents)
 
 
 def _build_allowed_skills(

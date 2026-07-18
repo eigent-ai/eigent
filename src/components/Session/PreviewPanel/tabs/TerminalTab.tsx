@@ -14,33 +14,25 @@
 
 import { useTranslation } from 'react-i18next';
 
-interface BoxActionProps {
-  /** Task status for determining what button to show */
-  status?: 'running' | 'finished' | 'pending' | 'pause';
-  /** Task time display */
-  taskTime?: string;
-  /** Callback for pause/resume */
-  onPauseResume?: () => void;
-  /** Loading state for pause/resume */
-  pauseResumeLoading?: boolean;
-  className?: string;
-}
-
-export function BoxAction({
-  status: _status,
-  taskTime: _taskTime,
-  onPauseResume: _onPauseResume,
-  pauseResumeLoading: _pauseResumeLoading = false,
-  className,
-}: BoxActionProps) {
+/**
+ * Terminal surface. Rendered as a terminal-styled placeholder for now; the
+ * container and tab type are in place so a live PTY / agent terminal (the
+ * existing xterm `Terminal` component) can be dropped in later.
+ */
+export function TerminalTab() {
   const { t } = useTranslation();
-
   return (
-    <div
-      className={`z-50 flex items-center justify-between gap-sm pl-4 ${className || ''}`}
-    >
-      {/* Placeholder for future actions */}
-      <div></div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
+      <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-body-sm text-ds-text-neutral-muted-default">
+        <div className="text-ds-text-neutral-default-default">Eigent:~$</div>
+        <div className="mt-1 opacity-70">
+          {t('layout.preview-terminal-placeholder', {
+            defaultValue: 'Terminal output will appear here.',
+          })}
+        </div>
+      </div>
     </div>
   );
 }
+
+export default TerminalTab;

@@ -64,7 +64,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
-import { createDiagnosticsZip, zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -93,6 +93,18 @@ let backendPort: number = 5001;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+
+const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
+
+const isHttpOrHttpsUrl = (url: unknown): url is string => {
+  if (typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -1132,6 +1144,55 @@ function registerIpcHandlers() {
     }
   });
 
+  // Camel (backend) logs live per task at
+  // ~/.eigent/<identity>/[project_<id>/]task_<taskId>/camel_logs.
+  // Targets the task the user last ran when provided; otherwise exports all.
+  ipcMain.handle(
+    'export-camel-log',
+    async (
+      _event,
+      email: string,
+      taskId?: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      try {
+        if (typeof email !== 'string' || !email) {
+          return { success: false, error: 'Missing email' };
+        }
+
+        const manager = checkManagerInstance(fileReader, 'FileReader');
+        const camelLogEntries = manager.getCamelLogEntries(
+          email,
+          taskId,
+          projectId,
+          userId
+        );
+        if (camelLogEntries.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const defaultFileName = `eigent-camel-logs-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save Camel logs',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await zipDirectories(filePath, camelLogEntries);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-camel-log failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
   ipcMain.handle('get-diagnostics-info', async () => {
     return {
       version: app.getVersion(),
@@ -1218,6 +1279,18 @@ function registerIpcHandlers() {
     try {
       if (typeof url !== 'string' || !url.startsWith('mailto:')) {
         return { success: false, error: 'Invalid mailto URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    try {
+      if (!isHttpOrHttpsUrl(url)) {
+        return { success: false, error: 'Invalid external URL' };
       }
       await shell.openExternal(url);
       return { success: true };
@@ -1495,6 +1568,34 @@ function registerIpcHandlers() {
           success: false,
           error: error.message,
         };
+      }
+    }
+  );
+
+  // Persist a pasted file (e.g. a clipboard image) so it can join the
+  // path-based attachment flow; pasted File objects carry no filesystem path.
+  ipcMain.handle(
+    'save-pasted-file',
+    async (_event, fileName: string, data: ArrayBuffer) => {
+      try {
+        const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
+        await fsp.mkdir(pastedDir, { recursive: true });
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\..+/, '')
+          .replace('T', '-');
+        const safeName = (fileName || 'pasted-file').replace(
+          /[^\w.-]+/g,
+          '_'
+        );
+        const unique = crypto.randomUUID();
+        const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
+        await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
+        return { success: true, filePath, fileName: safeName };
+      } catch (error: any) {
+        log.error('Failed to save pasted file:', error);
+        return { success: false, error: error.message };
       }
     }
   );
@@ -2377,6 +2478,55 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
+
+    if (
+      params.partition !== PREVIEW_WEBVIEW_PARTITION ||
+      !isHttpOrHttpsUrl(params.src)
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
+  win.webContents.on('did-attach-webview', (_event, contents) => {
+    const preventUnsafeNavigation = (
+      event: Electron.Event,
+      navigationUrl: string
+    ) => {
+      if (!isHttpOrHttpsUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    };
+    const guestNavigationEvents = contents as unknown as {
+      on: (
+        eventName: string,
+        listener: (event: Electron.Event, navigationUrl: string) => void
+      ) => void;
+    };
+
+    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isHttpOrHttpsUrl(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
   });
 
   if (process.platform === 'darwin') {

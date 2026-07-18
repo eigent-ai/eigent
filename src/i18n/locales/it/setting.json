@@ -300,6 +300,9 @@
   "api-key-setting": "Impostazione chiave API",
   "api-host-setting": "Impostazione host API",
   "model-type-setting": "Impostazione tipo di modello",
+  "model-parameters-setting": "Parametri del modello (JSON, facoltativo)",
+  "model-parameters-placeholder": "Inserisci i parametri del modello come oggetto JSON, ad es. {\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}",
+  "model-parameters-must-be-valid-json-object": "I parametri del modello devono essere un oggetto JSON valido.",
   "please-select": "Seleziona",
   "configuring": "Configurazione in corso...",
 
