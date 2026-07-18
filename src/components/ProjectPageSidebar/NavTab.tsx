@@ -73,12 +73,7 @@ export function NavTabReconnectSuffix({
   const { t } = useTranslation();
   const reconnectLabel = t('layout.triggers-reconnect-hint');
   return (
-    <TooltipSimple
-      content={reconnectLabel}
-      side="top"
-      sideOffset={8}
-      delayDuration={300}
-    >
+    <TooltipSimple content={reconnectLabel} side="top" sideOffset={8}>
       <button
         type="button"
         className={cn(
@@ -305,6 +300,7 @@ export function NavTab({
       side="right"
       align="center"
       enabled={tooltipEnabled}
+      variant="instant"
       className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
     >
       <button
