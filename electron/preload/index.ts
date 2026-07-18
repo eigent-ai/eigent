@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
@@ -76,10 +78,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('export-camel-log', email, taskId, projectId, userId),
   getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
   exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
     ipcRenderer.invoke('export-diagnostics-zip', payload),
   openMailto: (url: string) => ipcRenderer.invoke('open-mailto', url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp

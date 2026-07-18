@@ -22,6 +22,8 @@ import path from 'path';
 import * as unzipper from 'unzipper';
 import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
+import { normalizeLegacySandboxPath } from './utils/filePath';
+import { findDirectoriesByName } from './utils/log';
 
 interface FileInfo {
   path: string;
@@ -474,6 +476,8 @@ export class FileReader {
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
+        filePath = normalizeLegacySandboxPath(filePath);
+
         // check if it is a remote file
         if (!this.isLocalFile(filePath)) {
           console.log('detect remote file, start downloading:', filePath);
@@ -817,6 +821,56 @@ export class FileReader {
       console.error('Load file failed:', err);
       return [];
     }
+  }
+
+  /**
+   * Resolves the `camel_logs` directories to export as `{ src, destName }`
+   * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
+   *
+   * Prefers the specific task the user last ran (via {@link resolveTaskPaths},
+   * the same resolution `get-file-list` uses). Falls back to every `camel_logs`
+   * folder under the user's identity roots when no task is supplied or its
+   * folder is missing.
+   */
+  public getCamelLogEntries(
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): { src: string; destName: string }[] {
+    const userHome = app.getPath('home');
+    const eigentRoot = path.join(userHome, '.eigent');
+    const toEntry = (dir: string) => ({
+      src: dir,
+      destName: path.relative(eigentRoot, dir) || path.basename(dir),
+    });
+
+    if (taskId) {
+      const { logPath } = this.resolveTaskPaths(
+        email,
+        taskId,
+        projectId,
+        userId
+      );
+      const camelLogPath = path.join(logPath, 'camel_logs');
+      if (fs.existsSync(camelLogPath)) {
+        return [toEntry(camelLogPath)];
+      }
+      return [];
+    }
+
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const seen = new Set<string>();
+    const entries: { src: string; destName: string }[] = [];
+    for (const identity of identities) {
+      const identityRoot = path.join(eigentRoot, identity);
+      for (const dir of findDirectoriesByName(identityRoot, 'camel_logs', 4)) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        entries.push(toEntry(dir));
+      }
+    }
+    return entries;
   }
 
   public deleteTaskFiles(
