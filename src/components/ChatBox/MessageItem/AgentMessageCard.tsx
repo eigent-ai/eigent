@@ -12,7 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useHost } from '@/host';
+import { fileInfoFromPath } from '@/lib/fileInfo';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -49,8 +50,7 @@ export function AgentMessageCard({
   attaches,
   deferredFooter,
 }: AgentMessageCardProps) {
-  const host = useHost();
-  const ipcRenderer = host?.ipcRenderer;
+  const openFilePreview = usePageTabStore((s) => s.openFilePreview);
   const [markdownAndTypingComplete, setMarkdownAndTypingComplete] = useState(
     () => completedTypewriterByMessageId.has(id)
   );
@@ -129,7 +129,9 @@ export function AgentMessageCard({
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  ipcRenderer?.invoke('reveal-in-folder', file.filePath);
+                  openFilePreview(
+                    fileInfoFromPath(file.filePath, file.fileName)
+                  );
                 }}
                 key={'attache-' + file.fileName}
                 className="gap-2 rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2 flex w-full cursor-pointer items-center border border-solid"

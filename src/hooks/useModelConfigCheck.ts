@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import { createHost } from '@/host/createHost';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
 import { useCallback, useEffect, useState } from 'react';
@@ -78,6 +79,13 @@ export function useModelConfigCheck(): {
             console.error('Failed to check cloud usage limit:', err);
           }
         }
+      } else if (modelType === 'codex_subscription') {
+        setCloudUsageLimitReached(false);
+        const { email } = getAuthStore();
+        const status = email
+          ? await createHost().electronAPI?.codexSubscriptionStatus?.(email)
+          : null;
+        setHasModelConfigured(Boolean(status?.connected));
       } else if (modelType === 'local' || modelType === 'custom') {
         setCloudUsageLimitReached(false);
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });

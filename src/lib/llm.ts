@@ -12,7 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isDesktop } from '@/client/platform';
 import { Provider } from '@/types';
+
+const CODEX_SUBSCRIPTION_PROVIDER: Provider = {
+  id: 'codex-subscription',
+  name: 'Codex Subscription',
+  apiKey: '',
+  apiHost: '',
+  authMode: 'oauth_subscription',
+  authProviderKey: 'codex',
+  description: 'Codex subscription model configuration.',
+  is_valid: false,
+  model_type: '',
+};
 
 export const INIT_PROVODERS: Provider[] = [
   {
@@ -33,6 +46,7 @@ export const INIT_PROVODERS: Provider[] = [
     is_valid: false,
     model_type: '',
   },
+  ...(isDesktop() ? [CODEX_SUBSCRIPTION_PROVIDER] : []),
   {
     id: 'anthropic',
     name: 'Anthropic',

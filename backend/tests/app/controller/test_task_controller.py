@@ -25,7 +25,7 @@ from app.controller.task_controller import (
     start,
     take_control,
 )
-from app.model.chat import NewAgent, TaskContent, UpdateData
+from app.model.chat import AgentModelConfig, NewAgent, TaskContent, UpdateData
 from app.service.task import Action
 
 
@@ -126,6 +126,11 @@ class TestTaskController:
             tools=["search", "code"],
             mcp_tools=None,
             env_path=".env",
+            custom_model_config=AgentModelConfig(
+                model_platform="aws-bedrock-converse",
+                api_key="super-secret-api-key",
+                extra_params={"aws_secret_access_key": "super-secret-aws-key"},
+            ),
         )
 
         with (
@@ -137,12 +142,26 @@ class TestTaskController:
             patch(
                 "app.controller.task_controller._queue_action_from_worker"
             ) as mock_queue_action,
+            patch("app.controller.task_controller.logger") as mock_logger,
         ):
             response = add_agent(task_id, new_agent)
 
             assert isinstance(response, Response)
             assert response.status_code == 204
             mock_queue_action.assert_called_once()
+            mock_logger.debug.assert_called_once_with(
+                "New agent data",
+                extra={
+                    "task_id": task_id,
+                    "agent_name": "Test Agent",
+                    "tools": ["search", "code"],
+                    "has_mcp_tools": False,
+                    "has_custom_model_config": True,
+                },
+            )
+            logged_calls = repr(mock_logger.mock_calls)
+            assert "super-secret-api-key" not in logged_calls
+            assert "super-secret-aws-key" not in logged_calls
 
     def test_start_task_nonexistent_task(self):
         """Test start task with nonexistent task ID."""

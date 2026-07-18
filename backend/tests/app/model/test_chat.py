@@ -13,9 +13,11 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 """Unit tests for Chat and AgentModelConfig model configuration."""
 
+import json
 from pathlib import Path
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.service import skill_config_service
 
 
 class TestAgentModelConfig:
@@ -28,6 +30,7 @@ class TestAgentModelConfig:
         assert config.model_type is None
         assert config.api_key is None
         assert config.api_url is None
+        assert config.model_config_dict is None
         assert config.extra_params is None
 
     def test_agent_model_config_creation_with_values(self):
@@ -37,13 +40,18 @@ class TestAgentModelConfig:
             model_type="gpt-4",
             api_key="test-key",
             api_url="https://api.openai.com/v1",
-            extra_params={"temperature": 0.7},
+            model_config_dict={"temperature": 0.7, "stream": False},
+            extra_params={"api_version": "2025-01-01"},
         )
         assert config.model_platform == "openai"
         assert config.model_type == "gpt-4"
         assert config.api_key == "test-key"
         assert config.api_url == "https://api.openai.com/v1"
-        assert config.extra_params == {"temperature": 0.7}
+        assert config.model_config_dict == {
+            "temperature": 0.7,
+            "stream": False,
+        }
+        assert config.extra_params == {"api_version": "2025-01-01"}
 
     def test_has_custom_config_false_when_empty(self):
         """Test has_custom_config returns False for empty config."""
@@ -71,6 +79,36 @@ class TestAgentModelConfig:
         """Test has_custom_config returns True with only api_key."""
         config = AgentModelConfig(api_key="some-key")
         assert config.has_custom_config() is True
+
+    def test_has_custom_config_true_with_only_model_config_dict(self):
+        config = AgentModelConfig(model_config_dict={"temperature": 0.2})
+
+        assert config.has_custom_config() is True
+
+
+class TestChatModelConfig:
+    def test_chat_accepts_and_serializes_model_config_dict(
+        self, sample_chat_data
+    ):
+        chat = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {
+                    "temperature": 0.2,
+                    "top_p": 0.9,
+                    "response_format": {"type": "json_object"},
+                },
+            }
+        )
+
+        assert chat.model_config_dict == {
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "response_format": {"type": "json_object"},
+        }
+        assert chat.model_dump()["model_config_dict"] == (
+            chat.model_config_dict
+        )
 
 
 class TestNewAgentWithModelConfig:
@@ -158,6 +196,38 @@ class TestModelPlatformMapping:
         """Test AgentModelConfig also maps grok alias for per-agent overrides."""
         config = AgentModelConfig(model_platform="grok")
         assert config.model_platform == "openai-compatible-model"
+
+
+class TestChatSkillConfigUserId:
+    """Tests for Chat skills config owner-key derivation."""
+
+    def test_skill_config_user_id_prefers_canonical_user_dir(
+        self, tmp_path, monkeypatch
+    ):
+        eigent_root = tmp_path / ".eigent"
+        legacy_dir = eigent_root / "alice"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "skills-config.json").write_text(
+            json.dumps({"version": 1, "skills": {"pdf": {"enabled": False}}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(skill_config_service, "EIGENT_ROOT", eigent_root)
+
+        chat = Chat(
+            task_id="task-1",
+            project_id="project-1",
+            question="test question",
+            email="alice@example.com",
+            user_id=42,
+            model_platform="openai",
+            model_type="gpt-4o",
+            api_key="test-key",
+            api_url="https://api.example.com/v1",
+        )
+
+        assert chat.skill_config_user_id() == "user_42"
+        assert not (legacy_dir / "skills-config.json").exists()
+        assert (eigent_root / "user_42" / "skills-config.json").exists()
 
     def test_agent_model_config_maps_nebius_alias(self):
         """Test AgentModelConfig also maps Nebius alias."""

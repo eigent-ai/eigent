@@ -49,6 +49,17 @@ class ObservableTodoToolkit(TodoToolkit, AbstractToolkit):
         self.agent_id = agent_id
 
     def todo_write(self, todos: list[TodoItem]) -> str:
+        """Create or update the current task todo list.
+
+        Use this tool to track task progress with concise todo items. Each
+        todo should include content, active_form, and status fields.
+
+        Args:
+            todos (list[TodoItem]): The full ordered todo list to store.
+
+        Returns:
+            str: A message indicating whether the todo list was updated.
+        """
         result = super().todo_write(todos)
         if not result.startswith("[ERROR]"):
             self.emit_todo_state()

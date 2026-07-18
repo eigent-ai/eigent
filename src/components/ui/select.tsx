@@ -117,8 +117,11 @@ const SelectTrigger = React.forwardRef<
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default surface (when no error/success)
             !state && variantTriggerBase[variant],
-            // Interactive states (only when no error/success state)
-            state !== 'error' &&
+            // Interactive states (only when enabled and no error/success state).
+            // Disabled triggers still match :hover, so the hover/focus classes
+            // must be withheld or the disabled select keeps reacting to hover.
+            !disabled &&
+              state !== 'error' &&
               state !== 'success' &&
               variantTriggerInteractive[variant],
             // Validation states (override defaults)

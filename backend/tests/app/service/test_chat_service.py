@@ -12,13 +12,15 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
-from app.model.chat import Chat, NewAgent
+from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.service.chat_service import (
     _extract_stream_chunk_content,
     _render_subtask_report,
@@ -63,6 +65,12 @@ class _StreamChunk:
 
     def __str__(self):
         return "msgs=[BaseMessage(role_name='System', reasoning_content='We')]"
+
+
+class _AgentStepResponse:
+    def __init__(self, content: str):
+        self.msg = None
+        self.msgs = [MagicMock(content=content)]
 
 
 @pytest.mark.unit
@@ -945,6 +953,54 @@ class TestChatServiceAgentOperations:
         )
         mock_camel_agent.step.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_summary_task_sync_step_does_not_block_event_loop(self):
+        """Synchronous model steps should not freeze other async work."""
+        agent = MagicMock()
+
+        def slow_step(_prompt: str):
+            time.sleep(0.12)
+            return _AgentStepResponse(
+                "Blocking Step|The blocking step completed"
+            )
+
+        agent.step.side_effect = slow_step
+        task = Task(content="Summarize a blocking step", id="blocking")
+
+        started = time.perf_counter()
+
+        async def ticker():
+            await asyncio.sleep(0.01)
+            return time.perf_counter() - started
+
+        result, tick_elapsed = await asyncio.gather(
+            summary_task(agent, task),
+            ticker(),
+        )
+
+        assert result == "Blocking Step|The blocking step completed"
+        assert tick_elapsed < 0.08
+        agent.step.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_summary_task_consumes_sync_streaming_response(self):
+        """Codex subscription forces streaming responses even for helpers."""
+        from camel.agents.chat_agent import StreamingChatAgentResponse
+
+        agent = MagicMock()
+
+        def stream():
+            yield _StreamChunk(msg=_StreamMsg("Streamed Task|"))
+            yield _StreamChunk(msg=_StreamMsg("streamed summary"))
+
+        agent.step.return_value = StreamingChatAgentResponse(stream())
+        task = Task(content="Summarize a streamed step", id="streamed")
+
+        result = await summary_task(agent, task)
+
+        assert result == "Streamed Task|streamed summary"
+        agent.step.assert_called_once()
+
     def test_normalize_summary_task_limits_name_and_summary(self):
         """Test summary_task output is normalized before it reaches UI state."""
         result = normalize_summary_task(
@@ -968,6 +1024,11 @@ class TestChatServiceAgentOperations:
             tools=["search", "code"],
             mcp_tools=None,
             env_path=".env",
+            custom_model_config=AgentModelConfig(
+                model_platform="aws-bedrock-converse",
+                api_key="super-secret-api-key",
+                extra_params={"aws_secret_access_key": "super-secret-aws-key"},
+            ),
         )
 
         mock_agent = MagicMock()
@@ -982,10 +1043,23 @@ class TestChatServiceAgentOperations:
                 "app.agent.toolkit.human_toolkit.get_task_lock",
                 return_value=MagicMock(),
             ),
+            patch("app.service.chat_service.logger") as mock_logger,
         ):
             result = await new_agent_model(agent_data, options)
 
             assert result is mock_agent
+            mock_logger.debug.assert_any_call(
+                "New agent data",
+                extra={
+                    "agent_name": "TestAgent",
+                    "tools": ["search", "code"],
+                    "has_mcp_tools": False,
+                    "has_custom_model_config": True,
+                },
+            )
+            logged_calls = repr(mock_logger.mock_calls)
+            assert "super-secret-api-key" not in logged_calls
+            assert "super-secret-aws-key" not in logged_calls
 
     @pytest.mark.asyncio
     async def test_construct_workforce(self, sample_chat_data, mock_task_lock):
@@ -1004,7 +1078,7 @@ class TestChatServiceAgentOperations:
             patch(
                 "app.service.chat_service.Workforce",
                 return_value=mock_workforce,
-            ),
+            ) as mock_workforce_cls,
             patch("app.service.chat_service.browser_agent"),
             patch("app.service.chat_service.developer_agent"),
             patch("app.service.chat_service.document_agent"),
@@ -1031,6 +1105,70 @@ class TestChatServiceAgentOperations:
 
             # Should add multiple agent workers
             assert mock_workforce.add_single_agent_worker.call_count >= 4
+            assert (
+                mock_workforce_cls.call_args.kwargs[
+                    "use_structured_output_handler"
+                ]
+                is False
+            )
+
+    @pytest.mark.asyncio
+    async def test_construct_workforce_uses_prompt_structured_output_for_subscription_auth(
+        self, sample_chat_data, mock_task_lock
+    ):
+        """Subscription auth must avoid strict native response_format schemas."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "api_key": "",
+                "auth_source": "codex_subscription",
+                "model_platform": "openai",
+                "model_type": "gpt-5.5",
+            }
+        )
+
+        mock_workforce = MagicMock()
+        mock_mcp_agent = MagicMock()
+
+        with (
+            patch("app.service.chat_service.agent_model") as mock_agent_model,
+            patch(
+                "app.service.chat_service.get_working_directory",
+                return_value="/tmp/test_workdir",
+            ),
+            patch(
+                "app.service.chat_service.Workforce",
+                return_value=mock_workforce,
+            ) as mock_workforce_cls,
+            patch("app.service.chat_service.browser_agent"),
+            patch("app.service.chat_service.developer_agent"),
+            patch("app.service.chat_service.document_agent"),
+            patch("app.service.chat_service.multi_modal_agent"),
+            patch(
+                "app.service.chat_service.mcp_agent",
+                return_value=mock_mcp_agent,
+            ),
+            patch(
+                "app.agent.toolkit.human_toolkit.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.service.chat_service.WorkforceMetricsCallback",
+                return_value=MagicMock(),
+            ),
+        ):
+            mock_agent_model.return_value = MagicMock()
+
+            workforce, mcp = await construct_workforce(options)
+
+            assert workforce is mock_workforce
+            assert mcp is mock_mcp_agent
+            assert (
+                mock_workforce_cls.call_args.kwargs[
+                    "use_structured_output_handler"
+                ]
+                is True
+            )
 
     @pytest.mark.asyncio
     async def test_install_mcp_success(self, mock_camel_agent):
