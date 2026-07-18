@@ -80,15 +80,15 @@ export default function TriggerPanel({
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex h-full w-full flex-col overflow-hidden',
+        'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden',
         className
       )}
     >
-      <div className="gap-2 px-2 py-2 border-ds-border-neutral-subtle-default flex w-full shrink-0 items-center justify-between border-x-0 border-t-0 border-b-1 border-solid">
-        <div className="text-ds-text-neutral-muted-default min-w-0 gap-2 px-1 text-body-md font-bold flex flex-1 items-center">
+      <div className="border-b-1 flex w-full shrink-0 items-center justify-between gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-body-md font-bold text-ds-text-neutral-muted-default">
           <span className="truncate">{t('triggers.title')}</span>
         </div>
-        <div className="gap-2 flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -115,7 +115,7 @@ export default function TriggerPanel({
           <Button
             variant="primary"
             size="sm"
-            className="rounded-lg items-center justify-center"
+            className="items-center justify-center rounded-lg"
             onClick={() => onDialogOpenChange(true)}
           >
             <Plus />
@@ -127,7 +127,7 @@ export default function TriggerPanel({
                 ? t('triggers.fold-execution-logs')
                 : t('triggers.open-execution-logs')
             }
-            delayDuration={300}
+            variant="instant"
             side="bottom"
           >
             <Button

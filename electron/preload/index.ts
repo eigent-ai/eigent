@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
@@ -171,8 +173,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('subscription-auth:codex-login', email),
   codexSubscriptionDisconnect: (email: string) =>
     ipcRenderer.invoke('subscription-auth:codex-disconnect', email),
-  getProjectFolderPath: (email: string, projectId: string) =>
-    ipcRenderer.invoke('get-project-folder-path', email, projectId),
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>

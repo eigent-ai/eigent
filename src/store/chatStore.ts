@@ -679,7 +679,12 @@ export interface ChatStore {
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
-  replay: (taskId: string, question: string, time: number) => Promise<void>;
+  replay: (
+    taskId: string,
+    question: string,
+    time: number,
+    projectId?: string
+  ) => Promise<void>;
   startTask: (
     taskId: string,
     type?: string,
@@ -4182,7 +4187,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
     },
 
-    replay: async (taskId: string, question: string, time: number) => {
+    replay: async (
+      taskId: string,
+      question: string,
+      time: number,
+      projectId?: string
+    ) => {
       const {
         create,
         setHasMessages,
@@ -4194,7 +4204,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setStatus,
       } = get();
       //get project id
-      const project_id = useProjectStore.getState().activeProjectId;
+      const project_id =
+        projectId || useProjectStore.getState().activeProjectId;
       if (!project_id) {
         console.error("Can't replay task because no project id provided");
         return;
@@ -4209,7 +4220,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
 
       try {
-        await startTask(taskId, 'replay', undefined, time);
+        await startTask(
+          taskId,
+          'replay',
+          undefined,
+          time,
+          undefined,
+          undefined,
+          undefined,
+          project_id
+        );
         setActiveTaskId(taskId);
         handleConfirmTask(project_id, taskId, 'replay');
       } catch (error) {

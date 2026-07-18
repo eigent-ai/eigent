@@ -13,17 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { BrowserWindow, app } from 'electron';
-import fs from 'fs';
-import http from 'http';
-import https from 'https';
 import mammoth from 'mammoth';
+import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
+import path from 'node:path';
+import { URL } from 'node:url';
 import Papa from 'papaparse';
-import path from 'path';
 import * as unzipper from 'unzipper';
-import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
 import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
+import { resolveProjectStoragePath } from './utils/projectStoragePath';
 
 interface FileInfo {
   path: string;
@@ -660,6 +661,20 @@ export class FileReader {
     return [...new Set(candidates.filter(Boolean))];
   }
 
+  private resolveProjectPath(
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ): string {
+    return resolveProjectStoragePath({
+      homeDir: app.getPath('home'),
+      email,
+      projectId,
+      userId,
+      existsSync: fs.existsSync,
+    });
+  }
+
   private findProjectTaskPath(
     userHome: string,
     rootDir: 'eigent' | '.eigent',
@@ -926,19 +941,10 @@ export class FileReader {
 
   public createProjectStructure(
     email: string,
-    projectId: string
+    projectId: string,
+    userId?: string | number | null
   ): { success: boolean; path: string } {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
-    const userHome = app.getPath('home');
-    const projectPath = path.join(
-      userHome,
-      'eigent',
-      safeEmail,
-      `project_${projectId}`
-    );
+    const projectPath = this.resolveProjectPath(email, projectId, userId);
 
     try {
       if (!fs.existsSync(projectPath)) {
@@ -1139,18 +1145,12 @@ export class FileReader {
     }
   }
 
-  public getProjectFileList(email: string, projectId: string): FileInfo[] {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
-    const userHome = app.getPath('home');
-    const projectPath = path.join(
-      userHome,
-      'eigent',
-      safeEmail,
-      `project_${projectId}`
-    );
+  public getProjectFileList(
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ): FileInfo[] {
+    const projectPath = this.resolveProjectPath(email, projectId, userId);
 
     try {
       if (!fs.existsSync(projectPath)) {
