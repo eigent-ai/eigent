@@ -69,7 +69,7 @@ export function HeaderBox({
     >
       {/* Left: return to project workspace */}
       <div className="flex items-center gap-2">
-        <TooltipSimple content={backToWorkspaceTooltip}>
+        <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
           <Button
             type="button"
             variant="ghost"
@@ -93,7 +93,7 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        <TooltipSimple content={windowPreviewTooltip}>
+        <TooltipSimple content={windowPreviewTooltip} variant="instant">
           <Button
             type="button"
             variant="ghost"

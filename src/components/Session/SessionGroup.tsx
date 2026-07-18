@@ -78,7 +78,7 @@ export default function Sessions({
       )}
     >
       <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 py-2">
-        <TooltipSimple content={backToWorkspaceTooltip}>
+        <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
           <Button
             type="button"
             variant="ghost"
