@@ -86,6 +86,7 @@ const VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 // ==================== global variables ====================
 let win: BrowserWindow | null = null;
+let createWindowPromise: Promise<void> | null = null;
 let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
@@ -2510,6 +2511,30 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 
 // ==================== window create ====================
 async function createWindow() {
+  const existingWindow =
+    win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0];
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    win = existingWindow;
+    win.focus();
+    return;
+  }
+
+  if (createWindowPromise) {
+    await createWindowPromise;
+    if (win && !win.isDestroyed()) {
+      win.focus();
+    }
+    return;
+  }
+
+  createWindowPromise = createWindowInternal().finally(() => {
+    createWindowPromise = null;
+  });
+
+  return createWindowPromise;
+}
+
+async function createWindowInternal() {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
 
@@ -3468,11 +3493,14 @@ app.on('activate', async () => {
   if (allWindows.length) {
     allWindows[0].focus();
   } else {
-    const result = await restartBackendService();
-    if (!result.success) {
-      log.warn('Backend restart during app activation failed:', result.error);
-    }
+    const backendStart = checkAndStartBackend();
     await createWindow();
+    const result = await backendStart;
+    if (!result.success) {
+      log.warn('Backend start during app activation failed:', result.error);
+    } else {
+      notifyBackendReady(result);
+    }
   }
 });
 
