@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getBaseURL } from '@/api/http';
+import { getBaseURL, proxyFetchGet } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import {
   getRemoteControlDesktopInstanceId,
@@ -61,6 +61,7 @@ const CACHE_LIMIT = 200;
 const COMMAND_TIMEOUT_MS = 10000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_COMMANDS = 5;
+const remoteHistoryHydrationInFlight = new Set<string>();
 const BRIDGE_CAPABILITIES = {
   bridge_version: 1,
   commands: [
@@ -114,6 +115,22 @@ function getCommandBrainSessionId(
   command: RemoteCommand
 ): string | null | undefined {
   return command.target_brain_session_id || command.brain_session_id;
+}
+
+function getCommandHistoryId(command: RemoteCommand): string | null {
+  const payload = command.payload || {};
+  if (payload.remote_history_id != null) {
+    return String(payload.remote_history_id);
+  }
+  if (payload.history_id != null) {
+    return String(payload.history_id);
+  }
+  const projectId = getCommandProjectId(command);
+  return (
+    (projectId
+      ? useSpaceStore.getState().getProjectMeta(projectId)?.metadata?.historyId
+      : undefined) || null
+  );
 }
 
 function stripTrailingSlash(value: string): string {
@@ -267,6 +284,45 @@ async function assertLocalTaskOnline(command: RemoteCommand, token: string) {
   }
 }
 
+function scheduleRemoteProjectHistoryHydration(command: RemoteCommand): void {
+  const projectId = getCommandProjectId(command);
+  if (!projectId || remoteHistoryHydrationInFlight.has(projectId)) {
+    return;
+  }
+  const project = useProjectStore.getState().getProjectById(projectId);
+  if (!project?.metadata?.remoteHistoryHydrationPending) {
+    return;
+  }
+
+  remoteHistoryHydrationInFlight.add(projectId);
+  void (async () => {
+    try {
+      const historyProject = await proxyFetchGet(
+        `/api/v1/chat/histories/grouped/${projectId}`,
+        { include_tasks: true }
+      );
+      const tasks = Array.isArray(historyProject?.tasks)
+        ? historyProject.tasks
+        : [];
+      await useProjectStore
+        .getState()
+        .mergeProjectHistory(
+          projectId,
+          tasks,
+          String(historyProject?.last_prompt || '')
+        );
+    } catch (error) {
+      console.warn(
+        '[RemoteControlBridge] Failed to hydrate background Project history:',
+        { project_id: projectId },
+        error
+      );
+    } finally {
+      remoteHistoryHydrationInFlight.delete(projectId);
+    }
+  })();
+}
+
 function ensureRemoteProjectLoaded(command: RemoteCommand): void {
   const projectId = getCommandProjectId(command);
   if (!projectId) {
@@ -287,17 +343,23 @@ function ensureRemoteProjectLoaded(command: RemoteCommand): void {
     projectStore.upsertProjectsFromServer([project]);
   }
 
-  if (useProjectStore.getState().projects[projectId]) {
+  const meta = useSpaceStore.getState().getProjectMeta(projectId);
+  const historyId = getCommandHistoryId(command);
+  const existingProject = useProjectStore.getState().projects[projectId];
+  if (existingProject) {
+    if (
+      historyId &&
+      Object.keys(existingProject.chatStores ?? {}).length === 0
+    ) {
+      useProjectStore.getState().updateProject(projectId, {
+        metadata: {
+          historyId,
+          remoteHistoryHydrationPending: true,
+        },
+      });
+    }
     return;
   }
-
-  const meta = useSpaceStore.getState().getProjectMeta(projectId);
-  const historyId =
-    payload.remote_history_id != null
-      ? String(payload.remote_history_id)
-      : payload.history_id != null
-        ? String(payload.history_id)
-        : meta?.metadata?.historyId;
 
   useProjectStore
     .getState()
@@ -308,7 +370,7 @@ function ensureRemoteProjectLoaded(command: RemoteCommand): void {
       meta?.description || project?.description || '',
       projectId,
       undefined,
-      historyId,
+      historyId ?? undefined,
       false,
       {
         spaceId:
@@ -321,7 +383,11 @@ function ensureRemoteProjectLoaded(command: RemoteCommand): void {
           (project?.mode as SessionModeType | null | undefined) ??
           'single-agent',
         workdirMode: meta?.workdirMode ?? project?.workdir_mode ?? null,
-        metadata: meta?.metadata ?? project?.metadata ?? undefined,
+        metadata: {
+          ...(meta?.metadata ?? project?.metadata ?? {}),
+          ...(historyId ? { historyId } : {}),
+          remoteHistoryHydrationPending: Boolean(historyId),
+        },
         createdAt: meta?.createdAt,
         updatedAt: meta?.updatedAt,
       }
@@ -341,12 +407,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   const project = useProjectStore.getState().getProjectById(projectId);
   const sessionMode = (project?.mode || 'single-agent') as SessionModeType;
   const content = String(payload.content || payload.question || '');
-  const historyId =
-    payload.remote_history_id != null
-      ? String(payload.remote_history_id)
-      : payload.history_id != null
-        ? String(payload.history_id)
-        : null;
+  const historyId = getCommandHistoryId(command);
 
   const projectStore = useProjectStore.getState();
   let chatStore = projectStore.getChatStore(projectId);
@@ -385,6 +446,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
           historyId,
         }
       );
+    scheduleRemoteProjectHistoryHydration(command);
   } catch (error: any) {
     if (error && typeof error === 'object' && !error.code) {
       error.code = 'BRIDGE_START_TASK_FAILED';
@@ -440,6 +502,7 @@ function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
     attaches: [],
   });
   chatState.setHasMessages(activeTaskId, true);
+  scheduleRemoteProjectHistoryHydration(command);
 }
 
 function commandErrorAck(commandId: string, error: any): BridgeAck {

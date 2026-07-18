@@ -184,4 +184,33 @@ describe('useRemoteControlBridge internals', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
   });
+
+  it('keeps remote history metadata on inactive background Projects', () => {
+    const activeProjectId = useProjectStore
+      .getState()
+      .createProject('Active Project', undefined, 'project-active');
+
+    __remoteControlBridgeTestHooks.ensureRemoteProjectLoaded({
+      id: 'rc_cmd_history_meta',
+      session_id: 'session-1',
+      user_id: 1,
+      source_channel: 'remote_control',
+      type: 'user_message',
+      target_project_id: 'project-target',
+      payload: {
+        content: 'Start local background task',
+        project_name: 'Target Project',
+        space_id: 'space-active',
+        history_id: 'legacy-history-id',
+        remote_history_id: 'remote-history-id',
+      },
+      next_task_id: 'task-target-next',
+    });
+
+    const project = useProjectStore.getState().projects['project-target'];
+    expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
+    expect(project).toBeDefined();
+    expect(project.metadata?.historyId).toBe('remote-history-id');
+    expect(project.metadata?.remoteHistoryHydrationPending).toBe(true);
+  });
 });

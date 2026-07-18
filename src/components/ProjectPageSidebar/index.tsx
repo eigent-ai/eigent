@@ -227,7 +227,13 @@ export default function ProjectPageSidebar({
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
-      if (projectStore.peekActiveChatStore(projectId)) {
+      const project = projectStore.getProjectById(projectId);
+      const needsRemoteHistoryHydration =
+        project?.metadata?.remoteHistoryHydrationPending === true;
+      if (
+        projectStore.peekActiveChatStore(projectId) &&
+        !needsRemoteHistoryHydration
+      ) {
         return;
       }
 
@@ -243,6 +249,12 @@ export default function ProjectPageSidebar({
           );
 
         if (taskIdsList.length === 0) {
+          if (needsRemoteHistoryHydration) {
+            projectStore.updateProject(projectId, {
+              metadata: { remoteHistoryHydrationPending: false },
+            });
+            return;
+          }
           projectStore.appendInitChatStore(projectId);
           return;
         }
@@ -254,6 +266,14 @@ export default function ProjectPageSidebar({
 
         const firstTask = historyProject.tasks[0];
         const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        if (needsRemoteHistoryHydration) {
+          await projectStore.mergeProjectHistory(
+            projectId,
+            historyProject.tasks,
+            firstTask?.question || historyProject.last_prompt || ''
+          );
+          return;
+        }
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
@@ -280,9 +300,15 @@ export default function ProjectPageSidebar({
   const selectProject = useCallback(
     async (projectId: string) => {
       projectStore.setActiveProject(projectId);
+      const needsRemoteHistoryHydration =
+        projectStore.getProjectById(projectId)?.metadata
+          ?.remoteHistoryHydrationPending === true;
 
       // Already loaded — flip to the live Project shell immediately.
-      if (projectStore.peekActiveChatStore(projectId)) {
+      if (
+        projectStore.peekActiveChatStore(projectId) &&
+        !needsRemoteHistoryHydration
+      ) {
         setActiveWorkspaceTab('project');
         return;
       }
@@ -424,7 +450,13 @@ export default function ProjectPageSidebar({
       clearInboxForProjectId: projectId,
     });
 
-    if (!projectStore.peekActiveChatStore(projectId)) {
+    const needsRemoteHistoryHydration =
+      projectStore.getProjectById(projectId)?.metadata
+        ?.remoteHistoryHydrationPending === true;
+    if (
+      !projectStore.peekActiveChatStore(projectId) ||
+      needsRemoteHistoryHydration
+    ) {
       void ensureProjectLoaded(projectId);
     }
   }, [

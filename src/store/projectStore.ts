@@ -178,6 +178,7 @@ interface ProjectMetadata {
   modelSelection?: ProjectModelSelection;
   serverSynced?: boolean;
   autoCreatedPlaceholder?: boolean;
+  remoteHistoryHydrationPending?: boolean;
 }
 
 interface Project {
@@ -382,6 +383,11 @@ interface ProjectStore {
     taskQuestionsById?: Record<string, string>,
     serverUpdatedAt?: number | null
   ) => Promise<string>;
+  mergeProjectHistory: (
+    projectId: string,
+    tasks: Array<{ task_id?: string | null; question?: string | null }>,
+    fallbackQuestion?: string
+  ) => Promise<void>;
   setProjectNavLead: (
     projectId: string,
     lead: SessionNavLeadPresentation
@@ -1445,7 +1451,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             try {
               await chatStore
                 .getState()
-                .replay(taskId, taskQuestionsById?.[taskId] || question, 0);
+                .replay(
+                  taskId,
+                  taskQuestionsById?.[taskId] || question,
+                  0,
+                  loadProjectId
+                );
               loadedChatStoresByTaskId.set(taskId, chatStore);
               console.log(`[ProjectStore] Loaded task ${taskId}`);
             } catch (error) {
@@ -1586,6 +1597,96 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       get().setHistoryLoadingProject(loadProjectId, false);
     }
     return loadProjectId;
+  },
+
+  mergeProjectHistory: async (
+    projectId: string,
+    tasks: Array<{ task_id?: string | null; question?: string | null }>,
+    fallbackQuestion: string = ''
+  ) => {
+    if (!get().projects[projectId]) {
+      return;
+    }
+    if (get().historyLoadingProjectIds[projectId]) {
+      return;
+    }
+
+    let chatStore = get().getChatStore(projectId);
+    if (!chatStore) {
+      get().createChatStore(projectId);
+      chatStore = get().getChatStore(projectId);
+    }
+    if (!chatStore) {
+      return;
+    }
+
+    const historyTaskIds = tasks
+      .map((task) => (task.task_id ? String(task.task_id) : ''))
+      .filter(Boolean);
+    const existingTaskIds = new Set(
+      Object.values(get().projects[projectId]?.chatStores ?? {}).flatMap(
+        (store) => Object.keys(store.getState().tasks)
+      )
+    );
+    const tasksToReplay = tasks
+      .map((task) => ({
+        taskId: task.task_id ? String(task.task_id) : '',
+        question: task.question ? String(task.question) : fallbackQuestion,
+      }))
+      .filter((task) => task.taskId && !existingTaskIds.has(task.taskId));
+
+    if (tasksToReplay.length === 0) {
+      get().updateProject(projectId, {
+        metadata: { remoteHistoryHydrationPending: false },
+      });
+      return;
+    }
+
+    get().setHistoryLoadingProject(projectId, true);
+    try {
+      for (const task of tasksToReplay) {
+        const targetChatStore = get().getChatStore(projectId) || chatStore;
+        const beforeActiveTaskId = targetChatStore.getState().activeTaskId;
+        await targetChatStore
+          .getState()
+          .replay(task.taskId, task.question || fallbackQuestion, 0, projectId);
+
+        const stateAfterReplay = targetChatStore.getState();
+        if (
+          beforeActiveTaskId &&
+          stateAfterReplay.activeTaskId === task.taskId &&
+          stateAfterReplay.tasks[beforeActiveTaskId]
+        ) {
+          stateAfterReplay.setActiveTaskId(beforeActiveTaskId);
+        }
+        existingTaskIds.add(task.taskId);
+      }
+      Object.values(get().projects[projectId]?.chatStores ?? {}).forEach(
+        (store) => {
+          const state = store.getState();
+          const currentTasks = state.tasks;
+          const orderedTasks: typeof currentTasks = {};
+          for (const taskId of historyTaskIds) {
+            if (currentTasks[taskId]) {
+              orderedTasks[taskId] = currentTasks[taskId];
+            }
+          }
+          for (const [taskId, task] of Object.entries(currentTasks)) {
+            if (!orderedTasks[taskId]) {
+              orderedTasks[taskId] = task;
+            }
+          }
+          if (Object.keys(orderedTasks).length > 0) {
+            (store as any).setState({ tasks: orderedTasks });
+          }
+        }
+      );
+      get().updateProject(projectId, {
+        metadata: { remoteHistoryHydrationPending: false },
+      });
+    } finally {
+      get().setHistoryLoadingProject(projectId, false);
+    }
   },
 
   saveChatStore: (

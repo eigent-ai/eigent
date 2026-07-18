@@ -190,4 +190,113 @@ describe('projectStore runtime shape', () => {
       expect.arrayContaining(['task_finished'])
     );
   });
+
+  it('merges missing history into a background remote Project without stealing focus', async () => {
+    const activeProjectId = useProjectStore
+      .getState()
+      .createProject('Active Project', undefined, 'project_active');
+    const remoteProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Remote Project',
+        undefined,
+        'project_remote',
+        undefined,
+        'history_remote',
+        false,
+        {
+          spaceId: 'space_test',
+          metadata: { remoteHistoryHydrationPending: true },
+        }
+      );
+    const remoteRun = useProjectStore
+      .getState()
+      .appendInitChatStore(remoteProjectId, 'task_remote');
+    const chatStore = remoteRun?.chatStore;
+    expect(chatStore).toBeDefined();
+    chatStore?.getState().addMessages('task_remote', {
+      id: 'msg_remote',
+      role: 'user',
+      content: 'remote prompt',
+    });
+
+    const replay = vi.fn(async (taskId: string, question: string) => {
+      const state = chatStore!.getState();
+      state.create(taskId, 'replay');
+      state.addMessages(taskId, {
+        id: `msg_${taskId}`,
+        role: 'user',
+        content: question,
+      });
+      state.setActiveTaskId(taskId);
+    });
+    chatStore?.setState({ replay } as any);
+
+    await useProjectStore.getState().mergeProjectHistory(
+      remoteProjectId,
+      [
+        { task_id: 'task_old', question: 'old prompt' },
+        { task_id: 'task_remote', question: 'remote prompt' },
+      ],
+      'fallback prompt'
+    );
+
+    expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(replay).toHaveBeenCalledWith(
+      'task_old',
+      'old prompt',
+      0,
+      remoteProjectId
+    );
+    expect(chatStore?.getState().tasks.task_old).toBeDefined();
+    expect(chatStore?.getState().tasks.task_remote).toBeDefined();
+    expect(Object.keys(chatStore?.getState().tasks ?? {}).slice(0, 2)).toEqual([
+      'task_old',
+      'task_remote',
+    ]);
+    expect(chatStore?.getState().activeTaskId).toBe('task_remote');
+    expect(
+      useProjectStore.getState().projects[remoteProjectId].metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(false);
+  });
+
+  it('does not start a second remote history merge while one is already loading', async () => {
+    const remoteProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Remote Project',
+        undefined,
+        'project_remote_loading',
+        undefined,
+        'history_remote',
+        false,
+        {
+          spaceId: 'space_test',
+          metadata: { remoteHistoryHydrationPending: true },
+        }
+      );
+    const chatStore = useProjectStore.getState().getChatStore(remoteProjectId);
+    const replay = vi.fn(async () => undefined);
+    chatStore?.setState({ replay } as any);
+    useProjectStore.getState().setHistoryLoadingProject(remoteProjectId, true);
+
+    await useProjectStore
+      .getState()
+      .mergeProjectHistory(
+        remoteProjectId,
+        [{ task_id: 'task_old', question: 'old prompt' }],
+        'fallback prompt'
+      );
+
+    expect(replay).not.toHaveBeenCalled();
+    expect(
+      useProjectStore.getState().projects[remoteProjectId].metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(true);
+    expect(
+      useProjectStore.getState().historyLoadingProjectIds[remoteProjectId]
+    ).toBe(true);
+  });
 });
