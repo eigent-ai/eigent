@@ -124,6 +124,7 @@ export default function WorkspacePage() {
   );
 
   const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
@@ -453,7 +454,8 @@ export default function WorkspacePage() {
         const files = await ipc?.invoke(
           'get-project-file-list',
           email,
-          projectStore.activeProjectId
+          projectStore.activeProjectId,
+          userId
         );
         setHasAgentFiles(
           Array.isArray(files) && filterVisibleAgentFiles(files).length > 0
@@ -464,7 +466,7 @@ export default function WorkspacePage() {
     };
 
     detectAgentFiles();
-  }, [projectStore.activeProjectId, email, setHasAgentFiles, ipc]);
+  }, [projectStore.activeProjectId, email, userId, setHasAgentFiles, ipc]);
 
   // Add webview-show listener in useEffect with cleanup
   useEffect(() => {

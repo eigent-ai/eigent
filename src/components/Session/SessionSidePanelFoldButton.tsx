@@ -49,7 +49,7 @@ export function SessionSidePanelFoldButton({
         : t('layout.show-workforce-panel');
 
   return (
-    <TooltipSimple content={sessionSidePanelTooltip}>
+    <TooltipSimple content={sessionSidePanelTooltip} variant="instant">
       <Button
         type="button"
         variant="ghost"
@@ -59,7 +59,7 @@ export function SessionSidePanelFoldButton({
         aria-expanded={isSidePanelVisible}
         aria-controls="session-side-panel"
         className={cn(
-          'no-drag text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default shrink-0',
+          'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
           className
         )}
         aria-label={sessionSidePanelTooltip}
