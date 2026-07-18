@@ -90,7 +90,7 @@ let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
-let backendStartPromise: Promise<void> | null = null;
+let backendStartPromise: Promise<BackendStartResult> | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
@@ -125,6 +125,14 @@ type BackendStartOptions = {
   forceRestart?: boolean;
 };
 
+type BackendStartResult =
+  | { success: true; port: number }
+  | { success: false; error: string };
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function isBrokenConsolePipeError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -158,10 +166,52 @@ process.stderr.on('error', handleProcessPipeError);
 function isPythonProcessRunning(): boolean {
   return Boolean(
     python_process &&
-      !python_process.killed &&
-      python_process.exitCode === null &&
-      python_process.signalCode === null
+    !python_process.killed &&
+    python_process.exitCode === null &&
+    python_process.signalCode === null
   );
+}
+
+function notifyBackendReady(result: BackendStartResult): void {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+
+  win.webContents.send(
+    'backend-ready',
+    result.success
+      ? {
+          success: true,
+          port: result.port,
+        }
+      : {
+          success: false,
+          error: result.error,
+        }
+  );
+}
+
+function checkBackendHealth(port: number): Promise<boolean> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const req = http.get(
+      `http://127.0.0.1:${port}/health`,
+      { timeout: 1000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
 }
 
 /** Persist pool to disk. */
@@ -1023,25 +1073,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendStartPromise) {
-        log.info('Backend startup already in progress, waiting...');
-        await backendStartPromise;
-        return { success: true };
-      }
-
-      if (backendPort || isPythonProcessRunning()) {
-        log.info('Restarting backend service...');
-        await checkAndStartBackend({ forceRestart: true });
-        log.info('Backend restart completed successfully');
-        return { success: true };
+      if (backendStartPromise || backendPort || isPythonProcessRunning()) {
+        const result = await restartBackendService();
+        if (result.success) {
+          log.info('Backend restart completed successfully');
+        }
+        return result;
       }
 
       log.warn('No backend port found, starting fresh backend');
-      await checkAndStartBackend();
-      return { success: true };
+      return await checkAndStartBackend();
     } catch (error) {
       log.error('Failed to restart backend:', error);
-      return { success: false, error: String(error) };
+      return { success: false, error: formatErrorMessage(error) };
     }
   });
   ipcMain.handle('get-system-language', getSystemLanguage);
@@ -2998,9 +3042,21 @@ const setupExternalLinkHandling = () => {
 };
 
 // ==================== check and start backend ====================
+async function restartBackendService(): Promise<BackendStartResult> {
+  if (backendStartPromise) {
+    log.info(
+      'Backend startup already in progress, waiting before forced restart...'
+    );
+    await backendStartPromise;
+  }
+
+  log.info('Restarting backend service...');
+  return checkAndStartBackend({ forceRestart: true });
+}
+
 const checkAndStartBackend = async (
   options: BackendStartOptions = {}
-): Promise<void> => {
+): Promise<BackendStartResult> => {
   if (backendStartPromise) {
     log.info('Backend startup already in progress, waiting...');
     return backendStartPromise;
@@ -3011,17 +3067,26 @@ const checkAndStartBackend = async (
     try {
       if (isPythonProcessRunning()) {
         if (!options.forceRestart) {
-          log.info('Backend service is already running', { port: backendPort });
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('backend-ready', {
-              success: true,
+          const isHealthy = await checkBackendHealth(backendPort);
+          if (isHealthy) {
+            log.info('Backend service is already running', {
               port: backendPort,
             });
+            const result: BackendStartResult = {
+              success: true,
+              port: backendPort,
+            };
+            notifyBackendReady(result);
+            return result;
           }
-          return;
+
+          log.warn(
+            'Backend process is running but health check failed; restarting...'
+          );
+        } else {
+          log.info('Cleaning up existing backend process before restart...');
         }
 
-        log.info('Cleaning up existing backend process before restart...');
         await cleanupPythonProcess();
       } else if (python_process) {
         python_process = null;
@@ -3046,36 +3111,37 @@ const checkAndStartBackend = async (
         );
 
         // Notify frontend that backend is ready
-        if (win && !win.isDestroyed()) {
-          log.info('Backend is ready, notifying frontend...');
-          win.webContents.send('backend-ready', {
-            success: true,
-            port: backendPort,
-          });
-        }
+        log.info('Backend is ready, notifying frontend...');
+        const result: BackendStartResult = {
+          success: true,
+          port: backendPort,
+        };
+        notifyBackendReady(result);
 
         python_process?.on('exit', (code, signal) => {
           log.info('Python process exited', { code, signal });
         });
+
+        return result;
       } else {
         log.warn('Tool not installed, cannot start backend service');
         // Notify frontend that backend cannot start
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('backend-ready', {
-            success: false,
-            error: 'Tools not installed',
-          });
-        }
+        const result: BackendStartResult = {
+          success: false,
+          error: 'Tools not installed',
+        };
+        notifyBackendReady(result);
+        return result;
       }
     } catch (error) {
       log.error('Failed to start backend:', error);
       // Notify frontend of backend startup failure
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('backend-ready', {
-          success: false,
-          error: String(error),
-        });
-      }
+      const result: BackendStartResult = {
+        success: false,
+        error: formatErrorMessage(error),
+      };
+      notifyBackendReady(result);
+      return result;
     }
   })().finally(() => {
     backendStartPromise = null;
