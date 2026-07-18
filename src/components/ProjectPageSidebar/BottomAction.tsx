@@ -51,14 +51,15 @@ export function BottomAction({
   }
 
   return (
-    <div className="pt-2 mt-auto w-full shrink-0">
-      <div className="min-w-0 gap-1 flex w-full flex-col overflow-hidden">
-        <div className="min-h-0 min-w-0 flex w-full">
+    <div className="mt-auto w-full shrink-0 pt-2">
+      <div className="flex w-full min-w-0 flex-col gap-1 overflow-hidden">
+        <div className="flex min-h-0 w-full min-w-0">
           <TooltipSimple
             content={tooltipText}
             side="right"
             align="center"
             enabled={folded}
+            variant="instant"
             className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
           >
             <button
@@ -72,7 +73,7 @@ export function BottomAction({
               aria-label={endProjectAriaLabel}
             >
               <Power
-                className="h-4 w-4 !text-ds-icon-error-default-default shrink-0"
+                className="h-4 w-4 shrink-0 !text-ds-icon-error-default-default"
                 aria-hidden
               />
               <motion.span
@@ -88,7 +89,7 @@ export function BottomAction({
                 <span
                   className={cn(
                     WORKSPACE_TAB_LABEL_CLASS,
-                    'font-medium text-body-sm !text-ds-text-error-default-default'
+                    'text-body-sm font-medium !text-ds-text-error-default-default'
                   )}
                 >
                   {endProjectLabel}

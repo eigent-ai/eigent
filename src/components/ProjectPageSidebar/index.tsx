@@ -727,7 +727,6 @@ export default function ProjectPageSidebar({
                             content={contextTabBinding.tooltip}
                             side="top"
                             sideOffset={8}
-                            delayDuration={300}
                           >
                             <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
                               {contextTabBinding.label}

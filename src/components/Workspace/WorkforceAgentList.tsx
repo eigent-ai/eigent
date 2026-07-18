@@ -46,14 +46,14 @@ export function WorkforceAgentList({
   const { t } = useTranslation();
 
   return (
-    <div className="min-w-0 flex w-full justify-center">
-      <div className="min-w-0 gap-2 inline-flex max-w-full items-center">
+    <div className="flex w-full min-w-0 justify-center">
+      <div className="inline-flex min-w-0 max-w-full items-center gap-2">
         <div
           role="list"
           aria-label={t('layout.aiWorkforce')}
           className="min-w-0 max-w-[min(100%,calc(100vw-3rem))] overflow-x-auto"
         >
-          <div className="gap-2 flex flex-row flex-nowrap items-center justify-center">
+          <div className="flex flex-row flex-nowrap items-center justify-center gap-2">
             {sortedAgents.map((agent) => (
               <div key={agent.agent_id} className="shrink-0" role="listitem">
                 <FoldedAgentCard
@@ -78,20 +78,15 @@ export function WorkforceAgentList({
           </div>
         </div>
         <div className="flex shrink-0 flex-col justify-center">
-          <TooltipSimple
-            content={t('triggers.add')}
-            side="top"
-            sideOffset={8}
-            delayDuration={300}
-          >
+          <TooltipSimple content={t('triggers.add')} side="top" sideOffset={8}>
             <button
               type="button"
               className={cn(
-                'rounded-xl bg-ds-bg-neutral-default-default border-0',
-                'p-2 inline-flex items-center justify-center',
+                'rounded-xl border-0 bg-ds-bg-neutral-default-default',
+                'inline-flex items-center justify-center p-2',
                 'text-ds-text-neutral-muted-default transition-all duration-200',
-                'hover:text-ds-text-neutral-default-default opacity-80 hover:opacity-100',
-                'focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-2 focus-visible:outline-none'
+                'opacity-80 hover:text-ds-text-neutral-default-default hover:opacity-100',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus'
               )}
               onClick={onAddWorker}
               aria-label={t('triggers.add')}
