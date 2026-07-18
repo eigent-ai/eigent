@@ -64,6 +64,33 @@ def _sync_project_display_name(
     db_session.add(project)
 
 
+def _chat_status_value(value: object) -> int | None:
+    if isinstance(value, ChatStatus):
+        return value.value
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _clamp_chat_history_string_fields(data: dict) -> None:
+    for field_name in ("project_name", "summary"):
+        value = data.get(field_name)
+        if not isinstance(value, str):
+            continue
+        limit = getattr(getattr(ChatHistory, field_name).type, "length", None)
+        if isinstance(limit, int) and limit > 0:
+            data[field_name] = value[:limit]
+
+
+def _drop_stale_ongoing_status(history: ChatHistory, update_data: dict) -> None:
+    if (
+        _chat_status_value(history.status) == ChatStatus.done.value
+        and _chat_status_value(update_data.get("status")) == ChatStatus.ongoing.value
+    ):
+        update_data.pop("status", None)
+
+
 @router.post("/history", name="save chat history", response_model=ChatHistoryOut)
 def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(session), auth: V1UserAuth = Depends(auth_must)):
     data.user_id = auth.id
@@ -85,7 +112,9 @@ def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(sessi
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    chat_history = ChatHistory(**data.model_dump(exclude={"workdir_mode", "mode"}))
+    history_data = data.model_dump(exclude={"workdir_mode", "mode"})
+    _clamp_chat_history_string_fields(history_data)
+    chat_history = ChatHistory(**history_data)
     db_session.add(chat_history)
     try:
         db_session.commit()
@@ -179,6 +208,10 @@ async def update_chat_history(
         raise HTTPException(status_code=403, detail="You are not allowed to update this chat history")
 
     update_data = data.model_dump(exclude_unset=True)
+    # Chat history text fields are length-bounded; clamp defensively so an
+    # over-long value from any client cannot roll back the whole update.
+    _clamp_chat_history_string_fields(update_data)
+    _drop_stale_ongoing_status(history, update_data)
     history.update_fields(update_data)
     if "project_name" in update_data:
         _sync_project_display_name(
