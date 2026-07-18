@@ -16,7 +16,7 @@
 Skill Toolkit with multi-tier hierarchy:
 
 Agent access control is managed via skills-config.json.
-User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
 """
 
 import json
@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import TypedDict
 
 from camel.toolkits.skill_toolkit import SkillToolkit as BaseSkillToolkit
+
+from app.service.skill_config_service import canonical_skill_config_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +54,9 @@ def _get_user_config_path(user_id: str | None = None) -> Path:
         Path to user's config file
     """
     if user_id:
-        # User-specific config: ~/.eigent/<user_id>/skills-config.json
-        return Path.home() / ".eigent" / str(user_id) / SKILL_CONFIG_FILENAME
+        # User-specific config: ~/.eigent/user_<id>/skills-config.json
+        user_key = canonical_skill_config_user_id(user_id)
+        return Path.home() / ".eigent" / user_key / SKILL_CONFIG_FILENAME
     else:
         # Legacy global config: ~/.eigent/skills-config.json
         return Path.home() / ".eigent" / SKILL_CONFIG_FILENAME
@@ -114,6 +117,35 @@ def _get_merged_skill_config(
     return config
 
 
+def _normalize_agent_name(agent_name: str | None) -> str | None:
+    """Canonicalize agent names for skill scope matching.
+
+    Backend Single Agent uses Agents.single_agent == "single_agent". Accept
+    legacy aliases so Skills UI bindings stay effective.
+    """
+    if agent_name is None:
+        return None
+    cleaned = str(agent_name).strip()
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if lowered == "single_agent" or lowered == "agents.single_agent":
+        return "single_agent"
+    return cleaned
+
+
+def _agent_in_list(agent_name: str | None, agents: list) -> bool:
+    normalized = _normalize_agent_name(agent_name)
+    if not normalized:
+        return False
+    selected = {
+        _normalize_agent_name(str(item))
+        for item in agents
+        if _normalize_agent_name(str(item))
+    }
+    return normalized in selected
+
+
 def _is_skill_enabled(
     skill_name: str, config: dict[str, SkillEntryConfig]
 ) -> bool:
@@ -164,7 +196,7 @@ def _is_agent_allowed(
             )
             return False
 
-        return agent_name in selected_agents
+        return _agent_in_list(agent_name, selected_agents)
 
     allowed_agents = skill_config.get("agents", [])
 
@@ -179,7 +211,7 @@ def _is_agent_allowed(
         )
         return False
 
-    return agent_name in allowed_agents
+    return _agent_in_list(agent_name, allowed_agents)
 
 
 def _build_allowed_skills(
@@ -223,7 +255,7 @@ class SkillToolkit(BaseSkillToolkit):
     3. System scope: /etc/camel/skills
 
     Agent access control is managed via skills-config.json (agents field).
-    User isolation is managed via ~/.eigent/<user_id>/skills-config.json.
+    User isolation is managed via ~/.eigent/user_<id>/skills-config.json.
     """
 
     @classmethod

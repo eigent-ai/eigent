@@ -21,21 +21,7 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
-import cursorIcon from '@/assets/icon/cursor.svg';
-import githubIcon from '@/assets/icon/github.svg';
 import googleIcon from '@/assets/icon/google.svg';
-import googleCalendarIcon from '@/assets/icon/google_calendar.svg';
-import googleGmailIcon from '@/assets/icon/google_gmail.svg';
-import larkIcon from '@/assets/icon/lark.png';
-import linkedinIcon from '@/assets/icon/linkedin.svg';
-import notionIcon from '@/assets/icon/notion.svg';
-import ragIcon from '@/assets/icon/rag.svg';
-import redditIcon from '@/assets/icon/reddit.svg';
-import slackIcon from '@/assets/icon/slack.svg';
-import telegramIcon from '@/assets/icon/telegram.svg';
-import vsCodeIcon from '@/assets/icon/vs-code.svg';
-import whatsappIcon from '@/assets/icon/whatsapp.svg';
-import xIcon from '@/assets/icon/x.svg';
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
@@ -52,6 +38,7 @@ import {
   type IntegrationItem,
 } from '@/hooks/useIntegrationManagement';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
+import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import { useAuthStore } from '@/store/authStore';
 import { motion } from 'framer-motion';
 import {
@@ -89,31 +76,6 @@ const COMING_SOON_NAMES = [
   'Reddit',
   'Github',
 ] as const;
-
-const INTEGRATION_ICON_BY_KEY: Record<string, string> = {
-  notion: notionIcon,
-  slack: slackIcon,
-  'google calendar': googleCalendarIcon,
-  gmail: googleGmailIcon,
-  'google gmail': googleGmailIcon,
-  linkedin: linkedinIcon,
-  lark: larkIcon,
-  rag: ragIcon,
-  telegram: telegramIcon,
-  whatsapp: whatsappIcon,
-  x: xIcon,
-  'x(twitter)': xIcon,
-  twitter: xIcon,
-  reddit: redditIcon,
-  github: githubIcon,
-  cursor: cursorIcon,
-  'vs code': vsCodeIcon,
-  vscode: vsCodeIcon,
-};
-
-function integrationLeadingIconUrl(integrationKey: string): string | undefined {
-  return INTEGRATION_ICON_BY_KEY[integrationKey.toLowerCase().trim()];
-}
 
 export default function SettingMCP() {
   const { checkAgentTool } = useAuthStore();

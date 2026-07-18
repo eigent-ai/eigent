@@ -126,18 +126,26 @@ export async function skillGetPathByName(
 // --- Skill config (REST API, no Electron coupling) ---
 
 export async function skillConfigLoad(
-  userId: string
+  userId: string,
+  legacyUserId?: string | null
 ): Promise<{ success: boolean; config?: Record<string, unknown> }> {
+  const legacyQuery = legacyUserId
+    ? `&legacy_user_id=${encodeURIComponent(legacyUserId)}`
+    : '';
   const res = await fetchGet(
-    `/skills/config?user_id=${encodeURIComponent(userId)}`
+    `/skills/config?user_id=${encodeURIComponent(userId)}${legacyQuery}`
   );
   return res?.config !== undefined ? res : { success: false };
 }
 
 export async function skillConfigInit(
-  userId: string
+  userId: string,
+  legacyUserId?: string | null
 ): Promise<{ success: boolean; config?: Record<string, unknown> }> {
-  const res = await fetchPost('/skills/config/init', { user_id: userId });
+  const res = await fetchPost('/skills/config/init', {
+    user_id: userId,
+    ...(legacyUserId ? { legacy_user_id: legacyUserId } : {}),
+  });
   return res?.config !== undefined ? res : { success: false };
 }
 
@@ -149,31 +157,42 @@ export async function skillConfigUpdate(
     scope?: { isGlobal?: boolean; selectedAgents?: string[] };
     addedAt?: number;
     isExample?: boolean;
-  }
+  },
+  legacyUserId?: string | null
 ): Promise<{ success: boolean }> {
   return fetchPut(`/skills/config/${encodeURIComponent(skillName)}`, {
     user_id: userId,
+    ...(legacyUserId ? { legacy_user_id: legacyUserId } : {}),
     ...config,
   });
 }
 
 export async function skillConfigDelete(
   userId: string,
-  skillName: string
+  skillName: string,
+  legacyUserId?: string | null
 ): Promise<{ success: boolean }> {
+  const legacyQuery = legacyUserId
+    ? `&legacy_user_id=${encodeURIComponent(legacyUserId)}`
+    : '';
   return fetchDelete(
-    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}`
+    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}${legacyQuery}`
   );
 }
 
 export async function skillConfigToggle(
   userId: string,
   skillName: string,
-  enabled: boolean
+  enabled: boolean,
+  legacyUserId?: string | null
 ): Promise<{ success: boolean; config?: Record<string, unknown> }> {
   const res = await fetchPost(
     `/skills/config/${encodeURIComponent(skillName)}/toggle`,
-    { user_id: userId, enabled }
+    {
+      user_id: userId,
+      enabled,
+      ...(legacyUserId ? { legacy_user_id: legacyUserId } : {}),
+    }
   );
   return res ?? { success: false };
 }

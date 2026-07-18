@@ -65,6 +65,14 @@ export function canCreateProjectInSpace(
   return !isLegacySpace(space);
 }
 
+/** Remote control requires a regular Space target; legacy migration buckets are unsupported. */
+export function canUseRemoteControlInSpace(
+  space: Space | null | undefined
+): boolean {
+  if (!space) return false;
+  return !isLegacySpace(space);
+}
+
 /** Folder-backed and scratch Spaces with a local workspace root behave locally. */
 export function isLocalWorkspaceSpace(
   space: Space | null | undefined

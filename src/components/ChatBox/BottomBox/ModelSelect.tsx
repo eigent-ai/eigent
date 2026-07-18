@@ -28,6 +28,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
   DEFAULT_MODEL_CONFIGURE_PATH,
@@ -47,6 +48,8 @@ import {
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import type { Provider } from '@/types';
 
 import {
@@ -56,15 +59,20 @@ import {
   Key,
   Layers,
   Server,
-  Sparkles,
 } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-export interface ChatInputModelDropdownProps {
+export interface ModelSelectProps {
   disabled?: boolean;
+  /**
+   * Project whose pinned model this dropdown reads and writes. When set,
+   * selections update only that Project's captured model; the global
+   * default model is left untouched.
+   */
+  projectId?: string | null;
   /**
    * When true, shows the current default model in the same shell as
    * `ProjectModeToggle` (readOnly) — no chevron, not interactive,
@@ -79,15 +87,18 @@ const modelTriggerShellClass = cn(
   'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
 );
 
-export function ChatInputModelDropdown({
+export function ModelSelect({
   disabled,
+  projectId,
   readOnly = false,
-}: ChatInputModelDropdownProps) {
+}: ModelSelectProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const {
     modelType,
     cloud_model_type,
+    codex_model_type,
+    email,
     appearance,
     setModelType,
     setCloudModelType,
@@ -102,6 +113,26 @@ export function ChatInputModelDropdown({
   const effectiveCloudModelId = useCloudModelStore((state) =>
     state.getEffectiveModelId(cloud_model_type)
   );
+  const setProjectModel = useProjectRuntimeStore(
+    (state) => state.setProjectModel
+  );
+  const runtimePinnedSelection = useProjectRuntimeStore((state) =>
+    projectId
+      ? (state.projects[projectId]?.metadata?.modelSelection ?? null)
+      : null
+  );
+  const spacePinnedSelection = useSpaceStore((state) => {
+    if (!projectId) return null;
+    const spaceId = state.projectIdIndex[projectId];
+    if (!spaceId) return null;
+    return (
+      state.projectsBySpaceId[spaceId]?.[projectId]?.metadata?.modelSelection ??
+      null
+    );
+  });
+  const pinnedSelection = projectId
+    ? (runtimePinnedSelection ?? spacePinnedSelection)
+    : null;
   const cloudModelOptions = useMemo(
     () =>
       cloudModels.map((model) => ({
@@ -134,6 +165,10 @@ export function ChatInputModelDropdown({
   const [localProviderIds, setLocalProviderIds] = useState<
     Record<string, number | undefined>
   >({});
+  const [codexStatus, setCodexStatus] = useState<{
+    connected: boolean;
+    status: string;
+  }>({ connected: false, status: 'not_connected' });
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') return;
@@ -223,6 +258,10 @@ export function ChatInputModelDropdown({
           setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
           setLocalPrefer(true);
           setCloudPrefer(false);
+        } else if (modelType === 'codex_subscription') {
+          setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+          setLocalPrefer(false);
+          setCloudPrefer(false);
         } else {
           setLocalPrefer(false);
           setCloudPrefer(false);
@@ -233,8 +272,100 @@ export function ChatInputModelDropdown({
     })();
   }, [items, modelType]);
 
+  const refreshCodexStatus = useCallback(async () => {
+    if (!email) {
+      setCodexStatus({ connected: false, status: 'not_connected' });
+      return;
+    }
+    try {
+      const status =
+        await createHost().electronAPI?.codexSubscriptionStatus?.(email);
+      setCodexStatus(status || { connected: false, status: 'not_connected' });
+    } catch (error) {
+      console.error('Failed to load Codex subscription status:', error);
+      setCodexStatus({ connected: false, status: 'error' });
+    }
+  }, [email]);
+
+  useEffect(() => {
+    refreshCodexStatus();
+  }, [refreshCodexStatus]);
+
+  useEffect(() => {
+    const ipcRenderer = createHost().ipcRenderer;
+    if (!ipcRenderer?.on || !ipcRenderer?.off) return;
+    const listener = () => {
+      refreshCodexStatus();
+    };
+    ipcRenderer.on('subscription-auth:codex-status-changed', listener);
+    return () => {
+      ipcRenderer.off('subscription-auth:codex-status-changed', listener);
+    };
+  }, [refreshCodexStatus]);
+
+  const handleCodexSetDefault = useCallback(() => {
+    if (projectId) {
+      const codexModelId = codex_model_type || 'gpt-5.5';
+      setProjectModel(projectId, {
+        modelType: 'codex_subscription',
+        codex_model_type: codexModelId,
+        model_platform: 'openai',
+        model_type: codexModelId,
+      });
+      return;
+    }
+    setCloudPrefer(false);
+    setLocalPrefer(false);
+    setForm((f) => f.map((fi) => ({ ...fi, prefer: false })));
+    setModelType('codex_subscription');
+  }, [codex_model_type, projectId, setModelType, setProjectModel]);
+
   /** Model name only in the trigger (e.g. "Gemini 3.1 Pro Preview", no cloud/source prefix). */
   const triggerModelName = useMemo(() => {
+    if (pinnedSelection) {
+      if (pinnedSelection.modelType === 'codex_subscription') {
+        const pinnedCodexModelType = pinnedSelection.codex_model_type || '';
+        return `Codex Subscription${pinnedCodexModelType ? ` (${pinnedCodexModelType})` : ''}`;
+      }
+      if (pinnedSelection.modelType === 'cloud') {
+        return getCloudModelDisplayName(
+          pinnedSelection.cloud_model_type || cloud_model_type
+        );
+      }
+      if (pinnedSelection.modelType === 'custom') {
+        const idx =
+          pinnedSelection.provider_id !== undefined
+            ? form.findIndex(
+                (f) => f.provider_id === pinnedSelection.provider_id
+              )
+            : -1;
+        if (idx !== -1) {
+          const mt = form[idx].model_type || '';
+          return `${items[idx].name}${mt ? ` (${mt})` : ''}`;
+        }
+      }
+      if (pinnedSelection.modelType === 'local') {
+        const platform = Object.keys(localProviderIds).find(
+          (key) => localProviderIds[key] === pinnedSelection.provider_id
+        );
+        if (platform) {
+          const mt = localTypes[platform] || '';
+          return `${getLocalPlatformName(platform)}${mt ? ` (${mt})` : ''}`;
+        }
+      }
+      // Providers are still loading (or the pinned provider disappeared):
+      // fall back to the identifiers captured with the pin.
+      if (pinnedSelection.model_platform || pinnedSelection.model_type) {
+        const platformLabel = pinnedSelection.model_platform || '';
+        const mt = pinnedSelection.model_type || '';
+        return platformLabel ? `${platformLabel}${mt ? ` (${mt})` : ''}` : mt;
+      }
+    }
+
+    if (modelType === 'codex_subscription') {
+      return `Codex Subscription${codex_model_type ? ` (${codex_model_type})` : ''}`;
+    }
+
     if (cloudPrefer) {
       return getCloudModelDisplayName(cloud_model_type);
     }
@@ -256,12 +387,16 @@ export function ChatInputModelDropdown({
   }, [
     cloudPrefer,
     cloud_model_type,
+    codex_model_type,
     form,
     getCloudModelDisplayName,
     items,
     localPrefer,
     localPlatform,
+    localProviderIds,
     localTypes,
+    modelType,
+    pinnedSelection,
     t,
   ]);
 
@@ -278,6 +413,41 @@ export function ChatInputModelDropdown({
         })
       ) {
         navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+        return;
+      }
+      if (projectId) {
+        // Pin the choice to this Project only; the global default model
+        // (and the server-side preferred provider) stays unchanged.
+        if (category === 'cloud') {
+          setProjectModel(projectId, {
+            modelType: 'cloud',
+            cloud_model_type: modelId,
+          });
+          return;
+        }
+        if (category === 'custom') {
+          const idx = items.findIndex((item) => item.id === modelId);
+          const providerId = idx !== -1 ? form[idx]?.provider_id : undefined;
+          if (providerId === undefined) return;
+          setProjectModel(projectId, {
+            modelType: 'custom',
+            provider_id: providerId,
+            model_platform: modelId,
+            model_type: form[idx]?.model_type || undefined,
+          });
+          return;
+        }
+        if (category === 'local') {
+          const providerId = localProviderIds[modelId];
+          if (providerId === undefined) return;
+          setProjectModel(projectId, {
+            modelType: 'local',
+            provider_id: providerId,
+            model_platform: modelId,
+            model_type: localTypes[modelId] || undefined,
+          });
+          return;
+        }
         return;
       }
       await applyDefaultModelSelection({
@@ -303,12 +473,20 @@ export function ChatInputModelDropdown({
       form,
       localProviderIds,
       localPlatform,
+      localTypes,
       navigate,
+      projectId,
+      setProjectModel,
       setModelType,
       setCloudModelType,
       t,
     ]
   );
+
+  // Grow the trigger to match the open dropdown's content width (never shrink
+  // below its own natural content width). Keep in sync with the `w-[180px]`
+  // on `DropdownMenuContent` below.
+  const [open, setOpen] = useState(false);
 
   const activeSubTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -340,7 +518,6 @@ export function ChatInputModelDropdown({
         )}
       >
         <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
-          <Sparkles className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
           <span className="min-w-0 truncate !text-label-xs font-semibold">
             {triggerModelName}
           </span>
@@ -351,8 +528,9 @@ export function ChatInputModelDropdown({
 
   return (
     <DropdownMenu
-      onOpenChange={(open) => {
-        if (open) void fetchCloudModels();
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) void fetchCloudModels();
       }}
     >
       <DropdownMenuTrigger asChild>
@@ -365,19 +543,17 @@ export function ChatInputModelDropdown({
           className={cn(
             modelTriggerShellClass,
             'min-w-0 cursor-pointer border-0 text-left',
-            'justify-between font-semibold transition-colors',
-            'hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-subtle-default',
+            'justify-between font-semibold transition-all',
+            'hover:bg-ds-bg-neutral-subtle-default active:bg-ds-bg-neutral-subtle-default data-[state=open]:bg-ds-bg-neutral-subtle-default',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
-            'disabled:pointer-events-none disabled:opacity-50'
+            'disabled:pointer-events-none disabled:opacity-50',
+            // While open, only the trigger's content grows to the menu width;
+            // the chevron stays pinned at the right edge.
+            open && 'min-w-[180px]'
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <Sparkles
-              className="size-3.5 shrink-0"
-              strokeWidth={2}
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1 truncate text-left !text-label-xs text-ds-text-neutral-default-default">
+            <span className="min-w-0 flex-1 truncate text-center !text-label-xs text-ds-text-neutral-default-default">
               {triggerModelName}
             </span>
           </span>
@@ -389,7 +565,7 @@ export function ChatInputModelDropdown({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align="start"
+        align="end"
         side="top"
         sideOffset={4}
         collisionPadding={12}
@@ -427,7 +603,11 @@ export function ChatInputModelDropdown({
                   className="flex items-center justify-between"
                 >
                   <span className="text-body-sm">{model.name}</span>
-                  {cloudPrefer && effectiveCloudModelId === model.id && (
+                  {(pinnedSelection
+                    ? pinnedSelection.modelType === 'cloud' &&
+                      (pinnedSelection.cloud_model_type ||
+                        effectiveCloudModelId) === model.id
+                    : cloudPrefer && effectiveCloudModelId === model.id) && (
                     <Check className="h-4 w-4 text-ds-text-success-default-default" />
                   )}
                 </DropdownMenuItem>
@@ -455,54 +635,82 @@ export function ChatInputModelDropdown({
             ref={subContentCallbackRef}
             className="max-h-[440px] w-[220px] overflow-y-auto"
           >
-            {items.map((item, idx) => {
-              const isConfigured = !!form[idx]?.provider_id;
-              const isPreferred = form[idx]?.prefer;
-              const modelImage = getModelImage(item.id);
+            {items
+              .map((item, idx) => ({ item, idx }))
+              .sort((a, b) => {
+                // Subscription (OAuth) providers first, original order otherwise.
+                const aSub = a.item.authMode === 'oauth_subscription' ? 0 : 1;
+                const bSub = b.item.authMode === 'oauth_subscription' ? 0 : 1;
+                return aSub - bSub;
+              })
+              .map(({ item, idx }) => {
+                const isSubscriptionAuth =
+                  item.authMode === 'oauth_subscription';
+                const isConfigured = isSubscriptionAuth
+                  ? codexStatus.connected
+                  : !!form[idx]?.provider_id;
+                const isPreferred = pinnedSelection
+                  ? isSubscriptionAuth
+                    ? pinnedSelection.modelType === 'codex_subscription'
+                    : pinnedSelection.modelType === 'custom' &&
+                      pinnedSelection.provider_id !== undefined &&
+                      form[idx]?.provider_id === pinnedSelection.provider_id
+                  : isSubscriptionAuth
+                    ? modelType === 'codex_subscription'
+                    : form[idx]?.prefer;
+                const modelImage = getModelImage(item.id);
 
-              return (
-                <DropdownMenuItem
-                  key={item.id}
-                  onSelect={() => {
-                    void handleDefaultModelSelect('custom', item.id);
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    {modelImage ? (
-                      <img
-                        src={modelImage}
-                        alt={item.name}
-                        className="h-4 w-4"
-                        style={
-                          needsInvert(item.id)
-                            ? { filter: 'invert(1)' }
-                            : undefined
+                return (
+                  <DropdownMenuItem
+                    key={item.id}
+                    onSelect={() => {
+                      if (isSubscriptionAuth) {
+                        if (isConfigured) {
+                          handleCodexSetDefault();
+                        } else {
+                          navigate(DEFAULT_MODEL_CONFIGURE_PATH);
                         }
-                      />
-                    ) : (
-                      <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
-                    )}
-                    <span
-                      className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
-                    >
-                      {item.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
-                    )}
-                    {isPreferred && (
-                      <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                    )}
-                    {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
-                    )}
-                  </div>
-                </DropdownMenuItem>
-              );
-            })}
+                        return;
+                      }
+                      void handleDefaultModelSelect('custom', item.id);
+                    }}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      {modelImage ? (
+                        <img
+                          src={modelImage}
+                          alt={item.name}
+                          className="h-4 w-4"
+                          style={
+                            needsInvert(item.id)
+                              ? { filter: 'invert(1)' }
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
+                      )}
+                      <span
+                        className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
+                      >
+                        {item.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!isConfigured && (
+                        <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
+                      )}
+                      {isPreferred && (
+                        <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                      )}
+                      {isConfigured && !isPreferred && (
+                        <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
@@ -527,7 +735,11 @@ export function ChatInputModelDropdown({
           >
             {LOCAL_MODEL_OPTIONS.map((model) => {
               const isConfigured = !!localProviderIds[model.id];
-              const isPreferred = localPrefer && localPlatform === model.id;
+              const isPreferred = pinnedSelection
+                ? pinnedSelection.modelType === 'local' &&
+                  pinnedSelection.provider_id !== undefined &&
+                  localProviderIds[model.id] === pinnedSelection.provider_id
+                : localPrefer && localPlatform === model.id;
               const modelImage = getModelImage(`local-${model.id}`);
 
               return (

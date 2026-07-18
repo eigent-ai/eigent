@@ -262,13 +262,13 @@ function treeSegmentLabel(value?: string | null, fallback = 'Project') {
   return (trimmed || fallback).replace(/[\\/]/g, '-');
 }
 
-function isImageFile(file: FileTypeTarget) {
+export function isImageFile(file: FileTypeTarget) {
   return IMAGE_EXTENSIONS.includes(getFileType(file));
 }
-function isAudioFile(file: FileTypeTarget) {
+export function isAudioFile(file: FileTypeTarget) {
   return AUDIO_EXTENSIONS.includes(getFileType(file));
 }
-function isVideoFile(file: FileTypeTarget) {
+export function isVideoFile(file: FileTypeTarget) {
   return VIDEO_EXTENSIONS.includes(getFileType(file));
 }
 
@@ -399,7 +399,7 @@ function getComparableRelativePath(file?: FileInfo | null): string {
   return getNormalizedTreeRelativePath(file).toLowerCase();
 }
 
-function isSameFileIdentity(
+export function isSameFileIdentity(
   left?: FileInfo | null,
   right?: FileInfo | null
 ): boolean {
@@ -410,7 +410,104 @@ function isSameFileIdentity(
   return left.path === right.path;
 }
 
-function findMatchingFile(
+/** Build a nested {@link FileTreeNode} tree from a flat file list. */
+export function buildFileTree(files: FileInfo[]): FileTreeNode {
+  const root: FileTreeNode = {
+    name: 'root',
+    path: '',
+    children: [],
+    isFolder: true,
+  };
+
+  const folderMap = new Map<string, FileTreeNode>();
+  folderMap.set('', root);
+
+  const ensureFolderNode = (segments: string[]): FileTreeNode => {
+    let parentNode = root;
+    let currentFolderPath = '';
+
+    for (const segment of segments) {
+      currentFolderPath = currentFolderPath
+        ? `${currentFolderPath}/${segment}`
+        : segment;
+
+      let folderNode = folderMap.get(currentFolderPath);
+      if (!folderNode) {
+        folderNode = {
+          name: segment,
+          path: currentFolderPath,
+          isFolder: true,
+          children: [],
+          relativePath: currentFolderPath,
+        };
+        parentNode.children!.push(folderNode);
+        folderMap.set(currentFolderPath, folderNode);
+      }
+
+      parentNode = folderNode;
+    }
+
+    return parentNode;
+  };
+
+  const sortedFiles = [...files].sort((left, right) => {
+    const leftRelativePath = getNormalizedTreeRelativePath(left);
+    const rightRelativePath = getNormalizedTreeRelativePath(right);
+    const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
+    const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
+
+    if (leftDepth !== rightDepth) {
+      return leftDepth - rightDepth;
+    }
+
+    return leftRelativePath.localeCompare(rightRelativePath);
+  });
+
+  for (const file of sortedFiles) {
+    const normalizedRelativePath = getNormalizedTreeRelativePath(file);
+    const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
+    if (!pathSegments.length) continue;
+
+    if (file.isFolder) {
+      ensureFolderNode(pathSegments);
+      continue;
+    }
+
+    const folderSegments = pathSegments.slice(0, -1);
+    const fileName = pathSegments[pathSegments.length - 1] || file.name;
+    const parentNode = ensureFolderNode(folderSegments);
+
+    parentNode.children!.push({
+      name: fileName || file.name,
+      path: file.path,
+      type: file.type,
+      projectId: file.projectId,
+      isFolder: file.isFolder,
+      icon: file.icon,
+      children: file.isFolder ? [] : undefined,
+      isRemote: file.isRemote,
+      relativePath: file.relativePath,
+    });
+  }
+
+  const sortTree = (node: FileTreeNode) => {
+    if (!node.children?.length) return;
+
+    node.children.sort((left, right) => {
+      if (!!left.isFolder !== !!right.isFolder) {
+        return left.isFolder ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+    node.children.forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root;
+}
+
+export function findMatchingFile(
   files: FileInfo[],
   target?: FileInfo | null
 ): FileInfo | undefined {
@@ -452,7 +549,7 @@ function getAncestorFolderPathsForFile(file?: FileInfo | null): string[] {
 }
 
 /** Breadcrumb: project root label → parent folders (from `relativePath`) → file name. */
-function getFileBreadcrumbSegments(
+export function getFileBreadcrumbSegments(
   file: FileInfo,
   options: {
     projectRootLabel: string;
@@ -674,7 +771,7 @@ async function blobFromDataUrl(dataUrl: string): Promise<Blob> {
 }
 
 /** Web-only: fetch URL or path (same-origin relative) and save with the given name. */
-async function downloadFromUrl(
+export async function downloadFromUrl(
   url: string | undefined,
   suggestedFilename: string
 ): Promise<void> {
@@ -732,7 +829,7 @@ async function downloadFromUrl(
 }
 
 /** Web-first download for the file viewer: prefers in-memory content, then fetchable URL. */
-async function downloadOpenedFile(file: FileInfo): Promise<void> {
+export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   if (file.isFolder || (!file.path && file.content === undefined)) return;
 
   const filename = file.name || 'download';
@@ -1006,102 +1103,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     // all files can reload content
     selectedFileChange(selectedFile!, !isShowSourceCode);
     setIsShowSourceCode(!isShowSourceCode);
-  };
-
-  const buildFileTree = (files: FileInfo[]): FileTreeNode => {
-    const root: FileTreeNode = {
-      name: 'root',
-      path: '',
-      children: [],
-      isFolder: true,
-    };
-
-    const folderMap = new Map<string, FileTreeNode>();
-    folderMap.set('', root);
-
-    const ensureFolderNode = (segments: string[]): FileTreeNode => {
-      let parentNode = root;
-      let currentFolderPath = '';
-
-      for (const segment of segments) {
-        currentFolderPath = currentFolderPath
-          ? `${currentFolderPath}/${segment}`
-          : segment;
-
-        let folderNode = folderMap.get(currentFolderPath);
-        if (!folderNode) {
-          folderNode = {
-            name: segment,
-            path: currentFolderPath,
-            isFolder: true,
-            children: [],
-            relativePath: currentFolderPath,
-          };
-          parentNode.children!.push(folderNode);
-          folderMap.set(currentFolderPath, folderNode);
-        }
-
-        parentNode = folderNode;
-      }
-
-      return parentNode;
-    };
-
-    const sortedFiles = [...files].sort((left, right) => {
-      const leftRelativePath = getNormalizedTreeRelativePath(left);
-      const rightRelativePath = getNormalizedTreeRelativePath(right);
-      const leftDepth = leftRelativePath.split('/').filter(Boolean).length;
-      const rightDepth = rightRelativePath.split('/').filter(Boolean).length;
-
-      if (leftDepth !== rightDepth) {
-        return leftDepth - rightDepth;
-      }
-
-      return leftRelativePath.localeCompare(rightRelativePath);
-    });
-
-    for (const file of sortedFiles) {
-      const normalizedRelativePath = getNormalizedTreeRelativePath(file);
-      const pathSegments = normalizedRelativePath.split('/').filter(Boolean);
-      if (!pathSegments.length) continue;
-
-      if (file.isFolder) {
-        ensureFolderNode(pathSegments);
-        continue;
-      }
-
-      const folderSegments = pathSegments.slice(0, -1);
-      const fileName = pathSegments[pathSegments.length - 1] || file.name;
-      const parentNode = ensureFolderNode(folderSegments);
-
-      parentNode.children!.push({
-        name: fileName || file.name,
-        path: file.path,
-        type: file.type,
-        projectId: file.projectId,
-        isFolder: file.isFolder,
-        icon: file.icon,
-        children: file.isFolder ? [] : undefined,
-        isRemote: file.isRemote,
-        relativePath: file.relativePath,
-      });
-    }
-
-    const sortTree = (node: FileTreeNode) => {
-      if (!node.children?.length) return;
-
-      node.children.sort((left, right) => {
-        if (!!left.isFolder !== !!right.isFolder) {
-          return left.isFolder ? -1 : 1;
-        }
-        return left.name.localeCompare(right.name);
-      });
-
-      node.children.forEach(sortTree);
-    };
-
-    sortTree(root);
-    return root;
   };
 
   const toggleFolder = (folderPath: string) => {
@@ -1776,175 +1777,28 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         ) : null}
 
         {/* content */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ds-bg-neutral-subtle-default">
-          {/* head */}
-          {selectedFile && (
-            <div className="flex h-8 flex-shrink-0 items-center justify-between gap-2 pl-3 pr-2">
-              <div
-                onClick={() => {
-                  // if file is remote, don't call reveal-in-folder
-                  if (selectedFile.isRemote) {
-                    void downloadFromUrl(selectedFile.path, selectedFile.name);
-                    return;
-                  }
-                  ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
-                }}
-                className="flex min-w-0 flex-1 cursor-pointer items-center overflow-hidden"
-              >
-                <nav
-                  className="scrollbar-always-visible flex min-w-0 max-w-full items-center gap-1 overflow-x-auto text-body-sm text-ds-text-neutral-muted-default"
-                  aria-label={t('folder.file-path-breadcrumb', {
-                    defaultValue: 'File path',
-                  })}
-                >
-                  {fileBreadcrumbSegments.map((segment, index) => {
-                    const isLast = index === fileBreadcrumbSegments.length - 1;
-                    return (
-                      <Fragment key={`${index}-${segment}`}>
-                        {index > 0 ? (
-                          <ChevronRight
-                            className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
-                            aria-hidden
-                          />
-                        ) : null}
-                        <span
-                          className={
-                            isLast
-                              ? 'shrink-0 font-bold text-ds-text-neutral-default-default'
-                              : 'shrink-0 font-normal'
-                          }
-                        >
-                          {segment}
-                        </span>
-                      </Fragment>
-                    );
-                  })}
-                </nav>
-              </div>
-              <div className="flex flex-shrink-0 items-center gap-0.5">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  type="button"
-                  aria-label={t('folder.download-file', {
-                    defaultValue: 'Download file',
-                  })}
-                  onClick={() => {
-                    if (!selectedFile || selectedFile.isFolder) return;
-                    void downloadOpenedFile(selectedFile);
-                  }}
-                >
-                  <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => isShowSourceCodeChange()}
-                >
-                  <CodeXml className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* content */}
-          <div
-            className={`flex min-h-0 flex-1 flex-col ${
-              selectedFile?.type === 'html' && !isShowSourceCode
-                ? 'overflow-hidden'
-                : 'scrollbar-always-visible overflow-y-auto'
-            }`}
-          >
-            <div
-              className={`flex flex-col ${
-                selectedFile?.type === 'html' && !isShowSourceCode
-                  ? 'h-full min-h-0'
-                  : 'min-h-full py-2 pl-4 pr-2'
-              } file-viewer-content`}
-            >
-              {selectedFile ? (
-                !loading ? (
-                  selectedFile.type === 'md' && !isShowSourceCode ? (
-                    <div className="prose prose-sm max-w-none">
-                      <MarkDown
-                        content={selectedFile.content || ''}
-                        enableTypewriter={false}
-                        contentBasePath={
-                          selectedFile.isRemote
-                            ? null
-                            : getDirPath(selectedFile.path)
-                        }
-                      />
-                    </div>
-                  ) : selectedFile.type === 'pdf' ? (
-                    <iframe
-                      src={selectedFile.content as string}
-                      className="h-full w-full border-0"
-                      title={selectedFile.name}
-                    />
-                  ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
-                      selectedFile.type
-                    ) ? (
-                    <FolderComponent selectedFile={selectedFile} />
-                  ) : selectedFile.type === 'html' ? (
-                    isShowSourceCode ? (
-                      <>{selectedFile.content}</>
-                    ) : (
-                      <HtmlRenderer
-                        selectedFile={selectedFile}
-                        projectFiles={fileGroups[0]?.files || []}
-                      />
-                    )
-                  ) : selectedFile.type === 'zip' ? (
-                    <div className="flex h-full w-full items-center justify-center text-ds-text-neutral-muted-default">
-                      <div className="text-center">
-                        <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
-                        <p className="text-sm">
-                          {t('folder.zip-file-is-not-supported-yet')}
-                        </p>
-                      </div>
-                    </div>
-                  ) : isAudioFile(selectedFile) ? (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <AudioLoader selectedFile={selectedFile} />
-                    </div>
-                  ) : isVideoFile(selectedFile) ? (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <VideoLoader selectedFile={selectedFile} />
-                    </div>
-                  ) : isImageFile(selectedFile) ? (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <ImageLoader selectedFile={selectedFile} />
-                    </div>
-                  ) : (
-                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
-                      {selectedFile.content}
-                    </pre>
-                  )
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <div className="text-center">
-                      <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full"></div>
-                      <p className="text-body-sm text-ds-text-neutral-muted-default">
-                        {t('chat.loading')}
-                      </p>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div className="flex h-full w-full flex-1 items-center justify-center text-ds-text-neutral-muted-default">
-                  <div className="text-center">
-                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
-                    <p className="text-sm">
-                      {t('chat.select-a-file-to-view-its-contents')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <FileViewerPanel
+          selectedFile={selectedFile}
+          loading={loading}
+          isShowSourceCode={isShowSourceCode}
+          breadcrumbSegments={fileBreadcrumbSegments}
+          projectFiles={fileGroups[0]?.files || []}
+          surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          onRevealFile={() => {
+            if (!selectedFile) return;
+            // if file is remote, don't call reveal-in-folder
+            if (selectedFile.isRemote) {
+              void downloadFromUrl(selectedFile.path, selectedFile.name);
+              return;
+            }
+            ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
+          }}
+          onDownloadFile={() => {
+            if (!selectedFile || selectedFile.isFolder) return;
+            void downloadOpenedFile(selectedFile);
+          }}
+          onToggleSourceCode={() => isShowSourceCodeChange()}
+        />
       </div>
     </div>
   );
@@ -2393,7 +2247,7 @@ function readBlobAsDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-async function fetchRemoteFileAsDataUrl(url: string): Promise<string> {
+export async function fetchRemoteFileAsDataUrl(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -2986,6 +2840,245 @@ function HtmlRenderer({
             tabIndex={0}
             onLoad={() => iframeRef.current?.focus()}
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface FileViewerPanelProps {
+  /** File whose content is shown, or null for the empty placeholder. */
+  selectedFile: FileInfo | null;
+  /** Whether content is currently being fetched. */
+  loading: boolean;
+  /** Render raw source instead of the rich view (md/html). */
+  isShowSourceCode: boolean;
+  /** Breadcrumb labels for the file path header. */
+  breadcrumbSegments: string[];
+  /** Sibling project files, used by the HTML renderer to resolve local assets. */
+  projectFiles: FileInfo[];
+  /** Outer surface background class. */
+  surfaceClassName?: string;
+  /** Remove standalone spacing/radius when rendered inside another panel shell. */
+  embedded?: boolean;
+  /** Clicking the breadcrumb (reveal in folder / download remote). Ignored when
+   * {@link onBreadcrumbSegmentClick} is provided (segments become individually
+   * clickable instead). */
+  onRevealFile: () => void;
+  /** When set, breadcrumb segments are individually clickable (e.g. a "Context"
+   * root that navigates elsewhere). Receives the clicked segment index. */
+  onBreadcrumbSegmentClick?: (index: number) => void;
+  /** Download button. */
+  onDownloadFile: () => void;
+  /** Toggle the source-code view. */
+  onToggleSourceCode: () => void;
+  /** Extra controls rendered at the end of the header row (e.g. a close button). */
+  headerActionsExtra?: React.ReactNode;
+  /** Replaces the default placeholder shown when no file is selected. */
+  emptyState?: React.ReactNode;
+}
+
+/**
+ * Presentational file viewer: breadcrumb header + type-aware content body.
+ * Shared by the Inbox/Folder tab and the inline project-page preview so both
+ * render markdown/PDF/docs/HTML/media identically. All data and callbacks are
+ * supplied by the parent — this component owns no loading state.
+ */
+export function FileViewerPanel({
+  selectedFile,
+  loading,
+  isShowSourceCode,
+  breadcrumbSegments,
+  projectFiles,
+  surfaceClassName = 'bg-ds-bg-neutral-subtle-default',
+  embedded = false,
+  onRevealFile,
+  onBreadcrumbSegmentClick,
+  onDownloadFile,
+  onToggleSourceCode,
+  headerActionsExtra,
+  emptyState,
+}: FileViewerPanelProps) {
+  const { t } = useTranslation();
+  const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
+
+  return (
+    <div
+      className={`${
+        embedded ? 'min-w-0' : 'mb-sm min-w-0 rounded-xl'
+      } flex flex-1 flex-col overflow-hidden ${surfaceClassName}`}
+    >
+      {/* head */}
+      {selectedFile && (
+        <div className="flex flex-shrink-0 items-center justify-between gap-2 py-2 pl-3 pr-2">
+          <div
+            onClick={segmentsClickable ? undefined : onRevealFile}
+            className={`flex min-w-0 flex-1 items-center overflow-hidden ${
+              segmentsClickable ? '' : 'cursor-pointer'
+            }`}
+          >
+            <nav
+              className="scrollbar-always-visible flex min-w-0 max-w-full items-center gap-1 overflow-x-auto text-body-sm text-ds-text-neutral-muted-default"
+              aria-label={t('folder.file-path-breadcrumb', {
+                defaultValue: 'File path',
+              })}
+            >
+              {breadcrumbSegments.map((segment, index) => {
+                const isLast = index === breadcrumbSegments.length - 1;
+                const isClickable = segmentsClickable && !isLast;
+                return (
+                  <Fragment key={`${index}-${segment}`}>
+                    {index > 0 ? (
+                      <ChevronRight
+                        className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                        aria-hidden
+                      />
+                    ) : null}
+                    {isClickable ? (
+                      <button
+                        type="button"
+                        onClick={() => onBreadcrumbSegmentClick?.(index)}
+                        className="shrink-0 cursor-pointer font-normal text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default hover:underline"
+                      >
+                        {segment}
+                      </button>
+                    ) : (
+                      <span
+                        className={
+                          isLast
+                            ? 'shrink-0 font-bold text-ds-text-neutral-default-default'
+                            : 'shrink-0 font-normal'
+                        }
+                      >
+                        {segment}
+                      </span>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </nav>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              type="button"
+              aria-label={t('folder.download-file', {
+                defaultValue: 'Download file',
+              })}
+              onClick={onDownloadFile}
+            >
+              <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onToggleSourceCode}
+            >
+              <CodeXml className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+            </Button>
+            {headerActionsExtra}
+          </div>
+        </div>
+      )}
+
+      {/* content */}
+      <div
+        className={`flex min-h-0 flex-1 flex-col ${
+          selectedFile?.type === 'html' && !isShowSourceCode
+            ? 'overflow-hidden'
+            : 'scrollbar-always-visible overflow-y-auto'
+        }`}
+      >
+        <div
+          className={`flex flex-col ${
+            selectedFile?.type === 'html' && !isShowSourceCode
+              ? 'h-full min-h-0'
+              : 'min-h-full py-2 pl-4 pr-2'
+          } file-viewer-content`}
+        >
+          {selectedFile ? (
+            !loading ? (
+              selectedFile.type === 'md' && !isShowSourceCode ? (
+                <div className="prose prose-sm max-w-none">
+                  <MarkDown
+                    content={selectedFile.content || ''}
+                    enableTypewriter={false}
+                    contentBasePath={
+                      selectedFile.isRemote
+                        ? null
+                        : getDirPath(selectedFile.path)
+                    }
+                  />
+                </div>
+              ) : selectedFile.type === 'pdf' ? (
+                <iframe
+                  src={selectedFile.content as string}
+                  className="h-full w-full border-0"
+                  title={selectedFile.name}
+                />
+              ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
+                  selectedFile.type
+                ) ? (
+                <FolderComponent selectedFile={selectedFile} />
+              ) : selectedFile.type === 'html' ? (
+                isShowSourceCode ? (
+                  <>{selectedFile.content}</>
+                ) : (
+                  <HtmlRenderer
+                    selectedFile={selectedFile}
+                    projectFiles={projectFiles}
+                  />
+                )
+              ) : selectedFile.type === 'zip' ? (
+                <div className="flex h-full w-full items-center justify-center text-ds-text-neutral-muted-default">
+                  <div className="text-center">
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                    <p className="text-sm">
+                      {t('folder.zip-file-is-not-supported-yet')}
+                    </p>
+                  </div>
+                </div>
+              ) : isAudioFile(selectedFile) ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <AudioLoader selectedFile={selectedFile} />
+                </div>
+              ) : isVideoFile(selectedFile) ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <VideoLoader selectedFile={selectedFile} />
+                </div>
+              ) : isImageFile(selectedFile) ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <ImageLoader selectedFile={selectedFile} />
+                </div>
+              ) : (
+                <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                  {selectedFile.content}
+                </pre>
+              )
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full"></div>
+                  <p className="text-body-sm text-ds-text-neutral-muted-default">
+                    {t('chat.loading')}
+                  </p>
+                </div>
+              </div>
+            )
+          ) : (
+            (emptyState ?? (
+              <div className="flex h-full w-full flex-1 items-center justify-center text-ds-text-neutral-muted-default">
+                <div className="text-center">
+                  <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                  <p className="text-sm">
+                    {t('chat.select-a-file-to-view-its-contents')}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

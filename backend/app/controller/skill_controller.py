@@ -42,9 +42,14 @@ skill_logger = logging.getLogger("skill_controller")
 
 
 @router.get("/skills/config")
-def skill_config_get(user_id: str = Query(..., description="User ID")) -> dict:
+def skill_config_get(
+    user_id: str = Query(..., description="User ID"),
+    legacy_user_id: str | None = Query(
+        None, description="Legacy email-derived user ID"
+    ),
+) -> dict:
     """Load skills config for user."""
-    config = skill_config_load(user_id)
+    config = skill_config_load(user_id, legacy_user_id=legacy_user_id)
     return {"success": True, "config": config}
 
 
@@ -54,7 +59,8 @@ def skill_config_init_endpoint(body: dict) -> dict:
     user_id = body.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
-    config = skill_config_init(user_id)
+    legacy_user_id = body.get("legacy_user_id") or body.get("email")
+    config = skill_config_init(user_id, legacy_user_id=legacy_user_id)
     return {"success": True, "config": config}
 
 
@@ -64,17 +70,31 @@ def skill_config_update_endpoint(skill_name: str, body: dict) -> dict:
     user_id = body.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
-    skill_config = {k: v for k, v in body.items() if k != "user_id"}
-    skill_config_update(user_id, skill_name, skill_config)
+    legacy_user_id = body.get("legacy_user_id") or body.get("email")
+    skill_config = {
+        k: v
+        for k, v in body.items()
+        if k not in ("user_id", "legacy_user_id", "email")
+    }
+    skill_config_update(
+        user_id,
+        skill_name,
+        skill_config,
+        legacy_user_id=legacy_user_id,
+    )
     return {"success": True}
 
 
 @router.delete("/skills/config/{skill_name}")
 def skill_config_delete_endpoint(
-    skill_name: str, user_id: str = Query(..., description="User ID")
+    skill_name: str,
+    user_id: str = Query(..., description="User ID"),
+    legacy_user_id: str | None = Query(
+        None, description="Legacy email-derived user ID"
+    ),
 ) -> dict:
     """Remove skill from config."""
-    skill_config_delete(user_id, skill_name)
+    skill_config_delete(user_id, skill_name, legacy_user_id=legacy_user_id)
     return {"success": True}
 
 
@@ -87,7 +107,13 @@ def skill_config_toggle_endpoint(skill_name: str, body: dict) -> dict:
         raise HTTPException(status_code=400, detail="user_id is required")
     if enabled is None:
         raise HTTPException(status_code=400, detail="enabled is required")
-    result = skill_config_toggle(user_id, skill_name, bool(enabled))
+    legacy_user_id = body.get("legacy_user_id") or body.get("email")
+    result = skill_config_toggle(
+        user_id,
+        skill_name,
+        bool(enabled),
+        legacy_user_id=legacy_user_id,
+    )
     return {"success": True, "config": result}
 
 

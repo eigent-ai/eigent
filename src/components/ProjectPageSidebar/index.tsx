@@ -21,13 +21,8 @@ import {
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
-import {
-  createSpaceFromFolderPicker,
-  getFolderSpaceErrorMessage,
-} from '@/lib/createSpaceFromFolder';
 import {
   isProjectAchieved,
   setProjectAchievedState,
@@ -42,12 +37,9 @@ import {
   resolveProjectNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import {
-  getActiveSpaceTriggerLabel,
   getContextTabBindingLabel,
-  getDefaultNewSpaceName,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
-import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
@@ -55,38 +47,27 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import {
   getVisibleProjectMetasForSpace,
-  isDisposableBlankSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import {
-  Cast,
-  ChevronsUpDown,
-  FolderIcon,
-  Inbox,
-  LayoutGrid,
-  Plus,
-  Zap,
-  ZapOff,
-} from 'lucide-react';
+import { Cast, Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   NavTab,
   NavTabReconnectSuffix,
-  WORKSPACE_TAB_LABEL_CLASS,
   triggerListenerLeadIconClass,
-  workspaceTabButtonClass,
 } from './NavTab';
 import { ProjectNavList } from './ProjectNavList';
-import { SpaceSwitchDropdown } from './SpaceSwitchDropdown';
 
 export interface ProjectPageSidebarProps {
   chatStore: ChatStore | null;
   className?: string;
 }
+
+let didAttemptBootSessionResume = false;
 
 export default function ProjectPageSidebar({
   chatStore: _chatStore,
@@ -119,9 +100,6 @@ export default function ProjectPageSidebar({
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const spacesById = useSpaceStore((s) => s.spaces);
   const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
-  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
-  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
-  const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const projectMetasForActiveSpace = useMemo(() => {
     if (!activeSpaceId) return [];
     return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId);
@@ -130,10 +108,6 @@ export default function ProjectPageSidebar({
     !!activeProjectId && inboxUnviewedForProjects.has(activeProjectId);
   const { t } = useTranslation();
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
-  const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
-  const [renameSpaceValue, setRenameSpaceValue] = useState('');
-  const [renamingSpace, setRenamingSpace] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
   const [achieveProjectId, setAchieveProjectId] = useState<string | null>(null);
@@ -179,37 +153,7 @@ export default function ProjectPageSidebar({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const activeSpaces = useMemo(
-    () =>
-      Object.values(spacesById)
-        .filter(
-          (space) =>
-            space.status !== 'archived' &&
-            !(
-              space.id === 'legacy_local' &&
-              activeSpaceId !== 'legacy_local' &&
-              getVisibleProjectMetasForSpace(projectsBySpaceId, space.id)
-                .length === 0
-            ) &&
-            (space.id === activeSpaceId ||
-              !isDisposableBlankSpace(space, projectsBySpaceId))
-        )
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-    [activeSpaceId, projectsBySpaceId, spacesById]
-  );
-
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
-  const activeSpaceLabel = getActiveSpaceTriggerLabel(activeSpace?.name, t, {
-    emptyLabelKey: activeSpaceId
-      ? 'layout.spaces-untitled'
-      : 'layout.spaces-select-space',
-  });
-  const canRenameActiveSpace = Boolean(
-    activeSpace &&
-    activeSpace.status === 'active' &&
-    activeSpace.sourceType !== 'legacy' &&
-    activeSpace.metadata?.legacy !== true
-  );
   const isActiveSpaceUnbound = isUnboundUntitledSpace(activeSpace, t);
   const contextTabBinding = useMemo(
     () => getContextTabBindingLabel(activeSpace, t),
@@ -371,6 +315,35 @@ export default function ProjectPageSidebar({
       setActiveWorkspaceTab,
     ]
   );
+
+  // Boot-time session resume: reopen the last visited Project (the way an
+  // editor reopens its last workspace) instead of landing on the empty home
+  // tab. One-shot per renderer boot (launch or reload; the flag is module
+  // scoped so sidebar remounts within a session never re-trigger it), and
+  // only from the pristine boot state (default tab, no active Project), so
+  // deliberately navigating home later is never hijacked. Uses the same
+  // path as clicking the Project in the sidebar.
+  useEffect(() => {
+    if (didAttemptBootSessionResume) return;
+    didAttemptBootSessionResume = true;
+
+    if (activeWorkspaceTab !== 'workforce') return;
+    if (projectStore.activeProjectId) return;
+    if (!activeSpaceId) return;
+    const lastVisitedId =
+      useSpaceStore.getState().lastVisitedProjectBySpace[activeSpaceId];
+    if (!lastVisitedId) return;
+    const lastVisitedMeta = projectMetasForActiveSpace.find(
+      (project) => project.id === lastVisitedId
+    );
+    if (!lastVisitedMeta || !shouldShowProjectInNavList(lastVisitedMeta)) {
+      return;
+    }
+    void selectProject(lastVisitedId);
+    // One-shot boot effect: later changes to these values must not
+    // re-trigger a resume.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const navProjects = useMemo(
     () =>
@@ -661,179 +634,12 @@ export default function ProjectPageSidebar({
     t,
   ]);
 
-  const handleSpaceSelect = useCallback(
-    async (spaceId: string) => {
-      setSwitchingSpaceId(spaceId);
-      try {
-        const resolvedSpaceId = await resolveServerBackedSpaceId(
-          projectStore,
-          spaceId
-        );
-        const spaceStore = useSpaceStore.getState();
-        if (
-          resolvedSpaceId.startsWith('legacy_') ||
-          spaceStore.shouldSyncProjects(resolvedSpaceId)
-        ) {
-          await spaceStore.syncProjectsFromServer(resolvedSpaceId);
-        }
-        const projectsInSpace = useSpaceStore
-          .getState()
-          .getProjectsForSpace(resolvedSpaceId);
-        setActiveSpace(resolvedSpaceId);
-        if (projectsInSpace.length > 0) {
-          const lastVisitedProjectId =
-            spaceStore.lastVisitedProjectBySpace[resolvedSpaceId];
-          const targetProject =
-            projectsInSpace.find(
-              (project) => project.id === lastVisitedProjectId
-            ) ?? projectsInSpace[0];
-          projectStore.setActiveProject(targetProject.id);
-          await ensureProjectLoaded(targetProject.id);
-        } else {
-          projectStore.setActiveProject(null);
-        }
-        setActiveWorkspaceTab('workforce');
-        requestWorkspaceChatFocus();
-      } catch (error) {
-        console.error('Failed to create Project for Space:', error);
-        toast.error(t('layout.spaces-create-failed'), {
-          closeButton: true,
-        });
-      } finally {
-        setSwitchingSpaceId(null);
-      }
-    },
-    [
-      ensureProjectLoaded,
-      projectStore,
-      requestWorkspaceChatFocus,
-      setActiveSpace,
-      setActiveWorkspaceTab,
-      t,
-    ]
-  );
-
-  const handleNewSpace = useCallback(async () => {
-    try {
-      const spaceId = await createSpaceOnServer({
-        name: getDefaultNewSpaceName(t),
-        sourceType: 'blank',
-        setActive: false,
-        metadata: {
-          createdFrom: 'project_sidebar_space_selector',
-          autoCreatedPlaceholder: true,
-        },
-      });
-      await ensureScratchSpaceWorkspaceBinding({
-        email,
-        userId,
-        space: useSpaceStore.getState().getSpaceById(spaceId),
-      });
-      setActiveSpace(spaceId);
-      projectStore.setActiveProject(null);
-      setActiveWorkspaceTab('workforce');
-      requestWorkspaceChatFocus();
-    } catch (error) {
-      console.error('Failed to create Space:', error);
-      toast.error(t('layout.spaces-create-failed'), {
-        closeButton: true,
-      });
-    }
-  }, [
-    createSpaceOnServer,
-    email,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveSpace,
-    setActiveWorkspaceTab,
-    t,
-    userId,
-  ]);
-
-  const handleCreateSpaceFromFolder = useCallback(async () => {
-    try {
-      const spaceId = await createSpaceFromFolderPicker({
-        host,
-        email,
-        userId,
-        activeSpaceId,
-        projectStore,
-        createdFrom: 'project_sidebar_space_selector',
-      });
-      if (!spaceId) return;
-      setActiveWorkspaceTab('workforce');
-      requestWorkspaceChatFocus();
-    } catch (error) {
-      console.warn(
-        '[ProjectPageSidebar] Failed to create folder Space:',
-        error
-      );
-      toast.error(getFolderSpaceErrorMessage(error, t), {
-        closeButton: true,
-      });
-    }
-  }, [
-    activeSpaceId,
-    email,
-    host,
-    projectStore,
-    requestWorkspaceChatFocus,
-    setActiveWorkspaceTab,
-    t,
-    userId,
-  ]);
-
-  const openRenameSpaceDialog = useCallback(() => {
-    if (!canRenameActiveSpace || !activeSpace) return;
-    setRenameSpaceValue(activeSpace.name?.trim() || '');
-    setRenameSpaceDialogOpen(true);
-  }, [activeSpace, canRenameActiveSpace]);
-
-  const handleRenameSpace = useCallback(async () => {
-    const nextName = renameSpaceValue.trim();
-    if (!activeSpaceId || !nextName || renamingSpace) return;
-    setRenamingSpace(true);
-    try {
-      await renameSpaceOnServer(activeSpaceId, nextName);
-      toast.success(t('layout.spaces-rename-success'));
-      setRenameSpaceDialogOpen(false);
-    } catch (error) {
-      console.warn('[ProjectPageSidebar] Failed to rename Space:', error);
-      toast.error(t('layout.spaces-rename-failed'));
-    } finally {
-      setRenamingSpace(false);
-    }
-  }, [activeSpaceId, renameSpaceOnServer, renameSpaceValue, renamingSpace, t]);
-
   return (
     <>
       <GlobalSearchDialog
         open={globalSearchOpen}
         onOpenChange={setGlobalSearchOpen}
       />
-      <AlertDialog
-        isOpen={renameSpaceDialogOpen}
-        onClose={() => setRenameSpaceDialogOpen(false)}
-        onConfirm={() => void handleRenameSpace()}
-        title={t('layout.spaces-rename-title')}
-        confirmText={t('layout.save')}
-        cancelText={t('layout.cancel')}
-        confirmVariant="primary"
-        confirmDisabled={!renameSpaceValue.trim() || renamingSpace}
-      >
-        <Input
-          autoFocus
-          value={renameSpaceValue}
-          placeholder={t('layout.spaces-rename-placeholder')}
-          onChange={(event) => setRenameSpaceValue(event.target.value)}
-          onEnter={() => {
-            if (renameSpaceValue.trim() && !renamingSpace) {
-              void handleRenameSpace();
-            }
-          }}
-        />
-      </AlertDialog>
-
       <AlertDialog
         isOpen={deleteProjectId != null}
         onClose={() => {
@@ -866,56 +672,14 @@ export default function ProjectPageSidebar({
 
       <aside
         className={cn(
-          'min-h-0 min-w-0 p-1 bg-ds-bg-neutral-default-default rounded-2xl box-border flex h-full w-full shrink-0 flex-col items-start overflow-hidden',
+          'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default p-1',
           className
         )}
       >
-        <div className="min-h-0 min-w-0 flex h-full w-full max-w-full flex-col overflow-x-hidden">
-          <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-            <div className="gap-1 flex w-full shrink-0 flex-col">
-              <SpaceSwitchDropdown
-                triggerTooltip="Spaces"
-                triggerTooltipEnabled={projectSidebarFolded}
-                trigger={
-                  <button
-                    type="button"
-                    className={cn(workspaceTabButtonClass(false))}
-                    aria-label={t('layout.spaces-switch-space')}
-                  >
-                    <FolderIcon
-                      className="h-4 w-4 text-ds-icon-neutral-muted-default shrink-0"
-                      aria-hidden
-                    />
-                    <span
-                      className={cn(
-                        WORKSPACE_TAB_LABEL_CLASS,
-                        projectSidebarFolded && 'hidden'
-                      )}
-                    >
-                      {activeSpaceLabel}
-                    </span>
-                    <ChevronsUpDown
-                      className={cn(
-                        'h-4 w-4 text-ds-icon-neutral-subtle-default ml-auto shrink-0',
-                        projectSidebarFolded && 'hidden'
-                      )}
-                      aria-hidden
-                    />
-                  </button>
-                }
-                spaces={activeSpaces}
-                activeSpaceId={activeSpaceId}
-                switchingSpaceId={switchingSpaceId}
-                canRenameActiveSpace={canRenameActiveSpace}
-                createSpaceMenu={{
-                  onStartFromScratch: handleNewSpace,
-                  onSelectFolder: handleCreateSpaceFromFolder,
-                }}
-                onRenameSpace={openRenameSpaceDialog}
-                onSpaceSelect={handleSpaceSelect}
-              />
-
-              <div className="min-w-0 gap-1 flex w-full flex-col">
+        <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex w-full shrink-0 flex-col gap-1">
+              <div className="flex w-full min-w-0 flex-col gap-1">
                 <NavTab
                   active={activeWorkspaceTab === 'workforce'}
                   onClick={() => setActiveWorkspaceTab('workforce')}
@@ -934,11 +698,11 @@ export default function ProjectPageSidebar({
                   onClick={openInboxTab}
                   disabled={isActiveSpaceUnbound}
                   leading={
-                    <span className="h-4 w-4 relative inline-flex shrink-0">
+                    <span className="relative inline-flex h-4 w-4 shrink-0">
                       <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                       {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                         <span
-                          className="-right-1 -top-1 h-2 w-2 bg-ds-text-error-default-default ease-in-out absolute shrink-0 rounded-full"
+                          className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                           aria-hidden
                         />
                       ) : null}
@@ -949,7 +713,7 @@ export default function ProjectPageSidebar({
                     contextTabBinding ? (
                       <div
                         className={cn(
-                          'rounded-xl bg-ds-bg-neutral-muted-default px-1.5 flex shrink-0 flex-col items-center',
+                          'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
                           contextTabBinding.tooltip && 'pointer-events-auto'
                         )}
                         onClick={
@@ -1024,8 +788,8 @@ export default function ProjectPageSidebar({
                         size="sm"
                         buttonContent="icon-only"
                         className={cn(
-                          'no-drag mr-1 rounded-xl hover:bg-ds-bg-neutral-strong-default shrink-0',
-                          'focus-visible:ring-ds-border-neutral-default-default focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none'
+                          'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
+                          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
                         )}
                         aria-label={t('triggers.add-trigger')}
                         onClick={(e) => {
@@ -1066,13 +830,13 @@ export default function ProjectPageSidebar({
               </div>
             </div>
 
-            <div className="px-3 my-2">
-              <div className="bg-ds-border-neutral-default-default h-px w-full" />
+            <div className="my-2 px-3">
+              <div className="h-px w-full bg-ds-border-neutral-default-default" />
             </div>
 
-            <div className="min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ProjectNavList
-                className="min-h-0 flex flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col"
                 projects={navProjects}
                 activeProjectId={
                   isProjectNavSelectionActive ? activeProjectId : null

@@ -189,7 +189,8 @@ export async function checkToolInstalled() {
 // }
 
 export async function startBackend(
-  setPort?: (port: number) => void
+  setPort?: (port: number) => void,
+  extraEnv: Record<string, string> = {}
 ): Promise<any> {
   console.log('start fastapi');
   const uv_path = await getBinaryPath('uv');
@@ -341,6 +342,7 @@ export async function startBackend(
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
     PATH: updatedPath,
+    ...extraEnv,
   };
 
   const displayFilteredLogs = (data: String) => {

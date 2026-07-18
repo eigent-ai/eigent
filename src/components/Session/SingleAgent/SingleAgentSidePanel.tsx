@@ -32,7 +32,7 @@ import { useTranslation } from 'react-i18next';
 export function SingleAgentSidePanel() {
   const { t } = useTranslation();
   const { projectStore } = useChatStoreAdapter();
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const openFilePreview = usePageTabStore((s) => s.openFilePreview);
 
   const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
   const selectedTask = selectedTurn.task;
@@ -96,18 +96,9 @@ export function SingleAgentSidePanel() {
 
   const handleOpenAgentFile = useCallback(
     (file: FileInfo) => {
-      if (!selectedTaskId || !selectedTurn.chatStore) return;
-      selectedTurn.chatStore.getState().setSelectedFile(selectedTaskId, file);
-      setActiveWorkspaceTab('inbox', {
-        clearInboxForProjectId: projectStore.activeProjectId ?? null,
-      });
+      openFilePreview(file);
     },
-    [
-      projectStore.activeProjectId,
-      selectedTaskId,
-      selectedTurn.chatStore,
-      setActiveWorkspaceTab,
-    ]
+    [openFilePreview]
   );
 
   return (

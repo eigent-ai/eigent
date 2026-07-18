@@ -24,12 +24,16 @@ type externalConfig = {
   }[];
 };
 
+export type ProviderAuthMode = 'api_key' | 'oauth_subscription' | 'none';
+
 export type Provider = {
   id: string;
   provider_id?: number;
   name: string;
   apiKey: string;
   apiHost: string;
+  authMode?: ProviderAuthMode;
+  authProviderKey?: string;
   description: string | '';
   hostPlaceHolder?: string;
   externalConfig?: externalConfig[];

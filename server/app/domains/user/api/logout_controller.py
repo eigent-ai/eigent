@@ -25,7 +25,12 @@ from app.core.database import session
 from app.core.environment import env_not_empty
 from app.domains.remote_control.service.remote_control_service import RemoteControlService
 from app.shared.auth.token_blacklist import blacklist_token
-from app.shared.auth.user_auth import _get_jti, oauth2_scheme
+from app.shared.auth.user_auth import (
+    TOKEN_AUDIENCE,
+    TOKEN_ISSUER,
+    _get_jti,
+    oauth2_scheme,
+)
 
 router = APIRouter(prefix="/user", tags=["V1 Auth"])
 
@@ -41,7 +46,12 @@ async def logout(token: str = Depends(oauth2_scheme), db_session: Session = Depe
     if jti:
         try:
             payload = jwt.decode(
-                token, env_not_empty("secret_key"), algorithms=["HS256"], options={"verify_exp": False}
+                token,
+                env_not_empty("secret_key"),
+                algorithms=["HS256"],
+                issuer=TOKEN_ISSUER,
+                audience=TOKEN_AUDIENCE,
+                options={"verify_exp": False},
             )
             user_id = payload.get("id")
             exp = payload.get("exp")

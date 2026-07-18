@@ -21,6 +21,20 @@ from app.service.task import Action, TaskLock, task_locks
 
 
 @pytest.mark.unit
+def test_todo_write_tool_schema_has_description(tmp_path):
+    toolkit = ObservableTodoToolkit(
+        api_task_id="project_single_agent_todo_schema",
+        task_id="task_single_agent_todo_schema",
+        working_dir=str(tmp_path),
+    )
+
+    [tool] = toolkit.get_tools()
+
+    assert tool.openai_tool_schema["function"]["name"] == "todo_write"
+    assert tool.openai_tool_schema["function"]["description"]
+
+
+@pytest.mark.unit
 def test_todo_write_emits_todo_state(tmp_path):
     project_id = "project_single_agent_todo"
     task_id = "task_single_agent_todo"

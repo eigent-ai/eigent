@@ -8,5 +8,8 @@
   "complete": "مكتمل",
   "download-completed": "اكتمل التنزيل",
   "click-to-install-update": "انقر لتثبيت التحديث",
-  "install": "تثبيت"
+  "install": "تثبيت",
+  "downloading": "Downloading update",
+  "launch-new-version": "Launch new version",
+  "update-failed-retry": "Update failed — click to retry"
 }
