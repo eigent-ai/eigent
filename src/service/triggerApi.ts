@@ -18,6 +18,10 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import {
+  recordFeatureUsed,
+  recordScheduledTriggerCreated,
+} from '@/lib/events/appEvents';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import {
   ExecutionStatus,
@@ -159,6 +163,12 @@ export const proxyCreateTrigger = async (
 ): Promise<Trigger> => {
   try {
     const res = await proxyFetchPost(`/api/v1/trigger/`, triggerData);
+    recordScheduledTriggerCreated({
+      trigger_type: triggerData.trigger_type,
+      schedule: triggerData.custom_cron_expression,
+      is_single_execution: triggerData.is_single_execution,
+    });
+    recordFeatureUsed('triggers', { action: 'create' });
     return res;
   } catch (error) {
     console.error('Failed to create trigger:', error);

@@ -22,6 +22,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { recordFeatureUsed } from '@/lib/events/appEvents';
 import { buildSkillMd, parseSkillMd } from '@/lib/skillToolkit';
 import { useSkillsStore } from '@/store/skillsStore';
 
@@ -113,6 +114,7 @@ export default function SkillUploadDialog({
         enabled: true,
       });
       toast.success(t('agents.skill-added-success'));
+      recordFeatureUsed('skills', { action: 'create' });
       handleClose();
     } catch {
       toast.error(t('agents.skill-add-error'));
@@ -306,6 +308,7 @@ export default function SkillUploadDialog({
 
           await syncFromDisk();
           toast.success(t('agents.skill-added-success'));
+          recordFeatureUsed('skills', { action: 'upload', format: 'zip' });
           handleClose();
           return;
         }
@@ -343,6 +346,7 @@ export default function SkillUploadDialog({
         });
 
         toast.success(t('agents.skill-added-success'));
+        recordFeatureUsed('skills', { action: 'upload', format: 'md' });
         handleClose();
       } catch (_error) {
         toast.error(t('agents.skill-add-error'));
@@ -486,7 +490,7 @@ export default function SkillUploadDialog({
             }
           />
           <DialogContentSection>
-            <div className="gap-4 flex flex-col">
+            <div className="flex flex-col gap-4">
               {mode === 'create' ? (
                 <>
                   <p className="text-label-sm text-ds-text-neutral-muted-default">
@@ -496,10 +500,10 @@ export default function SkillUploadDialog({
                     variant="none"
                     value={composeContent}
                     onChange={(e) => setComposeContent(e.target.value)}
-                    className="font-mono text-body-sm min-h-[220px] resize-y"
+                    className="min-h-[220px] resize-y font-mono text-body-sm"
                     spellCheck={false}
                   />
-                  <div className="gap-2 flex justify-end">
+                  <div className="flex justify-end gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -522,7 +526,7 @@ export default function SkillUploadDialog({
               ) : null}
               {mode === 'upload' ? (
                 <div
-                  className={`rounded-xl p-8 ease-in relative cursor-pointer border-2 border-dashed transition-colors duration-300 ${
+                  className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-300 ease-in ${
                     uploadError
                       ? 'border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default'
                       : isDragging
@@ -543,10 +547,10 @@ export default function SkillUploadDialog({
                   />
 
                   {selectedFile ? (
-                    <div className="gap-6 flex flex-col items-center">
-                      <div className="gap-2 flex items-center">
+                    <div className="flex flex-col items-center gap-6">
+                      <div className="flex items-center gap-2">
                         <div
-                          className={`rounded-lg p-1 flex flex-shrink-0 items-center justify-center ${
+                          className={`flex flex-shrink-0 items-center justify-center rounded-lg p-1 ${
                             uploadError
                               ? 'bg-ds-bg-status-error-subtle-default'
                               : 'bg-ds-bg-neutral-strong-default'
@@ -560,9 +564,9 @@ export default function SkillUploadDialog({
                             }`}
                           />
                         </div>
-                        <div className="min-w-0 flex w-full flex-col">
+                        <div className="flex w-full min-w-0 flex-col">
                           <span
-                            className={`text-body-sm font-medium truncate ${
+                            className={`truncate text-body-sm font-medium ${
                               uploadError
                                 ? 'text-ds-text-status-error-strong-default'
                                 : 'text-ds-text-neutral-default-default'
@@ -596,11 +600,11 @@ export default function SkillUploadDialog({
                       </span>
                     </div>
                   ) : (
-                    <div className="gap-2 flex flex-col items-center">
-                      <div className="h-12 w-12 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex h-12 w-12 items-center justify-center">
                         <Upload className="h-6 w-6 text-ds-icon-neutral-muted-default" />
                       </div>
-                      <div className="gap-1 flex flex-col items-center text-center">
+                      <div className="flex flex-col items-center gap-1 text-center">
                         <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
                           {t('agents.drag-and-drop')}
                         </span>
@@ -616,10 +620,10 @@ export default function SkillUploadDialog({
               {/* Error notice */}
               {mode === 'upload' && uploadError && errorMessage && (
                 <div
-                  className="gap-4 rounded-xl border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default px-4 py-3 flex items-center border"
+                  className="flex items-center gap-4 rounded-xl border border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default px-4 py-3"
                   role="alert"
                 >
-                  <AlertCircle className="h-4 w-4 text-ds-icon-status-error-default-default shrink-0" />
+                  <AlertCircle className="h-4 w-4 shrink-0 text-ds-icon-status-error-default-default" />
                   <span className="text-label-sm text-ds-text-status-error-strong-default">
                     {errorMessage}
                   </span>
@@ -632,13 +636,13 @@ export default function SkillUploadDialog({
                   <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
                     {t('agents.file-requirements')}
                   </span>
-                  <span className="mt-2 gap-2 text-label-sm text-ds-text-neutral-muted-default flex items-start">
+                  <span className="mt-2 flex items-start gap-2 text-label-sm text-ds-text-neutral-muted-default">
                     <span className="text-ds-text-neutral-muted-default">
                       •
                     </span>
                     <span>{t('agents.file-requirements-detail-1')}</span>
                   </span>
-                  <span className="mt-1 gap-2 text-label-sm text-ds-text-neutral-muted-default flex items-start">
+                  <span className="mt-1 flex items-start gap-2 text-label-sm text-ds-text-neutral-muted-default">
                     <span className="text-ds-text-neutral-muted-default">
                       •
                     </span>
