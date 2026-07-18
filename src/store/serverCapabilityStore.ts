@@ -80,18 +80,7 @@ export const useServerCapabilityStore = create<ServerCapabilityState>()(
 
     fetchCapabilities: async (force = false) => {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-        // Local debug: keep Connector Gateway visible while using local auto-login.
-        // Before release, switch this branch back to disabledCapabilities('local_proxy')
-        // so fully-local self-hosted users do not request Eigent server connectors.
-        const localCapabilities: ServerCapabilities = {
-          features: {
-            connector_gateway: {
-              enabled: true,
-              provider: 'connector_gateway',
-              reason: 'local_debug',
-            },
-          },
-        };
+        const localCapabilities = disabledCapabilities('local_proxy');
         set({
           capabilities: localCapabilities,
           status: 'ready',
@@ -145,6 +134,7 @@ export const useServerCapabilityStore = create<ServerCapabilityState>()(
     },
 
     isConnectorGatewayEnabled: () =>
+      import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
       get().capabilities.features.connector_gateway.enabled === true,
   })
 );

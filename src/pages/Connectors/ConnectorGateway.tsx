@@ -206,8 +206,10 @@ function ProviderIcon({
 
 export default function ConnectorGateway() {
   const { t } = useTranslation();
-  const capabilities = useServerCapabilityStore((state) => state.capabilities);
   const capabilityStatus = useServerCapabilityStore((state) => state.status);
+  const connectorGatewayEnabled = useServerCapabilityStore((state) =>
+    state.isConnectorGatewayEnabled()
+  );
   const fetchCapabilities = useServerCapabilityStore(
     (state) => state.fetchCapabilities
   );
@@ -231,9 +233,6 @@ export default function ConnectorGateway() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const connectorGatewayEnabled =
-    capabilities.features.connector_gateway.enabled === true;
 
   useEffect(() => {
     void fetchCapabilities();

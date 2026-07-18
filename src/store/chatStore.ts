@@ -229,24 +229,13 @@ async function buildConnectorGatewayMcpConfig(
   }
 
   try {
-    let connectorGatewayEnabled = false;
-
     if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
-      // The Connectors page can stay visible in local debug mode, but chat
-      // should only mount the MCP server when eigent_server confirms it is
-      // actually configured. Otherwise CAMEL tries to connect to a disabled
-      // endpoint and connector tools silently disappear.
-      const capabilities = await proxyFetchGet('/api/v1/server/capabilities');
-      connectorGatewayEnabled =
-        capabilities?.features?.connector_gateway?.enabled === true;
-    } else {
-      const capabilities =
-        await getServerCapabilityStore().fetchCapabilities(false);
-      connectorGatewayEnabled =
-        capabilities.features.connector_gateway.enabled === true;
+      return null;
     }
 
-    if (!connectorGatewayEnabled) {
+    const capabilities =
+      await getServerCapabilityStore().fetchCapabilities(false);
+    if (capabilities.features.connector_gateway.enabled !== true) {
       return null;
     }
   } catch (error) {
