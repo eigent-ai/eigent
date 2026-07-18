@@ -260,7 +260,13 @@ function HeaderWin() {
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
-      if (projectStore.peekActiveChatStore(projectId)) {
+      const project = projectStore.getProjectById(projectId);
+      const needsRemoteHistoryHydration =
+        project?.metadata?.remoteHistoryHydrationPending === true;
+      if (
+        projectStore.peekActiveChatStore(projectId) &&
+        !needsRemoteHistoryHydration
+      ) {
         return;
       }
 
@@ -276,6 +282,12 @@ function HeaderWin() {
           );
 
         if (taskIdsList.length === 0) {
+          if (needsRemoteHistoryHydration) {
+            projectStore.updateProject(projectId, {
+              metadata: { remoteHistoryHydrationPending: false },
+            });
+            return;
+          }
           projectStore.appendInitChatStore(projectId);
           return;
         }
@@ -287,6 +299,14 @@ function HeaderWin() {
 
         const firstTask = historyProject.tasks[0];
         const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        if (needsRemoteHistoryHydration) {
+          await projectStore.mergeProjectHistory(
+            projectId,
+            historyProject.tasks,
+            firstTask?.question || historyProject.last_prompt || ''
+          );
+          return;
+        }
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
@@ -514,6 +534,7 @@ function HeaderWin() {
               }
               side="bottom"
               align="center"
+              variant="instant"
             >
               <Button
                 variant="ghost"
@@ -615,6 +636,7 @@ function HeaderWin() {
             content={t('layout.support')}
             side="bottom"
             align="end"
+            variant="instant"
           >
             <Button
               type="button"
@@ -632,6 +654,7 @@ function HeaderWin() {
             content={t('layout.refer-friends')}
             side="bottom"
             align="end"
+            variant="instant"
           >
             <Button
               onClick={openInviteCodeDialog}
@@ -666,6 +689,7 @@ function HeaderWin() {
                     content={t('layout.settings')}
                     side="bottom"
                     align="end"
+                    variant="instant"
                   >
                     <Button
                       onClick={() => navigate('/history?tab=settings')}
@@ -692,6 +716,7 @@ function HeaderWin() {
                     content={t('layout.back', { defaultValue: 'Back' })}
                     side="bottom"
                     align="end"
+                    variant="instant"
                   >
                     <Button
                       type="button"

@@ -41,6 +41,22 @@ logging.getLogger("camel.societies").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+
+def _enable_system_trust_store() -> None:
+    try:
+        import truststore
+
+        truststore.inject_into_ssl()
+        logging.getLogger("main").info("System trust store enabled")
+    except Exception:
+        logging.getLogger("main").warning(
+            "Failed to enable system trust store; falling back to default CA bundle",
+            exc_info=True,
+        )
+
+
+_enable_system_trust_store()
+
 from app import api
 from app.component.environment import env
 from app.router import register_routers

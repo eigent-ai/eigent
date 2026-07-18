@@ -172,6 +172,8 @@ export interface RichChatInputProps {
   onBlur?: () => void;
   onCompositionStart?: () => void;
   onCompositionEnd?: () => void;
+  /** Called with non-text clipboard items (e.g. pasted images/files). */
+  onPasteFiles?: (files: File[]) => void;
   disabled?: boolean;
   /** @deprecated Use `placeholders` for rotating copy. If set without `placeholders`, shown as a single static line when empty. */
   placeholder?: string;
@@ -195,6 +197,7 @@ export const RichChatInput = React.forwardRef<
     onBlur,
     onCompositionStart,
     onCompositionEnd,
+    onPasteFiles,
     disabled,
     placeholder,
     placeholders: placeholdersProp,
@@ -371,6 +374,15 @@ export const RichChatInput = React.forwardRef<
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
+    const pastedFiles = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (pastedFiles.length > 0 && onPasteFiles) {
+      onPasteFiles(pastedFiles);
+      // Fall through: some sources put both a file and a text
+      // representation on the clipboard; insert the text too if present.
+    }
     const text = e.clipboardData.getData('text/plain');
     if (!text) return;
     const el = rootRef.current;

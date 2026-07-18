@@ -36,7 +36,7 @@ export function WorkforceSidePanelHeaderEnd({
               defaultValue: 'Expand workforce',
             })
       }
-      delayDuration={300}
+      variant="instant"
       side="bottom"
     >
       <Button

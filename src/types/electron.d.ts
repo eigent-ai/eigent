@@ -47,6 +47,15 @@ interface ElectronAPI {
     error?: string;
   }>;
   getPathForFile: (file: File) => string;
+  savePastedFile: (
+    fileName: string,
+    data: ArrayBuffer
+  ) => Promise<{
+    success: boolean;
+    filePath?: string;
+    fileName?: string;
+    error?: string;
+  }>;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;
@@ -197,7 +206,11 @@ interface ElectronAPI {
   codexSubscriptionDisconnect: (
     email: string
   ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
-  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => Promise<string>;
   openInIDE: (
     folderPath: string,
     ide: string
