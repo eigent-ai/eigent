@@ -75,10 +75,10 @@ function getWorkforceMenuStyleSubIcon(agentType: string): ReactNode {
 function FoldedAgentLeadingIcon({ agentType }: { agentType: string }) {
   const subIcon = getWorkforceMenuStyleSubIcon(agentType);
   return (
-    <div className="h-6 w-6 text-ds-text-neutral-muted-default relative inline-flex shrink-0 items-center justify-center self-center">
+    <div className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center self-center text-ds-text-neutral-muted-default">
       <Bot className="h-6 w-6" strokeWidth={2} aria-hidden />
       {subIcon != null && (
-        <span className="-right-1 -top-1 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
+        <span className="absolute -right-1 -top-1 inline-flex items-center justify-center [&_svg]:shrink-0">
           {subIcon}
         </span>
       )}
@@ -155,9 +155,9 @@ export function FoldedAgentCard({
   );
 
   const expandedRow = (
-    <div className="gap-md px-3 pb-2 pt-2 min-w-0 flex w-full max-w-full items-center">
+    <div className="flex w-full min-w-0 max-w-full items-center gap-md px-3 pb-2 pt-2">
       <FoldedAgentLeadingIcon agentType={agent.type} />
-      <div className="min-w-0 min-h-0 flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           className={cn(
             'text-base font-bold leading-relaxed',
@@ -166,7 +166,7 @@ export function FoldedAgentCard({
         >
           {preset?.name ?? agent.name}
         </div>
-        <div className="mt-0.5 min-h-4 min-w-0 w-full">
+        <div className="mt-0.5 min-h-4 w-full min-w-0">
           <HoverScrollText
             text={toolkitLine}
             active={toolkitHovered}
@@ -186,12 +186,7 @@ export function FoldedAgentCard({
   const button = iconOnly ? (
     compactContextMenu ? (
       <DropdownMenu>
-        <TooltipSimple
-          content={agentLabel}
-          side="top"
-          sideOffset={8}
-          delayDuration={300}
-        >
+        <TooltipSimple content={agentLabel} side="top" sideOffset={8}>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -205,7 +200,7 @@ export function FoldedAgentCard({
         </TooltipSimple>
         <DropdownMenuContent align="start" side="bottom" sideOffset={8}>
           <DropdownMenuItem
-            className="gap-2 cursor-pointer"
+            className="cursor-pointer gap-2"
             disabled={compactContextMenu.editEnabled === false}
             onSelect={(e) => {
               e.preventDefault();
@@ -215,13 +210,13 @@ export function FoldedAgentCard({
             }}
           >
             <Pencil
-              className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
+              className="h-4 w-4 shrink-0 text-ds-icon-neutral-default-default"
               aria-hidden
             />
             {t('workforce.edit', { defaultValue: 'Edit' })}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="gap-2 cursor-pointer"
+            className="cursor-pointer gap-2"
             disabled={compactContextMenu.duplicateEnabled === false}
             onSelect={(e) => {
               e.preventDefault();
@@ -231,13 +226,13 @@ export function FoldedAgentCard({
             }}
           >
             <Copy
-              className="h-4 w-4 text-ds-icon-neutral-default-default shrink-0"
+              className="h-4 w-4 shrink-0 text-ds-icon-neutral-default-default"
               aria-hidden
             />
             {t('workforce.duplicate', { defaultValue: 'Duplicate' })}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="gap-2 text-ds-text-error-default-default cursor-pointer"
+            className="cursor-pointer gap-2 text-ds-text-error-default-default"
             disabled={compactContextMenu.deleteEnabled === false}
             onSelect={(e) => {
               e.preventDefault();
@@ -247,7 +242,7 @@ export function FoldedAgentCard({
             }}
           >
             <Trash2
-              className="h-4 w-4 text-ds-icon-error-default-default shrink-0"
+              className="h-4 w-4 shrink-0 text-ds-icon-error-default-default"
               aria-hidden
             />
             {t('workforce.delete', { defaultValue: 'Delete' })}
@@ -274,13 +269,13 @@ export function FoldedAgentCard({
         type="button"
         onClick={onSelect}
         className={cn(
-          'focus-visible:ring-ds-ring-neutral-default-focus min-w-0 flex w-full max-w-full flex-col bg-transparent text-left hover:bg-transparent focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:outline-none',
+          'flex w-full min-w-0 max-w-full flex-col bg-transparent text-left hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus focus-visible:ring-offset-0',
           'pr-9'
         )}
       >
         {expandedRow}
       </button>
-      <div className="right-1 pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+      <div className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -289,7 +284,7 @@ export function FoldedAgentCard({
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
-              className="text-ds-text-neutral-muted-default shrink-0"
+              className="shrink-0 text-ds-text-neutral-muted-default"
               aria-label={`More actions for ${agentLabel}`}
             >
               <Ellipsis className="h-4 w-4" />
@@ -297,7 +292,7 @@ export function FoldedAgentCard({
           </PopoverTrigger>
           <PopoverContent
             align="end"
-            className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid"
+            className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-1">
@@ -308,7 +303,7 @@ export function FoldedAgentCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="gap-2 w-full justify-start"
+                  className="w-full justify-start gap-2"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteUserAgent?.(agent.agent_id);
@@ -334,7 +329,7 @@ export function FoldedAgentCard({
       onMouseLeave={() => setToolkitHovered(false)}
       className={cn(
         shellClass,
-        'focus-visible:ring-ds-ring-neutral-default-focus min-w-0 flex w-full max-w-full flex-col text-left focus-visible:ring-2 focus-visible:outline-none'
+        'flex w-full min-w-0 max-w-full flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus'
       )}
     >
       {expandedRow}
@@ -343,12 +338,7 @@ export function FoldedAgentCard({
 
   if (iconOnly && !compactContextMenu) {
     return (
-      <TooltipSimple
-        content={agentLabel}
-        side="top"
-        sideOffset={8}
-        delayDuration={300}
-      >
+      <TooltipSimple content={agentLabel} side="top" sideOffset={8}>
         {button}
       </TooltipSimple>
     );
