@@ -82,7 +82,8 @@ export function useProjectOutputFiles(
           const localFiles = await ipcRenderer.invoke(
             'get-project-file-list',
             email,
-            projectId
+            projectId,
+            userId
           );
           if (Array.isArray(localFiles)) {
             nextFiles = localFiles;

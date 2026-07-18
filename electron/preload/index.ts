@@ -173,8 +173,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('subscription-auth:codex-login', email),
   codexSubscriptionDisconnect: (email: string) =>
     ipcRenderer.invoke('subscription-auth:codex-disconnect', email),
-  getProjectFolderPath: (email: string, projectId: string) =>
-    ipcRenderer.invoke('get-project-folder-path', email, projectId),
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>
