@@ -356,7 +356,9 @@ def agent_model(
                 model_config["max_tokens"], str
             ):
                 try:
-                    model_config["max_tokens"] = int(model_config["max_tokens"])
+                    model_config["max_tokens"] = int(
+                        model_config["max_tokens"]
+                    )
                 except (ValueError, TypeError):
                     logger.warning(
                         f"Invalid max_tokens value '{model_config['max_tokens']}', using default 128000"
