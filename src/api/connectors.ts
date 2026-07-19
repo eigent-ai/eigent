@@ -121,18 +121,49 @@ export interface FetchConnectorProvidersOptions {
   query?: string;
 }
 
-export async function fetchConnectorProviders(
+export function providerLabel(provider: ConnectorProvider): string {
+  return provider.displayName || provider.service;
+}
+
+export function isConnectedProvider(
+  provider: ConnectorProvider | null | undefined
+): boolean {
+  const connection = provider?.connection;
+  return connection?.configured === true && connection.virtual !== true;
+}
+
+export interface FetchConnectorProvidersRequestOptions {
+  /** Skip the short-lived list cache and force a network fetch. */
+  bypassCache?: boolean;
+}
+
+const PROVIDERS_LIST_CACHE_TTL_MS = 60_000;
+
+type ProvidersListCacheEntry = {
+  expiresAt: number;
+  data: ConnectorProvidersResponse;
+};
+
+const providersListCache = new Map<string, ProvidersListCacheEntry>();
+const providersListInflight = new Map<
+  string,
+  Promise<ConnectorProvidersResponse>
+>();
+
+function providersListCacheKey(
   options: FetchConnectorProvidersOptions = {}
-): Promise<ConnectorProvidersResponse> {
-  const params: Record<string, string | number> = {
-    page: options.page || 1,
-    page_size: options.pageSize || 24,
-  };
-  const query = options.query?.trim();
-  if (query) {
-    params.q = query;
-  }
-  const response = await proxyFetchGet('/api/v1/connectors/providers', params);
+): string {
+  return [
+    options.page || 1,
+    options.pageSize || 24,
+    options.query?.trim() || '',
+  ].join('::');
+}
+
+function normalizeProvidersResponse(
+  response: any,
+  options: FetchConnectorProvidersOptions = {}
+): ConnectorProvidersResponse {
   const providers = Array.isArray(response?.providers)
     ? response.providers
     : [];
@@ -166,6 +197,88 @@ export async function fetchConnectorProviders(
         : Math.max(1, Math.ceil(filteredCount / pageSize)),
     providers,
   };
+}
+
+/** Synchronous cache read for instant UI hydration. */
+export function getCachedConnectorProviders(
+  options: FetchConnectorProvidersOptions = {}
+): ConnectorProvidersResponse | null {
+  const entry = providersListCache.get(providersListCacheKey(options));
+  if (!entry || entry.expiresAt <= Date.now()) return null;
+  return entry.data;
+}
+
+export function invalidateConnectorProvidersCache(): void {
+  providersListCache.clear();
+  providersListInflight.clear();
+}
+
+/** Warm the list cache without waiting for dialog open. */
+export function prefetchConnectorProviders(
+  options: FetchConnectorProvidersOptions = {}
+): Promise<ConnectorProvidersResponse> {
+  return fetchConnectorProviders(options);
+}
+
+export async function fetchConnectorProviders(
+  options: FetchConnectorProvidersOptions = {},
+  requestOptions: FetchConnectorProvidersRequestOptions = {}
+): Promise<ConnectorProvidersResponse> {
+  const cacheKey = providersListCacheKey(options);
+  if (!requestOptions.bypassCache) {
+    const cached = getCachedConnectorProviders(options);
+    if (cached) return cached;
+  }
+  // Always coalesce concurrent identical requests, even when bypassing cache.
+  const inflight = providersListInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const request = (async () => {
+    const params: Record<string, string | number> = {
+      page: options.page || 1,
+      page_size: options.pageSize || 24,
+    };
+    const query = options.query?.trim();
+    if (query) {
+      params.q = query;
+    }
+    const response = await proxyFetchGet(
+      '/api/v1/connectors/providers',
+      params
+    );
+    const normalized = normalizeProvidersResponse(response, options);
+    providersListCache.set(cacheKey, {
+      expiresAt: Date.now() + PROVIDERS_LIST_CACHE_TTL_MS,
+      data: normalized,
+    });
+    return normalized;
+  })();
+
+  providersListInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    if (providersListInflight.get(cacheKey) === request) {
+      providersListInflight.delete(cacheKey);
+    }
+  }
+}
+
+/** Fetch every provider page and return only connected providers. */
+export async function fetchConnectedProviders(): Promise<ConnectorProvider[]> {
+  const first = await fetchConnectorProviders({ page: 1, pageSize: 100 });
+  let providers = first.providers;
+  for (let page = 2; page <= first.total_pages; page += 1) {
+    const response = await fetchConnectorProviders({
+      page,
+      pageSize: first.page_size,
+    });
+    providers = providers.concat(response.providers);
+  }
+  const unique = new Map(
+    providers.map((provider) => [provider.service, provider])
+  );
+  return Array.from(unique.values()).filter(isConnectedProvider);
 }
 
 export async function fetchConnectorProvider(

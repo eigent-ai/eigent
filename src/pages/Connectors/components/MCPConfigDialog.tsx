@@ -52,6 +52,7 @@ export default function MCPConfigDialog({
   const { t } = useTranslation();
   const formRef = useRef<HTMLFormElement | null>(null);
   if (!form || !mcp) return null;
+  const isRemote = Number(mcp.type) === 2;
   return (
     <Dialog
       open={open}
@@ -64,7 +65,7 @@ export default function MCPConfigDialog({
         <form
           ref={formRef}
           onSubmit={onSave}
-          className="gap-4 p-md flex flex-col"
+          className="flex flex-col gap-4 p-md"
         >
           <Input
             title={t('setting.name')}
@@ -81,59 +82,81 @@ export default function MCPConfigDialog({
             disabled={loading}
             placeholder={t('setting.description') as string}
           />
-          <Input
-            title={t('setting.command')}
-            value={form.command}
-            onChange={(e) => onChange({ ...form, command: e.target.value })}
-            disabled={loading}
-            placeholder={t('setting.command') as string}
-          />
-
-          <Textarea
-            variant="enhanced"
-            title={t('setting.args-one-per-line')}
-            value={Array.isArray(form.argsArr) ? form.argsArr.join('\n') : ''}
-            onChange={(e) =>
-              onChange({ ...form, argsArr: e.target.value.split(/\r?\n/) })
-            }
-            disabled={loading}
-            placeholder={t('setting.args-one-per-line') as string}
-            rows={Math.max(
-              3,
-              form.argsArr && form.argsArr.length > 0 ? form.argsArr.length : 3
-            )}
-          />
-
-          <div className="mb-1 text-label-sm font-normal block">
-            Env (key-value)
-          </div>
-          {Object.entries(form.env).map(([k, v], idx) => (
-            <div className="mb-2" key={k + idx}>
+          {isRemote ? (
+            <Input
+              title={t('connectors.remote-url')}
+              value={form.server_url}
+              onChange={(e) =>
+                onChange({ ...form, server_url: e.target.value })
+              }
+              disabled={loading}
+              placeholder="https://example.com/mcp"
+              required
+            />
+          ) : (
+            <>
               <Input
-                title={k}
-                type={showEnvValues[k] ? 'text' : 'password'}
-                value={String(v)}
-                onChange={(e) => {
-                  const newEnv = { ...form.env };
-                  newEnv[k] = e.target.value;
-                  onChange({ ...form, env: newEnv });
-                }}
+                title={t('setting.command')}
+                value={form.command}
+                onChange={(e) => onChange({ ...form, command: e.target.value })}
                 disabled={loading}
-                backIcon={
-                  showEnvValues[k] ? (
-                    <Eye className="h-5 w-5" />
-                  ) : (
-                    <EyeOff className="h-5 w-5" />
-                  )
-                }
-                onBackIconClick={() =>
-                  setShowEnvValues((prev) => ({ ...prev, [k]: !prev[k] }))
-                }
-                size="default"
-                placeholder="Value"
+                placeholder={t('setting.command') as string}
               />
-            </div>
-          ))}
+
+              <Textarea
+                variant="enhanced"
+                title={t('setting.args-one-per-line')}
+                value={
+                  Array.isArray(form.argsArr) ? form.argsArr.join('\n') : ''
+                }
+                onChange={(e) =>
+                  onChange({ ...form, argsArr: e.target.value.split(/\r?\n/) })
+                }
+                disabled={loading}
+                placeholder={t('setting.args-one-per-line') as string}
+                rows={Math.max(
+                  3,
+                  form.argsArr && form.argsArr.length > 0
+                    ? form.argsArr.length
+                    : 3
+                )}
+              />
+
+              <div className="mb-1 block text-label-sm font-normal">
+                {t('connectors.env-key-value')}
+              </div>
+              {Object.entries(form.env).map(([k, v], idx) => (
+                <div className="mb-2" key={k + idx}>
+                  <Input
+                    title={k}
+                    type={showEnvValues[k] ? 'text' : 'password'}
+                    value={String(v)}
+                    onChange={(e) => {
+                      const newEnv = { ...form.env };
+                      newEnv[k] = e.target.value;
+                      onChange({ ...form, env: newEnv });
+                    }}
+                    disabled={loading}
+                    backIcon={
+                      showEnvValues[k] ? (
+                        <Eye className="h-5 w-5" />
+                      ) : (
+                        <EyeOff className="h-5 w-5" />
+                      )
+                    }
+                    onBackIconClick={() =>
+                      setShowEnvValues((prev) => ({
+                        ...prev,
+                        [k]: !prev[k],
+                      }))
+                    }
+                    size="default"
+                    placeholder={t('connectors.value-placeholder')}
+                  />
+                </div>
+              ))}
+            </>
+          )}
           {errorMsg && (
             <div className="mb-2 text-label-md text-ds-text-status-error-strong-default">
               {errorMsg}
