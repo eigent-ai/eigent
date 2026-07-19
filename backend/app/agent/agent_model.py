@@ -71,16 +71,27 @@ def _strip_strict_from_tools_for_anthropic(
         if isinstance(obj, dict):
             new_obj = {}
             for k, v in obj.items():
-                if k == "type" and v == "object" and "additionalProperties" not in obj:
+                if (
+                    k == "type"
+                    and v == "object"
+                    and "additionalProperties" not in obj
+                ):
                     new_obj[k] = v
                     new_obj["additionalProperties"] = False
                 elif k in ("properties", "$defs") and isinstance(v, dict):
-                    new_obj[k] = {pk: _ensure_additional_props_false(pv) for pk, pv in v.items()}
-                elif k in ("items", "allOf", "oneOf", "anyOf") and isinstance(v, (dict, list)):
+                    new_obj[k] = {
+                        pk: _ensure_additional_props_false(pv)
+                        for pk, pv in v.items()
+                    }
+                elif k in ("items", "allOf", "oneOf", "anyOf") and isinstance(
+                    v, (dict, list)
+                ):
                     if isinstance(v, dict):
                         new_obj[k] = _ensure_additional_props_false(v)
                     else:
-                        new_obj[k] = [_ensure_additional_props_false(item) for item in v]
+                        new_obj[k] = [
+                            _ensure_additional_props_false(item) for item in v
+                        ]
                 else:
                     new_obj[k] = _ensure_additional_props_false(v)
             return new_obj
@@ -103,19 +114,27 @@ def _strip_strict_from_tools_for_anthropic(
 
                 if needs_additional_props_false:
                     if "parameters" in new_func_schema:
-                        new_func_schema["parameters"] = _ensure_additional_props_false(
-                            new_func_schema["parameters"]
+                        new_func_schema["parameters"] = (
+                            _ensure_additional_props_false(
+                                new_func_schema["parameters"]
+                            )
                         )
                     modified = True
 
                 if modified:
-                    new_schema = {"type": "function", "function": new_func_schema}
-                    new_tool = FunctionTool(tool.func, openai_tool_schema=new_schema)
+                    new_schema = {
+                        "type": "function",
+                        "function": new_func_schema,
+                    }
+                    new_tool = FunctionTool(
+                        tool.func, openai_tool_schema=new_schema
+                    )
                     stripped_tools.append(new_tool)
                     continue
         stripped_tools.append(tool)
 
     return stripped_tools
+
 
 # OpenAI chat-completions streaming only returns token usage when
 # `stream_options.include_usage` is requested. Without it the request-level
