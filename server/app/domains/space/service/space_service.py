@@ -646,6 +646,27 @@ class SpaceService:
         return project
 
     @staticmethod
+    def delete_project(
+        space_id: str,
+        project_id: str,
+        user_id: int | str,
+        s: Session,
+    ) -> None:
+        canonical_user_id = SpaceService.canonical_user_id(user_id)
+        SpaceService._get_owned_space(space_id, canonical_user_id, s)
+        project = s.exec(
+            select(Project).where(
+                Project.id == project_id,
+                Project.user_id == canonical_user_id,
+                Project.space_id == space_id,
+            )
+        ).first()
+        if not project:
+            raise ValueError("Project not found")
+        s.delete(project)
+        s.commit()
+
+    @staticmethod
     def promote_project(
         space_id: str,
         project_id: str,
