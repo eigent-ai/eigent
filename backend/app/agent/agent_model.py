@@ -351,6 +351,17 @@ def agent_model(
         if effective_config["model_platform"].lower() == "anthropic":
             if model_config.get("max_tokens") is None:
                 model_config["max_tokens"] = 128000
+            # Coerce max_tokens to int (can come as string from env/JSON)
+            if "max_tokens" in model_config and isinstance(
+                model_config["max_tokens"], str
+            ):
+                try:
+                    model_config["max_tokens"] = int(model_config["max_tokens"])
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"Invalid max_tokens value '{model_config['max_tokens']}', using default 128000"
+                    )
+                    model_config["max_tokens"] = 128000
 
         # Ensure streaming steps still report token usage. OpenAI-family
         # providers omit usage from streamed responses unless include_usage
