@@ -83,16 +83,27 @@ def _ensure_additional_props_false_for_groq(
         if isinstance(obj, dict):
             new_obj = {}
             for k, v in obj.items():
-                if k == "type" and v == "object" and "additionalProperties" not in obj:
+                if (
+                    k == "type"
+                    and v == "object"
+                    and "additionalProperties" not in obj
+                ):
                     new_obj[k] = v
                     new_obj["additionalProperties"] = False
                 elif k in ("properties", "$defs") and isinstance(v, dict):
-                    new_obj[k] = {pk: _ensure_additional_props_false(pv) for pk, pv in v.items()}
-                elif k in ("items", "allOf", "oneOf", "anyOf") and isinstance(v, (dict, list)):
+                    new_obj[k] = {
+                        pk: _ensure_additional_props_false(pv)
+                        for pk, pv in v.items()
+                    }
+                elif k in ("items", "allOf", "oneOf", "anyOf") and isinstance(
+                    v, (dict, list)
+                ):
                     if isinstance(v, dict):
                         new_obj[k] = _ensure_additional_props_false(v)
                     else:
-                        new_obj[k] = [_ensure_additional_props_false(item) for item in v]
+                        new_obj[k] = [
+                            _ensure_additional_props_false(item) for item in v
+                        ]
                 else:
                     new_obj[k] = _ensure_additional_props_false(v)
             return new_obj
@@ -109,12 +120,16 @@ def _ensure_additional_props_false_for_groq(
                 new_func_schema = deepcopy(func_schema)
 
                 if "parameters" in new_func_schema:
-                    new_func_schema["parameters"] = _ensure_additional_props_false(
-                        new_func_schema["parameters"]
+                    new_func_schema["parameters"] = (
+                        _ensure_additional_props_false(
+                            new_func_schema["parameters"]
+                        )
                     )
 
                 new_schema = {"type": "function", "function": new_func_schema}
-                new_tool = FunctionTool(tool.func, openai_tool_schema=new_schema)
+                new_tool = FunctionTool(
+                    tool.func, openai_tool_schema=new_schema
+                )
                 modified_tools.append(new_tool)
                 continue
         modified_tools.append(tool)
