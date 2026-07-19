@@ -348,3 +348,87 @@ def sync_eigent_skills_to_project(working_directory: str) -> None:
             e,
             exc_info=True,
         )
+
+
+def ensure_gif_infinite_loop(file_path: str) -> bool:
+    """
+    Ensure a GIF file has infinite loop (loop=0 in PIL).
+    
+    Args:
+        file_path: Path to the GIF file
+        
+    Returns:
+        True if file was modified, False otherwise
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        logger.warning("PIL not available, cannot fix GIF loop")
+        return False
+    
+    if not os.path.exists(file_path):
+        return False
+    
+    if not file_path.lower().endswith('.gif'):
+        return False
+    
+    try:
+        with Image.open(file_path) as img:
+            current_loop = img.info.get('loop', 1)
+            # In PIL, loop=0 means infinite loop
+            if current_loop == 0:
+                return False  # Already infinite
+            
+            # Need to re-save with loop=0
+            # GIFs can have multiple frames, so we need to handle that
+            frames = []
+            durations = []
+            try:
+                while True:
+                    frames.append(img.copy())
+                    durations.append(img.info.get('duration', 100))
+                    img.seek(img.tell() + 1)
+            except EOFError:
+                pass
+            
+            if not frames:
+                return False
+                
+            # Save with infinite loop
+            frames[0].save(
+                file_path,
+                format='GIF',
+                save_all=True,
+                append_images=frames[1:] if len(frames) > 1 else [],
+                duration=durations,
+                loop=0,  # 0 = infinite loop
+                disposal=img.info.get('disposal', 2),
+            )
+            logger.debug(f"Fixed GIF loop for {file_path}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to fix GIF loop for {file_path}: {e}")
+        return False
+
+
+def post_process_gifs_in_directory(directory: str) -> int:
+    """
+    Post-process all GIF files in a directory to ensure infinite loop.
+    
+    Args:
+        directory: Directory to scan for GIF files
+        
+    Returns:
+        Number of files modified
+    """
+    if not os.path.isdir(directory):
+        return 0
+    
+    modified = 0
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.lower().endswith('.gif'):
+                file_path = os.path.join(root, file)
+                if ensure_gif_infinite_loop(file_path):
+                    modified += 1
+    return modified

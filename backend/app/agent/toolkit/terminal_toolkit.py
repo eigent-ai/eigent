@@ -35,6 +35,7 @@ from app.service.task import (
     get_task_lock,
     process_task,
 )
+from app.utils.file_utils import post_process_gifs_in_directory
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 
 logger = logging.getLogger("terminal_toolkit")
@@ -383,6 +384,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # that the command completed without error.
         if block and result == "":
             return "Command executed successfully (no output)."
+
+        # Post-process GIF files to ensure infinite loop
+        if self.working_directory and block:
+            try:
+                modified = post_process_gifs_in_directory(self.working_directory)
+                if modified:
+                    logger.debug(
+                        f"Post-processed {modified} GIF file(s) for infinite loop"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to post-process GIFs: {e}")
 
         return result
 
