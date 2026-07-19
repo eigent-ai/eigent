@@ -12,22 +12,81 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { uploadFileToBrain } from '@/api/http';
+import { isWeb } from '@/client/platform';
 import type { FileAttachment } from '@/components/ChatBox/BottomBox/InputBox';
+import type { AppHost } from '@/host';
+import { createHost } from '@/host';
 
 /**
  * Process dropped files: resolve paths via Electron, send through IPC,
  * and merge with existing attachments (deduplicated by filePath).
  */
 export async function processDroppedFiles(
-  droppedFiles: File[],
-  existingFiles: FileAttachment[]
+  droppedFiles: globalThis.File[],
+  existingFiles: FileAttachment[],
+  host?: AppHost | null
 ): Promise<
   | { success: true; files: FileAttachment[]; added: number }
   | { success: false; error: string }
 > {
+  if (isWeb()) {
+    const uploadedFiles: FileAttachment[] = [];
+
+    for (const droppedFile of droppedFiles) {
+      try {
+        const result = await uploadFileToBrain(droppedFile);
+        uploadedFiles.push({
+          fileName: result.filename,
+          filePath: result.file_id,
+          fileId: result.file_id,
+          source: 'upload',
+        });
+      } catch (error) {
+        console.error('[Drag-Drop] Upload failed:', droppedFile.name, error);
+      }
+    }
+
+    if (uploadedFiles.length === 0) {
+      return {
+        success: false,
+        error: 'Failed to upload dropped files.',
+      };
+    }
+
+    const mergedFiles = [
+      ...existingFiles.filter(
+        (existing) =>
+          !uploadedFiles.find(
+            (uploaded) => uploaded.filePath === existing.filePath
+          )
+      ),
+      ...uploadedFiles.filter(
+        (uploaded) =>
+          !existingFiles.find(
+            (existing) => existing.filePath === uploaded.filePath
+          )
+      ),
+    ];
+
+    return {
+      success: true,
+      files: mergedFiles,
+      added: uploadedFiles.length,
+    };
+  }
+
+  const electronAPI = host?.electronAPI ?? createHost().electronAPI;
+  if (!electronAPI) {
+    return {
+      success: false,
+      error: 'Desktop file access is unavailable.',
+    };
+  }
+
   const fileData = droppedFiles.map((f) => {
     try {
-      return { name: f.name, path: window.electronAPI.getPathForFile(f) };
+      return { name: f.name, path: electronAPI.getPathForFile(f) };
     } catch {
       console.error('[Drag-Drop] Failed to get path for:', f.name);
       return { name: f.name, path: undefined };
@@ -42,7 +101,7 @@ export async function processDroppedFiles(
     };
   }
 
-  const result = await window.electronAPI.processDroppedFiles(validFiles);
+  const result = await electronAPI.processDroppedFiles(validFiles);
   if (!result.success || !result.files) {
     return {
       success: false,
@@ -61,4 +120,67 @@ export async function processDroppedFiles(
   ];
 
   return { success: true, files: mergedFiles, added: result.files.length };
+}
+
+/**
+ * Process files pasted from the clipboard (e.g. screenshots). Pasted File
+ * objects carry no filesystem path, so on desktop the bytes are persisted
+ * through IPC first; on web they upload like dropped files.
+ */
+export async function processPastedFiles(
+  pastedFiles: globalThis.File[],
+  existingFiles: FileAttachment[],
+  host?: AppHost | null
+): Promise<
+  | { success: true; files: FileAttachment[]; added: number }
+  | { success: false; error: string }
+> {
+  if (isWeb()) {
+    return processDroppedFiles(pastedFiles, existingFiles, host);
+  }
+
+  const electronAPI = host?.electronAPI ?? createHost().electronAPI;
+  if (!electronAPI?.savePastedFile) {
+    return {
+      success: false,
+      error: 'Desktop file access is unavailable.',
+    };
+  }
+
+  const savedFiles: FileAttachment[] = [];
+  for (const pastedFile of pastedFiles) {
+    try {
+      const data = await pastedFile.arrayBuffer();
+      const fileName =
+        pastedFile.name && pastedFile.name !== 'image.png'
+          ? pastedFile.name
+          : `pasted-image.${(pastedFile.type.split('/')[1] || 'png').replace(/[^\w]/g, '')}`;
+      const result = await electronAPI.savePastedFile(fileName, data);
+      if (result.success && result.filePath) {
+        savedFiles.push({
+          fileName: result.fileName || fileName,
+          filePath: result.filePath,
+          source: 'local',
+        });
+      } else {
+        console.error('[Paste] Save failed:', fileName, result.error);
+      }
+    } catch (error) {
+      console.error('[Paste] Failed to persist pasted file:', error);
+    }
+  }
+
+  if (savedFiles.length === 0) {
+    return { success: false, error: 'Failed to save pasted file.' };
+  }
+
+  const mergedFiles = [
+    ...existingFiles,
+    ...savedFiles.filter(
+      (saved) =>
+        !existingFiles.find((existing) => existing.filePath === saved.filePath)
+    ),
+  ];
+
+  return { success: true, files: mergedFiles, added: savedFiles.length };
 }

@@ -33,8 +33,8 @@ export default function MCPDeleteDialog({
   const { t } = useTranslation();
   if (!open || !target) return null;
   return (
-    <div className="bg-black/30 inset-0 fixed z-30 flex items-center justify-center">
-      <div className="rounded-lg bg-white-100% p-6 shadow-lg max-w-[90vw] min-w-[320px]">
+    <div className="bg-dialog-overlay-scrim inset-0 fixed z-30 flex items-center justify-center">
+      <div className="rounded-lg bg-ds-bg-neutral-inverse-default p-6 shadow-lg max-w-[90vw] min-w-[320px]">
         <div className="mb-2 font-bold text-red-600">
           {t('setting.confirm-delete')}
         </div>

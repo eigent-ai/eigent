@@ -11,6 +11,7 @@
   "grid": "Raster",
   "table": "Tabelle",
   "list": "Liste",
+  "board": "Board",
   "search-dialog": "Suchdialog",
   "search-dialog-placeholder": "Suchen oder eine Frage stellen",
   "no-results": "Keine Ergebnisse gefunden.",
@@ -23,5 +24,6 @@
   "document-agent": "Dokument-Agent",
   "multi-modal-agent": "Multi-Modal-Agent",
   "social-media-agent": "Social-Media-Agent",
-  "no-projects-found": "Keine Projekte gefunden."
+  "no-projects-found": "Keine Projekte gefunden.",
+  "no-tasks-found": "Keine Aufgaben gefunden."
 }

@@ -16,12 +16,13 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { FloatingAction } from './FloatingAction';
+import { FloatingAction } from './MessageItem/FloatingAction';
 import { UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
   chatId: string;
   chatStore: VanillaChatStore;
+  taskId?: string;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
   // onPauseResume: () => void;  // Commented out - temporary not needed
@@ -37,6 +38,7 @@ export const ProjectSection = React.forwardRef<
     {
       chatId,
       chatStore,
+      taskId,
       activeQueryId,
       onQueryActive,
       // onPauseResume,  // Commented out - temporary not needed
@@ -80,7 +82,7 @@ export const ProjectSection = React.forwardRef<
       };
     }, [chatStore]);
 
-    const activeTaskId = chatState.activeTaskId;
+    const activeTaskId = taskId ?? chatState.activeTaskId;
     const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
     const messages = React.useMemo(() => {
@@ -98,11 +100,12 @@ export const ProjectSection = React.forwardRef<
     return (
       <motion.div
         ref={ref}
+        data-turn-id={activeTaskId}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3 }}
-        className="relative mb-8"
+        className="relative"
       >
         {/* User Query Groups */}
         <div className="space-y-0">
@@ -115,6 +118,7 @@ export const ProjectSection = React.forwardRef<
               isActive={activeQueryId === group.queryId}
               onQueryActive={onQueryActive}
               index={index}
+              taskId={activeTaskId}
             />
           ))}
         </div>
@@ -127,6 +131,7 @@ export const ProjectSection = React.forwardRef<
             // onResume={onPauseResume}  // Commented out - temporary not needed
             onSkip={onSkip}
             loading={isPauseResumeLoading}
+            hideStop={false}
           />
         )}
       </motion.div>

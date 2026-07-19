@@ -13,18 +13,39 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import VerticalNavigation, {
+  HISTORY_VERTICAL_SIDEBAR_CLASSNAME,
   type VerticalNavItem,
-} from '@/components/Navigation';
-import { useState } from 'react';
+} from '@/components/Dashboard/VerticalNav';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Memory from './Memory';
 import Models from './Models';
 import Skills from './Skills';
 import SubAgents from './SubAgents';
 
+const AGENT_SECTIONS = ['models', 'skills', 'sub-agents', 'memory'] as const;
+type AgentSection = (typeof AGENT_SECTIONS)[number];
+
+function isAgentSection(value: string | null): value is AgentSection {
+  return value !== null && AGENT_SECTIONS.includes(value as AgentSection);
+}
+
 export default function Capabilities() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('models');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const sectionFromUrl = searchParams.get('section');
+
+  const [activeTab, setActiveTab] = useState<AgentSection>(() =>
+    isAgentSection(sectionFromUrl) ? sectionFromUrl : 'models'
+  );
+
+  useEffect(() => {
+    if (isAgentSection(sectionFromUrl)) {
+      setActiveTab(sectionFromUrl);
+    }
+  }, [sectionFromUrl]);
 
   const menuItems = [
     {
@@ -46,37 +67,39 @@ export default function Capabilities() {
   ];
 
   const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
+    if (!AGENT_SECTIONS.includes(tabId as AgentSection)) return;
+    setActiveTab(tabId as AgentSection);
+    navigate(`?tab=agents&section=${tabId}`, { replace: true });
   };
 
   return (
-    <div className="m-auto flex h-auto max-w-[940px] flex-col">
-      <div className="flex h-auto w-full px-6">
-        <div className="sticky top-20 flex h-full w-40 flex-shrink-0 flex-grow-0 flex-col justify-between self-start pr-6 pt-8">
-          <VerticalNavigation
-            items={
-              menuItems.map((menu) => ({
-                value: menu.id,
-                label: (
-                  <span className="text-body-sm font-bold">{menu.name}</span>
-                ),
-              })) as VerticalNavItem[]
-            }
-            value={activeTab}
-            onValueChange={handleTabChange}
-            className="h-full min-h-0 w-full flex-1 gap-0"
-            listClassName="w-full h-full overflow-y-auto"
-            contentClassName="hidden"
-          />
-        </div>
+    <div className="flex h-auto w-full">
+      <div className={HISTORY_VERTICAL_SIDEBAR_CLASSNAME}>
+        <VerticalNavigation
+          items={
+            menuItems.map((menu) => ({
+              value: menu.id,
+              label: (
+                <span className="w-full text-left text-body-sm font-bold">
+                  {menu.name}
+                </span>
+              ),
+            })) as VerticalNavItem[]
+          }
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="h-full min-h-0 w-full flex-1 gap-0"
+          listClassName="w-full h-full overflow-y-auto"
+          contentClassName="hidden"
+        />
+      </div>
 
-        <div className="flex h-auto w-full flex-1 flex-col">
-          <div className="flex flex-col gap-4">
-            {activeTab === 'models' && <Models />}
-            {activeTab === 'skills' && <Skills />}
-            {activeTab === 'sub-agents' && <SubAgents />}
-            {activeTab === 'memory' && <Memory />}
-          </div>
+      <div className="flex h-auto w-full flex-1 flex-col">
+        <div className="flex flex-col gap-4">
+          {activeTab === 'models' && <Models />}
+          {activeTab === 'skills' && <Skills />}
+          {activeTab === 'sub-agents' && <SubAgents />}
+          {activeTab === 'memory' && <Memory />}
         </div>
       </div>
     </div>

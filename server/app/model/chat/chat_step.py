@@ -13,7 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import json
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 from pydantic import BaseModel, field_validator
 from sqlmodel import JSON, Field
@@ -24,6 +25,7 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class ChatStep(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     task_id: str = Field(index=True)
+    run_id: str | None = Field(default=None, index=True)
     step: str
     data: str = Field(sa_type=JSON)
     timestamp: float | None = Field(default=None, nullable=True)
@@ -48,6 +50,7 @@ class ChatStep(AbstractModel, DefaultTimes, table=True):
 
 class ChatStepIn(BaseModel):
     task_id: str
+    run_id: str | None = None
     step: str
     data: Any
     timestamp: float | None = None
@@ -56,12 +59,20 @@ class ChatStepIn(BaseModel):
 class ChatStepOut(BaseModel):
     id: int
     task_id: str
+    run_id: str | None = None
     step: str
     data: Any
-    timestamp: float | None = None
+    timestamp: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 class ChatStepUpdate(BaseModel):
-    step: str | None = None
-    data: Any | None = None
-    timestamp: float | None = None
+    step: Optional[str] = None
+    data: Optional[Any] = None
+    timestamp: Optional[float] = None
+    run_id: str | None = None

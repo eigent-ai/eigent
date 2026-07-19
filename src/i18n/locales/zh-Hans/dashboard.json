@@ -11,6 +11,7 @@
   "grid": "网格",
   "table": "表格",
   "list": "列表",
+  "board": "看板",
   "search-dialog": "搜索对话",
   "search-dialog-placeholder": "搜索或提问",
   "no-results": "没有结果",
@@ -23,5 +24,6 @@
   "document-agent": "文档智能体",
   "multi-modal-agent": "多模态智能体",
   "social-media-agent": "社交媒体智能体",
-  "no-projects-found": "没有找到项目"
+  "no-projects-found": "没有找到项目",
+  "no-tasks-found": "未找到任务。"
 }

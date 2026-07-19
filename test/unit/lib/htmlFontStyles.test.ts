@@ -58,6 +58,7 @@ describe('deferInlineScriptsUntilLoad', () => {
 
     expect(output).toContain("document.createElement('script')");
     expect(output).toContain('window.shared = 1;');
+    expect(output).toContain('Deferred inline script execution failed');
   });
 
   it('does not rewrite non-javascript script types', () => {

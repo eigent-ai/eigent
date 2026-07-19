@@ -23,10 +23,16 @@ from loguru import logger
 from app.core.database import session_make
 from app.core.encrypt import password_verify
 from app.core.environment import env_not_empty
+from app.domains.remote_control.service.remote_control_service import RemoteControlService
 from app.model.user.user import Status, User
 
 from app.shared.auth import create_access_token, create_refresh_token
-from app.shared.auth.user_auth import decode_refresh_token, _get_jti
+from app.shared.auth.user_auth import (
+    TOKEN_AUDIENCE,
+    TOKEN_ISSUER,
+    _get_jti,
+    decode_refresh_token,
+)
 from app.shared.auth.token_blacklist import blacklist_token, is_blacklisted
 from app.domains.user.schema import AuthResult
 
@@ -66,7 +72,7 @@ class UserAuthService:
         if not refresh_token_str:
             return AuthResult(success=False, error_code="AUTH_REFRESH_TOKEN_REQUIRED")
 
-        user_id, jti, exp_ts = decode_refresh_token(refresh_token_str)
+        user_id, jti, exp_ts = await decode_refresh_token(refresh_token_str)
         if jti and await is_blacklisted(jti):
             return AuthResult(success=False, error_code="AUTH_TOKEN_REVOKED")
 
@@ -106,6 +112,8 @@ class UserAuthService:
                     token,
                     env_not_empty("secret_key"),
                     algorithms=["HS256"],
+                    issuer=TOKEN_ISSUER,
+                    audience=TOKEN_AUDIENCE,
                     options={"verify_exp": False},
                 )
                 user_id = payload.get("id")
@@ -113,6 +121,9 @@ class UserAuthService:
                 ttl = max(0, int(exp) - int(datetime.utcnow().timestamp())) if exp else 3600
                 await blacklist_token(jti, ttl)
                 logger.info("logout", extra={"user_id": user_id})
+                if user_id is not None:
+                    with session_make() as s:
+                        RemoteControlService.revoke_user_sessions(int(user_id), s, "logout")
             except Exception as e:
                 logger.warning("logout: token decode/blacklist failed", extra={"error": str(e)})
         return True

@@ -31,6 +31,8 @@ from camel.utils.context_utils import ContextUtility
 from colorama import Fore
 
 from app.agent.listen_chat_agent import ListenChatAgent
+from app.service.task import get_task_lock
+from app.utils.agent_memory import record_agent_memory_snapshot
 
 logger = logging.getLogger("single_agent_worker")
 
@@ -268,6 +270,19 @@ class SingleAgentWorker(BaseSingleAgentWorker):
                     logger.warning(
                         f"Failed to transfer conversation to accumulator: {e}"
                     )
+
+            try:
+                task_lock = get_task_lock(worker_agent.api_task_id)
+                record_agent_memory_snapshot(
+                    task_lock,
+                    worker_agent,
+                    scope="workforce_worker",
+                    task_id=task.id,
+                    task_content=task.content,
+                    task_result=response_content,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record worker memory snapshot: {e}")
 
         except Exception as e:
             logger.error(

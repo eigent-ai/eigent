@@ -12,35 +12,41 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import { clearAllCachedProjects } from '@/lib/projectCache';
+import {
+  DEFAULT_COLOR_THEME_ID,
+  getRecommendedContrast,
+} from '@/lib/themeTokens/catalog';
+import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useSpaceStore } from './spaceStore';
 
 // type definition
 type InitState = 'carousel' | 'done';
-type ModelType = 'cloud' | 'local' | 'custom';
+type ModelType = 'cloud' | 'local' | 'custom' | 'codex_subscription';
 type PreferredIDE = 'vscode' | 'cursor' | 'system';
-export type CloudModelType =
-  | 'gemini-3.1-pro-preview'
-  | 'gemini-3.5-flash'
-  | 'gemini-3-pro-preview'
-  | 'gemini-3-flash-preview'
-  | 'claude-haiku-4-5'
-  | 'claude-sonnet-4-5'
-  | 'claude-sonnet-4-6'
-  | 'claude-opus-4-6'
-  | 'claude-opus-4-7'
-  | 'gpt-5.4'
-  | 'gpt-5.5'
-  | 'gpt-5-mini'
-  | 'deepseek-v4-pro'
-  | 'minimax_m2_7';
+type AppearanceMode = Mode | 'system';
+const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
+
+/** Main workspace panel background (Workforce + Session tabs only). */
+export type WorkspaceMainBackground =
+  | 'empty'
+  | 'dots'
+  | 'blocks'
+  | 'ruled'
+  | 'dotted'
+  | 'dashed';
+export type CloudModelType = string;
+export type CodexSubscriptionModelType = string;
 
 // auth info interface
 interface AuthInfo {
   token: string;
   username: string;
   email: string;
-  user_id: number;
+  user_id?: number | null;
 }
 
 // auth state interface
@@ -52,21 +58,40 @@ interface AuthState {
   user_id: number | null;
 
   // application settings
-  appearance: string;
+  appearance: Mode;
+  appearanceMode: AppearanceMode;
+  lightColorThemeId: string;
+  darkColorThemeId: string;
+  customThemeCatalog: ThemeCatalog;
+  themeContrast: number;
   language: string;
   isFirstLaunch: boolean;
+  onboardingCompleted: boolean;
   modelType: ModelType;
   cloud_model_type: CloudModelType;
+  codex_model_type: CodexSubscriptionModelType;
+  /**
+   * Last known result of the model configuration check, persisted so that
+   * returning users don't see the "select a model" overlay flash on mount
+   * while the API request is still in flight.
+   */
+  hasModelConfigured: boolean;
   initState: InitState;
 
   // IDE preference
   preferredIDE: PreferredIDE;
+
+  /** Pattern behind the main workspace area (Workforce / Session). */
+  workspaceMainBackground: WorkspaceMainBackground;
 
   // shared token
   share_token?: string | null;
 
   // local proxy value recorded at login
   localProxyValue?: string | null;
+
+  // API/auth environment that issued the persisted auth state.
+  authEnvironmentKey: string | null;
 
   // worker list data
   workerListData: { [key: string]: Agent[] };
@@ -78,22 +103,96 @@ interface AuthState {
 
   // set related methods
   setAppearance: (appearance: string) => void;
+  setAppearanceMode: (mode: AppearanceMode) => void;
+  setResolvedAppearance: (appearance: Mode) => void;
+  setColorThemeForMode: (mode: Mode, colorThemeId: string) => void;
+  upsertCustomThemeTemplate: (
+    mode: Mode,
+    themeId: string,
+    seed: ThemeSeed
+  ) => void;
+  removeCustomThemeTemplate: (mode: Mode, themeId: string) => void;
+  setThemeContrast: (contrast: number) => void;
   setLanguage: (language: string) => void;
   setInitState: (initState: InitState) => void;
   setModelType: (modelType: ModelType) => void;
   setCloudModelType: (cloud_model_type: CloudModelType) => void;
+  setCodexModelType: (codex_model_type: CodexSubscriptionModelType) => void;
+  setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
+  setOnboardingCompleted: (completed: boolean) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
+  setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
   // worker related methods
   setWorkerList: (workerList: Agent[]) => void;
   checkAgentTool: (tool: string) => void;
 }
 
+/**
+ * User id from the access token's payload. The local auto-login response
+ * carries no explicit user id, but the token it returns does; without an
+ * id every server-owned Space is filtered out client-side and the app
+ * degrades to an empty legacy-only workspace.
+ */
+const userIdFromToken = (token: string | null): number | null => {
+  if (!token) return null;
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    return typeof payload.id === 'number' ? payload.id : null;
+  } catch {
+    return null;
+  }
+};
+
 // random default model selection
 const getRandomDefaultModel = (): CloudModelType => {
-  const models: CloudModelType[] = ['gpt-5.5', 'gpt-5.4', 'gpt-5-mini'];
-  return models[Math.floor(Math.random() * models.length)];
+  return LEGACY_DEFAULT_CLOUD_MODEL_ID;
+};
+
+const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
+  if (!useSpaceStore?.getState) return;
+  if (userId === null || userId === undefined || userId === '') {
+    useSpaceStore.getState().resetForUser(null);
+    useSpaceStore.getState().ensureLegacySpace();
+    return;
+  }
+  useSpaceStore.getState().resetForUser(userId);
+  void useSpaceStore.getState().hydrateFromServer(userId);
+};
+
+const clearAuthForCurrentEnvironment = (
+  setState: (state: Partial<AuthState>) => void,
+  getState: () => AuthState
+) => {
+  const currentEnvironmentKey = getAuthEnvironmentKey();
+  const state = getState();
+  if (state.authEnvironmentKey === currentEnvironmentKey) {
+    return false;
+  }
+
+  const hadAuth = Boolean(state.token || state.email || state.user_id != null);
+  if (state.user_id != null) {
+    void clearAllCachedProjects(state.user_id);
+  }
+
+  setState({
+    token: null,
+    username: null,
+    email: null,
+    user_id: null,
+    share_token: null,
+    localProxyValue: null,
+    authEnvironmentKey: currentEnvironmentKey,
+  });
+  useSpaceStore.getState().resetForUser(null);
+  if (hadAuth) {
+    console.warn(
+      '[authStore] Cleared persisted auth after API environment changed.'
+    );
+  }
+  return true;
 };
 
 // create store
@@ -106,21 +205,55 @@ const authStore = create<AuthState>()(
       email: null,
       user_id: null,
       appearance: 'light',
+      appearanceMode: 'light',
+      lightColorThemeId: DEFAULT_COLOR_THEME_ID,
+      darkColorThemeId: DEFAULT_COLOR_THEME_ID,
+      customThemeCatalog: {
+        light: {},
+        dark: {},
+      },
+      themeContrast: getRecommendedContrast(),
       language: 'system',
       isFirstLaunch: true,
+      onboardingCompleted: false,
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
+      codex_model_type: 'gpt-5.5',
+      hasModelConfigured: false,
       preferredIDE: 'system',
+      workspaceMainBackground: 'empty',
       initState: 'carousel',
       share_token: null,
       localProxyValue: null,
+      authEnvironmentKey: getAuthEnvironmentKey(),
       workerListData: {},
 
       // auth related methods
-      setAuth: ({ token, username, email, user_id }) =>
-        set({ token, username, email, user_id }),
+      setAuth: ({ token, username, email, user_id }) => {
+        const resolvedUserId = user_id ?? userIdFromToken(token);
+        const previousUserId = get().user_id;
+        if (previousUserId != null && previousUserId !== resolvedUserId) {
+          void clearAllCachedProjects(previousUserId);
+        }
+        useSpaceStore.getState().resetForUser(resolvedUserId);
+        set({
+          token,
+          username,
+          email,
+          user_id: resolvedUserId,
+          authEnvironmentKey: getAuthEnvironmentKey(),
+        });
+        hydrateSpacesForUser(resolvedUserId);
+      },
 
-      logout: () =>
+      logout: () => {
+        const previousUserId = get().user_id;
+        if (previousUserId != null) {
+          // Drop this account's IDB-backed project cache so signing in as a
+          // different user later doesn't see stale conversations. Fire-and-
+          // forget — clearAllCachedProjects swallows its own errors.
+          void clearAllCachedProjects(previousUserId);
+        }
         set({
           token: null,
           username: null,
@@ -128,10 +261,70 @@ const authStore = create<AuthState>()(
           user_id: null,
           initState: 'carousel',
           localProxyValue: null,
-        }),
+          authEnvironmentKey: getAuthEnvironmentKey(),
+        });
+        useSpaceStore.getState().resetForUser(null);
+      },
 
       // set related methods
-      setAppearance: (appearance) => set({ appearance }),
+      setAppearance: (appearance) =>
+        set(() => {
+          if (appearance === 'transparent') {
+            return { appearance: 'light', appearanceMode: 'light' };
+          }
+
+          if (appearance === 'system') {
+            return { appearanceMode: 'system' };
+          }
+
+          const normalized: Mode = appearance === 'dark' ? 'dark' : 'light';
+          return { appearance: normalized, appearanceMode: normalized };
+        }),
+
+      setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
+
+      setResolvedAppearance: (appearance) => set({ appearance }),
+
+      setColorThemeForMode: (mode, colorThemeId) =>
+        set(
+          mode === 'dark'
+            ? { darkColorThemeId: colorThemeId }
+            : { lightColorThemeId: colorThemeId }
+        ),
+
+      upsertCustomThemeTemplate: (mode, themeId, seed) =>
+        set((state) => ({
+          customThemeCatalog: {
+            ...state.customThemeCatalog,
+            [mode]: {
+              ...state.customThemeCatalog[mode],
+              [themeId]: {
+                id: themeId,
+                mode,
+                seed,
+              },
+            },
+          },
+        })),
+
+      removeCustomThemeTemplate: (mode, themeId) =>
+        set((state) => {
+          const modeCatalog = state.customThemeCatalog[mode] ?? {};
+          if (!modeCatalog[themeId]) return {};
+
+          const { [themeId]: _removed, ...rest } = modeCatalog;
+          return {
+            customThemeCatalog: {
+              ...state.customThemeCatalog,
+              [mode]: rest,
+            },
+          };
+        }),
+
+      setThemeContrast: (contrast) =>
+        set({
+          themeContrast: Math.min(100, Math.max(0, Math.round(contrast))),
+        }),
 
       setLanguage: (language) => set({ language }),
 
@@ -144,9 +337,20 @@ const authStore = create<AuthState>()(
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
+      setCodexModelType: (codex_model_type) => set({ codex_model_type }),
+
+      setHasModelConfigured: (hasModelConfigured) =>
+        set({ hasModelConfigured }),
+
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
+      setOnboardingCompleted: (onboardingCompleted) =>
+        set({ onboardingCompleted }),
+
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
+
+      setWorkspaceMainBackground: (workspaceMainBackground) =>
+        set({ workspaceMainBackground }),
 
       setLocalProxyValue: (value) => set({ localProxyValue: value }),
 
@@ -193,19 +397,132 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      // Bump so migrate re-runs for existing sessions that still need the
+      // user-id repair; a matching version skips migrate and stays unrepaired.
+      version: 11,
+      migrate: (persistedState, _version) => {
+        const s = persistedState as
+          | {
+              token?: unknown;
+              username?: unknown;
+              email?: unknown;
+              user_id?: unknown;
+              share_token?: unknown;
+              localProxyValue?: unknown;
+              authEnvironmentKey?: string | null;
+              appearance?: string;
+              appearanceMode?: AppearanceMode;
+              customThemeCatalog?: Partial<ThemeCatalog>;
+              workspaceMainBackground?: string;
+              cloud_model_type?: unknown;
+              codex_model_type?: unknown;
+            }
+          | undefined;
+        if (!s) return persistedState as typeof persistedState;
+        const currentEnvironmentKey = getAuthEnvironmentKey();
+        const environmentMatches =
+          s.authEnvironmentKey === currentEnvironmentKey;
+        const authState = environmentMatches
+          ? typeof s.token === 'string' && s.user_id == null
+            ? // Existing session persisted without a user id (the local
+              // auto-login response never included one): recover it from
+              // the token so owned Spaces are not filtered out.
+              { user_id: userIdFromToken(s.token) }
+            : {}
+          : {
+              token: null,
+              username: null,
+              email: null,
+              user_id: null,
+              share_token: null,
+              localProxyValue: null,
+            };
+
+        const sanitizedCloudModelType: CloudModelType =
+          typeof s.cloud_model_type === 'string' &&
+          s.cloud_model_type.length > 0
+            ? s.cloud_model_type
+            : getRandomDefaultModel();
+        const sanitizedCodexModelType: CodexSubscriptionModelType =
+          typeof s.codex_model_type === 'string' &&
+          s.codex_model_type.length > 0
+            ? s.codex_model_type
+            : 'gpt-5.5';
+
+        const rawWmb = s.workspaceMainBackground;
+        let workspaceMainBackground: WorkspaceMainBackground = 'empty';
+        if (
+          rawWmb === 'dots' ||
+          rawWmb === 'blocks' ||
+          rawWmb === 'ruled' ||
+          rawWmb === 'dotted' ||
+          rawWmb === 'dashed'
+        ) {
+          workspaceMainBackground = rawWmb;
+        } else if (rawWmb === 'margin-ruled') {
+          workspaceMainBackground = 'ruled';
+        } else if (rawWmb === 'empty' || rawWmb === 'none') {
+          workspaceMainBackground = 'empty';
+        }
+
+        const normalizedAppearance: Mode =
+          s.appearance === 'dark' ? 'dark' : 'light';
+        const normalizedAppearanceMode: AppearanceMode =
+          s.appearanceMode === 'system' || s.appearanceMode === 'dark'
+            ? s.appearanceMode
+            : normalizedAppearance;
+        const normalizedCustomCatalog: ThemeCatalog = {
+          light: s.customThemeCatalog?.light ?? {},
+          dark: s.customThemeCatalog?.dark ?? {},
+        };
+
+        if (s.appearance === 'transparent') {
+          return {
+            ...s,
+            ...authState,
+            appearance: 'light',
+            appearanceMode: 'light',
+            customThemeCatalog: normalizedCustomCatalog,
+            workspaceMainBackground,
+            cloud_model_type: sanitizedCloudModelType,
+            codex_model_type: sanitizedCodexModelType,
+            authEnvironmentKey: currentEnvironmentKey,
+          };
+        }
+        return {
+          ...s,
+          ...authState,
+          appearance: normalizedAppearance,
+          appearanceMode: normalizedAppearanceMode,
+          customThemeCatalog: normalizedCustomCatalog,
+          workspaceMainBackground,
+          cloud_model_type: sanitizedCloudModelType,
+          codex_model_type: sanitizedCodexModelType,
+          authEnvironmentKey: currentEnvironmentKey,
+        } as typeof persistedState;
+      },
       partialize: (state) => ({
         token: state.token,
         username: state.username,
         email: state.email,
         user_id: state.user_id,
         appearance: state.appearance,
+        appearanceMode: state.appearanceMode,
+        lightColorThemeId: state.lightColorThemeId,
+        darkColorThemeId: state.darkColorThemeId,
+        customThemeCatalog: state.customThemeCatalog,
+        themeContrast: state.themeContrast,
         language: state.language,
         modelType: state.modelType,
         cloud_model_type: state.cloud_model_type,
+        codex_model_type: state.codex_model_type,
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
+        onboardingCompleted: state.onboardingCompleted,
         preferredIDE: state.preferredIDE,
+        workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,
+        authEnvironmentKey: state.authEnvironmentKey,
         workerListData: state.workerListData,
       }),
     }
@@ -217,6 +534,13 @@ export const useAuthStore = authStore;
 
 // export non-Hook version for non-components
 export const getAuthStore = () => authStore.getState();
+
+queueMicrotask(() => {
+  if (!useSpaceStore?.getState) return;
+  clearAuthForCurrentEnvironment(authStore.setState, authStore.getState);
+  const { user_id } = authStore.getState();
+  hydrateSpacesForUser(user_id);
+});
 
 // constant definition
 const EMPTY_LIST: Agent[] = [];

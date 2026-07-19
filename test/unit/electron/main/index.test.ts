@@ -671,10 +671,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: false,
         transparent: true,
         backgroundColor: '#f5f5f5',
@@ -696,10 +696,10 @@ describe('Electron Main Index Functions', () => {
 
       const mockConfig = {
         title: 'Eigent',
-        width: 1200,
-        height: 800,
-        minWidth: 1200,
-        minHeight: 800,
+        width: 1366,
+        height: 860,
+        minWidth: 1100,
+        minHeight: 700,
         frame: true,
         transparent: false,
         backgroundColor: '#ffffff',
@@ -1368,6 +1368,15 @@ describe('Electron Main Index Functions', () => {
       // /home/user-evil should NOT match /home/user
       expect(isPathAllowed('/home/user-evil/file.txt', ALLOWED_BASES)).toBe(
         false
+      );
+    });
+
+    it('should preserve Windows drive letters from standard localfile URLs', () => {
+      const decodedUrl = '/C:/Users/test/canvas_map/image.png';
+      const normalizedUrl = decodedUrl.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+
+      expect(path.win32.resolve(path.win32.normalize(normalizedUrl))).toBe(
+        'C:\\Users\\test\\canvas_map\\image.png'
       );
     });
   });

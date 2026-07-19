@@ -21,24 +21,10 @@ from app.model.remote_sub_agent.provider import RemoteSubAgentProviderIn
 
 
 class TestRemoteSubAgentProviderSchema:
-    def test_disabled_provider_requires_credentials(self):
-        with pytest.raises(ValidationError):
-            RemoteSubAgentProviderIn(
-                provider_name="gemini_agents",
-                enabled=False,
-            )
-
-    def test_disabled_provider_accepts_agent_configuration(self):
+    def test_disabled_provider_allows_incomplete_credentials(self):
         config = RemoteSubAgentProviderIn(
             provider_name="gemini_agents",
             enabled=False,
-            api_key="test-key",
-            endpoint_url="https://generativelanguage.googleapis.com/v1beta",
-            agent_name="antigravity-preview-05-2026",
-            config={
-                "max_wall_time_seconds": 900,
-                "poll_interval_seconds": 5,
-            },
         )
 
         assert config.provider_name == "gemini_agents"

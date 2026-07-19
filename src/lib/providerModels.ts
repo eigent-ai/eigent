@@ -145,10 +145,7 @@ export function saveCachedModels(
   groups: ProviderModelGroup[]
 ): void {
   try {
-    localStorage.setItem(
-      CACHE_KEY_PREFIX + providerId,
-      JSON.stringify(groups)
-    );
+    localStorage.setItem(CACHE_KEY_PREFIX + providerId, JSON.stringify(groups));
   } catch {
     // localStorage may be unavailable (quota / private mode); silently ignore.
   }

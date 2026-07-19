@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useHost } from '@/host';
+import { fileInfoFromPath } from '@/lib/fileInfo';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
+import { escapeHtml } from '@/lib/richText';
+import { usePageTabStore } from '@/store/pageTabStore';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
@@ -58,37 +62,49 @@ export const MarkDown = memo(
     content,
     speed = 10,
     onTyping,
+    onMarkdownRenderComplete,
     enableTypewriter = true,
     contentBasePath,
   }: {
     content: string;
     speed?: number;
     onTyping?: () => void;
+    /** Fires once per stable `content` when full text is shown and markdown HTML has been applied (after typewriter catches up if enabled). */
+    onMarkdownRenderComplete?: () => void;
     enableTypewriter?: boolean;
     pTextSize?: string;
     olPadding?: string;
     /** Base directory for resolving relative image paths (e.g. markdown file's directory). */
     contentBasePath?: string | null;
   }) => {
+    const host = useHost();
+    const electronAPI = host?.electronAPI;
+    const openFilePreview = usePageTabStore((s) => s.openFilePreview);
+    const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const lastContentRef = useRef<string | null>(null);
+    /** Tracks how many characters have been typed so far — lets streaming
+     *  appends continue from the current position instead of restarting. */
+    const typingIndexRef = useRef(0);
     const typingCallbackRef = useRef(onTyping);
+    const renderCompleteRef = useRef(onMarkdownRenderComplete);
 
     useEffect(() => {
       typingCallbackRef.current = onTyping;
     }, [onTyping]);
 
+    useEffect(() => {
+      renderCompleteRef.current = onMarkdownRenderComplete;
+    }, [onMarkdownRenderComplete]);
+
     // Typewriter effect
     useEffect(() => {
-      if (lastContentRef.current === content) {
-        return;
-      }
-      lastContentRef.current = content;
-
       if (!enableTypewriter) {
+        lastContentRef.current = content;
+        typingIndexRef.current = content.length;
         setDisplayedContent(content);
         if (typingCallbackRef.current) {
           typingCallbackRef.current();
@@ -96,13 +112,28 @@ export const MarkDown = memo(
         return;
       }
 
-      setDisplayedContent('');
-      let index = 0;
+      if (lastContentRef.current === content) {
+        return;
+      }
+
+      const prevContent = lastContentRef.current ?? '';
+      lastContentRef.current = content;
+
+      // When content is a streaming append of the previous value, continue
+      // typing from the current position instead of restarting from zero.
+      // This prevents the displayed text from blanking out on every SSE chunk.
+      const isAppend = content.startsWith(prevContent);
+      if (!isAppend) {
+        setDisplayedContent('');
+        typingIndexRef.current = 0;
+      }
+      let index = isAppend ? typingIndexRef.current : 0;
 
       const timer = setInterval(() => {
         if (index < content.length) {
           setDisplayedContent(content.slice(0, index + 1));
           index++;
+          typingIndexRef.current = index;
         } else {
           clearInterval(timer);
           if (typingCallbackRef.current) {
@@ -130,8 +161,11 @@ export const MarkDown = memo(
             .join('\n')
             .trim();
           setHtml(
-            `<pre class="bg-code-surface p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${DOMPurify.sanitize(formattedHtml)}</code></pre>`
+            `<pre class="bg-ds-bg-neutral-strong-default p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${escapeHtml(formattedHtml)}</code></pre>`
           );
+          if (displayedContent === content && renderCompleteRef.current) {
+            renderCompleteRef.current();
+          }
           return;
         }
 
@@ -152,6 +186,7 @@ export const MarkDown = memo(
             // Check if it's a relative path
             const isRelative =
               src &&
+              !src.includes('${') &&
               !src.startsWith('http://') &&
               !src.startsWith('https://') &&
               !src.startsWith('data:');
@@ -160,12 +195,9 @@ export const MarkDown = memo(
               try {
                 const resolvedPath = resolveRelativePath(contentBasePath, src);
 
-                if (
-                  typeof window !== 'undefined' &&
-                  window.electronAPI?.readFileAsDataUrl
-                ) {
+                if (electronAPI?.readFileAsDataUrl) {
                   const dataUrl =
-                    await window.electronAPI.readFileAsDataUrl(resolvedPath);
+                    await electronAPI.readFileAsDataUrl(resolvedPath);
 
                   // Add cursor-pointer class and data attributes for click handling
                   const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
@@ -174,7 +206,7 @@ export const MarkDown = memo(
                   // Fallback: show alt text or placeholder
                   const altMatch = fullTag.match(/alt=["']([^"']*)["']/);
                   const alt = altMatch ? altMatch[1] : 'image';
-                  const placeholder = `<span class="inline-block text-sm text-text-secondary">[${alt}]</span>`;
+                  const placeholder = `<span class="inline-block text-sm text-ds-text-neutral-muted-default">[${alt}]</span>`;
                   rawHtml = rawHtml.replace(fullTag, placeholder);
                 }
               } catch (error) {
@@ -192,19 +224,64 @@ export const MarkDown = memo(
           }
         }
 
-        // Sanitize HTML
-        const sanitized = DOMPurify.sanitize(rawHtml);
+        // Annotate links that point to local project files so clicking them
+        // opens the inline file preview instead of navigating the renderer.
+        // External links (http/mailto/anchors/etc.) are left untouched.
+        const anchorRegex = /<a([^>]*?)href=["']([^"']+)["']([^>]*?)>/gi;
+        for (const match of Array.from(rawHtml.matchAll(anchorRegex))) {
+          const fullTag = match[0];
+          const href = match[2];
+          if (!href) continue;
+          const lower = href.trim().toLowerCase();
+          const isExternalOrSpecial =
+            lower.startsWith('http://') ||
+            lower.startsWith('https://') ||
+            lower.startsWith('mailto:') ||
+            lower.startsWith('tel:') ||
+            lower.startsWith('data:') ||
+            lower.startsWith('vbscript:') ||
+            lower.startsWith('javascript:') ||
+            href.startsWith('#') ||
+            href.includes('${');
+          if (isExternalOrSpecial) continue;
+
+          let resolved = href;
+          if (href.startsWith('file://')) {
+            resolved = decodeURIComponent(href.replace(/^file:\/\//, ''));
+          } else {
+            const isRelative =
+              !href.startsWith('/') && !/^[a-zA-Z]:[\\/]/.test(href);
+            if (isRelative && contentBasePath) {
+              resolved = resolveRelativePath(contentBasePath, href);
+            }
+          }
+
+          const newTag = fullTag.replace(
+            /^<a/,
+            `<a data-file-path="${resolved.replace(/"/g, '&quot;')}"`
+          );
+          rawHtml = rawHtml.replace(fullTag, newTag);
+        }
+
+        // Sanitize HTML — explicitly allow class so syntax-highlighted code
+        // blocks keep their language-* className after sanitization.
+        const sanitized = DOMPurify.sanitize(rawHtml, {
+          ADD_ATTR: ['class'],
+        });
         setHtml(sanitized);
+        if (displayedContent === content && renderCompleteRef.current) {
+          renderCompleteRef.current();
+        }
       };
 
       processMarkdown();
-    }, [displayedContent, contentBasePath]);
+    }, [displayedContent, content, contentBasePath, electronAPI]);
 
     // Add click handlers for images
     useEffect(() => {
       if (!contentRef.current) return;
 
-      const handleImageClick = (e: MouseEvent) => {
+      const handleContentClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         if (
           target.tagName === 'IMG' &&
@@ -212,16 +289,42 @@ export const MarkDown = memo(
         ) {
           const src = (target as HTMLImageElement).src;
           setPreviewImage(src);
+          return;
+        }
+        // Local file links open the inline preview instead of navigating.
+        const anchor = target.closest('a[data-file-path]');
+        if (anchor) {
+          e.preventDefault();
+          const filePath = anchor.getAttribute('data-file-path');
+          if (filePath) {
+            openFilePreview(fileInfoFromPath(filePath));
+          }
+          return;
+        }
+        // Web links stay inside the session: open them in the preview
+        // browser of this project. (On the web host, where no embedded
+        // browser exists, fall back to a regular browser tab.)
+        const link = target.closest('a[href]');
+        if (link) {
+          const href = link.getAttribute('href') ?? '';
+          if (/^https?:\/\//i.test(href)) {
+            e.preventDefault();
+            if (electronAPI) {
+              openBrowserPreview(href);
+            } else {
+              window.open(href, '_blank', 'noopener,noreferrer');
+            }
+          }
         }
       };
 
       const div = contentRef.current;
-      div.addEventListener('click', handleImageClick);
+      div.addEventListener('click', handleContentClick);
 
       return () => {
-        div.removeEventListener('click', handleImageClick);
+        div.removeEventListener('click', handleContentClick);
       };
-    }, [html]);
+    }, [html, openFilePreview, openBrowserPreview, electronAPI]);
 
     return (
       <>

@@ -13,19 +13,22 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchPost } from '@/api/http';
+import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
 import { lazy, useEffect, useReducer } from 'react';
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
-const Home = lazy(() => import('@/pages/Home'));
+const Workspace = lazy(() => import('@/pages/Workspace'));
 const History = lazy(() => import('@/pages/History'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
 
 interface AuthState {
   loading: boolean;
@@ -58,6 +61,7 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 
 // Route guard: Check if user is logged in
 const ProtectedRoute = () => {
+  const location = useLocation();
   const [state, dispatch] = useReducer(authReducer, {
     loading: false,
     isAuthenticated: false,
@@ -120,7 +124,16 @@ const ProtectedRoute = () => {
     }
 
     dispatch({ type: 'INITIALIZE', payload: { isAuthenticated: !!token } });
-  }, [token, localProxyValue, logout, setAuth, setLocalProxyValue]);
+  }, [
+    token,
+    localProxyValue,
+    logout,
+    setAuth,
+    setLocalProxyValue,
+    setInitState,
+    setIsFirstLaunch,
+    setModelType,
+  ]);
 
   if (state.loading || !state.initialized) {
     return (
@@ -129,7 +142,14 @@ const ProtectedRoute = () => {
       </div>
     );
   }
-  return state.isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  if (state.isAuthenticated) {
+    return <Outlet />;
+  }
+
+  const redirect = `${location.pathname}${location.search}`;
+  return (
+    <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />
+  );
 };
 
 // Main route configuration
@@ -137,9 +157,12 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/login" element={<Login />} />
     <Route path="/signup" element={<Signup />} />
+    {ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK ? (
+      <Route path="/remote-control/:sessionId" element={<RemoteControl />} />
+    ) : null}
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Workspace />} />
         <Route path="/history" element={<History />} />
         <Route
           path="/setting"

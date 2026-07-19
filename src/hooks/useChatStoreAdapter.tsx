@@ -13,7 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ChatStore } from '@/store/chatStore';
-import { ProjectStore, useProjectStore } from '@/store/projectStore';
+import {
+  type ProjectRuntimeStore,
+  useProjectRuntimeStore,
+} from '@/store/projectRuntimeStore';
 import { useEffect, useMemo, useReducer } from 'react';
 
 type ChatStateAction =
@@ -37,10 +40,13 @@ const chatStateReducer = (
 };
 
 const useChatStoreAdapter = (): {
-  projectStore: ProjectStore;
+  projectStore: ProjectRuntimeStore;
+  // TODO(PR-X3): This can be null while a Space is selected but no Project
+  // runtime is active. Existing legacy consumers still assume a ChatStore;
+  // finish nullable typing when projectRuntimeStore is fully split.
   chatStore: ChatStore;
 } => {
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
 
   // Get the active chat store from project store
   // This creates a hook-like interface for the vanilla store

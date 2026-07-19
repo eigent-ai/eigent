@@ -47,6 +47,15 @@ interface ElectronAPI {
     error?: string;
   }>;
   getPathForFile: (file: File) => string;
+  savePastedFile: (
+    fileName: string,
+    data: ArrayBuffer
+  ) => Promise<{
+    success: boolean;
+    filePath?: string;
+    fileName?: string;
+    error?: string;
+  }>;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;
@@ -63,7 +72,43 @@ interface ElectronAPI {
   hideAllWebview: () => Promise<any>;
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
-  exportLog: () => Promise<any>;
+  exportLog: () => Promise<{
+    success: boolean;
+    savedPath?: string;
+    data?: string;
+    error?: string;
+  }>;
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
+  getDiagnosticsInfo: () => Promise<{
+    version: string;
+    platform: string;
+    arch: string;
+  }>;
+  exportDiagnosticsZip: (payload: {
+    description: string;
+    steps?: string;
+  }) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
+  openMailto: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  openExternal: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
   mcpInstall: (name: string, mcp: any) => Promise<any>;
   mcpRemove: (name: string) => Promise<any>;
   mcpUpdate: (name: string, mcp: any) => Promise<any>;
@@ -140,73 +185,37 @@ interface ElectronAPI {
   }>;
   restartApp: () => Promise<void>;
   readGlobalEnv: (key: string) => Promise<{ value: string | null }>;
-  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  codexSubscriptionStatus: (email: string) => Promise<{
+    connected: boolean;
+    status:
+      | 'connected'
+      | 'connected_non_refreshable'
+      | 'expired'
+      | 'revoked'
+      | 'plan_unavailable'
+      | 'quota_exceeded'
+      | 'error'
+      | 'not_connected';
+    account_label?: string | null;
+    expires_at?: string | null;
+    last_error_code?: string | null;
+  }>;
+  codexSubscriptionLogin: (
+    email: string
+  ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
+  codexSubscriptionDisconnect: (
+    email: string
+  ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => Promise<string>;
   openInIDE: (
     folderPath: string,
     ide: string
   ) => Promise<{ success: boolean; error?: string }>;
-  // Skills (~/.eigent/skills)
-  getSkillsDir: () => Promise<{
-    success: boolean;
-    path?: string;
-    error?: string;
-  }>;
-  skillsScan: () => Promise<{
-    success: boolean;
-    skills?: Array<{
-      name: string;
-      description: string;
-      path: string;
-      scope: string;
-      skillDirName: string;
-      isExample: boolean;
-    }>;
-    error?: string;
-  }>;
-  skillWrite: (
-    skillDirName: string,
-    content: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  skillDelete: (
-    skillDirName: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  skillRead: (
-    filePath: string
-  ) => Promise<{ success: boolean; content?: string; error?: string }>;
-  skillListFiles: (
-    skillDirName: string
-  ) => Promise<{ success: boolean; files?: string[]; error?: string }>;
-  skillImportZip: (
-    zipPathOrBuffer: string | ArrayBuffer,
-    replacements?: string[]
-  ) => Promise<{
-    success: boolean;
-    error?: string;
-    conflicts?: Array<{ folderName: string; skillName: string }>;
-  }>;
-  openSkillFolder: (
-    skillName: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  skillConfigInit: (
-    userId: string
-  ) => Promise<{ success: boolean; config?: any; error?: string }>;
-  skillConfigLoad: (
-    userId: string
-  ) => Promise<{ success: boolean; config?: any; error?: string }>;
-  skillConfigToggle: (
-    userId: string,
-    skillName: string,
-    enabled: boolean
-  ) => Promise<{ success: boolean; config?: any; error?: string }>;
-  skillConfigUpdate: (
-    userId: string,
-    skillName: string,
-    skillConfig: any
-  ) => Promise<{ success: boolean; error?: string }>;
-  skillConfigDelete: (
-    userId: string,
-    skillName: string
-  ) => Promise<{ success: boolean; error?: string }>;
+  // Skills: all operations via Brain REST API
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;
   getCdpBrowsers: () => Promise<any[]>;

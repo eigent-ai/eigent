@@ -13,6 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  skillConfigDelete as brainSkillConfigDelete,
+  skillConfigInit as brainSkillConfigInit,
+  skillConfigLoad as brainSkillConfigLoad,
+  skillConfigToggle as brainSkillConfigToggle,
+  skillConfigUpdate as brainSkillConfigUpdate,
+  skillDelete as brainSkillDelete,
+  skillsScan as brainSkillsScan,
+  skillWrite as brainSkillWrite,
+} from '@/api/brain';
+import {
   buildSkillMd,
   hasSkillsFsApi,
   parseSkillMd,
@@ -22,14 +32,29 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useAuthStore } from './authStore';
 
-// Helper function to normalize email to user_id format
-// Matches the logic in backend's file_save_path
-function emailToUserId(email: string | null): string | null {
-  if (!email) return null;
-  return email
-    .split('@')[0]
+function sanitizeSkillConfigId(value: string | number | null): string | null {
+  if (value === null || value === undefined) return null;
+  const sanitized = String(value)
     .replace(/[\\/*?:"<>|\s]/g, '_')
     .replace(/^\.+|\.+$/g, '');
+  return sanitized || null;
+}
+
+function legacyEmailSkillConfigId(email: string | null): string | null {
+  if (!email) return null;
+  return sanitizeSkillConfigId(email.split('@')[0]);
+}
+
+function getSkillConfigUserIds(): {
+  userId: string | null;
+  legacyUserId: string | null;
+} {
+  const { email, user_id } = useAuthStore.getState();
+  const sanitizedUserId = sanitizeSkillConfigId(user_id);
+  return {
+    userId: sanitizedUserId ? `user_${sanitizedUserId}` : null,
+    legacyUserId: legacyEmailSkillConfigId(email),
+  };
 }
 
 // Skill scope interface
@@ -90,9 +115,12 @@ export const useSkillsStore = create<SkillsState>()(
           const content = buildSkillMd(name, description, body);
           const dirName =
             skill.skillDirName || skillNameToDirName(name || 'skill');
-          window.electronAPI.skillWrite(dirName, content).catch(() => {
-            // Ignore errors here; UI still holds the in-memory skill
-          });
+          try {
+            await brainSkillWrite(dirName, content);
+          } catch (e) {
+            console.warn('[Skills] brainSkillWrite failed:', e);
+            // Ignore; UI still holds the in-memory skill
+          }
           skill = {
             ...skill,
             filePath: `${dirName}/SKILL.md`,
@@ -108,12 +136,12 @@ export const useSkillsStore = create<SkillsState>()(
           isExample: false,
         };
 
-        // Update local configuration via Electron IPC
+        // Update local configuration via Brain REST API
         if (hasSkillsFsApi()) {
           try {
-            const userId = emailToUserId(useAuthStore.getState().email);
+            const { userId, legacyUserId } = getSkillConfigUserIds();
             if (userId) {
-              await window.electronAPI.skillConfigUpdate(
+              await brainSkillConfigUpdate(
                 userId,
                 newSkill.name,
                 {
@@ -121,11 +149,12 @@ export const useSkillsStore = create<SkillsState>()(
                   scope: newSkill.scope,
                   addedAt: newSkill.addedAt,
                   isExample: false,
-                }
+                },
+                legacyUserId
               );
             }
           } catch (error) {
-            console.warn('Failed to update skill config:', error);
+            console.warn('[Skills] Failed to update skill config:', error);
             // Continue anyway - skill is added to UI
           }
         }
@@ -151,16 +180,21 @@ export const useSkillsStore = create<SkillsState>()(
           (updates.scope || updates.enabled !== undefined)
         ) {
           try {
-            const userId = emailToUserId(useAuthStore.getState().email);
+            const { userId, legacyUserId } = getSkillConfigUserIds();
             if (!userId) return;
 
             const updatedSkill = { ...skill, ...updates };
-            await window.electronAPI.skillConfigUpdate(userId, skill.name, {
-              enabled: updatedSkill.enabled,
-              scope: updatedSkill.scope,
-              addedAt: updatedSkill.addedAt,
-              isExample: updatedSkill.isExample,
-            });
+            await brainSkillConfigUpdate(
+              userId,
+              skill.name,
+              {
+                enabled: updatedSkill.enabled,
+                scope: updatedSkill.scope,
+                addedAt: updatedSkill.addedAt,
+                isExample: updatedSkill.isExample,
+              },
+              legacyUserId
+            );
             console.log(
               `[Skills] Updated config for skill: ${skill.name}`,
               updates
@@ -182,22 +216,25 @@ export const useSkillsStore = create<SkillsState>()(
         // Example skills cannot be deleted, only enabled/disabled
         if (current.isExample) return;
 
-        // Delete from filesystem
+        // Delete from filesystem via Brain REST API
         if (current.skillDirName && hasSkillsFsApi()) {
-          window.electronAPI.skillDelete(current.skillDirName).catch(() => {
-            // Ignore deletion errors; state will still be updated
-          });
+          try {
+            await brainSkillDelete(current.skillDirName);
+          } catch (e) {
+            console.warn('[Skills] brainSkillDelete failed:', e);
+            // Ignore; state will still be updated
+          }
         }
 
-        // Delete from local configuration via Electron IPC
+        // Delete from local configuration via Brain REST API
         if (hasSkillsFsApi()) {
           try {
-            const userId = emailToUserId(useAuthStore.getState().email);
+            const { userId, legacyUserId } = getSkillConfigUserIds();
             if (userId) {
-              await window.electronAPI.skillConfigDelete(userId, current.name);
+              await brainSkillConfigDelete(userId, current.name, legacyUserId);
             }
           } catch (error) {
-            console.warn('Failed to delete skill config:', error);
+            console.warn('[Skills] Failed to delete skill config:', error);
             // Continue anyway - skill is removed from UI
           }
         }
@@ -220,20 +257,19 @@ export const useSkillsStore = create<SkillsState>()(
           ),
         }));
 
-        // Persist to local configuration via Electron IPC
+        // Persist to local configuration via Brain REST API
         if (hasSkillsFsApi()) {
           try {
-            const userId = emailToUserId(useAuthStore.getState().email);
+            const { userId, legacyUserId } = getSkillConfigUserIds();
             if (userId) {
-              const result = await window.electronAPI.skillConfigToggle(
+              const result = await brainSkillConfigToggle(
                 userId,
                 skill.name,
-                newEnabled
+                newEnabled,
+                legacyUserId
               );
               if (!result.success) {
-                throw new Error(
-                  result.error || 'Failed to toggle skill configuration'
-                );
+                throw new Error('Failed to toggle skill configuration');
               }
               console.log('Skill configuration updated:', result);
             }
@@ -253,32 +289,35 @@ export const useSkillsStore = create<SkillsState>()(
         return get().skills.filter((skill) => skill.isExample === isExample);
       },
 
-      // Load skills from ~/.eigent/skills
+      // Load skills from ~/.eigent/skills via Brain REST API
       syncFromDisk: async () => {
         if (!hasSkillsFsApi()) return;
         try {
-          const userId = emailToUserId(useAuthStore.getState().email);
+          const { userId, legacyUserId } = getSkillConfigUserIds();
 
-          const result = await window.electronAPI.skillsScan();
+          const result = await brainSkillsScan();
           if (!result.success || !result.skills) return;
 
           if (userId) {
             console.log(`[Skills] Initializing config for user: ${userId}`);
-            await window.electronAPI.skillConfigInit(userId);
+            await brainSkillConfigInit(userId, legacyUserId);
           }
 
           let config: any = { global: null, project: null };
           try {
             if (userId) {
               console.log(`[Skills] Loading config for user: ${userId}`);
-              const result = await window.electronAPI.skillConfigLoad(userId);
-              if (result.success && result.config) {
-                config.global = result.config;
+              const loadResult = await brainSkillConfigLoad(
+                userId,
+                legacyUserId
+              );
+              if (loadResult.success && loadResult.config) {
+                config.global = loadResult.config;
                 console.log(
-                  `[Skills] Loaded config with ${Object.keys(result.config.skills || {}).length} skills configured`
+                  `[Skills] Loaded config with ${Object.keys(loadResult.config.skills || {}).length} skills configured`
                 );
               } else {
-                console.warn('[Skills] Failed to load config:', result.error);
+                console.warn('[Skills] Failed to load config');
               }
             } else {
               console.warn(
@@ -314,10 +353,11 @@ export const useSkillsStore = create<SkillsState>()(
                   addedAt,
                   isExample,
                 };
-                await window.electronAPI.skillConfigUpdate(
+                await brainSkillConfigUpdate(
                   userId,
                   s.name,
-                  newSkillConfig
+                  newSkillConfig,
+                  legacyUserId
                 );
                 // Update in-memory config so subsequent skills in same sync see it
                 if (!config.global) config.global = { skills: {} };

@@ -36,7 +36,6 @@ import os, { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
-import * as unzipper from 'unzipper';
 import { copyBrowserData } from './copy';
 import { FileReader } from './fileReader';
 import {
@@ -51,6 +50,11 @@ import {
   PromiseReturnType,
 } from './install-deps';
 import { setRoundedCorners } from './native/macos-window';
+import {
+  completeCodexOAuthCallback,
+  getCodexResolverEnv,
+  registerCodexSubscriptionAuthIpcHandlers,
+} from './subscriptionAuth';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -64,7 +68,7 @@ import {
   registerLinuxProtocolHandler,
   reRegisterLinuxProtocolHandler,
 } from './utils/linuxProtocol';
-import { zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -86,13 +90,27 @@ const VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 // ==================== global variables ====================
 let win: BrowserWindow | null = null;
+let createWindowPromise: Promise<void> | null = null;
 let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
+let backendStartPromise: Promise<BackendStartResult> | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+
+const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
+
+const isHttpOrHttpsUrl = (url: unknown): url is string => {
+  if (typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -107,6 +125,99 @@ let cdpLastAssignedPort = 9223; // tracks the highest port ever assigned, never 
 let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
+
+type BackendStartOptions = {
+  forceRestart?: boolean;
+};
+
+type BackendStartResult =
+  | { success: true; port: number }
+  | { success: false; error: string };
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isBrokenConsolePipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ((error as NodeJS.ErrnoException).code === 'EPIPE' ||
+      (error as NodeJS.ErrnoException).code === 'ERR_STREAM_DESTROYED')
+  );
+}
+
+function disableConsoleLogTransport(): void {
+  if (log.transports.console.level !== false) {
+    log.transports.console.level = false;
+  }
+}
+
+function handleProcessPipeError(error: Error): void {
+  if (isBrokenConsolePipeError(error)) {
+    disableConsoleLogTransport();
+    return;
+  }
+
+  setImmediate(() => {
+    throw error;
+  });
+}
+
+process.stdout.on('error', handleProcessPipeError);
+process.stderr.on('error', handleProcessPipeError);
+
+function isPythonProcessRunning(): boolean {
+  return Boolean(
+    python_process &&
+    !python_process.killed &&
+    python_process.exitCode === null &&
+    python_process.signalCode === null
+  );
+}
+
+function notifyBackendReady(result: BackendStartResult): void {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+
+  win.webContents.send(
+    'backend-ready',
+    result.success
+      ? {
+          success: true,
+          port: result.port,
+        }
+      : {
+          success: false,
+          error: result.error,
+        }
+  );
+}
+
+function checkBackendHealth(port: number): Promise<boolean> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const req = http.get(
+      `http://127.0.0.1:${port}/health`,
+      { timeout: 1000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
 
 /** Persist pool to disk. */
 function saveCdpPool(): void {
@@ -417,13 +528,8 @@ protocol.registerSchemesAsPrivileged([
 process.env.APP_ROOT = MAIN_DIST;
 process.env.VITE_PUBLIC = VITE_PUBLIC;
 
-// Respect system theme on Windows, keep light theme on macOS for consistency
-const isWindows = process.platform === 'win32';
-if (isWindows) {
-  nativeTheme.themeSource = 'system'; // Respect Windows dark/light mode
-} else {
-  nativeTheme.themeSource = 'light'; // Keep existing behavior for macOS
-}
+// Always follow OS appearance so renderer `prefers-color-scheme` stays accurate.
+nativeTheme.themeSource = 'system';
 
 // Set log level
 log.transports.console.level = 'info';
@@ -465,29 +571,33 @@ const setupProtocolHandlers = () => {
 
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
-  log.info('enter handleProtocolUrl', url);
+  log.info('enter handleProtocolUrl');
 
   // If window is not ready, queue the URL
   if (!isWindowReady || !win || win.isDestroyed()) {
-    log.info('Window not ready, queuing protocol URL:', url);
+    log.info('Window not ready, queuing protocol URL');
     protocolUrlQueue.push(url);
     return;
   }
 
-  processProtocolUrl(url);
+  void processProtocolUrl(url);
 }
 
 // Process a single protocol URL
-function processProtocolUrl(url: string) {
+async function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const token = urlObj.searchParams.get('token');
   const share_token = urlObj.searchParams.get('share_token');
 
-  log.info('urlObj', urlObj);
-  log.info('code', code);
-  log.info('token', token);
-  log.info('share_token', share_token);
+  log.info('urlObj', {
+    protocol: urlObj.protocol,
+    host: urlObj.host,
+    pathname: urlObj.pathname,
+  });
+  log.info('code present', Boolean(code));
+  log.info('token present', Boolean(token));
+  log.info('share_token present', Boolean(share_token));
 
   if (win && !win.isDestroyed()) {
     log.info('urlObj.pathname', urlObj.pathname);
@@ -496,7 +606,17 @@ function processProtocolUrl(url: string) {
       log.info('oauth');
       const provider = urlObj.searchParams.get('provider');
       const code = urlObj.searchParams.get('code');
-      log.info('protocol oauth', provider, code);
+      const codexResult = await completeCodexOAuthCallback(urlObj);
+      if (codexResult.handled) {
+        win.webContents.send(
+          'subscription-auth:codex-status-changed',
+          codexResult.error_code
+            ? { error_code: codexResult.error_code }
+            : undefined
+        );
+        return;
+      }
+      log.info('protocol oauth', provider, Boolean(code));
       win.webContents.send('oauth-authorized', { provider, code });
       return;
     }
@@ -508,7 +628,7 @@ function processProtocolUrl(url: string) {
     }
 
     if (code) {
-      log.error('protocol code:', code);
+      log.info('protocol code received');
       win.webContents.send('auth-code-received', code);
     }
 
@@ -537,7 +657,7 @@ function processQueuedProtocolUrls() {
     protocolUrlQueue = [];
 
     urls.forEach((url) => {
-      processProtocolUrl(url);
+      void processProtocolUrl(url);
     });
   }
 }
@@ -682,6 +802,8 @@ const checkManagerInstance = (manager: any, name: string) => {
 };
 
 function registerIpcHandlers() {
+  registerCodexSubscriptionAuthIpcHandlers(ipcMain);
+
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
     const port = await startAuthCallbackServer();
@@ -970,20 +1092,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendPort) {
-        log.info('Restarting backend service...');
-        await cleanupPythonProcess();
-        await checkAndStartBackend();
+      const result = await restartBackendService();
+      if (result.success) {
         log.info('Backend restart completed successfully');
-        return { success: true };
-      } else {
-        log.warn('No backend port found, starting fresh backend');
-        await checkAndStartBackend();
-        return { success: true };
       }
+      return result;
     } catch (error) {
       log.error('Failed to restart backend:', error);
-      return { success: false, error: String(error) };
+      return { success: false, error: formatErrorMessage(error) };
     }
   });
   ipcMain.handle('get-system-language', getSystemLanguage);
@@ -1130,6 +1246,161 @@ function registerIpcHandlers() {
 
       await fsp.writeFile(filePath, logContent, 'utf-8');
       return { success: true, savedPath: filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Camel (backend) logs live per task at
+  // ~/.eigent/<identity>/[project_<id>/]task_<taskId>/camel_logs.
+  // Targets the task the user last ran when provided; otherwise exports all.
+  ipcMain.handle(
+    'export-camel-log',
+    async (
+      _event,
+      email: string,
+      taskId?: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      try {
+        if (typeof email !== 'string' || !email) {
+          return { success: false, error: 'Missing email' };
+        }
+
+        const manager = checkManagerInstance(fileReader, 'FileReader');
+        const camelLogEntries = manager.getCamelLogEntries(
+          email,
+          taskId,
+          projectId,
+          userId
+        );
+        if (camelLogEntries.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const defaultFileName = `eigent-camel-logs-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save Camel logs',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await zipDirectories(filePath, camelLogEntries);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-camel-log failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle('get-diagnostics-info', async () => {
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    };
+  });
+
+  ipcMain.handle(
+    'export-diagnostics-zip',
+    async (
+      _event,
+      payload: { description: string; steps?: string } | undefined
+    ) => {
+      try {
+        const description =
+          typeof payload?.description === 'string'
+            ? payload.description.trim()
+            : '';
+        if (!description) {
+          return { success: false, error: 'Description is required' };
+        }
+        const steps =
+          typeof payload?.steps === 'string' ? payload.steps.trim() : '';
+
+        const logFiles: { src: string; destName: string }[] = [];
+        if (fs.existsSync(logPath)) {
+          logFiles.push({ src: logPath, destName: 'electron-main.log' });
+        }
+        const backupResolved = getBackupLogPath();
+        if (
+          fs.existsSync(backupResolved) &&
+          path.resolve(backupResolved) !== path.resolve(logPath)
+        ) {
+          logFiles.push({
+            src: backupResolved,
+            destName: 'electron-userdata-logs.log',
+          });
+        }
+        if (logFiles.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const platform = process.platform;
+        const arch = process.arch;
+        const bugReportText = [
+          'Eigent bug report',
+          '=================',
+          '',
+          `App version: ${appVersion}`,
+          `OS: ${platform} (${arch})`,
+          '',
+          'Description',
+          '-----------',
+          description,
+          '',
+          ...(steps
+            ? ['Steps to reproduce', '-------------------', steps, '']
+            : []),
+        ].join('\n');
+
+        const defaultFileName = `eigent-diagnostics-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save diagnostics',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await createDiagnosticsZip(filePath, bugReportText, logFiles);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-diagnostics-zip failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
+  ipcMain.handle('open-mailto', async (_event, url: string) => {
+    try {
+      if (typeof url !== 'string' || !url.startsWith('mailto:')) {
+        return { success: false, error: 'Invalid mailto URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    try {
+      if (!isHttpOrHttpsUrl(url)) {
+        return { success: false, error: 'Invalid external URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -1408,6 +1679,31 @@ function registerIpcHandlers() {
     }
   );
 
+  // Persist a pasted file (e.g. a clipboard image) so it can join the
+  // path-based attachment flow; pasted File objects carry no filesystem path.
+  ipcMain.handle(
+    'save-pasted-file',
+    async (_event, fileName: string, data: ArrayBuffer) => {
+      try {
+        const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
+        await fsp.mkdir(pastedDir, { recursive: true });
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\..+/, '')
+          .replace('T', '-');
+        const safeName = (fileName || 'pasted-file').replace(/[^\w.-]+/g, '_');
+        const unique = crypto.randomUUID();
+        const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
+        await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
+        return { success: true, filePath, fileName: safeName };
+      } catch (error: any) {
+        log.error('Failed to save pasted file:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
   ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
       const stats = await fs.promises
@@ -1423,413 +1719,10 @@ function registerIpcHandlers() {
     }
   });
 
-  // ======================== skills ========================
-  // SKILLS_ROOT, SKILL_FILE, seedDefaultSkillsIfEmpty are defined at module level (used at startup too).
-  function parseSkillFrontmatter(
-    content: string
-  ): { name: string; description: string } | null {
-    if (!content.startsWith('---')) return null;
-    const end = content.indexOf('\n---', 3);
-    const block = end > 0 ? content.slice(4, end) : content.slice(4);
-    const nameMatch = block.match(/^\s*name\s*:\s*(.+)$/m);
-    const descMatch = block.match(/^\s*description\s*:\s*(.+)$/m);
-    const name = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-    const desc = descMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-    if (name && desc) return { name, description: desc };
-    return null;
-  }
-
-  const normalizePathForCompare = (value: string) =>
-    process.platform === 'win32' ? value.toLowerCase() : value;
-
-  function assertPathUnderSkillsRoot(targetPath: string): string {
-    const resolvedRoot = path.resolve(SKILLS_ROOT);
-    const resolvedTarget = path.resolve(targetPath);
-    const rootCmp = normalizePathForCompare(resolvedRoot);
-    const targetCmp = normalizePathForCompare(resolvedTarget);
-    const rootWithSep = rootCmp.endsWith(path.sep)
-      ? rootCmp
-      : `${rootCmp}${path.sep}`;
-    if (targetCmp !== rootCmp && !targetCmp.startsWith(rootWithSep)) {
-      throw new Error('Path is outside skills directory');
-    }
-    return resolvedTarget;
-  }
-
-  function resolveSkillDirPath(skillDirName: string): string {
-    const name = String(skillDirName || '').trim();
-    if (!name) {
-      throw new Error('Skill folder name is required');
-    }
-    return assertPathUnderSkillsRoot(path.join(SKILLS_ROOT, name));
-  }
-
-  ipcMain.handle('get-skills-dir', async () => {
-    try {
-      if (!existsSync(SKILLS_ROOT)) {
-        await fsp.mkdir(SKILLS_ROOT, { recursive: true });
-      }
-      await seedDefaultSkillsIfEmpty();
-      return { success: true, path: SKILLS_ROOT };
-    } catch (error: any) {
-      log.error('get-skills-dir failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  ipcMain.handle('skills-scan', async () => {
-    try {
-      if (!existsSync(SKILLS_ROOT)) {
-        return { success: true, skills: [] };
-      }
-      await seedDefaultSkillsIfEmpty();
-      const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
-      const exampleSkillsDir = getExampleSkillsSourceDir();
-      const skills: Array<{
-        name: string;
-        description: string;
-        path: string;
-        scope: string;
-        skillDirName: string;
-        isExample: boolean;
-      }> = [];
-      for (const e of entries) {
-        if (!e.isDirectory() || e.name.startsWith('.')) continue;
-        const skillPath = path.join(SKILLS_ROOT, e.name, SKILL_FILE);
-        try {
-          const raw = await fsp.readFile(skillPath, 'utf-8');
-          const meta = parseSkillFrontmatter(raw);
-          if (meta) {
-            const isExample = existsSync(
-              path.join(exampleSkillsDir, e.name, SKILL_FILE)
-            );
-            skills.push({
-              name: meta.name,
-              description: meta.description,
-              path: skillPath,
-              scope: 'user',
-              skillDirName: e.name,
-              isExample,
-            });
-          }
-        } catch (_) {
-          // skip invalid or unreadable skill
-        }
-      }
-      return { success: true, skills };
-    } catch (error: any) {
-      log.error('skills-scan failed', error);
-      return { success: false, error: error?.message, skills: [] };
-    }
-  });
-
-  ipcMain.handle(
-    'skill-write',
-    async (_event, skillDirName: string, content: string) => {
-      try {
-        const dir = resolveSkillDirPath(skillDirName);
-        await fsp.mkdir(dir, { recursive: true });
-        await fsp.writeFile(path.join(dir, SKILL_FILE), content, 'utf-8');
-        return { success: true };
-      } catch (error: any) {
-        log.error('skill-write failed', error);
-        return { success: false, error: error?.message };
-      }
-    }
-  );
-
-  ipcMain.handle('skill-delete', async (_event, skillDirName: string) => {
-    try {
-      const dir = resolveSkillDirPath(skillDirName);
-      if (!existsSync(dir)) return { success: true };
-      await fsp.rm(dir, { recursive: true, force: true });
-      return { success: true };
-    } catch (error: any) {
-      log.error('skill-delete failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  ipcMain.handle('skill-read', async (_event, filePath: string) => {
-    try {
-      const fullPath = path.isAbsolute(filePath)
-        ? assertPathUnderSkillsRoot(filePath)
-        : assertPathUnderSkillsRoot(
-            path.join(SKILLS_ROOT, filePath, SKILL_FILE)
-          );
-      const content = await fsp.readFile(fullPath, 'utf-8');
-      return { success: true, content };
-    } catch (error: any) {
-      log.error('skill-read failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  ipcMain.handle('skill-list-files', async (_event, skillDirName: string) => {
-    try {
-      const dir = resolveSkillDirPath(skillDirName);
-      if (!existsSync(dir))
-        return { success: false, error: 'Skill folder not found', files: [] };
-      const entries = await fsp.readdir(dir, { withFileTypes: true });
-      const files = entries.map((e) =>
-        e.isDirectory() ? `${e.name}/` : e.name
-      );
-      return { success: true, files };
-    } catch (error: any) {
-      log.error('skill-list-files failed', error);
-      return { success: false, error: error?.message, files: [] };
-    }
-  });
-
-  ipcMain.handle('open-skill-folder', async (_event, skillName: string) => {
-    try {
-      const name = String(skillName || '').trim();
-      if (!name) return { success: false, error: 'Skill name is required' };
-      if (!existsSync(SKILLS_ROOT))
-        return { success: false, error: 'Skills dir not found' };
-      const entries = await fsp.readdir(SKILLS_ROOT, { withFileTypes: true });
-      const nameLower = name.toLowerCase();
-      for (const e of entries) {
-        if (!e.isDirectory() || e.name.startsWith('.')) continue;
-        const skillPath = path.join(SKILLS_ROOT, e.name, SKILL_FILE);
-        try {
-          const raw = await fsp.readFile(skillPath, 'utf-8');
-          const meta = parseSkillFrontmatter(raw);
-          if (meta && meta.name.toLowerCase().trim() === nameLower) {
-            const dirPath = path.join(SKILLS_ROOT, e.name);
-            await shell.openPath(dirPath);
-            return { success: true };
-          }
-        } catch (_) {
-          continue;
-        }
-      }
-      return { success: false, error: `Skill not found: ${name}` };
-    } catch (error: any) {
-      log.error('open-skill-folder failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  // ======================== skills-config.json handlers ========================
-
-  function getSkillConfigPath(userId: string): string {
-    return path.join(os.homedir(), '.eigent', userId, 'skills-config.json');
-  }
-
-  async function loadSkillConfig(userId: string): Promise<any> {
-    const configPath = getSkillConfigPath(userId);
-
-    // Auto-create config file if it doesn't exist
-    if (!existsSync(configPath)) {
-      const defaultConfig = { version: 1, skills: {} };
-      try {
-        await fsp.mkdir(path.dirname(configPath), { recursive: true });
-        await fsp.writeFile(
-          configPath,
-          JSON.stringify(defaultConfig, null, 2),
-          'utf-8'
-        );
-        log.info(`Auto-created skills config at ${configPath}`);
-        return defaultConfig;
-      } catch (error) {
-        log.error('Failed to create default skills config', error);
-        return defaultConfig;
-      }
-    }
-
-    try {
-      const content = await fsp.readFile(configPath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error) {
-      log.error('Failed to load skill config', error);
-      return { version: 1, skills: {} };
-    }
-  }
-
-  async function saveSkillConfig(userId: string, config: any): Promise<void> {
-    const configPath = getSkillConfigPath(userId);
-    await fsp.mkdir(path.dirname(configPath), { recursive: true });
-    await fsp.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-  }
-
-  ipcMain.handle('skill-config-load', async (_event, userId: string) => {
-    try {
-      const config = await loadSkillConfig(userId);
-      return { success: true, config };
-    } catch (error: any) {
-      log.error('skill-config-load failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  ipcMain.handle(
-    'skill-config-toggle',
-    async (_event, userId: string, skillName: string, enabled: boolean) => {
-      try {
-        const config = await loadSkillConfig(userId);
-        if (!config.skills[skillName]) {
-          // Use SkillScope object format
-          config.skills[skillName] = {
-            enabled,
-            scope: {
-              isGlobal: true,
-              selectedAgents: [],
-            },
-            addedAt: Date.now(),
-            isExample: false,
-          };
-        } else {
-          config.skills[skillName].enabled = enabled;
-        }
-        await saveSkillConfig(userId, config);
-        return { success: true, config: config.skills[skillName] };
-      } catch (error: any) {
-        log.error('skill-config-toggle failed', error);
-        return { success: false, error: error?.message };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'skill-config-update',
-    async (_event, userId: string, skillName: string, skillConfig: any) => {
-      try {
-        const config = await loadSkillConfig(userId);
-        config.skills[skillName] = { ...skillConfig };
-        await saveSkillConfig(userId, config);
-        return { success: true };
-      } catch (error: any) {
-        log.error('skill-config-update failed', error);
-        return { success: false, error: error?.message };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'skill-config-delete',
-    async (_event, userId: string, skillName: string) => {
-      try {
-        const config = await loadSkillConfig(userId);
-        delete config.skills[skillName];
-        await saveSkillConfig(userId, config);
-        return { success: true };
-      } catch (error: any) {
-        log.error('skill-config-delete failed', error);
-        return { success: false, error: error?.message };
-      }
-    }
-  );
-
-  // Initialize skills config for a user (ensures config file exists)
-  ipcMain.handle('skill-config-init', async (_event, userId: string) => {
-    try {
-      log.info(`[SKILLS-CONFIG] Initializing config for user: ${userId}`);
-      const config = await loadSkillConfig(userId);
-
-      try {
-        const exampleSkillsDir = getExampleSkillsSourceDir();
-        const defaultConfigPath = path.join(
-          exampleSkillsDir,
-          'default-config.json'
-        );
-
-        if (existsSync(defaultConfigPath)) {
-          const defaultConfigContent = await fsp.readFile(
-            defaultConfigPath,
-            'utf-8'
-          );
-          const defaultConfig = JSON.parse(defaultConfigContent);
-
-          if (defaultConfig.skills) {
-            let addedCount = 0;
-            // Merge default skills config with user's existing config
-            for (const [skillName, skillConfig] of Object.entries(
-              defaultConfig.skills
-            )) {
-              if (!config.skills[skillName]) {
-                // Add new skill config with current timestamp
-                config.skills[skillName] = {
-                  ...(skillConfig as any),
-                  addedAt: Date.now(),
-                };
-                addedCount++;
-                log.info(
-                  `[SKILLS-CONFIG] Initialized config for example skill: ${skillName}`
-                );
-              }
-            }
-
-            if (addedCount > 0) {
-              await saveSkillConfig(userId, config);
-              log.info(
-                `[SKILLS-CONFIG] Added ${addedCount} example skill configs`
-              );
-            }
-          }
-        } else {
-          log.warn(
-            `[SKILLS-CONFIG] Default config not found at: ${defaultConfigPath}`
-          );
-        }
-      } catch (err) {
-        log.error(
-          '[SKILLS-CONFIG] Failed to load default config template:',
-          err
-        );
-        // Continue anyway - user config is still valid
-      }
-
-      log.info(
-        `[SKILLS-CONFIG] Config initialized with ${Object.keys(config.skills || {}).length} skills`
-      );
-      return { success: true, config };
-    } catch (error: any) {
-      log.error('skill-config-init failed', error);
-      return { success: false, error: error?.message };
-    }
-  });
-
-  ipcMain.handle(
-    'skill-import-zip',
-    async (
-      _event,
-      zipPathOrBuffer: string | Buffer | ArrayBuffer | Uint8Array,
-      replacements?: string[]
-    ) =>
-      withImportLock(async () => {
-        // Use typeof check instead of instanceof to handle cross-realm objects
-        // from Electron IPC (instanceof can fail across context boundaries)
-        const replacementsSet = replacements
-          ? new Set(replacements)
-          : undefined;
-        const isBufferLike = typeof zipPathOrBuffer !== 'string';
-        if (isBufferLike) {
-          const buf = Buffer.isBuffer(zipPathOrBuffer)
-            ? zipPathOrBuffer
-            : Buffer.from(
-                zipPathOrBuffer instanceof ArrayBuffer
-                  ? zipPathOrBuffer
-                  : (zipPathOrBuffer as any)
-              );
-          const tempPath = path.join(
-            os.tmpdir(),
-            `eigent-skill-import-${Date.now()}.zip`
-          );
-          try {
-            await fsp.writeFile(tempPath, buf);
-            const result = await importSkillsFromZip(tempPath, replacementsSet);
-            return result;
-          } finally {
-            await fsp.unlink(tempPath).catch(() => {});
-          }
-        }
-        return importSkillsFromZip(zipPathOrBuffer as string, replacementsSet);
-      })
-  );
+  // Skills: all operations via Brain REST API (backend). No IPC.
 
   // ==================== read file handler ====================
-  ipcMain.handle('read-file', async (event, filePath: string) => {
+  ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
       log.info('Reading file:', filePath);
 
@@ -1838,15 +1731,12 @@ function registerIpcHandlers() {
         log.error('File does not exist:', filePath);
         return { success: false, error: 'File does not exist' };
       }
-
-      // Check if it's a directory
       const stats = await fsp.stat(filePath);
       if (stats.isDirectory()) {
         log.error('Path is a directory, not a file:', filePath);
         return { success: false, error: 'Path is a directory, not a file' };
       }
 
-      // Read file content
       const fileContent = await fsp.readFile(filePath);
 
       return {
@@ -1922,9 +1812,14 @@ function registerIpcHandlers() {
   // ==================== IDE integration handler ====================
   ipcMain.handle(
     'get-project-folder-path',
-    async (_event, email: string, projectId: string) => {
+    async (
+      _event,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      const result = manager.createProjectStructure(email, projectId);
+      const result = manager.createProjectStructure(email, projectId, userId);
       return result.path;
     }
   );
@@ -2249,9 +2144,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-file-list',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getFileList(email, taskId, projectId);
+      return manager.getFileList(email, taskId, projectId, userId);
     }
   );
 
@@ -2266,9 +2167,14 @@ function registerIpcHandlers() {
   // New project management handlers
   ipcMain.handle(
     'create-project-structure',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.createProjectStructure(email, projectId);
+      return manager.createProjectStructure(email, projectId, userId);
     }
   );
 
@@ -2295,9 +2201,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-project-file-list',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getProjectFileList(email, projectId);
+      return manager.getProjectFileList(email, projectId, userId);
     }
   );
 
@@ -2436,6 +2347,7 @@ const ensureEigentDirectories = () => {
 // ==================== skills (used at startup and by IPC) ====================
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
+const EXAMPLE_SKILL_MARKER = '.eigent-example-skill';
 
 const getExampleSkillsSourceDir = (): string => {
   if (app.isPackaged) {
@@ -2462,7 +2374,86 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
   }
 }
 
-async function seedDefaultSkillsIfEmpty(): Promise<void> {
+function parseSkillName(content: string): string | null {
+  const match = content.match(/^\s*name\s*:\s*(.+)$/m);
+  return match?.[1]?.trim().replace(/^['"]|['"]$/g, '') || null;
+}
+
+async function readSkillName(skillDir: string): Promise<string | null> {
+  try {
+    const content = await fsp.readFile(
+      path.join(skillDir, SKILL_FILE),
+      'utf-8'
+    );
+    return parseSkillName(content);
+  } catch {
+    return null;
+  }
+}
+
+async function isManagedExampleSkill(
+  dstDir: string,
+  srcDir: string
+): Promise<boolean> {
+  if (existsSync(path.join(dstDir, EXAMPLE_SKILL_MARKER))) return true;
+  const [dstName, srcName] = await Promise.all([
+    readSkillName(dstDir),
+    readSkillName(srcDir),
+  ]);
+  return !!dstName && dstName === srcName;
+}
+
+async function writeExampleSkillMarker(
+  dstDir: string,
+  sourceDirName: string
+): Promise<void> {
+  await fsp.writeFile(
+    path.join(dstDir, EXAMPLE_SKILL_MARKER),
+    `source=${sourceDirName}\n`,
+    'utf-8'
+  );
+}
+
+async function listRegularFiles(
+  root: string,
+  ignoredNames = new Set<string>()
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  const walk = async (dir: string) => {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || ignoredNames.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        files.set(path.relative(root, fullPath), fullPath);
+      }
+    }
+  };
+  await walk(root);
+  return files;
+}
+
+async function dirContentsMatch(src: string, dst: string): Promise<boolean> {
+  const [srcFiles, dstFiles] = await Promise.all([
+    listRegularFiles(src),
+    listRegularFiles(dst, new Set([EXAMPLE_SKILL_MARKER])),
+  ]);
+  if (srcFiles.size !== dstFiles.size) return false;
+  for (const [relativePath, srcPath] of srcFiles) {
+    const dstPath = dstFiles.get(relativePath);
+    if (!dstPath) return false;
+    const [srcContent, dstContent] = await Promise.all([
+      fsp.readFile(srcPath),
+      fsp.readFile(dstPath),
+    ]);
+    if (!srcContent.equals(dstContent)) return false;
+  }
+  return true;
+}
+
+async function syncDefaultSkillsFromBundle(): Promise<void> {
   if (!existsSync(SKILLS_ROOT)) {
     await fsp.mkdir(SKILLS_ROOT, { recursive: true });
   }
@@ -2473,255 +2464,48 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
   let copiedCount = 0;
+  let updatedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
     const destDir = path.join(SKILLS_ROOT, e.name);
-    if (existsSync(destDir)) continue; // Skip if user already has this skill
     const srcDir = path.join(exampleDir, e.name);
+    if (!existsSync(destDir)) {
+      await copyDirRecursive(srcDir, destDir);
+      await writeExampleSkillMarker(destDir, e.name);
+      copiedCount++;
+      continue;
+    }
+
+    const destStats = await fsp.stat(destDir).catch(() => null);
+    if (!destStats?.isDirectory()) continue;
+
+    if (!(await isManagedExampleSkill(destDir, srcDir))) {
+      log.warn('Skipping default skill sync due to local conflict:', destDir);
+      continue;
+    }
+
+    if (await dirContentsMatch(srcDir, destDir)) {
+      await writeExampleSkillMarker(destDir, e.name);
+      continue;
+    }
+
+    await fsp.rm(destDir, { recursive: true, force: true });
     await copyDirRecursive(srcDir, destDir);
-    copiedCount++;
+    await writeExampleSkillMarker(destDir, e.name);
+    updatedCount++;
   }
-  if (copiedCount > 0) {
+  if (copiedCount > 0 || updatedCount > 0) {
     log.info(
-      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      `Synced default skill(s) to ~/.eigent/skills: copied=${copiedCount} updated=${updatedCount} from`,
       exampleDir
     );
   }
 }
 
-/** Truncate a single path component to fit within the 255-byte filesystem limit. */
-function safePathComponent(name: string, maxBytes = 200): string {
-  // 200 leaves headroom for suffixes the OS or future logic may add
-  if (Buffer.byteLength(name, 'utf-8') <= maxBytes) return name;
-  // Trim from the end, character by character, until it fits
-  let trimmed = name;
-  while (Buffer.byteLength(trimmed, 'utf-8') > maxBytes) {
-    trimmed = trimmed.slice(0, -1);
-  }
-  return trimmed.replace(/-+$/, '') || 'skill';
-}
-
-// Simple mutex to prevent concurrent skill imports
-let _importLock: Promise<void> = Promise.resolve();
-function withImportLock<T>(fn: () => Promise<T>): Promise<T> {
-  let release: () => void;
-  const next = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const prev = _importLock;
-  _importLock = next;
-  return prev.then(fn).finally(() => release!());
-}
-
-async function importSkillsFromZip(
-  zipPath: string,
-  replacements?: Set<string>
-): Promise<{
-  success: boolean;
-  error?: string;
-  conflicts?: Array<{ folderName: string; skillName: string }>;
-}> {
-  // Extract to a temp directory, then find SKILL.md files and copy their
-  // parent skill directories into SKILLS_ROOT.  This handles any zip
-  // structure: wrapping directories, SKILL.md at root, or multiple skills.
-  const tempDir = path.join(os.tmpdir(), `eigent-skill-extract-${Date.now()}`);
-  try {
-    if (!existsSync(zipPath)) {
-      return { success: false, error: 'Zip file does not exist' };
-    }
-    const ext = path.extname(zipPath).toLowerCase();
-    if (ext !== '.zip') {
-      return { success: false, error: 'Only .zip files are supported' };
-    }
-    if (!existsSync(SKILLS_ROOT)) {
-      await fsp.mkdir(SKILLS_ROOT, { recursive: true });
-    }
-
-    // Step 1: Extract zip into temp directory
-    await fsp.mkdir(tempDir, { recursive: true });
-    const directory = await unzipper.Open.file(zipPath);
-    const resolvedTempDir = path.resolve(tempDir);
-    const comparePath = (value: string) =>
-      process.platform === 'win32' ? value.toLowerCase() : value;
-    const resolvedTempDirCmp = comparePath(resolvedTempDir);
-    const resolvedTempDirWithSep = resolvedTempDirCmp.endsWith(path.sep)
-      ? resolvedTempDirCmp
-      : `${resolvedTempDirCmp}${path.sep}`;
-    for (const file of directory.files as any[]) {
-      if (file.type === 'Directory') continue;
-      const normalizedArchivePath = path
-        .normalize(String(file.path))
-        .replace(/^([/\\])+/, '');
-      const destPath = path.join(tempDir, normalizedArchivePath);
-      const resolvedDestPathCmp = comparePath(path.resolve(destPath));
-      // Protect against zip-slip (e.g. entries containing ../)
-      if (
-        !normalizedArchivePath ||
-        (resolvedDestPathCmp !== resolvedTempDirCmp &&
-          !resolvedDestPathCmp.startsWith(resolvedTempDirWithSep))
-      ) {
-        return { success: false, error: 'Zip archive contains unsafe paths' };
-      }
-      const destDir = path.dirname(destPath);
-      await fsp.mkdir(destDir, { recursive: true });
-      const content = await file.buffer();
-      await fsp.writeFile(destPath, content);
-    }
-
-    // Step 2: Recursively find all SKILL.md files
-    const skillFiles: string[] = [];
-    async function findSkillMdFiles(dir: string) {
-      const entries = await fsp.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue;
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await findSkillMdFiles(fullPath);
-        } else if (entry.name === SKILL_FILE) {
-          skillFiles.push(fullPath);
-        }
-      }
-    }
-    await findSkillMdFiles(tempDir);
-
-    if (skillFiles.length === 0) {
-      return {
-        success: false,
-        error: 'No SKILL.md files found in zip archive',
-      };
-    }
-
-    // Step 3: Copy each skill directory into SKILLS_ROOT
-
-    // Helper function to extract skill name from SKILL.md
-    async function getSkillName(skillFilePath: string): Promise<string> {
-      try {
-        const raw = await fsp.readFile(skillFilePath, 'utf-8');
-        const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
-        const parsed = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-        return parsed || path.basename(path.dirname(skillFilePath));
-      } catch {
-        return path.basename(path.dirname(skillFilePath));
-      }
-    }
-
-    // Helper: derive a safe folder name from a skill display name
-    function folderNameFromSkillName(
-      skillName: string,
-      fallback: string
-    ): string {
-      return safePathComponent(
-        skillName
-          .replace(/[\\/*?:"<>|\s]+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '') || fallback
-      );
-    }
-
-    // Step 3a: Scan existing skills to build a name→folderName map for
-    //          name-based duplicate detection (case-insensitive).
-    const existingSkillNames = new Map<string, string>(); // lower-case name → folder name on disk
-    if (existsSync(SKILLS_ROOT)) {
-      const rootEntries = await fsp.readdir(SKILLS_ROOT, {
-        withFileTypes: true,
-      });
-      for (const entry of rootEntries) {
-        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-        const existingSkillFile = path.join(
-          SKILLS_ROOT,
-          entry.name,
-          SKILL_FILE
-        );
-        if (!existsSync(existingSkillFile)) continue;
-        try {
-          const raw = await fsp.readFile(existingSkillFile, 'utf-8');
-          const nameMatch = raw.match(/^\s*name\s*:\s*(.+)$/m);
-          const name = nameMatch?.[1]?.trim()?.replace(/^['"]|['"]$/g, '');
-          if (name) existingSkillNames.set(name.toLowerCase(), entry.name);
-        } catch {
-          // skip unreadable skill
-        }
-      }
-    }
-
-    // Collect conflicts if replacements not provided
-    const conflicts: Array<{ folderName: string; skillName: string }> = [];
-    const replacementsSet = replacements || new Set<string>();
-
-    for (const skillFilePath of skillFiles) {
-      const skillDir = path.dirname(skillFilePath);
-
-      // Read the incoming skill's display name from SKILL.md frontmatter.
-      const incomingName = await getSkillName(skillFilePath);
-      const incomingNameLower = incomingName.toLowerCase();
-
-      // Determine where this skill will be written on disk.
-      // Both root-level and nested skills use the skill name to derive the
-      // folder, so that detection and storage are consistent.
-      const fallbackFolderName =
-        skillDir === tempDir
-          ? path.basename(zipPath, path.extname(zipPath))
-          : path.basename(skillDir);
-      const destFolderName = folderNameFromSkillName(
-        incomingName,
-        fallbackFolderName
-      );
-      const dest = path.join(SKILLS_ROOT, destFolderName);
-
-      // Name-based duplicate detection: check if any existing skill already
-      // has this display name, regardless of what folder it lives in.
-      const existingFolder = existingSkillNames.get(incomingNameLower);
-      if (existingFolder) {
-        if (!replacements) {
-          // First pass — report conflict using the existing skill's folder as
-          // the key so the frontend can confirm the right replacement.
-          conflicts.push({
-            folderName: existingFolder,
-            skillName: incomingName,
-          });
-          continue;
-        }
-        if (replacementsSet.has(existingFolder)) {
-          // User confirmed — remove the existing skill folder before importing.
-          await fsp.rm(path.join(SKILLS_ROOT, existingFolder), {
-            recursive: true,
-            force: true,
-          });
-        } else {
-          // User cancelled for this skill — skip it.
-          continue;
-        }
-      }
-
-      // Import the skill (no conflict, or conflict was resolved).
-      await fsp.mkdir(dest, { recursive: true });
-      if (skillDir === tempDir) {
-        // SKILL.md at zip root — copy all root-level entries.
-        await copyDirRecursive(tempDir, dest);
-      } else {
-        // SKILL.md inside a subdirectory — copy that directory.
-        await copyDirRecursive(skillDir, dest);
-      }
-    }
-
-    // Return conflicts if any were found and replacements not provided
-    if (conflicts.length > 0 && !replacements) {
-      return { success: false, conflicts };
-    }
-
-    log.info(
-      `Imported ${skillFiles.length} skill(s) from zip into ~/.eigent/skills:`,
-      zipPath
-    );
-    return { success: true };
-  } catch (error: any) {
-    log.error('importSkillsFromZip failed', error);
-    return { success: false, error: error?.message || String(error) };
-  } finally {
-    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
+async function seedDefaultSkillsIfEmpty(): Promise<void> {
+  await syncDefaultSkillsFromBundle();
 }
 
 // ==================== Shared backend startup logic ====================
@@ -2745,7 +2529,32 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 
 // ==================== window create ====================
 async function createWindow() {
+  const existingWindow =
+    win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0];
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    win = existingWindow;
+    win.focus();
+    return;
+  }
+
+  if (createWindowPromise) {
+    await createWindowPromise;
+    if (win && !win.isDestroyed()) {
+      win.focus();
+    }
+    return;
+  }
+
+  createWindowPromise = createWindowInternal().finally(() => {
+    createWindowPromise = null;
+  });
+
+  return createWindowPromise;
+}
+
+async function createWindowInternal() {
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
   // Ensure .eigent directories exist before anything else
   ensureEigentDirectories();
@@ -2772,10 +2581,10 @@ async function createWindow() {
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
-    width: 1200,
-    height: 800,
-    minWidth: 1050,
-    minHeight: 650,
+    width: 1280,
+    height: 960,
+    minWidth: 1100,
+    minHeight: 700,
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
@@ -2793,7 +2602,7 @@ async function createWindow() {
         : '#f5f5f580',
     // macOS-specific title bar styling
     titleBarStyle: isMac ? 'hidden' : undefined,
-    trafficLightPosition: isMac ? { x: 10, y: 10 } : undefined,
+    trafficLightPosition: isMac ? { x: 10, y: 12 } : undefined,
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     // Rounded corners on macOS and Linux (as original)
     roundedCorners: !isWindows,
@@ -2812,6 +2621,55 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
+
+    if (
+      params.partition !== PREVIEW_WEBVIEW_PARTITION ||
+      !isHttpOrHttpsUrl(params.src)
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
+  win.webContents.on('did-attach-webview', (_event, contents) => {
+    const preventUnsafeNavigation = (
+      event: Electron.Event,
+      navigationUrl: string
+    ) => {
+      if (!isHttpOrHttpsUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    };
+    const guestNavigationEvents = contents as unknown as {
+      on: (
+        eventName: string,
+        listener: (event: Electron.Event, navigationUrl: string) => void
+      ) => void;
+    };
+
+    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isHttpOrHttpsUrl(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
   });
 
   if (process.platform === 'darwin') {
@@ -3185,6 +3043,7 @@ const setupWindowEventListeners = () => {
 // ==================== devtools shortcuts ====================
 const setupDevToolsShortcuts = () => {
   if (!win) return;
+  if (app.isPackaged) return;
 
   const toggleDevTools = () => win?.webContents.toggleDevTools();
 
@@ -3261,58 +3120,112 @@ const setupExternalLinkHandling = () => {
 };
 
 // ==================== check and start backend ====================
-const checkAndStartBackend = async () => {
-  log.info('Checking and starting backend service...');
-  try {
-    // Clean up any existing backend process before starting new one
-    if (python_process && !python_process.killed) {
-      log.info('Cleaning up existing backend process before restart...');
-      await cleanupPythonProcess();
-      python_process = null;
-    }
+async function restartBackendService(): Promise<BackendStartResult> {
+  if (backendStartPromise) {
+    log.info(
+      'Backend startup already in progress, waiting before forced restart...'
+    );
+    await backendStartPromise;
+  }
 
-    const isToolInstalled = await checkToolInstalled();
-    if (isToolInstalled.success) {
-      log.info('Tool installed, starting backend service...');
+  log.info('Restarting backend service...');
+  return checkAndStartBackend({ forceRestart: true });
+}
 
-      // Start backend and wait for health check to pass
-      python_process = await startBackend((port) => {
-        backendPort = port;
-        log.info('Backend service started successfully', { port });
-      });
+const checkAndStartBackend = async (
+  options: BackendStartOptions = {}
+): Promise<BackendStartResult> => {
+  if (backendStartPromise) {
+    log.info('Backend startup already in progress, waiting...');
+    return backendStartPromise;
+  }
 
-      // Notify frontend that backend is ready
-      if (win && !win.isDestroyed()) {
+  backendStartPromise = (async () => {
+    log.info('Checking and starting backend service...');
+    try {
+      if (isPythonProcessRunning()) {
+        if (!options.forceRestart) {
+          const isHealthy = await checkBackendHealth(backendPort);
+          if (isHealthy) {
+            log.info('Backend service is already running', {
+              port: backendPort,
+            });
+            const result: BackendStartResult = {
+              success: true,
+              port: backendPort,
+            };
+            notifyBackendReady(result);
+            return result;
+          }
+
+          log.warn(
+            'Backend process is running but health check failed; restarting...'
+          );
+        } else {
+          log.info('Cleaning up existing backend process before restart...');
+        }
+
+        await cleanupPythonProcess();
+      } else if (python_process) {
+        python_process = null;
+      }
+
+      const isToolInstalled = await checkToolInstalled();
+      if (isToolInstalled.success) {
+        log.info('Tool installed, starting backend service...');
+        const codexResolverEnv = await getCodexResolverEnv();
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+
+        // Start backend and wait for health check to pass
+        python_process = await startBackend(
+          (port) => {
+            backendPort = port;
+            log.info('Backend service started successfully', { port });
+          },
+          {
+            ...codexResolverEnv,
+            EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+          }
+        );
+
+        // Notify frontend that backend is ready
         log.info('Backend is ready, notifying frontend...');
-        win.webContents.send('backend-ready', {
+        const result: BackendStartResult = {
           success: true,
           port: backendPort,
-        });
-      }
+        };
+        notifyBackendReady(result);
 
-      python_process?.on('exit', (code, signal) => {
-        log.info('Python process exited', { code, signal });
-      });
-    } else {
-      log.warn('Tool not installed, cannot start backend service');
-      // Notify frontend that backend cannot start
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('backend-ready', {
+        python_process?.on('exit', (code, signal) => {
+          log.info('Python process exited', { code, signal });
+        });
+
+        return result;
+      } else {
+        log.warn('Tool not installed, cannot start backend service');
+        // Notify frontend that backend cannot start
+        const result: BackendStartResult = {
           success: false,
           error: 'Tools not installed',
-        });
+        };
+        notifyBackendReady(result);
+        return result;
       }
-    }
-  } catch (error) {
-    log.error('Failed to start backend:', error);
-    // Notify frontend of backend startup failure
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('backend-ready', {
+    } catch (error) {
+      log.error('Failed to start backend:', error);
+      // Notify frontend of backend startup failure
+      const result: BackendStartResult = {
         success: false,
-        error: String(error),
-      });
+        error: formatErrorMessage(error),
+      };
+      notifyBackendReady(result);
+      return result;
     }
-  }
+  })().finally(() => {
+    backendStartPromise = null;
+  });
+
+  return backendStartPromise;
 };
 
 // ==================== process cleanup ====================
@@ -3462,7 +3375,8 @@ app.whenReady().then(async () => {
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
     const url = decodeURIComponent(request.url.replace('localfile://', ''));
-    const filePath = path.resolve(path.normalize(url));
+    const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
+    const filePath = path.resolve(path.normalize(normalizedUrl));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
@@ -3590,15 +3504,21 @@ app.on('window-all-closed', () => {
 });
 
 // ==================== app activate event ====================
-app.on('activate', () => {
+app.on('activate', async () => {
   const allWindows = BrowserWindow.getAllWindows();
   log.info('activate', allWindows.length);
 
   if (allWindows.length) {
     allWindows[0].focus();
   } else {
-    cleanupPythonProcess();
-    createWindow();
+    const backendStart = checkAndStartBackend();
+    await createWindow();
+    const result = await backendStart;
+    if (!result.success) {
+      log.warn('Backend start during app activation failed:', result.error);
+    } else {
+      notifyBackendReady(result);
+    }
   }
 });
 

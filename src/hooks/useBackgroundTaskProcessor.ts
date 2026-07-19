@@ -18,7 +18,7 @@ import {
   closeSSEConnectionsForTasks,
   hasActiveSSEConnection,
 } from '@/store/chatStore';
-import { useProjectStore } from '@/store/projectStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
@@ -43,7 +43,7 @@ interface ActiveBackgroundTask {
  * - Uses appendInitChatStore + startTask for execution (supports same-project parallelism)
  */
 export function useBackgroundTaskProcessor() {
-  const projectStore = useProjectStore();
+  const projectStore = useProjectRuntimeStore();
   const triggerTaskStore = useTriggerTaskStore();
 
   const activeTasksRef = useRef<Map<string, ActiveBackgroundTask>>(new Map());
@@ -367,8 +367,8 @@ export function useBackgroundTaskProcessor() {
 
     pollTimerRef.current = setTimeout(runPoll, POLL_INTERVAL_MS);
 
-    const unsubscribe = useProjectStore.subscribe(() => {
-      const state = useProjectStore.getState();
+    const unsubscribe = useProjectRuntimeStore.subscribe(() => {
+      const state = useProjectRuntimeStore.getState();
       const hasTriggerTasks = Object.values(state.projects).some((p) =>
         p?.queuedMessages?.some((m) => m.executionId)
       );

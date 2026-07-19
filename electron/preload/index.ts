@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
@@ -76,6 +78,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('export-camel-log', email, taskId, projectId, userId),
+  getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
+  exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
+    ipcRenderer.invoke('export-diagnostics-zip', payload),
+  openMailto: (url: string) => ipcRenderer.invoke('open-mailto', url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp
@@ -154,8 +167,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-email-folder-path', email),
   restartApp: () => ipcRenderer.invoke('restart-app'),
   readGlobalEnv: (key: string) => ipcRenderer.invoke('read-global-env', key),
-  getProjectFolderPath: (email: string, projectId: string) =>
-    ipcRenderer.invoke('get-project-folder-path', email, projectId),
+  codexSubscriptionStatus: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-status', email),
+  codexSubscriptionLogin: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-login', email),
+  codexSubscriptionDisconnect: (email: string) =>
+    ipcRenderer.invoke('subscription-auth:codex-disconnect', email),
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>
@@ -175,32 +197,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.off(channel, listener);
     };
   },
-  // Skills
-  getSkillsDir: () => ipcRenderer.invoke('get-skills-dir'),
-  skillsScan: () => ipcRenderer.invoke('skills-scan'),
-  skillWrite: (skillDirName: string, content: string) =>
-    ipcRenderer.invoke('skill-write', skillDirName, content),
-  skillDelete: (skillDirName: string) =>
-    ipcRenderer.invoke('skill-delete', skillDirName),
-  skillRead: (filePath: string) => ipcRenderer.invoke('skill-read', filePath),
-  skillListFiles: (skillDirName: string) =>
-    ipcRenderer.invoke('skill-list-files', skillDirName),
-  skillImportZip: (
-    zipPathOrBuffer: string | ArrayBuffer,
-    replacements?: string[]
-  ) => ipcRenderer.invoke('skill-import-zip', zipPathOrBuffer, replacements),
-  openSkillFolder: (skillName: string) =>
-    ipcRenderer.invoke('open-skill-folder', skillName),
-  skillConfigInit: (userId: string) =>
-    ipcRenderer.invoke('skill-config-init', userId),
-  skillConfigLoad: (userId: string) =>
-    ipcRenderer.invoke('skill-config-load', userId),
-  skillConfigToggle: (userId: string, skillName: string, enabled: boolean) =>
-    ipcRenderer.invoke('skill-config-toggle', userId, skillName, enabled),
-  skillConfigUpdate: (userId: string, skillName: string, skillConfig: any) =>
-    ipcRenderer.invoke('skill-config-update', userId, skillName, skillConfig),
-  skillConfigDelete: (userId: string, skillName: string) =>
-    ipcRenderer.invoke('skill-config-delete', userId, skillName),
+  // Skills: all operations via Brain REST API, no IPC
 });
 
 // --------- Preload scripts loading ---------

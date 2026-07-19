@@ -1,0 +1,44 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { describe, expect, it } from 'vitest';
+
+import { parseStreamingTasks } from '@/components/ChatBox/TaskBox/PlanTaskBox/utils';
+
+describe('parseStreamingTasks', () => {
+  it('parses completed and streaming task tags', () => {
+    expect(parseStreamingTasks('<task>First task</task><task>Second')).toEqual({
+      tasks: ['First task', 'Second'],
+      isStreaming: true,
+    });
+  });
+
+  it('falls back to raw streaming text before task tags arrive', () => {
+    expect(parseStreamingTasks('Thinking through the subtasks')).toEqual({
+      tasks: ['Thinking through the subtasks'],
+      isStreaming: true,
+    });
+  });
+
+  it('does not display internal streaming chunk objects as raw text', () => {
+    expect(
+      parseStreamingTasks(
+        "msgs=[BaseMessage(role_name='System', meta_dict={}, reasoning_content='We')] stream_accumulate_mode='accumulate'"
+      )
+    ).toEqual({
+      tasks: [],
+      isStreaming: false,
+    });
+  });
+});
