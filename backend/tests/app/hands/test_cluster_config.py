@@ -54,9 +54,9 @@ verify_tls = false
     )
     routing = load_hands_cluster_config(
         str(config),
-        read_env=lambda name: "token_browser"
-        if name == "BROWSER_CLUSTER_TOKEN"
-        else None,
+        read_env=lambda name: (
+            "token_browser" if name == "BROWSER_CLUSTER_TOKEN" else None
+        ),
     )
 
     assert set(routing.route_to_cluster.keys()) == {

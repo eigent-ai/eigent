@@ -99,12 +99,9 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseFileToolkit.write_to_file,
-        lambda _,
-        title,
-        content,
-        filename,
-        encoding=None,
-        use_latex=False: f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}",
+        lambda _, title, content, filename, encoding=None, use_latex=False: (
+            f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}"
+        ),
     )
     def write_to_file(
         self,

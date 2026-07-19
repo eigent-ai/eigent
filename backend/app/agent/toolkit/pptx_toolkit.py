@@ -50,10 +50,9 @@ class PPTXToolkit(BasePPTXToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BasePPTXToolkit.create_presentation,
-        lambda _,
-        content,
-        filename,
-        template=None: f"create presentation with content: {content}, filename: {filename}, template: {template}",
+        lambda _, content, filename, template=None: (
+            f"create presentation with content: {content}, filename: {filename}, template: {template}"
+        ),
     )
     def create_presentation(
         self, content: str, filename: str, template: str | None = None

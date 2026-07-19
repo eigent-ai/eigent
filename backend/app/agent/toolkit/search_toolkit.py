@@ -191,11 +191,9 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseSearchToolkit.search_google,
-        lambda _,
-        query,
-        search_type="web",
-        number_of_result_pages=10,
-        start_page=1: f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}",
+        lambda _, query, search_type="web", number_of_result_pages=10, start_page=1: (
+            f"with query '{query}', {search_type} type, {number_of_result_pages} result pages starting from page {start_page}"
+        ),
     )
     def search_google(
         self,
