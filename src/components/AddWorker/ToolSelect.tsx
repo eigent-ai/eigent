@@ -22,6 +22,7 @@ import {
 } from '@/api/http';
 import IntegrationList from '@/components/Dashboard/IntegrationList';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   useIntegrationManagement,
   type IntegrationItem,
@@ -42,6 +43,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
@@ -258,6 +260,7 @@ const ToolSelect = forwardRef<
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
+  const navigate = useNavigate();
   // state management - remove internal selected state, use parent passed initialSelectedTools
   const [keyword, setKeyword] = useState<string>('');
   const { email } = useAuthStore();
@@ -783,36 +786,22 @@ const ToolSelect = forwardRef<
       });
   }, [integrations, webInstalled, keyword]);
 
-  const webNotConnectedItems = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    return integrations
-      .filter((i: IntegrationItem) => !webInstalled[i.key])
-      .filter((i: IntegrationItem) => {
-        if (!kw) return true;
-        const descStr = typeof i.desc === 'string' ? i.desc.toLowerCase() : '';
-        return (
-          (i.key || '').toLowerCase().includes(kw) ||
-          (i.name || '').toLowerCase().includes(kw) ||
-          descStr.includes(kw)
-        );
-      });
-  }, [integrations, webInstalled, keyword]);
-
+  // Align with the Connectors page: only connected built-ins and enabled
+  // custom MCPs are selectable as agent tools.
   const ownPicks = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    return userMcpList.filter((opt) => {
-      if (!kw) return true;
-      const name = String(opt.mcp_name || '').toLowerCase();
-      const desc = String(opt.mcp_desc || '').toLowerCase();
-      const key = String(opt.mcp_key || '').toLowerCase();
-      return name.includes(kw) || desc.includes(kw) || key.includes(kw);
-    });
+    return userMcpList
+      .filter((opt) => Number(opt.status) === 1)
+      .filter((opt) => {
+        if (!kw) return true;
+        const name = String(opt.mcp_name || '').toLowerCase();
+        const desc = String(opt.mcp_desc || '').toLowerCase();
+        const key = String(opt.mcp_key || '').toLowerCase();
+        return name.includes(kw) || desc.includes(kw) || key.includes(kw);
+      });
   }, [userMcpList, keyword]);
 
-  const listHasItems =
-    webConnectedItems.length > 0 ||
-    webNotConnectedItems.length > 0 ||
-    ownPicks.length > 0;
+  const listHasItems = webConnectedItems.length > 0 || ownPicks.length > 0;
 
   const showSearchPlaceholder =
     keyword.length === 0 && (initialSelectedTools?.length ?? 0) === 0;
@@ -944,29 +933,21 @@ const ToolSelect = forwardRef<
                     </div>
                   </div>
                 )}
-                {webNotConnectedItems.length > 0 && (
-                  <div>
-                    <div className="px-2 py-1 text-body-sm font-medium text-ds-text-neutral-subtle-default">
-                      {t('setting.mcp-sidebar-not-connected')}
-                    </div>
-                    <IntegrationList
-                      className="!space-y-1.5"
-                      variant="select"
-                      onShowEnvConfig={onShowEnvConfig}
-                      addOption={addOption}
-                      items={webNotConnectedItems}
-                      translationNamespace="layout"
-                      selectWithCheckbox
-                      isIntegrationSelected={isIntegrationInAgentSelection}
-                      onToggleIntegration={handleToggleIntegrationForAgent}
-                    />
-                  </div>
-                )}
               </div>
             ) : (
-              <p className="break-words px-2 py-2 text-center text-body-md text-ds-text-neutral-muted-default">
-                {t('dashboard.no-results')}
-              </p>
+              <div className="flex flex-col items-center gap-1 px-2 py-2">
+                <p className="break-words text-center text-body-md text-ds-text-neutral-muted-default">
+                  {t('dashboard.no-results')}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  buttonContent="text"
+                  onClick={() => navigate('/history?tab=connectors')}
+                >
+                  {t('chat.input-attach-manage-connectors')}
+                </Button>
+              </div>
             )}
           </div>
         </div>
