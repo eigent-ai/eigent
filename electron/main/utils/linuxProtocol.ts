@@ -42,7 +42,7 @@ function getExecPath(): string {
 }
 
 function generateDesktopEntry(execPath: string): string {
-  const escapedExec = execPath.replace(/"/g, '\\"');
+  const escapedExec = execPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return `[Desktop Entry]
 Type=Application
 Name=Eigent Protocol Handler
