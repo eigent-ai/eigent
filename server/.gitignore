@@ -10,6 +10,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Environment files
+.env
+.env.*
+
 runtime
 
 app/public/upload/

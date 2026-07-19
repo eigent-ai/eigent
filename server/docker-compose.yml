@@ -1,5 +1,4 @@
-services:
-  # PostgreSQL Database
+# PostgreSQL Database
   postgres:
     image: postgres:15
     container_name: eigent_postgres
@@ -7,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: eigent
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
       POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
     ports:
       - '5432:5432'
@@ -44,7 +43,7 @@ services:
       context: ..
       dockerfile: server/Dockerfile
       args:
-        database_url: postgresql://postgres:123456@postgres:5432/eigent
+        database_url: ${DATABASE_URL:-postgresql://postgres:123456@postgres:5432/eigent}
     container_name: eigent_api
     restart: unless-stopped
     ports:
@@ -52,7 +51,7 @@ services:
     env_file:
       - .env
     environment:
-      - database_url=postgresql://postgres:123456@postgres:5432/eigent
+      - database_url=${DATABASE_URL:-postgresql://postgres:123456@postgres:5432/eigent}
       - redis_url=redis://redis:6379/0
       - celery_broker_url=redis://redis:6379/0
       - celery_result_url=redis://redis:6379/0
