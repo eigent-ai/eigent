@@ -15,6 +15,7 @@
 import logging
 import uuid
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from camel.messages import BaseMessage
@@ -34,6 +35,54 @@ from app.model.subscription_runtime import (
 )
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
+
+
+def _strip_strict_from_tools_for_anthropic(
+    tools: list[FunctionTool | Callable] | None,
+    model_platform: str,
+) -> list[FunctionTool | Callable] | None:
+    """Strip 'strict' from tool schemas for Anthropic models.
+
+    Anthropic's API does not support OpenAI's 'strict' mode for tool calling.
+    CAMEL's FunctionTool adds 'strict': True by default, which causes
+    400 errors when passed to Anthropic models ("does not support strict tools").
+
+    Args:
+        tools: List of FunctionTool or callable tools
+        model_platform: The model platform string (e.g., "anthropic")
+
+    Returns:
+        Modified tools list with 'strict' removed from schemas, or None if input was None
+    """
+    if not tools:
+        return tools
+
+    # Only strip for Anthropic
+    if model_platform.lower() != "anthropic":
+        return tools
+
+    stripped_tools = []
+    for tool in tools:
+        if isinstance(tool, FunctionTool):
+            # Get the current schema and remove 'strict'
+            schema = tool.get_openai_tool_schema()
+            if isinstance(schema, dict) and "function" in schema:
+                func_schema = schema["function"]
+                if "strict" in func_schema:
+                    # Deep copy and remove strict
+                    new_schema = deepcopy(schema)
+                    del new_schema["function"]["strict"]
+                    # Create a new FunctionTool with the modified schema
+                    new_tool = FunctionTool(
+                        tool.func,
+                        openai_tool_schema=new_schema,
+                    )
+                    # Copy over any other attributes
+                    stripped_tools.append(new_tool)
+                    continue
+        stripped_tools.append(tool)
+
+    return stripped_tools
 
 # OpenAI chat-completions streaming only returns token usage when
 # `stream_options.include_usage` is requested. Without it the request-level
@@ -295,12 +344,19 @@ def agent_model(
 
     model = build_model()
 
+    # Strip 'strict' from tool schemas for Anthropic models
+    # (CAMEL adds strict=True by default, which causes 400 errors)
+    effective_platform = effective_config.get("model_platform", "")
+    tools_for_agent = _strip_strict_from_tools_for_anthropic(
+        tools, effective_platform
+    )
+
     return ListenChatAgent(
         options.project_id,
         agent_name,
         system_message,
         model=model,
-        tools=tools,
+        tools=tools_for_agent,
         agent_id=agent_id,
         prune_tool_calls_from_memory=prune_tool_calls_from_memory,
         toolkits_to_register_agent=toolkits_to_register_agent,
