@@ -25,25 +25,28 @@ logger = logging.getLogger(__name__)
 def _get_secret_key() -> str:
     """Return the share-token signing key.
 
-    Falls back to a random ephemeral key when the environment variable
-    is not set.  A hardcoded default must never be used because the
+    Raises an error if the environment variable is not set.
+    A hardcoded default or random fallback must never be used because the
     source code is public and anyone could forge valid share tokens.
     """
     key = os.getenv("CHAT_SHARE_SECRET_KEY")
     if key:
         return key
-    logger.warning(
-        "CHAT_SHARE_SECRET_KEY not set — using a random ephemeral key. "
-        "Share links will not survive server restarts. "
-        "Set the CHAT_SHARE_SECRET_KEY environment variable for persistence."
+    raise RuntimeError(
+        "CHAT_SHARE_SECRET_KEY environment variable is required but not set. "
+        "Generate a secure key with: openssl rand -base64 32"
     )
-    return secrets.token_urlsafe(32)
 
 
 def _get_salt() -> str:
     salt = os.getenv("CHAT_SHARE_SALT")
     if salt:
         return salt
+    logger.warning(
+        "CHAT_SHARE_SALT not set — using a random ephemeral salt. "
+        "Share links will not survive server restarts. "
+        "Set the CHAT_SHARE_SALT environment variable for persistence."
+    )
     return secrets.token_urlsafe(8)
 
 
