@@ -16,8 +16,8 @@
 
 from loguru import logger
 
-from app.core.oauth_adapter import get_oauth_adapter, OAUTH_ADAPTERS
-from app.domains.oauth.schema import OAuthAuthorizeReq, OAuthTokenReq, OAuthResult
+from app.core.oauth_adapter import OAUTH_ADAPTERS, get_oauth_adapter
+from app.domains.oauth.schema import OAuthAuthorizeReq, OAuthResult, OAuthTokenReq
 
 
 class OAuthService:

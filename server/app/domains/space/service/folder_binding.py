@@ -67,18 +67,13 @@ def folder_fingerprint(root: Path) -> dict[str, Any]:
 
 def same_folder_reference(left: str, right: str) -> bool:
     try:
-        return normalize_folder_root_reference(left) == normalize_folder_root_reference(
-            right
-        )
+        return normalize_folder_root_reference(left) == normalize_folder_root_reference(right)
     except ValueError:
         return False
 
 
 def same_folder_path(left: str, right: str) -> bool:
     try:
-        return (
-            Path(left).expanduser().resolve()
-            == Path(right).expanduser().resolve()
-        )
+        return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
     except (OSError, RuntimeError):
         return False

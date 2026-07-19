@@ -38,11 +38,11 @@ The repository contains several major areas:
 ## Set up a development environment
 
 1. Clone the repository.
-2. Install the required Node.js and Python versions.
-3. Install dependencies.
-4. Review development environment files.
-5. Start the application.
-6. Configure a test model.
+1. Install the required Node.js and Python versions.
+1. Install dependencies.
+1. Review development environment files.
+1. Start the application.
+1. Configure a test model.
 
 See [Self-hosting](/get_started/self-hosting) for the setup workflow.
 
@@ -88,10 +88,10 @@ A useful contribution should include:
 Before opening a pull request:
 
 1. Review the repository contribution guidance.
-2. Rebase or update from the target branch.
-3. Run relevant checks.
-4. Remove secrets and local-only files.
-5. Describe verification steps.
+1. Rebase or update from the target branch.
+1. Run relevant checks.
+1. Remove secrets and local-only files.
+1. Describe verification steps.
 
 > **Video placeholder:** Add a 90-second contributor onboarding MP4 showing repository setup, a small UI or documentation change, tests, and a pull request. Include captions.
 

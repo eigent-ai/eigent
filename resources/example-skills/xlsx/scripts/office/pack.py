@@ -35,6 +35,7 @@ import defusedxml.minidom
 
 from validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
 
+
 def pack(
     input_directory: str,
     output_file: str,

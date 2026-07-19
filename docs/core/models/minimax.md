@@ -47,4 +47,4 @@ Click on the Minimax Config card and fill in the following fields:
 
 > **Screenshot placeholder:** Add a current screenshot for “Minimax 4 Pn”.
 
----
+______________________________________________________________________

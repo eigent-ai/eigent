@@ -25,7 +25,6 @@ from starlette.requests import Request
 from app.shared.context import (
     ensure_trace_id,
     set_trace_id,
-    get_trace_id,
 )
 
 TRACE_HEADER = "X-Trace-ID"

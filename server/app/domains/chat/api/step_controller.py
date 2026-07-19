@@ -18,7 +18,6 @@ STATUS: full-rewrite (security: H1, H2, P2 Update model)
 
 import asyncio
 import json
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -28,13 +27,12 @@ from sqlalchemy.sql.expression import case
 from sqlmodel import Session, asc, desc, select
 
 from app.core.database import session
-from app.model.chat.chat_step import ChatStep, ChatStepOut, ChatStepIn, ChatStepUpdate
-from app.model.chat.chat_history import ChatHistory
-
-from app.shared.auth import auth_must
-from app.domains.chat.service import ChatService
 from app.domains.chat.schema import TaskOwnershipCheckReq
+from app.domains.chat.service import ChatService
 from app.domains.remote_control.service.remote_control_service import RemoteControlService
+from app.model.chat.chat_history import ChatHistory
+from app.model.chat.chat_step import ChatStep, ChatStepIn, ChatStepOut, ChatStepUpdate
+from app.shared.auth import auth_must
 
 router = APIRouter(prefix="/chat", tags=["V1 Chat Step"])
 
@@ -57,11 +55,15 @@ def _history_for_run(db: Session, run_id: str, user_id: int) -> ChatHistory | No
 
 
 def _steps_for_run_stmt(run_id: str, task_id: str):
-    return select(ChatStep).where(ChatStep.task_id == task_id).where(
-        or_(
-            ChatStep.run_id == run_id,
-            ChatStep.run_id.is_(None),
-            ChatStep.run_id == task_id,
+    return (
+        select(ChatStep)
+        .where(ChatStep.task_id == task_id)
+        .where(
+            or_(
+                ChatStep.run_id == run_id,
+                ChatStep.run_id.is_(None),
+                ChatStep.run_id == task_id,
+            )
         )
     )
 
@@ -98,11 +100,11 @@ async def _playback_event_generator(
             await asyncio.sleep(delay_time)
 
 
-@router.get("/steps", name="list chat steps", response_model=List[ChatStepOut])
+@router.get("/steps", name="list chat steps", response_model=list[ChatStepOut])
 async def list_chat_steps(
     task_id: str,
-    run_id: Optional[str] = None,
-    step: Optional[str] = None,
+    run_id: str | None = None,
+    step: str | None = None,
     db_session: Session = Depends(session),
     auth=Depends(auth_must),
 ):
@@ -116,10 +118,10 @@ async def list_chat_steps(
     return list(db_session.exec(query).all())
 
 
-@router.get("/runs/{run_id}/steps", name="list chat steps by run", response_model=List[ChatStepOut])
+@router.get("/runs/{run_id}/steps", name="list chat steps by run", response_model=list[ChatStepOut])
 async def list_chat_steps_by_run(
     run_id: str,
-    step: Optional[str] = None,
+    step: str | None = None,
     db_session: Session = Depends(session),
     auth=Depends(auth_must),
 ):

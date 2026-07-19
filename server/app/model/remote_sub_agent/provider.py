@@ -48,15 +48,8 @@ class RemoteSubAgentProviderIn(BaseModel):
         if not self.provider_name.strip():
             raise ValueError("Remote sub agent provider requires provider_name.")
 
-        if self.enabled and (
-            not self.api_key.strip()
-            or not self.endpoint_url.strip()
-            or not self.agent_name.strip()
-        ):
-            raise ValueError(
-                "Enabled remote sub agent provider requires api_key, "
-                "endpoint_url, and agent_name."
-            )
+        if self.enabled and (not self.api_key.strip() or not self.endpoint_url.strip() or not self.agent_name.strip()):
+            raise ValueError("Enabled remote sub agent provider requires api_key, endpoint_url, and agent_name.")
         return self
 
 

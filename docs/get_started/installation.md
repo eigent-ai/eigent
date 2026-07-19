@@ -13,7 +13,7 @@ icon: wrench
 <Warning>
   **macOS Prerequisite**
 
-  Please ensure you are running macOS 11 (Big Sur) or a newer version to install Eigent.
+Please ensure you are running macOS 11 (Big Sur) or a newer version to install Eigent.
 </Warning>
 
 </Step>

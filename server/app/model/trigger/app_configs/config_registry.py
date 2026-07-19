@@ -19,43 +19,43 @@ Registry for mapping trigger types to their configuration classes.
 Used for validation and JSON schema generation.
 """
 
-from typing import Type, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from app.shared.types.trigger_types import TriggerType
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
+from app.model.trigger.app_configs.schedule_config import ScheduleTriggerConfig
 from app.model.trigger.app_configs.slack_config import SlackTriggerConfig
 from app.model.trigger.app_configs.webhook_config import WebhookTriggerConfig
-from app.model.trigger.app_configs.schedule_config import ScheduleTriggerConfig
+from app.shared.types.trigger_types import TriggerType
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
 
 # Registry of trigger types to their config classes
-_CONFIG_REGISTRY: Dict[TriggerType, Type[BaseTriggerConfig]] = {
+_CONFIG_REGISTRY: dict[TriggerType, type[BaseTriggerConfig]] = {
     TriggerType.slack_trigger: SlackTriggerConfig,
     TriggerType.webhook: WebhookTriggerConfig,
     TriggerType.schedule: ScheduleTriggerConfig,
 }
 
 
-def get_config_class(trigger_type: TriggerType) -> Optional[Type[BaseTriggerConfig]]:
+def get_config_class(trigger_type: TriggerType) -> type[BaseTriggerConfig] | None:
     """
     Get the config class for a trigger type.
-    
+
     Args:
         trigger_type: The trigger type to get config class for
-        
+
     Returns:
         The Pydantic model class for the trigger config, or None if not found
     """
     return _CONFIG_REGISTRY.get(trigger_type)
 
 
-def register_config_class(trigger_type: TriggerType, config_class: Type[BaseTriggerConfig]):
+def register_config_class(trigger_type: TriggerType, config_class: type[BaseTriggerConfig]):
     """
     Register a config class for a trigger type.
-    
+
     Args:
         trigger_type: The trigger type to register
         config_class: The Pydantic model class for the trigger config
@@ -63,13 +63,13 @@ def register_config_class(trigger_type: TriggerType, config_class: Type[BaseTrig
     _CONFIG_REGISTRY[trigger_type] = config_class
 
 
-def get_config_schema(trigger_type: TriggerType) -> Optional[Dict[str, Any]]:
+def get_config_schema(trigger_type: TriggerType) -> dict[str, Any] | None:
     """
     Get the JSON schema for a trigger type's config.
-    
+
     Args:
         trigger_type: The trigger type to get schema for
-        
+
     Returns:
         The JSON schema dict, or None if no config class is registered
     """
@@ -79,23 +79,23 @@ def get_config_schema(trigger_type: TriggerType) -> Optional[Dict[str, Any]]:
     return None
 
 
-def validate_config(trigger_type: TriggerType, config_data: Optional[dict]) -> Optional[BaseTriggerConfig]:
+def validate_config(trigger_type: TriggerType, config_data: dict | None) -> BaseTriggerConfig | None:
     """
     Validate config data against the registered config class.
-    
+
     Args:
         trigger_type: The trigger type to validate for
         config_data: The config data to validate
-        
+
     Returns:
         The validated Pydantic model instance, or None if no config class is registered
-        
+
     Raises:
         ValidationError: If the config data is invalid
     """
     if config_data is None:
         return None
-        
+
     config_class = get_config_class(trigger_type)
     if config_class:
         return config_class(**config_data)
@@ -112,48 +112,43 @@ def has_config(trigger_type: TriggerType) -> bool:
     return trigger_type in _CONFIG_REGISTRY
 
 
-def requires_authentication(trigger_type: TriggerType, config_data: Optional[dict] = None) -> bool:
+def requires_authentication(trigger_type: TriggerType, config_data: dict | None = None) -> bool:
     """
     Check if a trigger type requires authentication.
-    
+
     Args:
         trigger_type: The trigger type to check
         config_data: Optional config data to check against
-        
+
     Returns:
         True if authentication is required, False otherwise
     """
     config_class = get_config_class(trigger_type)
-    
+
     if not config_class:
         return False
-    
+
     config = config_class(**(config_data or {}))
     return config.authentication_required
 
 
-def validate_activation(
-    trigger_type: TriggerType,
-    config_data: Optional[dict],
-    user_id: int,
-    session: "Session"
-) -> None:
+def validate_activation(trigger_type: TriggerType, config_data: dict | None, user_id: int, session: "Session") -> None:
     """
     Validate that a trigger can be activated. Raises an exception if not.
-    
+
     Args:
         trigger_type: The trigger type to validate
         config_data: The config data for the trigger
         user_id: The ID of the user who owns the trigger
         session: Database session for querying credentials
-        
+
     Raises:
         ActivationError: If activation requirements are not met
     """
     config_class = get_config_class(trigger_type)
-    
+
     if not config_class:
         return  # No requirements to check
-    
+
     config = config_class(**(config_data or {}))
     config.validate_activation(user_id, session)

@@ -9,8 +9,8 @@ General settings control the signed-in account, interface language, network prox
 ## Open General settings
 
 1. Open the Eigent dashboard.
-2. Select **Settings**.
-3. Select **General**.
+1. Select **Settings**.
+1. Select **General**.
 
 > **Screenshot placeholder:** Add a screenshot of General settings with Profile, Language, and Network Proxy sections visible. Hide the full email address if required.
 
@@ -26,7 +26,7 @@ Save or finish important work before logging out.
 ## Change the language
 
 1. Open the Language selector.
-2. Choose a language or **System default**.
+1. Choose a language or **System default**.
 
 Current interface languages include:
 
@@ -47,8 +47,8 @@ Some third-party tool output and generated content can remain in another languag
 ## Configure a network proxy
 
 1. Enter the proxy URL in **Network Proxy**.
-2. Select **Save**.
-3. Select **Restart to apply**.
+1. Select **Save**.
+1. Select **Restart to apply**.
 
 Supported schemes:
 

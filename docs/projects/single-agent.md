@@ -21,10 +21,10 @@ Use Workforce for broad tasks that benefit from specialized roles or parallel su
 ## Start a Single Agent project
 
 1. Open the Workspace or select **New**.
-2. Select **Single Agent**.
-3. Enter the task.
-4. Attach required files.
-5. Send the request.
+1. Select **Single Agent**.
+1. Enter the task.
+1. Attach required files.
+1. Send the request.
 
 Eigent opens a Session and starts the task without a Workforce planning stage.
 
@@ -49,8 +49,8 @@ When the agent uses browser or terminal tools, the corresponding workspace becom
 ## Continue with follow-ups
 
 1. Enter a follow-up request in the Session.
-2. Send the request.
-3. Use the Run selector to review earlier work.
+1. Send the request.
+1. Use the Run selector to review earlier work.
 
 Each follow-up remains part of the same Project.
 

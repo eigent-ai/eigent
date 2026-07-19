@@ -15,7 +15,7 @@
 """SlackService: Slack integration helpers (channel listing)."""
 
 from loguru import logger
-from sqlmodel import select, and_
+from sqlmodel import and_, select
 
 from app.core.database import session_make
 from app.model.config.config import Config
@@ -60,13 +60,15 @@ class SlackService:
                     limit=200,
                 )
                 for channel in response.get("channels", []):
-                    channels.append({
-                        "id": channel.get("id"),
-                        "name": channel.get("name"),
-                        "is_private": channel.get("is_private", False),
-                        "is_member": channel.get("is_member", False),
-                        "num_members": channel.get("num_members"),
-                    })
+                    channels.append(
+                        {
+                            "id": channel.get("id"),
+                            "name": channel.get("name"),
+                            "is_private": channel.get("is_private", False),
+                            "is_member": channel.get("is_member", False),
+                            "num_members": channel.get("num_members"),
+                        }
+                    )
                 cursor = response.get("response_metadata", {}).get("next_cursor")
                 if not cursor:
                     break

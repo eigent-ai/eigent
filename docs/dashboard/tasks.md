@@ -9,9 +9,9 @@ The Tasks dashboard provides a cross-project view of every request submitted to 
 ## Find a task
 
 1. In the Home dashboard, select **Tasks**.
-2. Search for text from the original request.
-3. Optional: Sort by created time, updated time, or name.
-4. Select the task to open its containing project.
+1. Search for text from the original request.
+1. Optional: Sort by created time, updated time, or name.
+1. Select the task to open its containing project.
 
 Task search matches the request text. The project and Space labels identify where the task belongs.
 
@@ -34,32 +34,32 @@ Status names can vary slightly between the dashboard and live session, but they 
 ## Pause an ongoing task
 
 1. Find the running task.
-2. Open its task actions.
-3. Select **Pause**.
+1. Open its task actions.
+1. Select **Pause**.
 
 Eigent records elapsed time and sends a pause request to the active task.
 
 ## Resume a paused task
 
 1. Find the paused task.
-2. Open its task actions.
-3. Select **Resume**.
+1. Open its task actions.
+1. Select **Resume**.
 
 The task returns to a running state and continues from its preserved context when supported.
 
 ## Share a task
 
 1. Open the actions for a completed task.
-2. Select **Share**.
-3. Copy the generated link.
+1. Select **Share**.
+1. Copy the generated link.
 
 Review the shared content before distributing the link. Shared tasks can contain prompts, outputs, and project context.
 
 ## Delete a task
 
 1. Open the task actions.
-2. Select **Delete**.
-3. Confirm the deletion.
+1. Select **Delete**.
+1. Confirm the deletion.
 
 Deleting a task removes it from task history and its containing project. Save required outputs first.
 

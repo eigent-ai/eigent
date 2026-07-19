@@ -24,17 +24,16 @@ from app.core.database import session_make
 from app.core.encrypt import password_verify
 from app.core.environment import env_not_empty
 from app.domains.remote_control.service.remote_control_service import RemoteControlService
+from app.domains.user.schema import AuthResult
 from app.model.user.user import Status, User
-
 from app.shared.auth import create_access_token, create_refresh_token
+from app.shared.auth.token_blacklist import blacklist_token, is_blacklisted
 from app.shared.auth.user_auth import (
     TOKEN_AUDIENCE,
     TOKEN_ISSUER,
     _get_jti,
     decode_refresh_token,
 )
-from app.shared.auth.token_blacklist import blacklist_token, is_blacklisted
-from app.domains.user.schema import AuthResult
 
 
 class UserAuthService:
@@ -44,9 +43,7 @@ class UserAuthService:
     def login(email: str, password: str) -> AuthResult:
         """Password login + credits refresh. Returns tokens or error."""
         with session_make() as s:
-            user = s.exec(
-                User.by(User.email == email, s=s)
-            ).one_or_none()
+            user = s.exec(User.by(User.email == email, s=s)).one_or_none()
 
         if not user or not password_verify(password, user.password):
             return AuthResult(success=False, error_code="AUTH_INVALID_CREDENTIALS")

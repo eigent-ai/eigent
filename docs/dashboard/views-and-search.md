@@ -9,8 +9,8 @@ The Home dashboard provides the same search, sort, and layout controls for Space
 ## Search the active section
 
 1. Select **Spaces**, **Projects**, **Tasks**, or **Triggers**.
-2. Select the search control.
-3. Enter part of a name or task prompt.
+1. Select the search control.
+1. Enter part of a name or task prompt.
 
 Search applies only to the active section:
 
@@ -26,8 +26,8 @@ Changing sections clears the search query.
 ## Sort dashboard items
 
 1. Select the sort control.
-2. Choose **Created**, **Updated**, or **Name**.
-3. To reverse the direction, select the same field again.
+1. Choose **Created**, **Updated**, or **Name**.
+1. To reverse the direction, select the same field again.
 
 Created and updated fields default to newest first. Name defaults to alphabetical order.
 

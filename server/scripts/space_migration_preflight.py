@@ -45,8 +45,7 @@ def table_exists(engine, name: str) -> bool:
         return bool(
             connection.execute(
                 text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = current_schema() AND table_name = :n"
+                    "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = :n"
                 ),
                 {"n": name},
             ).first()
@@ -72,9 +71,7 @@ def main() -> int:
     has_chat_history = table_exists(engine, "chat_history")
     has_trigger = table_exists(engine, "trigger")
     missing_tables = [
-        name
-        for name, present in (("chat_history", has_chat_history), ("trigger", has_trigger))
-        if not present
+        name for name, present in (("chat_history", has_chat_history), ("trigger", has_trigger)) if not present
     ]
 
     user_source_sql_parts: list[str] = []
@@ -85,19 +82,14 @@ def main() -> int:
         )
     if has_trigger:
         user_source_sql_parts.append(
-            "SELECT 'trigger' AS source, CAST(user_id AS TEXT) AS source_id "
-            "FROM trigger WHERE user_id IS NOT NULL"
+            "SELECT 'trigger' AS source, CAST(user_id AS TEXT) AS source_id FROM trigger WHERE user_id IS NOT NULL"
         )
 
     user_sources: list[dict] = (
-        fetch_rows(engine, " UNION ".join(user_source_sql_parts))
-        if user_source_sql_parts
-        else []
+        fetch_rows(engine, " UNION ".join(user_source_sql_parts)) if user_source_sql_parts else []
     )
     mapping_blockers = [
-        row
-        for row in user_sources
-        if row["source"] == "trigger" and not str(row["source_id"]).isdigit()
+        row for row in user_sources if row["source"] == "trigger" and not str(row["source_id"]).isdigit()
     ]
 
     report: dict[str, object] = {
@@ -116,8 +108,7 @@ def main() -> int:
             )
         if has_trigger:
             collision_sql_parts.append(
-                "SELECT CAST(user_id AS TEXT) AS user_id, project_id "
-                "FROM trigger WHERE project_id IS NOT NULL"
+                "SELECT CAST(user_id AS TEXT) AS user_id, project_id FROM trigger WHERE project_id IS NOT NULL"
             )
 
         if collision_sql_parts:

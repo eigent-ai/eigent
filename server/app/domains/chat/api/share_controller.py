@@ -18,18 +18,17 @@ import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from itsdangerous import BadTimeSignature, SignatureExpired
 from sqlmodel import Session, select
 from starlette.responses import StreamingResponse
 
 from app.core.database import session
+from app.domains.chat.schema import TaskOwnershipCheckReq
+from app.domains.chat.service import ChatService
+from app.model.chat.chat_history import ChatHistory
 from app.model.chat.chat_share import ChatHistoryShareOut, ChatShare, ChatShareIn
 from app.model.chat.chat_step import ChatStep
-from app.model.chat.chat_history import ChatHistory
-
 from app.shared.auth import auth_must
-from app.domains.chat.service import ChatService
-from app.domains.chat.schema import TaskOwnershipCheckReq
-from itsdangerous import BadTimeSignature, SignatureExpired
 
 router = APIRouter(prefix="/chat", tags=["V1 Chat Share"])
 

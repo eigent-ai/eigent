@@ -162,10 +162,7 @@ def test_switch_project_ack_publishes_desktop_target_ready(monkeypatch):
     monkeypatch.setattr(
         RemoteControlService,
         "publish_status",
-        lambda session_id, event_type, payload: published.append(
-            (session_id, event_type, payload)
-        )
-        or True,
+        lambda session_id, event_type, payload: published.append((session_id, event_type, payload)) or True,
     )
 
     RemoteControlService.mark_ack(command.id, COMMAND_ACKNOWLEDGED, None, None, FakeDb())
@@ -224,10 +221,7 @@ def test_switch_project_failed_ack_publishes_desktop_target_failed(monkeypatch):
     monkeypatch.setattr(
         RemoteControlService,
         "publish_status",
-        lambda session_id, event_type, payload: published.append(
-            (session_id, event_type, payload)
-        )
-        or True,
+        lambda session_id, event_type, payload: published.append((session_id, event_type, payload)) or True,
     )
 
     RemoteControlService.mark_ack(
@@ -310,10 +304,7 @@ def test_switch_project_failed_ack_restores_previous_target(monkeypatch):
     monkeypatch.setattr(
         RemoteControlService,
         "publish_status",
-        lambda session_id, event_type, payload: published.append(
-            (session_id, event_type, payload)
-        )
-        or True,
+        lambda session_id, event_type, payload: published.append((session_id, event_type, payload)) or True,
     )
 
     RemoteControlService.mark_ack(
@@ -329,8 +320,7 @@ def test_switch_project_failed_ack_restores_previous_target(monkeypatch):
     assert session.current_history_id == "history_a"
     assert session.current_brain_session_id == "rc_brain_a"
     assert any(
-        event_type == "desktop_target_failed"
-        and payload["restored_project_id"] == "project_a"
+        event_type == "desktop_target_failed" and payload["restored_project_id"] == "project_a"
         for _, event_type, payload in published
     )
 
@@ -445,10 +435,7 @@ def test_late_switch_ack_after_timeout_does_not_publish_ready(monkeypatch):
     monkeypatch.setattr(
         RemoteControlService,
         "publish_status",
-        lambda session_id, event_type, payload: published.append(
-            (session_id, event_type, payload)
-        )
-        or True,
+        lambda session_id, event_type, payload: published.append((session_id, event_type, payload)) or True,
     )
 
     RemoteControlService.mark_ack(command.id, COMMAND_ACKNOWLEDGED, None, None, FakeDb())

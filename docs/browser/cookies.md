@@ -11,8 +11,8 @@ Cookies can grant account access. Use a dedicated profile and remove sessions th
 ## Open Cookie management
 
 1. Open the Eigent dashboard.
-2. Select **Browser**.
-3. Select **Cookies**.
+1. Select **Browser**.
+1. Select **Cookies**.
 
 The page groups cookie records by main domain and shows the total cookie count for each group.
 
@@ -21,10 +21,10 @@ The page groups cookie records by main domain and shows the total cookie count f
 ## Add authenticated cookies
 
 1. Select **Open browser**.
-2. Sign in to the required websites.
-3. Close the login browser when finished.
-4. Wait for Eigent to refresh the cookie list.
-5. Restart Eigent when prompted.
+1. Sign in to the required websites.
+1. Close the login browser when finished.
+1. Wait for Eigent to refresh the cookie list.
+1. Restart Eigent when prompted.
 
 The restart makes the new cookie state available to browser automation.
 
@@ -37,16 +37,16 @@ Use refresh after completing another login or when the list appears stale.
 ## Delete a domain
 
 1. Find the main domain.
-2. Select its delete action.
-3. Confirm the deletion.
+1. Select its delete action.
+1. Confirm the deletion.
 
 Eigent deletes cookies for the main domain and its listed subdomains.
 
 ## Delete all cookies
 
 1. Select **Delete all**.
-2. Confirm the action.
-3. Restart Eigent when prompted.
+1. Confirm the action.
+1. Restart Eigent when prompted.
 
 This removes all browser cookie records managed by this feature.
 

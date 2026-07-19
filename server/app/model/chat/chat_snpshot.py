@@ -126,6 +126,7 @@ class ChatSnapshotOut(BaseModel):
 
 class ChatSnapshotUpdate(BaseModel):
     """Update model - only updatable fields."""
+
     api_task_id: str | None = None
     camel_task_id: str | None = None
     browser_url: str | None = None

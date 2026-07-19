@@ -21,7 +21,6 @@ from app.core.oauth_adapter import (
     XOAuthAdapter,
 )
 
-
 REDIRECT_URI = "https://example.com/api/oauth/callback?next=/space one&locale=zh 中文"
 STATE = "return=/tasks/1&nonce=hello world"
 

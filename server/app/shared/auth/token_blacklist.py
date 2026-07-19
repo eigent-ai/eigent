@@ -22,8 +22,9 @@ TTL matches remaining token lifetime.
 import json
 import os
 
-from app.core.environment import env_or_fail
 from redis import asyncio as aioredis
+
+from app.core.environment import env_or_fail
 
 _redis: aioredis.Redis | None = None
 BLACKLIST_PREFIX = "token:blacklist:"
@@ -46,6 +47,7 @@ async def is_blacklisted(jti: str) -> bool:
         return await r.exists(key) > 0
     except Exception as e:
         from loguru import logger
+
         logger.warning(f"Redis blacklist check failed (fail-closed): {e}")
         return True
 
@@ -68,6 +70,7 @@ async def blacklist_token(jti: str, ttl_seconds: int) -> None:
         await _publish_to_session_redis_if_needed(payload)
     except Exception as e:
         from loguru import logger
+
         logger.error(f"Redis blacklist_token failed: {e}")
 
 

@@ -38,7 +38,9 @@ def upgrade() -> None:
     op.add_column("remote_control_session", sa.Column("last_target_project_id", sa.String(length=128), nullable=True))
     op.add_column("remote_control_session", sa.Column("last_target_task_id", sa.String(length=128), nullable=True))
     op.add_column("remote_control_session", sa.Column("last_target_history_id", sa.String(length=128), nullable=True))
-    op.add_column("remote_control_session", sa.Column("last_target_brain_session_id", sa.String(length=128), nullable=True))
+    op.add_column(
+        "remote_control_session", sa.Column("last_target_brain_session_id", sa.String(length=128), nullable=True)
+    )
     op.create_index(op.f("ix_remote_control_session_space_id"), "remote_control_session", ["space_id"], unique=False)
     op.create_index(
         op.f("ix_remote_control_session_last_target_project_id"),

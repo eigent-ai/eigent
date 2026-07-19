@@ -9,7 +9,7 @@ The Workspace is the starting surface for the active Space. Use it to start work
 ## Open the Workspace
 
 1. In the project sidebar, select **Workspace**.
-2. Confirm the active Space in the sidebar.
+1. Confirm the active Space in the sidebar.
 
 The main composer starts a new project unless you select an existing project.
 
@@ -28,9 +28,9 @@ Use **All sessions** to review more projects than the recent-session list shows.
 ## Start a task
 
 1. Enter a request in the composer.
-2. Select Single Agent or Workforce mode.
-3. Attach required files.
-4. Select **Send**.
+1. Select Single Agent or Workforce mode.
+1. Attach required files.
+1. Select **Send**.
 
 Eigent creates a Project when no existing Project is selected.
 

@@ -14,24 +14,21 @@
 
 """MCP User controller - H15 ownership on GET/DELETE."""
 
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi_babel import _
 from sqlmodel import Session, select
 
 from app.core.database import session
 from app.model.mcp.mcp_user import McpUser, McpUserIn, McpUserOut, McpUserUpdate
-
 from app.shared.auth import auth_must
 from app.shared.auth.ownership import require_owner
 
 router = APIRouter(tags=["V1 McpUser Management"])
 
 
-@router.get("/mcp/users", name="list mcp users", response_model=List[McpUserOut])
+@router.get("/mcp/users", name="list mcp users", response_model=list[McpUserOut])
 async def list_mcp_users(
-    mcp_id: Optional[int] = None,
+    mcp_id: int | None = None,
     db_session: Session = Depends(session),
     auth=Depends(auth_must),
 ):

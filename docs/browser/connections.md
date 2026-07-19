@@ -9,8 +9,8 @@ The browser pool contains Chrome DevTools Protocol sessions that Eigent agents c
 ## Open a new browser
 
 1. Open **Browser > Connections**.
-2. Select **Open new browser**.
-3. Wait for Eigent to launch the browser and add it to the pool.
+1. Select **Open new browser**.
+1. Wait for Eigent to launch the browser and add it to the pool.
 
 The browser item displays its name and debugging port.
 
@@ -29,9 +29,9 @@ The executable name differs by operating system and installation.
 Then:
 
 1. Open **Browser > Connections**.
-2. Select **Connect existing browser**.
-3. Enter the remote-debugging port.
-4. Select **Connect**.
+1. Select **Connect existing browser**.
+1. Enter the remote-debugging port.
+1. Select **Connect**.
 
 Eigent checks `http://localhost:<port>/json/version` before adding the browser.
 
@@ -46,17 +46,17 @@ Use a port from `1` to `65535`. The port must:
 ## Remove a browser
 
 1. Find the browser in the pool.
-2. Select its delete action.
-3. Confirm the removal.
+1. Select its delete action.
+1. Confirm the removal.
 
 Removing a browser disconnects it from Eigent. It does not necessarily close an external browser process.
 
 ## Use the browser in a task
 
 1. Ensure a Browser worker is available.
-2. Start a task that requires web interaction.
-3. Open the Browser agent workspace in the Session.
-4. Use Take Control when the agent requests manual interaction.
+1. Start a task that requires web interaction.
+1. Open the Browser agent workspace in the Session.
+1. Use Take Control when the agent requests manual interaction.
 
 > **Video placeholder:** Add a 60-second MP4 showing Chrome started with remote debugging, connection through port `9222`, and a successful Browser-agent navigation. Include captions.
 

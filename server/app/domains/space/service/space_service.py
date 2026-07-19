@@ -42,9 +42,7 @@ class SpaceHasProjectsError(ValueError):
     def __init__(self, project_count: int, projects: list[dict[str, str]]) -> None:
         self.project_count = project_count
         self.projects = projects
-        super().__init__(
-            f"Space has {project_count} project(s); archive or delete them first"
-        )
+        super().__init__(f"Space has {project_count} project(s); archive or delete them first")
 
 
 class SpaceService:
@@ -195,9 +193,7 @@ class SpaceService:
             raise ValueError("Invalid Space status")
 
     @staticmethod
-    def _prepare_space_root(
-        data: SpaceIn, user_id: str, s: Session
-    ) -> tuple[str | None, dict | None]:
+    def _prepare_space_root(data: SpaceIn, user_id: str, s: Session) -> tuple[str | None, dict | None]:
         if data.source_type == SpaceSourceType.FOLDER:
             root_ref = normalize_folder_root_reference(data.root_path or "")
             existing_spaces = s.exec(
@@ -243,9 +239,7 @@ class SpaceService:
                 raise ValueError("Folder is already bound to another Space")
 
     @staticmethod
-    def _folder_identity_matches(
-        previous: dict | None, current: dict
-    ) -> bool:
+    def _folder_identity_matches(previous: dict | None, current: dict) -> bool:
         if not previous:
             return True
         if previous.get("kind") != current.get("kind"):
@@ -307,10 +301,7 @@ class SpaceService:
         if projects:
             raise SpaceHasProjectsError(
                 len(projects),
-                [
-                    {"id": project.id, "name": project.name}
-                    for project in projects[:10]
-                ],
+                [{"id": project.id, "name": project.name} for project in projects[:10]],
             )
         s.delete(space)
         s.commit()
@@ -364,20 +355,13 @@ class SpaceService:
         root_ref = normalize_folder_root_reference(root_path)
         if not force:
             if root_fingerprint and space.root_fingerprint:
-                if not SpaceService._folder_identity_matches(
-                    space.root_fingerprint, root_fingerprint
-                ):
-                    raise ValueError(
-                        "Relocated folder identity does not match this Space"
-                    )
-            elif space.root_path and not same_folder_reference(
-                space.root_path, root_ref
-            ):
+                if not SpaceService._folder_identity_matches(space.root_fingerprint, root_fingerprint):
+                    raise ValueError("Relocated folder identity does not match this Space")
+            elif space.root_path and not same_folder_reference(space.root_path, root_ref):
                 # No fingerprint available on either side: require the caller
                 # to acknowledge the change with force=True.
                 raise ValueError(
-                    "Relocated folder identity cannot be verified; "
-                    "supply root_fingerprint or use force=True"
+                    "Relocated folder identity cannot be verified; supply root_fingerprint or use force=True"
                 )
         SpaceService._assert_folder_not_bound_to_other_space(
             user_id=canonical_user_id,
@@ -470,8 +454,7 @@ class SpaceService:
             name=display_name[:255] or f"Project {project_id}",
             description=description,
             mode=mode,
-            workdir_mode=workdir_mode
-            or SpaceService._default_project_workdir_mode(space),
+            workdir_mode=workdir_mode or SpaceService._default_project_workdir_mode(space),
             metadata_json=metadata,
         )
         try:
@@ -507,16 +490,8 @@ class SpaceService:
     @staticmethod
     def list_spaces(user_id: int | str, s: Session) -> list[SpaceOut]:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        spaces = s.exec(
-            select(Space)
-            .where(Space.user_id == canonical_user_id)
-            .order_by(Space.updated_at.desc())
-        ).all()
-        legacy_space_ids = [
-            space.id
-            for space in spaces
-            if space.source_type == SpaceSourceType.LEGACY
-        ]
+        spaces = s.exec(select(Space).where(Space.user_id == canonical_user_id).order_by(Space.updated_at.desc())).all()
+        legacy_space_ids = [space.id for space in spaces if space.source_type == SpaceSourceType.LEGACY]
         if legacy_space_ids:
             legacy_space_ids_with_projects = set(
                 s.exec(
@@ -529,8 +504,7 @@ class SpaceService:
             spaces = [
                 space
                 for space in spaces
-                if space.source_type != SpaceSourceType.LEGACY
-                or space.id in legacy_space_ids_with_projects
+                if space.source_type != SpaceSourceType.LEGACY or space.id in legacy_space_ids_with_projects
             ]
         return [SpaceOut.from_model(space) for space in spaces]
 
@@ -581,8 +555,7 @@ class SpaceService:
             description=data.description,
             mode=data.mode,
             status=data.status,
-            workdir_mode=data.workdir_mode
-            or SpaceService._default_project_workdir_mode(space),
+            workdir_mode=data.workdir_mode or SpaceService._default_project_workdir_mode(space),
             metadata_json=data.metadata,
         )
         s.add(project)
@@ -674,8 +647,7 @@ class SpaceService:
         project.workdir_mode = ProjectWorkdirMode.COPY
         project.metadata_json = {
             **previous_metadata,
-            "promotedFromSpaceId": previous_metadata.get("promotedFromSpaceId")
-            or previous_space_id,
+            "promotedFromSpaceId": previous_metadata.get("promotedFromSpaceId") or previous_space_id,
         }
         s.add(project)
         s.commit()

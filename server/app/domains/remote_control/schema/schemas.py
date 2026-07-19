@@ -21,7 +21,6 @@ from app.model.project.project import ProjectOut
 from app.model.space.apply import ApplyResolutionIn
 from app.model.space.space import SpaceOut
 
-
 RemoteControlCommandType = Literal[
     "user_message",
     "human_reply",

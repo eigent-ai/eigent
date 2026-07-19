@@ -40,13 +40,13 @@ Dispatch creates a shareable web session that can send follow-up commands to a d
 ## Create a trigger
 
 1. Open **Scheduled**.
-2. Select **Create**.
-3. Enter a trigger name.
-4. Select the Project.
-5. Enter the task prompt.
-6. Choose Schedule or App.
-7. Configure timing, event, or webhook values.
-8. Save the trigger.
+1. Select **Create**.
+1. Enter a trigger name.
+1. Select the Project.
+1. Enter the task prompt.
+1. Choose Schedule or App.
+1. Configure timing, event, or webhook values.
+1. Save the trigger.
 
 ## Manage triggers
 

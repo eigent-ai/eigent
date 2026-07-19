@@ -39,11 +39,11 @@ The sidebar can be resized or folded into an icon rail.
 ## Start a project
 
 1. Select a Space from the sidebar.
-2. Select **New** or open the Workspace.
-3. Enter the first task.
-4. Choose Single Agent or Workforce mode.
-5. Attach required files.
-6. Send the task.
+1. Select **New** or open the Workspace.
+1. Enter the first task.
+1. Choose Single Agent or Workforce mode.
+1. Attach required files.
+1. Send the task.
 
 Eigent creates the Project and opens its live Session.
 

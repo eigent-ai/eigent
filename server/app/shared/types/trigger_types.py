@@ -14,10 +14,11 @@
 
 from enum import StrEnum
 
+
 class TriggerType(StrEnum):
     schedule = "schedule"
     webhook = "webhook"
-    slack_trigger = "slack_trigger" 
+    slack_trigger = "slack_trigger"
 
 
 class TriggerStatus(StrEnum):
@@ -32,11 +33,13 @@ class ListenerType(StrEnum):
     workforce = "workforce"
     # chat_agent = "chat_agent"
 
+
 class ExecutionType(StrEnum):
     scheduled = "scheduled"
     webhook = "webhook"
     manual = "manual"
     slack = "slack"
+
 
 class ExecutionStatus(StrEnum):
     pending = "pending"
@@ -45,7 +48,8 @@ class ExecutionStatus(StrEnum):
     failed = "failed"
     cancelled = "cancelled"
     missed = "missed"
-    
+
+
 class RequestType(StrEnum):
     GET = "GET"
     POST = "POST"

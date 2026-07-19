@@ -28,7 +28,6 @@ from .base import BaseSchemaValidator
 
 
 class DOCXSchemaValidator(BaseSchemaValidator):
-
     WORD_2006_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
     W14_NAMESPACE = "http://schemas.microsoft.com/office/word/2010/wordml"
     W16CID_NAMESPACE = "http://schemas.microsoft.com/office/word/2016/wordml/cid"
@@ -379,7 +378,7 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                 for comment_id in sorted(
                     invalid_refs, key=lambda x: int(x) if x and x.isdigit() else 0
                 ):
-                    if comment_id:  
+                    if comment_id:
                         errors.append(
                             f'  document.xml: marker id="{comment_id}" references non-existent comment'
                         )
@@ -436,9 +435,9 @@ class DOCXSchemaValidator(BaseSchemaValidator):
                     if needs_repair:
                         value = random.randint(1, 0x7FFFFFFE)
                         if xml_file.name == "numbering.xml":
-                            new_id = str(value)  
+                            new_id = str(value)
                         else:
-                            new_id = f"{value:08X}"  
+                            new_id = f"{value:08X}"
 
                         elem.setAttribute("w16cid:durableId", new_id)
                         print(

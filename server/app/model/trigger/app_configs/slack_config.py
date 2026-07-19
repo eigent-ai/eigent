@@ -15,24 +15,26 @@
 """
 Slack Trigger Configuration Models
 
-Configuration models for Slack webhook triggers. These are stored in the 
-trigger's config field and used by the webhook controller for 
+Configuration models for Slack webhook triggers. These are stored in the
+trigger's config field and used by the webhook controller for
 app-specific event handling.
 """
 
 from enum import StrEnum
-from typing import Optional, List, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 from pydantic import Field
 
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
 from app.shared.types.config_group import ConfigGroup
 
 if TYPE_CHECKING:
-    from sqlmodel import Session
+    pass
 
 
 class SlackEventType(StrEnum):
     """Slack event types that can trigger the workflow"""
+
     ANY = "any_event"
     APP_MENTION = "app_mention"
     MESSAGE = "message"
@@ -55,10 +57,11 @@ class SlackEventType(StrEnum):
 class SlackTriggerConfig(BaseTriggerConfig):
     """
     Slack-specific trigger configuration.
-    
+
     Extends BaseTriggerConfig with Slack-specific fields for event handling,
     channel filtering, and bot message handling.
     """
+
     # Override: Slack triggers require authentication
     authentication_required: bool = Field(
         default=True,
@@ -67,12 +70,12 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "ui:widget": "switch",
             "ui:label": "triggers.slack.authentication_required.label",
             "ui:notice": "triggers.slack.authentication_required.notice",
-            "hidden": True
+            "hidden": True,
         },
     )
-    
+
     # API Key
-    SLACK_BOT_TOKEN: Optional[str] = Field(
+    SLACK_BOT_TOKEN: str | None = Field(
         default=None,
         description="Slack Bot Token for API access",
         json_schema_extra={
@@ -88,10 +91,10 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "api:POST": "/configs",
             "api:PUT": "/configs/{config_id}",
             "config_group": ConfigGroup.SLACK.value,
-            "exclude": True # Exclude from saving to trigger/config
+            "exclude": True,  # Exclude from saving to trigger/config
         },
     )
-    SLACK_SIGNING_SECRET: Optional[str] = Field(
+    SLACK_SIGNING_SECRET: str | None = Field(
         default=None,
         description="Slack Signing Secret for API request verification",
         json_schema_extra={
@@ -107,24 +110,24 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "api:POST": "/configs",
             "api:PUT": "/configs/{config_id}",
             "config_group": ConfigGroup.SLACK.value,
-            "exclude": True # Exclude from saving to trigger/config
+            "exclude": True,  # Exclude from saving to trigger/config
         },
     )
-    
+
     # Event Selection
-    events: List[SlackEventType] = Field(
+    events: list[SlackEventType] = Field(
         default=[SlackEventType.MESSAGE],
         description="Slack event types to trigger on",
         json_schema_extra={
             "ui:label": "triggers.slack.events.label",
             "ui:widget": "multi-select",
             "ui:options": [{"label": e.value, "value": e.value} for e in SlackEventType],
-            "ui:notice": "triggers.slack.events.notice"
-        }
+            "ui:notice": "triggers.slack.events.notice",
+        },
     )
-    
-    # Channel Configuration    
-    channel_id: Optional[str] = Field(
+
+    # Channel Configuration
+    channel_id: str | None = Field(
         default=None,
         description="Specific channel ID to watch",
         json_schema_extra={
@@ -135,10 +138,10 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "pattern": "^C[A-Z0-9]{8,}$",
             "api:GET": "trigger/slack/channels",
             "ui:notice": "triggers.slack.channel_id.notice",
-            "hidden": True
+            "hidden": True,
         },
     )
-    
+
     # Slack-Specific Filtering Options
     ignore_bot_messages: bool = Field(
         default=True,
@@ -148,8 +151,8 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "ui:label": "triggers.slack.ignore_bot_messages.label",
         },
     )
-    
-    ignore_users: List[str] = Field(
+
+    ignore_users: list[str] = Field(
         default=[],
         description="User IDs to ignore",
         json_schema_extra={
@@ -157,15 +160,15 @@ class SlackTriggerConfig(BaseTriggerConfig):
             "ui:widget": "multi-text-input",
             "ui:placeholder": "triggers.slack.ignore_users.placeholder",
             "ui:notice": "triggers.slack.ignore_users.notice",
-            "pattern": "^U[A-Z0-9]{8,}$"
+            "pattern": "^U[A-Z0-9]{8,}$",
         },
     )
 
     def get_required_config_group(self) -> ConfigGroup:
         """Get the config group required for Slack triggers."""
         return ConfigGroup.SLACK
-    
-    def get_required_credentials(self) -> List[str]:
+
+    def get_required_credentials(self) -> list[str]:
         """Get the list of required Slack credentials."""
         return ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET"]
 

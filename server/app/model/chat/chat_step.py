@@ -14,7 +14,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, field_validator
 from sqlmodel import JSON, Field
@@ -62,17 +62,17 @@ class ChatStepOut(BaseModel):
     run_id: str | None = None
     step: str
     data: Any
-    timestamp: Optional[float] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    deleted_at: Optional[datetime] = None
+    timestamp: float | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    deleted_at: datetime | None = None
 
     class Config:
         from_attributes = True
 
 
 class ChatStepUpdate(BaseModel):
-    step: Optional[str] = None
-    data: Optional[Any] = None
-    timestamp: Optional[float] = None
+    step: str | None = None
+    data: Any | None = None
+    timestamp: float | None = None
     run_id: str | None = None

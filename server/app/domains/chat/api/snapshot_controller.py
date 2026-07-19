@@ -17,7 +17,6 @@ STATUS: full-rewrite (security: H3, H4, H19, P2 Update model)
 """
 
 import re
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi_babel import _
@@ -26,7 +25,6 @@ from sqlmodel import Session, select
 
 from app.core.database import session
 from app.model.chat.chat_snpshot import ChatSnapshot, ChatSnapshotIn, ChatSnapshotOut, ChatSnapshotUpdate
-
 from app.shared.auth import auth_must
 from app.shared.auth.ownership import require_owner
 
@@ -84,12 +82,12 @@ def _snapshot_out(snapshot: ChatSnapshot) -> ChatSnapshotOut:
     return ChatSnapshotOut(**data)
 
 
-@router.get("/snapshots", name="list chat snapshots", response_model=List[ChatSnapshotOut])
+@router.get("/snapshots", name="list chat snapshots", response_model=list[ChatSnapshotOut])
 async def list_chat_snapshots(
-    api_task_id: Optional[str] = None,
-    run_id: Optional[str] = None,
-    camel_task_id: Optional[str] = None,
-    browser_url: Optional[str] = None,
+    api_task_id: str | None = None,
+    run_id: str | None = None,
+    camel_task_id: str | None = None,
+    browser_url: str | None = None,
     db_session: Session = Depends(session),
     auth=Depends(auth_must),
 ):

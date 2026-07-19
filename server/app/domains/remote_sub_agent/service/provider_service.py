@@ -39,9 +39,7 @@ class RemoteSubAgentProviderService:
                 RemoteSubAgentProvider.no_delete(),
             )
             if provider_name:
-                stmt = stmt.where(
-                    RemoteSubAgentProvider.provider_name == provider_name
-                )
+                stmt = stmt.where(RemoteSubAgentProvider.provider_name == provider_name)
             if enabled is not None:
                 stmt = stmt.where(RemoteSubAgentProvider.enabled == enabled)
             stmt = stmt.order_by(

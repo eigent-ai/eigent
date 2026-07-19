@@ -15,12 +15,12 @@
 """User domain schemas."""
 
 from app.domains.user.schema.schemas import (
-    LoginReq,
-    RefreshTokenReq,
-    LogoutReq,
     AuthResult,
     GetKeyReq,
     KeyResult,
+    LoginReq,
+    LogoutReq,
+    RefreshTokenReq,
 )
 
 __all__ = [

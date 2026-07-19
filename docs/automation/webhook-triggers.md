@@ -11,13 +11,13 @@ Use a webhook for a custom system. Use an application trigger when Eigent provid
 ## Create a webhook trigger
 
 1. Open **Scheduled**.
-2. Select **Create**.
-3. Enter a trigger name and task prompt.
-4. Select **App**.
-5. Choose **Webhook**.
-6. Select the HTTP method.
-7. Configure optional execution settings.
-8. Create the trigger.
+1. Select **Create**.
+1. Enter a trigger name and task prompt.
+1. Select **App**.
+1. Choose **Webhook**.
+1. Select the HTTP method.
+1. Configure optional execution settings.
+1. Create the trigger.
 
 Eigent generates the webhook URL after creation.
 
@@ -51,11 +51,11 @@ Rate limits reduce the impact of loops or high-volume events.
 ## Create a Slack trigger
 
 1. Install and authenticate the Slack connector.
-2. Create a new App trigger.
-3. Select **Slack**.
-4. Complete the dynamically loaded event configuration.
-5. Enter the task prompt.
-6. Save and activate the trigger.
+1. Create a new App trigger.
+1. Select **Slack**.
+1. Complete the dynamically loaded event configuration.
+1. Enter the task prompt.
+1. Save and activate the trigger.
 
 A pending-authentication state means additional verification is required.
 

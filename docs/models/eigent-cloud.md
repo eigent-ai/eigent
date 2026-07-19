@@ -19,10 +19,10 @@ Choose Eigent Cloud when you want:
 ## Enable a Cloud model
 
 1. Open **Agents > Models**.
-2. Select **Cloud**.
-3. Review the available models.
-4. Select the model to use.
-5. Enable Cloud and mark it as preferred when it should be the default.
+1. Select **Cloud**.
+1. Review the available models.
+1. Select the model to use.
+1. Enable Cloud and mark it as preferred when it should be the default.
 
 > **Screenshot placeholder:** Add a screenshot of the Cloud model catalog and preferred-model control. Use an account with non-sensitive sample credit data.
 
@@ -54,8 +54,8 @@ Review the current pricing and plan page before running large or automated workl
 ## Change the Cloud model
 
 1. Open the Cloud model selector.
-2. Choose another available model.
-3. Save or apply the selection.
+1. Choose another available model.
+1. Save or apply the selection.
 
 New tasks use the new preference. Running tasks are not migrated automatically.
 

@@ -12,21 +12,21 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Any
-from sqlmodel import select, and_, or_
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
-from loguru import logger
 
-from app.model.trigger.trigger import Trigger
-from app.model.trigger.trigger_execution import TriggerExecution
-from app.shared.types.trigger_types import TriggerType, TriggerStatus, ExecutionType, ExecutionStatus
+from loguru import logger
+from sqlmodel import and_, or_, select
+
 from app.core.database import session_make
-from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
 from app.core.trigger_utils import SCHEDULED_FETCH_BATCH_SIZE, check_rate_limits
+from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
 from app.model.trigger.app_configs import ScheduleTriggerConfig, WebhookTriggerConfig
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
-
+from app.model.trigger.trigger import Trigger
+from app.model.trigger.trigger_execution import TriggerExecution
+from app.shared.types.trigger_types import ExecutionStatus, ExecutionType, TriggerStatus, TriggerType
 
 
 class TriggerService:
@@ -35,90 +35,91 @@ class TriggerService:
     def __init__(self, session=None):
         self.session = session or session_make()
         self.schedule_service = TriggerScheduleService(self.session)
-    
+
     def create_execution(
-        self, 
-        trigger: Trigger, 
-        execution_type: ExecutionType,
-        input_data: Optional[Dict[str, Any]] = None
+        self, trigger: Trigger, execution_type: ExecutionType, input_data: dict[str, Any] | None = None
     ) -> TriggerExecution:
         """Create a new trigger execution."""
         execution_id = str(uuid4())
-        
+
         execution = TriggerExecution(
             trigger_id=trigger.id,
             execution_id=execution_id,
             execution_type=execution_type,
             status=ExecutionStatus.pending,
             input_data=input_data or {},
-            started_at=datetime.now(timezone.utc)
+            started_at=datetime.now(UTC),
         )
-        
+
         self.session.add(execution)
         self.session.commit()
         self.session.refresh(execution)
-        
+
         # Update trigger statistics
-        trigger.last_executed_at = datetime.now(timezone.utc)
+        trigger.last_executed_at = datetime.now(UTC)
         trigger.last_execution_status = "pending"
         self.session.add(trigger)
         self.session.commit()
-        
-        logger.info("Execution created", extra={
-            "trigger_id": trigger.id,
-            "execution_id": execution_id,
-            "execution_type": execution_type.value
-        })
-        
+
+        logger.info(
+            "Execution created",
+            extra={"trigger_id": trigger.id, "execution_id": execution_id, "execution_type": execution_type.value},
+        )
+
         return execution
-    
+
     def update_execution_status(
-        self, 
-        execution: TriggerExecution, 
+        self,
+        execution: TriggerExecution,
         status: ExecutionStatus,
-        output_data: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
-        tokens_used: Optional[int] = None,
-        tools_executed: Optional[Dict[str, Any]] = None
+        output_data: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        tokens_used: int | None = None,
+        tools_executed: dict[str, Any] | None = None,
     ) -> TriggerExecution:
         """Update execution status and metadata."""
         execution.status = status
-        
+
         # Set completed_at and duration for terminal statuses
-        if status in [ExecutionStatus.completed, ExecutionStatus.failed, ExecutionStatus.cancelled, ExecutionStatus.missed]:
-            execution.completed_at = datetime.now(timezone.utc)
+        if status in [
+            ExecutionStatus.completed,
+            ExecutionStatus.failed,
+            ExecutionStatus.cancelled,
+            ExecutionStatus.missed,
+        ]:
+            execution.completed_at = datetime.now(UTC)
             if execution.started_at:
                 # Ensure started_at is timezone-aware for subtraction
                 started_at = execution.started_at
                 if started_at.tzinfo is None:
-                    started_at = started_at.replace(tzinfo=timezone.utc)
+                    started_at = started_at.replace(tzinfo=UTC)
                 execution.duration_seconds = (execution.completed_at - started_at).total_seconds()
-        
+
         if output_data:
             execution.output_data = output_data
-        
+
         if error_message:
             execution.error_message = error_message
-        
+
         if tokens_used:
             execution.tokens_used = tokens_used
-        
+
         if tools_executed:
             execution.tools_executed = tools_executed
-        
+
         self.session.add(execution)
         self.session.commit()
-        
+
         # Update trigger status and handle auto-disable logic
         trigger = self.session.get(Trigger, execution.trigger_id)
         if trigger:
             if status == ExecutionStatus.failed:
                 trigger.last_execution_status = "failed"
                 trigger.consecutive_failures += 1
-                
+
                 # Check for auto-disable based on max_failure_count in config
                 self._check_auto_disable(trigger)
-                
+
             elif status == ExecutionStatus.completed:
                 trigger.last_execution_status = "completed"
                 # Reset consecutive failures on success
@@ -127,35 +128,38 @@ class TriggerService:
                 trigger.last_execution_status = "cancelled"
             elif status == ExecutionStatus.missed:
                 trigger.last_execution_status = "missed"
-                
+
                 trigger.consecutive_failures += 1
                 # Check for auto-disable based on max_failure_count in config
                 self._check_auto_disable(trigger)
-            
+
             self.session.add(trigger)
             self.session.commit()
-        
-        logger.info("Execution status updated", extra={
-            "execution_id": execution.execution_id,
-            "status": status.name,
-            "duration": execution.duration_seconds
-        })
-        
+
+        logger.info(
+            "Execution status updated",
+            extra={
+                "execution_id": execution.execution_id,
+                "status": status.name,
+                "duration": execution.duration_seconds,
+            },
+        )
+
         return execution
-    
+
     def _check_auto_disable(self, trigger: Trigger) -> bool:
         """
         Check if trigger should be auto-disabled based on consecutive failures.
-        
+
         Args:
             trigger: The trigger to check
-            
+
         Returns:
             True if trigger was auto-disabled, False otherwise
         """
         if not trigger.config:
             return False
-        
+
         try:
             # Get the appropriate config class based on trigger type
             config: BaseTriggerConfig
@@ -166,70 +170,66 @@ class TriggerService:
             else:
                 # For other trigger types, use base config
                 config = BaseTriggerConfig(**trigger.config)
-            
+
             # Check if auto-disable should happen
             if config.should_auto_disable(trigger.consecutive_failures):
                 trigger.status = TriggerStatus.inactive
-                trigger.auto_disabled_at = datetime.now(timezone.utc)
-                
+                trigger.auto_disabled_at = datetime.now(UTC)
+
                 logger.warning(
                     "Trigger auto-disabled due to max failures",
                     extra={
                         "trigger_id": trigger.id,
                         "trigger_name": trigger.name,
                         "consecutive_failures": trigger.consecutive_failures,
-                        "max_failure_count": config.max_failure_count
-                    }
+                        "max_failure_count": config.max_failure_count,
+                    },
                 )
                 return True
-                
+
         except Exception as e:
-            logger.error(
-                "Failed to check auto-disable for trigger",
-                extra={
-                    "trigger_id": trigger.id,
-                    "error": str(e)
-                }
-            )
-        
+            logger.error("Failed to check auto-disable for trigger", extra={"trigger_id": trigger.id, "error": str(e)})
+
         return False
-    
-    def get_pending_executions(self) -> List[TriggerExecution]:
+
+    def get_pending_executions(self) -> list[TriggerExecution]:
         """Get all pending executions that need to be processed."""
         executions = self.session.exec(
-            select(TriggerExecution).where(
-                TriggerExecution.status == ExecutionStatus.pending
-            ).order_by(TriggerExecution.created_at)
+            select(TriggerExecution)
+            .where(TriggerExecution.status == ExecutionStatus.pending)
+            .order_by(TriggerExecution.created_at)
         ).all()
-        
+
         return list(executions)
-    
-    def get_failed_executions_for_retry(self) -> List[TriggerExecution]:
+
+    def get_failed_executions_for_retry(self) -> list[TriggerExecution]:
         """Get failed executions that can be retried."""
         executions = self.session.exec(
-            select(TriggerExecution).where(
+            select(TriggerExecution)
+            .where(
                 and_(
                     TriggerExecution.status == ExecutionStatus.failed,
-                    TriggerExecution.attempts < TriggerExecution.max_retries
+                    TriggerExecution.attempts < TriggerExecution.max_retries,
                 )
-            ).order_by(TriggerExecution.created_at)
+            )
+            .order_by(TriggerExecution.created_at)
         ).all()
-        
+
         return list(executions)
-    
-    def get_due_scheduled_triggers(self, limit: Optional[int] = None) -> List[Trigger]:
+
+    def get_due_scheduled_triggers(self, limit: int | None = None) -> list[Trigger]:
         """
         Fetch scheduled triggers that are due for execution.
-        
+
         Args:
             limit: Maximum number of triggers to fetch (defaults to SCHEDULED_FETCH_BATCH_SIZE)
-            
+
         Returns:
             List of triggers that are due for execution
         """
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
         limit = limit or SCHEDULED_FETCH_BATCH_SIZE
-        
+
         # Query triggers that:
         # 1. Are scheduled type
         # 2. Are active
@@ -242,127 +242,100 @@ class TriggerService:
                     Trigger.trigger_type == TriggerType.schedule,
                     Trigger.status == TriggerStatus.active,
                     Trigger.custom_cron_expression.is_not(None),
-                    or_(
-                        Trigger.next_run_at.is_(None),
-                        Trigger.next_run_at <= current_time
-                    )
+                    or_(Trigger.next_run_at.is_(None), Trigger.next_run_at <= current_time),
                 )
             )
             .limit(limit)
         ).all()
-        
+
         return list(triggers)
-    
+
     def execute_scheduled_triggers(self) -> int:
         """
         Execute all due scheduled triggers.
         Uses TriggerScheduleService for the actual execution logic.
         """
         due_triggers = self.get_due_scheduled_triggers()
-        
+
         if not due_triggers:
             return 0
-        
+
         dispatched_count, rate_limited_count = self.schedule_service.process_schedules(due_triggers)
-        
+
         logger.info(
             "Scheduled triggers execution completed",
-            extra={
-                "dispatched": dispatched_count,
-                "rate_limited": rate_limited_count
-            }
+            extra={"dispatched": dispatched_count, "rate_limited": rate_limited_count},
         )
-        
+
         return dispatched_count
-    
-    def process_slack_trigger(
-        self, 
-        trigger: Trigger, 
-        slack_data: Dict[str, Any]
-    ) -> Optional[TriggerExecution]:
+
+    def process_slack_trigger(self, trigger: Trigger, slack_data: dict[str, Any]) -> TriggerExecution | None:
         """Process a Slack trigger event."""
         if trigger.trigger_type != TriggerType.slack_trigger:
             raise ValueError("Trigger is not a Slack trigger")
-        
+
         if trigger.status != TriggerStatus.active:
-            logger.warning("Slack trigger is not active", extra={
-                "trigger_id": trigger.id
-            })
+            logger.warning("Slack trigger is not active", extra={"trigger_id": trigger.id})
             return None
-        
+
         if not check_rate_limits(self.session, trigger):
-            logger.warning("Slack trigger execution skipped due to rate limits", extra={
-                "trigger_id": trigger.id
-            })
+            logger.warning("Slack trigger execution skipped due to rate limits", extra={"trigger_id": trigger.id})
             return None
-        
+
         try:
             execution = self.create_execution(
-                trigger=trigger,
-                execution_type=ExecutionType.slack,
-                input_data=slack_data
+                trigger=trigger, execution_type=ExecutionType.slack, input_data=slack_data
             )
-            
+
             # TODO: Queue the actual task execution
-            
-            logger.info("Slack trigger executed", extra={
-                "trigger_id": trigger.id,
-                "execution_id": execution.execution_id
-            })
-            
+
+            logger.info(
+                "Slack trigger executed", extra={"trigger_id": trigger.id, "execution_id": execution.execution_id}
+            )
+
             return execution
-            
+
         except Exception as e:
-            logger.error("Slack trigger execution failed", extra={
-                "trigger_id": trigger.id,
-                "error": str(e)
-            }, exc_info=True)
+            logger.error(
+                "Slack trigger execution failed", extra={"trigger_id": trigger.id, "error": str(e)}, exc_info=True
+            )
             return None
-    
+
     def cleanup_old_executions(self, days_to_keep: int = 30) -> int:
         """Clean up old execution records."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
-        
+        cutoff_date = datetime.now(UTC) - timedelta(days=days_to_keep)
+
         old_executions = self.session.exec(
             select(TriggerExecution).where(
                 and_(
                     TriggerExecution.created_at < cutoff_date,
-                    TriggerExecution.status.in_([
-                        ExecutionStatus.completed, 
-                        ExecutionStatus.failed, 
-                        ExecutionStatus.cancelled
-                    ])
+                    TriggerExecution.status.in_(
+                        [ExecutionStatus.completed, ExecutionStatus.failed, ExecutionStatus.cancelled]
+                    ),
                 )
             )
         ).all()
-        
+
         count = len(old_executions)
-        
+
         for execution in old_executions:
             self.session.delete(execution)
-        
+
         self.session.commit()
-        
-        logger.info("Old executions cleaned up", extra={
-            "count": count,
-            "days_to_keep": days_to_keep
-        })
-        
+
+        logger.info("Old executions cleaned up", extra={"count": count, "days_to_keep": days_to_keep})
+
         return count
-    
-    def get_trigger_statistics(self, trigger_id: int) -> Dict[str, Any]:
+
+    def get_trigger_statistics(self, trigger_id: int) -> dict[str, Any]:
         """Get statistics for a specific trigger."""
         trigger = self.session.get(Trigger, trigger_id)
         if not trigger:
             raise ValueError("Trigger not found")
-        
+
         # Get execution counts by status
-        executions = self.session.exec(
-            select(TriggerExecution).where(
-                TriggerExecution.trigger_id == trigger_id
-            )
-        ).all()
-        
+        executions = self.session.exec(select(TriggerExecution).where(TriggerExecution.trigger_id == trigger_id)).all()
+
         stats = {
             "trigger_id": trigger_id,
             "name": trigger.name,
@@ -374,21 +347,22 @@ class TriggerService:
             "pending_executions": len([e for e in executions if e.status == ExecutionStatus.pending]),
             "cancelled_executions": len([e for e in executions if e.status == ExecutionStatus.cancelled]),
             "last_executed_at": trigger.last_executed_at.isoformat() if trigger.last_executed_at else None,
-            "created_at": trigger.created_at.isoformat() if trigger.created_at else None
+            "created_at": trigger.created_at.isoformat() if trigger.created_at else None,
         }
-        
+
         # Calculate average execution time for completed executions
         completed_executions = [e for e in executions if e.status == ExecutionStatus.completed and e.duration_seconds]
         if completed_executions:
             avg_duration = sum(e.duration_seconds for e in completed_executions) / len(completed_executions)
             stats["average_execution_time_seconds"] = round(avg_duration, 2)
-        
+
         # Calculate total tokens used
         total_tokens = sum(e.tokens_used for e in executions if e.tokens_used)
         if total_tokens:
             stats["total_tokens_used"] = total_tokens
-        
+
         return stats
+
 
 def get_trigger_service(session=None) -> TriggerService:
     """Factory function to create a TriggerService instance with a fresh session."""

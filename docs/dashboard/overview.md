@@ -9,8 +9,8 @@ The Home dashboard is the management surface for work across Eigent. Use it to f
 ## Open the dashboard
 
 1. Open Eigent.
-2. In the main navigation, select **Home**.
-3. Select **Spaces**, **Projects**, **Tasks**, or **Triggers**.
+1. In the main navigation, select **Home**.
+1. Select **Spaces**, **Projects**, **Tasks**, or **Triggers**.
 
 The active section appears in the URL, so returning to the same link restores that section.
 
@@ -62,9 +62,9 @@ The exact status of a card still appears in its metadata.
 ## Start new work
 
 1. In the Home toolbar, open the create menu.
-2. Choose **Start from scratch** for an Eigent-managed workspace, or **Use local folder** to connect existing files.
-3. Eigent opens the new Space in the Workspace.
-4. Enter a task, select Single Agent or Workforce mode, and send the request.
+1. Choose **Start from scratch** for an Eigent-managed workspace, or **Use local folder** to connect existing files.
+1. Eigent opens the new Space in the Workspace.
+1. Enter a task, select Single Agent or Workforce mode, and send the request.
 
 > **Video placeholder:** Add a short MP4 showing a user creating a Space, starting a task, and returning to the dashboard to find the new Project and Task. Include captions.
 

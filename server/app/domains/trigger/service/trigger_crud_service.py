@@ -14,33 +14,29 @@
 
 """TriggerCrudService: trigger CRUD + execution business logic."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
-from typing import Optional
 
 from loguru import logger
 from pydantic import ValidationError
-from sqlmodel import Session, select, and_
 from sqlalchemy import func
+from sqlmodel import Session, and_, select
 
-from app.model.trigger.trigger import Trigger, TriggerIn, TriggerOut, TriggerUpdate
-from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionIn, TriggerExecutionUpdate
-from app.shared.types.trigger_types import ExecutionStatus, ExecutionType
-from app.model.trigger.app_configs import (
-    get_config_schema,
-    validate_config,
-    has_config,
-    validate_activation,
-    ActivationError,
-)
-from app.model.trigger.app_configs.config_registry import requires_authentication
-from app.model.chat.chat_history import ChatHistory
-from app.shared.types.trigger_types import TriggerType, TriggerStatus
 from app.core.redis_utils import get_redis_manager
 from app.domains.space.service import SpaceService
 from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
 from app.domains.trigger.service.trigger_service import TriggerService
-
+from app.model.chat.chat_history import ChatHistory
+from app.model.trigger.app_configs import (
+    ActivationError,
+    has_config,
+    validate_activation,
+    validate_config,
+)
+from app.model.trigger.app_configs.config_registry import requires_authentication
+from app.model.trigger.trigger import Trigger, TriggerIn, TriggerOut, TriggerUpdate
+from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionIn, TriggerExecutionUpdate
+from app.shared.types.trigger_types import ExecutionStatus, TriggerStatus, TriggerType
 
 ACTIVE_STATUSES = (TriggerStatus.active, TriggerStatus.pending_verification)
 MAX_ACTIVE_PER_USER = 25
@@ -135,9 +131,7 @@ class TriggerCrudService:
             metadata={"createdFrom": "trigger"},
         )
 
-        existing_chat = s.exec(
-            select(ChatHistory).where(ChatHistory.project_id == data.project_id)
-        ).first()
+        existing_chat = s.exec(select(ChatHistory).where(ChatHistory.project_id == data.project_id)).first()
         if existing_chat:
             return
 
@@ -165,30 +159,38 @@ class TriggerCrudService:
         s.commit()
         s.refresh(chat_history)
 
-        logger.info("Chat history created for new project", extra={
-            "user_id": user_id,
-            "project_id": data.project_id,
-            "chat_history_id": chat_history.id,
-        })
+        logger.info(
+            "Chat history created for new project",
+            extra={
+                "user_id": user_id,
+                "project_id": data.project_id,
+                "chat_history_id": chat_history.id,
+            },
+        )
 
         # WebSocket notification (best effort)
         try:
             redis_manager = get_redis_manager()
-            redis_manager.publish_execution_event({
-                "type": "project_created",
-                "project_id": data.project_id,
-                "project_name": data.name,
-                "chat_history_id": chat_history.id,
-                "trigger_name": data.name,
-                "user_id": str(user_id),
-                "created_at": chat_history.created_at.isoformat() if chat_history.created_at else None,
-            })
+            redis_manager.publish_execution_event(
+                {
+                    "type": "project_created",
+                    "project_id": data.project_id,
+                    "project_name": data.name,
+                    "chat_history_id": chat_history.id,
+                    "trigger_name": data.name,
+                    "user_id": str(user_id),
+                    "created_at": chat_history.created_at.isoformat() if chat_history.created_at else None,
+                }
+            )
         except Exception as e:
-            logger.warning("Failed to send WebSocket notification for new project", extra={
-                "user_id": user_id,
-                "project_id": data.project_id,
-                "error": str(e),
-            })
+            logger.warning(
+                "Failed to send WebSocket notification for new project",
+                extra={
+                    "user_id": user_id,
+                    "project_id": data.project_id,
+                    "error": str(e),
+                },
+            )
 
     @staticmethod
     def _validate_trigger_config(trigger_type: TriggerType, config: dict | None) -> None:
@@ -200,9 +202,7 @@ class TriggerCrudService:
                 raise ValueError(f"Invalid config for {trigger_type.value}: {e.errors()}")
 
     @staticmethod
-    def _determine_initial_status(
-        data: TriggerIn, user_id: int, s: Session
-    ) -> TriggerStatus:
+    def _determine_initial_status(data: TriggerIn, user_id: int, s: Session) -> TriggerStatus:
         """Determine initial trigger status based on auth requirements and concurrency limits."""
         # Desired status from auth requirements
         if has_config(data.trigger_type) and data.config and requires_authentication(data.trigger_type, data.config):
@@ -211,12 +211,8 @@ class TriggerCrudService:
             desired_status = TriggerStatus.active
 
         # Check concurrency limits
-        user_active, project_active = TriggerCrudService.get_active_trigger_counts(
-            s, str(user_id), data.project_id
-        )
-        if user_active >= MAX_ACTIVE_PER_USER or (
-            data.project_id and project_active >= MAX_ACTIVE_PER_PROJECT
-        ):
+        user_active, project_active = TriggerCrudService.get_active_trigger_counts(s, str(user_id), data.project_id)
+        if user_active >= MAX_ACTIVE_PER_USER or (data.project_id and project_active >= MAX_ACTIVE_PER_PROJECT):
             logger.info(
                 "Active trigger limit reached — new trigger created as inactive",
                 extra={
@@ -276,12 +272,15 @@ class TriggerCrudService:
             s.commit()
             s.refresh(trigger)
 
-        logger.info("Trigger created", extra={
-            "user_id": user_id,
-            "trigger_id": trigger.id,
-            "trigger_type": data.trigger_type.value,
-            "next_run_at": trigger.next_run_at.isoformat() if trigger.next_run_at else None,
-        })
+        logger.info(
+            "Trigger created",
+            extra={
+                "user_id": user_id,
+                "trigger_id": trigger.id,
+                "trigger_type": data.trigger_type.value,
+                "next_run_at": trigger.next_run_at.isoformat() if trigger.next_run_at else None,
+            },
+        )
 
         return {"success": True, "trigger_out": TriggerCrudService.trigger_to_out(trigger, 0)}
 
@@ -291,9 +290,7 @@ class TriggerCrudService:
         Update a trigger with config validation and schedule recalculation.
         Returns {"success": True, "trigger_out": TriggerOut} or {"success": False, "error": str, "status_code": int}.
         """
-        trigger = s.exec(
-            select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))
-        ).first()
+        trigger = s.exec(select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))).first()
         if not trigger:
             return {"success": False, "error": "Trigger not found", "status_code": 404}
 
@@ -323,12 +320,15 @@ class TriggerCrudService:
         counts = TriggerCrudService.get_execution_counts(s, [trigger_id])
         execution_count = counts.get(trigger_id, 0)
 
-        logger.info("Trigger updated", extra={
-            "user_id": user_id,
-            "trigger_id": trigger_id,
-            "fields_updated": list(update_data.keys()),
-            "next_run_at": trigger.next_run_at.isoformat() if trigger.next_run_at else None,
-        })
+        logger.info(
+            "Trigger updated",
+            extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+                "fields_updated": list(update_data.keys()),
+                "next_run_at": trigger.next_run_at.isoformat() if trigger.next_run_at else None,
+            },
+        )
 
         return {"success": True, "trigger_out": TriggerCrudService.trigger_to_out(trigger, execution_count)}
 
@@ -339,16 +339,12 @@ class TriggerCrudService:
         Returns {"success": True, "trigger_out": TriggerOut}
             or {"success": False, "error": str/dict, "status_code": int}.
         """
-        trigger = s.exec(
-            select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))
-        ).first()
+        trigger = s.exec(select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))).first()
         if not trigger:
             return {"success": False, "error": "Trigger not found", "status_code": 404}
 
         # 1. Check concurrency limits
-        user_active, project_active = TriggerCrudService.get_active_trigger_counts(
-            s, str(user_id), trigger.project_id
-        )
+        user_active, project_active = TriggerCrudService.get_active_trigger_counts(s, str(user_id), trigger.project_id)
         if user_active >= MAX_ACTIVE_PER_USER:
             return {
                 "success": False,
@@ -407,11 +403,14 @@ class TriggerCrudService:
         counts = TriggerCrudService.get_execution_counts(s, [trigger_id])
         execution_count = counts.get(trigger_id, 0)
 
-        logger.info("Trigger activated", extra={
-            "user_id": user_id,
-            "trigger_id": trigger_id,
-            "status": trigger.status.value,
-        })
+        logger.info(
+            "Trigger activated",
+            extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+                "status": trigger.status.value,
+            },
+        )
 
         return {"success": True, "trigger_out": TriggerCrudService.trigger_to_out(trigger, execution_count)}
 
@@ -421,9 +420,7 @@ class TriggerCrudService:
         Deactivate a trigger.
         Returns {"success": True, "trigger_out": TriggerOut} or {"success": False, ...}.
         """
-        trigger = s.exec(
-            select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))
-        ).first()
+        trigger = s.exec(select(Trigger).where(and_(Trigger.id == trigger_id, Trigger.user_id == str(user_id)))).first()
         if not trigger:
             return {"success": False, "error": "Trigger not found", "status_code": 404}
 
@@ -435,17 +432,22 @@ class TriggerCrudService:
         counts = TriggerCrudService.get_execution_counts(s, [trigger_id])
         execution_count = counts.get(trigger_id, 0)
 
-        logger.info("Trigger deactivated", extra={
-            "user_id": user_id,
-            "trigger_id": trigger_id,
-        })
+        logger.info(
+            "Trigger deactivated",
+            extra={
+                "user_id": user_id,
+                "trigger_id": trigger_id,
+            },
+        )
 
         return {"success": True, "trigger_out": TriggerCrudService.trigger_to_out(trigger, execution_count)}
 
     # ---- Execution CRUD ----
 
     @staticmethod
-    def _publish_execution_event(event_type: str, execution: TriggerExecution, trigger: Trigger, user_id: int, extra: dict | None = None) -> None:
+    def _publish_execution_event(
+        event_type: str, execution: TriggerExecution, trigger: Trigger, user_id: int, extra: dict | None = None
+    ) -> None:
         """Publish execution event to Redis pub/sub (best effort)."""
         try:
             payload = {
@@ -458,14 +460,16 @@ class TriggerCrudService:
                 "input_data": execution.input_data,
                 "execution_type": execution.execution_type.value,
                 "user_id": str(user_id),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "project_id": str(trigger.project_id),
             }
             if extra:
                 payload.update(extra)
             get_redis_manager().publish_execution_event(payload)
         except Exception as e:
-            logger.warning("Failed to publish execution event", extra={"execution_id": execution.execution_id, "error": str(e)})
+            logger.warning(
+                "Failed to publish execution event", extra={"execution_id": execution.execution_id, "error": str(e)}
+            )
 
     @staticmethod
     def create_execution(data: TriggerExecutionIn, user_id: int, s: Session) -> dict:
@@ -485,16 +489,19 @@ class TriggerCrudService:
         s.refresh(execution)
 
         # Update trigger timestamp
-        trigger.last_executed_at = datetime.now(timezone.utc)
+        trigger.last_executed_at = datetime.now(UTC)
         s.add(trigger)
         s.commit()
 
-        logger.info("Trigger execution created", extra={
-            "user_id": user_id,
-            "trigger_id": data.trigger_id,
-            "execution_id": execution.execution_id,
-            "execution_type": data.execution_type.value,
-        })
+        logger.info(
+            "Trigger execution created",
+            extra={
+                "user_id": user_id,
+                "trigger_id": data.trigger_id,
+                "execution_id": execution.execution_id,
+                "execution_type": data.execution_type.value,
+            },
+        )
 
         TriggerCrudService._publish_execution_event("execution_created", execution, trigger, user_id)
 
@@ -519,7 +526,11 @@ class TriggerCrudService:
         # Delegate status update to TriggerService for proper failure tracking
         if "status" in update_data:
             trigger_service = TriggerService(s)
-            status_value = ExecutionStatus(update_data["status"]) if isinstance(update_data["status"], str) else update_data["status"]
+            status_value = (
+                ExecutionStatus(update_data["status"])
+                if isinstance(update_data["status"], str)
+                else update_data["status"]
+            )
             trigger_service.update_execution_status(
                 execution=execution,
                 status=status_value,
@@ -538,9 +549,9 @@ class TriggerCrudService:
                 if completed_at:
                     started_at = execution.started_at
                     if started_at.tzinfo is None:
-                        started_at = started_at.replace(tzinfo=timezone.utc)
+                        started_at = started_at.replace(tzinfo=UTC)
                     if completed_at.tzinfo is None:
-                        completed_at = completed_at.replace(tzinfo=timezone.utc)
+                        completed_at = completed_at.replace(tzinfo=UTC)
                     update_data["duration_seconds"] = (completed_at - started_at).total_seconds()
 
             for key, value in update_data.items():
@@ -552,15 +563,21 @@ class TriggerCrudService:
 
         # Publish event
         trigger = s.get(Trigger, execution.trigger_id)
-        logger.info("Execution updated", extra={
-            "user_id": user_id,
-            "execution_id": execution_id,
-            "fields_updated": list(data.model_dump(exclude_unset=True).keys()),
-        })
+        logger.info(
+            "Execution updated",
+            extra={
+                "user_id": user_id,
+                "execution_id": execution_id,
+                "fields_updated": list(data.model_dump(exclude_unset=True).keys()),
+            },
+        )
 
         if trigger:
             TriggerCrudService._publish_execution_event(
-                "execution_updated", execution, trigger, user_id,
+                "execution_updated",
+                execution,
+                trigger,
+                user_id,
                 extra={"updated_fields": list(update_data.keys())},
             )
 
@@ -600,12 +617,15 @@ class TriggerCrudService:
 
         trigger = s.get(Trigger, execution.trigger_id)
 
-        logger.info("Execution retry created", extra={
-            "user_id": user_id,
-            "original_execution_id": execution_id,
-            "new_execution_id": new_execution.execution_id,
-            "attempts": new_execution.attempts,
-        })
+        logger.info(
+            "Execution retry created",
+            extra={
+                "user_id": user_id,
+                "original_execution_id": execution_id,
+                "new_execution_id": new_execution.execution_id,
+                "attempts": new_execution.attempts,
+            },
+        )
 
         if trigger:
             TriggerCrudService._publish_execution_event("execution_created", new_execution, trigger, user_id)

@@ -11,8 +11,8 @@ Use the Agents dashboard to configure reusable capabilities before starting a ta
 ## Open the Agents dashboard
 
 1. Open the Eigent dashboard.
-2. Select **Agents**.
-3. Choose **Models**, **Skills**, **Sub-agents**, or **Memory**.
+1. Select **Agents**.
+1. Choose **Models**, **Skills**, **Sub-agents**, or **Memory**.
 
 > **Screenshot placeholder:** Add a screenshot of the Agents dashboard with the four navigation items visible. Use a configured model and example Skills, but hide all API keys.
 
@@ -67,11 +67,11 @@ The Memory page is currently marked **Coming soon**. Project conversation histor
 ## Recommended setup order
 
 1. Configure and validate a model.
-2. Install required connectors or MCP servers.
-3. Add Skills for reusable workflows.
-4. Create or edit Workforce workers.
-5. Optional: Configure a remote sub-agent.
-6. Start a test Project with a small task.
+1. Install required connectors or MCP servers.
+1. Add Skills for reusable workflows.
+1. Create or edit Workforce workers.
+1. Optional: Configure a remote sub-agent.
+1. Start a test Project with a small task.
 
 > **Video placeholder:** Add a 90-second MP4 showing a model setup, Skill upload, custom worker creation, and a successful Workforce task. Include captions and a transcript.
 

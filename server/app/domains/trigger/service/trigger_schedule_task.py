@@ -17,20 +17,20 @@ Celery tasks for trigger scheduling: poll due triggers and check execution timeo
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from celery import shared_task
-from sqlmodel import select, or_
+from sqlmodel import or_, select
 
 from app.core.database import session_make
 from app.core.environment import env
-from app.core.trigger_utils import MAX_DISPATCH_PER_TICK
 from app.core.redis_utils import get_redis_manager
-from app.model.trigger.trigger_execution import TriggerExecution
-from app.model.trigger.trigger import Trigger
-from app.shared.types.trigger_types import ExecutionStatus
+from app.core.trigger_utils import MAX_DISPATCH_PER_TICK
 from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
 from app.domains.trigger.service.trigger_service import TriggerService
+from app.model.trigger.trigger import Trigger
+from app.model.trigger.trigger_execution import TriggerExecution
+from app.shared.types.trigger_types import ExecutionStatus
+from celery import shared_task
 
 EXECUTION_PENDING_TIMEOUT_SECONDS = int(env("EXECUTION_PENDING_TIMEOUT_SECONDS", "60"))
 EXECUTION_RUNNING_TIMEOUT_SECONDS = int(env("EXECUTION_RUNNING_TIMEOUT_SECONDS", "600"))
@@ -46,9 +46,7 @@ def poll_trigger_schedules() -> None:
     session = session_make()
     try:
         schedule_service = TriggerScheduleService(session)
-        schedule_service.poll_and_execute_due_triggers(
-            max_dispatch_per_tick=MAX_DISPATCH_PER_TICK
-        )
+        schedule_service.poll_and_execute_due_triggers(max_dispatch_per_tick=MAX_DISPATCH_PER_TICK)
     finally:
         session.close()
 
@@ -56,23 +54,26 @@ def poll_trigger_schedules() -> None:
 @shared_task(queue="check_execution_timeouts")
 def check_execution_timeouts() -> None:
     """Check for timed-out pending and running executions."""
-    logger.info("Starting check_execution_timeouts task", extra={
-        "pending_timeout": EXECUTION_PENDING_TIMEOUT_SECONDS,
-        "running_timeout": EXECUTION_RUNNING_TIMEOUT_SECONDS
-    })
+    logger.info(
+        "Starting check_execution_timeouts task",
+        extra={
+            "pending_timeout": EXECUTION_PENDING_TIMEOUT_SECONDS,
+            "running_timeout": EXECUTION_RUNNING_TIMEOUT_SECONDS,
+        },
+    )
 
     session = session_make()
     redis_manager = get_redis_manager()
     trigger_service = TriggerService(session)
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         executions = session.exec(
             select(TriggerExecution).where(
                 or_(
                     TriggerExecution.status == ExecutionStatus.pending,
-                    TriggerExecution.status == ExecutionStatus.running
+                    TriggerExecution.status == ExecutionStatus.running,
                 )
             )
         ).all()
@@ -92,7 +93,7 @@ def check_execution_timeouts() -> None:
                 timeout_seconds = EXECUTION_RUNNING_TIMEOUT_SECONDS
 
             if reference_time.tzinfo is None:
-                reference_time = reference_time.replace(tzinfo=timezone.utc)
+                reference_time = reference_time.replace(tzinfo=UTC)
             time_elapsed = (now - reference_time).total_seconds()
 
             if time_elapsed > timeout_seconds:
@@ -106,9 +107,7 @@ def check_execution_timeouts() -> None:
                     timed_out_running_count += 1
 
                 trigger_service.update_execution_status(
-                    execution=execution,
-                    status=new_status,
-                    error_message=error_message
+                    execution=execution, status=new_status, error_message=error_message
                 )
 
                 try:
@@ -118,33 +117,41 @@ def check_execution_timeouts() -> None:
                         for session_id in user_session_ids:
                             redis_manager.remove_pending_execution(session_id, execution.execution_id)
                 except Exception as e:
-                    logger.warning("Failed to remove execution from Redis", extra={
+                    logger.warning(
+                        "Failed to remove execution from Redis",
+                        extra={
+                            "execution_id": execution.execution_id,
+                            "trigger_id": execution.trigger_id,
+                            "error": str(e),
+                        },
+                    )
+
+                logger.info(
+                    "Execution timed out",
+                    extra={
                         "execution_id": execution.execution_id,
                         "trigger_id": execution.trigger_id,
-                        "error": str(e)
-                    })
-
-                logger.info("Execution timed out", extra={
-                    "execution_id": execution.execution_id,
-                    "trigger_id": execution.trigger_id,
-                    "original_status": "pending" if is_pending else "running",
-                    "new_status": new_status.value,
-                    "time_elapsed": time_elapsed
-                })
+                        "original_status": "pending" if is_pending else "running",
+                        "new_status": new_status.value,
+                        "time_elapsed": time_elapsed,
+                    },
+                )
 
         total_timed_out = timed_out_pending_count + timed_out_running_count
         if total_timed_out > 0:
-            logger.info("Marked executions as timed out", extra={
-                "timed_out_pending_count": timed_out_pending_count,
-                "timed_out_running_count": timed_out_running_count,
-                "total_timed_out": total_timed_out
-            })
+            logger.info(
+                "Marked executions as timed out",
+                extra={
+                    "timed_out_pending_count": timed_out_pending_count,
+                    "timed_out_running_count": timed_out_running_count,
+                    "total_timed_out": total_timed_out,
+                },
+            )
 
     except Exception as e:
-        logger.error("Error checking execution timeouts", extra={
-            "error": str(e),
-            "error_type": type(e).__name__
-        }, exc_info=True)
+        logger.error(
+            "Error checking execution timeouts", extra={"error": str(e), "error_type": type(e).__name__}, exc_info=True
+        )
         session.rollback()
 
     finally:

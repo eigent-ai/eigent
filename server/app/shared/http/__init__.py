@@ -16,7 +16,7 @@
 v1 HTTP client with automatic X-Trace-ID injection.
 """
 
-from app.shared.http.client import trace_httpx_client, trace_httpx_post, trace_httpx_get
+from app.shared.http.client import trace_httpx_client, trace_httpx_get, trace_httpx_post
 
 __all__ = [
     "trace_httpx_client",

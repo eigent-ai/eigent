@@ -20,17 +20,23 @@ v1 trace-aware logging with sensitive data masking.
 """
 
 import re
+
 from loguru import logger
 
 from app.shared.context import get_trace_id
 
-
 # Patterns for sensitive data - replace with masked placeholder
 MASK_PATTERNS = [
-    (re.compile(r'(api[_-]?key|apikey|secret[_-]?key|authorization|bearer)\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.]{8,})["\']?', re.I), r'\1=***MASKED***'),
-    (re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)'), r'***@***'),
-    (re.compile(r'redis://[^\s\'"&\]]+'), 'redis://***MASKED***'),
-    (re.compile(r'(sk_|pk_)[a-zA-Z0-9]+'), r'\1***MASKED***'),  # Stripe keys & primary keys
+    (
+        re.compile(
+            r'(api[_-]?key|apikey|secret[_-]?key|authorization|bearer)\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.]{8,})["\']?',
+            re.I,
+        ),
+        r"\1=***MASKED***",
+    ),
+    (re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)"), r"***@***"),
+    (re.compile(r'redis://[^\s\'"&\]]+'), "redis://***MASKED***"),
+    (re.compile(r"(sk_|pk_)[a-zA-Z0-9]+"), r"\1***MASKED***"),  # Stripe keys & primary keys
 ]
 
 

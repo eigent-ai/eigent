@@ -149,4 +149,3 @@ msgstr ""
 #: app/shared/auth/user_auth.py:120
 msgid "Invalid token type - refresh required"
 msgstr ""
-

@@ -31,54 +31,84 @@ from pathlib import Path
 PATTERNS = [
     # Cloud provider keys
     ("AWS Access Key ID", r"AKIA[0-9A-Z]{16}"),
-    ("AWS Secret Key", r"(?i)(aws_secret_access_key|aws_secret_key)\s*[=:]\s*['\"]?[A-Za-z0-9/+=]{40}"),
+    (
+        "AWS Secret Key",
+        r"(?i)(aws_secret_access_key|aws_secret_key)\s*[=:]\s*['\"]?[A-Za-z0-9/+=]{40}",
+    ),
     ("GCP Service Account", r'"type"\s*:\s*"service_account"'),
     ("Azure Storage Key", r"(?i)(AccountKey|account_key)\s*[=:]\s*[A-Za-z0-9+/=]{86,}"),
-
     # VCS and CI tokens
     ("GitHub Token", r"gh[ps]_[A-Za-z0-9_]{36,}"),
     ("GitHub Fine-grained PAT", r"github_pat_[A-Za-z0-9_]{22,}"),
     ("GitLab Token", r"glpat-[A-Za-z0-9\-]{20,}"),
     ("npm Token", r"npm_[A-Za-z0-9]{36}"),
     ("PyPI Token", r"pypi-[A-Za-z0-9\-_]{50,}"),
-
     # SaaS tokens
     ("Slack Token", r"xox[baprs]-[A-Za-z0-9\-]{10,}"),
-    ("Slack Webhook", r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+"),
+    (
+        "Slack Webhook",
+        r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+",
+    ),
     ("Stripe Secret Key", r"sk_live_[A-Za-z0-9]{24,}"),
     ("Stripe Publishable Key", r"pk_live_[A-Za-z0-9]{24,}"),
     ("Twilio API Key", r"SK[0-9a-fA-F]{32}"),
     ("SendGrid API Key", r"SG\.[A-Za-z0-9\-_]{22}\.[A-Za-z0-9\-_]{43}"),
     ("Mailgun API Key", r"key-[0-9a-zA-Z]{32}"),
     ("Google API Key", r"AIza[0-9A-Za-z\-_]{35}"),
-
     # Private keys
     ("RSA Private Key", r"-----BEGIN RSA PRIVATE KEY-----"),
     ("Generic Private Key", r"-----BEGIN PRIVATE KEY-----"),
     ("EC Private Key", r"-----BEGIN EC PRIVATE KEY-----"),
     ("OpenSSH Private Key", r"-----BEGIN OPENSSH PRIVATE KEY-----"),
     ("PGP Private Key", r"-----BEGIN PGP PRIVATE KEY BLOCK-----"),
-
     # Database connection strings
-    ("Database URL with Password", r"(?i)(mysql|postgres|postgresql|mongodb|redis|mssql)://[^:]+:[^@\s]+@"),
-
+    (
+        "Database URL with Password",
+        r"(?i)(mysql|postgres|postgresql|mongodb|redis|mssql)://[^:]+:[^@\s]+@",
+    ),
     # Generic secret assignments
     ("Hardcoded Password", r'(?i)(password|passwd|pwd)\s*[=:]\s*["\'][^"\']{8,}["\']'),
-    ("Hardcoded Secret", r'(?i)(secret_key|api_secret|auth_token|access_token)\s*[=:]\s*["\'][^"\']{8,}["\']'),
+    (
+        "Hardcoded Secret",
+        r'(?i)(secret_key|api_secret|auth_token|access_token)\s*[=:]\s*["\'][^"\']{8,}["\']',
+    ),
     ("Hardcoded API Key", r'(?i)(api_key|apikey)\s*[=:]\s*["\'][^"\']{8,}["\']'),
 ]
 
 FALSE_POSITIVE_INDICATORS = [
-    "example", "changeme", "placeholder", "your_", "xxx",
-    "dummy", "sample", "todo", "fixme", "replace_",
-    "INSERT_", "<your", "${", "$(",  "os.environ",
-    "process.env", "getenv", "config.get",
+    "example",
+    "changeme",
+    "placeholder",
+    "your_",
+    "xxx",
+    "dummy",
+    "sample",
+    "todo",
+    "fixme",
+    "replace_",
+    "INSERT_",
+    "<your",
+    "${",
+    "$(",
+    "os.environ",
+    "process.env",
+    "getenv",
+    "config.get",
 ]
 
 SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv",
-    "dist", "build", "vendor", ".bundle",
-    ".tox", ".mypy_cache", ".pytest_cache",
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "vendor",
+    ".bundle",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
 }
 
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
@@ -91,11 +121,29 @@ TEST_FILE_PATTERNS = [
 ]
 
 SKIP_EXTENSIONS = {
-    ".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe",
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg",
-    ".woff", ".woff2", ".ttf", ".eot",
-    ".zip", ".tar", ".gz", ".jar",
-    ".mp3", ".mp4", ".pdf",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".dylib",
+    ".dll",
+    ".exe",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".jar",
+    ".mp3",
+    ".mp4",
+    ".pdf",
 }
 
 MAX_FILE_SIZE = 1_000_000
@@ -155,12 +203,14 @@ def scan_file(filepath: Path, root: Path, include_tests: bool = False) -> list:
 
         for label, pattern in PATTERNS:
             if re.search(pattern, line):
-                findings.append({
-                    "type": label,
-                    "file": str(filepath),
-                    "line": line_num,
-                    "snippet": line.strip()[:120],
-                })
+                findings.append(
+                    {
+                        "type": label,
+                        "file": str(filepath),
+                        "line": line_num,
+                        "snippet": line.strip()[:120],
+                    }
+                )
 
     return findings
 
@@ -222,19 +272,26 @@ def format_json(findings, scanned):
     for f in findings:
         type_counts[f["type"]] = type_counts.get(f["type"], 0) + 1
 
-    return json.dumps({
-        "scanned_files": scanned,
-        "total_findings": len(findings),
-        "by_type": type_counts,
-        "findings": findings,
-    }, indent=2)
+    return json.dumps(
+        {
+            "scanned_files": scanned,
+            "total_findings": len(findings),
+            "by_type": type_counts,
+            "findings": findings,
+        },
+        indent=2,
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Scan for hardcoded secrets")
     parser.add_argument("path", help="Project directory to scan")
-    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
-    parser.add_argument("--include-tests", action="store_true", help="Include test files in scan")
+    parser.add_argument(
+        "--format", choices=["text", "json"], default="text", help="Output format"
+    )
+    parser.add_argument(
+        "--include-tests", action="store_true", help="Include test files in scan"
+    )
     args = parser.parse_args()
 
     findings, scanned = scan_project(args.path, args.include_tests)

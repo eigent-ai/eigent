@@ -42,7 +42,7 @@ Click on the Gemini Config card and fill in the following fields:
   selected/active.
 - **You are ready to go.** Your Eigent agents can now utilize the Gemini model.
 
----
+______________________________________________________________________
 
 > **Video Tutorial:** Prefer a visual guide? Watch the full configuration video
 > here.

@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_babel import _
@@ -37,7 +36,7 @@ router = APIRouter(tags=["Remote Sub Agent Provider Management"])
 )
 async def list_remote_sub_agent_providers(
     provider_name: str | None = None,
-    enabled: Optional[bool] = Query(None),
+    enabled: bool | None = Query(None),
     auth: V1UserAuth = Depends(auth_must),
 ) -> list[RemoteSubAgentProviderOut]:
     return RemoteSubAgentProviderService.list_for_user(

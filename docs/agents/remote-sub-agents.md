@@ -23,20 +23,20 @@ Use a dedicated credential with the minimum required permissions.
 ## Open Sub-agents
 
 1. Open the Eigent dashboard.
-2. Select **Agents**.
-3. Select **Sub-agents**.
-4. Select the Gemini provider.
+1. Select **Agents**.
+1. Select **Sub-agents**.
+1. Select the Gemini provider.
 
 > **Screenshot placeholder:** Add a screenshot of the Sub-agents configuration page. Blur the API key and any private endpoint.
 
 ## Configure the provider
 
 1. Enter the Gemini API key.
-2. Confirm or change the base URL.
-3. Enter the remote agent name.
-4. Set the maximum wall time in seconds.
-5. Set the polling interval in seconds.
-6. Select **Save**.
+1. Confirm or change the base URL.
+1. Enter the remote agent name.
+1. Set the maximum wall time in seconds.
+1. Set the polling interval in seconds.
+1. Select **Save**.
 
 Eigent validates the connection before saving an enabled provider.
 
@@ -61,8 +61,8 @@ Start with conservative values and adjust them after observing typical task dura
 ## Reset the provider
 
 1. Open the remote sub-agent configuration.
-2. Select the reset action.
-3. Confirm the removal.
+1. Select the reset action.
+1. Confirm the removal.
 
 Reset deletes the stored provider record and restores the default form.
 

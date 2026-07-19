@@ -12,8 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi import Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.core.database import session
@@ -26,12 +25,12 @@ from app.domains.space.service.space_service import SpaceHasProjectsError, Space
 from app.model.project import ProjectIn, ProjectOut, ProjectUpdate
 from app.model.space import (
     SpaceIn,
+    SpaceOut,
     SpaceOverlayDiscardIn,
     SpaceOverlayDiscardResponse,
     SpaceOverlayListResponse,
     SpaceOverlayOut,
     SpaceOverlayWriteIn,
-    SpaceOut,
     SpaceProjectApplyIn,
     SpaceProjectApplyResponse,
     SpaceProjectRefreshIn,
@@ -159,11 +158,7 @@ def relocate_space(
         )
     except ValueError as exc:
         detail = str(exc)
-        if (
-            "already bound" in detail
-            or "identity" in detail
-            or "cannot be verified" in detail
-        ):
+        if "already bound" in detail or "identity" in detail or "cannot be verified" in detail:
             raise HTTPException(status_code=409, detail=detail) from exc
         raise HTTPException(status_code=404, detail=detail) from exc
 
@@ -207,14 +202,14 @@ def update_space_project(
     auth: V1UserAuth = Depends(auth_must),
 ):
     try:
-        return ProjectOut.from_model(
-            SpaceService.update_project(space_id, project_id, data, auth.id, db_session)
-        )
+        return ProjectOut.from_model(SpaceService.update_project(space_id, project_id, data, auth.id, db_session))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.post("/{space_id}/projects/{project_id}/promote", name="promote project to folder space", response_model=ProjectOut)
+@router.post(
+    "/{space_id}/projects/{project_id}/promote", name="promote project to folder space", response_model=ProjectOut
+)
 def promote_space_project(
     space_id: str,
     project_id: str,
@@ -222,9 +217,7 @@ def promote_space_project(
     auth: V1UserAuth = Depends(auth_must),
 ):
     try:
-        return ProjectOut.from_model(
-            SpaceService.promote_project(space_id, project_id, auth.id, db_session)
-        )
+        return ProjectOut.from_model(SpaceService.promote_project(space_id, project_id, auth.id, db_session))
     except ValueError as exc:
         detail = str(exc)
         status_code = 409 if "Cannot promote" in detail or "target" in detail else 404
