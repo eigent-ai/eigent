@@ -63,6 +63,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type UIEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -479,6 +480,46 @@ export default function AddConnectorDialog({
     ]
   );
 
+  const loadNextCatalogPage = useCallback(() => {
+    if (
+      browseSource !== 'open' ||
+      selectedProvider ||
+      selectedBuiltIn ||
+      !hasMore ||
+      catalogLoading ||
+      loadingMore ||
+      catalogError ||
+      catalog.length === 0
+    ) {
+      return;
+    }
+    void loadCatalogPage(page + 1, true);
+  }, [
+    browseSource,
+    catalog.length,
+    catalogError,
+    catalogLoading,
+    hasMore,
+    loadCatalogPage,
+    loadingMore,
+    page,
+    selectedBuiltIn,
+    selectedProvider,
+  ]);
+
+  const handleBrowseScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      if (browseSource !== 'open') return;
+      const element = event.currentTarget;
+      const distanceToBottom =
+        element.scrollHeight - element.scrollTop - element.clientHeight;
+      if (distanceToBottom <= 280) {
+        loadNextCatalogPage();
+      }
+    },
+    [browseSource, loadNextCatalogPage]
+  );
+
   // Hydrate from cache before paint to avoid empty-state / skeleton flash on open.
   useLayoutEffect(() => {
     if (!open || !connectorGatewayEnabled || browseSource !== 'open') return;
@@ -526,18 +567,7 @@ export default function AddConnectorDialog({
   ]);
 
   useEffect(() => {
-    if (
-      browseSource !== 'open' ||
-      selectedProvider ||
-      selectedBuiltIn ||
-      !hasMore ||
-      catalogLoading ||
-      loadingMore ||
-      catalogError ||
-      catalog.length === 0
-    ) {
-      return;
-    }
+    if (browseSource !== 'open') return;
     const root = browseScrollRef.current;
     const sentinel = loadMoreSentinelRef.current;
     if (!root || !sentinel) return;
@@ -545,24 +575,13 @@ export default function AddConnectorDialog({
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        void loadCatalogPage(page + 1, true);
+        loadNextCatalogPage();
       },
       { root, rootMargin: '160px' }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [
-    browseSource,
-    catalog.length,
-    catalogError,
-    catalogLoading,
-    hasMore,
-    loadCatalogPage,
-    loadingMore,
-    page,
-    selectedBuiltIn,
-    selectedProvider,
-  ]);
+  }, [browseSource, loadNextCatalogPage]);
 
   const selectedProviderService = selectedProvider?.service;
 
@@ -900,6 +919,7 @@ export default function AddConnectorDialog({
 
             <div
               ref={browseScrollRef}
+              onScroll={handleBrowseScroll}
               className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto py-4 pl-4 pr-2"
             >
               {browseSource === 'open' ? (
@@ -967,7 +987,13 @@ export default function AddConnectorDialog({
                                     <span className="text-body-base truncate font-bold text-ds-text-neutral-default-default">
                                       {providerLabel(provider)}
                                     </span>
-                                    <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default" />
+                                    <BadgeCheck
+                                      className={`h-3.5 w-3.5 shrink-0 ${
+                                        installed
+                                          ? 'text-ds-icon-success-default-default'
+                                          : 'text-ds-icon-neutral-muted-default'
+                                      }`}
+                                    />
                                     {provider.recommended ? (
                                       <span className="shrink-0 text-label-xs font-bold text-ds-text-warning-strong-default">
                                         {t('connectors.new')}

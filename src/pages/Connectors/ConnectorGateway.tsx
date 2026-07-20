@@ -258,6 +258,13 @@ function sourceLabel(item: ConnectorListItem, t: TFunction): string {
     : t('connectors.source-local');
 }
 
+function connectorListRank(item: ConnectorListItem): number {
+  if (item.source === 'custom') return 0;
+  if (item.source === 'open') return 1;
+  if (item.source === 'builtin' && item.item.key === 'Search') return 3;
+  return 2;
+}
+
 async function resolveOpenProviderByKeys(
   serviceKeys: readonly string[]
 ): Promise<ConnectorProvider | null> {
@@ -507,6 +514,8 @@ export default function ConnectorGateway() {
       item,
     }));
     return [...openItems, ...builtIns, ...custom].sort((left, right) => {
+      const rankDelta = connectorListRank(left) - connectorListRank(right);
+      if (rankDelta !== 0) return rankDelta;
       if (left.active !== right.active) return left.active ? -1 : 1;
       return left.name.localeCompare(right.name);
     });
@@ -1188,7 +1197,13 @@ export default function ConnectorGateway() {
                         <span className="text-body-base truncate font-bold text-ds-text-neutral-default-default">
                           {providerLabel(liveProvider)}
                         </span>
-                        <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default" />
+                        <BadgeCheck
+                          className={`h-3.5 w-3.5 shrink-0 ${
+                            connected || existing
+                              ? 'text-ds-icon-success-default-default'
+                              : 'text-ds-icon-neutral-muted-default'
+                          }`}
+                        />
                       </div>
                       {liveProvider.description?.trim() ? (
                         <span className="mt-1 line-clamp-1 block text-body-xs text-ds-text-neutral-muted-default">

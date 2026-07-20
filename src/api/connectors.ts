@@ -266,13 +266,22 @@ export async function fetchConnectorProviders(
 
 /** Fetch every provider page and return only connected providers. */
 export async function fetchConnectedProviders(): Promise<ConnectorProvider[]> {
-  const first = await fetchConnectorProviders({ page: 1, pageSize: 100 });
+  // Connected status changes outside the catalog list lifecycle, so bypass the
+  // short-lived browse cache and use the backend's max page size.
+  const pageSize = 60;
+  const first = await fetchConnectorProviders(
+    { page: 1, pageSize },
+    { bypassCache: true }
+  );
   let providers = first.providers;
   for (let page = 2; page <= first.total_pages; page += 1) {
-    const response = await fetchConnectorProviders({
-      page,
-      pageSize: first.page_size,
-    });
+    const response = await fetchConnectorProviders(
+      {
+        page,
+        pageSize: first.page_size || pageSize,
+      },
+      { bypassCache: true }
+    );
     providers = providers.concat(response.providers);
   }
   const unique = new Map(
