@@ -198,19 +198,25 @@ Explore como o Eigent transforma trabalhos complexos no desktop em fluxos de age
 
 Coordene agentes em paralelo para criar dez jogos de navegador polidos e compatíveis com dispositivos móveis, abrangendo vários gêneros, com pontuação, dificuldade progressiva e reinício.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
+[Ver demonstração →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
 #### [Crie um Jogo de Plataforma 3D Snow Bros com Gemini 3.1 Pro](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 Crie um jogo de plataforma 3D completo para navegador, com combate usando bolas de neve, combos de inimigos, pontuação, vidas, dificuldade progressiva e cenários em camadas.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
+[Ver demonstração →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 #### [Automatize Relatórios Mensais de Desenvolvimento com DeepSeek via Ollama](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 Revise um mês de pull requests do GitHub com um modelo hospedado localmente, gere um resumo em Word e prepare a atualização de lançamento correspondente para o Slack.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
+[Ver demonstração →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 ### Destaques
 
@@ -218,19 +224,25 @@ Revise um mês de pull requests do GitHub com um modelo hospedado localmente, ge
 
 Peça ao Eigent para inspecionar uma área de trabalho desorganizada e organizar os arquivos em uma estrutura mais limpa e útil diretamente na sua máquina.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files)
+[Ver demonstração →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
 #### [Audite Falhas de CI de ML com Gemini 3.5 Flash no Eigent](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 Orquestre uma investigação multiagente de CI que coleta logs, compara valores de referência, rastreia evidências, delega raciocínio profundo e produz relatórios estruturados de auditoria.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+[Ver demonstração →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 #### [Integração e Relatórios para Sistemas de Gerenciamento de Tickets](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 Importe dados locais de tickets para um sistema de gerenciamento no navegador e gere um relatório estatístico com gráficos e resumos visuais.
 
-[![Ver demonstração](https://img.shields.io/badge/Ver_demo-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video) [![Ver guia](https://img.shields.io/badge/Guia_passo_a_passo-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+[Ver demonstração →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[Ver guia →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 [Explore mais casos de uso →](https://www.eigent.ai/use-cases)
 

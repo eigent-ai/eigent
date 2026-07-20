@@ -198,19 +198,25 @@ Explore how Eigent turns complex desktop work into repeatable agent workflows.
 
 Coordinate parallel agents to build ten polished, mobile-friendly browser games across genres, complete with scoring, increasing difficulty, and restart flows.
 
-[View demo](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video) [View guide](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
+[View demo →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
+
+[View guide →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
 #### [Build a 3D Snow Bros Platformer with Gemini 3.1 Pro](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 Create a complete browser-based 3D platformer with snowball combat, enemy chains, scoring, lives, scaling difficulty, and layered environments.
 
-[View demo](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video) [View guide](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
+[View demo →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
+
+[View guide →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 #### [Automate Monthly Dev Reports with DeepSeek via Ollama](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 Review a month of GitHub pull requests with a locally hosted model, generate a Word summary, and prepare the corresponding Slack release update.
 
-[View demo](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video) [View guide](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
+[View demo →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
+
+[View guide →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 ### Featured
 
@@ -218,19 +224,25 @@ Review a month of GitHub pull requests with a locally hosted model, generate a W
 
 Ask Eigent to inspect a cluttered desktop and organize files into a cleaner, more useful structure directly on your machine.
 
-[View demo](https://www.eigent.ai/use-cases/organize-desktop-files/video) [View guide](https://www.eigent.ai/use-cases/organize-desktop-files)
+[View demo →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
+
+[View guide →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
 #### [Audit ML CI Failures with Gemini 3.5 Flash on Eigent](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 Orchestrate a multi-agent CI investigation that fetches logs, compares golden values, traces evidence, delegates deep reasoning, and produces structured audit reports.
 
-[View demo](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video) [View guide](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+[View demo →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[View guide →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 #### [Ticket Management System Integration and Reporting](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 Import local ticket data into a browser-based management system, then generate a statistical report with charts and visual summaries.
 
-[View demo](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video) [View guide](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+[View demo →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[View guide →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 [Explore more use cases →](https://www.eigent.ai/use-cases)
 

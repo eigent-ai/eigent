@@ -192,19 +192,25 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 协调多个智能体并行构建十款精致、适配移动设备的浏览器游戏，覆盖多种类型，并包含计分、难度递增和重新开始流程。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
+[观看演示 →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
 #### [使用 Gemini 3.1 Pro 构建 3D Snow Bros 平台游戏](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 创建完整的浏览器 3D 平台游戏，包含雪球战斗、敌人连锁、计分、生命值、难度递增和分层场景。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
+[观看演示 →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 #### [通过 Ollama 与 DeepSeek 自动生成月度开发报告](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 使用本地托管模型回顾一个月的 GitHub 拉取请求，生成 Word 摘要，并准备对应的 Slack 发布更新。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
+[观看演示 →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 ### 精选
 
@@ -212,19 +218,25 @@ Eigent 完全开源。您可以下载、检查和修改代码，确保透明度�
 
 让 Eigent 检查杂乱的桌面，并直接在您的机器上将文件整理成更清晰、更实用的结构。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files)
+[观看演示 →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
 #### [使用 Gemini 3.5 Flash 在 Eigent 中审计 ML CI 故障](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 编排多智能体 CI 调查：获取日志、比较基准值、追踪证据、委派深度推理，并生成结构化审计报告。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+[观看演示 →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 #### [工单管理系统集成与报告](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 将本地工单数据导入基于浏览器的管理系统，然后生成包含图表和可视化摘要的统计报告。
 
-[![观看演示](https://img.shields.io/badge/%E8%A7%82%E7%9C%8B_%E6%BC%94%E7%A4%BA-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video) [![查看指南](https://img.shields.io/badge/%E5%88%86%E6%AD%A5_%E6%8C%87%E5%8D%97-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+[观看演示 →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[查看指南 →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 [探索更多使用案例 →](https://www.eigent.ai/use-cases)
 

@@ -197,19 +197,25 @@ Eigentが複雑なデスクトップ作業を、繰り返し実行できるエ�
 
 複数のエージェントを並列に連携させ、スコア、段階的な難易度、リスタート機能を備えた、モバイル対応の多彩なブラウザゲームを10本作成します。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
+[デモを見る →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
 #### [Gemini 3.1 Proで3D Snow Brosプラットフォーマーを構築](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 雪玉での戦闘、敵の連鎖、スコア、ライフ、段階的な難易度、奥行きのある環境を備えた、ブラウザ向けの完全な3Dプラットフォームゲームを作成します。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
+[デモを見る →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
 #### [Ollama経由のDeepSeekで月次開発レポートを自動化](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 ローカルでホストしたモデルを使って1か月分のGitHubプルリクエストを確認し、Word形式の要約とSlack向けのリリース更新を作成します。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
+[デモを見る →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
 ### 注目
 
@@ -217,19 +223,25 @@ Eigentが複雑なデスクトップ作業を、繰り返し実行できるエ�
 
 Eigentが散らかったデスクトップを確認し、自分のマシン上でファイルをより整理された使いやすい構成へまとめます。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/organize-desktop-files)
+[デモを見る →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
 #### [EigentとGemini 3.5 FlashでML CI障害を監査](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 ログ取得、基準値との比較、証拠の追跡、深い推論の委任、構造化された監査レポートの生成まで、マルチエージェントによるCI調査を編成します。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+[デモを見る →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
 #### [チケット管理システムの統合とレポート作成](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 ローカルのチケットデータをブラウザベースの管理システムへ取り込み、チャートと視覚的な要約を含む統計レポートを生成します。
 
-[![デモを見る](https://img.shields.io/badge/%E3%83%87%E3%83%A2%E3%82%92%E8%A6%8B%E3%82%8B-363AF5?style=for-the-badge&logo=youtube&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video) [![ガイドを見る](https://img.shields.io/badge/%E6%89%8B%E9%A0%86_%E3%82%AC%E3%82%A4%E3%83%89-1D1D1D?style=for-the-badge&logo=readthedocs&logoColor=white)](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+[デモを見る →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[ガイドを見る →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
 
 [その他のユースケースを見る →](https://www.eigent.ai/use-cases)
 
