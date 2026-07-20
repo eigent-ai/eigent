@@ -790,7 +790,16 @@ async def human_reply(id: str, data: HumanReply):
         "Human reply received",
         extra={"task_id": id, "reply_length": len(data.reply)},
     )
-    task_lock = get_task_lock(id)
+    task_lock = get_task_lock_if_exists(id)
+    if task_lock is None:
+        chat_logger.warning(
+            "Human reply ignored because task lock no longer exists",
+            extra={"task_id": id, "agent": data.agent},
+        )
+        raise UserException(
+            code.error,
+            "This task is no longer waiting for a human reply. Please send a new message.",
+        )
     try:
         await task_lock.put_human_input(data.agent, data.reply)
     except KeyError as exc:
