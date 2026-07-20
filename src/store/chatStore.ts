@@ -29,6 +29,18 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
+  classifyError,
+  classifyTaskCategory,
+} from '@/lib/events/appEventClassifiers';
+import {
+  recordFeatureUsed,
+  recordFileGenerated,
+  recordTaskCompleted,
+  recordTaskFailed,
+  recordTaskStopped,
+  recordTaskSubmitted,
+} from '@/lib/events/appEvents';
+import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
 } from '@/lib/modelConfig';
@@ -1469,6 +1481,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Track genuine, user-facing task starts (skip replay/share playback).
+      // Powers the "time to first task" lifecycle event.
+      if (isLiveTask) {
+        const submitWorkers = getWorkerList();
+        const submitHasMcp = submitWorkers.some(
+          (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+        );
+        recordTaskSubmitted({
+          session_mode: sessionModeForRequest,
+          task_source: executionId ? 'trigger' : 'user',
+          agent_count: submitWorkers.length,
+          has_mcp: submitHasMcp,
+        });
+        if (sessionModeForRequest === SessionMode.WORKFORCE) {
+          recordFeatureUsed('multi_agent', {
+            session_mode: sessionModeForRequest,
+          });
+        }
+      }
       if (project_id && !project?.mode) {
         useSpaceStore
           .getState()
@@ -1552,6 +1583,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!isBackendReady) {
           console.error('[startTask] Backend is not ready, cannot start task');
+          // A task failure, not a launch failure — this can fire hours after
+          // a successful launch and would otherwise skew launch-failure rate.
+          recordTaskFailed({
+            error_type: 'backend_unavailable',
+            session_mode: sessionModeForRequest,
+          });
           const targetState = targetChatStore.getState();
           targetState.addMessages(newTaskId, {
             id: generateUniqueId(),
@@ -3663,6 +3700,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 }
               }
               uploadLog(currentTaskId, type);
+              // Analytics: task failed — split breakage vs disinterest.
+              if (!type || type === 'normal') {
+                recordTaskFailed({
+                  error_type: classifyError(errorMessage),
+                  is_project_busy: isProjectBusyError,
+                  session_mode: tasks[currentTaskId]?.sessionMode,
+                });
+              }
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
                 getCurrentChatStore(),
@@ -3805,6 +3850,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             }
             clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
+            // The Stop button hits backend's Action.skip_task, which also
+            // yields an `end` SSE event with this fixed sentinel. Do not count
+            // that as a successful completion for analytics metrics.
+            const wasStoppedByUser = endMessageText.startsWith(
+              '<summary>Task stopped</summary>'
+            );
 
             const endMessage = resolveEndMessageText(
               endMessageText,
@@ -3825,6 +3876,39 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setIsPending(currentTaskId, false);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
+
+            // Analytics: task outcome. Skip replay/share playback so only real
+            // runs are measured, and keep stopped runs out of completion metrics.
+            if (!type || type === 'normal') {
+              const completedTask = tasks[currentTaskId];
+              const completedProjectName = (
+                project_id ? projectStore.getProjectById(project_id) : null
+              )?.name;
+              const taskOutcomeProperties = {
+                session_mode: completedTask?.sessionMode,
+                agent_count: completedTask?.taskAssigning?.length ?? 0,
+                has_mcp: getWorkerList().some(
+                  (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+                ),
+                duration_seconds: completedTask?.createdAt
+                  ? Math.round((Date.now() - completedTask.createdAt) / 1000)
+                  : undefined,
+                tokens: getTokens(currentTaskId),
+                // Classify the task on-device for low-cardinality reporting;
+                // the raw project name / summary (user content) is not sent.
+                task_category: classifyTaskCategory(
+                  `${completedProjectName ?? ''} ${completedTask?.summaryTask ?? ''}`
+                ),
+              };
+              if (wasStoppedByUser) {
+                recordTaskStopped({
+                  ...taskOutcomeProperties,
+                  stop_reason: 'user_requested',
+                });
+              } else {
+                recordTaskCompleted(taskOutcomeProperties);
+              }
+            }
 
             // compute task time
             console.log(
@@ -3902,6 +3986,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                           action: 'file_generate_count',
                           value: generatedSuccessCount,
                         });
+                        recordFileGenerated(generatedSuccessCount);
                       }
                     }
                   } catch (error) {
@@ -3920,14 +4005,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const parts = st.split('|');
                 const rawEndPayload = endMessageText;
                 const completionSummary = rawEndPayload || parts[1] || '';
-                // The Stop button hits backend's Action.skip_task, which
-                // also yields an `end` SSE event with this fixed sentinel.
                 // Treat the run as ongoing so chat_history.status accurately
                 // reflects whether the project actually completed; the
                 // history-replay polish keys off this flag.
-                const wasStoppedByUser = rawEndPayload.startsWith(
-                  '<summary>Task stopped</summary>'
-                );
                 const projectName = parts[0] || '';
                 const obj = {
                   project_name: projectName,
