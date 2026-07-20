@@ -260,7 +260,13 @@ function HeaderWin() {
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
-      if (projectStore.peekActiveChatStore(projectId)) {
+      const project = projectStore.getProjectById(projectId);
+      const needsRemoteHistoryHydration =
+        project?.metadata?.remoteHistoryHydrationPending === true;
+      if (
+        projectStore.peekActiveChatStore(projectId) &&
+        !needsRemoteHistoryHydration
+      ) {
         return;
       }
 
@@ -276,6 +282,12 @@ function HeaderWin() {
           );
 
         if (taskIdsList.length === 0) {
+          if (needsRemoteHistoryHydration) {
+            projectStore.updateProject(projectId, {
+              metadata: { remoteHistoryHydrationPending: false },
+            });
+            return;
+          }
           projectStore.appendInitChatStore(projectId);
           return;
         }
@@ -287,6 +299,14 @@ function HeaderWin() {
 
         const firstTask = historyProject.tasks[0];
         const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        if (needsRemoteHistoryHydration) {
+          await projectStore.mergeProjectHistory(
+            projectId,
+            historyProject.tasks,
+            firstTask?.question || historyProject.last_prompt || ''
+          );
+          return;
+        }
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',

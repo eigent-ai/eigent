@@ -86,10 +86,12 @@ const VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 // ==================== global variables ====================
 let win: BrowserWindow | null = null;
+let createWindowPromise: Promise<void> | null = null;
 let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
+let backendStartPromise: Promise<BackendStartResult> | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
@@ -119,6 +121,99 @@ let cdpLastAssignedPort = 9223; // tracks the highest port ever assigned, never 
 let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
+
+type BackendStartOptions = {
+  forceRestart?: boolean;
+};
+
+type BackendStartResult =
+  | { success: true; port: number }
+  | { success: false; error: string };
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isBrokenConsolePipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ((error as NodeJS.ErrnoException).code === 'EPIPE' ||
+      (error as NodeJS.ErrnoException).code === 'ERR_STREAM_DESTROYED')
+  );
+}
+
+function disableConsoleLogTransport(): void {
+  if (log.transports.console.level !== false) {
+    log.transports.console.level = false;
+  }
+}
+
+function handleProcessPipeError(error: Error): void {
+  if (isBrokenConsolePipeError(error)) {
+    disableConsoleLogTransport();
+    return;
+  }
+
+  setImmediate(() => {
+    throw error;
+  });
+}
+
+process.stdout.on('error', handleProcessPipeError);
+process.stderr.on('error', handleProcessPipeError);
+
+function isPythonProcessRunning(): boolean {
+  return Boolean(
+    python_process &&
+    !python_process.killed &&
+    python_process.exitCode === null &&
+    python_process.signalCode === null
+  );
+}
+
+function notifyBackendReady(result: BackendStartResult): void {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+
+  win.webContents.send(
+    'backend-ready',
+    result.success
+      ? {
+          success: true,
+          port: result.port,
+        }
+      : {
+          success: false,
+          error: result.error,
+        }
+  );
+}
+
+function checkBackendHealth(port: number): Promise<boolean> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const req = http.get(
+      `http://127.0.0.1:${port}/health`,
+      { timeout: 1000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
 
 /** Persist pool to disk. */
 function saveCdpPool(): void {
@@ -979,20 +1074,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendPort) {
-        log.info('Restarting backend service...');
-        await cleanupPythonProcess();
-        await checkAndStartBackend();
+      const result = await restartBackendService();
+      if (result.success) {
         log.info('Backend restart completed successfully');
-        return { success: true };
-      } else {
-        log.warn('No backend port found, starting fresh backend');
-        await checkAndStartBackend();
-        return { success: true };
       }
+      return result;
     } catch (error) {
       log.error('Failed to restart backend:', error);
-      return { success: false, error: String(error) };
+      return { success: false, error: formatErrorMessage(error) };
     }
   });
   ipcMain.handle('get-system-language', getSystemLanguage);
@@ -2422,6 +2511,30 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 
 // ==================== window create ====================
 async function createWindow() {
+  const existingWindow =
+    win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0];
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    win = existingWindow;
+    win.focus();
+    return;
+  }
+
+  if (createWindowPromise) {
+    await createWindowPromise;
+    if (win && !win.isDestroyed()) {
+      win.focus();
+    }
+    return;
+  }
+
+  createWindowPromise = createWindowInternal().finally(() => {
+    createWindowPromise = null;
+  });
+
+  return createWindowPromise;
+}
+
+async function createWindowInternal() {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
 
@@ -2989,66 +3102,112 @@ const setupExternalLinkHandling = () => {
 };
 
 // ==================== check and start backend ====================
-const checkAndStartBackend = async () => {
-  log.info('Checking and starting backend service...');
-  try {
-    // Clean up any existing backend process before starting new one
-    if (python_process && !python_process.killed) {
-      log.info('Cleaning up existing backend process before restart...');
-      await cleanupPythonProcess();
-      python_process = null;
-    }
+async function restartBackendService(): Promise<BackendStartResult> {
+  if (backendStartPromise) {
+    log.info(
+      'Backend startup already in progress, waiting before forced restart...'
+    );
+    await backendStartPromise;
+  }
 
-    const isToolInstalled = await checkToolInstalled();
-    if (isToolInstalled.success) {
-      log.info('Tool installed, starting backend service...');
-      const codexResolverEnv = await getCodexResolverEnv();
-      const exampleSkillsDir = getExampleSkillsSourceDir();
+  log.info('Restarting backend service...');
+  return checkAndStartBackend({ forceRestart: true });
+}
 
-      // Start backend and wait for health check to pass
-      python_process = await startBackend(
-        (port) => {
-          backendPort = port;
-          log.info('Backend service started successfully', { port });
-        },
-        {
-          ...codexResolverEnv,
-          EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+const checkAndStartBackend = async (
+  options: BackendStartOptions = {}
+): Promise<BackendStartResult> => {
+  if (backendStartPromise) {
+    log.info('Backend startup already in progress, waiting...');
+    return backendStartPromise;
+  }
+
+  backendStartPromise = (async () => {
+    log.info('Checking and starting backend service...');
+    try {
+      if (isPythonProcessRunning()) {
+        if (!options.forceRestart) {
+          const isHealthy = await checkBackendHealth(backendPort);
+          if (isHealthy) {
+            log.info('Backend service is already running', {
+              port: backendPort,
+            });
+            const result: BackendStartResult = {
+              success: true,
+              port: backendPort,
+            };
+            notifyBackendReady(result);
+            return result;
+          }
+
+          log.warn(
+            'Backend process is running but health check failed; restarting...'
+          );
+        } else {
+          log.info('Cleaning up existing backend process before restart...');
         }
-      );
 
-      // Notify frontend that backend is ready
-      if (win && !win.isDestroyed()) {
+        await cleanupPythonProcess();
+      } else if (python_process) {
+        python_process = null;
+      }
+
+      const isToolInstalled = await checkToolInstalled();
+      if (isToolInstalled.success) {
+        log.info('Tool installed, starting backend service...');
+        const codexResolverEnv = await getCodexResolverEnv();
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+
+        // Start backend and wait for health check to pass
+        python_process = await startBackend(
+          (port) => {
+            backendPort = port;
+            log.info('Backend service started successfully', { port });
+          },
+          {
+            ...codexResolverEnv,
+            EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+          }
+        );
+
+        // Notify frontend that backend is ready
         log.info('Backend is ready, notifying frontend...');
-        win.webContents.send('backend-ready', {
+        const result: BackendStartResult = {
           success: true,
           port: backendPort,
-        });
-      }
+        };
+        notifyBackendReady(result);
 
-      python_process?.on('exit', (code, signal) => {
-        log.info('Python process exited', { code, signal });
-      });
-    } else {
-      log.warn('Tool not installed, cannot start backend service');
-      // Notify frontend that backend cannot start
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('backend-ready', {
+        python_process?.on('exit', (code, signal) => {
+          log.info('Python process exited', { code, signal });
+        });
+
+        return result;
+      } else {
+        log.warn('Tool not installed, cannot start backend service');
+        // Notify frontend that backend cannot start
+        const result: BackendStartResult = {
           success: false,
           error: 'Tools not installed',
-        });
+        };
+        notifyBackendReady(result);
+        return result;
       }
-    }
-  } catch (error) {
-    log.error('Failed to start backend:', error);
-    // Notify frontend of backend startup failure
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('backend-ready', {
+    } catch (error) {
+      log.error('Failed to start backend:', error);
+      // Notify frontend of backend startup failure
+      const result: BackendStartResult = {
         success: false,
-        error: String(error),
-      });
+        error: formatErrorMessage(error),
+      };
+      notifyBackendReady(result);
+      return result;
     }
-  }
+  })().finally(() => {
+    backendStartPromise = null;
+  });
+
+  return backendStartPromise;
 };
 
 // ==================== process cleanup ====================
@@ -3327,15 +3486,21 @@ app.on('window-all-closed', () => {
 });
 
 // ==================== app activate event ====================
-app.on('activate', () => {
+app.on('activate', async () => {
   const allWindows = BrowserWindow.getAllWindows();
   log.info('activate', allWindows.length);
 
   if (allWindows.length) {
     allWindows[0].focus();
   } else {
-    cleanupPythonProcess();
-    createWindow();
+    const backendStart = checkAndStartBackend();
+    await createWindow();
+    const result = await backendStart;
+    if (!result.success) {
+      log.warn('Backend start during app activation failed:', result.error);
+    } else {
+      notifyBackendReady(result);
+    }
   }
 });
 
