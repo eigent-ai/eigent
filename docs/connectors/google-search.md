@@ -22,20 +22,20 @@ Provide:
 ## Create Google credentials
 
 1. In Google Cloud, create or select a project.
-2. Enable the Custom Search JSON API.
-3. Create an API key with appropriate restrictions.
-4. Create or select a Programmable Search Engine.
-5. Copy its Search Engine ID.
+1. Enable the Custom Search JSON API.
+1. Create an API key with appropriate restrictions.
+1. Create or select a Programmable Search Engine.
+1. Copy its Search Engine ID.
 
 Use Google's current Custom Search documentation for account-specific steps and quota information.
 
 ## Configure Search in Eigent
 
 1. Open **Connectors**.
-2. Select **Google Search**.
-3. Enter the Google API key.
-4. Enter the Search Engine ID.
-5. Save the configuration.
+1. Select **Google Search**.
+1. Enter the Google API key.
+1. Enter the Search Engine ID.
+1. Save the configuration.
 
 > **Screenshot placeholder:** Add a screenshot of the Google Search configuration form. Blur the complete API key and Search Engine ID.
 

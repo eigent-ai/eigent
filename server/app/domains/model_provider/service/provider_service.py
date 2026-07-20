@@ -14,9 +14,9 @@
 
 """ProviderService: model provider CRUD with prefer/invalidate. Follows CreditsService pattern."""
 
-from sqlalchemy import update
-from sqlmodel import select, col
 from loguru import logger
+from sqlalchemy import update
+from sqlmodel import col, select
 
 from app.core.database import session_make
 from app.model.provider.provider import Provider, VaildStatus
@@ -117,9 +117,7 @@ class ProviderService:
         """Set preferred provider: lock user rows, clear all prefer flags, then set the specified one."""
         with session_make() as s:
             # Lock all provider rows for this user to prevent concurrent prefer changes
-            s.exec(
-                select(Provider).where(Provider.user_id == user_id, Provider.no_delete()).with_for_update()
-            ).all()
+            s.exec(select(Provider).where(Provider.user_id == user_id, Provider.no_delete()).with_for_update()).all()
             # Clear all prefer flags for this user
             s.exec(update(Provider).where(Provider.user_id == user_id, Provider.no_delete()).values(prefer=False))
             # Set the specified provider as preferred

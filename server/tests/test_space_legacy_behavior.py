@@ -104,9 +104,7 @@ def test_list_spaces_keeps_legacy_space_with_active_projects():
 
 def test_remote_control_rejects_legacy_space():
     with pytest.raises(HTTPException) as exc:
-        RemoteControlService._ensure_remote_control_supported_space(
-            SimpleNamespace(source_type=SpaceSourceType.LEGACY)
-        )
+        RemoteControlService._ensure_remote_control_supported_space(SimpleNamespace(source_type=SpaceSourceType.LEGACY))
 
     assert exc.value.status_code == 400
     assert exc.value.detail["code"] == "REMOTE_CONTROL_LEGACY_SPACE_UNSUPPORTED"

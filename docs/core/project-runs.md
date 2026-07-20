@@ -27,10 +27,10 @@ Each Run can have its own:
 ## Create another Run
 
 1. Open a Project.
-2. In the Session composer, enter a follow-up request.
-3. Attach any new files.
-4. Send the request.
-5. In Workforce mode, review and start the new plan.
+1. In the Session composer, enter a follow-up request.
+1. Attach any new files.
+1. Send the request.
+1. In Workforce mode, review and start the new plan.
 
 Eigent adds the request to the same conversation and updates the Run selector.
 
@@ -39,8 +39,8 @@ Use a follow-up when the new request depends on previous work. Create another Pr
 ## Switch Runs
 
 1. Open the Session side panel.
-2. Select **Run N** in the panel header.
-3. Select a Run from the dropdown.
+1. Select **Run N** in the panel header.
+1. Select a Run from the dropdown.
 
 The dropdown lists the newest Run first. Each item includes:
 
@@ -89,10 +89,10 @@ The Run selector and conversation remain synchronized:
 Suppose Run 1 asks Eigent to research a market and create a report.
 
 1. Add competitor pricing as Run 2.
-2. Turn the updated findings into a presentation as Run 3.
-3. Select Run 1 to review the original research.
-4. Select Run 2 to inspect pricing outputs.
-5. Select Run 3 to monitor presentation creation.
+1. Turn the updated findings into a presentation as Run 3.
+1. Select Run 1 to review the original research.
+1. Select Run 2 to inspect pricing outputs.
+1. Select Run 3 to monitor presentation creation.
 
 All three Runs remain in one Project.
 

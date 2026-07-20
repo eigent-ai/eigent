@@ -27,17 +27,16 @@ from importlib.metadata import version as pkg_version
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi_babel import BabelMiddleware
 from fastapi_pagination import add_pagination
 from loguru import logger as loguru_logger
-
-from fastapi_babel import BabelMiddleware
 
 from app import api, router
 from app.core.babel import babel_configs
 from app.core.environment import auto_include_routers, env
 from app.shared.exception.handlers import register_exception_handlers
-from app.shared.middleware import TraceIDMiddleware, get_cors_middleware
 from app.shared.logging import trace_filter
+from app.shared.middleware import TraceIDMiddleware, get_cors_middleware
 
 # Register exception handlers and i18n middleware
 register_exception_handlers(api)
@@ -59,6 +58,7 @@ try:
 except Exception:
     SERVER_VERSION = "unknown"
 
+
 # Git hash of the last commit that touched server/ — used for stale-server detection.
 # Captured once at startup; stays constant while the process lives.
 # 1) Try git directly (works in local dev)
@@ -68,7 +68,9 @@ def _read_server_code_hash() -> str:
     try:
         h = subprocess.check_output(
             ["git", "log", "-1", "--format=%H", "--", "server/"],
-            cwd=str(_project_root), text=True, stderr=subprocess.DEVNULL,
+            cwd=str(_project_root),
+            text=True,
+            stderr=subprocess.DEVNULL,
         ).strip()
         if h:
             return h
@@ -86,6 +88,7 @@ def _read_server_code_hash() -> str:
         pass
     return "unknown"
 
+
 SERVER_CODE_HASH = _read_server_code_hash()
 
 
@@ -99,8 +102,10 @@ async def health_check():
         "server_hash": SERVER_CODE_HASH,
     }
 
+
 # Backward-compatible webhook route (/api/webhook/...)
 from app.domains.trigger.api.webhook_controller import router as webhook_router
+
 api.include_router(webhook_router, prefix=prefix)
 
 # Pagination
@@ -124,6 +129,7 @@ loguru_logger.add(
     format=LOG_FORMAT,
 )
 
+
 # Intercept stdlib logging and redirect to loguru
 class _InterceptHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
@@ -132,6 +138,7 @@ class _InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
         loguru_logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
 
 logging.basicConfig(handlers=[_InterceptHandler()], level=logging.INFO, force=True)
 for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "sqlalchemy.engine", "sqlalchemy.engine.Engine"):

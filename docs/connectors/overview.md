@@ -9,7 +9,7 @@ Connectors give agents access to external services and tools. A connector can se
 ## Open Connectors
 
 1. Open the Eigent dashboard.
-2. Select **Connectors**.
+1. Select **Connectors**.
 
 The page combines supported integrations, Google Search, and user-managed MCP servers.
 
@@ -62,10 +62,10 @@ X, WhatsApp, Reddit, and GitHub are marked Coming soon in the current connector 
 Installing a connector makes its tools available to Eigent. To use it in Workforce:
 
 1. Open the Workspace.
-2. Add or edit a worker.
-3. Open the tool selector.
-4. Select the connector.
-5. Save the worker.
+1. Add or edit a worker.
+1. Open the tool selector.
+1. Select the connector.
+1. Save the worker.
 
 Describe the service and expected operation in the task prompt.
 

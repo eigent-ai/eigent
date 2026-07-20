@@ -9,7 +9,7 @@ The Context tab is the file surface for the active Space and Project. It combine
 ## Open Context
 
 1. Select a Space.
-2. In the project sidebar, select **Context**.
+1. In the project sidebar, select **Context**.
 
 If Context is disabled, the Space does not yet have a usable workspace binding.
 
@@ -31,8 +31,8 @@ The project Session side panel can also list uploaded and generated files for th
 ## Open and preview a file
 
 1. In Context, browse or search the file tree.
-2. Select a file.
-3. Review the preview.
+1. Select a file.
+1. Review the preview.
 
 Eigent supports previews for common text, source code, Markdown, image, HTML, document, and data formats. Unsupported formats remain available in the workspace even when they cannot be previewed.
 
@@ -43,9 +43,9 @@ Local-folder Spaces use direct-write mode. Agents can read and modify files insi
 Before starting a task:
 
 1. Confirm the folder shown by the Space binding.
-2. Commit or back up important work.
-3. Limit the request to the intended files.
-4. Review generated changes before accepting them.
+1. Commit or back up important work.
+1. Limit the request to the intended files.
+1. Review generated changes before accepting them.
 
 ## Use a blank Space
 
@@ -58,18 +58,18 @@ Use this mode for research, reports, presentations, and tasks that should produc
 When the Space reports pending changes:
 
 1. Open the Space switcher or Context.
-2. Refresh the workspace when the displayed state is stale.
-3. Review the changed files.
-4. Apply the changes to keep them, or discard them to return to the previous state.
+1. Refresh the workspace when the displayed state is stale.
+1. Review the changed files.
+1. Apply the changes to keep them, or discard them to return to the previous state.
 
 > **Video placeholder:** Add a 60-90 second MP4 showing an agent creating a file, the unread Context indicator, file preview, and the apply or discard workflow. Include captions.
 
 ## Open a run output
 
 1. Open the Project Session.
-2. Select the required Run.
-3. In the side panel, expand the file section.
-4. Select an output.
+1. Select the required Run.
+1. In the side panel, expand the file section.
+1. Select an output.
 
 Eigent opens Context and selects the file belonging to that Run.
 

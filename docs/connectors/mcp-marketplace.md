@@ -9,9 +9,9 @@ The MCP Marketplace provides guided installation for supported services. Use it 
 ## Browse integrations
 
 1. Open **Connectors**.
-2. Expand the supported integration section.
-3. Use search to find a service.
-4. Select the integration.
+1. Expand the supported integration section.
+1. Use search to find a service.
+1. Select the integration.
 
 Connected services appear before unconnected services. Coming-soon services appear after available integrations.
 
@@ -22,19 +22,19 @@ Connected services appear before unconnected services. Coming-soon services appe
 The exact flow depends on the service:
 
 1. Select the integration.
-2. Select **Install** or **Connect**.
-3. Complete OAuth or enter required environment variables.
-4. Save the configuration.
-5. Enable the connector.
+1. Select **Install** or **Connect**.
+1. Complete OAuth or enter required environment variables.
+1. Save the configuration.
+1. Enable the connector.
 
 Notion and other services can open a dedicated authentication flow. Other integrations request keys or tokens directly.
 
 ## Configure environment variables
 
 1. Select a connected integration.
-2. Open its configuration.
-3. Enter each required environment value.
-4. Save the changes.
+1. Open its configuration.
+1. Enter each required environment value.
+1. Save the changes.
 
 Use credentials created specifically for Eigent. Avoid personal administrator tokens.
 
@@ -47,25 +47,25 @@ Disabling a connector preserves its configuration but prevents new agent use. Ex
 ## Edit an integration
 
 1. Open the integration actions.
-2. Select **Edit** or **Configure**.
-3. Update the required values.
-4. Save.
-5. Run a test task.
+1. Select **Edit** or **Configure**.
+1. Update the required values.
+1. Save.
+1. Run a test task.
 
 ## Uninstall an integration
 
 1. Open the integration actions.
-2. Select **Uninstall**.
-3. Confirm the action.
+1. Select **Uninstall**.
+1. Confirm the action.
 
 Uninstalling removes the Eigent connector configuration. Revoke OAuth grants or provider tokens separately when required.
 
 ## Assign the integration to a worker
 
 1. Open the Workspace.
-2. Add or edit a worker.
-3. Select the integration from **Agent Tool**.
-4. Save the worker.
+1. Add or edit a worker.
+1. Select the integration from **Agent Tool**.
+1. Save the worker.
 
 The worker can use only the tools assigned to it.
 

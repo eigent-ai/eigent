@@ -21,7 +21,7 @@ import shutil
 import threading
 import weakref
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -32,13 +32,13 @@ from app.domains.space.service.file_ops_guard import assert_local_file_operation
 from app.domains.space.service.space_service import SpaceService
 from app.model.project import Project
 from app.model.space import (
+    OVERLAY_SOURCE_PATH_METADATA_KEY,
+    OVERLAY_SOURCE_ROOT_METADATA_KEY,
     AppliedPath,
     ApplyConflict,
     ApplyFailure,
     ApplyResolutionIn,
     ApplyWarning,
-    OVERLAY_SOURCE_PATH_METADATA_KEY,
-    OVERLAY_SOURCE_ROOT_METADATA_KEY,
     Space,
     SpaceFileIndex,
     SpaceFileIndexOverlay,
@@ -53,9 +53,7 @@ except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
 _HASH_CHUNK_SIZE = 1024 * 1024
-_APPLY_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
-    weakref.WeakValueDictionary()
-)
+_APPLY_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
 _APPLY_LOCKS_GUARD = threading.Lock()
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,7 +68,7 @@ def _thread_space_lock(space_id: str) -> threading.Lock:
 
 
 def _advisory_lock_key(space_id: str) -> int:
-    digest = hashlib.sha256(f"eigent-space:{space_id}".encode("utf-8")).digest()
+    digest = hashlib.sha256(f"eigent-space:{space_id}".encode()).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
 
 
@@ -88,7 +86,7 @@ class SpaceWriteLock:
         self._connection = None
         self._lock_key = _advisory_lock_key(space_id)
 
-    def __enter__(self) -> "SpaceWriteLock":
+    def __enter__(self) -> SpaceWriteLock:
         self._thread_lock = _thread_space_lock(self.space_id)
         self._thread_lock.acquire()
         try:
@@ -260,10 +258,7 @@ class SpaceApplyService:
         if not rows:
             return response
 
-        resolutions = {
-            resolution.path: resolution
-            for resolution in data.force_resolutions or []
-        }
+        resolutions = {resolution.path: resolution for resolution in data.force_resolutions or []}
 
         with space_write_lock(space_id), filesystem_space_lock(root):
             actions: list[tuple[SpaceFileIndexOverlay, str, ApplyResolutionIn | None]] = []
@@ -311,9 +306,7 @@ class SpaceApplyService:
                         SpaceApplyService._update_index(space, row.path, live_hash, s)
                         s.delete(row)
                         s.commit()
-                        response.applied.append(
-                            AppliedPath(path=row.path, status="kept_theirs", hash=live_hash)
-                        )
+                        response.applied.append(AppliedPath(path=row.path, status="kept_theirs", hash=live_hash))
                     except Exception as exc:  # noqa: BLE001 - per-path failure must keep overlay.
                         s.rollback()
                         response.failed.append(
@@ -336,9 +329,7 @@ class SpaceApplyService:
                     SpaceApplyService._update_index(space, row.path, applied_hash, s)
                     s.delete(row)
                     s.commit()
-                    response.applied.append(
-                        AppliedPath(path=row.path, status=row.status, hash=applied_hash)
-                    )
+                    response.applied.append(AppliedPath(path=row.path, status=row.status, hash=applied_hash))
                 except Exception as exc:  # noqa: BLE001 - per-path failure keeps overlay retryable.
                     s.rollback()
                     response.failed.append(
@@ -463,7 +454,7 @@ class SpaceApplyService:
         existing.hash = file_hash
         existing.size = stat_result.st_size
         existing.mode = stat_result.st_mode
-        existing.modified_at = datetime.fromtimestamp(stat_result.st_mtime, timezone.utc)
-        existing.indexed_at = datetime.now(timezone.utc)
+        existing.modified_at = datetime.fromtimestamp(stat_result.st_mtime, UTC)
+        existing.indexed_at = datetime.now(UTC)
         existing.row_version = (existing.row_version or 0) + 1
         s.add(existing)

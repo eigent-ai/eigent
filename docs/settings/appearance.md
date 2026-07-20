@@ -9,8 +9,8 @@ Appearance settings control Eigent's color mode, theme palette, contrast, and Wo
 ## Open Appearance
 
 1. Open the Eigent dashboard.
-2. Select **Settings**.
-3. Select **Appearance**.
+1. Select **Settings**.
+1. Select **Appearance**.
 
 > **Screenshot placeholder:** Add a screenshot of Appearance settings with color mode, theme selection, color controls, contrast, and Workspace background visible.
 

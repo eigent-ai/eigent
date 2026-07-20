@@ -11,8 +11,8 @@ At least one valid model is required before Eigent can start a task.
 ## Open Models
 
 1. Open the Eigent dashboard.
-2. Select **Agents**.
-3. Select **Models**.
+1. Select **Agents**.
+1. Select **Models**.
 
 The Models page separates managed cloud, bring-your-own-key, and local providers.
 
@@ -35,10 +35,10 @@ Connect Eigent to Ollama, vLLM, SGLang, LM Studio, or LLaMA.cpp. Local models ca
 ## Configure a provider
 
 1. Select the provider.
-2. Enter the required key, endpoint, model name, and provider-specific fields.
-3. Validate or save the configuration.
-4. Enable the provider.
-5. Optional: Mark it as preferred.
+1. Enter the required key, endpoint, model name, and provider-specific fields.
+1. Validate or save the configuration.
+1. Enable the provider.
+1. Optional: Mark it as preferred.
 
 Some providers can load their model catalog dynamically. Others require a model name.
 
@@ -68,9 +68,9 @@ Use a representative task to validate a model before making it the default for a
 ## Remove a provider
 
 1. Open the provider.
-2. Disable it.
-3. Select the delete or reset action.
-4. Confirm the removal.
+1. Disable it.
+1. Select the delete or reset action.
+1. Confirm the removal.
 
 Removing a provider deletes its stored Eigent configuration. It does not delete the provider account or local model.
 

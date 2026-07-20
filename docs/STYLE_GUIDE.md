@@ -18,13 +18,13 @@ Most product pages can combine a short explanation with one or more focused how-
 Use the following order when it fits the topic:
 
 1. Frontmatter with `title` and `description`
-2. One-paragraph overview
-3. Prerequisites or **Before you begin**
-4. Primary task procedure
-5. Feature or option reference
-6. Security, privacy, or limitations
-7. Troubleshooting
-8. Related guides or next steps
+1. One-paragraph overview
+1. Prerequisites or **Before you begin**
+1. Primary task procedure
+1. Feature or option reference
+1. Security, privacy, or limitations
+1. Troubleshooting
+1. Related guides or next steps
 
 Avoid adding sections that do not help the reader complete or understand the task.
 

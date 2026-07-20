@@ -120,11 +120,11 @@ Local runtime coverage:
 ## Editorial Priorities
 
 1. Capture current screenshots for Dashboard, Workspace, Context, Models, Connectors, Browser, and Triggers.
-2. Replace outline language with task-focused procedures.
-3. Add provider credential and endpoint examples.
-4. Add self-hosting commands and environment configuration.
-5. Add troubleshooting links from every setup guide.
-6. Mark coming-soon features clearly and remove those labels only when shipped.
+1. Replace outline language with task-focused procedures.
+1. Add provider credential and endpoint examples.
+1. Add self-hosting commands and environment configuration.
+1. Add troubleshooting links from every setup guide.
+1. Mark coming-soon features clearly and remove those labels only when shipped.
 
 ## Maintenance Checks
 

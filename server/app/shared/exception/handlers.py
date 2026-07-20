@@ -14,14 +14,14 @@
 
 """v1 exception handler registration."""
 
-from fastapi import Request, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import NoResultFound
 
 from app.core import code
-from app.core.pydantic.i18n import trans, get_language
+from app.core.pydantic.i18n import get_language, trans
 from app.shared.exception import (
     NoPermissionException,
     TokenException,

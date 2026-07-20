@@ -49,12 +49,12 @@ Provider fields can change. Confirm required values in **Agents > Models** after
 ## Configure a cloud provider
 
 1. Create an account with the provider.
-2. Create a restricted API credential.
-3. Confirm the provider endpoint and model identifier.
-4. In Eigent, open **Agents > Models**.
-5. Select the provider and enter the values.
-6. Validate and save.
-7. Run a small test task.
+1. Create a restricted API credential.
+1. Confirm the provider endpoint and model identifier.
+1. In Eigent, open **Agents > Models**.
+1. Select the provider and enter the values.
+1. Validate and save.
+1. Run a small test task.
 
 ## Configure an OpenAI-compatible endpoint
 
@@ -71,12 +71,12 @@ Compatibility can vary. Test streaming, tool calls, and structured responses bef
 ## Configure a local runtime
 
 1. Install and start the runtime.
-2. Load or serve a model.
-3. Confirm the endpoint responds locally.
-4. In Eigent, open **Agents > Models > Local**.
-5. Select the runtime.
-6. Enter the endpoint and model.
-7. Validate and enable it.
+1. Load or serve a model.
+1. Confirm the endpoint responds locally.
+1. In Eigent, open **Agents > Models > Local**.
+1. Select the runtime.
+1. Enter the endpoint and model.
+1. Validate and enable it.
 
 **Screenshot placeholder:** Add a composite screenshot showing one cloud provider form, Azure provider-specific fields, and one local runtime form. Blur credentials.
 
@@ -87,13 +87,13 @@ Compatibility can vary. Test streaming, tool calls, and structured responses bef
 Each dedicated provider guide should include:
 
 1. Account or runtime prerequisites
-2. Credential creation
-3. Endpoint format
-4. Model identifier examples
-5. Eigent configuration
-6. Validation
-7. Common errors
-8. Billing and privacy notes
+1. Credential creation
+1. Endpoint format
+1. Model identifier examples
+1. Eigent configuration
+1. Validation
+1. Common errors
+1. Billing and privacy notes
 
 ## Security guidance
 

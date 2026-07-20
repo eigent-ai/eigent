@@ -12,8 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app.domains.space.service.space_service import SpaceService
 from app.domains.space.service.apply_service import SpaceApplyService
 from app.domains.space.service.overlay_service import SpaceOverlayService
+from app.domains.space.service.space_service import SpaceService
 
 __all__ = ["SpaceApplyService", "SpaceOverlayService", "SpaceService"]

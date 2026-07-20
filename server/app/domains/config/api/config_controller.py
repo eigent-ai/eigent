@@ -13,21 +13,21 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 # STATUS: full-rewrite (uses ConfigService, self-managed session)
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_babel import _
 
-from app.model.config.config import ConfigCreate, ConfigUpdate, ConfigOut
+from app.domains.config.service.config_service import ConfigService
+from app.model.config.config import ConfigCreate, ConfigOut, ConfigUpdate
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
-from app.domains.config.service.config_service import ConfigService
 
 router = APIRouter(tags=["Config Management"])
 
 
 @router.get("/configs", name="list configs", response_model=list[ConfigOut])
 async def list_configs(
-    config_group: Optional[str] = None,
+    config_group: str | None = None,
     auth: V1UserAuth = Depends(auth_must),
 ):
     return ConfigService.list_for_user(auth.id, config_group)

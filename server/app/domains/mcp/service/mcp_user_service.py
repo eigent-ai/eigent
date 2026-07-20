@@ -16,17 +16,17 @@
 
 import json
 
-from sqlmodel import select
 from loguru import logger
+from sqlmodel import select
 
 from app.core.database import session_make
-from app.model.mcp.mcp import Mcp, McpType
-from app.model.mcp.mcp_user import McpImportType, McpUser, Status
 from app.core.validator.McpServer import (
     McpRemoteServer,
     validate_mcp_remote_servers,
     validate_mcp_servers,
 )
+from app.model.mcp.mcp import Mcp, McpType
+from app.model.mcp.mcp_user import McpImportType, McpUser, Status
 
 
 class McpUserService:
@@ -59,9 +59,7 @@ class McpUserService:
         if not mcp:
             return {"success": False, "error_code": "MCP_NOT_FOUND"}
 
-        exists = s.exec(
-            select(McpUser).where(McpUser.mcp_id == mcp.id, McpUser.user_id == user_id)
-        ).first()
+        exists = s.exec(select(McpUser).where(McpUser.mcp_id == mcp.id, McpUser.user_id == user_id)).first()
         if exists:
             return {"success": False, "error_code": "MCP_ALREADY_INSTALLED"}
 

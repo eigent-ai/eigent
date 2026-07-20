@@ -9,9 +9,9 @@ Projects are persistent workstreams inside a Space. A project can contain multip
 ## Find a project
 
 1. In the Home dashboard, select **Projects**.
-2. Use search when you know part of the project name.
-3. Sort by created time, updated time, or name.
-4. Select a project card or row to open it.
+1. Use search when you know part of the project name.
+1. Sort by created time, updated time, or name.
+1. Select a project card or row to open it.
 
 The project opens in its Space and loads the available session history.
 
@@ -33,19 +33,19 @@ Use the Space label to distinguish projects with similar names.
 ## Rename a project
 
 1. Open the project actions.
-2. Select **Rename**.
-3. Enter the new name.
-4. Save the change.
+1. Select **Rename**.
+1. Enter the new name.
+1. Save the change.
 
 Choose a name that describes the ongoing goal rather than only the first task. For example, use “Q3 competitor research” instead of “Search the web.”
 
 ## Continue a project
 
 1. Open the project.
-2. In the chat input, enter a follow-up request.
-3. Send the request.
-4. Review the generated plan when Workforce planning is enabled.
-5. Start the task.
+1. In the chat input, enter a follow-up request.
+1. Send the request.
+1. Review the generated plan when Workforce planning is enabled.
+1. Start the task.
 
 Eigent adds the request as another run in the same project. See [Project runs](/core/project-runs).
 
@@ -54,17 +54,17 @@ Eigent adds the request as another run in the same project. See [Project runs](/
 Ending, or achieving, a project marks the work as complete.
 
 1. In the project sidebar, open the project actions.
-2. Select the end-project action.
-3. Confirm the action.
+1. Select the end-project action.
+1. Confirm the action.
 
 If a run is active, Eigent stops it before marking the project achieved. The project remains available in history.
 
 ## Delete a project
 
 1. Open the project actions.
-2. Select **Delete**.
-3. Review the confirmation message.
-4. Confirm the deletion.
+1. Select **Delete**.
+1. Review the confirmation message.
+1. Confirm the deletion.
 
 Deleting a project removes it from the active project list and can archive its server-backed record. Export or copy required outputs before deletion.
 

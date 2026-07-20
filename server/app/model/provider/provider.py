@@ -13,7 +13,6 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from enum import IntEnum
-from typing import Optional
 
 from pydantic import AliasChoices, BaseModel, Field as PydanticField, field_validator
 from sqlalchemy import Boolean, Column, SmallInteger, text
@@ -71,4 +70,4 @@ class ProviderOut(ProviderIn):
     id: int
     user_id: int
     prefer: bool
-    model_type: Optional[str] = None
+    model_type: str | None = None

@@ -30,9 +30,7 @@ class OverlayStatus:
 class SpaceFileIndex(AbstractModel, DefaultTimes, table=True):
     """Lazy cache of Space source files. Apply must still verify live disk."""
 
-    __table_args__ = (
-        UniqueConstraint("space_id", "path", name="uix_space_file_index_space_path"),
-    )
+    __table_args__ = (UniqueConstraint("space_id", "path", name="uix_space_file_index_space_path"),)
 
     id: int = Field(default=None, primary_key=True)
     space_id: str = Field(foreign_key="space.id", index=True)

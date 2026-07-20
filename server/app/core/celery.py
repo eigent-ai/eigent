@@ -12,14 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.core.environment import env, env_or_fail
 from celery import Celery
-from app.core.environment import env_or_fail, env
 
-celery = Celery(
-    __name__,
-    broker=env_or_fail("celery_broker_url"),
-    backend=env_or_fail("celery_result_url")
-)
+celery = Celery(__name__, broker=env_or_fail("celery_broker_url"), backend=env_or_fail("celery_result_url"))
 
 # Configure Celery to autodiscover tasks
 celery.conf.imports = [

@@ -42,4 +42,4 @@ Click on the Ernie card and fill in the following fields:
   selected/active.
 - **You are ready to go.** Your Eigent agents can now utilize the Ernie model.
 
----
+______________________________________________________________________

@@ -22,9 +22,7 @@ from app.model.abstract.model import AbstractModel, DefaultTimes
 class SpaceMemory(AbstractModel, DefaultTimes, table=True):
     """Future shared knowledge scoped to a Space."""
 
-    __table_args__ = (
-        UniqueConstraint("space_id", "key", name="uix_space_memory_space_key"),
-    )
+    __table_args__ = (UniqueConstraint("space_id", "key", name="uix_space_memory_space_key"),)
 
     id: int = Field(default=None, primary_key=True)
     user_id: str = Field(sa_column=Column(String(128), nullable=False, index=True))
@@ -37,9 +35,7 @@ class SpaceMemory(AbstractModel, DefaultTimes, table=True):
 class ProjectMemory(AbstractModel, DefaultTimes, table=True):
     """Future knowledge scoped to a Project/session."""
 
-    __table_args__ = (
-        UniqueConstraint("project_id", "key", name="uix_project_memory_project_key"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "key", name="uix_project_memory_project_key"),)
 
     id: int = Field(default=None, primary_key=True)
     user_id: str = Field(sa_column=Column(String(128), nullable=False, index=True))

@@ -36,10 +36,10 @@ class UserPrivacySettings(BaseModel):
 
     # Fields that must all be True for the user to proceed
     REQUIRED_FIELDS: ClassVar[list[str]] = [
-        'take_screenshot',
-        'access_local_software',
-        'access_your_address',
-        'password_storage',
+        "take_screenshot",
+        "access_local_software",
+        "access_your_address",
+        "password_storage",
     ]
 
     @classmethod

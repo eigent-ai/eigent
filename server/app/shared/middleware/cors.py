@@ -34,7 +34,6 @@ from app.shared.middleware.origins import (
     truthy,
 )
 
-
 DEFAULT_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 DEFAULT_ALLOW_HEADERS = [
     "Accept",

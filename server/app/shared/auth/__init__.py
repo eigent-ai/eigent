@@ -20,9 +20,9 @@ Unified auth layer for v1.
 - require_owner: IDOR protection utility
 """
 
-from app.shared.auth.user_auth import auth_must, auth_optional, create_access_token, create_refresh_token
 from app.shared.auth.admin_auth import admin_must
 from app.shared.auth.ownership import require_owner
+from app.shared.auth.user_auth import auth_must, auth_optional, create_access_token, create_refresh_token
 
 __all__ = [
     "auth_must",

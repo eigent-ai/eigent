@@ -15,26 +15,27 @@
 """Slack integration controller. Uses SlackService."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional, List
 from pydantic import BaseModel
 
+from app.domains.trigger.service.slack_service import SlackService
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
-from app.domains.trigger.service.slack_service import SlackService
 
 
 class SlackChannelOut(BaseModel):
     """Output model for Slack channels."""
+
     id: str
     name: str
     is_private: bool = False
     is_member: bool = False
-    num_members: Optional[int] = None
+    num_members: int | None = None
 
 
 class SlackChannelsResponse(BaseModel):
     """Response model for Slack channels list."""
-    channels: List[SlackChannelOut]
+
+    channels: list[SlackChannelOut]
     has_credentials: bool
 
 

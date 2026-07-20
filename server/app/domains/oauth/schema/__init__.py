@@ -16,8 +16,8 @@
 
 from app.domains.oauth.schema.schemas import (
     OAuthAuthorizeReq,
-    OAuthTokenReq,
     OAuthResult,
+    OAuthTokenReq,
 )
 
 __all__ = [

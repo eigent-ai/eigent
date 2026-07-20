@@ -39,19 +39,13 @@ from app.model.space.space import SpaceSourceType
 def test_folder_space_defaults_to_direct_write():
     folder_space = SimpleNamespace(source_type=SpaceSourceType.FOLDER)
 
-    assert (
-        SpaceService._default_project_workdir_mode(folder_space)
-        == ProjectWorkdirMode.DIRECT_WRITE
-    )
+    assert SpaceService._default_project_workdir_mode(folder_space) == ProjectWorkdirMode.DIRECT_WRITE
 
 
 def test_blank_space_defaults_to_artifact_only():
     blank_space = SimpleNamespace(source_type=SpaceSourceType.BLANK)
 
-    assert (
-        SpaceService._default_project_workdir_mode(blank_space)
-        == ProjectWorkdirMode.ARTIFACT_ONLY
-    )
+    assert SpaceService._default_project_workdir_mode(blank_space) == ProjectWorkdirMode.ARTIFACT_ONLY
 
 
 def test_default_is_a_member_of_validation_set():
@@ -59,12 +53,8 @@ def test_default_is_a_member_of_validation_set():
     SpaceService.create_project + ensure_project would raise on every
     Project creation. Lock the relationship explicitly."""
 
-    folder_default = SpaceService._default_project_workdir_mode(
-        SimpleNamespace(source_type=SpaceSourceType.FOLDER)
-    )
-    blank_default = SpaceService._default_project_workdir_mode(
-        SimpleNamespace(source_type=SpaceSourceType.BLANK)
-    )
+    folder_default = SpaceService._default_project_workdir_mode(SimpleNamespace(source_type=SpaceSourceType.FOLDER))
+    blank_default = SpaceService._default_project_workdir_mode(SimpleNamespace(source_type=SpaceSourceType.BLANK))
 
     assert folder_default in SpaceService.PROJECT_WORKDIR_MODES
     assert blank_default in SpaceService.PROJECT_WORKDIR_MODES

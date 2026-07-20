@@ -9,14 +9,14 @@ Theme Tokens V2 is a full cutover to a DTCG-driven, OKLCH-based token engine.
    - `semantic.color.json` (axes + transforms + contrast policy)
    - `component.color.json` (component/global alias vars)
    - `contracts/*.json` (contract presets with `$extends`)
-2. **Compiler pipeline** in `engine.ts`:
+1. **Compiler pipeline** in `engine.ts`:
    - DTCG parse
    - `$extends` resolution
    - Semantic generation (`tone × emphasis × state × element`)
    - WCAG contrast enforcement
    - APCA diagnostics emission
    - CSS variable emission (`--ds-*` + component aliases)
-3. **Runtime application** in `ThemeProvider` via `applyThemeContractV2`.
+1. **Runtime application** in `ThemeProvider` via `applyThemeContractV2`.
 
 ## Contract
 
@@ -39,10 +39,10 @@ type ThemeContractV2 = {
 Override precedence is deterministic:
 
 1. tone defaults
-2. emphasis transform
-3. state transform
-4. axis overrides (`tone`, `emphasis`, `state`)
-5. cell override (`tone.emphasis.state`)
+1. emphasis transform
+1. state transform
+1. axis overrides (`tone`, `emphasis`, `state`)
+1. cell override (`tone.emphasis.state`)
 
 ## Developer API
 

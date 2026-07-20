@@ -19,8 +19,20 @@ This package contains configuration models for different trigger app types.
 """
 
 from app.model.trigger.app_configs.base_config import (
-    BaseTriggerConfig,
     ActivationError,
+    BaseTriggerConfig,
+)
+from app.model.trigger.app_configs.config_registry import (
+    get_config_class,
+    get_config_schema,
+    get_supported_config_types,
+    has_config,
+    register_config_class,
+    validate_activation,
+    validate_config,
+)
+from app.model.trigger.app_configs.schedule_config import (
+    ScheduleTriggerConfig,
 )
 from app.model.trigger.app_configs.slack_config import (
     SlackEventType,
@@ -28,18 +40,6 @@ from app.model.trigger.app_configs.slack_config import (
 )
 from app.model.trigger.app_configs.webhook_config import (
     WebhookTriggerConfig,
-)
-from app.model.trigger.app_configs.schedule_config import (
-    ScheduleTriggerConfig,
-)
-from app.model.trigger.app_configs.config_registry import (
-    get_config_class,
-    get_config_schema,
-    validate_config,
-    register_config_class,
-    get_supported_config_types,
-    has_config,
-    validate_activation,
 )
 
 __all__ = [

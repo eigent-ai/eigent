@@ -20,13 +20,13 @@ Test the prompt manually before automating it.
 ## Create a one-time schedule
 
 1. Open **Scheduled**.
-2. Select **Create**.
-3. Enter a trigger name and task prompt.
-4. Select **Schedule**.
-5. Choose **One time**.
-6. Select the date, hour, and minute.
-7. Set the maximum failure count.
-8. Create the trigger.
+1. Select **Create**.
+1. Enter a trigger name and task prompt.
+1. Select **Schedule**.
+1. Choose **One time**.
+1. Select the date, hour, and minute.
+1. Set the maximum failure count.
+1. Create the trigger.
 
 ## Create a recurring schedule
 

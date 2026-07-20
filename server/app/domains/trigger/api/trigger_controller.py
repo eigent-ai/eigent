@@ -14,21 +14,20 @@
 
 """Trigger controller. Uses TriggerCrudService for business logic."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from sqlmodel import Session, select, desc, and_, delete
-from typing import Optional
 from loguru import logger
+from sqlmodel import Session, and_, delete, desc, select
 
-from app.model.trigger.trigger import Trigger, TriggerIn, TriggerOut, TriggerUpdate, TriggerConfigSchemaOut
-from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionOut
-from app.model.trigger.app_configs import get_config_schema, has_config
-from app.shared.types.trigger_types import TriggerType, TriggerStatus
-from app.shared.auth import auth_must
-from app.shared.auth.user_auth import V1UserAuth
 from app.core.database import session
 from app.domains.trigger.service.trigger_crud_service import TriggerCrudService
+from app.model.trigger.app_configs import get_config_schema, has_config
+from app.model.trigger.trigger import Trigger, TriggerConfigSchemaOut, TriggerIn, TriggerOut, TriggerUpdate
+from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionOut
+from app.shared.auth import auth_must
+from app.shared.auth.user_auth import V1UserAuth
+from app.shared.types.trigger_types import TriggerStatus, TriggerType
 
 router = APIRouter(prefix="/trigger", tags=["Triggers"])
 
@@ -63,9 +62,9 @@ def create_trigger(
 
 @router.get("/", name="list triggers")
 def list_triggers(
-    trigger_type: Optional[TriggerType] = Query(None, description="Filter by trigger type"),
-    status: Optional[TriggerStatus] = Query(None, description="Filter by status"),
-    project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    trigger_type: TriggerType | None = Query(None, description="Filter by trigger type"),
+    status: TriggerStatus | None = Query(None, description="Filter by status"),
+    project_id: str | None = Query(None, description="Filter by project ID"),
     db_session: Session = Depends(session),
     auth: V1UserAuth = Depends(auth_must),
 ) -> Page[TriggerOut]:
@@ -123,7 +122,11 @@ def update_trigger(
         raise
     except Exception as e:
         db_session.rollback()
-        logger.error("Trigger update failed", extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Trigger update failed",
+            extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -148,7 +151,11 @@ def delete_trigger(
         return Response(status_code=204)
     except Exception as e:
         db_session.rollback()
-        logger.error("Trigger deletion failed", extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Trigger deletion failed",
+            extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -167,7 +174,11 @@ def activate_trigger(
         raise
     except Exception as e:
         db_session.rollback()
-        logger.error("Trigger activation failed", extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Trigger activation failed",
+            extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -186,7 +197,11 @@ def deactivate_trigger(
         raise
     except Exception as e:
         db_session.rollback()
-        logger.error("Trigger deactivation failed", extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "Trigger deactivation failed",
+            extra={"user_id": auth.id, "trigger_id": trigger_id, "error": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

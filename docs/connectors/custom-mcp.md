@@ -24,11 +24,11 @@ An MCP server can read data, call APIs, or execute actions. Before adding one:
 ## Add a local MCP server
 
 1. Open **Connectors**.
-2. Select **Add MCP**.
-3. Choose **Local**.
-4. Paste the MCP JSON configuration.
-5. Review the command and arguments.
-6. Select **Install**.
+1. Select **Add MCP**.
+1. Choose **Local**.
+1. Paste the MCP JSON configuration.
+1. Review the command and arguments.
+1. Select **Install**.
 
 Example:
 
@@ -50,29 +50,29 @@ Use an absolute executable path when the Electron process cannot resolve the com
 ## Add a remote MCP server
 
 1. Open **Connectors**.
-2. Select **Add MCP**.
-3. Choose **Remote**.
-4. Enter a display name.
-5. Enter the remote server URL.
-6. Save the configuration.
+1. Select **Add MCP**.
+1. Choose **Remote**.
+1. Enter a display name.
+1. Enter the remote server URL.
+1. Save the configuration.
 
 Use HTTPS for remote servers outside a trusted local network.
 
 ## Configure environment variables
 
 1. Select the MCP server.
-2. Open its environment configuration.
-3. Add the required keys and values.
-4. Save.
+1. Open its environment configuration.
+1. Add the required keys and values.
+1. Save.
 
 Never place production secrets directly in public configuration examples.
 
 ## Enable and test the server
 
 1. Enable the MCP server.
-2. Add it to a test worker.
-3. Start a small task that uses one tool.
-4. Review the task log for the tool call and result.
+1. Add it to a test worker.
+1. Start a small task that uses one tool.
+1. Review the task log for the tool call and result.
 
 ## Edit or delete a server
 

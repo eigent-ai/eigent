@@ -15,9 +15,9 @@
 """Chat domain schemas."""
 
 from app.domains.chat.schema.schemas import (
-    TaskOwnershipCheckReq,
     FileValidationReq,
     FileValidationResult,
+    TaskOwnershipCheckReq,
 )
 
 __all__ = [

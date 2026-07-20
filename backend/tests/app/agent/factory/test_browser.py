@@ -191,8 +191,8 @@ def test_browser_agent_uses_cdp_browser_endpoint(sample_chat_data):
             mock_note_toolkit.return_value.get_tools.return_value = []
             mock_screenshot_toolkit.return_value.get_tools.return_value = []
             mock_search_toolkit.return_value = MagicMock()
-            mock_uuid.return_value.__getitem__ = (
-                lambda self, key: "test_session"
+            mock_uuid.return_value.__getitem__ = lambda self, key: (
+                "test_session"
             )
 
             mock_agent = MagicMock()

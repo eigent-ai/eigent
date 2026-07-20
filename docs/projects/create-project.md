@@ -44,9 +44,9 @@ You cannot change the execution mode of a run after it starts. Create another ru
 ## Attach source files
 
 1. In the composer, select the attachment control.
-2. Choose one or more files.
-3. Confirm that the file names appear in the composer.
-4. Mention the files and their purpose in the request.
+1. Choose one or more files.
+1. Confirm that the file names appear in the composer.
+1. Mention the files and their purpose in the request.
 
 Attachments become part of the first run's execution context.
 
@@ -67,7 +67,7 @@ For example:
 ## Start the project
 
 1. Review the selected Space, mode, files, and request.
-2. Select **Send**.
+1. Select **Send**.
 
 Eigent creates a server-backed Project in the active Space, opens the Session, and starts the first Run.
 

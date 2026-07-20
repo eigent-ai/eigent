@@ -36,14 +36,14 @@ docs/
 ## Adding a new page
 
 1. Create a `.md` file in the appropriate section folder (e.g. `core/my-feature.md`).
-2. Add a frontmatter title at the top:
+1. Add a frontmatter title at the top:
    ```md
    ---
    title: "My Feature"
    description: "Short description shown in search and meta."
    ---
    ```
-3. Register the page in `docs.json` under `navigation.tabs[0].groups` in the relevant group's `pages` array:
+1. Register the page in `docs.json` under `navigation.tabs[0].groups` in the relevant group's `pages` array:
    ```json
    "/core/my-feature"
    ```

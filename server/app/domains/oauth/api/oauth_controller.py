@@ -14,7 +14,6 @@
 
 # STATUS: full-rewrite (uses OAuthService, H12 code/state XSS validation)
 import json
-from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
@@ -31,7 +30,7 @@ _OAUTH_STATE_MAX_LEN = 512
 _OAUTH_SAFE_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
 
-def _validate_oauth_param(value: Optional[str], name: str, max_len: int) -> str:
+def _validate_oauth_param(value: str | None, name: str, max_len: int) -> str:
     """Validate and sanitize OAuth callback params to prevent XSS injection (H12)."""
     if value is None:
         return ""
@@ -44,21 +43,19 @@ def _validate_oauth_param(value: Optional[str], name: str, max_len: int) -> str:
 
 
 @router.get("/{app}/login", name="OAuth Login Redirect")
-def oauth_login(app: str, request: Request, state: Optional[str] = None):
+def oauth_login(app: str, request: Request, state: str | None = None):
     callback_url = str(request.url_for("OAuth Callback", app=app))
     if callback_url.startswith("http://"):
-        callback_url = "https://" + callback_url[len("http://"):]
+        callback_url = "https://" + callback_url[len("http://") :]
 
-    result = OAuthService.get_authorize_url(
-        OAuthAuthorizeReq(provider=app, redirect_uri=callback_url, state=state)
-    )
+    result = OAuthService.get_authorize_url(OAuthAuthorizeReq(provider=app, redirect_uri=callback_url, state=state))
     if not result.success:
         raise HTTPException(status_code=400, detail="Failed to generate authorization URL")
     return RedirectResponse(str(result.authorize_url))
 
 
 @router.get("/{app}/callback", name="OAuth Callback")
-def oauth_callback(app: str, request: Request, code: Optional[str] = None, state: Optional[str] = None):
+def oauth_callback(app: str, request: Request, code: str | None = None, state: str | None = None):
     if not code:
         raise HTTPException(status_code=400, detail="Missing code parameter")
     safe_code = _validate_oauth_param(code, "code", _OAUTH_CODE_MAX_LEN)
@@ -87,11 +84,9 @@ def oauth_callback(app: str, request: Request, code: Optional[str] = None, state
 def fetch_token(app: str, request: Request, data: OauthCallbackPayload):
     callback_url = str(request.url_for("OAuth Callback", app=app))
     if callback_url.startswith("http://"):
-        callback_url = "https://" + callback_url[len("http://"):]
+        callback_url = "https://" + callback_url[len("http://") :]
 
-    result = OAuthService.exchange_token(
-        OAuthTokenReq(provider=app, code=data.code, redirect_uri=callback_url)
-    )
+    result = OAuthService.exchange_token(OAuthTokenReq(provider=app, code=data.code, redirect_uri=callback_url))
     if not result.success:
         raise HTTPException(status_code=500, detail="Token exchange failed")
     return JSONResponse(result.token_data)

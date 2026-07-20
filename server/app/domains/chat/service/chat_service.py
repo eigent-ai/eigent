@@ -15,36 +15,81 @@
 """ChatService: task ownership, file validation, history grouping. No billing in eigent."""
 
 from collections import defaultdict
-from datetime import datetime
-from typing import Dict, List
 
-from loguru import logger
 from sqlmodel import Session, case, desc, func, select
 
 from app.core.database import session_make
+from app.domains.chat.schema import FileValidationReq, FileValidationResult, TaskOwnershipCheckReq
 from app.model.chat.chat_history import ChatHistory, ChatHistoryOut, ChatStatus
 from app.model.chat.chat_history_grouped import GroupedHistoryResponse, ProjectGroup
 from app.model.trigger.trigger import Trigger
-from app.domains.chat.schema import TaskOwnershipCheckReq, FileValidationReq, FileValidationResult
 
 ALLOWED_EXTENSIONS = {
     # Images
-    "jpg", "jpeg", "png", "gif", "webp", "svg", "ico",
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "svg",
+    "ico",
     # Documents
-    "pdf", "txt", "md", "csv", "doc", "docx", "xls", "xlsx",
+    "pdf",
+    "txt",
+    "md",
+    "csv",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
     # Data
-    "json", "xml", "yaml", "yml", "toml",
+    "json",
+    "xml",
+    "yaml",
+    "yml",
+    "toml",
     # Web
-    "html", "htm", "css", "js", "jsx", "ts", "tsx", "vue", "svelte",
+    "html",
+    "htm",
+    "css",
+    "js",
+    "jsx",
+    "ts",
+    "tsx",
+    "vue",
+    "svelte",
     # Code
-    "py", "rb", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs",
-    "sh", "bash", "zsh", "bat", "ps1",
-    "sql", "graphql", "proto",
+    "py",
+    "rb",
+    "go",
+    "rs",
+    "java",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "cs",
+    "sh",
+    "bash",
+    "zsh",
+    "bat",
+    "ps1",
+    "sql",
+    "graphql",
+    "proto",
     # Config
-    "env", "ini", "cfg", "conf", "lock",
-    "dockerfile", "dockerignore", "gitignore",
+    "env",
+    "ini",
+    "cfg",
+    "conf",
+    "lock",
+    "dockerfile",
+    "dockerignore",
+    "gitignore",
     # Archive
-    "zip", "tar", "gz",
+    "zip",
+    "tar",
+    "gz",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -57,8 +102,7 @@ class ChatService:
         """Check if task_id belongs to user_id. Replaces _task_owned_by_user."""
         with session_make() as s:
             h = s.exec(
-                select(ChatHistory)
-                .where(ChatHistory.task_id == req.task_id, ChatHistory.user_id == req.user_id)
+                select(ChatHistory).where(ChatHistory.task_id == req.task_id, ChatHistory.user_id == req.user_id)
             ).first()
             return h is not None
 
@@ -147,7 +191,7 @@ class ChatService:
         project_id_override: str | None = None,
     ) -> list[ProjectGroup]:
         """Build ProjectGroup list from histories. Shared by grouped list and single project endpoints."""
-        project_map: Dict[str, Dict] = defaultdict(
+        project_map: dict[str, dict] = defaultdict(
             lambda: {
                 "project_id": "",
                 "space_id": None,
@@ -254,10 +298,14 @@ class ChatService:
             return None
 
         trigger_count_stmt = (
-            select(func.count(Trigger.id)).where(Trigger.user_id == str(user_id)).where(Trigger.project_id == project_id)
+            select(func.count(Trigger.id))
+            .where(Trigger.user_id == str(user_id))
+            .where(Trigger.project_id == project_id)
         )
         trigger_count = s.exec(trigger_count_stmt).first() or 0
         trigger_count_map = {project_id: trigger_count}
 
-        projects = ChatService._build_project_data(histories, trigger_count_map, include_tasks, project_id_override=project_id)
+        projects = ChatService._build_project_data(
+            histories, trigger_count_map, include_tasks, project_id_override=project_id
+        )
         return projects[0] if projects else None

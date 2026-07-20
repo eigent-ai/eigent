@@ -37,10 +37,10 @@ Expand task logs when you need operational detail. Use summaries and generated f
 Before execution, Workforce can split the request into subtasks.
 
 1. Review each subtask.
-2. Edit unclear or overly broad items.
-3. Add missing work.
-4. Delete unnecessary work.
-5. Start the task.
+1. Edit unclear or overly broad items.
+1. Add missing work.
+1. Delete unnecessary work.
+1. Start the task.
 
 The coordinator assigns each subtask to an appropriate worker.
 

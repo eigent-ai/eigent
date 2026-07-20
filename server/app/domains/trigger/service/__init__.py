@@ -14,19 +14,19 @@
 
 """Trigger domain services."""
 
-from app.domains.trigger.service.trigger_service import TriggerService, get_trigger_service
-from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
 from app.domains.trigger.service.app_handler_service import (
+    AppHandlerResult,
     BaseAppHandler,
-    SlackAppHandler,
     DefaultWebhookHandler,
     ScheduleAppHandler,
-    AppHandlerResult,
+    SlackAppHandler,
     get_app_handler,
     get_schedule_handler,
-    register_app_handler,
     get_supported_trigger_types,
+    register_app_handler,
 )
+from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
+from app.domains.trigger.service.trigger_service import TriggerService, get_trigger_service
 
 __all__ = [
     "TriggerService",

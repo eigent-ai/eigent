@@ -20,15 +20,15 @@
 
 Note: All the above data is stored in the local PostgreSQL volume in Docker (see “Data Persistence” below). If you configure external models or remote MCP, requests go to the third-party services you specify.
 
----
+______________________________________________________________________
 
 ### Quick Start (Docker)
 
 #### Prerequisites
 
 - **Docker Desktop**: Installed and running
-- **Python**: 3.12.* (3.12.0 or later recommended)
-- **Node.js**: >=18.0.0 <23.0.0
+- **Python**: 3.12.\* (3.12.0 or later recommended)
+- **Node.js**: >=18.0.0 \<23.0.0
 
 #### Hosting Configuration for Triggers
 
@@ -104,7 +104,7 @@ docker logs -f eigent_api | cat
 docker logs -f eigent_postgres | cat
 ```
 
----
+______________________________________________________________________
 
 ### Developer Mode (Optional)
 
@@ -123,7 +123,7 @@ export database_url=postgresql://postgres:123456@localhost:5432/eigent
 uv run uvicorn main:api --reload --port 3001 --host 0.0.0.0
 ```
 
----
+______________________________________________________________________
 
 ### Others
 

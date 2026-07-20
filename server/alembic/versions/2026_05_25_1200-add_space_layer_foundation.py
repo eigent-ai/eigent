@@ -176,7 +176,9 @@ def upgrade() -> None:
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["project.id"]),
         sa.ForeignKeyConstraint(["space_id"], ["space.id"]),
-        sa.CheckConstraint("status IN ('added', 'modified', 'deleted')", name="ck_space_file_index_overlay_status_valid"),
+        sa.CheckConstraint(
+            "status IN ('added', 'modified', 'deleted')", name="ck_space_file_index_overlay_status_valid"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "space_id",
@@ -263,12 +265,8 @@ def upgrade() -> None:
     # chat_history has no FK to Space; seed legacy ids before creating rows so
     # later backfill CTEs can use a single shape for old and new records.
     op.execute("UPDATE chat_history SET space_id = 'legacy_' || CAST(user_id AS TEXT) WHERE space_id IS NULL")
-    op.execute(
-        "UPDATE chat_step SET run_id = task_id WHERE run_id IS NULL"
-    )
-    op.execute(
-        "UPDATE chat_snapshot SET storage_key = 'local://' || ltrim(image_path, '/') WHERE storage_key IS NULL"
-    )
+    op.execute("UPDATE chat_step SET run_id = task_id WHERE run_id IS NULL")
+    op.execute("UPDATE chat_snapshot SET storage_key = 'local://' || ltrim(image_path, '/') WHERE storage_key IS NULL")
     op.execute("UPDATE trigger SET space_id = 'legacy_' || CAST(user_id AS TEXT) WHERE space_id IS NULL")
 
     op.execute(

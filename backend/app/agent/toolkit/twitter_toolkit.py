@@ -37,9 +37,9 @@ class TwitterToolkit(BaseTwitterToolkit, AbstractToolkit):
 
     @listen_toolkit(
         create_tweet,
-        lambda _,
-        text,
-        **kwargs: f"create tweet with text: {text} and options: {kwargs}",
+        lambda _, text, **kwargs: (
+            f"create tweet with text: {text} and options: {kwargs}"
+        ),
     )
     def create_tweet(
         self,

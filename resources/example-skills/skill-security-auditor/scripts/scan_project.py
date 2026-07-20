@@ -41,18 +41,36 @@ DANGEROUS_FUNCTIONS = {
             r"subprocess\.\w+\(.*shell\s*=\s*True",
             "subprocess with shell=True is vulnerable to command injection",
         ),
-        (r"\bpickle\.loads?\s*\(", "pickle.load() can execute arbitrary code during deserialization"),
-        (r"\byaml\.load\s*\([^)]*\)", "yaml.load() without SafeLoader can execute arbitrary code"),
-        (r'\.execute\s*\(\s*f["\']', "f-string in SQL execute() is vulnerable to SQL injection"),
-        (r"\.execute\s*\([^)]*%", "string formatting in SQL execute() is vulnerable to SQL injection"),
-        (r"\bmarkupsafe\.Markup\s*\(\s*f", "Markup() with f-string is vulnerable to XSS"),
+        (
+            r"\bpickle\.loads?\s*\(",
+            "pickle.load() can execute arbitrary code during deserialization",
+        ),
+        (
+            r"\byaml\.load\s*\([^)]*\)",
+            "yaml.load() without SafeLoader can execute arbitrary code",
+        ),
+        (
+            r'\.execute\s*\(\s*f["\']',
+            "f-string in SQL execute() is vulnerable to SQL injection",
+        ),
+        (
+            r"\.execute\s*\([^)]*%",
+            "string formatting in SQL execute() is vulnerable to SQL injection",
+        ),
+        (
+            r"\bmarkupsafe\.Markup\s*\(\s*f",
+            "Markup() with f-string is vulnerable to XSS",
+        ),
     ],
     ".js": [
         (r"\beval\s*\(", "eval() can execute arbitrary code"),
         (r"\bnew\s+Function\s*\(", "Function constructor can execute arbitrary code"),
         (r"\.innerHTML\s*=", "innerHTML assignment is vulnerable to XSS"),
         (r"\bdocument\.write\s*\(", "document.write() is vulnerable to XSS"),
-        (r"child_process\.exec\s*\(", "child_process.exec() is vulnerable to command injection"),
+        (
+            r"child_process\.exec\s*\(",
+            "child_process.exec() is vulnerable to command injection",
+        ),
     ],
     ".ts": [
         (r"\beval\s*\(", "eval() can execute arbitrary code"),
@@ -61,15 +79,36 @@ DANGEROUS_FUNCTIONS = {
         (r"dangerouslySetInnerHTML", "dangerouslySetInnerHTML is vulnerable to XSS"),
     ],
     ".go": [
-        (r'exec\.Command\s*\(\s*"sh"', "Shell execution is vulnerable to command injection"),
-        (r'db\.Query\s*\([^)]*\+', "String concatenation in SQL query is vulnerable to injection"),
-        (r'fmt\.Sprintf\s*\("SELECT', "String formatting in SQL query is vulnerable to injection"),
+        (
+            r'exec\.Command\s*\(\s*"sh"',
+            "Shell execution is vulnerable to command injection",
+        ),
+        (
+            r"db\.Query\s*\([^)]*\+",
+            "String concatenation in SQL query is vulnerable to injection",
+        ),
+        (
+            r'fmt\.Sprintf\s*\("SELECT',
+            "String formatting in SQL query is vulnerable to injection",
+        ),
     ],
     ".java": [
-        (r"Runtime\.getRuntime\(\)\.exec\s*\(", "Runtime.exec() is vulnerable to command injection"),
-        (r"ObjectInputStream.*readObject", "Deserialization can execute arbitrary code"),
-        (r'Statement.*execute\s*\([^)]*\+', "String concatenation in SQL is vulnerable to injection"),
-        (r"parseExpression\s*\(.*\)\.getValue", "SpEL expression evaluation can execute arbitrary code"),
+        (
+            r"Runtime\.getRuntime\(\)\.exec\s*\(",
+            "Runtime.exec() is vulnerable to command injection",
+        ),
+        (
+            r"ObjectInputStream.*readObject",
+            "Deserialization can execute arbitrary code",
+        ),
+        (
+            r"Statement.*execute\s*\([^)]*\+",
+            "String concatenation in SQL is vulnerable to injection",
+        ),
+        (
+            r"parseExpression\s*\(.*\)\.getValue",
+            "SpEL expression evaluation can execute arbitrary code",
+        ),
     ],
 }
 
@@ -96,16 +135,45 @@ CONFIG_ISSUES = [
 ]
 
 SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv",
-    ".env", "dist", "build", ".tox", ".mypy_cache",
-    ".pytest_cache", "vendor", ".bundle",
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".env",
+    "dist",
+    "build",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "vendor",
+    ".bundle",
 }
 
 SKIP_EXTENSIONS = {
-    ".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe",
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg",
-    ".woff", ".woff2", ".ttf", ".eot", ".mp3", ".mp4",
-    ".zip", ".tar", ".gz", ".jar", ".war",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".dylib",
+    ".dll",
+    ".exe",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".mp3",
+    ".mp4",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".jar",
+    ".war",
 }
 
 MAX_FILE_SIZE = 1_000_000  # 1 MB
@@ -144,14 +212,16 @@ def scan_file(filepath: Path) -> list:
     for line_num, line in enumerate(lines, 1):
         for pattern, label in SECRET_PATTERNS:
             if re.search(pattern, line):
-                findings.append({
-                    "type": "secret",
-                    "severity": "critical",
-                    "file": str(filepath),
-                    "line": line_num,
-                    "rule": label,
-                    "snippet": line.strip()[:120],
-                })
+                findings.append(
+                    {
+                        "type": "secret",
+                        "severity": "critical",
+                        "file": str(filepath),
+                        "line": line_num,
+                        "rule": label,
+                        "snippet": line.strip()[:120],
+                    }
+                )
 
     # Check for dangerous functions
     patterns = DANGEROUS_FUNCTIONS.get(extension, [])
@@ -161,27 +231,31 @@ def scan_file(filepath: Path) -> list:
             continue
         for pattern, desc in patterns:
             if re.search(pattern, line):
-                findings.append({
-                    "type": "vulnerability",
-                    "severity": "high",
-                    "file": str(filepath),
-                    "line": line_num,
-                    "rule": desc,
-                    "snippet": line.strip()[:120],
-                })
+                findings.append(
+                    {
+                        "type": "vulnerability",
+                        "severity": "high",
+                        "file": str(filepath),
+                        "line": line_num,
+                        "rule": desc,
+                        "snippet": line.strip()[:120],
+                    }
+                )
 
     # Check for config issues
     for line_num, line in enumerate(lines, 1):
         for pattern, desc in CONFIG_ISSUES:
             if re.search(pattern, line):
-                findings.append({
-                    "type": "config",
-                    "severity": "medium",
-                    "file": str(filepath),
-                    "line": line_num,
-                    "rule": desc,
-                    "snippet": line.strip()[:120],
-                })
+                findings.append(
+                    {
+                        "type": "config",
+                        "severity": "medium",
+                        "file": str(filepath),
+                        "line": line_num,
+                        "rule": desc,
+                        "snippet": line.strip()[:120],
+                    }
+                )
 
     return findings
 
@@ -199,40 +273,46 @@ def check_project_structure(project_dir: Path) -> list:
     gitignore = project_dir / ".gitignore"
 
     if not gitignore.exists():
-        findings.append({
-            "type": "config",
-            "severity": "medium",
-            "file": str(project_dir),
-            "line": 0,
-            "rule": "Missing .gitignore file",
-            "snippet": "",
-        })
+        findings.append(
+            {
+                "type": "config",
+                "severity": "medium",
+                "file": str(project_dir),
+                "line": 0,
+                "rule": "Missing .gitignore file",
+                "snippet": "",
+            }
+        )
     else:
         content = gitignore.read_text(encoding="utf-8", errors="ignore")
         for sensitive in [".env", "*.pem", "*.key"]:
             if sensitive not in content:
-                findings.append({
-                    "type": "config",
-                    "severity": "medium",
-                    "file": str(gitignore),
-                    "line": 0,
-                    "rule": f".gitignore missing pattern: {sensitive}",
-                    "snippet": "",
-                })
+                findings.append(
+                    {
+                        "type": "config",
+                        "severity": "medium",
+                        "file": str(gitignore),
+                        "line": 0,
+                        "rule": f".gitignore missing pattern: {sensitive}",
+                        "snippet": "",
+                    }
+                )
 
     # Check for sensitive files that should not be committed
     sensitive_files = [".env", ".env.local", ".env.production"]
     for name in sensitive_files:
         target = project_dir / name
         if target.exists():
-            findings.append({
-                "type": "secret",
-                "severity": "high",
-                "file": str(target),
-                "line": 0,
-                "rule": f"Sensitive file present: {name}",
-                "snippet": "",
-            })
+            findings.append(
+                {
+                    "type": "secret",
+                    "severity": "high",
+                    "file": str(target),
+                    "line": 0,
+                    "rule": f"Sensitive file present: {name}",
+                    "snippet": "",
+                }
+            )
 
     return findings
 
@@ -298,18 +378,23 @@ def format_json(findings, scanned):
     for f in findings:
         counts[f["severity"]] = counts.get(f["severity"], 0) + 1
 
-    return json.dumps({
-        "scanned_files": scanned,
-        "total_findings": len(findings),
-        "summary": counts,
-        "findings": findings,
-    }, indent=2)
+    return json.dumps(
+        {
+            "scanned_files": scanned,
+            "total_findings": len(findings),
+            "summary": counts,
+            "findings": findings,
+        },
+        indent=2,
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Scan a project for security issues")
     parser.add_argument("path", help="Project directory to scan")
-    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    parser.add_argument(
+        "--format", choices=["text", "json"], default="text", help="Output format"
+    )
     args = parser.parse_args()
 
     findings, scanned = scan_project(args.path)

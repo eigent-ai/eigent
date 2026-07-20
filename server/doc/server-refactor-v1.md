@@ -9,17 +9,17 @@ The server codebase has been restructured from a flat layout to a **domain-drive
 
 ### Directory Mapping
 
-| Before | After | Description |
-|---|---|---|
-| `app/component/` | `app/core/` | Infrastructure utilities (database, encryption, celery, etc.) |
-| `app/controller/` | `app/domains/*/api/` | API controllers, grouped by domain |
-| `app/service/` | `app/domains/*/service/` | Business logic, grouped by domain |
-| `app/exception/` | `app/shared/exception/` | Exception handling |
-| `app/type/` | `app/shared/types/` | Shared type definitions |
-| _(new)_ | `app/shared/auth/` | Authentication & authorization |
-| _(new)_ | `app/shared/middleware/` | CORS, rate limiting, trace ID |
-| _(new)_ | `app/shared/http/` | HTTP client utilities |
-| _(new)_ | `app/shared/logging/` | Logging & sensitive data filtering |
+| Before            | After                    | Description                                                   |
+| ----------------- | ------------------------ | ------------------------------------------------------------- |
+| `app/component/`  | `app/core/`              | Infrastructure utilities (database, encryption, celery, etc.) |
+| `app/controller/` | `app/domains/*/api/`     | API controllers, grouped by domain                            |
+| `app/service/`    | `app/domains/*/service/` | Business logic, grouped by domain                             |
+| `app/exception/`  | `app/shared/exception/`  | Exception handling                                            |
+| `app/type/`       | `app/shared/types/`      | Shared type definitions                                       |
+| _(new)_           | `app/shared/auth/`       | Authentication & authorization                                |
+| _(new)_           | `app/shared/middleware/` | CORS, rate limiting, trace ID                                 |
+| _(new)_           | `app/shared/http/`       | HTTP client utilities                                         |
+| _(new)_           | `app/shared/logging/`    | Logging & sensitive data filtering                            |
 
 ### Domain Structure
 
@@ -50,8 +50,8 @@ You **must** include `--build` to rebuild the image. Running `docker-compose up 
 If you are running the server directly (via `start_server.sh` or `uv run uvicorn`):
 
 1. Stop the running server process
-2. Pull the latest code
-3. Restart the server
+1. Pull the latest code
+1. Restart the server
 
 ```bash
 # If using start_server.sh

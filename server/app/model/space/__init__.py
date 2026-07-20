@@ -12,25 +12,25 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from app.model.space.file_index import SpaceFileIndex, SpaceFileIndexOverlay
 from app.model.space.apply import (
+    OVERLAY_SOURCE_PATH_METADATA_KEY,
+    OVERLAY_SOURCE_ROOT_METADATA_KEY,
     AppliedPath,
     ApplyConflict,
     ApplyFailure,
     ApplyResolutionIn,
     ApplyWarning,
-    OVERLAY_SOURCE_PATH_METADATA_KEY,
-    OVERLAY_SOURCE_ROOT_METADATA_KEY,
     SpaceOverlayDiscardIn,
     SpaceOverlayDiscardResponse,
     SpaceOverlayListResponse,
     SpaceOverlayOut,
     SpaceOverlayWriteIn,
-    SpaceProjectRefreshIn,
-    SpaceProjectRefreshResponse,
     SpaceProjectApplyIn,
     SpaceProjectApplyResponse,
+    SpaceProjectRefreshIn,
+    SpaceProjectRefreshResponse,
 )
+from app.model.space.file_index import SpaceFileIndex, SpaceFileIndexOverlay
 from app.model.space.space import (
     Space,
     SpaceIn,

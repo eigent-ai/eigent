@@ -15,7 +15,6 @@
 """ConfigService: user config CRUD with validation. Follows CreditsService pattern."""
 
 from sqlmodel import select
-from loguru import logger
 
 from app.core.database import session_make
 from app.model.config.config import Config, ConfigInfo
@@ -37,9 +36,7 @@ class ConfigService:
     def get(config_id: int, user_id: int) -> Config | None:
         """Get a single config by id, scoped to user."""
         with session_make() as s:
-            return s.exec(
-                select(Config).where(Config.id == config_id, Config.user_id == user_id)
-            ).first()
+            return s.exec(select(Config).where(Config.id == config_id, Config.user_id == user_id)).first()
 
     @staticmethod
     def create(user_id: int, config_name: str, config_value: str, config_group: str | None = None) -> dict:
@@ -68,15 +65,15 @@ class ConfigService:
             return {"success": True, "config": db_config}
 
     @staticmethod
-    def update(config_id: int, user_id: int, config_name: str, config_value: str, config_group: str | None = None) -> dict:
+    def update(
+        config_id: int, user_id: int, config_name: str, config_value: str, config_group: str | None = None
+    ) -> dict:
         """Update config: ownership + validation + duplicate check."""
         if not ConfigInfo.is_valid_env_var(config_group, config_name):
             return {"success": False, "error_code": "CONFIG_INVALID_NAME"}
 
         with session_make() as s:
-            db_config = s.exec(
-                select(Config).where(Config.id == config_id, Config.user_id == user_id)
-            ).first()
+            db_config = s.exec(select(Config).where(Config.id == config_id, Config.user_id == user_id)).first()
             if not db_config:
                 return {"success": False, "error_code": "CONFIG_NOT_FOUND"}
 
@@ -102,9 +99,7 @@ class ConfigService:
     def delete(config_id: int, user_id: int) -> bool:
         """Delete config: ownership check."""
         with session_make() as s:
-            db_config = s.exec(
-                select(Config).where(Config.id == config_id, Config.user_id == user_id)
-            ).first()
+            db_config = s.exec(select(Config).where(Config.id == config_id, Config.user_id == user_id)).first()
             if not db_config:
                 return False
             s.delete(db_config)

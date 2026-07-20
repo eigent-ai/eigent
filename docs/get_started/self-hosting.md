@@ -44,21 +44,21 @@ You can configure more than one provider and change the preferred model later.
    cd eigent
    ```
 
-2. Install the frontend dependencies:
+1. Install the frontend dependencies:
 
    ```bash
    npm install
    ```
 
-3. Review `.env.development`, `backend/README.md`, and the root `README.md` for the current backend and environment configuration.
+1. Review `.env.development`, `backend/README.md`, and the root `README.md` for the current backend and environment configuration.
 
-4. Start the development application:
+1. Start the development application:
 
    ```bash
    npm run dev
    ```
 
-5. In Eigent, open **Agents > Models** and configure a model provider.
+1. In Eigent, open **Agents > Models** and configure a model provider.
 
 <Note>
 The first development start can take longer because Eigent prepares frontend and backend dependencies.
@@ -71,11 +71,11 @@ The first development start can take longer because Eigent prepares frontend and
 For the fastest self-hosted setup, connect an existing provider:
 
 1. In Eigent, open **Agents > Models**.
-2. Expand **Bring Your Own Key**.
-3. Select a provider.
-4. Enter the API key, endpoint, and model name required by that provider.
-5. Select **Validate** or **Save**.
-6. Enable the provider and mark it as preferred when you want it to be the default.
+1. Expand **Bring Your Own Key**.
+1. Select a provider.
+1. Enter the API key, endpoint, and model name required by that provider.
+1. Select **Validate** or **Save**.
+1. Enable the provider and mark it as preferred when you want it to be the default.
 
 To keep inference local, start one of the supported runtimes and follow [Local models](/core/models/local-model).
 
@@ -111,11 +111,11 @@ Review the Electron signing, packaging, and backend dependency requirements befo
 ## Update a self-hosted installation
 
 1. Commit or back up local configuration changes.
-2. Pull the target release or branch.
-3. Review release notes and environment changes.
-4. Reinstall dependencies when lockfiles changed.
-5. Run the relevant tests and build command.
-6. Start Eigent and validate models, connectors, browser sessions, and existing Spaces.
+1. Pull the target release or branch.
+1. Review release notes and environment changes.
+1. Reinstall dependencies when lockfiles changed.
+1. Run the relevant tests and build command.
+1. Start Eigent and validate models, connectors, browser sessions, and existing Spaces.
 
 ## Troubleshooting
 

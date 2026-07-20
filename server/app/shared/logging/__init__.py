@@ -16,9 +16,9 @@
 
 from app.shared.logging.logging_utils import (
     MASK_PATTERNS,
+    configure_v1_logging,
     mask_sensitive,
     trace_filter,
-    configure_v1_logging,
 )
 
 __all__ = [

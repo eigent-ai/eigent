@@ -9,17 +9,17 @@ Server 代码从扁平结构重构为**领域驱动架构 (Domain-Driven)**。AP
 
 ### 目录变更对照
 
-| 重构前 | 重构后 | 说明 |
-|---|---|---|
-| `app/component/` | `app/core/` | 基础设施（数据库、加密、celery 等） |
-| `app/controller/` | `app/domains/*/api/` | 按领域分组的 API 控制器 |
-| `app/service/` | `app/domains/*/service/` | 按领域分组的业务逻辑 |
-| `app/exception/` | `app/shared/exception/` | 异常处理 |
-| `app/type/` | `app/shared/types/` | 共享类型定义 |
-| _(新增)_ | `app/shared/auth/` | 认证与授权 |
-| _(新增)_ | `app/shared/middleware/` | CORS、限流、Trace ID |
-| _(新增)_ | `app/shared/http/` | HTTP 客户端工具 |
-| _(新增)_ | `app/shared/logging/` | 日志与敏感信息过滤 |
+| 重构前            | 重构后                   | 说明                                |
+| ----------------- | ------------------------ | ----------------------------------- |
+| `app/component/`  | `app/core/`              | 基础设施（数据库、加密、celery 等） |
+| `app/controller/` | `app/domains/*/api/`     | 按领域分组的 API 控制器             |
+| `app/service/`    | `app/domains/*/service/` | 按领域分组的业务逻辑                |
+| `app/exception/`  | `app/shared/exception/`  | 异常处理                            |
+| `app/type/`       | `app/shared/types/`      | 共享类型定义                        |
+| _(新增)_          | `app/shared/auth/`       | 认证与授权                          |
+| _(新增)_          | `app/shared/middleware/` | CORS、限流、Trace ID                |
+| _(新增)_          | `app/shared/http/`       | HTTP 客户端工具                     |
+| _(新增)_          | `app/shared/logging/`    | 日志与敏感信息过滤                  |
 
 ### 领域结构
 
@@ -50,8 +50,8 @@ docker-compose up --build -d
 如果你通过 `start_server.sh` 或 `uv run uvicorn` 直接运行 server：
 
 1. 停止正在运行的 server 进程
-2. 拉取最新代码
-3. 重新启动 server
+1. 拉取最新代码
+1. 重新启动 server
 
 ```bash
 # 使用 start_server.sh

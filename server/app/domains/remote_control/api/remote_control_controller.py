@@ -50,8 +50,6 @@ from app.domains.remote_control.schema import (
     RemoteControlSessionOut,
     RemoteControlStepsOut,
 )
-from app.model.project.project import ProjectOut
-from app.model.space.apply import SpaceOverlayListResponse
 from app.domains.remote_control.service.remote_control_service import (
     COMMAND_ACKNOWLEDGED,
     COMMAND_FAILED,
@@ -59,18 +57,20 @@ from app.domains.remote_control.service.remote_control_service import (
     RemoteControlRedis,
     RemoteControlService,
 )
+from app.model.project.project import ProjectOut
 from app.model.remote_control import RemoteControlCommand, RemoteControlSession
+from app.model.space.apply import SpaceOverlayListResponse
 from app.model.user.user import User
 from app.shared.auth import auth_must
 from app.shared.auth.token_blacklist import BLACKLIST_PUBSUB_PREFIX, is_blacklisted
 from app.shared.auth.user_auth import V1UserAuth, _get_jti
-from app.shared.middleware.rate_limit import rate_limiter_factory
 from app.shared.middleware.origins import (
     configured_remote_origins,
     csv_values,
     is_local_dev_origin,
     truthy,
 )
+from app.shared.middleware.rate_limit import rate_limiter_factory
 
 router = APIRouter(prefix="/remote-control", tags=["Remote Control"])
 
@@ -405,9 +405,7 @@ def _pending_bridge_commands(
         .limit(limit)
     ).all()
     return [
-        (sessions_by_id[command.session_id], command)
-        for command in commands
-        if command.session_id in sessions_by_id
+        (sessions_by_id[command.session_id], command) for command in commands if command.session_id in sessions_by_id
     ]
 
 
@@ -849,7 +847,7 @@ async def bridge_subscribe(websocket: WebSocket):
                 websocket.receive_json(),
                 timeout=WS_SUBSCRIBE_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await websocket.close(code=1008)
             return
 
@@ -958,10 +956,7 @@ async def bridge_subscribe(websocket: WebSocket):
                 # validate that first before checking the cached expiry.
                 now = datetime.utcnow()
                 next_token_raw = _strip_bearer(msg.get("auth_token"))
-                if (
-                    next_token_raw
-                    and (not token_raw or not secrets.compare_digest(next_token_raw, token_raw))
-                ):
+                if next_token_raw and (not token_raw or not secrets.compare_digest(next_token_raw, token_raw)):
                     try:
                         new_auth, new_exp, new_jti = await _validate_bridge_token(
                             next_token_raw, db, user_id, token_is_stripped=True
@@ -972,9 +967,7 @@ async def bridge_subscribe(websocket: WebSocket):
                         _remember_bridge_token_jti(desktop_instance_id, token_jti)
                         next_blacklist_check_at = now + timedelta(seconds=blacklist_check_interval)
                     except HTTPException as exc:
-                        await websocket.send_json(
-                            {"type": "auth_expired", "message": exc.detail}
-                        )
+                        await websocket.send_json({"type": "auth_expired", "message": exc.detail})
                         await websocket.close(code=4401)
                         return
                 if token_expires_at <= now:
@@ -1008,9 +1001,7 @@ async def bridge_subscribe(websocket: WebSocket):
                     next_blacklist_check_at = datetime.utcnow() + timedelta(seconds=blacklist_check_interval)
                     await websocket.send_json({"type": "reauth_ok"})
                 except HTTPException as exc:
-                    await websocket.send_json(
-                        {"type": "auth_expired", "message": exc.detail}
-                    )
+                    await websocket.send_json({"type": "auth_expired", "message": exc.detail})
                     await websocket.close(code=4401)
                     return
             elif msg_type == "command_delivered" and msg.get("command_id"):
@@ -1113,7 +1104,7 @@ async def events_subscribe(websocket: WebSocket, session_id: str):
                 websocket.receive_json(),
                 timeout=WS_SUBSCRIBE_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await websocket.close(code=1008)
             return
 

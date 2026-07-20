@@ -11,7 +11,7 @@ The currently implemented channel is Remote Control. Telegram, Lark, and WhatsAp
 ## Open Dispatch
 
 1. Open a Space.
-2. In the project sidebar, select **Dispatch**.
+1. In the project sidebar, select **Dispatch**.
 
 Remote Control requires an active Space because commands and desktop targets are scoped to that Space.
 
@@ -20,20 +20,20 @@ Remote Control requires an active Space because commands and desktop targets are
 ## Start a Remote Control session
 
 1. In Dispatch, find **Remote Control**.
-2. Select **Start**.
-3. Wait for Eigent to create the session.
-4. Select **Copy link**.
-5. Open the link on the remote device.
+1. Select **Start**.
+1. Wait for Eigent to create the session.
+1. Select **Copy link**.
+1. Open the link on the remote device.
 
 The remote page connects to the desktop bridge and targets the selected Space.
 
 ## Send a remote follow-up
 
 1. Open the remote link.
-2. Confirm the connected desktop target.
-3. Enter a follow-up command.
-4. Send it.
-5. Review status updates on the remote page or desktop.
+1. Confirm the connected desktop target.
+1. Enter a follow-up command.
+1. Send it.
+1. Review status updates on the remote page or desktop.
 
 Remote commands become task input on the desktop side.
 
@@ -53,7 +53,7 @@ Use it to determine whether a problem occurred in the remote page, server, deskt
 ## Stop a session
 
 1. Return to Dispatch.
-2. Select **Stop**.
+1. Select **Stop**.
 
 Stop sessions when remote access is no longer required. A copied link should not be treated as permanent access.
 

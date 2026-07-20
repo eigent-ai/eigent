@@ -152,7 +152,9 @@ def remove_orphaned_rels_files(unpacked_dir: Path) -> list[str]:
         for rels_file in rels_dir.glob("*.rels"):
             resource_file = rels_dir.parent / rels_file.name.replace(".rels", "")
             try:
-                resource_rel_path = resource_file.resolve().relative_to(unpacked_dir.resolve())
+                resource_rel_path = resource_file.resolve().relative_to(
+                    unpacked_dir.resolve()
+                )
             except ValueError:
                 continue
 
@@ -183,7 +185,15 @@ def get_referenced_files(unpacked_dir: Path) -> set:
 
 
 def remove_orphaned_files(unpacked_dir: Path, referenced: set) -> list[str]:
-    resource_dirs = ["media", "embeddings", "charts", "diagrams", "tags", "drawings", "ink"]
+    resource_dirs = [
+        "media",
+        "embeddings",
+        "charts",
+        "diagrams",
+        "tags",
+        "drawings",
+        "ink",
+    ]
     removed = []
 
     for dir_name in resource_dirs:

@@ -43,4 +43,4 @@ Click on the SambaNova card and fill in the following fields:
 - **You are ready to go.** Your Eigent agents can now utilize the SambaNova
   model.
 
----
+______________________________________________________________________

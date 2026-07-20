@@ -13,7 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 """Trigger models package."""
-from app.model.trigger.trigger import Trigger, TriggerIn, TriggerUpdate, TriggerOut, TriggerConfigSchemaOut
+
+from app.model.trigger.trigger import Trigger, TriggerConfigSchemaOut, TriggerIn, TriggerOut, TriggerUpdate
 from app.model.trigger.trigger_execution import TriggerExecution, TriggerExecutionIn, TriggerExecutionUpdate
 
 __all__ = [
@@ -24,5 +25,5 @@ __all__ = [
     "TriggerExecution",
     "TriggerExecutionIn",
     "TriggerExecutionUpdate",
-    "TriggerConfigSchemaOut"
+    "TriggerConfigSchemaOut",
 ]

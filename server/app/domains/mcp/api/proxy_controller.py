@@ -12,16 +12,17 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from fastapi import APIRouter, Depends
+from typing import Any, cast
+
+import requests
 from exa_py import Exa
+from fastapi import APIRouter, Depends
 from loguru import logger
-from app.shared.auth.user_auth import key_must
+
 from app.core.environment import env_not_empty
 from app.model.mcp.proxy import ExaSearch
-from typing import Any, cast
-import requests
-
 from app.model.user.key import Key
+from app.shared.auth.user_auth import key_must
 
 router = APIRouter(prefix="/proxy", tags=["Mcp Servers"])
 

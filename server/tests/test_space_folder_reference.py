@@ -17,9 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-os.environ.setdefault(
-    "database_url", "sqlite:////private/tmp/eigent_space_folder_ref_test.db"
-)
+os.environ.setdefault("database_url", "sqlite:////private/tmp/eigent_space_folder_ref_test.db")
 
 from app.domains.space.service.folder_binding import (
     normalize_folder_root_reference,
@@ -83,14 +81,8 @@ def test_prepare_folder_space_rejects_duplicate_root_reference():
 def test_normalize_folder_root_reference_collapses_redundant_segments():
     """./, //, and trailing separators are deduped without touching the fs."""
 
-    assert (
-        normalize_folder_root_reference("/Users/alice/./repo")
-        == "/Users/alice/repo"
-    )
-    assert (
-        normalize_folder_root_reference("/Users/alice//repo/")
-        == "/Users/alice/repo"
-    )
+    assert normalize_folder_root_reference("/Users/alice/./repo") == "/Users/alice/repo"
+    assert normalize_folder_root_reference("/Users/alice//repo/") == "/Users/alice/repo"
     assert same_folder_reference(
         "/Users/alice/./repo/",
         "/Users/alice/repo",

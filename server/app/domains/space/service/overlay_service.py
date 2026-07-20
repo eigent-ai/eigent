@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlmodel import Session, select
@@ -163,11 +163,7 @@ class SpaceOverlayService:
             row.hash = None if data.status == "deleted" else data.hash
             row.size = data.size
             row.mode = data.mode
-            row.modified_at = (
-                datetime.fromisoformat(data.modified_at)
-                if data.modified_at
-                else datetime.now(timezone.utc)
-            )
+            row.modified_at = datetime.fromisoformat(data.modified_at) if data.modified_at else datetime.now(UTC)
             row.metadata_json = {
                 **(row.metadata_json or {}),
                 **metadata,
@@ -247,9 +243,7 @@ class SpaceOverlayService:
         user_id: int | str,
         s: Session,
     ) -> SpaceProjectRefreshResponse:
-        project = SpaceOverlayService._get_owned_project(
-            space_id, project_id, user_id, s
-        )
+        project = SpaceOverlayService._get_owned_project(space_id, project_id, user_id, s)
         pending_rows = s.exec(
             select(SpaceFileIndexOverlay).where(
                 SpaceFileIndexOverlay.space_id == space_id,
@@ -262,7 +256,7 @@ class SpaceOverlayService:
         project.metadata_json = {
             **(project.metadata_json or {}),
             "baseSnapshotId": base_snapshot_id,
-            "refreshedAt": datetime.now(timezone.utc).isoformat(),
+            "refreshedAt": datetime.now(UTC).isoformat(),
         }
         s.add(project)
         s.commit()

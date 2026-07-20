@@ -14,21 +14,21 @@
 
 """MCP controller. Uses McpUserService for install and import."""
 
-from fastapi import Depends, HTTPException, APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi_babel import _
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
-from sqlmodel import Session, col, select
 from sqlalchemy.orm import selectinload, with_loader_criteria
+from sqlmodel import Session, col, select
 
 from app.core.database import session
+from app.domains.mcp.service.mcp_user_service import McpUserService
 from app.model.mcp.mcp import Mcp, McpOut
 from app.model.mcp.mcp_env import McpEnv, Status as McpEnvStatus
 from app.model.mcp.mcp_user import McpImportType, McpUser
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
 from app.shared.middleware.rate_limit import install_rate_limiter
-from app.domains.mcp.service.mcp_user_service import McpUserService
 
 router = APIRouter(tags=["Mcp Servers"])
 
@@ -91,9 +91,7 @@ async def install(mcp_id: int, db_session: Session = Depends(session), auth: V1U
 
 
 @router.post("/mcp/import/{mcp_type}", name="mcp import", dependencies=[install_rate_limiter])
-async def import_mcp(
-    mcp_type: McpImportType, mcp_data: dict, auth: V1UserAuth = Depends(auth_must)
-):
+async def import_mcp(mcp_type: McpImportType, mcp_data: dict, auth: V1UserAuth = Depends(auth_must)):
     result = McpUserService.import_mcp(mcp_type, mcp_data, auth.id)
     if not result["success"]:
         detail = result.get("detail", "Import failed")
