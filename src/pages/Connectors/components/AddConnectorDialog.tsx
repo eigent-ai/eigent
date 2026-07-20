@@ -72,7 +72,7 @@ import type { ConnectorInstallHint } from './types';
 export type { ConnectorInstallHint };
 
 /** Large enough to fill the dialog viewport and avoid immediate load-more waterfalls. */
-const MARKET_PAGE_SIZE = 24;
+const MARKET_PAGE_SIZE = 60;
 
 export type AddConnectorTarget =
   | { source: 'open'; provider: ConnectorProvider }
@@ -358,7 +358,8 @@ export default function AddConnectorDialog({
 
   useEffect(() => {
     if (!open) return;
-    // Built-in is only available in local mode. Hosted / non-local always uses Open Connectors.
+    // Built-in is only available in local mode. Hosted / non-local always uses
+    // Connector Gateway providers.
     const allowBuiltin = localMode;
     const targetSource =
       allowBuiltin && initialTarget?.source === 'builtin'
@@ -460,7 +461,9 @@ export default function AddConnectorDialog({
         if (!append && !soft) {
           setCatalog([]);
           setHasMore(false);
-          setCatalogError(error?.message || t('connectors.load-open-failed'));
+          setCatalogError(
+            error?.message || t('connectors.load-gateway-failed')
+          );
         }
       } finally {
         if (requestId === catalogRequestIdRef.current) {
@@ -902,7 +905,7 @@ export default function AddConnectorDialog({
                     onClick={() => setBrowseSource('open')}
                   >
                     <PlugZap className="h-4 w-4" />
-                    {t('connectors.open-connectors')}
+                    {t('connectors.gateway-connectors')}
                   </Button>
                 ) : null}
                 <Button
@@ -952,7 +955,7 @@ export default function AddConnectorDialog({
                   !catalogRefreshing &&
                   catalog.length === 0 ? (
                   <div className="flex min-h-48 items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
-                    {t('connectors.no-open-found')}
+                    {t('connectors.no-gateway-found')}
                   </div>
                 ) : (
                   <div className="space-y-3">

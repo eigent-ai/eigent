@@ -102,7 +102,7 @@ const HIDDEN_BUILT_INS = new Set([
   'Github',
 ]);
 
-/** Preferred Open Connector service keys for the overview recommendations. */
+/** Preferred hosted connector service keys for the overview recommendations. */
 const RECOMMENDED_SERVICE_KEYS = [
   ['slack'],
   ['notion'],
@@ -265,54 +265,59 @@ function connectorListRank(item: ConnectorListItem): number {
   return 2;
 }
 
-async function resolveOpenProviderByKeys(
+function normalizedProviderKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function findOpenProviderByKeys(
+  providers: ConnectorProvider[],
   serviceKeys: readonly string[]
-): Promise<ConnectorProvider | null> {
-  const results = await Promise.allSettled(
-    serviceKeys.map((service) => fetchConnectorProvider(service))
+): ConnectorProvider | null {
+  const keys = new Set(serviceKeys.map(normalizedProviderKey));
+  return (
+    providers.find((provider) => {
+      const service = normalizedProviderKey(provider.service);
+      const label = normalizedProviderKey(providerLabel(provider));
+      return keys.has(service) || keys.has(label);
+    }) || null
   );
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value?.provider) {
-      return result.value.provider;
-    }
-  }
-  return null;
 }
 
 async function resolveOpenProviderByName(
   name: string
 ): Promise<ConnectorProvider | null> {
   const normalized = name.toLowerCase().trim();
-  const candidates = [
-    normalized.replace(/\s+/g, '_'),
-    normalized.replace(/\s+/g, '-'),
-    normalized.replace(/\s+/g, ''),
-    normalized,
-  ];
-  const byKey = await resolveOpenProviderByKeys(candidates);
-  if (byKey) return byKey;
+  const candidates = Array.from(
+    new Set([
+      name,
+      normalized.replace(/\s+/g, '_'),
+      normalized.replace(/\s+/g, '-'),
+      normalized.replace(/\s+/g, ''),
+      normalized,
+    ])
+  );
 
-  try {
-    const search = await fetchConnectorProviders({
-      page: 1,
-      pageSize: 24,
-      query: name,
-    });
-    return (
-      search.providers.find((provider) => {
-        const service = provider.service.toLowerCase();
-        const label = providerLabel(provider).toLowerCase();
-        return (
-          service === normalized ||
-          label === normalized ||
-          service.includes(normalized.replace(/\s+/g, '_')) ||
-          label.includes(normalized)
-        );
-      }) || null
-    );
-  } catch {
-    return null;
+  for (const query of candidates) {
+    try {
+      const search = await fetchConnectorProviders({
+        page: 1,
+        pageSize: 24,
+        query,
+      });
+      const exact = findOpenProviderByKeys(search.providers, candidates);
+      if (exact) return exact;
+      const fuzzy =
+        search.providers.find((provider) => {
+          const service = provider.service.toLowerCase();
+          const label = providerLabel(provider).toLowerCase();
+          return service.includes(normalized) || label.includes(normalized);
+        }) || null;
+      if (fuzzy) return fuzzy;
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
 export default function ConnectorGateway() {
@@ -427,7 +432,7 @@ export default function ConnectorGateway() {
     try {
       setOpenConnections(await fetchConnectedProviders());
     } catch (error: any) {
-      setPageError(error?.message || t('connectors.load-open-failed'));
+      setPageError(error?.message || t('connectors.load-gateway-failed'));
       setOpenConnections([]);
     } finally {
       setLoadingOpen(false);
@@ -452,7 +457,7 @@ export default function ConnectorGateway() {
   useEffect(() => {
     if (capabilityStatus !== 'ready' || !connectorGatewayEnabled) return;
     // Warm the browse-dialog page-1 cache so Add Connector opens instantly.
-    void prefetchConnectorProviders({ page: 1, pageSize: 24 });
+    void prefetchConnectorProviders({ page: 1, pageSize: 60 });
     void loadOpenConnections();
   }, [capabilityStatus, connectorGatewayEnabled, loadOpenConnections]);
 
@@ -466,22 +471,40 @@ export default function ConnectorGateway() {
     let cancelled = false;
     setRecommendedLoading(true);
     void (async () => {
-      const results = await Promise.all(
-        RECOMMENDED_SERVICE_KEYS.map((serviceKeys) =>
-          resolveOpenProviderByKeys(serviceKeys)
-        )
-      );
+      const catalog = await fetchConnectorProviders({
+        page: 1,
+        pageSize: 60,
+      });
       if (cancelled) return;
       const providers: ConnectorProvider[] = [];
       const seen = new Set<string>();
-      for (const provider of results) {
-        if (!provider || seen.has(provider.service)) continue;
+      for (const serviceKeys of RECOMMENDED_SERVICE_KEYS) {
+        const provider = findOpenProviderByKeys(catalog.providers, serviceKeys);
+        if (
+          !provider ||
+          seen.has(provider.service) ||
+          isConnectedProvider(provider)
+        ) {
+          continue;
+        }
+        seen.add(provider.service);
+        providers.push(provider);
+      }
+      for (const provider of catalog.providers) {
+        if (providers.length >= RECOMMENDED_SERVICE_KEYS.length) break;
+        if (seen.has(provider.service) || isConnectedProvider(provider)) {
+          continue;
+        }
         seen.add(provider.service);
         providers.push(provider);
       }
       setRecommendedProviders(providers);
       setRecommendedLoading(false);
-    })();
+    })().catch(() => {
+      if (cancelled) return;
+      setRecommendedProviders([]);
+      setRecommendedLoading(false);
+    });
 
     return () => {
       cancelled = true;
@@ -638,8 +661,8 @@ export default function ConnectorGateway() {
   }, [connectorItems, listQuery, t]);
 
   const openBrowseDialog = (target: AddConnectorTarget = null) => {
-    // Non-local hosts always use Open Connectors — never Built-in. Open the
-    // dialog immediately and resolve the matching Open provider in the
+    // Non-local hosts always use Connector Gateway providers — never Built-in.
+    // Open the dialog immediately and resolve the matching hosted provider in the
     // background so the button never feels dead.
     if (!IS_LOCAL_MODE && target?.source === 'builtin') {
       setBrowseDialogTarget(null);

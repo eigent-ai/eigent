@@ -44,7 +44,7 @@ export interface PickerItem {
   id: string;
   name: string;
   token: string;
-  /** Provider icon URL for Open Connector items. */
+  /** Provider icon URL for hosted connector items. */
   iconUrl?: string;
 }
 
@@ -214,7 +214,7 @@ const EXCLUDED_BUILTIN_CONNECTORS = ['Search', 'RAG'];
 
 /**
  * Connected connectors only, matching the Connectors page sidebar: connected
- * Open Connectors (when the Connector Gateway is enabled), connected built-in
+ * hosted connectors (when the Connector Gateway is enabled), connected built-in
  * integrations (`/api/v1/config/info` + configs), and the user's enabled MCPs
  * (`/api/v1/mcp/users`), shown as labelled sections.
  */
@@ -332,7 +332,7 @@ export function ConnectorPickerPanel({
   );
 
   const groups: PickerGroup[] = [
-    { id: 'open', label: t('connectors.open-connectors'), items: openItems },
+    { id: 'open', label: t('connectors.gateway-connectors'), items: openItems },
     {
       id: 'builtin',
       label: t('setting.mcp-sidebar-built-in'),
