@@ -35,11 +35,7 @@ import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
-import {
-  AgentStep,
-  ChatTaskStatus,
-  SessionMode,
-} from '@/types/constants';
+import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
   useCallback,
   useEffect,
@@ -746,10 +742,22 @@ export default function ChatBox(): JSX.Element {
 
         chatStore.setIsPending(_taskId, true);
 
-        await fetchPost(`/chat/${targetProjectId}/human-reply`, {
-          agent: chatStore.tasks[_taskId].activeAsk,
-          reply: tempMessageContent,
-        });
+        const replyResult = await fetchPost(
+          `/chat/${targetProjectId}/human-reply`,
+          {
+            agent: chatStore.tasks[_taskId].activeAsk,
+            reply: tempMessageContent,
+          }
+        );
+        if (replyResult?.code === 1) {
+          chatStore.setIsPending(_taskId, false);
+          chatStore.setActiveAskList(_taskId, []);
+          chatStore.setActiveAsk(_taskId, '');
+          toast.error(
+            replyResult.text || 'This task is no longer waiting for a reply.'
+          );
+          return;
+        }
         chatStore.setAttaches(_taskId, []);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');

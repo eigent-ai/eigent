@@ -648,6 +648,51 @@ describe('ChatBox Component', async () => {
       });
     });
 
+    it('should clear stale human reply state when backend no longer has the task lock', async () => {
+      const user = userEvent.setup();
+      _mockFetchPost.mockResolvedValueOnce({
+        code: 1,
+        text: 'This task is no longer waiting for a human reply.',
+      });
+
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            activeAsk: 'test-agent',
+            askList: [],
+            hasMessages: true,
+          },
+        },
+      } as any;
+
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: storeObj,
+      });
+
+      renderChatBox();
+
+      const messageInput = screen.getByTestId('message-input');
+      const sendButton = screen.getByTestId('send-button');
+
+      await user.type(messageInput, 'Late reply');
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(storeObj.setIsPending).toHaveBeenCalledWith(
+          'test-task-id',
+          false
+        );
+        expect(storeObj.setActiveAskList).toHaveBeenCalledWith(
+          'test-task-id',
+          []
+        );
+        expect(storeObj.setActiveAsk).toHaveBeenCalledWith('test-task-id', '');
+      });
+    });
+
     it('should process ask list when human reply is sent', async () => {
       const user = userEvent.setup();
 
