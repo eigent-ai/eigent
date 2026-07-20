@@ -27,6 +27,7 @@ from app.model.model_platform import (
     NormalizedOptionalModelPlatform,
 )
 from app.remote_sub_agent.config import RemoteSubAgentConfig
+from app.utils.workspace_paths import task_dir_name
 
 logger = logging.getLogger("chat_model")
 
@@ -182,14 +183,14 @@ class Chat(BaseModel):
             / "eigent"
             / owner_key
             / f"project_{self.project_id}"
-            / f"task_{run_id}"
+            / task_dir_name(run_id)
         )
         legacy_project_base = (
             Path.home()
             / "eigent"
             / legacy_owner_key
             / f"project_{self.project_id}"
-            / f"task_{run_id}"
+            / task_dir_name(run_id)
         )
         if (
             owner_key != legacy_owner_key

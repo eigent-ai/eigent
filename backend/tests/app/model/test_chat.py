@@ -333,3 +333,21 @@ class TestFileSavePath:
 
         assert resolved == legacy_path / "screenshots"
         assert resolved.exists()
+
+    def test_file_save_path_does_not_double_task_prefix(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        chat = self._chat()
+        chat.run_id = "task_run-1"
+
+        resolved = Path(chat.file_save_path())
+
+        assert resolved == (
+            tmp_path
+            / "eigent"
+            / "user_42"
+            / "project_project-1"
+            / "task_run-1"
+        )
+        assert resolved.exists()
