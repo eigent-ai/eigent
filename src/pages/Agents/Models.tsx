@@ -1348,7 +1348,7 @@ export default function SettingModels() {
       <button
         key={tabId}
         onClick={() => setSelectedTab(tabId)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${isSubItem ? 'pl-3' : ''} ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
             ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
@@ -2732,7 +2732,7 @@ export default function SettingModels() {
                           )}
                         </button>
                         <div
-                          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                          className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
                             subscriptionCollapsed
                               ? 'max-h-0 opacity-0'
                               : 'max-h-[2000px] opacity-100'
@@ -2774,7 +2774,7 @@ export default function SettingModels() {
                           )}
                         </button>
                         <div
-                          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                          className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
                             byokGroupCollapsed
                               ? 'max-h-0 opacity-0'
                               : 'max-h-[2000px] opacity-100'
@@ -2814,7 +2814,7 @@ export default function SettingModels() {
                     )}
                   </button>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
                       localCollapsed
                         ? 'max-h-0 opacity-0'
                         : 'max-h-[2000px] opacity-100'

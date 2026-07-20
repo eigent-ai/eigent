@@ -526,7 +526,7 @@ export default function SkillUploadDialog({
               ) : null}
               {mode === 'upload' ? (
                 <div
-                  className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-300 ease-in ${
+                  className={`ease-[cubic-bezier(0.23,1,0.32,1)] relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-colors duration-200 ${
                     uploadError
                       ? 'border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default'
                       : isDragging

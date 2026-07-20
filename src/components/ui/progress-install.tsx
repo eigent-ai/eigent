@@ -24,7 +24,7 @@ const ProgressInstall = React.forwardRef<
   <ProgressPrimitive.Root
     ref={ref}
     className={cn(
-      'h-3 bg-ds-bg-neutral-strong-default relative w-full overflow-hidden rounded-full',
+      'relative h-3 w-full overflow-hidden rounded-full bg-ds-bg-neutral-strong-default',
       className
     )}
     {...props}
@@ -34,7 +34,7 @@ const ProgressInstall = React.forwardRef<
 
     <ProgressPrimitive.Indicator
       className={cn(
-        'relative z-10 h-full w-full flex-1 rounded-full transition-all'
+        'ease-[cubic-bezier(0.23,1,0.32,1)] relative z-10 h-full w-full flex-1 rounded-full transition-transform duration-200'
       )}
       style={{
         transform: `translateX(-${100 - (value || 0)}%)`,

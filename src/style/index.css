@@ -249,7 +249,7 @@ body {
   width: 2px;
   height: 40px;
   background: rgba(200, 200, 200, 0.3);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
   position: relative;
   border-radius: 10px;
 }
@@ -493,7 +493,9 @@ code {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .terminal-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -547,7 +549,9 @@ code {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
@@ -654,11 +658,48 @@ code {
   background-color: rgba(110, 118, 129, 0.1) !important;
 }
 
+/* Folder zoom controls only travel in response to a real hover-capable pointer. */
+.zoom-controls-reveal {
+  opacity: 0;
+  transform: translateY(calc(-100% - 8px));
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .zoom-controls-reveal {
+    transition:
+      transform 200ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .group:hover > .zoom-controls-reveal {
+    opacity: 1;
+    transform: translateY(20px);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .zoom-controls-reveal {
+    opacity: 1;
+    transform: translateY(20px);
+  }
+}
+
 /* ProgressInstall shimmer background */
 .progress-install-shimmer {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--borderRadius-lg);
+}
+
+.progress-install-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 200%;
   background: linear-gradient(
     120deg,
     transparent 0%,
@@ -667,24 +708,20 @@ code {
     color-mix(in srgb, var(--colors-primary-4) 8%, transparent) 75%,
     transparent 100%
   );
-  background-size: 200% 100%;
-  background-position: 200% 0;
-  animation: progress-install-shimmer 3s ease-in-out infinite;
-  pointer-events: none;
-  border-radius: var(--borderRadius-lg);
-  will-change: background-position;
+  animation: progress-install-shimmer 3s linear infinite;
+  will-change: transform;
 }
 
 @keyframes progress-install-shimmer {
   0% {
-    background-position: 200% 0;
+    transform: translateX(50%);
   }
   100% {
-    background-position: -200% 0;
+    transform: translateX(-100%);
   }
 }
 
-/* Chat: single-agent "working" — shimmer painted on the text glyphs only */
+/* Chat: single-agent "working" — static gradient with an opacity pulse. */
 .single-agent-text-shimmer {
   color: transparent;
   background: linear-gradient(
@@ -696,17 +733,59 @@ code {
     var(--ds-text-neutral-default-default) 100%
   );
   background-size: 250% 100%;
-  background-position: 100% 0;
+  background-position: 50% 0;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: single-agent-text-shimmer 2.5s ease-in-out infinite;
+  animation: single-agent-text-pulse 1.2s cubic-bezier(0.77, 0, 0.175, 1)
+    infinite alternate;
 }
 
-@keyframes single-agent-text-shimmer {
+@keyframes single-agent-text-pulse {
   0% {
-    background-position: 100% 0;
+    opacity: 0.65;
   }
   100% {
-    background-position: -50% 0;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce,
+  .animate-ping {
+    animation: none !important;
+  }
+
+  /* Keep short fades from tailwindcss-animate, but remove travel, rotation,
+     and scale from shared sheets and other animate-in/out surfaces. */
+  .animate-in,
+  .animate-out {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-enter-rotate: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-exit-rotate: 0 !important;
+    --tw-exit-scale: 1 !important;
+    animation-duration: 200ms !important;
+  }
+
+  .zoom-controls-reveal {
+    transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .progress-install-shimmer::before {
+    animation: none;
+    transform: translateX(-25%);
+    will-change: auto;
+  }
+
+  .single-agent-text-shimmer {
+    animation: none;
+    opacity: 1;
+    color: var(--ds-text-neutral-default-default);
+    background: none;
   }
 }

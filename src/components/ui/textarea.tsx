@@ -164,7 +164,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
 
           <div
             className={cn(
-              'relative flex items-start rounded-lg border border-solid shadow-sm transition-all',
+              'relative flex items-start rounded-lg border border-solid shadow-sm transition-[background-color,border-color,box-shadow,opacity]',
               stateCls.field,
               formFieldTextareaSizeClasses[size],
               state !== 'error' &&

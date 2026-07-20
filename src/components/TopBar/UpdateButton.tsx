@@ -122,8 +122,8 @@ export default function UpdateButton() {
         >
           <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
             <div
-              className="h-full rounded-full bg-ds-bg-brand-default-default transition-all duration-200 ease-out"
-              style={{ width: `${percent}%` }}
+              className="ease-[cubic-bezier(0.23,1,0.32,1)] h-full w-full origin-left rounded-full bg-ds-bg-brand-default-default transition-transform duration-200 motion-reduce:transition-none"
+              style={{ transform: `scaleX(${percent / 100})` }}
             />
           </div>
           <span className="text-xs tabular-nums text-ds-text-neutral-subtle-default">

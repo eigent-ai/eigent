@@ -24,6 +24,7 @@ import { LocaleEnum, switchLanguage } from '@/i18n';
 import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -249,7 +250,7 @@ function StepTheme({
                 )}
               >
                 <div
-                  className="h-10 w-10 rounded-lg ring-2 ring-offset-2 transition-all"
+                  className="h-10 w-10 rounded-lg ring-2 ring-offset-2 transition-[background-color,box-shadow]"
                   style={
                     {
                       backgroundColor: accent,
@@ -369,6 +370,8 @@ function StepBackground({
 export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const shouldReduceMotion = useReducedMotion();
 
   const {
     language,
@@ -424,6 +427,33 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     onComplete();
   };
 
+  const stepVariants = {
+    enter: (navigationDirection: 1 | -1) => ({
+      opacity: 0,
+      transform: shouldReduceMotion
+        ? 'translateX(0px)'
+        : `translateX(${navigationDirection * 12}px)`,
+    }),
+    center: {
+      opacity: 1,
+      transform: 'translateX(0px)',
+      transition: {
+        duration: shouldReduceMotion ? 0.16 : 0.22,
+        ease: [0.23, 1, 0.32, 1] as const,
+      },
+    },
+    exit: (navigationDirection: 1 | -1) => ({
+      opacity: 0,
+      transform: shouldReduceMotion
+        ? 'translateX(0px)'
+        : `translateX(${navigationDirection * -8}px)`,
+      transition: {
+        duration: 0.16,
+        ease: [0.23, 1, 0.32, 1] as const,
+      },
+    }),
+  };
+
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default">
       {LivePatternComponent && <LivePatternComponent />}
@@ -435,7 +465,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
             <div
               key={s}
               className={cn(
-                'h-1.5 rounded-full transition-all duration-300',
+                'ease-[cubic-bezier(0.23,1,0.32,1)] h-1.5 rounded-full transition-[background-color,opacity] duration-200',
                 s === step
                   ? 'w-8 bg-ds-text-neutral-default-default'
                   : s < step
@@ -447,24 +477,35 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
         </div>
 
         <div className="flex-1 overflow-auto">
-          {step === 1 && (
-            <StepLanguage selected={language} onSelect={handleLanguage} />
-          )}
-          {step === 2 && (
-            <StepTheme
-              appearanceMode={appearanceMode}
-              appearance={appearance}
-              activeThemeId={activeThemeId}
-              onModeChange={setAppearanceMode}
-              onThemeChange={handleThemePreset}
-            />
-          )}
-          {step === 3 && (
-            <StepBackground
-              selected={workspaceMainBackground}
-              onSelect={setWorkspaceMainBackground}
-            />
-          )}
+          <AnimatePresence mode="wait" initial={false} custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+            >
+              {step === 1 && (
+                <StepLanguage selected={language} onSelect={handleLanguage} />
+              )}
+              {step === 2 && (
+                <StepTheme
+                  appearanceMode={appearanceMode}
+                  appearance={appearance}
+                  activeThemeId={activeThemeId}
+                  onModeChange={setAppearanceMode}
+                  onThemeChange={handleThemePreset}
+                />
+              )}
+              {step === 3 && (
+                <StepBackground
+                  selected={workspaceMainBackground}
+                  onSelect={setWorkspaceMainBackground}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Navigation */}
@@ -477,7 +518,10 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
             className={cn(
               step === 1 ? 'pointer-events-none opacity-0' : 'opacity-100'
             )}
-            onClick={() => setStep((s) => (s - 1) as Step)}
+            onClick={() => {
+              setDirection(-1);
+              setStep((s) => (s - 1) as Step);
+            }}
           >
             <ArrowLeftIcon />
             {t('layout.back')}
@@ -495,6 +539,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
                   step_id: step,
                   step_name: stepName(step),
                 });
+                setDirection(1);
                 setStep((s) => (s + 1) as Step);
               }}
             >

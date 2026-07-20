@@ -84,7 +84,7 @@ export function WorkforceAgentList({
               className={cn(
                 'rounded-xl border-0 bg-ds-bg-neutral-default-default',
                 'inline-flex items-center justify-center p-2',
-                'text-ds-text-neutral-muted-default transition-all duration-200',
+                'text-ds-text-neutral-muted-default transition-[color,opacity,box-shadow] duration-200',
                 'opacity-80 hover:text-ds-text-neutral-default-default hover:opacity-100',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus'
               )}

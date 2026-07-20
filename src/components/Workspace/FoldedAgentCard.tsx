@@ -132,7 +132,7 @@ export function FoldedAgentCard({
   const agentLabel = preset?.name ?? agent.name;
 
   const shellClass = cn(
-    'rounded-xl bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-neutral-default-focus ease-in-out overflow-hidden transition-all duration-200 focus-within:ring-2',
+    'rounded-xl bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-neutral-default-focus ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-[border-color,box-shadow,opacity] duration-200 focus-within:ring-2',
     borderless ? 'border-0' : 'border border-solid',
     compactMode
       ? borderless

@@ -543,7 +543,7 @@ export function ModelSelect({
           className={cn(
             modelTriggerShellClass,
             'min-w-0 cursor-pointer border-0 text-left',
-            'justify-between font-semibold transition-all',
+            'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] justify-between font-semibold transition-[background-color,box-shadow,opacity]',
             'hover:bg-ds-bg-neutral-subtle-default active:bg-ds-bg-neutral-subtle-default data-[state=open]:bg-ds-bg-neutral-subtle-default',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
             'disabled:pointer-events-none disabled:opacity-50',

@@ -367,7 +367,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default transition-all duration-300 ease-in-out"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default"
                   disabled={isLoading}
                 >
                   <img src={google} className="h-5 w-5" />
@@ -379,7 +379,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default transition-all duration-300 ease-in-out"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default"
                   disabled={isLoading}
                 >
                   <img src={github2} className="h-5 w-5" />

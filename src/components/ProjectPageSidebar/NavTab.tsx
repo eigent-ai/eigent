@@ -173,7 +173,7 @@ function tabMainInner({
         {showNotificationDot && (
           <span
             className={cn(
-              'shrink-0 rounded-full transition-all duration-300',
+              'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 rounded-full transition-colors',
               notificationDotTone === 'attention'
                 ? 'bg-ds-text-status-error-strong-default'
                 : 'bg-ds-bg-brand-default-default',

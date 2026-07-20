@@ -88,7 +88,7 @@ export function QueuedBox({
       {/* Header Content - Accordion Items for queued tasks */}
       <div
         className={cn(
-          'scrollbar-always-visible relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-all duration-200 ease-in-out',
+          'scrollbar-always-visible duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-opacity',
           isExpanded && queuedMessages.length > 0
             ? 'max-h-[156px] opacity-100'
             : 'max-h-0 opacity-0'
@@ -117,7 +117,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
 
   return (
     <div
-      className="relative box-border flex w-full cursor-pointer items-center gap-2 rounded-md bg-ds-bg-neutral-strong-default px-1 py-1 transition-all duration-200 hover:bg-ds-bg-neutral-default-default"
+      className="relative box-border flex w-full cursor-pointer items-center gap-2 rounded-md bg-ds-bg-neutral-strong-default px-1 py-1 transition-colors duration-200 hover:bg-ds-bg-neutral-default-default"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -136,7 +136,7 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
         size="xs"
         buttonContent="icon-only"
         className={cn(
-          'h-5 w-5 shrink-0 rounded-md p-0.5 transition-all duration-200',
+          'h-5 w-5 shrink-0 rounded-md p-0.5 transition-[background-color,opacity,transform] duration-200',
           isHovered
             ? 'translate-x-0 opacity-100 hover:bg-ds-bg-neutral-default-hover'
             : 'pointer-events-none translate-x-2 opacity-0'

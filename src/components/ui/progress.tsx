@@ -30,7 +30,7 @@ const Progress = React.forwardRef<
     {...props}
   >
     <ProgressPrimitive.Indicator
-      className={`h-full w-full flex-1 transition-all ${value === 100 ? 'bg-progress-fill-complete' : 'bg-progress-fill-default'}`}
+      className={`ease-[cubic-bezier(0.23,1,0.32,1)] h-full w-full flex-1 transition-transform duration-200 ${value === 100 ? 'bg-progress-fill-complete' : 'bg-progress-fill-default'}`}
       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
     />
   </ProgressPrimitive.Root>

@@ -15,7 +15,7 @@
 import { AlarmClockIcon } from '@/components/ui/animate-ui/icons/alarm-clock';
 import { formatRelativeTime } from '@/lib/utils';
 import { ActivityLog, ActivityType } from '@/store/activityLogStore';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Activity,
   AlertTriangle,
@@ -140,6 +140,7 @@ export function ActivityLogItem({
   isExpanded,
   onToggleExpanded,
 }: ActivityLogItemProps) {
+  const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
   const StatusIcon = getStatusIcon(log.type);
   const statusType = getStatusType(log.type);
@@ -173,28 +174,37 @@ export function ActivityLogItem({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.2 }}
-      className="px-4 relative flex items-start"
+      initial={{
+        opacity: 0,
+        transform: shouldReduceMotion ? 'translateY(0px)' : 'translateY(-20px)',
+      }}
+      animate={{ opacity: 1, transform: 'translateY(0px)' }}
+      exit={{
+        opacity: 0,
+        transform: shouldReduceMotion ? 'translateY(0px)' : 'translateY(-20px)',
+      }}
+      transition={{
+        duration: shouldReduceMotion ? 0.16 : 0.2,
+        ease: [0.23, 1, 0.32, 1],
+      }}
+      className="relative flex items-start px-4"
     >
       {/* Left side: Status Lead Icon */}
       <div className="flex flex-col items-center self-stretch">
         <div
-          className={`h-6 w-6 relative flex items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
+          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
         >
           <StatusIcon className={`h-4 w-4 ${statusIconColorClass}`} />
         </div>
-        <div className="bg-ds-border-neutral-default-default w-[1px] flex-1" />
+        <div className="w-[1px] flex-1 bg-ds-border-neutral-default-default" />
       </div>
 
       {/* Right side: Content */}
-      <div className="mb-4 min-w-0 flex flex-1 flex-col">
+      <div className="mb-4 flex min-w-0 flex-1 flex-col">
         {/* Top row: Trigger type icon + timestamp */}
-        <div className="mb-2 px-1 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between px-1">
           <div
-            className={`h-6 w-6 flex flex-shrink-0 items-center justify-center`}
+            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center`}
           >
             <TriggerTypeIcon className={`h-4 w-4 ${typeIconColorClass}`} />
           </div>
@@ -204,12 +214,12 @@ export function ActivityLogItem({
         </div>
 
         {/* Bottom row: Accordion */}
-        <div className="rounded-md bg-ds-bg-neutral-default-default px-2 py-1 hover:bg-ds-bg-neutral-strong-default flex cursor-pointer flex-col items-center justify-center transition-colors duration-150">
+        <div className="flex cursor-pointer flex-col items-center justify-center rounded-md bg-ds-bg-neutral-default-default px-2 py-1 transition-colors duration-150 hover:bg-ds-bg-neutral-strong-default">
           <button
             onClick={onToggleExpanded}
-            className="p-0 flex w-full cursor-pointer items-center justify-between border-none bg-transparent text-left"
+            className="flex w-full cursor-pointer items-center justify-between border-none bg-transparent p-0 text-left"
           >
-            <div className="gap-2 flex flex-row">
+            <div className="flex flex-row gap-2">
               <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
                 {t('triggers.trigger-label')} {triggerNumber}
               </span>
@@ -218,65 +228,87 @@ export function ActivityLogItem({
               </span>
             </div>
             <ChevronDown
-              className={`h-4 w-4 text-ds-text-neutral-muted-default opacity-30 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 text-ds-text-neutral-muted-default opacity-30 transition-transform duration-200 motion-reduce:transition-none ${isExpanded ? 'rotate-180' : ''}`}
             />
           </button>
 
           {/* Accordion content */}
-          <motion.div
-            initial={false}
-            animate={{
-              height: isExpanded ? 'auto' : 0,
-              opacity: isExpanded ? 1 : 0,
-            }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="px-2 py-2 min-h-[32px]">
-              {log.metadata && Object.keys(log.metadata).length > 0 ? (
-                <div className="space-y-0.5 text-label-sm text-ds-text-neutral-muted-default">
-                  {Object.entries(log.metadata)
-                    .filter(
-                      ([, value]) =>
-                        value !== undefined && value !== null && value !== ''
-                    )
-                    .map(([key, value]) => {
-                      let displayKey = key
-                        .replace(/_/g, ' ')
-                        .replace(/\b\w/g, (c) => c.toUpperCase());
-                      let displayValue: string;
-                      if (key === 'tokens_used') {
-                        displayKey = 'Tokens Used';
-                        displayValue = `${Number(value).toLocaleString()} tokens`;
-                      } else if (key === 'duration_seconds') {
-                        displayKey = 'Duration';
-                        const secs = Number(value);
-                        displayValue =
-                          secs < 60
-                            ? `${secs.toFixed(1)}s`
-                            : `${Math.floor(secs / 60)}m ${(secs % 60).toFixed(0)}s`;
-                      } else if (key === 'status') {
-                        return null; // status is redundant — shown in the header
-                      } else {
-                        displayValue = String(value);
-                      }
-                      return (
-                        <div key={key} className="gap-2 flex">
-                          <span className="font-medium text-ds-text-neutral-muted-default">
-                            {displayKey}:
-                          </span>
-                          <span>{displayValue}</span>
-                        </div>
-                      );
-                    })}
+          <AnimatePresence initial={false}>
+            {isExpanded ? (
+              <motion.div
+                key="activity-details"
+                initial={{
+                  opacity: 0,
+                  transform: shouldReduceMotion
+                    ? 'translateY(0px)'
+                    : 'translateY(-8px)',
+                }}
+                animate={{ opacity: 1, transform: 'translateY(0px)' }}
+                exit={{
+                  opacity: 0,
+                  transform: shouldReduceMotion
+                    ? 'translateY(0px)'
+                    : 'translateY(-4px)',
+                  transition: {
+                    duration: shouldReduceMotion ? 0.14 : 0.125,
+                    ease: [0.23, 1, 0.32, 1],
+                  },
+                }}
+                transition={{
+                  duration: 0.16,
+                  ease: [0.23, 1, 0.32, 1],
+                }}
+                className="overflow-hidden"
+              >
+                <div className="min-h-[32px] px-2 py-2">
+                  {log.metadata && Object.keys(log.metadata).length > 0 ? (
+                    <div className="space-y-0.5 text-label-sm text-ds-text-neutral-muted-default">
+                      {Object.entries(log.metadata)
+                        .filter(
+                          ([, value]) =>
+                            value !== undefined &&
+                            value !== null &&
+                            value !== ''
+                        )
+                        .map(([key, value]) => {
+                          let displayKey = key
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, (c) => c.toUpperCase());
+                          let displayValue: string;
+                          if (key === 'tokens_used') {
+                            displayKey = 'Tokens Used';
+                            displayValue = `${Number(value).toLocaleString()} tokens`;
+                          } else if (key === 'duration_seconds') {
+                            displayKey = 'Duration';
+                            const secs = Number(value);
+                            displayValue =
+                              secs < 60
+                                ? `${secs.toFixed(1)}s`
+                                : `${Math.floor(secs / 60)}m ${(secs % 60).toFixed(0)}s`;
+                          } else if (key === 'status') {
+                            return null; // status is redundant — shown in the header
+                          } else {
+                            displayValue = String(value);
+                          }
+                          return (
+                            <div key={key} className="flex gap-2">
+                              <span className="font-medium text-ds-text-neutral-muted-default">
+                                {displayKey}:
+                              </span>
+                              <span>{displayValue}</span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <div className="text-label-xs text-ds-text-neutral-muted-disabled">
+                      {/* Empty content box */}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-label-xs text-ds-text-neutral-muted-disabled">
-                  {/* Empty content box */}
-                </div>
-              )}
-            </div>
-          </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </div>
     </motion.div>

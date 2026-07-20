@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -133,6 +133,7 @@ export default function ExpandedOverlay({
   isSidePanelVisible,
   selectedTurn,
 }: ExpandedOverlayProps) {
+  const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
   const host = useHost();
   const workflowResetForOpenRef = useRef(false);
@@ -191,10 +192,23 @@ export default function ExpandedOverlay({
             aria-modal="true"
             aria-label={titleLabel}
             onMouseDown={(e) => e.stopPropagation()}
-            initial={{ opacity: 0, y: 12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+            initial={{
+              opacity: 0,
+              transform: shouldReduceMotion
+                ? 'translateY(0px) scale(1)'
+                : 'translateY(12px) scale(0.98)',
+            }}
+            animate={{ opacity: 1, transform: 'translateY(0px) scale(1)' }}
+            exit={{
+              opacity: 0,
+              transform: shouldReduceMotion
+                ? 'translateY(0px) scale(1)'
+                : 'translateY(8px) scale(0.98)',
+            }}
+            transition={{
+              duration: shouldReduceMotion ? 0.16 : 0.22,
+              ease: [0.2, 0, 0, 1],
+            }}
           >
             <div className="relative z-50 flex w-full shrink-0 items-center justify-between gap-2 p-2">
               <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
@@ -227,9 +241,15 @@ export default function ExpandedOverlay({
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`overlay-${workforcePanelKey}`}
-                  initial={{ opacity: 0, filter: 'blur(4px)' }}
+                  initial={{
+                    opacity: 0,
+                    filter: shouldReduceMotion ? 'blur(0px)' : 'blur(4px)',
+                  }}
                   animate={{ opacity: 1, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, filter: 'blur(4px)' }}
+                  exit={{
+                    opacity: 0,
+                    filter: shouldReduceMotion ? 'blur(0px)' : 'blur(4px)',
+                  }}
                   transition={{ duration: 0.2 }}
                   className="h-full w-full min-w-0"
                 >

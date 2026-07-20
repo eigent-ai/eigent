@@ -41,7 +41,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import type { IntegrationItem } from '@/hooks/useIntegrationManagement';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { TFunction } from 'i18next';
 import {
   BadgeCheck,
@@ -272,13 +272,24 @@ function CatalogLoadingGrid({ count = 8 }: { count?: number }) {
 }
 
 function CatalogLoadingBanner({ label }: { label: string }) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <motion.div
       key="catalog-loading-banner"
-      initial={{ opacity: 0, y: -8, height: 0 }}
-      animate={{ opacity: 1, y: 0, height: 'auto' }}
-      exit={{ opacity: 0, y: -12, height: 0 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      initial={{
+        opacity: 0,
+        transform: shouldReduceMotion ? 'translateY(0px)' : 'translateY(-8px)',
+      }}
+      animate={{ opacity: 1, transform: 'translateY(0px)' }}
+      exit={{
+        opacity: 0,
+        transform: shouldReduceMotion ? 'translateY(0px)' : 'translateY(-12px)',
+      }}
+      transition={{
+        duration: shouldReduceMotion ? 0.16 : 0.2,
+        ease: [0.23, 1, 0.32, 1],
+      }}
       className="overflow-hidden"
     >
       <div className="flex flex-col items-center justify-center gap-2 py-3 text-ds-text-neutral-muted-default">
@@ -303,6 +314,7 @@ export default function AddConnectorDialog({
   refreshBuiltIns,
 }: AddConnectorDialogProps) {
   const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
   const [browseSource, setBrowseSource] = useState<'open' | 'builtin'>(
     connectorGatewayEnabled || !localMode ? 'open' : 'builtin'
   );
@@ -1159,7 +1171,7 @@ export default function AddConnectorDialog({
                             ? t('connectors.show-less')
                             : t('connectors.show-more')}
                           <ChevronDown
-                            className={`h-4 w-4 transition-transform ${
+                            className={`h-4 w-4 transition-transform motion-reduce:transition-none ${
                               actionsExpanded ? 'rotate-180' : ''
                             }`}
                           />
@@ -1348,21 +1360,70 @@ export default function AddConnectorDialog({
                   </div>
                 )}
 
-                {authorizationPending ? (
-                  <div className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-information-subtle-default p-3 text-body-sm text-ds-text-information-strong-default">
-                    <span>{t('connectors.complete-authorization')}</span>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={saving}
-                      onClick={() => void verifyBuiltInAuthorization()}
+                <AnimatePresence initial={false}>
+                  {authorizationPending ? (
+                    <motion.div
+                      key="authorization-pending"
+                      initial={
+                        shouldReduceMotion
+                          ? { opacity: 0 }
+                          : {
+                              opacity: 0,
+                              transform: 'translateY(-8px)',
+                            }
+                      }
+                      animate={
+                        shouldReduceMotion
+                          ? {
+                              opacity: 1,
+                              transition: {
+                                duration: 0.16,
+                                ease: [0.23, 1, 0.32, 1],
+                              },
+                            }
+                          : {
+                              opacity: 1,
+                              transform: 'translateY(0px)',
+                              transition: {
+                                duration: 0.18,
+                                ease: [0.23, 1, 0.32, 1],
+                              },
+                            }
+                      }
+                      exit={
+                        shouldReduceMotion
+                          ? {
+                              opacity: 0,
+                              transition: {
+                                duration: 0.16,
+                                ease: [0.23, 1, 0.32, 1],
+                              },
+                            }
+                          : {
+                              opacity: 0,
+                              transform: 'translateY(-4px)',
+                              transition: {
+                                duration: 0.14,
+                                ease: [0.23, 1, 0.32, 1],
+                              },
+                            }
+                      }
+                      className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-information-subtle-default p-3 text-body-sm text-ds-text-information-strong-default"
                     >
-                      <RefreshCw className="h-4 w-4" />
-                      {t('connectors.refresh-status')}
-                    </Button>
-                  </div>
-                ) : null}
+                      <span>{t('connectors.complete-authorization')}</span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={saving}
+                        onClick={() => void verifyBuiltInAuthorization()}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        {t('connectors.refresh-status')}
+                      </Button>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
                 {formError ? (
                   <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
                     {formError}
