@@ -19,7 +19,7 @@ import {
   type TerminalSource,
 } from '@/components/Session/PreviewPanel/tabs/terminal/terminalSources';
 import { HostProvider } from '@/host';
-import type { SessionTerminalTab } from '@/store/pageTabStore';
+import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -54,16 +54,32 @@ vi.mock(
 );
 
 // The real auth store drags i18n (and more) into the module graph; the tab
-// only reads `email` to resolve the project folder.
+// only reads `email`/`user_id` to resolve the project folder.
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector?: (state: { email: string }) => unknown) => {
-    const state = { email: 'test@example.com' };
+  useAuthStore: (
+    selector?: (state: { email: string; user_id: number | null }) => unknown
+  ) => {
+    const state = { email: 'test@example.com', user_id: 7 };
     return selector ? selector(state) : state;
   },
 }));
 
+// The real space store drags the API client into the module graph; the tab
+// only resolves the active Space's local root folder from it.
+let mockSpaceRootPath: string | null = null;
+vi.mock('@/store/spaceStore', () => ({
+  useSpaceStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      activeSpaceId: 'space-1',
+      spaces: { 'space-1': { rootPath: mockSpaceRootPath } },
+      getProjectMeta: () => null,
+    }),
+}));
+
 beforeEach(() => {
   mockSources = [];
+  mockSpaceRootPath = null;
+  desktopHost.electronAPI.getProjectFolderPath.mockClear();
 });
 
 const desktopHost = {
@@ -115,6 +131,30 @@ describe('TerminalTab', () => {
     expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
       'data-shell-id',
       'session-shell:project-1:tab-1'
+    );
+  });
+
+  it('opens the shell in the Space root folder when the Space is folder-backed', async () => {
+    mockSpaceRootPath = '/Users/me/my-local-folder';
+    renderTab(shellTab());
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-cwd',
+      '/Users/me/my-local-folder'
+    );
+    expect(desktopHost.electronAPI.getProjectFolderPath).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the generated project folder for non-folder Spaces', async () => {
+    usePageTabStore.setState({ sessionPreviewProjectId: 'project-1' });
+    renderTab(shellTab());
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-cwd',
+      '/tmp/project'
+    );
+    expect(desktopHost.electronAPI.getProjectFolderPath).toHaveBeenCalledWith(
+      'test@example.com',
+      'project-1',
+      7
     );
   });
 

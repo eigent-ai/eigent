@@ -18,6 +18,7 @@ import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore, type SessionTerminalTab } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { Check, Copy, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,21 +59,37 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
   );
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
   const email = useAuthStore((state) => state.email);
+  const userId = useAuthStore((state) => state.user_id);
   const isDesktop = Boolean(host?.electronAPI?.terminalCreate);
 
-  // Resolve the project folder before spawning so the shell opens there
+  // A folder-backed Space works directly in the user's chosen local folder,
+  // so the shell must open there — not in the generated per-project output
+  // folder used by legacy/blank Spaces.
+  const spaceRootPath = useSpaceStore((state) => {
+    const spaceId =
+      (projectId ? state.getProjectMeta(projectId)?.spaceId : null) ??
+      state.activeSpaceId;
+    return (spaceId ? state.spaces[spaceId]?.rootPath : null) ?? null;
+  });
+
+  // Resolve the working folder before spawning so the shell opens there
   // (falls back to the home directory when unavailable).
   const [cwd, setCwd] = useState<string | undefined>(undefined);
   const [cwdResolved, setCwdResolved] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    if (spaceRootPath) {
+      setCwd(spaceRootPath);
+      setCwdResolved(true);
+      return;
+    }
     const api = host?.electronAPI;
     if (!api?.getProjectFolderPath || !email || !projectId) {
       setCwdResolved(true);
       return;
     }
     api
-      .getProjectFolderPath(email, projectId)
+      .getProjectFolderPath(email, projectId, userId)
       .then((folderPath: string) => {
         if (cancelled) return;
         setCwd(folderPath || undefined);
@@ -84,7 +101,7 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
     return () => {
       cancelled = true;
     };
-  }, [host, email, projectId]);
+  }, [host, email, userId, projectId, spaceRootPath]);
 
   if (!isDesktop) {
     return (
