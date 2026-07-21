@@ -198,3 +198,42 @@ def test_agent_skill_toolkit_reads_canonical_user_config_path(
     assert agent_skill_toolkit._get_user_config_path("user_42") == (
         tmp_path / ".eigent" / "user_42" / "skills-config.json"
     )
+
+
+def test_skill_toolkit_allows_single_agent_aliases():
+    config = {
+        "demo": {
+            "enabled": True,
+            "scope": {
+                "isGlobal": False,
+                "selectedAgents": ["single_agent"],
+            },
+        }
+    }
+    assert agent_skill_toolkit._is_agent_allowed(
+        "demo", "single_agent", config
+    )
+    assert agent_skill_toolkit._is_agent_allowed(
+        "demo", "Agents.single_agent", config
+    )
+    assert not agent_skill_toolkit._is_agent_allowed(
+        "demo", "foo.single_agent", config
+    )
+    assert not agent_skill_toolkit._is_agent_allowed(
+        "demo", "developer_agent", config
+    )
+
+
+def test_skill_toolkit_normalizes_selected_single_agent_aliases():
+    config = {
+        "demo": {
+            "enabled": True,
+            "scope": {
+                "isGlobal": False,
+                "selectedAgents": ["Agents.single_agent"],
+            },
+        }
+    }
+    assert agent_skill_toolkit._is_agent_allowed(
+        "demo", "single_agent", config
+    )

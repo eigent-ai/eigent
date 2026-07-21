@@ -80,9 +80,9 @@ export default function SearchInput({
     return (
       <motion.div
         className={cn(
-          'rounded-lg py-0.5 flex items-center justify-center overflow-hidden border border-solid border-transparent bg-transparent',
+          'flex items-center justify-center overflow-hidden rounded-lg border border-solid border-transparent bg-transparent py-0.5',
           'focus-within:border-ds-border-brand-default-focus focus-within:bg-ds-bg-neutral-strong-default',
-          'hover:bg-ds-bg-neutral-strong-hover hover:border-transparent'
+          'hover:border-transparent hover:bg-ds-bg-neutral-strong-hover'
         )}
         initial={false}
         animate={{ width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
@@ -102,7 +102,7 @@ export default function SearchInput({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <TooltipSimple content={searchLabel}>
+              <TooltipSimple content={searchLabel} variant="instant">
                 <Button
                   type="button"
                   variant="ghost"
@@ -118,13 +118,13 @@ export default function SearchInput({
           ) : (
             <motion.div
               key="input"
-              className="min-w-0 gap-0 pr-1 flex flex-1 items-center"
+              className="flex min-w-0 flex-1 items-center gap-0 pr-1"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <span className="ml-2 h-4 w-4 text-ds-icon-neutral-muted-default pointer-events-none inline-flex shrink-0 items-center justify-center">
+              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default">
                 <Search className="h-4 w-4" />
               </span>
               <input
@@ -141,15 +141,15 @@ export default function SearchInput({
                     onSearch?.();
                   }
                 }}
-                className="h-6 min-w-0 pl-2 text-label-sm text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-muted-default flex-1 bg-transparent outline-none"
+                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-label-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default"
               />
-              <TooltipSimple content={clearLabel}>
+              <TooltipSimple content={clearLabel} variant="instant">
                 <Button
                   type="button"
                   variant="ghost"
                   size="xs"
                   buttonContent="icon-only"
-                  className="text-ds-icon-neutral-muted-default shrink-0 rounded-full"
+                  className="shrink-0 rounded-full text-ds-icon-neutral-muted-default"
                   onClick={collapse}
                   aria-label={clearLabel}
                 >

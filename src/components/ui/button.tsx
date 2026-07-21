@@ -343,7 +343,7 @@ const INVERSE = [
 ].join(' ');
 
 const buttonVariants = cva(
-  'inline-flex items-center whitespace-nowrap border border-solid transition-all duration-200 ease-in-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none focus-visible:border-ds-border-brand-default-focus focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px] aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
+  'inline-flex items-center whitespace-nowrap border border-solid transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none focus-visible:border-ds-border-brand-default-focus focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px] aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
   {
     variants: {
       variant: {

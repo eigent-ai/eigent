@@ -301,6 +301,9 @@
   "api-key-setting": "APIキー設定",
   "api-host-setting": "APIホスト設定",
   "model-type-setting": "モデルタイプ設定",
+  "model-parameters-setting": "モデルパラメータ（JSON、任意）",
+  "model-parameters-placeholder": "モデルパラメータを JSON オブジェクトで入力（例：{\"temperature\": 0.7, \"top_p\": 1, \"max_tokens\": 4096}）",
+  "model-parameters-must-be-valid-json-object": "モデルパラメータは有効な JSON オブジェクトである必要があります。",
   "please-select": "選択してください",
   "configuring": "設定中...",
 

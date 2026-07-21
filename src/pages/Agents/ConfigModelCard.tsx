@@ -13,13 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
 
 export type ConfigCardRingStatus = 'idle' | 'configuring' | 'success' | 'error';
 
-const RING_OFFSET_REST_PX = 1;
-const RING_OFFSET_BOUNCE_PX = 3;
+const RING_INSET = '-1px';
 
 const BORDER_COLOR: Record<Exclude<ConfigCardRingStatus, 'idle'>, string> = {
   configuring: 'var(--ds-border-neutral-subtle-disabled)',
@@ -27,30 +26,27 @@ const BORDER_COLOR: Record<Exclude<ConfigCardRingStatus, 'idle'>, string> = {
   error: 'var(--ds-border-error-default-default)',
 };
 
-function ringInset(px: number): string {
-  return `${-px}px`;
-}
-
 const CONFIGURING_TRANSITION = {
-  inset: {
+  transform: {
     duration: 1.2,
     repeat: Infinity,
-    ease: 'easeInOut' as const,
+    ease: 'linear' as const,
   },
-  borderColor: { duration: 0.3, ease: 'easeOut' as const },
-  opacity: { duration: 0.2 },
+  opacity: {
+    duration: 1.2,
+    repeat: Infinity,
+    ease: 'linear' as const,
+  },
 };
 
 const SUCCESS_TRANSITION = {
-  inset: { duration: 0.5, ease: [0.4, 0, 0.2, 1] as const },
-  borderColor: { duration: 0.5, ease: [0.4, 0, 0.2, 1] as const },
-  opacity: { duration: 0.2 },
+  duration: 0.24,
+  ease: [0.23, 1, 0.32, 1] as const,
 };
 
 const ERROR_TRANSITION = {
-  inset: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as const },
-  borderColor: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as const },
-  opacity: { duration: 1, ease: 'easeInOut' as const },
+  duration: 0.28,
+  ease: [0.23, 1, 0.32, 1] as const,
 };
 
 function getRingMotionProps(status: Exclude<ConfigCardRingStatus, 'idle'>) {
@@ -58,21 +54,15 @@ function getRingMotionProps(status: Exclude<ConfigCardRingStatus, 'idle'>) {
     case 'configuring':
       return {
         animate: {
-          inset: [
-            ringInset(RING_OFFSET_REST_PX),
-            ringInset(RING_OFFSET_BOUNCE_PX),
-            ringInset(RING_OFFSET_REST_PX),
-          ],
-          borderColor: BORDER_COLOR.configuring,
-          opacity: 1,
+          transform: ['scale(1)', 'scale(1.01)', 'scale(1)'],
+          opacity: [0.7, 1, 0.7],
         },
         transition: CONFIGURING_TRANSITION,
       };
     case 'success':
       return {
         animate: {
-          inset: ringInset(RING_OFFSET_REST_PX),
-          borderColor: BORDER_COLOR.success,
+          transform: 'scale(1)',
           opacity: 1,
         },
         transition: SUCCESS_TRANSITION,
@@ -80,8 +70,7 @@ function getRingMotionProps(status: Exclude<ConfigCardRingStatus, 'idle'>) {
     case 'error':
       return {
         animate: {
-          inset: ringInset(RING_OFFSET_REST_PX),
-          borderColor: BORDER_COLOR.error,
+          transform: ['scale(1)', 'scale(1.01)', 'scale(1)'],
           opacity: [1, 0.2, 1],
         },
         transition: ERROR_TRANSITION,
@@ -98,9 +87,18 @@ export function ConfigModelCard({
   children: ReactNode;
   className?: string;
 }) {
+  const shouldReduceMotion = useReducedMotion();
   const showRing = status !== 'idle';
 
-  const ringMotion = showRing ? getRingMotionProps(status) : null;
+  const ringMotion = showRing
+    ? shouldReduceMotion
+      ? {
+          animate: { transform: 'scale(1)', opacity: 1 },
+          transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] as const },
+        }
+      : getRingMotionProps(status)
+    : null;
+  const ringColor = status === 'idle' ? undefined : BORDER_COLOR[status];
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -109,9 +107,9 @@ export function ConfigModelCard({
           <motion.div
             key="config-card-ring"
             className="pointer-events-none absolute z-0 rounded-2xl border-2 border-solid"
+            style={{ inset: RING_INSET, borderColor: ringColor }}
             initial={{
-              inset: ringInset(RING_OFFSET_REST_PX),
-              borderColor: BORDER_COLOR.configuring,
+              transform: 'scale(1)',
               opacity: 0,
             }}
             animate={ringMotion.animate}

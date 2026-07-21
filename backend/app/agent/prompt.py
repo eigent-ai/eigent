@@ -109,6 +109,29 @@ def build_remote_sub_agent_planning_notice() -> str:
     return REMOTE_SUB_AGENT_PLANNING_NOTICE
 
 
+CONNECTED_APP_MCP_NOTICE = """\
+<connected_app_tools>
+When the user asks to query or operate a third-party app that may already be
+connected, use available MCP or connector tools before browser/manual-login
+flows. Examples include Clerk, Slack, Gmail, Notion, GitHub, Google Calendar,
+Google Drive, Jira, Linear, Lark, Airtable, HubSpot, and similar SaaS apps.
+
+- Search or list the app's available actions first.
+- Execute read/list/search/count actions directly when the user's intent is
+  clear and all required input is available or optional.
+- Execute write/send/update/delete/admin actions only when the user explicitly
+  asked for that change and the target details are clear.
+- Ask for dashboard links, API keys, or manual browser login only after the
+  connector tools show the app/account/action is unavailable or required input
+  is missing.
+</connected_app_tools>
+"""
+
+
+def append_connected_app_mcp_notice(system_message: str) -> str:
+    return f"{system_message.rstrip()}\n\n{CONNECTED_APP_MCP_NOTICE}"
+
+
 SOCIAL_MEDIA_SYS_PROMPT = """\
 You are a Social Media Management Assistant with comprehensive capabilities
 across multiple platforms. You MUST use the `send_message_to_user` tool to

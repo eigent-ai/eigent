@@ -41,6 +41,11 @@ import {
 const execAsync = promisify(exec);
 
 const DEFAULT_SERVER_URL = 'https://dev.eigent.ai';
+// Starts after the backend process is spawned; uv/Python dependency repair runs before this.
+const BACKEND_READY_TIMEOUT_MS = 5 * 60 * 1000;
+const BACKEND_HEALTH_CHECK_INTERVAL_MS = 1000;
+const BACKEND_HEALTH_REQUEST_TIMEOUT_MS = 1000;
+const BACKEND_INITIAL_HEALTH_DELAY_MS = 2000;
 
 function readEnvValue(filePath: string, key: string): string | undefined {
   try {
@@ -548,18 +553,25 @@ export async function startBackend(
 
     const startTimeout = setTimeout(() => {
       if (!started) {
+        started = true;
         if (healthCheckInterval) clearInterval(healthCheckInterval);
         killBackendProcess(node_process);
-        reject(new Error('Backend failed to start within timeout'));
+        reject(
+          new Error(
+            `Backend failed to start within ${Math.round(
+              BACKEND_READY_TIMEOUT_MS / 1000
+            )} seconds`
+          )
+        );
       }
-    }, 65000);
+    }, BACKEND_READY_TIMEOUT_MS);
 
     const initialDelay = setTimeout(() => {
       if (!started) {
         log.info('Starting backend health check polling...');
         pollHealthEndpoint();
       }
-    }, 2000);
+    }, BACKEND_INITIAL_HEALTH_DELAY_MS);
 
     const killBackendProcess = (proc: any) => {
       if (!proc || !proc.pid) return;
@@ -588,8 +600,9 @@ export async function startBackend(
 
     const pollHealthEndpoint = (): void => {
       let attempts = 0;
-      const maxAttempts = 240;
-      const intervalMs = 250;
+      const maxAttempts = Math.ceil(
+        BACKEND_READY_TIMEOUT_MS / BACKEND_HEALTH_CHECK_INTERVAL_MS
+      );
 
       healthCheckInterval = setInterval(() => {
         attempts++;
@@ -598,29 +611,37 @@ export async function startBackend(
           `Health check attempt ${attempts}/${maxAttempts}: ${healthUrl}`
         );
 
-        const req = http.get(healthUrl, { timeout: 1000 }, (res) => {
-          if (res.statusCode === 200) {
-            log.info(`Backend health check passed after ${attempts} attempts`);
-            started = true;
-            clearTimeout(startTimeout);
-            if (healthCheckInterval) clearInterval(healthCheckInterval);
-            resolve(node_process);
-          } else {
-            // Non-200 status (e.g., 404), continue polling unless max attempts reached
-            if (attempts >= maxAttempts) {
-              log.error(
-                `Backend health check failed after ${attempts} attempts with status ${res.statusCode}`
+        const req = http.get(
+          healthUrl,
+          { timeout: BACKEND_HEALTH_REQUEST_TIMEOUT_MS },
+          (res) => {
+            if (res.statusCode === 200) {
+              log.info(
+                `Backend health check passed after ${attempts} attempts`
               );
               started = true;
               clearTimeout(startTimeout);
               if (healthCheckInterval) clearInterval(healthCheckInterval);
-              killBackendProcess(node_process);
-              reject(
-                new Error(`Backend health check failed: HTTP ${res.statusCode}`)
-              );
+              resolve(node_process);
+            } else {
+              // Non-200 status (e.g., 404), continue polling unless max attempts reached
+              if (attempts >= maxAttempts) {
+                log.error(
+                  `Backend health check failed after ${attempts} attempts with status ${res.statusCode}`
+                );
+                started = true;
+                clearTimeout(startTimeout);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
+                killBackendProcess(node_process);
+                reject(
+                  new Error(
+                    `Backend health check failed: HTTP ${res.statusCode}`
+                  )
+                );
+              }
             }
           }
-        });
+        );
 
         req.on('error', () => {
           // Connection error - backend might not be ready yet, continue polling
@@ -649,7 +670,7 @@ export async function startBackend(
             reject(new Error('Backend health check timed out'));
           }
         });
-      }, intervalMs);
+      }, BACKEND_HEALTH_CHECK_INTERVAL_MS);
     };
 
     node_process.stderr.on('data', (data) => {

@@ -50,6 +50,7 @@ from app.memory.events import (
 from app.memory.local_store import LocalMemoryStore
 from app.memory.paths import canonical_user_id
 from app.run_context import RunContext
+from app.utils.workspace_paths import task_dir_name
 
 logger = logging.getLogger("memory.service")
 
@@ -194,7 +195,7 @@ def finalize_task_lock_run_memory(
     try:
         service.register_runtime_log_artifact(
             run_context=run_context,
-            relative_path=f"task_{run_context.run_id}/camel_logs",
+            relative_path=f"{task_dir_name(run_context.run_id)}/camel_logs",
         )
         service.on_run_end(
             run_context=run_context,

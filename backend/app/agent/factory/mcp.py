@@ -19,7 +19,7 @@ from app.agent.factory.remote_sub_agent import (
     remote_sub_agent_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import MCP_SYS_PROMPT
+from app.agent.prompt import MCP_SYS_PROMPT, append_connected_app_mcp_notice
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.mcp_search_toolkit import McpSearchToolkit
 from app.agent.tools import get_mcp_tools
@@ -73,7 +73,7 @@ async def mcp_agent(options: Chat):
         working_directory=working_directory,
         tools=tools,
         tool_names=tool_names,
-        system_message=MCP_SYS_PROMPT,
+        system_message=append_connected_app_mcp_notice(MCP_SYS_PROMPT),
         local_tool_description="local MCP or search tools",
         message_integration=message_integration,
     )

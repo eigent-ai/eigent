@@ -108,6 +108,7 @@ SPACE_COMMANDS = {
     SPACE_DISCARD_PROJECT_OVERLAYS,
 }
 NON_BRAIN_COMMANDS = {SWITCH_PROJECT_VIEW, *SPACE_COMMANDS}
+REMOTE_CONTROL_HIDDEN_STEPS = ("request_usage",)
 
 
 def _now() -> datetime:
@@ -1569,7 +1570,11 @@ class RemoteControlService:
                 task_ids = [legacy_history.task_id]
         if not task_ids:
             return RemoteControlStepsOut(items=[], has_more=False, next_since=since)
-        stmt = select(ChatStep).where(ChatStep.task_id.in_(task_ids), ChatStep.id > since)
+        stmt = select(ChatStep).where(
+            ChatStep.task_id.in_(task_ids),
+            ChatStep.id > since,
+            ChatStep.step.not_in(REMOTE_CONTROL_HIDDEN_STEPS),
+        )
         stmt = stmt.order_by(ChatStep.id.desc() if order == "desc" else ChatStep.id.asc()).limit(limit + 1)
         rows = list(db.exec(stmt).all())
         has_more = len(rows) > limit
@@ -1593,6 +1598,8 @@ class RemoteControlService:
 
     @staticmethod
     def publish_chat_step(step: ChatStep, db: Session) -> None:
+        if step.step in REMOTE_CONTROL_HIDDEN_STEPS:
+            return
         history = db.exec(select(ChatHistory).where(ChatHistory.task_id == step.task_id)).first()
         if not history:
             logger.warning("Skipping remote-control step publish for orphan step", extra={"task_id": step.task_id})

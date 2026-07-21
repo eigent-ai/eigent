@@ -98,6 +98,7 @@ export function ProjectNavListRows({
                 side="right"
                 align="center"
                 enabled
+                variant="instant"
                 className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
               >
                 <button
@@ -105,7 +106,7 @@ export function ProjectNavListRows({
                   onClick={() => onProjectClick?.(project.id)}
                   className={cn(
                     workspaceTabButtonClass(active),
-                    'min-w-0 gap-0 w-full'
+                    'w-full min-w-0 gap-0'
                   )}
                   aria-label={project.title}
                   aria-current={active ? 'true' : undefined}
@@ -121,15 +122,15 @@ export function ProjectNavListRows({
           <div key={project.id} className="min-w-0">
             <div
               className={cn(
-                'group/session-item h-8 min-w-0 rounded-xl pl-3 pr-3 relative flex w-full items-center overflow-hidden',
+                'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
                 'transition-colors duration-150',
                 active
                   ? panelListHover
                     ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
                     : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
                   : !panelListHover
-                    ? 'hover:bg-ds-bg-neutral-subtle-default bg-transparent'
-                    : 'hover:bg-ds-bg-neutral-default-default bg-transparent'
+                    ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
+                    : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
               )}
             >
               {/* Main click area — always full width */}
@@ -137,25 +138,25 @@ export function ProjectNavListRows({
                 type="button"
                 onClick={() => onProjectClick?.(project.id)}
                 className={cn(
-                  'no-drag min-h-0 min-w-0 gap-3 px-0 py-1 relative z-0 flex flex-1 items-center overflow-hidden text-left outline-none',
-                  'focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none'
+                  'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
                 )}
               >
                 <LeadIcon className={leadClassName} aria-hidden />
                 <span
-                  className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default flex-1 truncate"
+                  className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
                   title={project.title}
                 >
                   {project.title}
                 </span>
                 {project.source === 'trigger' ? (
                   <Zap
-                    className="h-3.5 w-3.5 text-ds-icon-warning-default-default shrink-0"
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
                     aria-label={triggerSourceLabel}
                   />
                 ) : null}
                 {!showRowMenu && project.trailing ? (
-                  <span className="pl-1 text-body-xs text-ds-text-neutral-muted-default shrink-0 tabular-nums">
+                  <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
                     {project.trailing}
                   </span>
                 ) : null}
@@ -168,7 +169,6 @@ export function ProjectNavListRows({
                     content={project.pinned ? unpinLabel : pinLabel}
                     side="top"
                     sideOffset={6}
-                    delayDuration={500}
                   >
                     <Button
                       type="button"
@@ -187,7 +187,7 @@ export function ProjectNavListRows({
                         className={cn(
                           'h-3.5 w-3.5 transition-colors',
                           project.pinned
-                            ? 'text-ds-icon-brand-default-default fill-current'
+                            ? 'fill-current text-ds-icon-brand-default-default'
                             : 'text-ds-icon-neutral-muted-default'
                         )}
                         aria-hidden
@@ -198,7 +198,6 @@ export function ProjectNavListRows({
                     content={project.achieved ? achievedLabel : achieveLabel}
                     side="top"
                     sideOffset={6}
-                    delayDuration={500}
                   >
                     <Button
                       type="button"

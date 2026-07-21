@@ -36,11 +36,14 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
 
 - ✅ **Zero Setup** - No technical configuration required
 - ✅ **Multi-Agent Coordination** - Handle complex multi-agent workflows
-- ✅ **Enterprise Feature** - SSO/Access control
+- ✅ **Single-Agent Harness** - Run focused tasks with one meta agent
 - ✅ **Local Deployment**
 - ✅ **Open Source**
-- ✅ **Custom Model Support**
+- ✅ **Model Agnostic** - Support any model of your choice
 - ✅ **MCP Integration**
+- ✅ **Skill Integration**
+- ✅ **Built-in Browser & Terminal Toolkits**
+- ✅ **Enterprise Features** - SSO, access control, and custom enquiries
 
 <br/>
 
@@ -57,12 +60,15 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
   - [🏢 Enterprise](#-enterprise)
   - [☁️ Cloud Version](#%EF%B8%8F-cloud-version)
 - [✨ Key features - Open Source Cowork](#-key-features---open-source-Cowork)
-  - [🏭 Workforce](#-workforce)
-  - [🧠 Comprehensive Model Support](#-comprehensive-model-support)
-  - [🔌 MCP Tools Integration (MCP)](#-mcp-tools-integration-mcp)
-  - [✋ Human-in-the-Loop](#-human-in-the-loop)
+  - [🧑‍💻 Cowork with Single Agent](#-cowork-with-single-agent)
+  - [🏭 Cowork with Workforce](#-cowork-with-workforce)
+  - [⏰ Automation](#-automation)
+  - [🔒 Local & Secure](#-local--secure)
+  - [🧠 Model Agnostic](#-model-agnostic)
   - [👐 100% Open Source](#-100-open-source)
 - [🧩 Use Cases - Open Source Cowork](#-use-cases---open-source-Cowork)
+  - [For Developers](#for-developers)
+  - [Featured](#featured)
 - [🛠️ Tech Stack](#-tech-stack)
   - [Backend](#backend)
   - [Frontend](#frontend)
@@ -138,7 +144,7 @@ For organizations requiring maximum security, customization, and control:
 - **Scalable Enterprise Deployment**
 - **Negotiated SLAs** & implementation services
 
-📧 For further details, please contact us at [info@eigent.ai](mailto:info@eigent.ai).
+📧 For further details, [contact our sales team](https://www.eigent.ai/contact-sales).
 
 ### ☁️ Cloud Version
 
@@ -158,133 +164,87 @@ For teams who prefer managed infrastructure, we also offer a cloud platform. The
 
 ## **✨ Key features - Open Source Cowork**
 
-Unlock the full potential of exceptional productivity with Eigent's open-source Cowork powerful features — built for seamless integration, smarter task execution, and boundless automation.
+### 🧑‍💻 Cowork with Single Agent
 
-### 🏭 Workforce
+Start with one focused agent for direct tasks. Research, write, debug, and operate alongside it in your desktop workspace.
 
-Employs a team of specialized AI agents that collaborate to solve complex tasks. Eigent's open-source Cowork dynamically breaks down tasks and activates multiple agents to work **in parallel.**
+### 🏭 Cowork with Workforce
 
-Eigent pre-defined the following agent workers:
+Scale to multiple specialized agents that divide work, collaborate in parallel, and execute complex multi-step workflows together.
 
-- **Developer Agent:** Writes and executes code, runs terminal commands.
-- **Browser Agent:** Searches the web and extracts content.
-- **Document Agent:** Creates and manages documents.
-- **Multi-Modal Agent:** Processes images and audio.
+### ⏰ Automation
 
-![Workforce](https://eigent-ai.github.io/.github/assets/gif/feature_dynamic_workforce.gif)
+Schedule recurring workflows and let agents run tasks at the right time—so work continues even when you step away.
 
-<br/>
+### 🔒 Local & Secure
 
-### 🧠 Comprehensive Model Support
+Run agents on your machine with local-first execution. Your files, credentials, and context stay under your control.
 
-Deploy the Eigent open-source Cowork desktop locally with your preferred models.
+### 🧠 Model Agnostic
 
-![Model](https://eigent-ai.github.io/.github/assets/gif/feature_local_model.gif)
-
-<br/>
-
-### 🔌 MCP Tools Integration (MCP)
-
-Eigent comes with massive built-in **Model Context Protocol (MCP)** tools (for web browsing, code execution, Notion, Google suite, Slack etc.), and also lets you **install your own tools**. Equip agents with exactly the right tools for your scenarios – even integrate internal APIs or custom functions – to enhance their capabilities.
-
-![MCP](https://eigent-ai.github.io/.github/assets/gif/feature_add_mcps.gif)
-
-<br/>
-
-### ✋ Human-in-the-Loop
-
-If a task gets stuck or encounters uncertainty, Eigent will automatically request human input.
-
-![Human-in-the-loop](https://eigent-ai.github.io/.github/assets/gif/feature_human_in_the_loop.gif)
-
-<br/>
+Connect the models you already use—cloud APIs, enterprise gateways, or local inference—without locking into one vendor.
 
 ### 👐 100% Open Source
 
 Eigent is completely open-sourced. You can download, inspect, and modify the code, ensuring transparency and fostering a community-driven ecosystem for multi-agent innovation.
 
-![Opensource][image-opensource]
-
-<br/>
-
 ## 🧩 Use Cases - Open Source Cowork
 
-Discover how developers worldwide leverage Eigent's open-source Cowork capabilities to automate complex workflows and boost productivity across diverse industries.
+Explore how Eigent turns complex desktop work into repeatable agent workflows.
 
-### 1. Palm Springs Tennis Trip Itinerary with Slack Summary [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM0MzUxNTEzMzctNzExMyI.aIeysw.MUeG6ZcBxI1GqvPDvn4dcv-CDWw__1753435151337-7113)
+### For Developers
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>We are two tennis fans and want to go see the tennis tournament ... <kbd></summary>
-<br>
-We are two tennis fans and want to go see the tennis tournament in Palm Springs 2026. I live in SF - please prepare a detailed itinerary with flights, hotels, things to do for 3 days - around the time semifinal/finals are happening. We like hiking, vegan food and spas. Our budget is $5K. The itinerary should be a detailed timeline of time, activity, cost, other details and if applicable a link to buy tickets/make reservations etc. for the item. Some preferences .Spa access would be nice but not necessary. When you finish this task, please generate a html report about this trip; write a summary of this plan and send text summary and report html link to slack #tennis-trip-sf channel.
-</details>
+#### [Build 10 Chinese New Year HTML5 Games with Eigent](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
-<br>
+Coordinate parallel agents to build ten polished, mobile-friendly browser games across genres, complete with scoring, increasing difficulty, and restart flows.
 
-### 2. Generate Q2 Report from CSV Bank Data [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM1MjY4OTE4MDgtODczOSI.aIjJmQ.WTdoX9mATwrcBr_w53BmGEHPo8U__1753526891808-8739)
+[View demo →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games/video)
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>Please help me prepare a Q2 financial statement based on my bank ... <kbd></summary>
-<br>
-Please help me prepare a Q2 financial statement based on my bank transfer record file bank_transacation.csv in my desktop to a html report with chart to investors how much we have spent.
-</details>
+[View guide →](https://www.eigent.ai/use-cases/build-10-cny-horse-themed-html5-games)
 
-<br>
+#### [Build a 3D Snow Bros Platformer with Gemini 3.1 Pro](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
-### 3. UK Healthcare Market Research Report Automation [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTMzOTM1NTg3OTctODcwNyI.aIey-Q.Jh9QXzYrRYarY0kz_qsgoj3ewX0__1753393558797-8707)
+Create a complete browser-based 3D platformer with snowball combat, enemy chains, scoring, lives, scaling difficulty, and layered environments.
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>Analyze the UK healthcare industry to support the planning ... <kbd></summary>
-<br>
-Analyze the UK healthcare industry to support the planning of my next company. Provide a comprehensive market overview, including current trends, growth projections, and relevant regulations. Identify the top 5–10 major opportunities, gaps, or underserved segments within the market. Present all findings in a well-structured, professional HTML report. Then send a message to slack #eigentr-product-test channel when this task is done to align the report content with my teammates.
-</details>
+[View demo →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini/video)
 
-<br>
+[View guide →](https://www.eigent.ai/use-cases/build-3d-snow-bros-platformer-gemini)
 
-### 4. German Electric Skateboard Market Feasibility [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2NTI4MjY3ODctNjk2Ig.aIjGiA.t-qIXxk_BZ4ENqa-yVIm0wMVyXU__1753652826787-696)
+#### [Automate Monthly Dev Reports with DeepSeek via Ollama](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>We are a company that produces high-end electric skateboards ... <kbd></summary>
-<br>
-We are a company that produces high-end electric skateboards, and we are considering entering the German market. Please prepare a detailed market entry feasibility report for me. The report needs to cover the following aspects:
-1. Market Size & Regulations: Research the market size, annual growth rate, key players, and market share for Personal Light Electric Vehicles (PLEVs) in Germany. Simultaneously, provide a detailed breakdown and summary of German laws and regulations concerning the use of electric skateboards on public roads, including certification requirements (such as ABE certification) and insurance policies.
-2. Consumer Profile: Analyze the profile of potential German consumers, including their age, income level, primary usage scenarios (commuting, recreation), key purchasing decision drivers (price, performance, brand, design), and the channels they typically use to gather information (forums, social media, offline retail stores).
-3. Channels & Distribution: Investigate Germany’s mainstream online electronics sales platforms (e.g., Amazon.de, MediaMarkt.de) and high-end sporting goods offline retail chains. List the top 5 potential online and offline distribution partners and find the contact information for their purchasing departments, if possible.
-4. Costing & Pricing: Based on the product cost structure in my Product_Cost.csv file on my desktop, and taking into account German customs duties, Value Added Tax (VAT), logistics and warehousing costs, and potential marketing expenses, estimate a Manufacturer’s Suggested Retail Price (MSRP) and analyze its competitiveness in the market.
-5. Comprehensive Report & Presentation: Summarize all research findings into an HTML report file. The content should include data charts, key findings, and a final market entry strategy recommendation (Recommended / Not Recommended / Recommended with Conditions).
-</details>
+Review a month of GitHub pull requests with a locally hosted model, generate a Word summary, and prepare the corresponding Slack release update.
 
-<br>
+[View demo →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama/video)
 
-### 5. SEO Audit for Workforce Multiagent Launch [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM2OTk5NzExNDQtNTY5NiI.aIex0w.jc_NIPmfIf9e3zGt-oG9fbMi3K4__1753699971144-5696)
+[View guide →](https://www.eigent.ai/use-cases/monthly-dev-reports-automated-eigent-with-deepseek-v4-pro-via-ollama)
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>To support the launch of our new Workforce Multiagent product ... <kbd></summary>
-<br>
-To support the launch of our new Workforce Multiagent product, please run a thorough SEO audit on our official website (https://www.camel-ai.org/) and deliver a detailed optimization report with actionable recommendations.
-</details>
+### Featured
 
-<br>
+#### [Organize Desktop Files](https://www.eigent.ai/use-cases/organize-desktop-files)
 
-### 6. Identify Duplicate Files in Downloads [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTM3NjAzODgxNzEtMjQ4Ig.aIhKLQ.epOG--0Nj0o4Bqjtdqm9OZdaqRQ__1753760388171-248)
+Ask Eigent to inspect a cluttered desktop and organize files into a cleaner, more useful structure directly on your machine.
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>I have a folder named mydocs inside my Documents directory ... <kbd></summary>
-<br>
-I have a folder named mydocs inside my Documents directory. Please scan it and identify all files that are exact or near duplicates — including those with identical content, file size, or format (even if file names or extensions differ). List them clearly, grouped by similarity.
-</details>
+[View demo →](https://www.eigent.ai/use-cases/organize-desktop-files/video)
 
-<br>
+[View guide →](https://www.eigent.ai/use-cases/organize-desktop-files)
 
-### 7. Add Signature to PDF [Replay ▶️](https://www.eigent.ai/download?share_token=IjE3NTQwOTU0ODM0NTItNTY2MSI.aJCHrA.Mg5yPOFqj86H_GQvvRNditzepXc__1754095483452-5661)
+#### [Audit ML CI Failures with Gemini 3.5 Flash on Eigent](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
 
-<details>
-<summary><strong>Prompt:</strong> <kbd>Please add this signature image to the Signature Areas in the PDF ... <kbd></summary>
-<br>
-Please add this signature image to the Signature Areas in the PDF. You could install the CLI tool ‘tesseract’ (needed for reliable location of ‘Signature Areas’ via OCR) to help finish this task.
-</details>
+Orchestrate a multi-agent CI investigation that fetches logs, compares golden values, traces evidence, delegates deep reasoning, and produces structured audit reports.
 
-<br>
+[View demo →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents/video)
+
+[View guide →](https://www.eigent.ai/use-cases/eigent-gemini-managed-agents)
+
+#### [Ticket Management System Integration and Reporting](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+
+Import local ticket data into a browser-based management system, then generate a statistical report with charts and visual summaries.
+
+[View demo →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting/video)
+
+[View guide →](https://www.eigent.ai/use-cases/ticket-management-system-integration-and-reporting)
+
+[Explore more use cases →](https://www.eigent.ai/use-cases)
 
 ## 🛠️ Tech Stack
 
@@ -397,7 +357,7 @@ For more information please contact info@eigent.ai
 [image-public-beta]: https://eigent-ai.github.io/.github/assets/banner.png
 [image-seperator]: https://eigent-ai.github.io/.github/assets/seperator.png
 [image-star-us]: https://eigent-ai.github.io/.github/assets/star-us.gif
-[join-us]: https://eigent-ai.notion.site/eigent-ai-careers
+[join-us]: https://www.eigent.ai/careers
 [join-us-image]: https://img.shields.io/badge/Join%20Us-yellow?style=plastic
 [reddit-image]: https://img.shields.io/reddit/subreddit-subscribers/CamelAI?style=plastic&logo=reddit&label=r%2FCAMEL&labelColor=white
 [reddit-url]: https://www.reddit.com/r/CamelAI/

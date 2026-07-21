@@ -51,7 +51,7 @@ export function TaskLogPanelContent({
             {toolkit.toolkitName === 'notice' ? (
               <div
                 key={`notice-${index}`}
-                className="gap-sm px-2 py-1 flex w-full flex-col"
+                className="flex w-full flex-col gap-sm px-2 py-1"
               >
                 <MarkDown
                   content={toolkit?.message}
@@ -77,9 +77,9 @@ export function TaskLogPanelContent({
                         window.location.href = toolkit.message;
                       }
                     }}
-                    className="gap-1 rounded-lg p-1 px-2 flex flex-col items-start justify-center transition-all duration-300 hover:opacity-50"
+                    className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] flex flex-col items-start justify-center gap-1 rounded-lg p-1 px-2 transition-opacity hover:opacity-50"
                   >
-                    <div className="gap-sm flex w-full items-center justify-start">
+                    <div className="flex w-full items-center justify-start gap-sm">
                       {toolkit.toolkitStatus === AgentStatusValue.RUNNING ? (
                         <LoaderCircle
                           size={16}
@@ -93,22 +93,22 @@ export function TaskLogPanelContent({
                       ) : (
                         getToolkitIcon(toolkit.toolkitName)
                       )}
-                      <span className="gap-sm text-label-xs font-bold text-ds-text-neutral-default-default flex items-center text-nowrap">
+                      <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-ds-text-neutral-default-default">
                         {toolkit.toolkitName}
                       </span>
                     </div>
-                    <div className="gap-sm pl-6 pointer-events-auto flex w-full items-start justify-center overflow-hidden select-text">
-                      <div className="text-label-xs font-bold text-ds-text-neutral-default-default text-nowrap">
+                    <div className="pointer-events-auto flex w-full select-text items-start justify-center gap-sm overflow-hidden pl-6">
+                      <div className="text-nowrap text-label-xs font-bold text-ds-text-neutral-default-default">
                         {toolkit.toolkitMethods
                           ? toolkit.toolkitMethods.charAt(0).toUpperCase() +
                             toolkit.toolkitMethods.slice(1)
                           : ''}
                       </div>
                       <div
-                        className={`text-label-xs font-normal text-ds-text-neutral-default-default max-w-full flex-1 truncate ${
+                        className={`max-w-full flex-1 truncate text-label-xs font-normal text-ds-text-neutral-default-default ${
                           isEditMode
                             ? 'overflow-hidden'
-                            : 'truncate overflow-hidden'
+                            : 'overflow-hidden truncate'
                         }`}
                       >
                         {toolkit.message}
@@ -119,7 +119,7 @@ export function TaskLogPanelContent({
                 {toolkit.message && (
                   <TooltipContent
                     align="start"
-                    className="scrollbar left-6 rounded-lg border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-2 text-label-xs pointer-events-auto !fixed z-[9999] max-h-[200px] w-max max-w-[296px] overflow-y-auto border border-solid text-wrap break-words select-text"
+                    className="scrollbar pointer-events-auto !fixed left-6 z-[9999] max-h-[200px] w-max max-w-[296px] select-text overflow-y-auto text-wrap break-words rounded-lg border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-2 text-label-xs"
                     side="bottom"
                     sideOffset={4}
                   >
@@ -141,9 +141,9 @@ export function TaskLogPanelContent({
           onWheel={(e) => {
             e.stopPropagation();
           }}
-          className="group my-2 rounded-lg bg-ds-bg-neutral-subtle-default relative flex w-full flex-col"
+          className="group relative my-2 flex w-full flex-col rounded-lg bg-ds-bg-neutral-subtle-default"
         >
-          <div className="top-0 rounded-lg bg-ds-bg-neutral-subtle-default py-2 pl-2 pr-2 sticky z-10 flex items-center justify-between">
+          <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg bg-ds-bg-neutral-subtle-default py-2 pl-2 pr-2">
             <div className="text-label-sm font-bold text-ds-text-neutral-default-default">
               Completion Report
             </div>

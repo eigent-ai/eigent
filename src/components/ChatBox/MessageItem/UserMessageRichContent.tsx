@@ -14,6 +14,7 @@
 
 import { useHost } from '@/host';
 import {
+  RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
   hashSkillLabel,
   httpUrlOrNull,
@@ -95,6 +96,19 @@ function renderMessageRichSegments(
       }
       return <span key={key}>{seg.text}</span>;
     }
+    if (seg.type === 'connector') {
+      return (
+        <span
+          key={key}
+          className={cn(
+            'inline rounded px-0.5 align-baseline font-normal',
+            RICH_CONNECTOR_STYLE_CLASSES
+          )}
+        >
+          {seg.text}
+        </span>
+      );
+    }
     const clsIdx = hashSkillLabel(seg.text) % RICH_SKILL_STYLE_CLASSES.length;
     return (
       <span
@@ -169,7 +183,7 @@ export function UserMessageRichContent({
               }}
               title="Open skill folder"
               className={cn(
-                'mx-0 inline cursor-pointer rounded px-0.5 align-baseline font-normal [font:inherit] hover:opacity-90',
+                'mx-0 inline cursor-pointer rounded-lg px-1 align-baseline font-normal [font:inherit] hover:opacity-90',
                 RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >

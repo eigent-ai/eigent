@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { createHost } from '@/host';
+import { recordPermissionResolved } from '@/lib/events/appEvents';
 
 const EnvOauthInfoMap = {
   notion: 'NOTION_TOKEN',
@@ -135,6 +136,10 @@ export class OAuth {
         registerClientData: this.registerClientData,
         resourceMetadata: this.resourceMetadata,
       },
+    });
+    recordPermissionResolved({
+      permission: this.provider,
+      granted: Boolean(token?.access_token),
     });
     return token;
   }

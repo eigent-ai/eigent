@@ -47,6 +47,15 @@ interface ElectronAPI {
     error?: string;
   }>;
   getPathForFile: (file: File) => string;
+  savePastedFile: (
+    fileName: string,
+    data: ArrayBuffer
+  ) => Promise<{
+    success: boolean;
+    filePath?: string;
+    fileName?: string;
+    error?: string;
+  }>;
   triggerMenuAction: (action: string) => void;
   onExecuteAction: (callback: (action: string) => void) => void;
   getPlatform: () => string;
@@ -63,7 +72,22 @@ interface ElectronAPI {
   hideAllWebview: () => Promise<any>;
   getShowWebview: () => Promise<any>;
   webviewDestroy: (webviewId: string) => Promise<any>;
-  exportLog: () => Promise<any>;
+  exportLog: () => Promise<{
+    success: boolean;
+    savedPath?: string;
+    data?: string;
+    error?: string;
+  }>;
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => Promise<{
+    success: boolean;
+    savedPath?: string;
+    error?: string;
+  }>;
   getDiagnosticsInfo: () => Promise<{
     version: string;
     platform: string;
@@ -78,6 +102,10 @@ interface ElectronAPI {
     error?: string;
   }>;
   openMailto: (url: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  openExternal: (url: string) => Promise<{
     success: boolean;
     error?: string;
   }>;
@@ -178,7 +206,11 @@ interface ElectronAPI {
   codexSubscriptionDisconnect: (
     email: string
   ) => Promise<{ success: boolean; error_code?: string; error?: string }>;
-  getProjectFolderPath: (email: string, projectId: string) => Promise<string>;
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => Promise<string>;
   openInIDE: (
     folderPath: string,
     ide: string

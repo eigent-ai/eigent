@@ -49,6 +49,10 @@ def runtime_owner_key(email: str, user_id: str | int | None = None) -> str:
     return sanitize_email(email)
 
 
+def task_dir_name(task_id: str) -> str:
+    return f"task_{str(task_id).removeprefix('task_')}"
+
+
 def project_root(
     email: str, project_id: str, user_id: str | int | None = None
 ) -> Path:
@@ -65,7 +69,7 @@ def project_task_root(
     task_id: str,
     user_id: str | int | None = None,
 ) -> Path:
-    return project_root(email, project_id, user_id) / f"task_{task_id}"
+    return project_root(email, project_id, user_id) / task_dir_name(task_id)
 
 
 def legacy_task_root(
@@ -74,7 +78,7 @@ def legacy_task_root(
     return (
         get_eigent_root()
         / runtime_owner_key(email, user_id)
-        / f"task_{task_id}"
+        / task_dir_name(task_id)
     )
 
 
@@ -89,7 +93,7 @@ def camel_log_root(
         / ".eigent"
         / runtime_owner_key(email, user_id)
         / f"project_{project_id}"
-        / f"task_{task_id}"
+        / task_dir_name(task_id)
         / "camel_logs"
     )
 
@@ -101,7 +105,7 @@ def legacy_camel_log_root(
         Path.home()
         / ".eigent"
         / runtime_owner_key(email, user_id)
-        / f"task_{task_id}"
+        / task_dir_name(task_id)
         / "camel_logs"
     )
 
@@ -118,7 +122,7 @@ def runtime_task_root(
         / runtime_owner_key(email, user_id)
         / "runtime"
         / f"project_{project_id}"
-        / f"task_{task_id}"
+        / task_dir_name(task_id)
     )
 
 

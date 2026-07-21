@@ -16,6 +16,7 @@ import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,9 +27,11 @@ import SkillUploadDialog from './components/SkillUploadDialog';
 
 export default function Skills() {
   const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
   const [searchParams, setSearchParams] = useSearchParams();
   const { skills, syncFromDisk } = useSkillsStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [hasCompletedInitialSync, setHasCompletedInitialSync] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [skillDialogMode, setSkillDialogMode] = useState<'upload' | 'create'>(
     'upload'
@@ -38,8 +41,18 @@ export default function Skills() {
 
   // On first mount, sync skills from local SKILL.md files
   useEffect(() => {
+    let isActive = true;
+
     // No-op on web; in Electron this will scan ~/.eigent/skills
-    syncFromDisk();
+    void syncFromDisk().finally(() => {
+      if (isActive) {
+        setHasCompletedInitialSync(true);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, [syncFromDisk]);
 
   useEffect(() => {
@@ -85,6 +98,103 @@ export default function Skills() {
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
     setSkillToDelete(null);
+  };
+
+  const renderYourSkills = (animateChanges: boolean) => {
+    if (!animateChanges) {
+      return yourSkills.length === 0 ? (
+        <SkillListItem
+          variant="placeholder"
+          message={
+            searchQuery
+              ? t('agents.no-skills-found')
+              : t('agents.no-your-skills')
+          }
+          addButtonText={
+            !searchQuery ? t('agents.add-your-first-skill') : undefined
+          }
+          onAddClick={
+            !searchQuery
+              ? () => {
+                  setSkillDialogMode('upload');
+                  setUploadDialogOpen(true);
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {yourSkills.map((skill) => (
+            <SkillListItem
+              key={skill.id}
+              skill={skill}
+              onDelete={() => handleDeleteClick(skill)}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-3">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {yourSkills.length === 0 ? (
+            <motion.div
+              key="your-skills-placeholder"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.16,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+            >
+              <SkillListItem
+                variant="placeholder"
+                message={t('agents.no-your-skills')}
+                addButtonText={t('agents.add-your-first-skill')}
+                onAddClick={() => {
+                  setSkillDialogMode('upload');
+                  setUploadDialogOpen(true);
+                }}
+              />
+            </motion.div>
+          ) : (
+            yourSkills.map((skill) => (
+              <motion.div
+                key={skill.id}
+                initial={{
+                  opacity: 0,
+                  transform: shouldReduceMotion
+                    ? 'translateY(0px)'
+                    : 'translateY(8px)',
+                }}
+                animate={{ opacity: 1, transform: 'translateY(0px)' }}
+                exit={{
+                  opacity: 0,
+                  transform: shouldReduceMotion
+                    ? 'translateY(0px)'
+                    : 'translateY(-4px)',
+                  transition: {
+                    duration: 0.16,
+                    ease: [0.23, 1, 0.32, 1],
+                  },
+                }}
+                transition={{
+                  duration: shouldReduceMotion ? 0.16 : 0.2,
+                  ease: [0.23, 1, 0.32, 1],
+                }}
+              >
+                <SkillListItem
+                  skill={skill}
+                  onDelete={() => handleDeleteClick(skill)}
+                />
+              </motion.div>
+            ))
+          )}
+        </AnimatePresence>
+      </div>
+    );
   };
 
   return (
@@ -133,36 +243,8 @@ export default function Skills() {
               </div>
             </div>
             <TabsContent value="your-skills" className="mt-4">
-              {yourSkills.length === 0 ? (
-                <SkillListItem
-                  variant="placeholder"
-                  message={
-                    searchQuery
-                      ? t('agents.no-skills-found')
-                      : t('agents.no-your-skills')
-                  }
-                  addButtonText={
-                    !searchQuery ? t('agents.add-your-first-skill') : undefined
-                  }
-                  onAddClick={
-                    !searchQuery
-                      ? () => {
-                          setSkillDialogMode('upload');
-                          setUploadDialogOpen(true);
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {yourSkills.map((skill) => (
-                    <SkillListItem
-                      key={skill.id}
-                      skill={skill}
-                      onDelete={() => handleDeleteClick(skill)}
-                    />
-                  ))}
-                </div>
+              {renderYourSkills(
+                hasCompletedInitialSync && searchQuery.length === 0
               )}
             </TabsContent>
             <TabsContent value="example-skills" className="mt-4">

@@ -19,7 +19,7 @@
  * The chat task's top-level `fileList` is not kept in sync, so the side panel
  * must aggregate every known source.
  */
-import { isRuntimeOnlyAgentFile } from '@/lib/agentFileFilters';
+import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 
 function fileInfoDedupKey(f: FileInfo): string {
   const rel = (f.relativePath ?? '').trim();
@@ -35,7 +35,7 @@ export function mergeSidePanelOutputFiles(
   const seen = new Set<string>();
   const out: FileInfo[] = [];
   for (const f of sources.flat()) {
-    if (isRuntimeOnlyAgentFile(f)) continue;
+    if (!isVisibleAgentFile(f)) continue;
     const k = fileInfoDedupKey(f);
     if (!k || seen.has(k)) continue;
     seen.add(k);

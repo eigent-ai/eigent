@@ -58,7 +58,8 @@ vi.mock(
 
 // The desktop host is detected by electronAPI presence; embedded browsing
 // itself is <webview>-tag based and driven through the webview registry.
-const host = { ipcRenderer: null, electronAPI: {} };
+const openExternal = vi.fn();
+const host = { ipcRenderer: null, electronAPI: { openExternal } };
 
 function renderPanel() {
   return render(
@@ -80,6 +81,8 @@ function activeType() {
 describe('PreviewPanel', () => {
   beforeEach(() => {
     mockTerminalSources = [];
+    openExternal.mockReset();
+    openExternal.mockResolvedValue({ success: true });
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
@@ -240,6 +243,28 @@ describe('PreviewPanel', () => {
     } finally {
       unregisterPreviewWebview(browserTab.webviewId);
     }
+  });
+
+  it('opens desktop external links through the Electron external IPC', async () => {
+    const user = userEvent.setup();
+    const store = usePageTabStore.getState();
+    const chooserId = previewSlice().tabs[0].id;
+    act(() => store.choosePreviewTabType(chooserId, 'browser'));
+    const browserTab = previewSlice().tabs.find(
+      (tab) => tab.type === 'browser'
+    )!;
+    act(() =>
+      store.updateBrowserPreviewTab(browserTab.id, {
+        url: 'http://localhost:3000/',
+      })
+    );
+
+    renderPanel();
+    await user.click(
+      screen.getByRole('button', { name: 'layout.browser-open-external' })
+    );
+
+    expect(openExternal).toHaveBeenCalledWith('http://localhost:3000/');
   });
 
   it('closing the final tab closes the panel', async () => {

@@ -132,9 +132,9 @@ export default function TerminalAgentWorkspace({
   };
 
   return isTakeControl ? (
-    <div className="border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default flex h-full w-full flex-col items-center justify-start border border-solid">
-      <div className="p-sm flex w-full items-start justify-start">
-        <div className="border-ds-border-neutral-strong-default p-1 rounded-full border border-solid bg-transparent">
+    <div className="flex h-full w-full flex-col items-center justify-start border border-solid border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default">
+      <div className="flex w-full items-start justify-start p-sm">
+        <div className="rounded-full border border-solid border-ds-border-neutral-strong-default bg-transparent p-1">
           <Button
             size="sm"
             variant="success"
@@ -160,12 +160,10 @@ export default function TerminalAgentWorkspace({
       <div id="webview-container" className="h-full w-full"></div>
     </div>
   ) : (
-    <div
-      className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
-    >
-      <div className="backdrop-blur-sm rounded-xl bg-ds-bg-neutral-default-default relative flex h-full w-full flex-col overflow-hidden">
-        <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
-          <div className="gap-sm flex items-center justify-start">
+    <div className="flex h-full w-full flex-1 items-center justify-center">
+      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
+        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+          <div className="flex items-center justify-start gap-sm">
             <Button
               size="xs"
               buttonContent="icon-only"
@@ -180,14 +178,14 @@ export default function TerminalAgentWorkspace({
               <ChevronLeft size={16} />
             </Button>
             <div
-              className={`gap-xs rounded-lg px-2 py-0.5 flex h-[26px] items-center ${
+              className={`flex h-[26px] items-center gap-xs rounded-lg px-2 py-0.5 ${
                 agentMap[activeAgent?.type as keyof typeof agentMap]
                   ?.bgColorLight
               }`}
             >
               <Bot className="h-4 w-4 text-ds-icon-neutral-default-default" />
               <div
-                className={`font-bold leading-17 text-[10px] ${
+                className={`text-[10px] font-bold leading-17 ${
                   agentMap[activeAgent?.type as keyof typeof agentMap]
                     ?.textColor
                 }`}
@@ -195,7 +193,7 @@ export default function TerminalAgentWorkspace({
                 {agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
               </div>
             </div>
-            <div className="font-medium leading-17 text-ds-text-neutral-muted-default text-[10px]">
+            <div className="text-[10px] font-medium leading-17 text-ds-text-neutral-muted-default">
               {
                 activeAgent?.tasks?.filter(
                   (task) => task.status && task.status !== 'running'
@@ -222,7 +220,7 @@ export default function TerminalAgentWorkspace({
                 // 		activeAgent?.activeWebviewIds?.[0]?.id || ""
                 // 	)
                 // }
-                className="group rounded-b-2xl pt-sm relative h-full w-full cursor-pointer"
+                className="group relative h-full w-full cursor-pointer rounded-b-2xl pt-sm"
               >
                 <Terminal
                   instanceId={activeAgent?.activeWebviewIds?.[0]?.id}
@@ -251,7 +249,7 @@ export default function TerminalAgentWorkspace({
               ref={scrollContainerRef}
               className={`${
                 isSingleMode ? 'px-0' : 'px-2 pb-2'
-              } scrollbar min-h-0 gap-4 relative flex flex-1 flex-wrap justify-start overflow-y-auto`}
+              } scrollbar relative flex min-h-0 flex-1 flex-wrap justify-start gap-4 overflow-y-auto`}
             >
               {activeAgent?.tasks
                 .filter((task) => task?.terminal && task?.terminal.length > 0)
@@ -259,7 +257,7 @@ export default function TerminalAgentWorkspace({
                   return (
                     <div
                       key={task.id}
-                      className={`card-box group rounded-lg relative cursor-pointer ${
+                      className={`card-box group relative cursor-pointer rounded-lg ${
                         isSingleMode
                           ? 'h-[calc(100%)] w-[calc(100%)]'
                           : 'h-[calc(50%-8px)] w-[calc(50%-8px)]'
@@ -268,7 +266,7 @@ export default function TerminalAgentWorkspace({
                       <Terminal instanceId={task.id} content={task.terminal} />
                       {/* <div
 												onClick={() => handleTakeControl(task.id)}
-												className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none"
+										className="flex justify-center items-center opacity-0  transition-all group-hover:opacity-[0.67] rounded-lg absolute inset-0 w-full h-full bg-dialog-overlay-dark pointer-events-none"
 											>
 												<Button className="cursor-pointer px-md py-sm h-auto flex gap-sm rounded-full bg-ds-bg-brand-default-default">
 													<Hand
@@ -289,7 +287,7 @@ export default function TerminalAgentWorkspace({
         {activeAgent?.tasks.filter(
           (task) => task?.terminal && task?.terminal.length > 0
         ).length !== 1 && (
-          <div className="bottom-2 right-2 gap-1 rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1 absolute z-[200] flex w-auto items-center border border-solid">
+          <div className="absolute bottom-2 right-2 z-[200] flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
             {isSingleMode && (
               <Button
                 size="xs"

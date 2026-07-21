@@ -20,7 +20,7 @@ import { StackProvider, StackTheme } from '@stackframe/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { Toaster } from './components/ui/sonner';
 import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
 import { useRemoteControlBridge } from './hooks/useRemoteControlBridge';
@@ -92,7 +92,7 @@ function App() {
       return (
         <StackProvider app={stackClientApp}>
           <StackTheme>{content}</StackTheme>
-          <Toaster style={{ zIndex: '999999 !important', position: 'fixed' }} />
+          <Toaster style={{ zIndex: 999999, position: 'fixed' }} />
         </StackProvider>
       );
     }

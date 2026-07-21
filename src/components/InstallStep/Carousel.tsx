@@ -152,7 +152,7 @@ export const CarouselStep: React.FC = () => {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="min-h-0 flex h-full w-full flex-col">
+      <div className="flex h-full min-h-0 w-full flex-col">
         <div className="mb-md text-heading-sm font-bold text-ds-text-neutral-default-default">
           {carouselItems[currentSlide].title}
         </div>
@@ -166,8 +166,8 @@ export const CarouselStep: React.FC = () => {
           <CarouselContent className="h-full">
             {carouselItems.map((_, index) => (
               <CarouselItem key={index} className="h-full">
-                <div className="p-0 h-full w-full">
-                  <CardContent className="p-0 flex h-full w-full items-center justify-center">
+                <div className="h-full w-full p-0">
+                  <CardContent className="flex h-full w-full items-center justify-center p-0">
                     <div
                       key={
                         index === currentSlide
@@ -202,7 +202,7 @@ export const CarouselStep: React.FC = () => {
                             }, 500);
                           }
                         }}
-                        className="rounded-3xl h-full w-full object-contain"
+                        className="h-full w-full rounded-3xl object-contain"
                       />
                     </div>
                   </CardContent>
@@ -212,13 +212,13 @@ export const CarouselStep: React.FC = () => {
           </CarouselContent>
         </Carousel>
       </div>
-      <div className="mt-2 gap-sm relative flex items-center justify-center">
-        <div className="gap-6 flex items-center justify-center">
+      <div className="relative mt-2 flex items-center justify-center gap-sm">
+        <div className="flex items-center justify-center gap-6">
           {carouselItems.map((item, index) => (
             <div
               key={index}
               onMouseEnter={() => handleIndicatorHover(index)}
-              className={`h-1 w-32 cursor-pointer rounded-full transition-all duration-300 ${
+              className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] h-1 w-32 cursor-pointer rounded-full transition-colors ${
                 index === currentSlide
                   ? 'bg-ds-bg-neutral-default-default'
                   : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-default-default'
@@ -231,7 +231,7 @@ export const CarouselStep: React.FC = () => {
           variant="ghost"
           size="xs"
           buttonContent="icon-only"
-          className="bottom-0 right-0 absolute rounded-full"
+          className="absolute bottom-0 right-0 rounded-full"
           aria-label={isPaused ? 'Resume' : 'Pause'}
         >
           {isPaused ? (

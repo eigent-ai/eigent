@@ -29,7 +29,6 @@ import {
 } from '@/components/ProjectPageSidebar/constants';
 import SessionGroup from '@/components/Session/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
-import UpdateElectron from '@/components/update';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -125,6 +124,7 @@ export default function WorkspacePage() {
   );
 
   const email = useAuthStore((s) => s.email);
+  const userId = useAuthStore((s) => s.user_id);
   const workspaceMainBackground = useAuthStore(
     (s) => s.workspaceMainBackground
   );
@@ -454,7 +454,8 @@ export default function WorkspacePage() {
         const files = await ipc?.invoke(
           'get-project-file-list',
           email,
-          projectStore.activeProjectId
+          projectStore.activeProjectId,
+          userId
         );
         setHasAgentFiles(
           Array.isArray(files) && filterVisibleAgentFiles(files).length > 0
@@ -465,7 +466,7 @@ export default function WorkspacePage() {
     };
 
     detectAgentFiles();
-  }, [projectStore.activeProjectId, email, setHasAgentFiles, ipc]);
+  }, [projectStore.activeProjectId, email, userId, setHasAgentFiles, ipc]);
 
   // Add webview-show listener in useEffect with cleanup
   useEffect(() => {
@@ -776,8 +777,8 @@ export default function WorkspacePage() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-all',
-                'transition-all hover:bg-ds-bg-brand-subtle-default',
+                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
+                'transition-colors hover:bg-ds-bg-brand-subtle-default',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />
@@ -799,7 +800,6 @@ export default function WorkspacePage() {
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
-        <UpdateElectron />
         {/* Always mounted: hosts preview <webview> guests so their pages and
             history survive panel close, workspace-tab hops, and project
             switches. Renders nothing on the web host. */}
