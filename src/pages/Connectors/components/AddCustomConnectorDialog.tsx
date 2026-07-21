@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
 import loader from '@monaco-editor/loader';
 import MonacoEditor from '@monaco-editor/react';
 import { Server, Wrench } from 'lucide-react';
@@ -37,23 +38,9 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { ConnectorInstallHint, MCPUserItem } from './types';
 
-if (typeof globalThis !== 'undefined') {
-  (globalThis as any).MonacoEnvironment = {
-    // Vite does not bundle Monaco's language workers, so hand every label a
-    // no-op worker: language services (JSON diagnostics etc.) stay disabled,
-    // but the editor itself works and Monaco never throws for a missing
-    // worker. Our own parse errors surface via installCustom's JSON.parse.
-    getWorker() {
-      return new Worker(
-        URL.createObjectURL(
-          new Blob([`self.onmessage = function () {};`], {
-            type: 'application/javascript',
-          })
-        )
-      );
-    },
-  };
-}
+// JSON diagnostics stay disabled (no bundled language workers) — our own
+// parse errors surface via installCustom's JSON.parse.
+ensureMonacoWorkers();
 
 loader.config({ monaco });
 

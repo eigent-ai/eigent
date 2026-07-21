@@ -2913,7 +2913,13 @@ export function FileViewerPanel({
     >
       {/* head */}
       {selectedFile && (
-        <div className="flex flex-shrink-0 items-center justify-between gap-2 py-2 pl-3 pr-2">
+        <div
+          className={`flex flex-shrink-0 items-center justify-between gap-2 pl-3 pr-2 ${
+            // In the preview panel, match the fixed 40px header the browser
+            // and review tabs use; standalone folder view keeps its padding.
+            embedded ? 'h-10' : 'py-2'
+          }`}
+        >
           <div
             onClick={segmentsClickable ? undefined : onRevealFile}
             className={`flex min-w-0 flex-1 items-center overflow-hidden ${

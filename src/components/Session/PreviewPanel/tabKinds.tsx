@@ -38,10 +38,9 @@ export interface PreviewKindMeta {
  * The content kinds the chooser offers, in display order. Single source of
  * truth for icon + copy so the tab strip and chooser never drift.
  *
- * `review` and `canvas` are reserved tab types (their components and store
- * plumbing exist, and persisted tabs still render) but are hidden from the
- * chooser until a later version ships their content. Re-add their entries
- * here when that lands.
+ * `canvas` is a reserved tab type (its component and store plumbing exist, and
+ * persisted tabs still render) but is hidden from the chooser until a later
+ * version ships its content. Re-add its entry here when that lands.
  */
 export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   {
@@ -59,6 +58,14 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultLabel: 'Files',
     descriptionKey: 'layout.preview-kind-file-desc',
     defaultDescription: 'Preview files produced or referenced in this session.',
+  },
+  {
+    kind: 'review',
+    icon: ClipboardCheck,
+    labelKey: 'layout.preview-kind-review',
+    defaultLabel: 'Review',
+    descriptionKey: 'layout.preview-kind-review-desc',
+    defaultDescription: 'Review pending file changes before applying them.',
   },
   {
     kind: 'terminal',
