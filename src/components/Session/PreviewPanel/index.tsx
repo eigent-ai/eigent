@@ -197,7 +197,7 @@ export function PreviewPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-2">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-1">
       <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1.5">
         <div className="relative flex min-w-0 items-center">
           <div
