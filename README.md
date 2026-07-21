@@ -61,7 +61,7 @@ Built on [CAMEL-AI][camel-site]'s acclaimed open-source project, our system intr
   - [☁️ Cloud Version](#%EF%B8%8F-cloud-version)
 - [✨ Key features - Open Source Cowork](#-key-features---open-source-Cowork)
   - [🧑‍💻 Cowork with Single Agent](#-cowork-with-single-agent)
-  - [🏭 Cowork with Workforce](#-coworker-with-workforce)
+  - [🏭 Cowork with Workforce](#-cowork-with-workforce)
   - [⏰ Automation](#-automation)
   - [🔒 Local & Secure](#-local--secure)
   - [🧠 Model Agnostic](#-model-agnostic)
