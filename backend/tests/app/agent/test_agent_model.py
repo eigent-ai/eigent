@@ -18,7 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agent.agent_model import agent_model
-from app.model.chat import Chat
+from app.model.chat import AgentModelConfig, Chat
+from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,7 @@ class TestAgentFactoryFunctions:
                 "model_platform": "openai",
                 "model_type": "gpt-5.5",
                 "auth_source": "codex_subscription",
+                "model_config_dict": {"stream": False, "store": True},
             }
         )
         monkeypatch.setenv("CODEX_RESOLVER_URL", "http://127.0.0.1:12345")
@@ -154,6 +156,232 @@ class TestAgentFactoryFunctions:
         assert "store" not in model_config
         assert kwargs["url"] == "https://api.openai.com/v1"
 
+    def test_explicit_model_config_wins_over_legacy_extra_params(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "extra_params": {
+                    "temperature": 0.8,
+                    "top_p": 0.6,
+                    "max_retries": 7,
+                    "model_config_dict": {
+                        "temperature": 0.5,
+                        "presence_penalty": 0.1,
+                    },
+                },
+                "model_config_dict": {
+                    "temperature": 0.2,
+                    "max_tokens": 2048,
+                },
+            }
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        task_locks[options.project_id] = mock_task_lock
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["max_retries"] == 7
+        assert kwargs["model_config_dict"]["temperature"] == 0.2
+        assert kwargs["model_config_dict"]["top_p"] == 0.6
+        assert kwargs["model_config_dict"]["presence_penalty"] == 0.1
+        assert kwargs["model_config_dict"]["max_tokens"] == 2048
+        assert "max_retries" not in kwargs["model_config_dict"]
+        assert "model_config_dict" not in kwargs["model_config_dict"]
+
+    def test_runtime_owned_agent_model_values_override_user_config(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {
+                    "stream": False,
+                    "parallel_tool_calls": True,
+                },
+            }
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        task_locks[options.project_id] = mock_task_lock
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model(Agents.task_agent, "Task agent", options, [])
+            agent_model(Agents.browser_agent, "Browser agent", options, [])
+
+        task_config = mock_model_factory.create.call_args_list[0].kwargs[
+            "model_config_dict"
+        ]
+        browser_config = mock_model_factory.create.call_args_list[1].kwargs[
+            "model_config_dict"
+        ]
+        assert task_config["stream"] is True
+        assert browser_config["parallel_tool_calls"] is False
+
+    def test_per_agent_explicit_model_config_overrides_task_config(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {"temperature": 0.7, "top_p": 0.8},
+            }
+        )
+        custom_config = AgentModelConfig(
+            model_config_dict={"temperature": 0.1}
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        task_locks[options.project_id] = mock_task_lock
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model(
+                "CustomAgent",
+                "Custom agent",
+                options,
+                [],
+                custom_model_config=custom_config,
+            )
+
+        model_config = mock_model_factory.create.call_args.kwargs[
+            "model_config_dict"
+        ]
+        assert model_config["temperature"] == 0.1
+        assert "top_p" not in model_config
+
+    def test_per_agent_empty_credentials_do_not_inherit_task_credentials(
+        self, sample_chat_data
+    ):
+        options = Chat(**sample_chat_data)
+        custom_config = AgentModelConfig(
+            model_platform="aws-bedrock-converse",
+            model_type="anthropic.claude-3-5-sonnet-20241022-v2:0",
+            api_key="",
+            api_url="",
+            extra_params={
+                "region_name": "us-east-1",
+                "aws_access_key_id": "worker-access-key",
+                "aws_secret_access_key": "worker-secret-key",
+            },
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        task_locks[options.project_id] = mock_task_lock
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model(
+                "BedrockAgent",
+                "Bedrock agent",
+                options,
+                [],
+                custom_model_config=custom_config,
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["api_key"] == ""
+        assert kwargs["url"] == ""
+        assert kwargs["aws_access_key_id"] == "worker-access-key"
+        assert kwargs["aws_secret_access_key"] == "worker-secret-key"
+
+    def test_direct_per_agent_provider_is_not_treated_as_task_cloud_model(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "api_url": "https://eigent-proxy.example.com",
+            }
+        )
+        custom_config = AgentModelConfig(
+            model_platform="aws-bedrock-converse",
+            model_type="anthropic.claude-3-5-sonnet-20241022-v2:0",
+            api_key="",
+            api_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+            extra_params={
+                "region_name": "eu-west-1",
+                "aws_access_key_id": "worker-access-key",
+                "aws_secret_access_key": "worker-secret-key",
+            },
+        )
+
+        from app.service.task import task_locks
+
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        task_locks[options.project_id] = mock_task_lock
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+
+            agent_model(
+                "BedrockAgent",
+                "Bedrock agent",
+                options,
+                [],
+                custom_model_config=custom_config,
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["url"] == (
+            "https://bedrock-runtime.us-east-1.amazonaws.com"
+        )
+        assert kwargs["region_name"] == "eu-west-1"
+        assert "user" not in (kwargs["model_config_dict"] or {})
+
     def test_agent_model_with_missing_options(self):
         """Test agent_model with missing required options."""
         agent_name = "ErrorAgent"
@@ -184,7 +412,7 @@ class TestAgentIntegration:
 
         # Create task lock
         mock_task_lock = MagicMock()
-        mock_task_lock.put_queue = AsyncMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
         task_locks[api_task_id] = mock_task_lock
 
         # Create agent

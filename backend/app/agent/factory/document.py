@@ -21,7 +21,10 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import DOCUMENT_SYS_PROMPT
+from app.agent.prompt import (
+    DOCUMENT_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.excel_toolkit import ExcelToolkit
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
@@ -154,6 +157,7 @@ async def document_agent(
         working_directory=working_directory,
         now_str=NOW_STR,
     )
+    system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.document_agent,

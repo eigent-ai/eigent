@@ -178,9 +178,9 @@ export default function BrowserAgentWorkspace({
   }
 
   return isTakeControl ? (
-    <div className="rounded-xl border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default flex h-full w-full flex-col items-center justify-start border border-solid">
-      <div className="gap-sm p-sm flex w-full items-start justify-start">
-        <div className="border-ds-border-neutral-strong-default p-1 rounded-full border border-solid bg-transparent">
+    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-solid border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default">
+      <div className="flex w-full items-start justify-start gap-sm p-sm">
+        <div className="rounded-full border border-solid border-ds-border-neutral-strong-default bg-transparent p-1">
           <Button
             onClick={() => {
               fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
@@ -202,12 +202,10 @@ export default function BrowserAgentWorkspace({
       <div id="webview-container" className="h-full w-full"></div>
     </div>
   ) : (
-    <div
-      className={`ease-in-out flex h-full w-full flex-1 items-center justify-center transition-all duration-300`}
-    >
-      <div className="rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm relative flex h-full w-full flex-col overflow-hidden">
-        <div className="rounded-t-2xl px-2 pb-2 pt-3 flex flex-shrink-0 items-center justify-between">
-          <div className="gap-sm flex items-center justify-start">
+    <div className="flex h-full w-full flex-1 items-center justify-center">
+      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
+        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+          <div className="flex items-center justify-start gap-sm">
             <Button
               size="xs"
               buttonContent="icon-only"
@@ -287,14 +285,14 @@ export default function BrowserAgentWorkspace({
                     activeAgent?.activeWebviewIds?.[0]?.id || ''
                   )
                 }
-                className="group rounded-b-2xl pt-sm relative h-full w-full cursor-pointer"
+                className="group relative h-full w-full cursor-pointer rounded-b-2xl pt-sm"
               >
                 <img
                   src={activeAgent?.activeWebviewIds[0]?.img}
                   alt=""
-                  className="rounded-b-2xl h-full w-full object-contain"
+                  className="h-full w-full rounded-b-2xl object-contain"
                 />
-                <div className="bg-dialog-overlay-dark inset-0 rounded-b-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]">
+                <div className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-b-lg opacity-0 transition-opacity group-hover:opacity-[0.67]">
                   <Button
                     size="sm"
                     variant="primary"
@@ -314,7 +312,7 @@ export default function BrowserAgentWorkspace({
             ref={scrollContainerRef}
             className={`${
               isSingleMode ? 'px-0' : 'px-2 pb-2'
-            } scrollbar min-h-0 gap-4 relative flex flex-1 flex-wrap justify-start overflow-y-auto`}
+            } scrollbar relative flex min-h-0 flex-1 flex-wrap justify-start gap-4 overflow-y-auto`}
           >
             {activeAgent?.activeWebviewIds
               ?.filter((item) => item?.img)
@@ -323,7 +321,7 @@ export default function BrowserAgentWorkspace({
                   <div
                     key={index}
                     onClick={() => handleTakeControl(item.id)}
-                    className={`card-box group rounded-lg relative cursor-pointer ${
+                    className={`card-box group relative cursor-pointer rounded-lg ${
                       isSingleMode
                         ? 'h-[calc(100%)] w-[calc(100%)]'
                         : 'h-[calc(50%-8px)] w-[calc(50%-8px)]'
@@ -333,7 +331,7 @@ export default function BrowserAgentWorkspace({
                       <img
                         src={item.img}
                         alt=""
-                        className="rounded-2xl h-full w-full object-contain"
+                        className="h-full w-full rounded-2xl object-contain"
                       />
                     )}
                     <div
@@ -342,7 +340,7 @@ export default function BrowserAgentWorkspace({
                           activeAgent?.activeWebviewIds?.[0]?.id || ''
                         )
                       }
-                      className="bg-dialog-overlay-dark inset-0 rounded-lg pointer-events-none absolute flex h-full w-full items-center justify-center opacity-0 transition-all group-hover:opacity-[0.67]"
+                      className="bg-dialog-overlay-dark pointer-events-none absolute inset-0 flex h-full w-full items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-[0.67]"
                     >
                       <Button
                         size="sm"
@@ -361,7 +359,7 @@ export default function BrowserAgentWorkspace({
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="bottom-2 right-2 gap-1 rounded-lg border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1 absolute z-100 flex w-auto items-center border border-solid">
+          <div className="z-100 absolute bottom-2 right-2 flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
             <Button
               size="xs"
               buttonContent="icon-only"

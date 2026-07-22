@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
+  savePastedFile: (fileName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   triggerMenuAction: (action: string) =>
     ipcRenderer.send('menu-action', action),
@@ -76,10 +78,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webviewDestroy: (webviewId: string) =>
     ipcRenderer.invoke('webview-destroy', webviewId),
   exportLog: () => ipcRenderer.invoke('export-log'),
+  exportCamelLog: (
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('export-camel-log', email, taskId, projectId, userId),
   getDiagnosticsInfo: () => ipcRenderer.invoke('get-diagnostics-info'),
   exportDiagnosticsZip: (payload: { description: string; steps?: string }) =>
     ipcRenderer.invoke('export-diagnostics-zip', payload),
   openMailto: (url: string) => ipcRenderer.invoke('open-mailto', url),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   uploadLog: (email: string, taskId: string, baseUrl: string, token: string) =>
     ipcRenderer.invoke('upload-log', email, taskId, baseUrl, token),
   // mcp
@@ -101,6 +110,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
   readFileAsDataUrl: (path: string) =>
     ipcRenderer.invoke('read-file-dataurl', path),
+  reviewListBackups: (filePaths: string[]) =>
+    ipcRenderer.invoke('review-list-backups', filePaths),
   deleteFolder: (email: string) => ipcRenderer.invoke('delete-folder', email),
   getMcpConfigPath: (email: string) =>
     ipcRenderer.invoke('get-mcp-config-path', email),
@@ -164,8 +175,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('subscription-auth:codex-login', email),
   codexSubscriptionDisconnect: (email: string) =>
     ipcRenderer.invoke('subscription-auth:codex-disconnect', email),
-  getProjectFolderPath: (email: string, projectId: string) =>
-    ipcRenderer.invoke('get-project-folder-path', email, projectId),
+  getProjectFolderPath: (
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
   openInIDE: (folderPath: string, ide: string) =>
     ipcRenderer.invoke('open-in-ide', folderPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>
@@ -180,6 +194,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onCdpPoolChanged: (callback: (browsers: any[]) => void) => {
     const channel = 'cdp-pool-changed';
     const listener = (_event: any, browsers: any[]) => callback(browsers);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  // interactive terminal (session preview terminal tabs)
+  terminalCreate: (options: {
+    id: string;
+    cwd?: string;
+    cols?: number;
+    rows?: number;
+  }) => ipcRenderer.invoke('terminal-create', options),
+  terminalInput: (id: string, data: string) =>
+    ipcRenderer.send('terminal-input', { id, data }),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.send('terminal-resize', { id, cols, rows }),
+  terminalDispose: (id: string) => ipcRenderer.invoke('terminal-dispose', id),
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void
+  ) => {
+    const channel = 'terminal-data';
+    const listener = (_event: any, payload: { id: string; data: string }) =>
+      callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  onTerminalExit: (
+    callback: (payload: { id: string; exitCode: number }) => void
+  ) => {
+    const channel = 'terminal-exit';
+    const listener = (_event: any, payload: { id: string; exitCode: number }) =>
+      callback(payload);
     ipcRenderer.on(channel, listener);
     return () => {
       ipcRenderer.off(channel, listener);

@@ -32,4 +32,10 @@ export interface MCPConfigForm {
   command: string;
   argsArr: string[];
   env: Record<string, string>;
+  server_url: string;
 }
+
+export type ConnectorInstallHint =
+  | { source: 'open'; key: string }
+  | { source: 'builtin'; key: string }
+  | { source: 'custom'; key: string };

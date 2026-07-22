@@ -230,6 +230,7 @@ dependencies = [
     { name = "pydash" },
     { name = "python-dotenv" },
     { name = "qdrant-client" },
+    { name = "truststore" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -244,7 +245,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.91a3" },
+    { name = "camel-ai", extras = ["eigent"], specifier = "==0.2.91a5" },
     { name = "debugpy", specifier = ">=1.8.17" },
     { name = "fastapi", specifier = ">=0.115.12" },
     { name = "fastapi-babel", specifier = ">=1.0.0" },
@@ -261,6 +262,7 @@ requires-dist = [
     { name = "pydash", specifier = ">=8.0.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "qdrant-client", specifier = ">=1.16.2" },
+    { name = "truststore", specifier = ">=0.10.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
 ]
 
@@ -315,7 +317,7 @@ wheels = [
 
 [[package]]
 name = "camel-ai"
-version = "0.2.91a3"
+version = "0.2.91a5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astor" },
@@ -333,9 +335,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/ce/44a09fb47372d8ebea3a0c7aafefd5640caa1c1ab0cdfccfd0260de5b495/camel_ai-0.2.91a3.tar.gz", hash = "sha256:eb94ba4bd084967f55fe73568bbeda4a49d3bf5ac2eb79e018870df3661d1d85", size = 1230710, upload-time = "2026-04-25T14:00:37.206Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/c9/7015c4f4733b535e2f56eef9a4c1da7b9e49db8d209dc850e996f2b6b5da/camel_ai-0.2.91a5.tar.gz", hash = "sha256:9606d50d7ec4062cc44e0f4c085e043c7d5b7b2779ea66c4ac9142c98a3380a7", size = 1239665, upload-time = "2026-07-13T11:24:06.191Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/8c/ba682c71766bc61a1a1115af50bddb6040432f85784a0ec5df2ed91897a9/camel_ai-0.2.91a3-py3-none-any.whl", hash = "sha256:ead956ab8d2f22685cded8c03e7ecad6bdee3fee85041eb1488bdaad7e115372", size = 1718236, upload-time = "2026-04-25T14:00:34.606Z" },
+    { url = "https://files.pythonhosted.org/packages/81/c7/80317df8f49ff9d16e8e29eb838b4f9e3f537a02c697c55b18bc6a24d9f4/camel_ai-0.2.91a5-py3-none-any.whl", hash = "sha256:dd1f3ce9ce324bbd29952d4f2020c5279d31ebc70c428661c258bdb67c9943d1", size = 1729980, upload-time = "2026-07-13T11:24:03.785Z" },
 ]
 
 [package.optional-dependencies]
@@ -2678,6 +2680,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf", size = 78374, upload-time = "2026-02-03T17:35:50.982Z" },
+]
+
+[[package]]
+name = "truststore"
+version = "0.10.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.730Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.460Z" },
 ]
 
 [[package]]

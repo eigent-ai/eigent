@@ -30,7 +30,7 @@ import {
   ChatTaskStatus,
   TaskStatus,
 } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
   ChevronLeft,
@@ -53,33 +53,31 @@ function getTaskIdDisplay(taskId: string): string {
   return idStr;
 }
 
-/** Enter: ease-out (settles gently). Exit: ease-in (picks up speed off-screen). */
-const SLIDE_EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
-const SLIDE_EASE_IN: [number, number, number, number] = [0.4, 0, 0.2, 1];
+const PANEL_EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];
 
 const foldedTaskLogPanelVariants = {
-  initial: { x: '100%' },
+  initial: { transform: 'translateX(100%)' },
   animate: {
-    x: 0,
-    transition: { duration: 0.45, ease: SLIDE_EASE_OUT },
+    transform: 'translateX(0)',
+    transition: { duration: 0.24, ease: PANEL_EASE_OUT },
   },
   exit: {
-    x: '100%',
-    transition: { duration: 0.36, ease: SLIDE_EASE_IN },
+    transform: 'translateX(100%)',
+    transition: { duration: 0.18, ease: PANEL_EASE_OUT },
   },
 };
 
 const foldedTaskLogContentVariants = {
-  initial: { opacity: 0, x: -12 },
+  initial: { opacity: 0, transform: 'translateX(-12px)' },
   animate: {
     opacity: 1,
-    x: 0,
-    transition: { duration: 0.35, ease: SLIDE_EASE_OUT },
+    transform: 'translateX(0)',
+    transition: { duration: 0.2, ease: PANEL_EASE_OUT },
   },
   exit: {
     opacity: 0,
-    x: -8,
-    transition: { duration: 0.22, ease: SLIDE_EASE_IN },
+    transform: 'translateX(-8px)',
+    transition: { duration: 0.16, ease: PANEL_EASE_OUT },
   },
 };
 
@@ -91,6 +89,7 @@ export function AgentDetailPane({
   /** Fires when user clicks task filter tabs (take control from auto-follow in folded workforce). */
   onTakeManualFollowControl?: () => void;
 }) {
+  const shouldReduceMotion = useReducedMotion();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const [selectedState, setSelectedState] = useState<TaskStateType>('all');
@@ -178,6 +177,37 @@ export function AgentDetailPane({
         : 'grid-cols-2 grid-rows-2';
   const terminalPlaceholderCount =
     terminalTasks.length >= 3 ? Math.max(0, 4 - terminalTasks.length) : 0;
+
+  const taskLogPanelVariants = shouldReduceMotion
+    ? {
+        initial: { opacity: 0, transform: 'translateX(0)' },
+        animate: {
+          opacity: 1,
+          transform: 'translateX(0)',
+          transition: { duration: 0.16, ease: PANEL_EASE_OUT },
+        },
+        exit: {
+          opacity: 0,
+          transform: 'translateX(0)',
+          transition: { duration: 0.14, ease: PANEL_EASE_OUT },
+        },
+      }
+    : foldedTaskLogPanelVariants;
+  const taskLogContentVariants = shouldReduceMotion
+    ? {
+        initial: { opacity: 0, transform: 'translateX(0)' },
+        animate: {
+          opacity: 1,
+          transform: 'translateX(0)',
+          transition: { duration: 0.16, ease: PANEL_EASE_OUT },
+        },
+        exit: {
+          opacity: 0,
+          transform: 'translateX(0)',
+          transition: { duration: 0.14, ease: PANEL_EASE_OUT },
+        },
+      }
+    : foldedTaskLogContentVariants;
 
   const focusAgent = useCallback(() => {
     if (!chatStore?.activeTaskId) return;
@@ -363,7 +393,7 @@ export function AgentDetailPane({
                       }
                     }}
                     className={cn(
-                      'flex cursor-pointer flex-col gap-1 rounded-xl border border-solid px-6 py-sm transition-all duration-300',
+                      'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] flex cursor-pointer flex-col gap-1 rounded-xl border border-solid px-6 py-sm transition-[background-color,border-color]',
                       task.reAssignTo
                         ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED
@@ -498,7 +528,7 @@ export function AgentDetailPane({
                       >
                         <ChevronDown
                           className={cn(
-                            'size-4 transition-transform duration-200',
+                            'size-4 transition-transform duration-200 motion-reduce:transition-none',
                             isExpanded && 'rotate-180'
                           )}
                           aria-hidden
@@ -553,7 +583,7 @@ export function AgentDetailPane({
           {detailTask && (
             <motion.div
               key="folded-agent-task-log"
-              variants={foldedTaskLogPanelVariants}
+              variants={taskLogPanelVariants}
               initial="initial"
               animate="animate"
               exit="exit"
@@ -583,7 +613,7 @@ export function AgentDetailPane({
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={detailTask.id}
-                    variants={foldedTaskLogContentVariants}
+                    variants={taskLogContentVariants}
                     initial="initial"
                     animate="animate"
                     exit="exit"

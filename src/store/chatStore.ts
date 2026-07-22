@@ -29,6 +29,22 @@ import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import {
+  classifyError,
+  classifyTaskCategory,
+} from '@/lib/events/appEventClassifiers';
+import {
+  recordFeatureUsed,
+  recordFileGenerated,
+  recordTaskCompleted,
+  recordTaskFailed,
+  recordTaskStopped,
+  recordTaskSubmitted,
+} from '@/lib/events/appEvents';
+import {
+  buildAgentModelConfigFromProvider,
+  splitProviderConfig,
+} from '@/lib/modelConfig';
+import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
@@ -53,11 +69,25 @@ import { getAuthStore, getWorkerList } from './authStore';
 import { getCloudModelStore } from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
+import { getServerCapabilityStore } from './serverCapabilityStore';
 import { legacySpaceIdForUser, useSpaceStore } from './spaceStore';
 
 const API_CODE_TRIAL_LIMIT = '22';
+const CONNECTOR_GATEWAY_MCP_NAME = 'connector_gateway';
 const PROJECT_CONTEXT_MAX_CHARS = 24_000;
 const PROJECT_CONTEXT_MAX_RUNS = 8;
+// chat_history.summary is a bounded database column; an over-long value
+// makes the whole history update fail server-side, which also discards the
+// status change carried by the same request (a completed run then stays
+// "ongoing"). Clamp before sending; the full text still lives in the run's
+// end step.
+const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
+const clampHistorySummary = (
+  value: string | undefined | null
+): string | undefined =>
+  typeof value === 'string'
+    ? value.slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH)
+    : undefined;
 
 type ConfirmedUserPromptSources = {
   lastMessageContent?: unknown;
@@ -94,6 +124,18 @@ const hasApiCode = (value: unknown, code: string) =>
   String((value as { code?: unknown }).code) === code;
 
 let _host: AppHost | null = null;
+
+// Per-step request_usage tokens keyed by `${taskId}:${agentId}`; needed
+// because deactivate_agent.tokens is zeroed under request-level reporting.
+const requestUsageStepTokens = new Map<string, number>();
+
+const clearRequestUsageStepTokens = (taskId: string) => {
+  for (const key of requestUsageStepTokens.keys()) {
+    if (key.startsWith(`${taskId}:`)) {
+      requestUsageStepTokens.delete(key);
+    }
+  }
+};
 
 export function injectHost(host: AppHost | null): void {
   _host = host;
@@ -166,6 +208,73 @@ function getDirectServerApiBaseUrl(): string | undefined {
   }
 
   return normalizeServerApiBaseUrl(import.meta.env.VITE_BASE_URL);
+}
+
+function hasMcpServers(config: any): boolean {
+  return Boolean(
+    config &&
+    typeof config === 'object' &&
+    config.mcpServers &&
+    typeof config.mcpServers === 'object' &&
+    Object.keys(config.mcpServers).length > 0
+  );
+}
+
+function mergeMcpConfigs(...configs: any[]): {
+  mcpServers: Record<string, any>;
+} {
+  const mcpServers: Record<string, any> = {};
+  configs.forEach((config) => {
+    if (!hasMcpServers(config)) {
+      return;
+    }
+    Object.assign(mcpServers, config.mcpServers);
+  });
+  return { mcpServers };
+}
+
+async function buildConnectorGatewayMcpConfig(
+  token?: string | null
+): Promise<{ mcpServers: Record<string, any> } | null> {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
+      return null;
+    }
+
+    const capabilities =
+      await getServerCapabilityStore().fetchCapabilities(false);
+    if (capabilities.features.connector_gateway.enabled !== true) {
+      return null;
+    }
+  } catch (error) {
+    console.warn(
+      'Failed to resolve Connector Gateway capability for MCP:',
+      error
+    );
+    return null;
+  }
+
+  const serverApiBaseUrl = getDirectServerApiBaseUrl();
+  if (!serverApiBaseUrl) {
+    return null;
+  }
+
+  return {
+    mcpServers: {
+      [CONNECTOR_GATEWAY_MCP_NAME]: {
+        type: 'streamable_http',
+        url: `${serverApiBaseUrl}/connectors/mcp`,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 180,
+      },
+    },
+  };
 }
 
 function getHostElectronAPI() {
@@ -651,7 +760,12 @@ export interface ChatStore {
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
-  replay: (taskId: string, question: string, time: number) => Promise<void>;
+  replay: (
+    taskId: string,
+    question: string,
+    time: number,
+    projectId?: string
+  ) => Promise<void>;
   startTask: (
     taskId: string,
     type?: string,
@@ -756,11 +870,18 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
-// Track active SSE connections for proper cleanup
-const activeSSEControllers: Record<string, AbortController> = {};
+// Track active SSE connections for proper cleanup. `live` distinguishes
+// real Brain runs from history/share playback streams.
+const activeSSEControllers: Record<
+  string,
+  { controller: AbortController; live: boolean }
+> = {};
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
-  /(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+  /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
+
+const FINAL_OUTPUT_SANDBOX_SCHEME_REGEX =
+  /(^|[^A-Za-z0-9_+.-])sandbox:(?=(?:[A-Za-z]:)?[\\/])/gi;
 
 const FINAL_OUTPUT_FILE_EXTENSIONS = new Set([
   'csv',
@@ -841,7 +962,7 @@ function buildRemoteFileInfoPath({
   return `${baseURL.replace(/\/$/, '')}/files/stream?${params.toString()}`;
 }
 
-function extractFinalOutputFileList(
+export function extractFinalOutputFileList(
   content: string,
   projectId?: string,
   email?: string,
@@ -853,8 +974,12 @@ function extractFinalOutputFileList(
 
   const fileInfos: FileInfo[] = [];
   const seen = new Set<string>();
+  const parseableContent = content.replace(
+    FINAL_OUTPUT_SANDBOX_SCHEME_REGEX,
+    '$1'
+  );
 
-  for (const match of content.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
+  for (const match of parseableContent.matchAll(FINAL_OUTPUT_FILE_PATH_REGEX)) {
     const filePath = normalizeOutputPath(match[0]);
     if (!filePath || filePath.startsWith('//') || filePath.includes('://')) {
       continue;
@@ -903,7 +1028,16 @@ function getFileInfoIdentities(file: FileInfo): string[] {
     .map((value) => normalizeOutputPath(value as string).toLowerCase());
 }
 
-function mergeFileInfoLists(
+function isLegacySandboxDrivePath(
+  existingPath: string,
+  extractedPath: string
+): boolean {
+  const normalizedExisting = normalizeOutputPath(existingPath).toLowerCase();
+  const normalizedExtracted = normalizeOutputPath(extractedPath).toLowerCase();
+  return normalizedExisting === `x:${normalizedExtracted}`;
+}
+
+export function mergeFileInfoLists(
   existingFileList: FileInfo[],
   extractedFileList: FileInfo[]
 ): FileInfo[] {
@@ -922,9 +1056,13 @@ function mergeFileInfoLists(
       return;
     }
 
-    if (file.isRemote && !merged[existingIndex].isRemote) {
+    const existingFile = merged[existingIndex];
+    if (
+      (file.isRemote && !existingFile.isRemote) ||
+      isLegacySandboxDrivePath(existingFile.path, file.path)
+    ) {
       merged[existingIndex] = {
-        ...merged[existingIndex],
+        ...existingFile,
         ...file,
       };
       mergedIdentities[existingIndex] = identities;
@@ -1210,7 +1348,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Clean up SSE connection if it exists
       try {
         if (activeSSEControllers[taskId]) {
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1252,7 +1390,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       try {
         if (activeSSEControllers[taskId]) {
           console.log(`Stopping SSE connection for task ${taskId}`);
-          activeSSEControllers[taskId].abort();
+          activeSSEControllers[taskId].controller.abort();
           delete activeSSEControllers[taskId];
         }
       } catch (error) {
@@ -1343,6 +1481,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
+      // Track genuine, user-facing task starts (skip replay/share playback).
+      // Powers the "time to first task" lifecycle event.
+      if (isLiveTask) {
+        const submitWorkers = getWorkerList();
+        const submitHasMcp = submitWorkers.some(
+          (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+        );
+        recordTaskSubmitted({
+          session_mode: sessionModeForRequest,
+          task_source: executionId ? 'trigger' : 'user',
+          agent_count: submitWorkers.length,
+          has_mcp: submitHasMcp,
+        });
+        if (sessionModeForRequest === SessionMode.WORKFORCE) {
+          recordFeatureUsed('multi_agent', {
+            session_mode: sessionModeForRequest,
+          });
+        }
+      }
       if (project_id && !project?.mode) {
         useSpaceStore
           .getState()
@@ -1404,7 +1561,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (!task) return;
         if (activeSSEControllers[newTaskId]) {
           try {
-            activeSSEControllers[newTaskId].abort();
+            activeSSEControllers[newTaskId].controller.abort();
           } catch {
             // Ignore abort errors while cleaning up a failed startup.
           }
@@ -1426,6 +1583,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         if (!isBackendReady) {
           console.error('[startTask] Backend is not ready, cannot start task');
+          // A task failure, not a launch failure — this can fire hours after
+          // a successful launch and would otherwise skew launch-failure rate.
+          recordTaskFailed({
+            error_type: 'backend_unavailable',
+            session_mode: sessionModeForRequest,
+          });
           const targetState = targetChatStore.getState();
           targetState.addMessages(newTaskId, {
             id: generateUniqueId(),
@@ -1499,22 +1662,54 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      // Reuse the model captured on this Project (if any) so follow-up runs
+      // keep the conversation's model even when the global default changed.
+      const pinnedModelSelection =
+        !type && project_id ? projectStore.getProjectModel(project_id) : null;
+      const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
+      let resolvedProviderId: number | undefined;
+      let resolvedCloudModelId: string | undefined;
+      let resolvedCodexModelId: string | undefined;
+
       // get current model
       let apiModel = {
         api_key: '',
         model_type: '',
         model_platform: '',
         api_url: '',
+        model_config_dict: {},
         extra_params: {},
         auth_source: undefined as 'codex_subscription' | undefined,
       };
-      if (!type && (modelType === 'custom' || modelType === 'local')) {
-        const res = await proxyFetchGet('/api/v1/providers', {
-          prefer: true,
-        });
-        const providerList = res.items || [];
-        console.log('providerList', providerList);
-        const provider = providerList[0];
+      if (
+        !type &&
+        (effectiveModelType === 'custom' || effectiveModelType === 'local')
+      ) {
+        let provider: any = null;
+        if (pinnedModelSelection?.provider_id !== undefined) {
+          try {
+            const res = await proxyFetchGet('/api/v1/providers');
+            const providerList = Array.isArray(res) ? res : res.items || [];
+            provider =
+              providerList.find(
+                (p: { id: number }) => p.id === pinnedModelSelection.provider_id
+              ) || null;
+          } catch (error) {
+            console.error('Failed to load pinned model provider:', error);
+          }
+          if (!provider) {
+            toast.warning(
+              'The model used earlier in this conversation is no longer available. Falling back to the default model.'
+            );
+          }
+        }
+        if (!provider) {
+          const res = await proxyFetchGet('/api/v1/providers', {
+            prefer: true,
+          });
+          const providerList = res.items || [];
+          provider = providerList[0];
+        }
 
         if (!provider) {
           finishStartupFailure();
@@ -1523,22 +1718,31 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
+        const { modelConfigDict, extraParams } = splitProviderConfig(
+          provider.encrypted_config
+        );
         apiModel = {
           api_key: provider.api_key,
           model_type: provider.model_type,
           model_platform: provider.provider_name,
           api_url: provider.endpoint_url || provider.api_url,
-          extra_params: provider.encrypted_config,
+          model_config_dict: modelConfigDict,
+          extra_params: extraParams,
           auth_source: undefined,
         };
-      } else if (!type && modelType === 'cloud') {
+        resolvedProviderId = provider.id;
+      } else if (!type && effectiveModelType === 'cloud') {
+        const requestedCloudModelId =
+          pinnedModelSelection?.cloud_model_type || cloud_model_type;
         const cloudModelStore = getCloudModelStore();
-        let resolvedCloudModel =
-          cloudModelStore.resolveCloudModel(cloud_model_type);
+        let resolvedCloudModel = cloudModelStore.resolveCloudModel(
+          requestedCloudModelId
+        );
         if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
           await cloudModelStore.fetchCloudModels(true);
-          resolvedCloudModel =
-            getCloudModelStore().resolveCloudModel(cloud_model_type);
+          resolvedCloudModel = getCloudModelStore().resolveCloudModel(
+            requestedCloudModelId
+          );
         }
         if (!resolvedCloudModel) {
           finishStartupFailure();
@@ -1554,7 +1758,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           console.warn(message);
           toast.warning(message);
         }
-        if (resolvedCloudModel.model.id !== cloud_model_type) {
+        if (
+          !pinnedModelSelection &&
+          resolvedCloudModel.model.id !== cloud_model_type
+        ) {
           getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
         }
 
@@ -1598,23 +1805,50 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_type: resolvedCloudModel.model.model_type,
           model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
+          model_config_dict: {},
           extra_params: {},
           auth_source: undefined,
         };
-      } else if (!type && modelType === 'codex_subscription') {
+        resolvedCloudModelId = resolvedCloudModel.model.id;
+      } else if (!type && effectiveModelType === 'codex_subscription') {
+        const codexModelId =
+          pinnedModelSelection?.codex_model_type ||
+          codex_model_type ||
+          'gpt-5.5';
         apiModel = {
           api_key: '',
-          model_type: codex_model_type || 'gpt-5.5',
+          model_type: codexModelId,
           model_platform: 'openai',
           api_url: '',
+          model_config_dict: {},
           extra_params: {},
           auth_source: 'codex_subscription',
         };
+        resolvedCodexModelId = codexModelId;
+      }
+
+      // Capture the resolved model on the Project so later runs (including
+      // conversations reloaded from history) keep using it.
+      if (!type && project_id && apiModel.model_platform) {
+        projectStore.setProjectModel(project_id, {
+          modelType: effectiveModelType,
+          ...(resolvedCloudModelId
+            ? { cloud_model_type: resolvedCloudModelId }
+            : {}),
+          ...(resolvedCodexModelId
+            ? { codex_model_type: resolvedCodexModelId }
+            : {}),
+          ...(resolvedProviderId !== undefined
+            ? { provider_id: resolvedProviderId }
+            : {}),
+          model_platform: apiModel.model_platform,
+          model_type: apiModel.model_type,
+        });
       }
 
       // Get search engine configuration for custom mode
       let searchConfig: Record<string, string> = {};
-      if (!type && modelType === 'custom') {
+      if (!type && effectiveModelType === 'custom') {
         try {
           const configsRes = await proxyFetchGet('/api/v1/configs');
           const configs = Array.isArray(configsRes) ? configsRes : [];
@@ -1666,12 +1900,68 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      const workerProviderIds = !type
+        ? workerList
+            .map((worker) => worker.workerInfo?.model_provider_id)
+            .filter((providerId): providerId is number =>
+              Number.isInteger(providerId)
+            )
+        : [];
+      const workerProvidersById = new Map<number, any>();
+      if (workerProviderIds.length > 0) {
+        let workerProviderList: any[];
+        try {
+          const providersRes = await proxyFetchGet('/api/v1/providers');
+          workerProviderList = Array.isArray(providersRes)
+            ? providersRes
+            : providersRes.items || [];
+        } catch (error) {
+          finishStartupFailure();
+          throw new Error(
+            'Failed to load the model provider configured for a worker.',
+            { cause: error }
+          );
+        }
+
+        workerProviderList.forEach((provider) => {
+          workerProvidersById.set(Number(provider.id), provider);
+        });
+
+        const missingWorker = workerList.find((worker) => {
+          const providerId = worker.workerInfo?.model_provider_id;
+          return (
+            Number.isInteger(providerId) &&
+            !workerProvidersById.has(providerId as number)
+          );
+        });
+        if (missingWorker) {
+          finishStartupFailure();
+          throw new Error(
+            `The model provider configured for worker "${missingWorker.name}" is no longer available. Please edit the worker and select another model.`
+          );
+        }
+      }
+
+      const connectorGatewayMcpConfig = !type
+        ? await buildConnectorGatewayMcpConfig(token)
+        : null;
+
       const addWorkers = workerList.map((worker) => {
+        const providerId = worker.workerInfo?.model_provider_id;
+        const provider = Number.isInteger(providerId)
+          ? workerProvidersById.get(providerId as number)
+          : undefined;
         return {
           name: worker.workerInfo?.name,
           description: worker.workerInfo?.description,
           tools: worker.workerInfo?.tools,
-          mcp_tools: worker.workerInfo?.mcp_tools,
+          mcp_tools: mergeMcpConfigs(
+            worker.workerInfo?.mcp_tools,
+            connectorGatewayMcpConfig
+          ),
+          custom_model_config: provider
+            ? buildAgentModelConfigFromProvider(provider)
+            : undefined,
         };
       });
 
@@ -1719,7 +2009,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           language: systemLanguage,
           model_platform: apiModel.model_platform,
           model_type: apiModel.model_type,
-          api_url: modelType === 'cloud' ? 'cloud' : apiModel.api_url,
+          api_url: effectiveModelType === 'cloud' ? 'cloud' : apiModel.api_url,
           max_retries: 3,
           file_save_path: 'string',
           installed_mcp: 'string',
@@ -1762,12 +2052,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Create AbortController for this task's SSE connection
       // First check if there's already an active SSE connection for this task
+      if (activeSSEControllers[newTaskId] && type === 'replay') {
+        // A history replay must never tear down a live run's stream: the
+        // ongoing run is the fresher state, and aborting it kills the run
+        // on the backend. Leave the live connection alone.
+        console.warn(
+          `Task ${newTaskId} already has an active SSE connection, skipping history replay`
+        );
+        return;
+      }
       if (activeSSEControllers[newTaskId]) {
         console.warn(
           `Task ${newTaskId} already has an active SSE connection, aborting old one`
         );
         try {
-          activeSSEControllers[newTaskId].abort();
+          activeSSEControllers[newTaskId].controller.abort();
         } catch (error) {
           console.warn('Error aborting existing SSE connection:', error);
         }
@@ -1775,7 +2074,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       const abortController = new AbortController();
-      activeSSEControllers[newTaskId] = abortController;
+      activeSSEControllers[newTaskId] = {
+        controller: abortController,
+        live: isLiveTask,
+      };
 
       // Getter functions that use the locked references instead of dynamic ones
       const getCurrentChatStore = () => {
@@ -1813,9 +2115,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             model_type: apiModel.model_type,
             api_key: apiModel.api_key,
             api_url: apiModel.api_url,
+            model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
             auth_source: apiModel.auth_source,
-            installed_mcp: { mcpServers: {} },
+            installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
             allow_local_system: true,
             attaches: (
@@ -2075,7 +2378,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     language: systemLanguage,
                     model_platform: apiModel.model_platform,
                     model_type: apiModel.model_type,
-                    api_url: modelType === 'cloud' ? 'cloud' : apiModel.api_url,
+                    api_url:
+                      effectiveModelType === 'cloud'
+                        ? 'cloud'
+                        : apiModel.api_url,
                     max_retries: 3,
                     file_save_path: 'string',
                     installed_mcp: 'string',
@@ -2367,8 +2673,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 agentMessages.data!.summary_task?.split('|')[0] || '';
               const obj = {
                 project_name: projectName,
-                summary: agentMessages.data!.summary_task?.split('|')[1] || '',
-                status: 1,
+                summary: clampHistorySummary(
+                  agentMessages.data!.summary_task?.split('|')[1]
+                ),
                 tokens: getTokens(currentTaskId),
               };
               syncProjectDisplayName(project_id, projectName);
@@ -2674,6 +2981,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          // Request-level token usage updates (non-stream mode)
+          if (agentMessages.step === AgentStep.REQUEST_USAGE) {
+            if (agentMessages.data.tokens) {
+              addTokens(currentTaskId, agentMessages.data.tokens);
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              requestUsageStepTokens.set(
+                stepKey,
+                agentMessages.data.step_total_tokens ||
+                  (requestUsageStepTokens.get(stepKey) || 0) +
+                    agentMessages.data.tokens
+              );
+            }
+            return;
+          }
+
           // Activate agent
           if (
             agentMessages.step === AgentStep.ACTIVATE_AGENT ||
@@ -2683,6 +3005,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             let taskRunning = [...tasks[currentTaskId].taskRunning];
             if (agentMessages.data.tokens) {
               addTokens(currentTaskId, agentMessages.data.tokens);
+            }
+            // Consume the step's request_usage tokens before any early
+            // return below, so entries are cleaned up even for agents that
+            // never appear in taskAssigning.
+            let stepTokens = 0;
+            if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              const stepKey = `${currentTaskId}:${agentMessages.data.agent_id}`;
+              stepTokens =
+                agentMessages.data.tokens ||
+                requestUsageStepTokens.get(stepKey) ||
+                0;
+              requestUsageStepTokens.delete(stepKey);
             }
             const { state, agent_id, process_task_id } = agentMessages.data;
             if (!state && !agent_id && !process_task_id) return;
@@ -2750,8 +3084,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
                   project_name: projectName,
-                  summary: tasks[currentTaskId].summaryTask.split('|')[1],
-                  status: 1,
+                  summary: clampHistorySummary(
+                    tasks[currentTaskId].summaryTask.split('|')[1]
+                  ),
                   tokens: getTokens(currentTaskId),
                 };
                 syncProjectDisplayName(project_id, projectName);
@@ -2763,8 +3098,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // and tokens are used (indicating actual response generation, not just classification)
               const isQuestionConfirmAgent =
                 agentMessages.data.agent_name === 'question_confirm_agent';
-              const hasTokens =
-                agentMessages.data.tokens && agentMessages.data.tokens > 0;
+              // Per-step tokens (not the task total) so an errored/empty
+              // step is not mistaken for a real reply.
+              const hasTokens = stepTokens > 0;
               const isNotClassificationAnswer =
                 agentMessages.data.message &&
                 agentMessages.data.message.trim().toLowerCase() !== 'yes' &&
@@ -3350,7 +3686,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 role: 'agent',
                 content: `❌ **Error**: ${errorMessage}`,
               });
+              // Record the tokens consumed before the failure so the run's
+              // spend is not lost from the history row (a failed run
+              // otherwise stays at zero tokens forever).
+              if (!type && historyId && !isProjectBusyError) {
+                const tokensSoFar = getTokens(currentTaskId);
+                if (tokensSoFar > 0) {
+                  proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
+                    tokens: tokensSoFar,
+                  }).catch((err) => {
+                    console.warn('History token update failed on error:', err);
+                  });
+                }
+              }
               uploadLog(currentTaskId, type);
+              // Analytics: task failed — split breakage vs disinterest.
+              if (!type || type === 'normal') {
+                recordTaskFailed({
+                  error_type: classifyError(errorMessage),
+                  is_project_busy: isProjectBusyError,
+                  session_mode: tasks[currentTaskId]?.sessionMode,
+                });
+              }
               // Update trigger execution status to Failed on error
               updateTriggerExecutionStatus(
                 getCurrentChatStore(),
@@ -3491,7 +3848,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (endTokens > 0 && getTokens(currentTaskId) === 0) {
               addTokens(currentTaskId, endTokens);
             }
+            clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
+            // The Stop button hits backend's Action.skip_task, which also
+            // yields an `end` SSE event with this fixed sentinel. Do not count
+            // that as a successful completion for analytics metrics.
+            const wasStoppedByUser = endMessageText.startsWith(
+              '<summary>Task stopped</summary>'
+            );
 
             const endMessage = resolveEndMessageText(
               endMessageText,
@@ -3512,6 +3876,39 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setIsPending(currentTaskId, false);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
+
+            // Analytics: task outcome. Skip replay/share playback so only real
+            // runs are measured, and keep stopped runs out of completion metrics.
+            if (!type || type === 'normal') {
+              const completedTask = tasks[currentTaskId];
+              const completedProjectName = (
+                project_id ? projectStore.getProjectById(project_id) : null
+              )?.name;
+              const taskOutcomeProperties = {
+                session_mode: completedTask?.sessionMode,
+                agent_count: completedTask?.taskAssigning?.length ?? 0,
+                has_mcp: getWorkerList().some(
+                  (w) => (w.workerInfo?.mcp_tools?.length ?? 0) > 0
+                ),
+                duration_seconds: completedTask?.createdAt
+                  ? Math.round((Date.now() - completedTask.createdAt) / 1000)
+                  : undefined,
+                tokens: getTokens(currentTaskId),
+                // Classify the task on-device for low-cardinality reporting;
+                // the raw project name / summary (user content) is not sent.
+                task_category: classifyTaskCategory(
+                  `${completedProjectName ?? ''} ${completedTask?.summaryTask ?? ''}`
+                ),
+              };
+              if (wasStoppedByUser) {
+                recordTaskStopped({
+                  ...taskOutcomeProperties,
+                  stop_reason: 'user_requested',
+                });
+              } else {
+                recordTaskCompleted(taskOutcomeProperties);
+              }
+            }
 
             // compute task time
             console.log(
@@ -3589,6 +3986,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                           action: 'file_generate_count',
                           value: generatedSuccessCount,
                         });
+                        recordFileGenerated(generatedSuccessCount);
                       }
                     }
                   } catch (error) {
@@ -3607,18 +4005,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const parts = st.split('|');
                 const rawEndPayload = endMessageText;
                 const completionSummary = rawEndPayload || parts[1] || '';
-                // The Stop button hits backend's Action.skip_task, which
-                // also yields an `end` SSE event with this fixed sentinel.
                 // Treat the run as ongoing so chat_history.status accurately
                 // reflects whether the project actually completed; the
                 // history-replay polish keys off this flag.
-                const wasStoppedByUser = rawEndPayload.startsWith(
-                  '<summary>Task stopped</summary>'
-                );
                 const projectName = parts[0] || '';
                 const obj = {
                   project_name: projectName,
-                  summary: completionSummary,
+                  summary: clampHistorySummary(completionSummary),
                   status: wasStoppedByUser ? 1 : 2,
                   tokens: getTokens(currentTaskId),
                 };
@@ -3717,6 +4110,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ExecutionStatus.Completed,
               getTokens(currentTaskId)
             );
+
+            // The run is finished; drop its SSE controller so a completed
+            // task no longer counts as an active run (e.g. the close guard).
+            delete activeSSEControllers[newTaskId];
 
             return;
           }
@@ -3946,7 +4343,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
     },
 
-    replay: async (taskId: string, question: string, time: number) => {
+    replay: async (
+      taskId: string,
+      question: string,
+      time: number,
+      projectId?: string
+    ) => {
       const {
         create,
         setHasMessages,
@@ -3958,7 +4360,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         setStatus,
       } = get();
       //get project id
-      const project_id = useProjectStore.getState().activeProjectId;
+      const project_id =
+        projectId || useProjectStore.getState().activeProjectId;
       if (!project_id) {
         console.error("Can't replay task because no project id provided");
         return;
@@ -3973,7 +4376,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
 
       try {
-        await startTask(taskId, 'replay', undefined, time);
+        await startTask(
+          taskId,
+          'replay',
+          undefined,
+          time,
+          undefined,
+          undefined,
+          undefined,
+          project_id
+        );
         setActiveTaskId(taskId);
         handleConfirmTask(project_id, taskId, 'replay');
       } catch (error) {
@@ -4775,7 +5187,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         Object.keys(activeSSEControllers).forEach((taskId) => {
           try {
             if (activeSSEControllers[taskId]) {
-              activeSSEControllers[taskId].abort();
+              activeSSEControllers[taskId].controller.abort();
               delete activeSSEControllers[taskId];
             }
           } catch (error) {
@@ -4949,6 +5361,18 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
 }
 
+/**
+ * Returns true when any run, in any Project, still has a live SSE
+ * connection. Closing the window kills these streams and the backend
+ * aborts the in-flight work, so the close guard must consider every
+ * Project, not just the active one.
+ */
+export function hasAnyActiveRun(): boolean {
+  return Object.values(activeSSEControllers).some(
+    (connection) => connection.live
+  );
+}
+
 /** Close SSE for given tasks (e.g. after completion, so triggers can start fresh). */
 export function closeSSEConnectionsForTasks(taskIds: string[]): void {
   for (const taskId of taskIds) {
@@ -4958,7 +5382,7 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
         taskId
       );
       try {
-        activeSSEControllers[taskId].abort();
+        activeSSEControllers[taskId].controller.abort();
       } catch (_e) {
         // Ignore if already aborted
       }

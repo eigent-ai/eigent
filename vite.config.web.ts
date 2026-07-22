@@ -48,7 +48,7 @@ export default defineConfig(({ mode }) => {
       sourcemap: true,
     },
     server: {
-      port: 5173,
+      port: Number(process.env.PORT) || 5173,
       open: false,
       proxy: env.VITE_PROXY_URL
         ? {

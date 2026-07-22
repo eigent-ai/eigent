@@ -59,6 +59,7 @@ import {
   TriggerStatus,
   TriggerType,
 } from '@/types';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlarmClockIcon,
   AlertTriangle,
@@ -100,6 +101,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
   initialTaskPrompt = '',
 }) => {
   const { t } = useTranslation();
+  const shouldReduceMotion = useReducedMotion();
   const { addTrigger, updateTrigger } = useTriggerStore();
   const { addLog } = useActivityLogStore();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
@@ -837,10 +839,43 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
           {/* Trigger Details Section */}
           <div className="flex flex-col items-center justify-center gap-2 p-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-status-completed-subtle-default shadow-sm">
+            <motion.div
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, transform: 'scale(0.95)' }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, transform: 'scale(1)' }
+              }
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.24,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-status-completed-subtle-default shadow-sm"
+            >
               <Zap className="h-8 w-8 text-ds-icon-status-completed-default-default" />
-            </div>
-            <div className="flex flex-col gap-2 px-4 pt-2">
+            </motion.div>
+            <motion.div
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, transform: 'translateY(4px)' }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, transform: 'translateY(0px)' }
+              }
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.2,
+                delay: shouldReduceMotion ? 0 : 0.05,
+                ease: [0.23, 1, 0.32, 1],
+              }}
+              className="flex flex-col gap-2 px-4 pt-2"
+            >
               <div className="text-lg font-bold text-ds-text-neutral-default-default">
                 {formData.name}
               </div>
@@ -850,7 +885,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                 </div>
               )}
               <Badge variant="default">{formData.webhook_method}</Badge>
-            </div>
+            </motion.div>
           </div>
 
           {/* Webhook URL Section */}

@@ -390,9 +390,6 @@ export default function Workspace({
             'Legacy Spaces are read-only. Create a new Space to start a Project.',
         })
       : t('layout.project-task-placeholder'),
-    sessionMode: effectiveSessionMode,
-    onSessionModeChange: setActiveProjectMode,
-    sessionModeSelectInteractive: true,
   });
 
   const taskAssigning =
@@ -515,6 +512,9 @@ export default function Workspace({
           noModelOverlay={!hasModel}
           onSelectModel={() => navigate('/history?tab=agents')}
           inputProps={buildComposerInputProps()}
+          sessionMode={effectiveSessionMode}
+          onSessionModeChange={setActiveProjectMode}
+          sessionModeSelectInteractive
         />
       </div>
       <AddWorker

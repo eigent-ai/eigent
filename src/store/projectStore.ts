@@ -24,6 +24,7 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import type { ServerProject } from '@/service/spaceApi';
+import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
   ChatTaskStatus,
   TaskStatus,
@@ -31,7 +32,11 @@ import {
 } from '@/types/constants';
 import { create } from 'zustand';
 import { getAuthStore } from './authStore';
-import { createChatStoreInstance, VanillaChatStore } from './chatStore';
+import {
+  createChatStoreInstance,
+  hasActiveSSEConnection,
+  VanillaChatStore,
+} from './chatStore';
 import {
   projectMetaFromServer,
   useSpaceStore,
@@ -134,6 +139,21 @@ interface TaskQueue {
   processing?: boolean;
 }
 
+/**
+ * Model selection captured for a Project so follow-up runs reuse the same
+ * model instead of the global default. Field names mirror the provider /
+ * history payloads (`model_platform`, `model_type`) and authStore state
+ * (`modelType`, `cloud_model_type`, `codex_model_type`).
+ */
+interface ProjectModelSelection {
+  modelType: 'cloud' | 'local' | 'custom' | 'codex_subscription';
+  cloud_model_type?: string;
+  codex_model_type?: string;
+  provider_id?: number;
+  model_platform?: string;
+  model_type?: string;
+}
+
 interface ProjectMetadata {
   tags?: string[];
   priority?: 'low' | 'medium' | 'high';
@@ -154,8 +174,11 @@ interface ProjectMetadata {
    */
   historyId?: string;
   historyDisplayName?: string;
+  /** Per-Project model pin; reused by startTask for follow-up runs. */
+  modelSelection?: ProjectModelSelection;
   serverSynced?: boolean;
   autoCreatedPlaceholder?: boolean;
+  remoteHistoryHydrationPending?: boolean;
 }
 
 interface Project {
@@ -360,6 +383,11 @@ interface ProjectStore {
     taskQuestionsById?: Record<string, string>,
     serverUpdatedAt?: number | null
   ) => Promise<string>;
+  mergeProjectHistory: (
+    projectId: string,
+    tasks: Array<{ task_id?: string | null; question?: string | null }>,
+    fallbackQuestion?: string
+  ) => Promise<void>;
   setProjectNavLead: (
     projectId: string,
     lead: SessionNavLeadPresentation
@@ -426,6 +454,13 @@ interface ProjectStore {
   //History ID
   setHistoryId: (projectId: string, historyId: string) => void;
   getHistoryId: (projectId: string | null) => string | null;
+
+  // Per-Project model selection
+  setProjectModel: (
+    projectId: string,
+    modelSelection: ProjectModelSelection
+  ) => void;
+  getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
 }
 
 // Helper function to check if a project is empty/unused
@@ -1042,6 +1077,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     ) {
       return;
     }
+    // Never evict a project that still has a live run. Eviction drops the
+    // runtime chat stores, so returning to the project rebuilds it from
+    // history and replays the ongoing task id -- which aborts the live
+    // run's stream and kills the run on the backend. Keep the stale flag
+    // so the eviction simply happens on a later, safe transition.
+    const outgoingProject = get().projects[previousProjectId];
+    const outgoingTaskIds = Object.values(
+      outgoingProject?.chatStores ?? {}
+    ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
+    if (hasActiveSSEConnection(outgoingTaskIds)) {
+      return;
+    }
     // _evictProjectRuntime handles staleProjectIds cleanup itself.
     get()._evictProjectRuntime(previousProjectId);
   },
@@ -1404,7 +1451,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             try {
               await chatStore
                 .getState()
-                .replay(taskId, taskQuestionsById?.[taskId] || question, 0);
+                .replay(
+                  taskId,
+                  taskQuestionsById?.[taskId] || question,
+                  0,
+                  loadProjectId
+                );
               loadedChatStoresByTaskId.set(taskId, chatStore);
               console.log(`[ProjectStore] Loaded task ${taskId}`);
             } catch (error) {
@@ -1545,6 +1597,96 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       get().setHistoryLoadingProject(loadProjectId, false);
     }
     return loadProjectId;
+  },
+
+  mergeProjectHistory: async (
+    projectId: string,
+    tasks: Array<{ task_id?: string | null; question?: string | null }>,
+    fallbackQuestion: string = ''
+  ) => {
+    if (!get().projects[projectId]) {
+      return;
+    }
+    if (get().historyLoadingProjectIds[projectId]) {
+      return;
+    }
+
+    let chatStore = get().getChatStore(projectId);
+    if (!chatStore) {
+      get().createChatStore(projectId);
+      chatStore = get().getChatStore(projectId);
+    }
+    if (!chatStore) {
+      return;
+    }
+
+    const historyTaskIds = tasks
+      .map((task) => (task.task_id ? String(task.task_id) : ''))
+      .filter(Boolean);
+    const existingTaskIds = new Set(
+      Object.values(get().projects[projectId]?.chatStores ?? {}).flatMap(
+        (store) => Object.keys(store.getState().tasks)
+      )
+    );
+    const tasksToReplay = tasks
+      .map((task) => ({
+        taskId: task.task_id ? String(task.task_id) : '',
+        question: task.question ? String(task.question) : fallbackQuestion,
+      }))
+      .filter((task) => task.taskId && !existingTaskIds.has(task.taskId));
+
+    if (tasksToReplay.length === 0) {
+      get().updateProject(projectId, {
+        metadata: { remoteHistoryHydrationPending: false },
+      });
+      return;
+    }
+
+    get().setHistoryLoadingProject(projectId, true);
+    try {
+      for (const task of tasksToReplay) {
+        const targetChatStore = get().getChatStore(projectId) || chatStore;
+        const beforeActiveTaskId = targetChatStore.getState().activeTaskId;
+        await targetChatStore
+          .getState()
+          .replay(task.taskId, task.question || fallbackQuestion, 0, projectId);
+
+        const stateAfterReplay = targetChatStore.getState();
+        if (
+          beforeActiveTaskId &&
+          stateAfterReplay.activeTaskId === task.taskId &&
+          stateAfterReplay.tasks[beforeActiveTaskId]
+        ) {
+          stateAfterReplay.setActiveTaskId(beforeActiveTaskId);
+        }
+        existingTaskIds.add(task.taskId);
+      }
+      Object.values(get().projects[projectId]?.chatStores ?? {}).forEach(
+        (store) => {
+          const state = store.getState();
+          const currentTasks = state.tasks;
+          const orderedTasks: typeof currentTasks = {};
+          for (const taskId of historyTaskIds) {
+            if (currentTasks[taskId]) {
+              orderedTasks[taskId] = currentTasks[taskId];
+            }
+          }
+          for (const [taskId, task] of Object.entries(currentTasks)) {
+            if (!orderedTasks[taskId]) {
+              orderedTasks[taskId] = task;
+            }
+          }
+          if (Object.keys(orderedTasks).length > 0) {
+            (store as any).setState({ tasks: orderedTasks });
+          }
+        }
+      );
+      get().updateProject(projectId, {
+        metadata: { remoteHistoryHydrationPending: false },
+      });
+    } finally {
+      get().setHistoryLoadingProject(projectId, false);
+    }
   },
 
   saveChatStore: (
@@ -1987,6 +2129,84 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     return project.metadata?.historyId || null;
   },
 
+  setProjectModel: (
+    projectId: string,
+    modelSelection: ProjectModelSelection
+  ) => {
+    const { projects } = get();
+
+    if (!projects[projectId]) {
+      console.warn(`Project ${projectId} not found for setting model`);
+      return;
+    }
+
+    const previous = projects[projectId].metadata?.modelSelection;
+    if (
+      previous &&
+      previous.modelType === modelSelection.modelType &&
+      previous.cloud_model_type === modelSelection.cloud_model_type &&
+      previous.codex_model_type === modelSelection.codex_model_type &&
+      previous.provider_id === modelSelection.provider_id &&
+      previous.model_platform === modelSelection.model_platform &&
+      previous.model_type === modelSelection.model_type
+    ) {
+      return;
+    }
+
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          metadata: {
+            ...state.projects[projectId].metadata,
+            modelSelection,
+          },
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+    const updatedProject = get().projects[projectId];
+    if (updatedProject) {
+      upsertSpaceProjectMetaFromProject(updatedProject);
+    }
+
+    // Server metadata is shallow-merged, so persisting only the pin keeps the
+    // selection across restarts and space re-syncs (best-effort).
+    const spaceId =
+      updatedProject?.spaceId ??
+      useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
+    if (spaceId) {
+      void proxyUpdateSpaceProject(spaceId, projectId, {
+        metadata: { modelSelection },
+      }).catch((error) => {
+        console.warn(
+          `Failed to persist model selection for project ${projectId}:`,
+          error
+        );
+      });
+    }
+  },
+
+  getProjectModel: (projectId: string | null) => {
+    if (!projectId) {
+      return null;
+    }
+
+    const { projects } = get();
+    const runtimeSelection = projects[projectId]?.metadata?.modelSelection;
+    if (runtimeSelection) {
+      return runtimeSelection;
+    }
+
+    // Runtime store is not persisted; fall back to the space meta, which is
+    // persisted locally and hydrated from the server.
+    return (
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.modelSelection ?? null
+    );
+  },
+
   isEmptyProject: (project: Project) => {
     return isEmptyProject(project);
   },
@@ -2068,6 +2288,7 @@ export type {
   CreateProjectOptions,
   Project,
   ProjectMetadata,
+  ProjectModelSelection,
   ProjectStore,
   TaskQueue,
 };
