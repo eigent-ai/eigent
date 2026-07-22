@@ -73,6 +73,7 @@ print("legacy")
 
 export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
   {
+    id: 'fixture:src/greeter.py',
     path: 'src/greeter.py',
     status: 'modified',
     absPath: '',
@@ -80,6 +81,7 @@ export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
     inline: { original: GREETER_ORIGINAL, modified: GREETER_MODIFIED },
   },
   {
+    id: 'fixture:src/config.py',
     path: 'src/config.py',
     status: 'modified',
     absPath: '',
@@ -87,6 +89,7 @@ export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
     inline: { original: CONFIG_ORIGINAL, modified: CONFIG_MODIFIED },
   },
   {
+    id: 'fixture:src/utils.py',
     path: 'src/utils.py',
     status: 'added',
     absPath: '',
@@ -94,6 +97,7 @@ export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
     inline: { original: '', modified: UTILS_ADDED },
   },
   {
+    id: 'fixture:src/logger.py',
     path: 'src/logger.py',
     status: 'deleted',
     absPath: '',

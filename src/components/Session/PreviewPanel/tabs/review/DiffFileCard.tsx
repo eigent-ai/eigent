@@ -78,6 +78,15 @@ function decodeText(data: unknown): string | null {
   return new TextDecoder('utf-8').decode(data);
 }
 
+function reviewModelPath(side: 'original' | 'modified', file: ReviewFile) {
+  const encodedPath = file.path
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `review://${side}/${encodeURIComponent(file.id)}/${encodedPath}`;
+}
+
 /**
  * One changed file: sticky path header plus a read-only inline Monaco diff
  * (the file's earliest backup vs its current on-disk content). The editor
@@ -116,6 +125,10 @@ export function DiffFileCard({
 
   useEffect(() => {
     if (!nearViewport) return;
+    setSides(null);
+    setLoadError(null);
+    setCounts(null);
+    setEditorHeight(160);
     if (file.inline) {
       setSides(file.inline);
       return;
@@ -231,7 +244,7 @@ export function DiffFileCard({
   return (
     <div
       ref={containerRef}
-      data-review-path={file.path}
+      data-review-id={file.id}
       className={cn(
         'overflow-hidden rounded-xl border border-solid bg-ds-bg-neutral-default-default',
         selected
@@ -289,8 +302,8 @@ export function DiffFileCard({
               <DiffEditor
                 original={sides.original}
                 modified={sides.modified}
-                originalModelPath={`review://original/${file.path}`}
-                modifiedModelPath={`review://modified/${file.path}`}
+                originalModelPath={reviewModelPath('original', file)}
+                modifiedModelPath={reviewModelPath('modified', file)}
                 theme={appearance === 'light' ? 'vs' : 'vs-dark'}
                 options={DIFF_OPTIONS}
                 onMount={handleMount}

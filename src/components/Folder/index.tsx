@@ -304,7 +304,9 @@ function getLeafFileTreeIcon(file: FileTypeTarget): LucideIcon {
 }
 
 // Type definitions
-interface FileTreeNode {
+export type FileTreeStatus = 'added' | 'modified' | 'deleted';
+
+export interface FileTreeNode {
   name: string;
   path: string;
   type?: string;
@@ -314,6 +316,7 @@ interface FileTreeNode {
   children?: FileTreeNode[];
   isRemote?: boolean;
   relativePath?: string;
+  status?: FileTreeStatus;
 }
 
 function filterFileTree(node: FileTreeNode, query: string): FileTreeNode {
@@ -367,7 +370,7 @@ function pathsFromFileList(res: unknown[] | null): Set<string> {
   return s;
 }
 
-interface FileInfo {
+export interface FileInfo {
   name: string;
   path: string;
   type: string;
@@ -377,6 +380,7 @@ interface FileInfo {
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
+  status?: FileTreeStatus;
 }
 
 type ProjectFetchTarget = {
@@ -487,6 +491,7 @@ export function buildFileTree(files: FileInfo[]): FileTreeNode {
       children: file.isFolder ? [] : undefined,
       isRemote: file.isRemote,
       relativePath: file.relativePath,
+      status: file.status,
     });
   }
 
@@ -570,7 +575,7 @@ export function getFileBreadcrumbSegments(
 }
 
 // FileTree component to render nested file structure
-interface FileTreeProps {
+export interface FileTreeProps {
   node: FileTreeNode;
   level?: number;
   selectedFile: FileInfo | null;
@@ -578,7 +583,21 @@ interface FileTreeProps {
   onToggleFolder: (path: string) => void;
   onSelectFile: (file: FileInfo) => void;
   isShowSourceCode: boolean;
+  /** Review keeps the Context tree layout and adds change-status markers. */
+  variant?: 'default' | 'review';
 }
+
+const FILE_TREE_STATUS_META: Record<
+  FileTreeStatus,
+  { letter: string; className: string }
+> = {
+  added: { letter: 'A', className: 'text-ds-text-success-default-default' },
+  modified: {
+    letter: 'M',
+    className: 'text-ds-text-warning-default-default',
+  },
+  deleted: { letter: 'D', className: 'text-ds-text-error-default-default' },
+};
 
 export const FileTree: React.FC<FileTreeProps> = ({
   node,
@@ -588,6 +607,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onToggleFolder,
   onSelectFile,
   isShowSourceCode,
+  variant = 'default',
 }) => {
   if (!node.children || node.children.length === 0) return null;
 
@@ -607,9 +627,16 @@ export const FileTree: React.FC<FileTreeProps> = ({
           icon: child.icon,
           isRemote: child.isRemote,
           relativePath: child.relativePath,
+          status: child.status,
         };
 
-        const isRowSelected = isSameFileIdentity(selectedFile, fileInfo);
+        const isRowSelected =
+          variant === 'review'
+            ? selectedFile?.path === fileInfo.path
+            : isSameFileIdentity(selectedFile, fileInfo);
+        const status = child.status
+          ? FILE_TREE_STATUS_META[child.status]
+          : null;
         const rowIconClass = `size-4 shrink-0 ${
           isRowSelected
             ? 'text-ds-icon-neutral-default-default'
@@ -656,6 +683,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
               <span className="min-w-0 flex-1 truncate text-left text-body-sm font-medium leading-normal">
                 {child.name}
               </span>
+              {variant === 'review' && !child.isFolder && status ? (
+                <span
+                  className={`w-4 shrink-0 text-center text-label-xs font-bold ${status.className}`}
+                  aria-label={child.status}
+                >
+                  {status.letter}
+                </span>
+              ) : null}
             </button>
 
             {hasNested ? (
@@ -668,6 +703,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onToggleFolder={onToggleFolder}
                   onSelectFile={onSelectFile}
                   isShowSourceCode={isShowSourceCode}
+                  variant={variant}
                 />
               </div>
             ) : null}

@@ -36,15 +36,18 @@ export interface ReviewBackupEntry {
   backups: string[];
 }
 
-function backupsFor(filePath: string): string[] {
+async function backupsFor(
+  filePath: string,
+  directoryEntries: Map<string, Promise<string[]>>
+): Promise<string[]> {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return [];
+  let namesPromise = directoryEntries.get(dir);
+  if (!namesPromise) {
+    namesPromise = fs.promises.readdir(dir).catch(() => []);
+    directoryEntries.set(dir, namesPromise);
   }
+  const names = await namesPromise;
   const prefix = `${base}.`;
   const backups = names.filter((name) => {
     if (!name.startsWith(prefix) || !name.endsWith('.bak')) return false;
@@ -60,15 +63,17 @@ export function registerReviewChangesIpcHandlers(): void {
     'review-list-backups',
     async (_event, filePaths: string[]): Promise<ReviewBackupEntry[]> => {
       try {
-        return (filePaths ?? []).map((filePath) => {
-          let exists = false;
-          try {
-            exists = fs.statSync(filePath).isFile();
-          } catch {
-            exists = false;
-          }
-          return { path: filePath, exists, backups: backupsFor(filePath) };
-        });
+        const directoryEntries = new Map<string, Promise<string[]>>();
+        return await Promise.all(
+          (filePaths ?? []).map(async (filePath) => {
+            const exists = await fs.promises
+              .stat(filePath)
+              .then((stats) => stats.isFile())
+              .catch(() => false);
+            const backups = await backupsFor(filePath, directoryEntries);
+            return { path: filePath, exists, backups };
+          })
+        );
       } catch (error) {
         log.error('review-list-backups failed', error);
         return [];

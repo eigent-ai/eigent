@@ -14,9 +14,8 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
-import { ClipboardCheck, RefreshCw } from 'lucide-react';
+import { FileDiff, RefreshCw } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DiffFileCard } from './review/DiffFileCard';
@@ -25,31 +24,27 @@ import { useReviewChanges } from './review/useReviewChanges';
 
 /**
  * Read-only change showcase: every file the agents changed in this project,
- * shown as before-vs-after diffs (the file toolkit's backup vs the file on
- * disk now). Left is a stacked file-by-file diff view; right is the
- * changed-file tree. This is not an approval surface — undoing changes is a
- * separate (future) rewind feature.
+ * shown as before-vs-after diffs. Left is a stacked file-by-file diff view;
+ * right is the changed-file tree. This is not an approval surface — undoing
+ * changes is a separate (future) rewind feature.
  */
 export function ReviewTab() {
   const { t } = useTranslation();
-  const host = useHost();
   const appearance = useAuthStore((state) => state.appearance);
-  const { loading, files, refresh } = useReviewChanges();
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const { loading, files, desktopOnly, refresh } = useReviewChanges();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const stackRef = useRef<HTMLDivElement>(null);
-  const isDesktop = Boolean(host?.electronAPI?.readFile);
 
-  const handleSelect = useCallback((path: string) => {
-    setSelectedPath(path);
+  const handleSelect = useCallback((id: string) => {
+    setSelectedId(id);
     stackRef.current
-      ?.querySelector(`[data-review-path=${CSS.escape(path)}]`)
+      ?.querySelector(`[data-review-id=${CSS.escape(id)}]`)
       ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, []);
 
   // Diffing real changes reads files from disk, which needs the desktop
   // host. Inline (fixture) diffs render anywhere.
-  const needsDisk = files.some((file) => !file.inline);
-  if (!isDesktop && needsDisk) {
+  if (desktopOnly) {
     return (
       <CenteredNotice
         message={t('layout.review-desktop-only', {
@@ -93,7 +88,7 @@ export function ReviewTab() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="flex h-10 shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3">
-        <span className="text-xs font-medium text-ds-text-neutral-default-default">
+        <span className="text-sm font-medium text-ds-text-neutral-default-default">
           {t('layout.review-changed-files', {
             defaultValue: '{{count}} changed files',
             count: files.length,
@@ -127,16 +122,16 @@ export function ReviewTab() {
         >
           {files.map((file) => (
             <DiffFileCard
-              key={file.path}
+              key={file.id}
               file={file}
-              selected={file.path === selectedPath}
+              selected={file.id === selectedId}
               appearance={appearance}
             />
           ))}
         </div>
         <ReviewFileTree
           files={files}
-          selectedPath={selectedPath}
+          selectedId={selectedId}
           onSelect={handleSelect}
         />
       </div>
@@ -155,7 +150,7 @@ function CenteredNotice({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <ClipboardCheck
+      <FileDiff
         className="h-8 w-8 text-ds-icon-neutral-muted-default"
         aria-hidden
       />

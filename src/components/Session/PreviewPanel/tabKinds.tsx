@@ -14,7 +14,7 @@
 
 import type { PreviewTabKind, SessionPreviewTab } from '@/store/pageTabStore';
 import {
-  ClipboardCheck,
+  FileDiff,
   FileText,
   Globe,
   type LucideIcon,
@@ -61,11 +61,11 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   },
   {
     kind: 'review',
-    icon: ClipboardCheck,
+    icon: FileDiff,
     labelKey: 'layout.preview-kind-review',
     defaultLabel: 'Review',
     descriptionKey: 'layout.preview-kind-review-desc',
-    defaultDescription: 'Review pending file changes before applying them.',
+    defaultDescription: 'Inspect file changes made in this project.',
   },
   {
     kind: 'terminal',
@@ -82,7 +82,7 @@ const KIND_ICONS: Record<SessionPreviewTab['type'], LucideIcon> = {
   chooser: PanelsTopLeft,
   browser: Globe,
   file: FileText,
-  review: ClipboardCheck,
+  review: FileDiff,
   terminal: SquareTerminal,
   canvas: Shapes,
 };
