@@ -1,0 +1,207 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import logoBlack from '@/assets/logo/logo_black.png';
+import logoWhite from '@/assets/logo/logo_white.png';
+import VerticalNavigation, {
+  HISTORY_VERTICAL_SIDEBAR_CLASSNAME,
+  type VerticalNavItem,
+} from '@/components/Dashboard/VerticalNav';
+import useAppVersion from '@/hooks/use-app-version';
+import { useHost } from '@/host';
+import { SITE_URL } from '@/lib';
+import Appearance from '@/pages/Setting/Appearance';
+import General from '@/pages/Setting/General';
+import Privacy from '@/pages/Setting/Privacy';
+import { useAuthStore } from '@/store/authStore';
+import {
+  Download,
+  Fingerprint,
+  Palette,
+  Settings,
+  TagIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+export default function Setting() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { t } = useTranslation();
+  const appearance = useAuthStore((state) => state.appearance);
+  const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
+  const host = useHost();
+  const ipcRenderer = host?.ipcRenderer;
+  const version = useAppVersion();
+  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
+  const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    const ipc = ipcRenderer;
+    if (!ipc) return;
+
+    const onUpdateCanAvailable = (
+      _event: Electron.IpcRendererEvent,
+      info: VersionInfo
+    ) => {
+      setPackageUpdateAvailable(Boolean(info.update));
+      setPackageNewVersion(info.newVersion ?? null);
+    };
+
+    const onUpdateDownloaded = () => {
+      setPackageUpdateAvailable(false);
+      setPackageNewVersion(null);
+    };
+
+    ipc.on('update-can-available', onUpdateCanAvailable);
+    ipc.on('update-downloaded', onUpdateDownloaded);
+    void ipc.invoke('check-update');
+
+    return () => {
+      ipc.off('update-can-available', onUpdateCanAvailable);
+      ipc.off('update-downloaded', onUpdateDownloaded);
+    };
+  }, [ipcRenderer]);
+
+  const handleStartPackageDownload = useCallback(() => {
+    void ipcRenderer?.invoke('start-download');
+  }, [ipcRenderer]);
+  // Setting menu configuration
+  const settingMenus = [
+    {
+      id: 'general',
+      name: t('setting.general'),
+      icon: Settings,
+      path: '/setting/general',
+    },
+    {
+      id: 'appearance',
+      name: t('setting.appearance-tab'),
+      icon: Palette,
+      path: '/setting/appearance',
+    },
+    {
+      id: 'privacy',
+      name: t('setting.privacy'),
+      icon: Fingerprint,
+      path: '/setting/privacy',
+    },
+  ];
+  // Initialize tab from URL once, then manage locally without routing
+  const getCurrentTab = () => {
+    const path = location.pathname;
+    const tabFromUrl = path.split('/setting/')[1] || 'general';
+    return settingMenus.find((menu) => menu.id === tabFromUrl)?.id || 'general';
+  };
+
+  const [activeTab, setActiveTab] = useState(getCurrentTab);
+
+  // Switch tabs locally (no navigation)
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+  };
+
+  // Close settings page
+  const _handleClose = () => {
+    navigate('/');
+  };
+
+  return (
+    <div className="flex h-auto w-full">
+      <div className={HISTORY_VERTICAL_SIDEBAR_CLASSNAME}>
+        <VerticalNavigation
+          items={
+            settingMenus.map((menu) => {
+              return {
+                value: menu.id,
+                label: (
+                  <span className="text-body-sm font-bold">{menu.name}</span>
+                ),
+              };
+            }) as VerticalNavItem[]
+          }
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="h-fit min-h-0 w-full flex-none gap-0"
+          listClassName="h-auto w-full"
+          contentClassName="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => window.open(SITE_URL, '_blank', 'noopener,noreferrer')}
+          className="no-drag mt-4 flex cursor-pointer items-center bg-transparent transition-opacity duration-200 hover:opacity-60"
+        >
+          <img src={logoSrc} alt="Eigent" className="ml-3 h-6 w-auto" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (packageUpdateAvailable) {
+              handleStartPackageDownload();
+              return;
+            }
+            window.open(
+              'https://github.com/eigent-ai/eigent',
+              '_blank',
+              'noopener,noreferrer'
+            );
+          }}
+          className={
+            packageUpdateAvailable
+              ? 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-90'
+              : 'no-drag mt-4 flex w-full min-w-0 cursor-pointer flex-row items-center justify-center gap-1.5 rounded-full bg-ds-bg-neutral-subtle-default px-5 py-1 transition-opacity duration-200 hover:opacity-60'
+          }
+          aria-label={
+            packageUpdateAvailable
+              ? t('update.update')
+              : version || t('setting.version', { defaultValue: 'Version' })
+          }
+          title={
+            packageUpdateAvailable
+              ? [t('update.update'), packageNewVersion]
+                  .filter(Boolean)
+                  .join(' ')
+              : version
+          }
+        >
+          {packageUpdateAvailable ? (
+            <Download
+              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-neutral-default-default"
+              aria-hidden
+            />
+          ) : (
+            <TagIcon
+              className="h-4 w-4 shrink-0 stroke-2 text-ds-text-success-default-default"
+              aria-hidden
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-left text-label-sm font-semibold text-ds-text-neutral-default-default">
+            {packageUpdateAvailable ? t('update.update') : version}
+          </span>
+        </button>
+      </div>
+
+      <div className="flex h-auto w-full flex-1 flex-col">
+        <div className="flex flex-col gap-4">
+          {activeTab === 'general' && <General />}
+          {activeTab === 'appearance' && <Appearance />}
+          {activeTab === 'privacy' && <Privacy />}
+        </div>
+      </div>
+    </div>
+  );
+}
