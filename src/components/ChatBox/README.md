@@ -19,6 +19,7 @@ ChatBox/
 ├── TaskBox/                 # Plan / run task UI
 │   ├── TaskCard.tsx         # Plan list, progress, filter, expand (workforce subtasks)
 │   ├── TaskItem.tsx         # Editable line in the plan
+│   ├── TaskType.tsx         # Task type indicator
 │   ├── TypeCardSkeleton.tsx  # Loading skeleton while the plan is forming
 │   └── StreamingTaskList.tsx
 │
@@ -27,10 +28,13 @@ ChatBox/
 │   ├── UserMessageRichContent.tsx
 │   ├── AgentMessageCard.tsx
 │   ├── NoticeCard.tsx
+│   ├── FeedbackCard.tsx
+│   ├── TaskCompletionCard.tsx
 │   ├── SplittingProgressRow.tsx   # “Splitting tasks” + token tick during decompose
 │   ├── TaskWorkLogAccordion.tsx  # Work log: tool / agent lines (workforce)
 │   ├── FloatingAction.tsx        # Pause / skip (used from ProjectSection)
 │   ├── MarkDown.tsx
+│   ├── SummaryMarkDown.tsx
 │   └── TokenUtils.tsx            # Token animation + splitting elapsed formatting
 │
 └── BottomBox/                # Composer and chrome above input
@@ -63,7 +67,7 @@ ChatBox/
 ### `UserQueryGroup.tsx`
 
 - A **single user turn**: user content, then downstream UI driven by `AgentStep` / `ChatTaskStatus` (e.g. splitting, task card, agent completion, notices).
-- Imports from `TaskBox/` and `MessageItem/`; this is the main place new message _shapes_ are routed.
+- Imports from `TaskBox/` and `MessageItem/`; this is the main place new message *shapes* are routed.
 
 ## TaskBox (`TaskBox/`)
 
@@ -78,7 +82,9 @@ ChatBox/
 - **`AgentMessageCard`**: Assistant markdown, optional typewriter, attachments.
 - **`SplittingProgressRow`**: Shown while the task is in the splitting phase; uses store `taskTime` / `elapsed` when present, with a per-session wall-clock fallback when not.
 - **`TaskWorkLogAccordion`**: Collapsible work log for running/finished/paused task (tool activate/deactivate, agent lines); Framer `height: auto` for expand, stable segment keys from the merged log.
+- **`TaskCompletionCard`**: Completion / summary style card when appropriate.
 - **`NoticeCard`**: Chain-of-thought or notice-style content.
+- **`FeedbackCard`**: Thumbs / feedback when enabled.
 - **`FloatingAction`**: Compact floating controls (wired from `ProjectSection`).
 - **`TokenUtils`**: Animated token number and `formatSplittingElapsed` helpers.
 
