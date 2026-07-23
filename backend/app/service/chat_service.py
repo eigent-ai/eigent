@@ -82,7 +82,11 @@ from app.utils.agent_memory import (
     record_workforce_memory_snapshot,
 )
 from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory, list_files, post_process_gifs_in_directory
+from app.utils.file_utils import (
+    get_working_directory,
+    list_files,
+    post_process_gifs_in_directory,
+)
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce

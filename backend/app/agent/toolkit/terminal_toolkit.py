@@ -388,7 +388,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # Post-process GIF files to ensure infinite loop
         if self.working_directory and block:
             try:
-                modified = post_process_gifs_in_directory(self.working_directory)
+                modified = post_process_gifs_in_directory(
+                    self.working_directory
+                )
                 if modified:
                     logger.debug(
                         f"Post-processed {modified} GIF file(s) for infinite loop"
