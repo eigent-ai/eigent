@@ -29,7 +29,6 @@ from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
 from app.memory import get_memory_service
 from app.model.chat import (
-    AddTaskRequest,
     Chat,
     HumanReply,
     McpServers,
@@ -45,7 +44,6 @@ from app.run_context import (
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
-    ActionAddTaskData,
     ActionImproveData,
     ActionInstallMcpData,
     ActionRemoveTaskData,
@@ -832,37 +830,6 @@ def install_mcp(id: str, data: McpServers):
     )
     chat_logger.info("MCP installation queued", extra={"task_id": id})
     return Response(status_code=201)
-
-
-@router.post("/chat/{id}/add-task", name="add task to workforce")
-def add_task(id: str, data: AddTaskRequest):
-    """Add a new task to the workforce"""
-    chat_logger.info(
-        "Adding task to workforce for"
-        f" task_id: {id},"
-        f" content: {data.content[:100]}..."
-    )
-    task_lock = get_task_lock(id)
-
-    try:
-        # Queue the add task action
-        add_task_action = ActionAddTaskData(
-            content=data.content,
-            project_id=data.project_id,
-            task_id=data.task_id,
-            additional_info=data.additional_info,
-            insert_position=data.insert_position,
-        )
-        _queue_action_from_worker(
-            task_lock,
-            add_task_action,
-            "add task queue action",
-        )
-        return Response(status_code=201)
-
-    except Exception as e:
-        chat_logger.error(f"Error adding task for task_id: {id}: {e}")
-        raise UserException(code.error, f"Failed to add task: {str(e)}")
 
 
 @router.delete(

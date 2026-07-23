@@ -2212,11 +2212,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           // Only ignore messages if task is finished and not a valid post-completion event
           // Valid events after task completion:
-          // - Task switching: confirmed, new_task_state, end
+          // - Task switching: confirmed, end
           // - Multi-turn simple answer: wait_confirm
           const isTaskSwitchingEvent =
             agentMessages.step === AgentStep.CONFIRMED ||
-            agentMessages.step === AgentStep.NEW_TASK_STATE ||
             agentMessages.step === AgentStep.END;
 
           const isMultiTurnSimpleAnswer =
@@ -2256,7 +2255,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           /**
            * Persistent workforce instance, new chat
            * If confirmed -> subtasks -> confirmed (use a new chatStore)
-           * handle cases for @event new_task_state and @function startTask
+           * handle cases for @event confirmed and @function startTask
            */
           let currentTaskId = getCurrentTaskId();
           const previousChatStore = getCurrentChatStore();
@@ -2962,25 +2961,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskAssigning(currentTaskId, taskAssigning);
             return;
           }
-          /**  New Task State from queue
-           * @deprecated
-           * Side effect handled on top of the message handler
-           */
-          if (agentMessages.step === AgentStep.NEW_TASK_STATE) {
-            const {
-              task_id,
-              content,
-              state: _state,
-              result: _result,
-              failure_count: _failure_count,
-            } = agentMessages.data;
-            //new chatStore logic is handled along side "confirmed" event
-            console.log(
-              `Received new task: ${task_id} with content: ${content}`
-            );
-            return;
-          }
-
           // Request-level token usage updates (non-stream mode)
           if (agentMessages.step === AgentStep.REQUEST_USAGE) {
             if (agentMessages.data.tokens) {
@@ -3759,43 +3739,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   agentMessages
                 );
               }
-            }
-            return;
-          }
-
-          // Handle add_task events for project store
-          if (agentMessages.step === AgentStep.ADD_TASK) {
-            try {
-              const taskData = agentMessages.data;
-              if (taskData && taskData.project_id && taskData.content) {
-                console.log(
-                  `Task added to project queue: ${taskData.project_id}`
-                );
-              }
-            } catch (error) {
-              const taskIdToRemove = agentMessages.data.task_id as string;
-              const projectStore = useProjectStore.getState();
-              //Remove the task from the queue on error
-              if (project_id) {
-                const project = projectStore.getProjectById(project_id);
-                if (project && project.queuedMessages) {
-                  const messageToRemove = project.queuedMessages.find(
-                    (msg) =>
-                      msg.task_id === taskIdToRemove ||
-                      msg.content.includes(taskIdToRemove)
-                  );
-                  if (messageToRemove) {
-                    projectStore.removeQueuedMessage(
-                      project_id,
-                      messageToRemove.task_id
-                    );
-                    console.log(
-                      `Task removed from project queue: ${taskIdToRemove}`
-                    );
-                  }
-                }
-              }
-              console.error('Error adding task to project store:', error);
             }
             return;
           }

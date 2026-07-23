@@ -27,7 +27,6 @@ RemoteControlCommandType = Literal[
     "human_reply",
     "stop",
     "skip_task",
-    "add_task",
     "remove_task",
     "supplement",
     "switch_project_view",

@@ -155,17 +155,6 @@ describe('Case 3: Add to the workforce queue', () => {
           const queueSequence = createSSESequence([
             {
               event: {
-                step: 'new_task_state',
-                data: {
-                  task_id: queuedTaskIds[0], // First queued task ID
-                  content: 'Build a calculator app 2',
-                  project_id: currentProjectId,
-                },
-              },
-              delay: 100,
-            },
-            {
-              event: {
                 step: 'remove_task',
                 data: {
                   task_id: queuedTaskIds[0], // Remove first task from queue
@@ -318,7 +307,7 @@ describe('Case 3: Add to the workforce queue', () => {
       { timeout: 2000 }
     );
 
-    // Step 5: Wait for new_task_state event to process queue
+    // Step 5: Wait for confirmed event to process queue
     await waitFor(
       () => {
         rerender();
@@ -327,12 +316,12 @@ describe('Case 3: Add to the workforce queue', () => {
         const taskId = chatStore.activeTaskId;
         const task = chatStore.tasks[taskId];
 
-        // Look for new_task_state in messages
-        const hasNewTaskState = task.messages.some(
+        // Look for the new chat's message
+        const hasNewChatMessage = task.messages.some(
           (m: any) => m.content === 'Build a calculator app 2'
         );
-        expect(hasNewTaskState).toBe(true);
-        console.log('new_task_state event detected - new chat created');
+        expect(hasNewChatMessage).toBe(true);
+        console.log('confirmed event detected - new chat created');
       },
       { timeout: 3000 }
     );
@@ -565,7 +554,7 @@ describe('Case 3: Add to the workforce queue', () => {
     });
   });
 
-  it('should handle confirmed -> subtasks -> end -> new_task_state -> remove_task sequence with queue processing', async () => {
+  it('should handle confirmed -> subtasks -> end -> remove_task sequence with queue processing', async () => {
     const { result, rerender } = renderHook(() => useChatStoreAdapter());
 
     let comprehensiveQueuedTaskIds: string[] = [];
@@ -663,17 +652,6 @@ describe('Case 3: Add to the workforce queue', () => {
                 data: {
                   task_id: comprehensiveQueuedTaskIds[0], // First queued task ID
                   question: 'Build a todo application',
-                },
-              },
-              delay: 100,
-            },
-            {
-              event: {
-                step: 'new_task_state',
-                data: {
-                  task_id: comprehensiveQueuedTaskIds[0], // First queued task ID
-                  content: 'Build a todo application',
-                  project_id: projectId,
                 },
               },
               delay: 100,
@@ -816,7 +794,7 @@ describe('Case 3: Add to the workforce queue', () => {
       { timeout: 2000 }
     );
 
-    // Step 7: Wait for new_task_state event (new chat creation)
+    // Step 7: Wait for confirmed event (new chat creation)
     await waitFor(
       () => {
         rerender();
@@ -824,12 +802,12 @@ describe('Case 3: Add to the workforce queue', () => {
         const taskId = chatStore.activeTaskId;
         const task = chatStore.tasks[taskId];
 
-        // Look for new_task_state event
-        const hasNewTaskState = task.messages.some(
+        // Look for the new chat's message
+        const hasNewChatMessage = task.messages.some(
           (m: any) => m.content === 'Build a todo application'
         );
-        expect(hasNewTaskState).toBe(true);
-        console.log('✓ new_task_state event received - new chat created');
+        expect(hasNewChatMessage).toBe(true);
+        console.log('✓ confirmed event received - new chat created');
       },
       { timeout: 3000 }
     );
@@ -907,7 +885,7 @@ describe('Case 3: Add to the workforce queue', () => {
     });
 
     console.log(
-      '✓ Complete test sequence verified: confirmed → subtasks → end → new_task_state → remove_task → one task processed, one remains'
+      '✓ Complete test sequence verified: confirmed → subtasks → end → remove_task → one task processed, one remains'
     );
   });
 });
