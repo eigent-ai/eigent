@@ -15,8 +15,11 @@
   "gateway-connectors": "Connectors",
   "source-open": "클라우드",
   "source-built-in": "기본 제공",
-  "source-local": "로컬",
-  "source-remote": "원격",
+  "source-local": "사용자 지정 로컬",
+  "source-remote": "사용자 지정 원격",
+  "type": "유형",
+  "connected": "연결됨",
+  "not-connected": "연결되지 않음",
   "load-built-in-failed": "기본 제공 커넥터를 불러오지 못했습니다",
   "load-custom-failed": "사용자 지정 커넥터를 불러오지 못했습니다",
   "load-gateway-failed": "Connectors를 불러오지 못했습니다",
@@ -128,5 +131,10 @@
   "search-engine-id": "검색 엔진 ID",
   "search-engine-id-placeholder": "API 키와 연결된 Custom Search Engine ID를 입력하세요",
   "google-search-custom-desc": "Google Custom Search를 연결합니다. Google API 키와 Custom Search Engine(CSE) ID가 필요합니다.",
-  "google-search-default-desc": "Google 검색은 기본적으로 활성화되어 있습니다. API 키가 필요하지 않습니다."
+  "google-search-default-desc": "Google 검색은 기본적으로 활성화되어 있습니다. API 키가 필요하지 않습니다.",
+  "exa-api-key": "Exa API 키",
+  "google-check-failed": "Google 인증 정보를 확인하지 못했습니다.",
+  "exa-check-failed": "Exa API 키를 확인하지 못했습니다.",
+  "optional": "선택 사항",
+  "enter-field": "{{field}} 입력"
 }

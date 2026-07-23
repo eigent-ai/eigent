@@ -529,5 +529,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "Подтвердить",
+  "confirm-content": "Вы уверены, что хотите продолжить?",
+  "settings-dialog-description": "Настройте параметры рабочего пространства, устройства и приложения.",
+  "workspace": "Рабочее пространство",
+  "device": "Устройство",
+  "workspace-profile": "Профиль рабочего пространства",
+  "workspace-profile-card-description": "Профиль конфигурации рабочего пространства",
+  "workspace-profile-sub-agents-description": "Настройте удалённых субагентов для этого рабочего пространства.",
+  "workspace-profile-open": "Открыть настройки {{name}}",
+  "failed-to-load-browsers": "Не удалось загрузить браузеры",
+  "external-browser-name": "Внешний браузер ({{port}})",
+  "browser-name": "Браузер {{port}}",
+  "loading-browser-connections": "Загрузка подключений браузера",
+  "delete-cookies-for-domain": "Удалить cookie-файлы для {{domain}}"
 }

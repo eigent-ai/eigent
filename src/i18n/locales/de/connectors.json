@@ -15,8 +15,11 @@
   "gateway-connectors": "Connectors",
   "source-open": "Cloud",
   "source-built-in": "Integriert",
-  "source-local": "Lokal",
-  "source-remote": "Remote",
+  "source-local": "Benutzerdefiniert lokal",
+  "source-remote": "Benutzerdefiniert remote",
+  "type": "Typ",
+  "connected": "Verbunden",
+  "not-connected": "Nicht verbunden",
   "load-built-in-failed": "Integrierte Konnektoren konnten nicht geladen werden",
   "load-custom-failed": "Benutzerdefinierte Konnektoren konnten nicht geladen werden",
   "load-gateway-failed": "Connectors konnten nicht geladen werden",
@@ -128,5 +131,10 @@
   "search-engine-id": "Suchmaschinen-ID",
   "search-engine-id-placeholder": "Die mit deinem API-Schlüssel verknüpfte ID der benutzerdefinierten Suchmaschine eingeben",
   "google-search-custom-desc": "Mit Google Custom Search verbinden. Erfordert einen Google-API-Schlüssel und eine ID der benutzerdefinierten Suchmaschine (CSE).",
-  "google-search-default-desc": "Die Google-Suche ist standardmäßig aktiviert. Kein API-Schlüssel erforderlich."
+  "google-search-default-desc": "Die Google-Suche ist standardmäßig aktiviert. Kein API-Schlüssel erforderlich.",
+  "exa-api-key": "Exa-API-Schlüssel",
+  "google-check-failed": "Die Google-Anmeldedaten konnten nicht überprüft werden.",
+  "exa-check-failed": "Der Exa-API-Schlüssel konnte nicht überprüft werden.",
+  "optional": "Optional",
+  "enter-field": "{{field}} eingeben"
 }

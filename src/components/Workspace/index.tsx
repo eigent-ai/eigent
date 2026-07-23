@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { openSettingsDialog } from '@/store/settingsDialogStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
@@ -48,7 +49,6 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
@@ -88,7 +88,6 @@ export default function Workspace({
 }: WorkspaceProps) {
   const { t } = useTranslation();
   const isNewProjectVariant = variant === 'new-project';
-  const navigate = useNavigate();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
@@ -267,7 +266,7 @@ export default function Workspace({
 
     if (!hasModel) {
       toast.error(t('layout.please-select-model-first'));
-      navigate('/history?tab=agents');
+      openSettingsDialog('models');
       return;
     }
 
@@ -510,7 +509,7 @@ export default function Workspace({
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
-          onSelectModel={() => navigate('/history?tab=agents')}
+          onSelectModel={() => openSettingsDialog('models')}
           inputProps={buildComposerInputProps()}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}

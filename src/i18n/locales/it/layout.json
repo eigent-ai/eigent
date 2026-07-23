@@ -529,5 +529,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "Conferma",
+  "confirm-content": "Vuoi davvero continuare?",
+  "settings-dialog-description": "Configura le impostazioni dello spazio di lavoro, del dispositivo e dell’applicazione.",
+  "workspace": "Spazio di lavoro",
+  "device": "Dispositivo",
+  "workspace-profile": "Profilo dello spazio di lavoro",
+  "workspace-profile-card-description": "Profilo di configurazione dello spazio di lavoro",
+  "workspace-profile-sub-agents-description": "Configura i sotto-agenti remoti per questo spazio di lavoro.",
+  "workspace-profile-open": "Apri le impostazioni di {{name}}",
+  "failed-to-load-browsers": "Impossibile caricare i browser",
+  "external-browser-name": "Browser esterno ({{port}})",
+  "browser-name": "Browser {{port}}",
+  "loading-browser-connections": "Caricamento delle connessioni del browser",
+  "delete-cookies-for-domain": "Elimina i cookie di {{domain}}"
 }

@@ -529,5 +529,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "确认",
+  "confirm-content": "确定要继续吗？",
+  "settings-dialog-description": "配置工作区、设备和应用设置。",
+  "workspace": "工作区",
+  "device": "设备",
+  "workspace-profile": "工作区配置文件",
+  "workspace-profile-card-description": "工作区配置资料",
+  "workspace-profile-sub-agents-description": "配置此工作区的远程子智能体。",
+  "workspace-profile-open": "打开 {{name}} 的设置",
+  "failed-to-load-browsers": "无法加载浏览器",
+  "external-browser-name": "外部浏览器（{{port}}）",
+  "browser-name": "浏览器 {{port}}",
+  "loading-browser-connections": "正在加载浏览器连接",
+  "delete-cookies-for-domain": "删除 {{domain}} 的 Cookie"
 }
