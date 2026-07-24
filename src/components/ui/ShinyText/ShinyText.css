@@ -6,7 +6,17 @@
   -webkit-background-clip: text;
   background-clip: text;
   display: inline-block;
+  animation: shine 3s linear infinite;
   font-weight: 500;
+}
+
+@keyframes shine {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
 }
 
 .shiny-text.disabled {
