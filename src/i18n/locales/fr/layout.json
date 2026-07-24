@@ -215,6 +215,7 @@
   "browser-connections": "Connexions",
   "browser-connections-description": "Configuration du protocole Chrome DevTools pour l'automatisation du navigateur.",
   "browser-plugins": "Plugins",
+  "browser-extension": "Extension",
   "browser-plugins-description": "Gérer les extensions du navigateur pour des fonctionnalités améliorées.",
   "restart-to-apply": "Redémarrer pour Appliquer",
   "browser-cookie": "Cookies",

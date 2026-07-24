@@ -434,7 +434,7 @@ export default function AppearanceSettings() {
 
       <SettingsSection title={t('setting.accent-palette')} boxClassName="gap-4">
         <div className="flex w-full items-center justify-between gap-3">
-          <div className="min-w-0 flex-1 overflow-x-auto">
+          <div className="min-w-0 flex-1">
             <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
               <TabsList appearance="default" className="min-w-max">
                 {themeOptions.map((option) => (

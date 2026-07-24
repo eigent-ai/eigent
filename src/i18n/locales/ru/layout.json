@@ -215,6 +215,7 @@
   "browser-connections": "Подключения",
   "browser-connections-description": "Настройка протокола Chrome DevTools для автоматизации браузера.",
   "browser-plugins": "Плагины",
+  "browser-extension": "Расширение",
   "browser-plugins-description": "Управление расширениями браузера для расширенной функциональности.",
   "restart-to-apply": "Перезапустить для применения",
   "browser-cookie": "Cookies",

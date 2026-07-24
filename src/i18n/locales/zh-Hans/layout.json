@@ -215,6 +215,7 @@
   "browser-connections": "连接",
   "browser-connections-description": "Chrome 开发者工具协议配置，用于浏览器自动化。",
   "browser-plugins": "插件",
+  "browser-extension": "扩展",
   "browser-plugins-description": "管理浏览器扩展以增强功能。",
   "restart-to-apply": "重启以应用",
   "browser-cookie": "Cookies",

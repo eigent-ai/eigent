@@ -215,6 +215,7 @@
   "browser-connections": "연결",
   "browser-connections-description": "브라우저 자동화를 위한 Chrome DevTools Protocol 설정.",
   "browser-plugins": "플러그인",
+  "browser-extension": "확장 프로그램",
   "browser-plugins-description": "향상된 기능을 위한 브라우저 확장 프로그램 관리.",
   "restart-to-apply": "적용하려면 다시 시작",
   "browser-cookie": "쿠키",

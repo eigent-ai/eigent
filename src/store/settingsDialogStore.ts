@@ -33,31 +33,6 @@ export const SETTINGS_SECTIONS = [
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number];
 export type SettingsScope = 'workspace' | 'device' | 'settings';
 
-export const SETTINGS_SECTION_SCOPE: Record<SettingsSectionId, SettingsScope> =
-  {
-    'workspace-profile': 'workspace',
-    models: 'workspace',
-    'sub-agents': 'workspace',
-    connectors: 'workspace',
-    skills: 'workspace',
-    channels: 'workspace',
-    memory: 'workspace',
-    'browser-connections': 'device',
-    'browser-plugins': 'device',
-    cookies: 'device',
-    general: 'settings',
-    appearance: 'settings',
-    privacy: 'settings',
-  };
-
-export function isSettingsSectionId(
-  value: string | null | undefined
-): value is SettingsSectionId {
-  return Boolean(
-    value && (SETTINGS_SECTIONS as readonly string[]).includes(value)
-  );
-}
-
 interface SettingsDialogState {
   isOpen: boolean;
   activeSection: SettingsSectionId;

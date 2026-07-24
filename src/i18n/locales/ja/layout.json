@@ -215,6 +215,7 @@
   "browser-connections": "接続",
   "browser-connections-description": "ブラウザ自動化のためのChrome DevTools Protocol設定。",
   "browser-plugins": "プラグイン",
+  "browser-extension": "拡張機能",
   "browser-plugins-description": "機能強化のためのブラウザ拡張機能を管理。",
   "restart-to-apply": "適用するために再起動",
   "browser-cookie": "Cookies",

@@ -215,6 +215,7 @@
   "browser-connections": "連線",
   "browser-connections-description": "Chrome 開發者工具協定設定，用於瀏覽器自動化。",
   "browser-plugins": "外掛程式",
+  "browser-extension": "擴充功能",
   "browser-plugins-description": "管理瀏覽器擴充功能以增強功能。",
   "restart-to-apply": "重新啟動以套用",
   "browser-cookie": "Cookies",

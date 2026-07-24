@@ -18,16 +18,15 @@ import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
 
 function formatWelcomeName(raw: string): string {
-  if (!raw) return '';
-  if (/^[^@]+@gmail\.com$/i.test(raw)) {
-    const local = raw.split('@')[0];
-    const pretty = local.replace(/[._-]+/g, ' ').trim();
-    return pretty
-      .split(/\s+/)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ');
-  }
-  return raw;
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const local = trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+  const pretty = local.replace(/[._-]+/g, ' ').trim();
+  if (!pretty) return trimmed;
+  return pretty
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 export default function Home() {
@@ -55,9 +54,11 @@ export default function Home() {
               sweepOnce
               gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
             />
-            <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
-              {`, ${welcomeName} !`}
-            </span>
+            {welcomeName ? (
+              <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+                {`, ${welcomeName}!`}
+              </span>
+            ) : null}
           </p>
         </div>
 

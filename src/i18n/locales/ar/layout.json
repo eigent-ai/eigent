@@ -215,6 +215,7 @@
   "browser-connections": "الاتصالات",
   "browser-connections-description": "تكوين بروتوكول أدوات مطوري Chrome لأتمتة المتصفح.",
   "browser-plugins": "المكوّنات الإضافية",
+  "browser-extension": "الإضافة",
   "browser-plugins-description": "إدارة إضافات المتصفح لتحسين الوظائف.",
   "restart-to-apply": "إعادة التشغيل للتطبيق",
   "browser-cookie": "Cookies",

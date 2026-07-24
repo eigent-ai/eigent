@@ -19,6 +19,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MCPUserItem } from './types';
 
@@ -38,7 +39,12 @@ export default function MCPDeleteDialog({
   loading,
 }: MCPDeleteDialogProps) {
   const { t } = useTranslation();
-  if (!open || !target) return null;
+  // Retain the last target so the content stays populated while the dialog
+  // plays its close animation (target is cleared the moment `open` flips false).
+  const [displayTarget, setDisplayTarget] = useState(target);
+  if (target && target !== displayTarget) {
+    setDisplayTarget(target);
+  }
 
   return (
     <Dialog
@@ -72,7 +78,7 @@ export default function MCPDeleteDialog({
         >
           <span className="block">
             {t('setting.are-you-sure-you-want-to-delete')}{' '}
-            <span className="font-bold">{target.mcp_name}</span>?
+            <span className="font-bold">{displayTarget?.mcp_name}</span>?
           </span>
         </DialogDescription>
         <div className="flex justify-end gap-2">

@@ -43,7 +43,7 @@ export default function SettingsSection({
           <span className="m-0 ml-4 text-body-sm font-bold text-ds-text-neutral-default-default">
             {title}
           </span>
-          {action ? <div className="shrink-0">{action}</div> : null}
+          {action ? <div className="mr-4 shrink-0">{action}</div> : null}
         </div>
       ) : null}
       <div

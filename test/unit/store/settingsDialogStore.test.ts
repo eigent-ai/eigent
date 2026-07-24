@@ -14,7 +14,6 @@
 
 import {
   openSettingsDialog,
-  SETTINGS_SECTION_SCOPE,
   useSettingsDialogStore,
 } from '@/store/settingsDialogStore';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -54,11 +53,5 @@ describe('settingsDialogStore', () => {
       isOpen: false,
       activeSection: 'connectors',
     });
-  });
-
-  it('keeps ownership scope explicit for every section family', () => {
-    expect(SETTINGS_SECTION_SCOPE.models).toBe('workspace');
-    expect(SETTINGS_SECTION_SCOPE['browser-connections']).toBe('device');
-    expect(SETTINGS_SECTION_SCOPE.general).toBe('settings');
   });
 });
