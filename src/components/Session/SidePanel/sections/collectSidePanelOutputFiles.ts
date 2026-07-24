@@ -16,7 +16,7 @@
  * Output files from agent runs can arrive from multiple places:
  * `taskAssigning[].tasks[].fileList` for WRITE_FILE events, `messages[].fileList`
  * for final-summary extraction, and occasionally task-level mirrors.
- * The chat task's top-level `fileList` is not kept in sync, so the side panel
+ * The chat task's top-level `fileList` is not kept in sync, so SidePanel
  * must aggregate every known source.
  */
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';

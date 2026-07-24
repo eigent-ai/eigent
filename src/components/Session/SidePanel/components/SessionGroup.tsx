@@ -28,7 +28,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-export { default as SessionWorkspace } from '.';
+export { default as SessionWorkspace } from '../..';
 
 type SessionsProps = {
   className?: string;
@@ -95,7 +95,7 @@ export default function Sessions({
           <span className="truncate">{t('layout.sessions-full-title')}</span>
         </div>
       </div>
-      <div className="m-0 mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+      <div className="scrollbar-always-visible m-0 mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {sessions.length === 0 ? (
           <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
             {t('layout.sessions-create-task-hint')}

@@ -15,7 +15,7 @@
 import {
   reconcileToolkitState,
   TOOLKIT_MIN_DISPLAY_MS,
-} from '@/components/Session/SidePanelSections/AgentPoolSection';
+} from '@/components/Session/SidePanel/sections/AgentPoolSection';
 import { AgentStatusValue } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
 

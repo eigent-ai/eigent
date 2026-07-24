@@ -29,7 +29,7 @@ import { useEffect, useReducer } from 'react';
 function LiveDot() {
   return (
     <span
-      className="h-2 w-2 bg-ds-bg-brand-default-default animate-pulse inline-flex shrink-0 rounded-full"
+      className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-ds-bg-brand-default-default"
       aria-hidden
     />
   );
@@ -44,7 +44,7 @@ function StatusDot({ status }: { status: string }) {
         : 'bg-ds-border-neutral-default-default';
   return (
     <span
-      className={cn('h-2 w-2 inline-flex shrink-0 rounded-full', cls)}
+      className={cn('inline-flex h-2 w-2 shrink-0 rounded-full', cls)}
       aria-hidden
     />
   );
@@ -58,7 +58,7 @@ interface TurnEntry {
 }
 
 /**
- * Dropdown button showing "Run N ▼" next to the fold button.
+ * Legacy run selector retained with the SidePanel components.
  * Hidden when the project has ≤ 1 turn.
  */
 export function TurnTabs() {
@@ -175,14 +175,14 @@ export function TurnTabs() {
               className="gap-2"
             >
               {isLive ? <LiveDot /> : <StatusDot status={turn.status} />}
-              <span className="text-ds-text-neutral-muted-default text-label-xs font-semibold shrink-0">
+              <span className="shrink-0 text-label-xs font-semibold text-ds-text-neutral-muted-default">
                 Run {turnNumber}
               </span>
-              <span className="text-ds-text-neutral-subtle-default text-label-xs min-w-0 flex-1 truncate">
+              <span className="min-w-0 flex-1 truncate text-label-xs text-ds-text-neutral-subtle-default">
                 {preview}
               </span>
               {isSelected && (
-                <Check className="size-3 text-ds-icon-brand-default-default ml-auto shrink-0" />
+                <Check className="ml-auto size-3 shrink-0 text-ds-icon-brand-default-default" />
               )}
             </DropdownMenuItem>
           );

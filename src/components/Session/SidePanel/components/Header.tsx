@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionSidePanelFoldButton } from '@/components/Session/SessionSidePanelFoldButton';
+import { SidePanelFoldButton } from '@/components/Session/SidePanel/components/FoldButton';
 import type { SessionModeType } from '@/types/constants';
 import type { ReactNode } from 'react';
 
-export interface SessionSidePanelHeaderProps {
+export interface SidePanelHeaderProps {
   title: string;
   mode: SessionModeType;
   isSidePanelVisible: boolean;
@@ -27,31 +27,31 @@ export interface SessionSidePanelHeaderProps {
   end?: ReactNode;
 }
 
-export function SessionSidePanelHeader({
+export function SidePanelHeader({
   title,
   mode,
   isSidePanelVisible,
   onToggle,
   start,
   end,
-}: SessionSidePanelHeaderProps) {
+}: SidePanelHeaderProps) {
   return (
-    <div className="p-2 min-w-0 relative z-50 flex w-full shrink-0 items-center">
-      <div className="min-w-0 gap-1 flex flex-1 items-center justify-start">
-        <SessionSidePanelFoldButton
+    <div className="relative z-50 flex h-11 min-h-11 w-full min-w-0 shrink-0 items-center px-2">
+      <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
+        <SidePanelFoldButton
           sessionSidePanelMode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggle}
         />
-        <span className="text-ds-text-neutral-default-default min-w-0 text-body-md font-semibold max-w-full truncate text-center">
+        <span className="min-w-0 max-w-full truncate text-center text-body-md font-semibold text-ds-text-neutral-default-default">
           {title}
         </span>
       </div>
 
-      <div className="min-w-0 gap-1 flex flex-1 items-center justify-end">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
         {start}
         {end != null ? (
-          <div className="gap-1 flex items-center">{end}</div>
+          <div className="flex items-center gap-1">{end}</div>
         ) : null}
       </div>
     </div>
