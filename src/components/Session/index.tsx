@@ -93,15 +93,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewProject);
-  const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
 
   // Default fold state is tab-specific. React reuses this component when switching
   // between `project` and `new-project`, so reset when the shell or project changes.
   useEffect(() => {
     setIsSidePanelVisible(!isNewProject);
-    if (isNewProject) {
-      setIsExpandedOverlayOpen(false);
-    }
   }, [isNewProject, activeProjectId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
@@ -123,8 +119,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
-
-  const workforcePanelKey = chatStore?.activeTaskId ?? '';
 
   const hasSessionStarted = useMemo(() => {
     // The React-mirrored `chatStore` (via useChatStoreAdapter) lags the
@@ -224,16 +218,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
     : (activeProjectMeta?.mode ??
       inferredSessionMode ??
       (hasSessionStarted ? null : SessionMode.SINGLE_AGENT));
-
-  useEffect(() => {
-    setIsExpandedOverlayOpen(false);
-  }, [projectStore.activeProjectId]);
-
-  useEffect(() => {
-    if (activeWorkspaceTab !== 'project') {
-      setIsExpandedOverlayOpen(false);
-    }
-  }, [activeWorkspaceTab]);
 
   const toggleSidePanel = useCallback(() => {
     setIsSidePanelVisible((prev) => !prev);
@@ -339,14 +323,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
     [selectedTurn, setActiveWorkspaceTab, activeProjectId, closeSessionPreview]
   );
 
-  const toggleExpandedOverlay = useCallback(() => {
-    setIsExpandedOverlayOpen((prev) => !prev);
-  }, []);
-
-  const closeExpandedOverlay = useCallback(() => {
-    setIsExpandedOverlayOpen(false);
-  }, []);
-
   if (!isNewProject && !chatStore) {
     return null;
   }
@@ -355,13 +331,8 @@ export default function Session({ isNewProject = false }: SessionProps) {
     <SessionSidePanel
       key={displaySessionMode}
       mode={displaySessionMode}
-      workforcePanelKey={workforcePanelKey}
-      hasAnyMessages={hasAnyMessages}
       isSidePanelVisible={isSidePanelVisible}
       onToggleSidePanel={toggleSidePanel}
-      isExpandedOverlayOpen={isExpandedOverlayOpen}
-      onToggleExpandedOverlay={toggleExpandedOverlay}
-      onCloseExpandedOverlay={closeExpandedOverlay}
     />
   ) : null;
 

@@ -84,13 +84,21 @@ export interface SessionCanvasTab {
   title: string;
 }
 
+/** Live workforce graph for the selected turn. */
+export interface SessionWorkflowTab {
+  id: string;
+  type: 'workflow';
+  title: string;
+}
+
 export type SessionPreviewTab =
   | SessionChooserTab
   | SessionBrowserTab
   | SessionFileTab
   | SessionReviewTab
   | SessionTerminalTab
-  | SessionCanvasTab;
+  | SessionCanvasTab
+  | SessionWorkflowTab;
 
 /**
  * Content types the chooser can open. `chooser` is intentionally excluded —
@@ -220,6 +228,12 @@ function createPreviewTabOfKind(
         id: nextSessionPreviewTabId('canvas'),
         type: 'canvas',
         title: 'Canvas',
+      };
+    case 'workflow':
+      return {
+        id: nextSessionPreviewTabId('workflow'),
+        type: 'workflow',
+        title: 'Workflow',
       };
   }
 }

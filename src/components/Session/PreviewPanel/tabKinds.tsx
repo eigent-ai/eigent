@@ -21,6 +21,7 @@ import {
   PanelsTopLeft,
   Shapes,
   SquareTerminal,
+  Workflow,
 } from 'lucide-react';
 
 export interface PreviewKindMeta {
@@ -40,8 +41,7 @@ export interface PreviewKindMeta {
  *
  * `review`, `terminal`, and `canvas` are reserved tab types (their components
  * and store plumbing exist, and persisted tabs still render) but are hidden
- * from the chooser until a later version ships their content. Re-add their
- * entries here when that lands.
+ * from the chooser until a later version ships their content.
  */
 export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   {
@@ -60,6 +60,14 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     descriptionKey: 'layout.preview-kind-file-desc',
     defaultDescription: 'Preview files produced or referenced in this session.',
   },
+  {
+    kind: 'workflow',
+    icon: Workflow,
+    labelKey: 'layout.preview-kind-workflow',
+    defaultLabel: 'Workflow',
+    descriptionKey: 'layout.preview-kind-workflow-desc',
+    defaultDescription: 'View the live workforce workflow for this session.',
+  },
 ];
 
 const KIND_ICONS: Record<SessionPreviewTab['type'], LucideIcon> = {
@@ -69,6 +77,7 @@ const KIND_ICONS: Record<SessionPreviewTab['type'], LucideIcon> = {
   review: ClipboardCheck,
   terminal: SquareTerminal,
   canvas: Shapes,
+  workflow: Workflow,
 };
 
 /** Icon for any tab (including the chooser) — used by the tab strip. */

@@ -16,7 +16,6 @@ import { SessionSidePanelHeader } from '@/components/Session/SessionSidePanelHea
 import { SingleAgentSidePanel } from '@/components/Session/SingleAgent/SingleAgentSidePanel';
 import { TurnTabs } from '@/components/Session/TurnTabs';
 import { WorkforceSidePanel } from '@/components/Session/Workforce/WorkforceSidePanel';
-import { WorkforceSidePanelHeaderEnd } from '@/components/Session/Workforce/WorkforceSidePanelHeaderEnd';
 import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -26,24 +25,14 @@ import { useTranslation } from 'react-i18next';
 
 export interface SessionSidePanelProps {
   mode: SessionModeType;
-  workforcePanelKey: string;
-  hasAnyMessages: boolean;
   isSidePanelVisible: boolean;
   onToggleSidePanel: () => void;
-  isExpandedOverlayOpen: boolean;
-  onToggleExpandedOverlay: () => void;
-  onCloseExpandedOverlay: () => void;
 }
 
 export function SessionSidePanel({
   mode,
-  workforcePanelKey,
-  hasAnyMessages,
   isSidePanelVisible,
   onToggleSidePanel,
-  isExpandedOverlayOpen,
-  onToggleExpandedOverlay,
-  onCloseExpandedOverlay,
 }: SessionSidePanelProps) {
   const { t } = useTranslation();
   const isFolded = !isSidePanelVisible;
@@ -79,26 +68,10 @@ export function SessionSidePanel({
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggleSidePanel}
           start={<TurnTabs />}
-          end={
-            mode === SessionMode.WORKFORCE ? (
-              <WorkforceSidePanelHeaderEnd
-                isExpandedOverlayOpen={isExpandedOverlayOpen}
-                onToggleExpandedOverlay={onToggleExpandedOverlay}
-              />
-            ) : null
-          }
         />
 
         {mode === SessionMode.WORKFORCE ? (
-          <WorkforceSidePanel
-            workforcePanelKey={workforcePanelKey}
-            hasAnyMessages={hasAnyMessages}
-            isSidePanelVisible={isSidePanelVisible}
-            onToggleSidePanel={onToggleSidePanel}
-            isExpandedOverlayOpen={isExpandedOverlayOpen}
-            onToggleExpandedOverlay={onToggleExpandedOverlay}
-            onCloseExpandedOverlay={onCloseExpandedOverlay}
-          />
+          <WorkforceSidePanel />
         ) : (
           <SingleAgentSidePanel />
         )}

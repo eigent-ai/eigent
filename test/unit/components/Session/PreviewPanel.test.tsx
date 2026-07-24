@@ -35,6 +35,10 @@ vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
   CanvasTab: () => <div data-testid="canvas-tab" />,
 }));
 
+vi.mock('@/components/Session/PreviewPanel/tabs/WorkflowTab', () => ({
+  WorkflowTab: () => <div data-testid="workflow-tab" />,
+}));
+
 // The desktop host is detected by electronAPI presence; embedded browsing
 // itself is <webview>-tag based and driven through the webview registry.
 const openExternal = vi.fn();
@@ -74,7 +78,7 @@ describe('PreviewPanel', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
     // Vertical options (test i18n echoes the key, not the label).
-    for (const kind of ['browser', 'file']) {
+    for (const kind of ['browser', 'file', 'workflow']) {
       expect(
         screen.getByRole('button', {
           name: new RegExp(`preview-kind-${kind}\\b`),
@@ -115,7 +119,7 @@ describe('PreviewPanel', () => {
     expect(screen.getAllByRole('tab', { name: 'notes.md' })).toHaveLength(1);
   });
 
-  it('routes review, terminal, and canvas tabs to their surfaces', () => {
+  it('routes reserved and contextual tabs to their surfaces', () => {
     const store = usePageTabStore.getState();
     const chooserId = previewSlice().tabs[0].id;
     act(() => store.choosePreviewTabType(chooserId, 'canvas'));
@@ -131,6 +135,16 @@ describe('PreviewPanel', () => {
       </HostProvider>
     );
     expect(screen.getByText('Eigent:~$')).toBeInTheDocument();
+
+    act(() =>
+      store.choosePreviewTabType(previewSlice().activeTabId!, 'workflow')
+    );
+    rerender(
+      <HostProvider host={host}>
+        <PreviewPanel />
+      </HostProvider>
+    );
+    expect(screen.getByTestId('workflow-tab')).toBeInTheDocument();
   });
 
   it('the + button adds a new chooser tab', async () => {

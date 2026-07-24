@@ -27,6 +27,7 @@ import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
 import { TerminalTab } from './tabs/TerminalTab';
+import { WorkflowTab } from './tabs/WorkflowTab';
 
 // Tabs render at a comfortable default width and shrink evenly as more are
 // added, down to a minimum that keeps the title/close affordance legible.
@@ -47,8 +48,8 @@ export interface PreviewPanelProps {
 /**
  * Unified preview panel: a tab strip plus a content router that dispatches to
  * one component per tab kind (chooser / browser / file / review / terminal /
- * canvas). Embedded browsers live in the always-mounted PreviewBrowserLayer;
- * this panel only renders their chrome via BrowserTab.
+ * canvas / workflow). Embedded browsers live in the always-mounted
+ * PreviewBrowserLayer; this panel only renders their chrome via BrowserTab.
  */
 export function PreviewPanel({
   onJumpToContext,
@@ -163,6 +164,8 @@ export function PreviewPanel({
         return <TerminalTab />;
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
+      case 'workflow':
+        return <WorkflowTab />;
       default:
         return null;
     }

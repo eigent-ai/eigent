@@ -71,13 +71,17 @@ describe('pageTabStore session preview', () => {
   it('exposes every content kind via choosePreviewTabType', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
-    (['file', 'review', 'terminal', 'canvas'] as const).forEach((kind) => {
-      store.addChooserPreviewTab();
-      const id = slice().activeTabId!;
-      store.choosePreviewTabType(id, kind);
-      const active = slice().tabs.find((tab) => tab.id === slice().activeTabId);
-      expect(active?.type).toBe(kind);
-    });
+    (['file', 'review', 'terminal', 'canvas', 'workflow'] as const).forEach(
+      (kind) => {
+        store.addChooserPreviewTab();
+        const id = slice().activeTabId!;
+        store.choosePreviewTabType(id, kind);
+        const active = slice().tabs.find(
+          (tab) => tab.id === slice().activeTabId
+        );
+        expect(active?.type).toBe(kind);
+      }
+    );
   });
 
   it('reuses the chooser tab when a file is opened', () => {

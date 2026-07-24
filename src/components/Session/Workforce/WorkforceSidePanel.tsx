@@ -22,7 +22,6 @@ import {
 import { ExecutionContextSection } from '@/components/Session/SidePanelSections/ExecutionContextSection';
 import { ProgressSection } from '@/components/Session/SidePanelSections/ProgressSection';
 import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
-import ExpandedOverlay from '@/components/Session/Workforce/ExpandedOverlay';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { cn } from '@/lib/utils';
@@ -35,26 +34,7 @@ import { useTranslation } from 'react-i18next';
 export const WORKFORCE_MAIN_SURFACE_CLASS =
   'min-w-0 flex w-full min-h-0 flex-1 flex-col overflow-hidden';
 
-export interface WorkforceSidePanelProps {
-  workforcePanelKey: string;
-  hasAnyMessages: boolean;
-  isSidePanelVisible: boolean;
-  onToggleSidePanel: () => void;
-  /** Controlled: whether the full-screen workforce overlay is open. */
-  isExpandedOverlayOpen: boolean;
-  onToggleExpandedOverlay: () => void;
-  onCloseExpandedOverlay: () => void;
-}
-
-export function WorkforceSidePanel({
-  workforcePanelKey,
-  hasAnyMessages: _hasAnyMessages,
-  isSidePanelVisible,
-  onToggleSidePanel,
-  isExpandedOverlayOpen,
-  onToggleExpandedOverlay: _onToggleExpandedOverlay,
-  onCloseExpandedOverlay,
-}: WorkforceSidePanelProps) {
+export function WorkforceSidePanel() {
   const { t } = useTranslation();
   const { projectStore } = useChatStoreAdapter();
   const openFilePreview = usePageTabStore((s) => s.openFilePreview);
@@ -130,47 +110,36 @@ export function WorkforceSidePanel({
   );
 
   return (
-    <>
-      <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-        <div className="min-h-0 min-w-0 gap-2 px-2 pb-2 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <AgentPoolSection
-            title={t('layout.workforce-agent-pool', {
-              defaultValue: 'Agent Pool',
-            })}
-            agents={agents}
-          />
-          <ProgressSection
-            title={t('layout.workforce-progress', {
-              defaultValue: 'Progress',
-            })}
-            subtasks={subtasks}
-            projectId={projectStore.activeProjectId}
-            taskId={selectedTaskId}
-          />
-          <ExecutionContextSection
-            title={t('layout.execution-context', {
-              defaultValue: 'Execution Context',
-            })}
-            items={contextItems}
-          />
-          <AgentFolderSection
-            title={t('layout.workforce-agent-folder', {
-              defaultValue: 'Agent Folder',
-            })}
-            files={files}
-            onOpenFile={handleOpenAgentFile}
-          />
-        </div>
+    <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
+        <AgentPoolSection
+          title={t('layout.workforce-agent-pool', {
+            defaultValue: 'Agent Pool',
+          })}
+          agents={agents}
+        />
+        <ProgressSection
+          title={t('layout.workforce-progress', {
+            defaultValue: 'Progress',
+          })}
+          subtasks={subtasks}
+          projectId={projectStore.activeProjectId}
+          taskId={selectedTaskId}
+        />
+        <ExecutionContextSection
+          title={t('layout.execution-context', {
+            defaultValue: 'Execution Context',
+          })}
+          items={contextItems}
+        />
+        <AgentFolderSection
+          title={t('layout.workforce-agent-folder', {
+            defaultValue: 'Agent Folder',
+          })}
+          files={files}
+          onOpenFile={handleOpenAgentFile}
+        />
       </div>
-
-      <ExpandedOverlay
-        open={isExpandedOverlayOpen}
-        onClose={onCloseExpandedOverlay}
-        workforcePanelKey={workforcePanelKey}
-        onToggleSidePanel={onToggleSidePanel}
-        isSidePanelVisible={isSidePanelVisible}
-        selectedTurn={selectedTurn}
-      />
-    </>
+    </div>
   );
 }
