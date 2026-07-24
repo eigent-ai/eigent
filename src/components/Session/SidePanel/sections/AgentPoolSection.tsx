@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
@@ -80,10 +80,10 @@ function getAgentSubIcon(agentType: string): ReactNode {
 function AgentLeadingIcon({ agentType }: { agentType: string }) {
   const subIcon = getAgentSubIcon(agentType);
   return (
-    <div className="h-6 w-6 text-ds-text-neutral-muted-default bg-ds-bg-neutral-subtle-default rounded-md relative inline-flex shrink-0 items-center justify-center self-center">
+    <div className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-md bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default">
       <Bot className="h-5 w-5" strokeWidth={2} aria-hidden />
       {subIcon != null && (
-        <span className="-right-0.5 -top-0.5 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
+        <span className="absolute -right-0.5 -top-0.5 inline-flex items-center justify-center [&_svg]:shrink-0">
           {subIcon}
         </span>
       )}
@@ -264,7 +264,7 @@ function AgentToolkitTag({ names }: { names: string[] }) {
     names.length > 0 ? names[Math.min(focusIndex, names.length - 1)] : null;
 
   return (
-    <div className="h-6 min-w-0 inline-flex shrink-0 items-center overflow-hidden">
+    <div className="inline-flex h-6 min-w-0 shrink-0 items-center overflow-hidden">
       <AnimatePresence initial={false} mode="popLayout">
         {focused && (
           <motion.div
@@ -274,18 +274,18 @@ function AgentToolkitTag({ names }: { names: string[] }) {
             exit={{ y: 18, opacity: 0 }}
             transition={{ duration: 0.28, ease: [0.2, 0, 0.2, 1] }}
             className={cn(
-              'gap-1 px-1.5 py-0.5 rounded-md inline-flex max-w-full items-center opacity-80',
+              'inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 opacity-80',
               'bg-ds-bg-neutral-muted-default'
             )}
             data-testid="agent-toolkit-tag"
           >
-            <span className="text-ds-text-neutral-default-default [&_svg]:h-4 [&_svg]:w-4 inline-flex shrink-0 items-center">
+            <span className="inline-flex shrink-0 items-center text-ds-text-neutral-default-default [&_svg]:h-4 [&_svg]:w-4">
               {getToolkitIcon(focused, 16, '')}
             </span>
             <ShinyText
               text={focused}
               speed={2.5}
-              className="text-label-xs font-medium max-w-[140px] truncate"
+              className="max-w-[140px] truncate text-label-xs font-medium"
             />
           </motion.div>
         )}
@@ -304,14 +304,14 @@ function AgentRow({ agent }: { agent: Agent }) {
     <div
       className={cn(
         'rounded-lg bg-ds-bg-neutral-subtle-default px-1.5 py-1.5',
-        'gap-2 min-w-0 flex items-center',
+        'flex min-w-0 items-center gap-2',
         !active && 'opacity-50'
       )}
     >
       <AgentLeadingIcon agentType={agent.type} />
       <span
         className={cn(
-          'min-w-0 !text-body-sm font-medium text-ds-text-neutral-default-default flex-1 truncate',
+          'min-w-0 flex-1 truncate !text-body-sm font-medium text-ds-text-neutral-default-default',
           display?.textColor
         )}
       >
@@ -324,7 +324,7 @@ function AgentRow({ agent }: { agent: Agent }) {
 
 function AgentList({ agents }: { agents: Agent[] }) {
   return (
-    <motion.ul layout className="gap-2 p-0 m-0 flex list-none flex-col">
+    <motion.ul layout className="m-0 flex list-none flex-col gap-2 p-0">
       <AnimatePresence initial={false} mode="popLayout">
         {agents.map((agent) => (
           <motion.li
@@ -357,7 +357,7 @@ export function AgentPoolSection({ title, agents }: AgentPoolSectionProps) {
   );
 
   const emptyState = (
-    <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1">
+    <div className="px-1 py-1 text-body-sm text-ds-text-neutral-subtle-default">
       No agents yet
     </div>
   );

@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import {
   CategoryLabel,
   SidePanelListRow,
-} from '@/components/Session/SidePanelSections/primitives';
+} from '@/components/Session/SidePanel/sections/primitives';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
@@ -27,6 +27,7 @@ export interface ContextItem {
   id: string;
   label: string;
   icon?: ReactNode;
+  iconUrl?: string;
   category: ContextCategory;
   onClick?: () => void;
 }
@@ -62,15 +63,15 @@ export function ExecutionContextSection({
   return (
     <SidePanelAccordionBox title={title}>
       {items.length === 0 ? (
-        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1 opacity-60">
+        <div className="px-1 py-1 text-body-sm text-ds-text-neutral-subtle-default opacity-60">
           Track skills, MCPs and referenced files used in this task.
         </div>
       ) : (
-        <div className="gap-2 flex flex-col">
+        <div className="flex flex-col gap-2">
           {grouped.map(({ category, items: groupItems }) => (
             <div key={category} className="flex flex-col">
               <CategoryLabel>{CATEGORY_LABEL[category]}</CategoryLabel>
-              <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
+              <motion.ul layout className="m-0 list-none space-y-0.5 p-0">
                 <AnimatePresence initial={false}>
                   {groupItems.map((item) => (
                     <motion.li
