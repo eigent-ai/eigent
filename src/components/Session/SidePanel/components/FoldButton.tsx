@@ -19,19 +19,19 @@ import type { SessionModeType } from '@/types/constants';
 import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-export interface SessionSidePanelFoldButtonProps {
+export interface SidePanelFoldButtonProps {
   sessionSidePanelMode: SessionModeType;
   isSidePanelVisible: boolean;
   onToggle: () => void;
   className?: string;
 }
 
-export function SessionSidePanelFoldButton({
+export function SidePanelFoldButton({
   sessionSidePanelMode,
   isSidePanelVisible,
   onToggle,
   className,
-}: SessionSidePanelFoldButtonProps) {
+}: SidePanelFoldButtonProps) {
   const { t } = useTranslation();
   const sessionSidePanelTooltip =
     sessionSidePanelMode === 'single-agent'
