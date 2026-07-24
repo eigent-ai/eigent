@@ -81,6 +81,7 @@ const foldedTaskLogContentVariants = {
   },
 };
 
+/** Legacy workforce detail view retained as a SidePanel implementation detail. */
 export function AgentDetailPane({
   agent,
   onTakeManualFollowControl,

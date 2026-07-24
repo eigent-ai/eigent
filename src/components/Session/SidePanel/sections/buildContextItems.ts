@@ -28,17 +28,139 @@ export interface ContextSkill {
 }
 
 /**
+ * Connected-provider fields needed to replace raw `MCPToolkit` runtime names
+ * with the identity shown in the Open Connectors UI.
+ */
+export interface ContextConnector {
+  service: string;
+  displayName?: string;
+  iconUrl?: string | null;
+  connection?: { connectionName?: string } | null;
+  actions?: Array<{ id?: string; name?: string }>;
+}
+
+/**
  * Normalize a toolkit/server/skill name for dedup and hint-matching.
  * Lowercases, strips whitespace/underscores/hyphens, and drops a trailing
  * "toolkit" so e.g. "Google Calendar Toolkit", "google_calendar", and
  * "google-calendar" all collapse to the same key.
  */
-function normalizeKey(name: string): string {
+/** Normalize provider and toolkit names for SidePanel aggregation. */
+export function normalizeContextKey(name: string): string {
   return name
     .trim()
     .toLowerCase()
     .replace(/\s+toolkit\s*$/i, '')
     .replace(/[\s_-]+/g, '');
+}
+
+function normalizeConnectorIdentity(name: string): string {
+  const normalized = normalizeContextKey(name)
+    .replace(/toolkit$/i, '')
+    .replace(/mcp$/i, '')
+    .replace(/connector$/i, '');
+  return normalized === 'connectorgateway' ? '' : normalized;
+}
+
+/**
+ * True only for the Open Connectors gateway itself. Every gateway call is by
+ * definition a connected provider, so a lone connector can be assumed. A bare
+ * `MCPToolkit` also normalizes to an empty identity but may come from any MCP
+ * server configured outside Open Connectors, so it must not be assumed.
+ */
+function isConnectorGatewayName(name: string): boolean {
+  return normalizeContextKey(name) === 'connectorgateway';
+}
+
+function connectorAliases(connector: ContextConnector): string[] {
+  return Array.from(
+    new Set(
+      [
+        connector.service,
+        connector.displayName,
+        connector.connection?.connectionName,
+      ]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map(normalizeConnectorIdentity)
+        .filter(Boolean)
+    )
+  );
+}
+
+function connectorMatchScore(
+  connector: ContextConnector,
+  toolkitName: string,
+  method: string,
+  message: string
+): number {
+  const toolkitKey = normalizeConnectorIdentity(toolkitName);
+  const methodKey = normalizeContextKey(method);
+  const messageKey = normalizeContextKey(message.slice(0, 2_000));
+  const aliases = connectorAliases(connector);
+  let score = 0;
+
+  for (const alias of aliases) {
+    if (toolkitKey && toolkitKey === alias) score = Math.max(score, 100);
+    if (
+      toolkitKey &&
+      alias.length >= 3 &&
+      (toolkitKey.includes(alias) || alias.includes(toolkitKey))
+    ) {
+      score = Math.max(score, 90);
+    }
+    if (alias.length >= 3 && methodKey.includes(alias)) {
+      score = Math.max(score, 80);
+    }
+    if (alias.length >= 4 && messageKey.includes(alias)) {
+      score = Math.max(score, 50);
+    }
+  }
+
+  for (const action of connector.actions ?? []) {
+    for (const raw of [action.id, action.name]) {
+      if (!raw) continue;
+      const actionKey = normalizeContextKey(raw);
+      if (!actionKey || !methodKey) continue;
+      if (actionKey === methodKey) {
+        score = Math.max(score, 70);
+      } else if (
+        actionKey.length >= 4 &&
+        (actionKey.includes(methodKey) || methodKey.includes(actionKey))
+      ) {
+        score = Math.max(score, 60);
+      }
+    }
+  }
+
+  return score;
+}
+
+/**
+ * Resolve a runtime MCP call to a connected Open Connector provider. Generic
+ * `MCPToolkit` calls are identified by their method/action or request payload.
+ * Ambiguous matches deliberately stay generic instead of displaying the wrong
+ * provider.
+ */
+export function resolveContextConnector(
+  toolkitName: string,
+  method: string,
+  message: string,
+  connectors: ContextConnector[]
+): ContextConnector | null {
+  const ranked = connectors
+    .map((connector) => ({
+      connector,
+      score: connectorMatchScore(connector, toolkitName, method, message),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  if (best && best.score > 0 && best.score > (ranked[1]?.score ?? 0)) {
+    return best.connector;
+  }
+
+  return isConnectorGatewayName(toolkitName) && connectors.length === 1
+    ? connectors[0]!
+    : null;
 }
 
 function categoryFromCategoryName(
@@ -92,7 +214,7 @@ function isMcpToolkitName(name: string): boolean {
  * the rest of `message` is the skill body. Backend may also append a
  * "(truncated, …)" tail at 500 chars — we strip it.
  */
-function extractLoadedSkillNames(message: string): string[] {
+export function extractLoadedSkillNames(message: string): string[] {
   if (!message) return [];
 
   // Args (if present) sit on the first line — the deactivate result is
@@ -195,7 +317,7 @@ function collectHints(agents: Agent[], skills: ContextSkill[]) {
   const connectorHints = new Set<string>();
 
   const add = (set: Set<string>, raw: string) => {
-    const k = normalizeKey(raw);
+    const k = normalizeContextKey(raw);
     if (k) set.add(k);
   };
 
@@ -265,13 +387,14 @@ export function buildContextItems(
   agents: Agent[],
   taskRunning?: TaskInfo[],
   uploadedFiles: File[] = [],
-  skills: ContextSkill[] = []
+  skills: ContextSkill[] = [],
+  connectors: ContextConnector[] = []
 ): ContextItem[] {
   const seen = new Set<string>();
   const out: ContextItem[] = [];
 
   const push = (item: ContextItem) => {
-    const key = `${item.category}:${normalizeKey(item.id)}`;
+    const key = `${item.category}:${normalizeContextKey(item.id)}`;
     if (seen.has(key)) return;
     seen.add(key);
     out.push(item);
@@ -308,7 +431,7 @@ export function buildContextItems(
         return;
       }
 
-      const norm = normalizeKey(toolkitName);
+      const norm = normalizeContextKey(toolkitName);
       let category: ContextItem['category'] | null = null;
       if (skillHints.has(norm) || isSkillToolkitName(toolkitName)) {
         category = 'skill';
@@ -317,10 +440,16 @@ export function buildContextItems(
       }
       if (!category) return;
 
+      const connector =
+        category === 'connector'
+          ? resolveContextConnector(toolkitName, method, message, connectors)
+          : null;
+
       push({
-        id: toolkitName,
-        label: toolkitName,
+        id: connector?.service || toolkitName,
+        label: connector?.displayName || connector?.service || toolkitName,
         category,
+        iconUrl: connector?.iconUrl || undefined,
         icon:
           category === 'skill'
             ? createElement(WandSparkles, { size: 16 })

@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
+import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import {
   CountPill,
   ProgressCircle,
   ProgressConnector,
   SidePanelListRow,
-} from '@/components/Session/SidePanelSections/primitives';
+} from '@/components/Session/SidePanel/sections/primitives';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { TaskStatus } from '@/types/constants';
@@ -51,7 +51,7 @@ export function ProgressSection({
 
   const collapsedStrip =
     count > 0 ? (
-      <div className="gap-1 min-w-0 mx-1 flex items-center overflow-hidden">
+      <div className="mx-1 flex min-w-0 items-center gap-1 overflow-hidden">
         <AnimatePresence initial={false}>
           {visibleSubtasks.map((task, idx) => (
             <motion.span
@@ -61,7 +61,7 @@ export function ProgressSection({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.6 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="gap-1 min-w-0 flex items-center"
+              className="flex min-w-0 items-center gap-1"
             >
               <ProgressCircle done={isDone(task)} />
               {idx < visibleSubtasks.length - 1 ? <ProgressConnector /> : null}
@@ -82,13 +82,13 @@ export function ProgressSection({
         }
         if (count === 0) {
           return (
-            <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1 opacity-60">
+            <div className="px-1 py-1 text-body-sm text-ds-text-neutral-subtle-default opacity-60">
               Follow each plan step and its status as this task runs.
             </div>
           );
         }
         return (
-          <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
+          <motion.ul layout className="m-0 list-none space-y-0.5 p-0">
             <AnimatePresence initial={false}>
               {visibleSubtasks.map((task) => (
                 <motion.li

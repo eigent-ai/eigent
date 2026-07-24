@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next';
 
 const EDGE_PADDING_PX = 32;
 
-export interface ExpandedOverlayProps {
+export interface SidePanelExpandedOverlayProps {
   open: boolean;
   onClose: () => void;
   workforcePanelKey: string;
@@ -132,7 +132,7 @@ export default function ExpandedOverlay({
   onToggleSidePanel,
   isSidePanelVisible,
   selectedTurn,
-}: ExpandedOverlayProps) {
+}: SidePanelExpandedOverlayProps) {
   const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
   const host = useHost();

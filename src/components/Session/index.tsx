@@ -30,11 +30,11 @@ import {
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SessionSidePanel } from './SessionSidePanel';
+import { SessionSidePanel } from './SidePanel';
 import {
   SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
   SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
-} from './sessionSidePanelLayout';
+} from './SidePanel/layout';
 
 /** Maximum width the resizable chat column can reclaim while display is open. */
 const CHAT_PRIORITY_WIDTH = 680;
@@ -356,7 +356,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
       key={displaySessionMode}
       mode={displaySessionMode}
       workforcePanelKey={workforcePanelKey}
-      hasAnyMessages={hasAnyMessages}
       isSidePanelVisible={isSidePanelVisible}
       onToggleSidePanel={toggleSidePanel}
       isExpandedOverlayOpen={isExpandedOverlayOpen}
