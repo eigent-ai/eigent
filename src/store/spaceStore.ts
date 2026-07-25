@@ -29,6 +29,7 @@ import type { ServerProject } from '@/service/spaceApi';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { usePageTabStore } from './pageTabStore';
 import type {
   ProjectMetadata,
   ProjectMode,
@@ -1136,18 +1137,23 @@ export const useSpaceStore = create<SpaceStore>()(
         return space.id;
       },
 
-      deleteSpace: (spaceId) =>
+      deleteSpace: (spaceId) => {
+        const current = get();
+        if (!current.spaces[spaceId]) return;
+        const removedProjectIds = Object.keys(
+          current.projectsBySpaceId[spaceId] ?? {}
+        );
+        for (const projectId of removedProjectIds) {
+          usePageTabStore.getState().removeSessionPreviewProject(projectId);
+        }
         set((state) => {
           if (!state.spaces[spaceId]) return state;
           const nextSpaces = { ...state.spaces };
           delete nextSpaces[spaceId];
           const nextProjectsBySpaceId = { ...state.projectsBySpaceId };
-          const removedProjects = Object.keys(
-            nextProjectsBySpaceId[spaceId] ?? {}
-          );
           delete nextProjectsBySpaceId[spaceId];
           const nextProjectIdIndex = { ...state.projectIdIndex };
-          for (const projectId of removedProjects) {
+          for (const projectId of removedProjectIds) {
             delete nextProjectIdIndex[projectId];
           }
           const nextProjectsSyncedAt = { ...state.projectsSyncedAt };
@@ -1168,7 +1174,8 @@ export const useSpaceStore = create<SpaceStore>()(
             projectsSyncedAt: nextProjectsSyncedAt,
             lastVisitedProjectBySpace: nextLastVisitedProjectBySpace,
           };
-        }),
+        });
+      },
 
       deleteSpaceOnServer: async (spaceId) => {
         const { proxyDeleteSpace } = await import('@/service/spaceApi');

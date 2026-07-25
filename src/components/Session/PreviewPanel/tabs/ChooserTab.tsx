@@ -36,7 +36,7 @@ export interface ChooserTabProps {
  */
 export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
   const { t } = useTranslation();
-  const sources = useSessionTerminalSources();
+  const sources = useSessionTerminalSources({ trackOutput: false });
   // Newest first, with still-running streams (servers, watchers) on top.
   const projectStreams = useMemo(() => {
     const newestFirst = [...sources].reverse();

@@ -12,24 +12,64 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { collectTerminalSources, type TerminalSource } from './terminalSources';
 
-/**
- * Live terminal streams for the active project, across every turn's chat
- * store. Each store is a vanilla zustand store, so this subscribes to all of
- * them and recomputes on any change — `collectTerminalSources` is a cheap
- * flatten, and terminal writes arrive with the same cadence anyway.
- */
-export function useSessionTerminalSources(): TerminalSource[] {
-  const projectStore = useProjectRuntimeStore();
-  const projectId = projectStore.activeProjectId;
+interface SessionTerminalSourceOptions {
+  /**
+   * The read-only terminal needs a render for appended output. The chooser
+   * only needs stream identity/status and can ignore token-only changes.
+   */
+  trackOutput?: boolean;
+}
 
-  const chatEntries = useMemo(
-    () => (projectId ? projectStore.getAllChatStores(projectId) : []),
-    [projectStore, projectId]
+function sameSourceMetadata(
+  previous: TerminalSource[],
+  next: TerminalSource[]
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((source, index) => {
+      const candidate = next[index];
+      return (
+        source.id === candidate.id &&
+        source.agentName === candidate.agentName &&
+        source.taskLabel === candidate.taskLabel &&
+        source.status === candidate.status &&
+        source.lines === candidate.lines
+      );
+    })
   );
+}
+
+/**
+ * Live terminal streams for the project currently owning the preview panel,
+ * across every turn's chat store.
+ */
+export function useSessionTerminalSources(
+  options: SessionTerminalSourceOptions = {}
+): TerminalSource[] {
+  const { trackOutput = true } = options;
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const projectChatStores = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.chatStores : undefined
+  );
+  const chatStoreTimestamps = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.chatStoreTimestamps : undefined
+  );
+
+  const chatEntries = useMemo(() => {
+    if (!projectChatStores) return [];
+    return Object.entries(projectChatStores)
+      .map(([chatId, chatStore]) => ({
+        chatId,
+        chatStore,
+        createdAt: chatStoreTimestamps?.[chatId] ?? 0,
+      }))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }, [chatStoreTimestamps, projectChatStores]);
 
   const computeSources = useCallback(
     () =>
@@ -46,10 +86,15 @@ export function useSessionTerminalSources(): TerminalSource[] {
   useEffect(() => {
     setSources(computeSources());
     const unsubscribes = chatEntries.map(({ chatStore }) =>
-      chatStore.subscribe(() => setSources(computeSources()))
+      chatStore.subscribe(() => {
+        const next = computeSources();
+        setSources((previous) =>
+          !trackOutput && sameSourceMetadata(previous, next) ? previous : next
+        );
+      })
     );
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [chatEntries, computeSources]);
+  }, [chatEntries, computeSources, trackOutput]);
 
   return sources;
 }

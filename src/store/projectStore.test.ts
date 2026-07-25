@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
@@ -47,6 +48,14 @@ describe('projectStore runtime shape', () => {
       historyLoadingProjectIds: {},
       staleProjectIds: new Set(),
     });
+    globalThis.electronAPI = {
+      ...globalThis.electronAPI,
+      terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+    };
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
     useSpaceStore.setState({
       activeSpaceId: 'space_test',
       spaces: {
@@ -65,6 +74,30 @@ describe('projectStore runtime shape', () => {
       projectIdIndex: {},
       projectsSyncedAt: {},
     });
+  });
+
+  it('disposes the preview shell when its project is removed', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Terminal Project', undefined, 'project_terminal');
+    const pageTabs = usePageTabStore.getState();
+    pageTabs.setSessionPreviewProject(projectId);
+    pageTabs.toggleSessionPreview();
+    pageTabs.choosePreviewTabType(
+      getSessionPreviewSlice(usePageTabStore.getState()).activeTabId!,
+      'terminal'
+    );
+    const terminal = getSessionPreviewSlice(usePageTabStore.getState()).tabs[0];
+    const shellId = terminal.type === 'terminal' ? terminal.shellId : undefined;
+
+    useProjectStore.getState().removeProject(projectId);
+
+    expect(globalThis.electronAPI.terminalDispose).toHaveBeenCalledWith(
+      shellId
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[projectId]
+    ).toBeUndefined();
   });
 
   it('appends project runs into the same primary chat store', () => {

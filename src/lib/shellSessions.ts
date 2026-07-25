@@ -40,13 +40,14 @@ export interface ShellSessionState {
 
 interface ShellSessionEntry extends ShellSessionState {
   buffer: string[];
-  bufferBytes: number;
+  bufferCodeUnits: number;
   dataListeners: Set<(chunk: string) => void>;
   stateListeners: Set<() => void>;
+  createPromise: Promise<ShellSessionState> | null;
 }
 
-/** Keep roughly this much scrollback per shell for replay on remount. */
-const MAX_BUFFER_BYTES = 1_000_000;
+/** Keep roughly this many UTF-16 code units per shell for replay on remount. */
+const MAX_BUFFER_CODE_UNITS = 1_000_000;
 
 const sessions = new Map<string, ShellSessionEntry>();
 let ipcBound = false;
@@ -60,9 +61,10 @@ function entryFor(id: string): ShellSessionEntry {
       exitCode: null,
       error: null,
       buffer: [],
-      bufferBytes: 0,
+      bufferCodeUnits: 0,
       dataListeners: new Set(),
       stateListeners: new Set(),
+      createPromise: null,
     };
     sessions.set(id, entry);
   }
@@ -71,9 +73,12 @@ function entryFor(id: string): ShellSessionEntry {
 
 function appendToBuffer(entry: ShellSessionEntry, chunk: string) {
   entry.buffer.push(chunk);
-  entry.bufferBytes += chunk.length;
-  while (entry.bufferBytes > MAX_BUFFER_BYTES && entry.buffer.length > 1) {
-    entry.bufferBytes -= entry.buffer[0].length;
+  entry.bufferCodeUnits += chunk.length;
+  while (
+    entry.bufferCodeUnits > MAX_BUFFER_CODE_UNITS &&
+    entry.buffer.length > 1
+  ) {
+    entry.bufferCodeUnits -= entry.buffer[0].length;
     entry.buffer.shift();
   }
 }
@@ -119,37 +124,74 @@ export async function ensureShellSession(
   bindIpc(api);
   const entry = entryFor(options.id);
   if (entry.created && !entry.exited) return snapshot(entry);
+  if (entry.createPromise) return entry.createPromise;
 
-  const result = await api.terminalCreate(options);
-  if (result.success) {
-    entry.created = true;
-    entry.exited = false;
-    entry.exitCode = null;
-    entry.error = null;
-  } else {
-    entry.error = result.error ?? 'Failed to start shell';
-  }
-  notifyState(entry);
-  return snapshot(entry);
+  const createPromise = api
+    .terminalCreate(options)
+    .then((result: Awaited<ReturnType<TerminalHostApi['terminalCreate']>>) => {
+      // The tab/project may have been disposed while IPC was in flight.
+      if (sessions.get(options.id) !== entry) return snapshot(entry);
+      if (result.success) {
+        entry.created = true;
+        entry.exited = false;
+        entry.exitCode = null;
+        entry.error = null;
+      } else {
+        entry.error = result.error ?? 'Failed to start shell';
+      }
+      notifyState(entry);
+      return snapshot(entry);
+    })
+    .catch((error: unknown) => {
+      if (sessions.get(options.id) === entry) {
+        entry.error =
+          error instanceof Error ? error.message : 'Failed to start shell';
+        notifyState(entry);
+      }
+      return snapshot(entry);
+    })
+    .finally(() => {
+      if (entry.createPromise === createPromise) {
+        entry.createPromise = null;
+      }
+    });
+  entry.createPromise = createPromise;
+  return createPromise;
 }
 
 /** Kill the PTY and drop all local state (tab closed). */
-export function disposeShellSession(api: TerminalHostApi, id: string) {
+export function disposeShellSession(
+  api: TerminalHostApi | undefined,
+  id: string
+) {
   sessions.delete(id);
-  void api.terminalDispose(id);
+  void api?.terminalDispose(id);
 }
 
-/** Clear the exited session's remains so ensureShellSession spawns fresh. */
-export function resetShellSession(id: string) {
-  const entry = sessions.get(id);
-  if (!entry) return;
+/**
+ * Kill any still-live PTY before clearing the renderer state. Creation only
+ * starts after the dispose IPC resolves, so an error notice cannot reconnect
+ * to the old shell with blank scrollback.
+ */
+export async function resetShellSession(
+  api: TerminalHostApi,
+  id: string
+): Promise<boolean> {
+  try {
+    await api.terminalDispose(id);
+  } catch {
+    return false;
+  }
+  const entry = entryFor(id);
+  entry.createPromise = null;
   entry.created = false;
   entry.exited = false;
   entry.exitCode = null;
   entry.error = null;
   entry.buffer = [];
-  entry.bufferBytes = 0;
+  entry.bufferCodeUnits = 0;
   notifyState(entry);
+  return true;
 }
 
 export function writeToShell(api: TerminalHostApi, id: string, data: string) {

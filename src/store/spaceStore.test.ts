@@ -14,6 +14,7 @@
 
 import type { ServerProject } from '@/service/spaceApi';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import {
   SPACE_SCHEMA_VERSION,
   type Space,
@@ -97,6 +98,14 @@ describe('spaceStore user scoping', () => {
       email: 'new@example.com',
       user_id: 2,
     };
+    globalThis.electronAPI = {
+      ...globalThis.electronAPI,
+      terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+    };
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
     useSpaceStore.setState({
       activeSpaceId: 'space_old_blank',
       spaces: {
@@ -170,6 +179,27 @@ describe('spaceStore user scoping', () => {
         space_new_blank: 200,
       },
     });
+  });
+
+  it('disposes project preview shells when their Space is deleted', () => {
+    const pageTabs = usePageTabStore.getState();
+    pageTabs.setSessionPreviewProject('project_old');
+    pageTabs.toggleSessionPreview();
+    pageTabs.choosePreviewTabType(
+      getSessionPreviewSlice(usePageTabStore.getState()).activeTabId!,
+      'terminal'
+    );
+    const terminal = getSessionPreviewSlice(usePageTabStore.getState()).tabs[0];
+    const shellId = terminal.type === 'terminal' ? terminal.shellId : undefined;
+
+    useSpaceStore.getState().deleteSpace('space_old_blank');
+
+    expect(globalThis.electronAPI.terminalDispose).toHaveBeenCalledWith(
+      shellId
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.project_old
+    ).toBeUndefined();
   });
 
   it('removes spaces and project metadata from the previous signed-in user', () => {

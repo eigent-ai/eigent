@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The preview slice for the currently scoped project. */
 function slice() {
@@ -22,6 +22,10 @@ function slice() {
 
 describe('pageTabStore session preview', () => {
   beforeEach(() => {
+    window.electronAPI = {
+      ...window.electronAPI,
+      terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+    };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
@@ -269,5 +273,27 @@ describe('pageTabStore session preview', () => {
       persisted.tabs.filter((tab) => tab.type === 'file' && tab.file !== null)
     ).toHaveLength(1);
     expect(persisted.activeTabId).toBe(slice().activeTabId);
+  });
+
+  it('disposes shells and drops persisted preview state with a project', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().activeTabId!, 'terminal');
+    const terminal = slice().tabs[0];
+    expect(terminal.type).toBe('terminal');
+    const shellId = terminal.type === 'terminal' ? terminal.shellId : undefined;
+
+    store.setSessionPreviewProject('project-b');
+    store.toggleSessionPreview();
+    store.removeSessionPreviewProject('project-a');
+
+    expect(window.electronAPI.terminalDispose).toHaveBeenCalledWith(shellId);
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-a']
+    ).toBeUndefined();
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-b'
+    );
+    expect(slice().open).toBe(true);
   });
 });
