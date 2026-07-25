@@ -93,7 +93,10 @@ describe('useReviewChanges', () => {
       {
         path: '/scratch/src/example.ts',
         exists: true,
-        backups: ['/scratch/src/example.ts.20260722_120000.bak'],
+        size: 120,
+        backups: [
+          { path: '/scratch/src/example.ts.20260722_120000.bak', size: 90 },
+        ],
       },
     ]);
   });
@@ -132,14 +135,145 @@ describe('useReviewChanges', () => {
         status: 'modified',
         absPath: '/scratch/src/example.ts',
         bakPath: '/scratch/src/example.ts.20260722_120000.bak',
+        beforeUnavailable: false,
+        tooLarge: false,
       },
     ]);
+    expect(result.current.error).toBeNull();
 
     act(() => result.current.refresh());
     await waitFor(() => {
       expect(mockFetchOverlays).toHaveBeenCalledTimes(2);
       expect(result.current.loading).toBe(false);
     });
+    expect(result.current.files).toEqual([]);
+  });
+
+  it('flags a modified overlay with no surviving backup', async () => {
+    mockReviewListBackups.mockResolvedValue([
+      { path: '/scratch/src/example.ts', exists: true, size: 120, backups: [] },
+    ]);
+    mockFetchOverlays.mockResolvedValue({
+      space_id: 'space-1',
+      project_id: 'project-1',
+      overlays: [
+        {
+          id: 7,
+          space_id: 'space-1',
+          project_id: 'project-1',
+          run_id: 'run-1',
+          path: 'src/example.ts',
+          status: 'modified',
+          metadata: { source_path: '/scratch/src/example.ts' },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files[0]).toMatchObject({
+      status: 'modified',
+      bakPath: null,
+      beforeUnavailable: true,
+      tooLarge: false,
+    });
+  });
+
+  it('marks a file too large when either side exceeds the diff limit', async () => {
+    mockReviewListBackups.mockResolvedValue([
+      {
+        path: '/scratch/src/example.ts',
+        exists: true,
+        size: 5_000_000,
+        backups: [
+          { path: '/scratch/src/example.ts.20260722_120000.bak', size: 90 },
+        ],
+      },
+    ]);
+    mockFetchOverlays.mockResolvedValue({
+      space_id: 'space-1',
+      project_id: 'project-1',
+      overlays: [
+        {
+          id: 7,
+          space_id: 'space-1',
+          project_id: 'project-1',
+          run_id: 'run-1',
+          path: 'src/example.ts',
+          status: 'modified',
+          metadata: { source_path: '/scratch/src/example.ts' },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files[0]).toMatchObject({ tooLarge: true });
+  });
+
+  it('totals added and removed lines across every changed file', async () => {
+    const before = 'a\nb\nc\n';
+    const afterOne = 'a\nB\nc\nd\n'; // +2 −1
+    const afterTwo = 'a\nb\nc\nd\ne\n'; // +2 −0
+    const encode = (text: string) => new TextEncoder().encode(text);
+    mockHost.electronAPI.readFile.mockImplementation((path: string) => {
+      const body = path.endsWith('.bak')
+        ? before
+        : path.endsWith('one.ts')
+          ? afterOne
+          : afterTwo;
+      return Promise.resolve({ success: true, data: encode(body) });
+    });
+    mockReviewListBackups.mockResolvedValue([
+      {
+        path: '/scratch/src/one.ts',
+        exists: true,
+        size: 120,
+        backups: [
+          { path: '/scratch/src/one.ts.20260722_120000.bak', size: 90 },
+        ],
+      },
+      {
+        path: '/scratch/src/two.ts',
+        exists: true,
+        size: 120,
+        backups: [
+          { path: '/scratch/src/two.ts.20260722_120000.bak', size: 90 },
+        ],
+      },
+    ]);
+    mockFetchOverlays.mockResolvedValue({
+      space_id: 'space-1',
+      project_id: 'project-1',
+      overlays: ['one', 'two'].map((name, index) => ({
+        id: index,
+        space_id: 'space-1',
+        project_id: 'project-1',
+        run_id: 'run-1',
+        path: `src/${name}.ts`,
+        status: 'modified',
+        metadata: { source_path: `/scratch/src/${name}.ts` },
+      })),
+    });
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    // Totals start at zero for the empty initial file list, so wait for the
+    // count that follows the scan rather than for the first non-null value.
+    await waitFor(() =>
+      expect(result.current.totals).toEqual({ added: 4, removed: 1 })
+    );
+  });
+
+  it('reports a failed scan instead of an empty change set', async () => {
+    mockFetchOverlays.mockRejectedValue(new Error('overlay service down'));
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe('overlay service down');
     expect(result.current.files).toEqual([]);
   });
 });

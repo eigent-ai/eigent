@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 const fs = require('node:fs');
 const path = require('node:path');
+// Shared with the code surfaces that need the stack as a plain string
+// (Monaco can't read Tailwind classes). Single source of truth for `font-code`.
+const fontStacks = require('./src/style/fontStacks.json');
 
 function loadTokenManifest() {
   const fallback = {
@@ -769,6 +772,7 @@ module.exports = {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['SFMono-Regular', 'Menlo', 'monospace'],
+        code: fontStacks.code,
         inter: ['Inter'],
         menlo: ['Menlo'],
         serif: ['Palatino'],

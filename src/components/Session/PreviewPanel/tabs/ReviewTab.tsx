@@ -15,7 +15,14 @@
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
-import { FileDiff, RefreshCw } from 'lucide-react';
+import {
+  FileDiff,
+  FolderClosed,
+  FolderOpen,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
+  RefreshCw,
+} from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DiffFileCard } from './review/DiffFileCard';
@@ -31,9 +38,31 @@ import { useReviewChanges } from './review/useReviewChanges';
 export function ReviewTab() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
-  const { loading, files, desktopOnly, refresh } = useReviewChanges();
+  const { loading, files, desktopOnly, error, totals, refresh } =
+    useReviewChanges();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Collapsing the rail gives the diffs the full panel width, which matters on
+  // a narrow preview panel. Resets per mount — this is a per-look preference,
+  // not a setting worth persisting.
+  const [treeHidden, setTreeHidden] = useState(false);
+  // Cards own their fold state so individual ones stay togglable; the nonce is
+  // what tells them a toolbar command was issued rather than a re-render.
+  const [foldAll, setFoldAll] = useState(false);
+  const [foldNonce, setFoldNonce] = useState(0);
   const stackRef = useRef<HTMLDivElement>(null);
+
+  const toggleFoldAll = useCallback(() => {
+    setFoldAll((folded) => !folded);
+    setFoldNonce((nonce) => nonce + 1);
+  }, []);
+
+  const foldToggleLabel = foldAll
+    ? t('layout.review-expand-all', { defaultValue: 'Expand all files' })
+    : t('layout.review-collapse-all', { defaultValue: 'Collapse all files' });
+
+  const treeToggleLabel = treeHidden
+    ? t('layout.review-show-tree', { defaultValue: 'Show file tree' })
+    : t('layout.review-hide-tree', { defaultValue: 'Hide file tree' });
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -66,6 +95,24 @@ export function ReviewTab() {
     );
   }
 
+  // A failed scan must not read as "nothing changed" — this surface is what
+  // the user checks before trusting the agents' edits.
+  if (error) {
+    return (
+      <CenteredNotice
+        message={t('layout.review-scan-failed', {
+          defaultValue: 'Could not load the changes for this project.',
+        })}
+        detail={error}
+        action={
+          <Button type="button" variant="outline" size="sm" onClick={refresh}>
+            {t('layout.review-retry', { defaultValue: 'Try again' })}
+          </Button>
+        }
+      />
+    );
+  }
+
   if (files.length === 0) {
     return (
       <CenteredNotice
@@ -94,23 +141,71 @@ export function ReviewTab() {
             count: files.length,
           })}
         </span>
+        {totals && (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
+            <span className="text-ds-text-success-default-default">
+              +{totals.added}
+            </span>
+            <span className="text-ds-text-error-default-default">
+              −{totals.removed}
+            </span>
+          </span>
+        )}
         <div className="flex-1" />
-        <TooltipSimple
-          content={t('layout.review-refresh', { defaultValue: 'Refresh' })}
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonContent="icon-only"
-            onClick={refresh}
-            aria-label={t('layout.review-refresh', {
-              defaultValue: 'Refresh',
-            })}
+        <div className="flex shrink-0 items-center gap-1">
+          <TooltipSimple
+            content={t('layout.review-refresh', { defaultValue: 'Refresh' })}
           >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          </Button>
-        </TooltipSimple>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={refresh}
+              aria-label={t('layout.review-refresh', {
+                defaultValue: 'Refresh',
+              })}
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          </TooltipSimple>
+          <TooltipSimple content={foldToggleLabel}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={toggleFoldAll}
+              aria-pressed={foldAll}
+              aria-label={foldToggleLabel}
+            >
+              {foldAll ? (
+                <ListChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <ListChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </TooltipSimple>
+          <TooltipSimple content={treeToggleLabel}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={() => setTreeHidden((hidden) => !hidden)}
+              aria-pressed={treeHidden}
+              aria-label={treeToggleLabel}
+            >
+              {/* The icon shows the rail's current state; the tooltip and
+                  label carry the action it would take. */}
+              {treeHidden ? (
+                <FolderClosed className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </TooltipSimple>
+        </div>
       </div>
 
       <div className="flex min-h-0 w-full flex-1 overflow-hidden">
@@ -126,14 +221,18 @@ export function ReviewTab() {
               file={file}
               selected={file.id === selectedId}
               appearance={appearance}
+              foldAll={foldAll}
+              foldNonce={foldNonce}
             />
           ))}
         </div>
-        <ReviewFileTree
-          files={files}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-        />
+        {treeHidden ? null : (
+          <ReviewFileTree
+            files={files}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+          />
+        )}
       </div>
     </div>
   );

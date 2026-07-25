@@ -71,6 +71,11 @@ const LOGGER_DELETED = `# old module, should be removed
 print("legacy")
 `;
 
+const ORPHANED_MODIFIED = `def parse(payload: dict) -> dict:
+    """The run recorded this as changed, but no backup survives."""
+    return {key: value for key, value in payload.items() if value is not None}
+`;
+
 export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
   {
     id: 'fixture:src/greeter.py',
@@ -103,5 +108,16 @@ export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
     absPath: '',
     bakPath: null,
     inline: { original: LOGGER_DELETED, modified: '' },
+  },
+  {
+    // Modified, but the before-side backup is gone: the card must show the
+    // current content plainly rather than tinting it all as additions.
+    id: 'fixture:src/parser.py',
+    path: 'src/parser.py',
+    status: 'modified',
+    absPath: '',
+    bakPath: null,
+    beforeUnavailable: true,
+    inline: { original: '', modified: ORPHANED_MODIFIED },
   },
 ];

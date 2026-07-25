@@ -24,22 +24,30 @@ import path from 'node:path';
  */
 const BACKUP_TIMESTAMP_PATTERN = /^\d{8}_\d{6}$/;
 
+/** One backup file, with the size the renderer needs to skip huge diffs. */
+export interface ReviewBackup {
+  path: string;
+  size: number;
+}
+
 export interface ReviewBackupEntry {
   /** The absolute path that was asked about. */
   path: string;
   /** Whether the file currently exists on disk. */
   exists: boolean;
+  /** Size of the current on-disk file; null when it does not exist. */
+  size: number | null;
   /**
-   * Absolute paths of this file's backups, sorted oldest-first (the first
-   * entry is the content from before the earliest recorded write).
+   * This file's backups, sorted oldest-first (the first entry is the content
+   * from before the earliest recorded write).
    */
-  backups: string[];
+  backups: ReviewBackup[];
 }
 
 async function backupsFor(
   filePath: string,
   directoryEntries: Map<string, Promise<string[]>>
-): Promise<string[]> {
+): Promise<ReviewBackup[]> {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   let namesPromise = directoryEntries.get(dir);
@@ -55,7 +63,16 @@ async function backupsFor(
     return BACKUP_TIMESTAMP_PATTERN.test(stamp);
   });
   backups.sort();
-  return backups.map((name) => path.join(dir, name));
+  return Promise.all(
+    backups.map(async (name) => {
+      const backupPath = path.join(dir, name);
+      const size = await fs.promises
+        .stat(backupPath)
+        .then((stats) => stats.size)
+        .catch(() => 0);
+      return { path: backupPath, size };
+    })
+  );
 }
 
 export function registerReviewChangesIpcHandlers(): void {
@@ -66,12 +83,17 @@ export function registerReviewChangesIpcHandlers(): void {
         const directoryEntries = new Map<string, Promise<string[]>>();
         return await Promise.all(
           (filePaths ?? []).map(async (filePath) => {
-            const exists = await fs.promises
+            const stats = await fs.promises
               .stat(filePath)
-              .then((stats) => stats.isFile())
-              .catch(() => false);
+              .then((result) => (result.isFile() ? result : null))
+              .catch(() => null);
             const backups = await backupsFor(filePath, directoryEntries);
-            return { path: filePath, exists, backups };
+            return {
+              path: filePath,
+              exists: Boolean(stats),
+              size: stats ? stats.size : null,
+              backups,
+            };
           })
         );
       } catch (error) {
