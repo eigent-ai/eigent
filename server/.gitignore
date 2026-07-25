@@ -10,6 +10,13 @@ wheels/
 # Virtual environments
 .venv
 
+# Environment files
+.env
+.env.*
+
+# Alembic config (contains database credentials)
+alembic.ini
+
 runtime
 
 app/public/upload/
