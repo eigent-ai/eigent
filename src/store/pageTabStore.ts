@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { createHost } from '@/host';
 import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
+import { disposeShellSession } from '@/lib/shellSessions';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -278,6 +280,15 @@ function sanitizeSessionPreviewForPersist(
   return result;
 }
 
+function disposePreviewShellTabs(tabs: SessionPreviewTab[]) {
+  const api = createHost().electronAPI ?? undefined;
+  for (const tab of tabs) {
+    if (tab.type === 'terminal' && tab.shellId) {
+      disposeShellSession(api, tab.shellId);
+    }
+  }
+}
+
 interface PageTabState {
   activeTab: 'tasks' | 'trigger';
   setActiveTab: (tab: 'tasks' | 'trigger') => void;
@@ -449,6 +460,11 @@ interface PageTabState {
   ) => void;
   closeSessionPreview: () => void;
   resetSessionPreview: () => void;
+  /**
+   * Drop a deleted project's persisted preview state and terminate every
+   * interactive shell it owned, even when no preview component is mounted.
+   */
+  removeSessionPreviewProject: (projectId: string) => void;
 }
 
 type SetPageTabState = (
@@ -485,7 +501,7 @@ function setSessionPreviewSlice(
 
 export const usePageTabStore = create<PageTabState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       activeTab: 'tasks',
       setActiveTab: (tab) => set({ activeTab: tab }),
       activeWorkspaceTab: 'workforce',
@@ -861,7 +877,11 @@ export const usePageTabStore = create<PageTabState>()(
             ? { ...slice, activeTabId: tabId }
             : null
         ),
-      closeSessionPreviewTab: (tabId) =>
+      closeSessionPreviewTab: (tabId) => {
+        const closingTab = getSessionPreviewSlice(get()).tabs.find(
+          (tab) => tab.id === tabId
+        );
+        if (closingTab) disposePreviewShellTabs([closingTab]);
         setSessionPreviewSlice(set, (slice) => {
           const closingIndex = slice.tabs.findIndex((tab) => tab.id === tabId);
           if (closingIndex < 0) return null;
@@ -874,7 +894,8 @@ export const usePageTabStore = create<PageTabState>()(
           }
           const nextTab = tabs[Math.min(closingIndex, tabs.length - 1)];
           return { ...slice, tabs, activeTabId: nextTab.id };
-        }),
+        });
+      },
       updateBrowserPreviewTab: (tabId, patch) =>
         setSessionPreviewSlice(set, (slice) => ({
           ...slice,
@@ -904,12 +925,34 @@ export const usePageTabStore = create<PageTabState>()(
         }),
       closeSessionPreview: () =>
         setSessionPreviewSlice(set, (slice) => ({ ...slice, open: false })),
-      resetSessionPreview: () =>
+      resetSessionPreview: () => {
+        disposePreviewShellTabs(getSessionPreviewSlice(get()).tabs);
         setSessionPreviewSlice(set, () => ({
           open: false,
           tabs: [],
           activeTabId: null,
-        })),
+        }));
+      },
+      removeSessionPreviewProject: (projectId) => {
+        const slice = get().sessionPreviewByProject[projectId];
+        if (slice) disposePreviewShellTabs(slice.tabs);
+        set((state) => {
+          if (!state.sessionPreviewByProject[projectId]) return state;
+          const sessionPreviewByProject = {
+            ...state.sessionPreviewByProject,
+          };
+          delete sessionPreviewByProject[projectId];
+          return {
+            sessionPreviewByProject,
+            ...(state.sessionPreviewProjectId === projectId
+              ? {
+                  sessionPreviewProjectId: null,
+                  previewBrowserViewport: null,
+                }
+              : {}),
+          };
+        });
+      },
     }),
     {
       name: 'eigent-page-tab',
