@@ -15,67 +15,86 @@
 import { useHost } from '@/host';
 import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
 import { cn } from '@/lib/utils';
+import fontStacks from '@/style/fontStacks.json';
 import loader from '@monaco-editor/loader';
-import { DiffEditor } from '@monaco-editor/react';
+import { DiffEditor, Editor } from '@monaco-editor/react';
 import { ChevronRight, FileWarning } from 'lucide-react';
 import * as monaco from 'monaco-editor';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ReviewFile } from './useReviewChanges';
+import {
+  countLineChanges,
+  languageForPath,
+  type LineCounts,
+} from './diffMetrics';
+import { ReviewAccordionContent } from './ReviewAccordionContent';
+import { decodeFileText, diffSidePaths } from './reviewContent';
+import './reviewDiff.css';
+import { MAX_DIFF_BYTES, type ReviewFile } from './useReviewChanges';
 
 ensureMonacoWorkers();
 loader.config({ monaco });
 
-/** Files above this size are not diffed (keeps Monaco responsive). */
-const MAX_DIFF_BYTES = 2_000_000;
 const MIN_EDITOR_HEIGHT = 72;
 const MAX_EDITOR_HEIGHT = 520;
 
-const DIFF_OPTIONS: monaco.editor.IDiffEditorConstructionOptions = {
+/** The `font-code` stack Tailwind builds from; Monaco needs it as a string. */
+const CODE_FONT_FAMILY = fontStacks.code.join(', ');
+
+const BASE_OPTIONS: monaco.editor.IEditorConstructionOptions = {
   readOnly: true,
-  originalEditable: false,
-  renderSideBySide: false,
-  hideUnchangedRegions: { enabled: true, contextLineCount: 3 },
-  diffAlgorithm: 'advanced',
   automaticLayout: true,
   minimap: { enabled: false },
   overviewRulerLanes: 0,
-  renderOverviewRuler: false,
   scrollBeyondLastLine: false,
   scrollbar: { alwaysConsumeMouseWheel: false },
   contextmenu: false,
   folding: false,
-  fontSize: 12,
+  fontFamily: CODE_FONT_FAMILY,
+  fontSize: 13,
+  lineHeight: 19,
   lineNumbersMinChars: 4,
   renderLineHighlight: 'none',
   guides: { indentation: false },
 };
 
+const DIFF_OPTIONS: monaco.editor.IDiffEditorConstructionOptions = {
+  ...BASE_OPTIONS,
+  renderOverviewRuler: false,
+  originalEditable: false,
+  renderSideBySide: false,
+  hideUnchangedRegions: { enabled: true, contextLineCount: 3 },
+  diffAlgorithm: 'advanced',
+};
+
+const WHOLE_FILE_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
+  ...BASE_OPTIONS,
+  occurrencesHighlight: 'off',
+  selectionHighlight: false,
+};
+
+/** Content lines, ignoring the trailing newline most files end with. */
+function countLines(text: string): number {
+  if (!text) return 0;
+  return text.replace(/\r?\n$/, '').split('\n').length;
+}
+
 export interface DiffFileCardProps {
   file: ReviewFile;
   selected: boolean;
   appearance: string;
+  /**
+   * Fold state the "collapse/expand all" control last asked for. The card
+   * still owns its own state — this only re-applies when `foldNonce` changes,
+   * so folding one card by hand does not get undone by a re-render.
+   */
+  foldAll?: boolean;
+  foldNonce?: number;
 }
 
 interface DiffSides {
   original: string;
   modified: string;
-}
-
-interface LineCounts {
-  added: number;
-  removed: number;
-}
-
-function decodeText(data: unknown): string | null {
-  if (!(data instanceof Uint8Array)) {
-    return typeof data === 'string' ? data : null;
-  }
-  const probe = data.subarray(0, 8000);
-  for (const byte of probe) {
-    if (byte === 0) return null; // binary
-  }
-  return new TextDecoder('utf-8').decode(data);
 }
 
 function reviewModelPath(side: 'original' | 'modified', file: ReviewFile) {
@@ -96,9 +115,12 @@ export function DiffFileCard({
   file,
   selected,
   appearance,
+  foldAll = false,
+  foldNonce = 0,
 }: DiffFileCardProps) {
   const { t } = useTranslation();
   const host = useHost();
+  const contentId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const [nearViewport, setNearViewport] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -106,6 +128,18 @@ export function DiffFileCard({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [counts, setCounts] = useState<LineCounts | null>(null);
   const [editorHeight, setEditorHeight] = useState(160);
+  const wholeFileEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(
+    null
+  );
+  const wholeFileDecorationsRef =
+    useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const [wholeFileEditorGeneration, setWholeFileEditorGeneration] = useState(0);
+
+  // Follow the toolbar's collapse/expand-all only when it is actually clicked.
+  useEffect(() => {
+    if (foldNonce === 0) return;
+    setCollapsed(foldAll);
+  }, [foldAll, foldNonce]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -133,6 +167,12 @@ export function DiffFileCard({
       setSides(file.inline);
       return;
     }
+    // Sizes come from the backup scan, so an oversized file is rejected before
+    // its bytes are read and shipped across IPC.
+    if (file.tooLarge) {
+      setLoadError('too_large');
+      return;
+    }
     const api = host?.electronAPI;
     if (!api?.readFile) return;
     let cancelled = false;
@@ -148,19 +188,17 @@ export function DiffFileCard({
       if (typeof result.size === 'number' && result.size > MAX_DIFF_BYTES) {
         throw new Error('too_large');
       }
-      const text = decodeText(result.data);
+      const text = decodeFileText(result.data);
       if (text === null) throw new Error('binary');
       return text;
     };
 
-    // Before = the earliest backup the file toolkit left; after = the file on
-    // disk now. Added files have no backup, deleted files no current content.
     if (file.status === 'deleted' && !file.bakPath) {
       setLoadError('no_before_content');
       return;
     }
-    const originalPath = file.status === 'added' ? null : file.bakPath;
-    const modifiedPath = file.status === 'deleted' ? null : file.absPath;
+    const { original: originalPath, modified: modifiedPath } =
+      diffSidePaths(file);
 
     Promise.all([readSide(originalPath), readSide(modifiedPath)])
       .then(([original, modified]) => {
@@ -176,33 +214,107 @@ export function DiffFileCard({
     };
   }, [nearViewport, host, file]);
 
+  const language = useMemo(
+    () => languageForPath(file.path, monaco.languages.getLanguages()),
+    [file.path]
+  );
+
+  /**
+   * Which side to show on its own, uncompared: a file that only exists on one
+   * side (added or deleted) has nothing to diff against. Monaco's empty model
+   * still holds one blank line, so diffing against it reported a phantom
+   * removed line ("−1") and drew a red blank row above the content.
+   *
+   * `tinted` says whether those lines are really all added/removed. A modified
+   * file whose backup is missing also renders one-sided, but its lines are not
+   * new — tinting them green (and counting them as additions) would contradict
+   * the "M" marker, so it shows as plain content with a notice instead.
+   */
+  const wholeFileSide: 'modified' | 'original' | null = !sides
+    ? null
+    : file.beforeUnavailable
+      ? 'modified'
+      : !sides.original && sides.modified
+        ? 'modified'
+        : !sides.modified && sides.original
+          ? 'original'
+          : null;
+  const wholeFileTinted = wholeFileSide !== null && !file.beforeUnavailable;
+
+  const fitHeight = (contentHeight: number) =>
+    setEditorHeight(
+      Math.min(
+        MAX_EDITOR_HEIGHT,
+        Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
+      )
+    );
+
   const handleMount = (editor: monaco.editor.IStandaloneDiffEditor) => {
     const applyMetrics = () => {
       const changes = editor.getLineChanges();
-      if (changes) {
-        let added = 0;
-        let removed = 0;
-        for (const change of changes) {
-          if (change.modifiedEndLineNumber >= change.modifiedStartLineNumber)
-            added +=
-              change.modifiedEndLineNumber - change.modifiedStartLineNumber + 1;
-          if (change.originalEndLineNumber >= change.originalStartLineNumber)
-            removed +=
-              change.originalEndLineNumber - change.originalStartLineNumber + 1;
-        }
-        setCounts({ added, removed });
-      }
-      const contentHeight = editor.getModifiedEditor().getContentHeight();
-      setEditorHeight(
-        Math.min(
-          MAX_EDITOR_HEIGHT,
-          Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
-        )
+      // Null means no diff is available — either it has not been computed yet,
+      // or the editor is being torn down because the card was collapsed. Both
+      // fire a content-size change, so overwriting here would blank the header
+      // counts of a folded card. Keep the last real measurement instead; an
+      // unchanged file reports an empty array, not null.
+      if (!changes) return;
+      const models = editor.getModel();
+      setCounts(
+        countLineChanges(changes, {
+          originalEmpty: models?.original.getValueLength() === 0,
+          modifiedEmpty: models?.modified.getValueLength() === 0,
+        })
       );
+      fitHeight(editor.getModifiedEditor().getContentHeight());
     };
     editor.onDidUpdateDiff(applyMetrics);
     editor.getModifiedEditor().onDidContentSizeChange(applyMetrics);
   };
+
+  const handleWholeFileMount = (
+    editor: monaco.editor.IStandaloneCodeEditor
+  ) => {
+    wholeFileEditorRef.current = editor;
+    // Any collection still held belongs to the editor this one replaces, which
+    // is already disposed — clearing it later would touch a dead model.
+    wholeFileDecorationsRef.current = null;
+    fitHeight(editor.getContentHeight());
+    editor.onDidContentSizeChange(() => fitHeight(editor.getContentHeight()));
+    // A counter, not a flag: collapsing unmounts the editor, so re-expanding
+    // has to re-run the decoration effect against the newly mounted one.
+    setWholeFileEditorGeneration((generation) => generation + 1);
+  };
+
+  // Tint every line of a one-sided file the way the diff editor tints its own
+  // inserted/deleted lines, and count them all as added or removed.
+  useEffect(() => {
+    const editor = wholeFileEditorRef.current;
+    const model = editor?.getModel();
+    if (!wholeFileSide || !editor || !model) return;
+    wholeFileDecorationsRef.current?.clear();
+    wholeFileDecorationsRef.current = null;
+    if (!wholeFileTinted) {
+      // Content whose baseline is unknown: show it plainly, and claim no counts.
+      setCounts(null);
+      return;
+    }
+    const lines = countLines(model.getValue());
+    wholeFileDecorationsRef.current = editor.createDecorationsCollection([
+      {
+        range: new monaco.Range(1, 1, model.getLineCount(), 1),
+        options: {
+          isWholeLine: true,
+          className:
+            wholeFileSide === 'modified' ? 'line-insert' : 'line-delete',
+        },
+      },
+    ]);
+    setCounts(
+      wholeFileSide === 'modified'
+        ? { added: lines, removed: 0 }
+        : { added: 0, removed: lines }
+    );
+  }, [wholeFileSide, wholeFileTinted, sides, wholeFileEditorGeneration]);
 
   const statusMeta: Record<
     ReviewFile['status'],
@@ -220,6 +332,16 @@ export function DiffFileCard({
   const dirName = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : '';
   const baseName = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path;
 
+  // Shown above the content, which is still worth reading.
+  const banner =
+    file.beforeUnavailable && !loadError
+      ? t('layout.review-before-unavailable', {
+          defaultValue:
+            'No saved copy of the original — showing the current file, not a diff.',
+        })
+      : null;
+
+  // Replaces the content entirely: there is nothing to show.
   const notice =
     loadError === 'binary'
       ? t('layout.review-binary-file', {
@@ -256,11 +378,12 @@ export function DiffFileCard({
         type="button"
         onClick={() => setCollapsed((value) => !value)}
         aria-expanded={!collapsed}
+        aria-controls={contentId}
         className="sticky top-0 z-10 flex h-9 w-full cursor-pointer items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-3 text-left"
       >
         <ChevronRight
           className={cn(
-            'h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default transition-transform duration-300',
+            'h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default transition-transform duration-200 ease-out motion-reduce:transition-none',
             !collapsed && 'rotate-90'
           )}
           aria-hidden
@@ -287,36 +410,73 @@ export function DiffFileCard({
         )}
       </button>
 
-      {!collapsed && (
-        <div className="w-full">
-          {notice ? (
-            <div className="flex items-center gap-2 px-3 py-4 text-xs text-ds-text-neutral-muted-default">
-              <FileWarning
-                className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
-                aria-hidden
-              />
-              {notice}
+      <ReviewAccordionContent open={!collapsed} id={contentId}>
+        {notice ? (
+          <div className="flex items-center gap-2 px-3 py-4 text-xs text-ds-text-neutral-muted-default">
+            <FileWarning
+              className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+              aria-hidden
+            />
+            {notice}
+          </div>
+        ) : sides ? (
+          <>
+            {banner ? (
+              <div className="flex items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 py-2 text-xs text-ds-text-neutral-muted-default">
+                <FileWarning
+                  className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                  aria-hidden
+                />
+                {banner}
+              </div>
+            ) : null}
+            <div
+              className="review-diff-surface"
+              style={
+                {
+                  height: editorHeight,
+                  // Hands reviewDiff.css the same stack Monaco measures with.
+                  '--review-code-font': CODE_FONT_FAMILY,
+                } as React.CSSProperties
+              }
+            >
+              {wholeFileSide ? (
+                <Editor
+                  value={
+                    wholeFileSide === 'modified'
+                      ? sides.modified
+                      : sides.original
+                  }
+                  language={language}
+                  path={reviewModelPath(wholeFileSide, file)}
+                  theme={appearance === 'light' ? 'vs' : 'vs-dark'}
+                  options={WHOLE_FILE_OPTIONS}
+                  onMount={handleWholeFileMount}
+                  loading={
+                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                  }
+                />
+              ) : (
+                <DiffEditor
+                  original={sides.original}
+                  modified={sides.modified}
+                  language={language}
+                  originalModelPath={reviewModelPath('original', file)}
+                  modifiedModelPath={reviewModelPath('modified', file)}
+                  theme={appearance === 'light' ? 'vs' : 'vs-dark'}
+                  options={DIFF_OPTIONS}
+                  onMount={handleMount}
+                  loading={
+                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                  }
+                />
+              )}
             </div>
-          ) : sides ? (
-            <div style={{ height: editorHeight }}>
-              <DiffEditor
-                original={sides.original}
-                modified={sides.modified}
-                originalModelPath={reviewModelPath('original', file)}
-                modifiedModelPath={reviewModelPath('modified', file)}
-                theme={appearance === 'light' ? 'vs' : 'vs-dark'}
-                options={DIFF_OPTIONS}
-                onMount={handleMount}
-                loading={
-                  <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
-                }
-              />
-            </div>
-          ) : (
-            <div className="h-24 w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
-          )}
-        </div>
-      )}
+          </>
+        ) : (
+          <div className="h-24 w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+        )}
+      </ReviewAccordionContent>
     </div>
   );
 }

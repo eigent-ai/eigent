@@ -30,6 +30,13 @@ function isAbsolutePath(value: string): boolean {
  * Absolute paths of every file agents wrote in this project (WRITE_FILE
  * events across all turns), deduped and sorted. Backup files the write
  * toolkit creates are not changes themselves and are skipped.
+ *
+ * Known gap: this is a write log, so it only ever names files an agent wrote.
+ * A file that was written and then deleted still shows up (the caller marks a
+ * written path that no longer exists as `deleted`), but a file the agent
+ * deleted *without* writing it first is invisible to the review tab. Closing
+ * that needs a delete event from the file toolkit; the server-backed overlay
+ * path already reports deletions authoritatively.
  */
 export function collectChangedFilePaths(entries: ReviewChatEntry[]): string[] {
   const paths = new Set<string>();

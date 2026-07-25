@@ -22,10 +22,18 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { countLineDiff, type LineCounts } from './diffMetrics';
+import { decodeFileText, diffSidePaths } from './reviewContent';
 import { REVIEW_FIXTURE_FILES, reviewFixtureEnabled } from './reviewFixture';
 import { collectChangedFilePaths } from './reviewSources';
 
 export type ReviewFileStatus = 'added' | 'modified' | 'deleted';
+
+/**
+ * Files above this size are not diffed (keeps Monaco responsive, and avoids
+ * shipping a huge buffer over IPC just to reject it in the renderer).
+ */
+export const MAX_DIFF_BYTES = 2_000_000;
 
 /** One changed file of the current project, ready for the diff view. */
 export interface ReviewFile {
@@ -43,6 +51,14 @@ export interface ReviewFile {
    */
   bakPath: string | null;
   /**
+   * A modified file whose before-content could not be found (the run recorded
+   * the change, but no backup survives). The card shows the current content
+   * uncompared instead of diffing it against nothing.
+   */
+  beforeUnavailable?: boolean;
+  /** Either side exceeds `MAX_DIFF_BYTES`; the card skips reading it. */
+  tooLarge?: boolean;
+  /**
    * Inline diff sides (dev fixture only). When set, the card diffs these
    * strings instead of reading files from disk.
    */
@@ -55,14 +71,31 @@ export interface ReviewChangesState {
   files: ReviewFile[];
   /** The real review data requires Electron filesystem access. */
   desktopOnly: boolean;
+  /**
+   * Set when the scan itself failed. Kept separate from an empty `files` so
+   * the tab never reports "no changes" for what is really a lookup failure.
+   */
+  error: string | null;
+  /**
+   * Added/removed lines across every changed file, or null while still being
+   * computed. Files that cannot be diffed (too large, binary, or missing their
+   * before-side) contribute nothing.
+   */
+  totals: LineCounts | null;
   refresh: () => void;
 }
 
 /** Shape returned by the `review-list-backups` IPC (electron/main/reviewChanges.ts). */
+interface ReviewBackup {
+  path: string;
+  size: number;
+}
+
 interface ReviewBackupEntry {
   path: string;
   exists: boolean;
-  backups: string[];
+  size: number | null;
+  backups: ReviewBackup[];
 }
 
 function displayPath(absPath: string, rootPath: string | null): string {
@@ -106,6 +139,23 @@ function overlaySourcePath(overlay: SpaceOverlay): string | null {
 
 function isReviewStatus(value: string): value is ReviewFileStatus {
   return value === 'added' || value === 'modified' || value === 'deleted';
+}
+
+/**
+ * Flags the diff card needs before it reads anything: whether the before-side
+ * content is missing outright, and whether either side is too big to diff.
+ */
+function reviewFileFlags(
+  status: ReviewFileStatus,
+  bakPath: string | null,
+  beforeSize: number | null,
+  afterSize: number | null
+): Pick<ReviewFile, 'beforeUnavailable' | 'tooLarge'> {
+  return {
+    beforeUnavailable: status === 'modified' && !bakPath,
+    tooLarge:
+      (beforeSize ?? 0) > MAX_DIFF_BYTES || (afterSize ?? 0) > MAX_DIFF_BYTES,
+  };
 }
 
 /**
@@ -175,6 +225,7 @@ export function useReviewChanges(): ReviewChangesState {
 
   const [files, setFiles] = useState<ReviewFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [fetchNonce, setFetchNonce] = useState(0);
   const refresh = useCallback(() => {
     setLoading(true);
@@ -189,16 +240,19 @@ export function useReviewChanges(): ReviewChangesState {
   useEffect(() => {
     if (fixtureEnabled) {
       setFiles(REVIEW_FIXTURE_FILES);
+      setError(null);
       setLoading(false);
       return;
     }
     if (desktopOnly || !api?.reviewListBackups) {
       setFiles([]);
+      setError(null);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
 
     const loadFiles = async (): Promise<ReviewFile[]> => {
       if (overlayBacked) {
@@ -227,19 +281,29 @@ export function useReviewChanges(): ReviewChangesState {
         return overlays.map((overlay): ReviewFile => {
           const sourcePath = overlaySourcePath(overlay);
           const entry = sourcePath ? entriesByPath.get(sourcePath) : undefined;
+          const status = overlay.status as ReviewFileStatus;
+          // The first backup is the run's baseline before any writes. For a
+          // pending deletion, an existing source is also valid before-side
+          // content when the delete operation did not remove the work copy.
+          const backup = entry?.backups[0] ?? null;
+          const deletedSource =
+            status === 'deleted' && entry?.exists && sourcePath
+              ? { path: sourcePath, size: entry.size ?? 0 }
+              : null;
+          const before = backup ?? deletedSource;
+          const afterSize = status === 'deleted' ? null : (entry?.size ?? null);
           return {
             id: `overlay:${overlay.run_id}:${overlay.path}`,
             path: overlay.path,
-            status: overlay.status as ReviewFileStatus,
+            status,
             absPath: sourcePath ?? '',
-            // The first backup is the run's baseline before any writes. For a
-            // pending deletion, an existing source is also valid before-side
-            // content when the delete operation did not remove the work copy.
-            bakPath:
-              entry?.backups[0] ??
-              (overlay.status === 'deleted' && entry?.exists && sourcePath
-                ? sourcePath
-                : null),
+            bakPath: before?.path ?? null,
+            ...reviewFileFlags(
+              status,
+              before?.path ?? null,
+              before?.size ?? null,
+              afterSize
+            ),
           };
         });
       }
@@ -254,14 +318,21 @@ export function useReviewChanges(): ReviewChangesState {
             ? 'modified'
             : 'added'
           : 'deleted';
+        // The earliest backup is the baseline for both modifications and
+        // deletions; a later backup is already an intermediate agent write.
+        const backup = entry.backups[0] ?? null;
         return {
           id: `file:${entry.path.replace(/\\/g, '/')}`,
           path: displayPath(entry.path, spaceRootPath),
           status,
           absPath: entry.path,
-          // The earliest backup is the baseline for both modifications and
-          // deletions; a later backup is already an intermediate agent write.
-          bakPath: entry.backups[0] ?? null,
+          bakPath: backup?.path ?? null,
+          ...reviewFileFlags(
+            status,
+            backup?.path ?? null,
+            backup?.size ?? null,
+            entry.size
+          ),
         };
       });
     };
@@ -276,10 +347,11 @@ export function useReviewChanges(): ReviewChangesState {
         setFiles(next);
         setLoading(false);
       })
-      .catch((error: unknown) => {
+      .catch((cause: unknown) => {
         if (cancelled) return;
-        console.error('[ReviewTab] Failed to scan changed files:', error);
+        console.error('[ReviewTab] Failed to scan changed files:', cause);
         setFiles([]);
+        setError(cause instanceof Error ? cause.message : String(cause));
         setLoading(false);
       });
     return () => {
@@ -297,5 +369,60 @@ export function useReviewChanges(): ReviewChangesState {
     spaceRootPath,
   ]);
 
-  return { loading, files, desktopOnly, refresh };
+  // Totals are computed here rather than gathered from the cards: a card only
+  // measures its diff once Monaco mounts, which the stack defers until the card
+  // nears the viewport, so a header fed from them would climb as the user
+  // scrolled. Reading every file once up front keeps the number whole.
+  const [totals, setTotals] = useState<LineCounts | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setTotals(null);
+    if (files.length === 0) {
+      setTotals({ added: 0, removed: 0 });
+      return;
+    }
+
+    const readSide = async (path: string | null): Promise<string | null> => {
+      if (!path) return '';
+      if (!api?.readFile) return null;
+      const result = await api.readFile(path);
+      if (!result?.success) return null;
+      return decodeFileText(result.data);
+    };
+
+    const run = async () => {
+      let added = 0;
+      let removed = 0;
+      for (const file of files) {
+        if (cancelled) return;
+        // Nothing trustworthy to count: no baseline, or never diffed at all.
+        if (file.tooLarge || file.beforeUnavailable) continue;
+        let sides: { original: string; modified: string } | null = null;
+        if (file.inline) {
+          sides = file.inline;
+        } else {
+          const { original, modified } = diffSidePaths(file);
+          const [before, after] = await Promise.all([
+            readSide(original),
+            readSide(modified),
+          ]);
+          // Binary or unreadable — excluded rather than counted as empty.
+          if (before === null || after === null) continue;
+          sides = { original: before, modified: after };
+        }
+        const counts = countLineDiff(sides.original, sides.modified);
+        if (!counts) continue;
+        added += counts.added;
+        removed += counts.removed;
+      }
+      if (!cancelled) setTotals({ added, removed });
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, files]);
+
+  return { loading, files, desktopOnly, error, totals, refresh };
 }

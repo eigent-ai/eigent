@@ -127,9 +127,14 @@ interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<any>;
   readFileAsDataUrl: (path: string) => Promise<string>;
-  reviewListBackups: (
-    filePaths: string[]
-  ) => Promise<Array<{ path: string; exists: boolean; backups: string[] }>>;
+  reviewListBackups: (filePaths: string[]) => Promise<
+    Array<{
+      path: string;
+      exists: boolean;
+      size: number | null;
+      backups: Array<{ path: string; size: number }>;
+    }>
+  >;
   deleteFolder: (email: string) => Promise<any>;
   getMcpConfigPath: (email: string) => Promise<string>;
   uploadLog: (

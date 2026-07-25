@@ -30,7 +30,6 @@ import { CanvasTab } from './tabs/CanvasTab';
 import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
-import { disposeShellSession } from './tabs/terminal/shellSessions';
 import { TerminalTab } from './tabs/terminal/TerminalTab';
 
 // Tabs render at a comfortable default width and shrink evenly as more are
@@ -88,14 +87,9 @@ export function PreviewPanel({
 
   const handleCloseTab = useCallback(
     (tab: SessionPreviewTab) => {
-      // Closing a shell tab kills its PTY — the shell only outlives the UI
-      // across tab *switches*, never past an explicit close.
-      if (tab.type === 'terminal' && tab.shellId && host?.electronAPI) {
-        disposeShellSession(host.electronAPI, tab.shellId);
-      }
       closeSessionPreviewTab(tab.id);
     },
-    [closeSessionPreviewTab, host]
+    [closeSessionPreviewTab]
   );
   // Embedded browsing relies on the desktop host's <webview> tag; on the web
   // the panel still works but URLs open in a regular browser tab.

@@ -14,14 +14,6 @@
 
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Terminal } from '@xterm/xterm';
-import '@xterm/xterm/css/xterm.css';
-import { RotateCcw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import './previewTerminal.css';
 import {
   ensureShellSession,
   getShellBuffer,
@@ -32,7 +24,15 @@ import {
   subscribeShellState,
   writeToShell,
   type ShellSessionState,
-} from './shellSessions';
+} from '@/lib/shellSessions';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
+import { RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import './previewTerminal.css';
 import {
   TERMINAL_BASE_THEME,
   TERMINAL_FONT_FAMILY,
@@ -173,8 +173,10 @@ export function ShellTerminal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shellId, runId, electronAPI]);
 
-  const handleRestart = () => {
-    resetShellSession(shellId);
+  const handleRestart = async () => {
+    if (!electronAPI) return;
+    const disposed = await resetShellSession(electronAPI, shellId);
+    if (!disposed) return;
     setSession(getShellSessionState(shellId));
     setRunId((id) => id + 1);
   };
@@ -205,7 +207,7 @@ export function ShellTerminal({
             type="button"
             variant="secondary"
             size="xs"
-            onClick={handleRestart}
+            onClick={() => void handleRestart()}
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             {t('layout.terminal-restart', { defaultValue: 'Restart shell' })}
