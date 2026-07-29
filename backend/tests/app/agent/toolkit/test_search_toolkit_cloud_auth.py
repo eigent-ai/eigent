@@ -86,6 +86,4 @@ def test_cloud_search_keeps_legacy_key_header_fallback():
             "query",
         )
 
-    assert request.call_args.kwargs["headers"] == {
-        "api-key": "sk-legacy"
-    }
+    assert request.call_args.kwargs["headers"] == {"api-key": "sk-legacy"}
