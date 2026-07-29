@@ -28,6 +28,7 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { resolveCloudModelAuth } from '@/lib/cloudModelAuth';
 import {
   classifyError,
   classifyTaskCategory,
@@ -1732,6 +1733,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
         resolvedProviderId = provider.id;
       } else if (!type && effectiveModelType === 'cloud') {
+        if (!token) {
+          finishStartupFailure();
+          throw new Error(
+            'Your Eigent session is invalid or expired. Please sign in again.'
+          );
+        }
         const requestedCloudModelId =
           pinnedModelSelection?.cloud_model_type || cloud_model_type;
         const cloudModelStore = getCloudModelStore();
@@ -1765,9 +1772,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           getAuthStore().setCloudModelType(resolvedCloudModel.model.id);
         }
 
-        let res: any;
+        let cloudAuth;
         try {
-          res = await proxyFetchGet('/api/v1/user/key');
+          cloudAuth = await resolveCloudModelAuth(token);
         } catch (error: any) {
           finishStartupFailure();
           const responseData = error?.response?.data;
@@ -1783,28 +1790,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           throw error;
         }
-        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
-          finishStartupFailure();
-          throw new Error(
-            res.text ||
-              'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
-          );
-        }
-        if (!res.value) {
-          finishStartupFailure();
-          throw new Error(
-            res.text ||
-              'Failed to get cloud model key. Please check your account or model settings.'
-          );
-        }
-        if (res.warning_code && res.warning_code === '21') {
+        if (cloudAuth.warningCode === '21') {
           showStorageToast();
         }
         apiModel = {
-          api_key: res.value,
+          api_key: cloudAuth.apiKey,
           model_type: resolvedCloudModel.model.model_type,
           model_platform: resolvedCloudModel.model.model_platform,
-          api_url: res.api_url,
+          api_url: cloudAuth.apiUrl,
           model_config_dict: {},
           extra_params: {},
           auth_source: undefined,

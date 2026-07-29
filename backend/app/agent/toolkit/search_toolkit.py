@@ -21,6 +21,7 @@ from camel.toolkits.function_tool import FunctionTool
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env, env_not_empty
+from app.run_context.context import get_current_run_context
 from app.service.task import Agents
 from app.utils.listen.toolkit_listen import auto_listen_toolkit, listen_toolkit
 
@@ -235,6 +236,12 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         start_page: int = 1,
     ):
         url = env_not_empty("SERVER_URL")
+        context = get_current_run_context()
+        headers = (
+            {"Authorization": context.auth_header}
+            if context and context.auth_header
+            else {"api-key": env_not_empty("cloud_api_key")}
+        )
         res = httpx.get(
             url + "/proxy/google",
             params={
@@ -243,7 +250,7 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
                 "number_of_result_pages": number_of_result_pages,
                 "start_page": start_page,
             },
-            headers={"api-key": env_not_empty("cloud_api_key")},
+            headers=headers,
         )
         return res.json()
 
