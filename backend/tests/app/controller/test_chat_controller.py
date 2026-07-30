@@ -436,7 +436,7 @@ class TestChatController:
 
         with (
             patch(
-                "app.controller.chat_controller.get_task_lock",
+                "app.controller.chat_controller.get_task_lock_if_exists",
                 return_value=mock_task_lock,
             ),
         ):
@@ -447,6 +447,19 @@ class TestChatController:
             mock_task_lock.put_human_input.assert_awaited_once_with(
                 "test_agent", "This is my reply"
             )
+
+    @pytest.mark.asyncio
+    async def test_human_reply_missing_task_lock_returns_user_error(self):
+        """Expired human replies should not raise backend program errors."""
+        task_id = "test_task_123"
+        reply_data = HumanReply(agent="test_agent", reply="late reply")
+
+        with patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=None,
+        ):
+            with pytest.raises(UserException):
+                await human_reply(task_id, reply_data)
 
     def test_install_mcp_success(self, mock_task_lock):
         """Test successful MCP installation."""
@@ -578,7 +591,7 @@ class TestChatControllerIntegration:
 
         with (
             patch(
-                "app.controller.chat_controller.get_task_lock"
+                "app.controller.chat_controller.get_task_lock_if_exists"
             ) as mock_get_lock,
         ):
             mock_task_lock = MagicMock()

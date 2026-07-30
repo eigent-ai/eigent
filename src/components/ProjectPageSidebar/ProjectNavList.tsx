@@ -63,7 +63,7 @@ function AccordionSection({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={cn(
-          'group/section-header gap-1 rounded-lg px-3 py-0.5 flex w-full items-center text-left'
+          'group/section-header flex w-full items-center gap-1 rounded-lg px-3 py-0.5 text-left'
         )}
         aria-expanded={expanded}
       >
@@ -72,7 +72,7 @@ function AccordionSection({
         </span>
         <ChevronDown
           className={cn(
-            'h-4 w-4 !text-ds-icon-neutral-muted-default shrink-0 transition-all duration-200',
+            'h-4 w-4 shrink-0 !text-ds-icon-neutral-muted-default transition-[opacity,transform] duration-200',
             !expanded && '-rotate-90',
             expanded && 'opacity-0 group-hover/section-header:opacity-100'
           )}
@@ -86,7 +86,7 @@ function AccordionSection({
         transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
         style={{ overflow: 'hidden' }}
       >
-        <div className="gap-0.5 pt-0.5 flex flex-col">{children}</div>
+        <div className="flex flex-col gap-0.5 pt-0.5">{children}</div>
       </motion.div>
     </div>
   );
@@ -147,12 +147,12 @@ export function ProjectNavList({
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex w-full flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-col overflow-hidden',
         className
       )}
     >
       {/* + New */}
-      <div className="min-w-0 flex w-full flex-col">
+      <div className="flex w-full min-w-0 flex-col">
         <NavTab
           active={newProjectActive}
           onClick={onNewProject}
@@ -170,7 +170,7 @@ export function ProjectNavList({
       <div
         ref={projectListRef}
         className={cn(
-          'm-0 mt-1 min-h-0 min-w-0 p-0 pb-1 flex flex-1 flex-col',
+          'm-0 mt-1 flex min-h-0 min-w-0 flex-1 flex-col p-0 pb-1',
           folded
             ? projectListOverflow
               ? 'scrollbar-hide gap-0.5 overflow-y-auto'

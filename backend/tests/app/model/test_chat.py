@@ -185,6 +185,11 @@ class TestModelPlatformMapping:
         chat = self._create_chat("nebius")
         assert chat.model_platform == "openai-compatible-model"
 
+    def test_chat_maps_ant_ling_to_openai_compatible_model(self):
+        """Test Chat maps Ant Ling (百灵) platform alias correctly."""
+        chat = self._create_chat("ant-ling")
+        assert chat.model_platform == "openai-compatible-model"
+
     def test_chat_keeps_supported_platforms_unchanged(self):
         """Test Chat keeps native camel-ai platforms unchanged."""
         chat = self._create_chat("mistral")
@@ -332,4 +337,22 @@ class TestFileSavePath:
         resolved = Path(self._chat().file_save_path("screenshots"))
 
         assert resolved == legacy_path / "screenshots"
+        assert resolved.exists()
+
+    def test_file_save_path_does_not_double_task_prefix(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        chat = self._chat()
+        chat.run_id = "task_run-1"
+
+        resolved = Path(chat.file_save_path())
+
+        assert resolved == (
+            tmp_path
+            / "eigent"
+            / "user_42"
+            / "project_project-1"
+            / "task_run-1"
+        )
         assert resolved.exists()

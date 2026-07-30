@@ -777,8 +777,8 @@ export default function WorkspacePage() {
             </ResizablePanel>
             <ResizableHandle
               className={cn(
-                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-all',
-                'transition-all hover:bg-ds-bg-brand-subtle-default',
+                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
+                'transition-colors hover:bg-ds-bg-brand-subtle-default',
                 'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
               )}
             />

@@ -13,6 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
+import {
+  recordModelConfigured,
+  recordModelTypeChanged,
+  recordUserIdentityAvailable,
+  recordUserSessionCleared,
+} from '@/lib/events/appEvents';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -244,6 +250,7 @@ const authStore = create<AuthState>()(
           authEnvironmentKey: getAuthEnvironmentKey(),
         });
         hydrateSpacesForUser(resolvedUserId);
+        recordUserIdentityAvailable({ id: resolvedUserId, email, username });
       },
 
       logout: () => {
@@ -263,6 +270,7 @@ const authStore = create<AuthState>()(
           localProxyValue: null,
           authEnvironmentKey: getAuthEnvironmentKey(),
         });
+        recordUserSessionCleared();
         useSpaceStore.getState().resetForUser(null);
       },
 
@@ -333,14 +341,38 @@ const authStore = create<AuthState>()(
         set({ initState });
       },
 
-      setModelType: (modelType) => set({ modelType }),
+      setModelType: (modelType) =>
+        set((state) => {
+          if (modelType !== state.modelType) {
+            recordModelTypeChanged({
+              from: state.modelType,
+              to: modelType,
+            });
+          }
+          return { modelType };
+        }),
 
       setCloudModelType: (cloud_model_type) => set({ cloud_model_type }),
 
       setCodexModelType: (codex_model_type) => set({ codex_model_type }),
 
       setHasModelConfigured: (hasModelConfigured) =>
-        set({ hasModelConfigured }),
+        set((state) => {
+          // Fire `model_configured` once, on the false → true edge (Goal 1A).
+          if (hasModelConfigured && !state.hasModelConfigured) {
+            const modelId =
+              state.modelType === 'cloud'
+                ? state.cloud_model_type
+                : state.modelType === 'codex_subscription'
+                  ? state.codex_model_type
+                  : undefined;
+            recordModelConfigured({
+              model_type: state.modelType,
+              model_id: modelId,
+            });
+          }
+          return { hasModelConfigured };
+        }),
 
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
@@ -538,8 +570,11 @@ export const getAuthStore = () => authStore.getState();
 queueMicrotask(() => {
   if (!useSpaceStore?.getState) return;
   clearAuthForCurrentEnvironment(authStore.setState, authStore.getState);
-  const { user_id } = authStore.getState();
+  const { token, user_id, email, username } = authStore.getState();
   hydrateSpacesForUser(user_id);
+  if (token && user_id != null) {
+    recordUserIdentityAvailable({ id: user_id, email, username });
+  }
 });
 
 // constant definition

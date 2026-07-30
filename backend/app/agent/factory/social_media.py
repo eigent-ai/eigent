@@ -19,7 +19,10 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import SOCIAL_MEDIA_SYS_PROMPT
+from app.agent.prompt import (
+    SOCIAL_MEDIA_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
@@ -110,6 +113,7 @@ async def social_media_agent(options: Chat):
     system_message = SOCIAL_MEDIA_SYS_PROMPT.format(
         working_directory=working_directory, now_str=NOW_STR
     )
+    system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.social_media_agent,

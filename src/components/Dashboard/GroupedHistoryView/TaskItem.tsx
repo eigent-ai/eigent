@@ -102,17 +102,17 @@ export default function TaskItem({
   return (
     <div
       onClick={onSelect}
-      className={` ${isActive ? '!bg-ds-bg-neutral-inverse-default' : ''} h-14 gap-md rounded-xl border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-inverse-default/30 p-3 shadow-history-item hover:bg-ds-bg-neutral-inverse-default relative flex w-full cursor-pointer items-center justify-between border border-solid transition-all duration-300 ${!isLast ? 'mb-2' : ''} `}
+      className={` ${isActive ? '!bg-ds-bg-neutral-inverse-default' : ''} bg-ds-bg-neutral-inverse-default/30 duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] relative flex h-14 w-full cursor-pointer items-center justify-between gap-md rounded-xl border border-solid border-ds-border-neutral-muted-disabled p-3 shadow-history-item transition-colors hover:bg-ds-bg-neutral-inverse-default ${!isLast ? 'mb-2' : ''} `}
     >
-      <div className="min-w-0 gap-2 flex flex-1 items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <TooltipSimple content={t('layout.tasks')}>
           <ListChecks className="h-4 w-4 text-ds-icon-neutral-default-default" />
         </TooltipSimple>
 
-        <div className="min-w-0 gap-1 flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <TooltipSimple
             align="start"
-            className="max-w-xs bg-ds-bg-neutral-strong-default p-2 text-label-xs shadow-perfect pointer-events-auto text-wrap break-words select-text"
+            className="pointer-events-auto max-w-xs select-text text-wrap break-words bg-ds-bg-neutral-strong-default p-2 text-label-xs shadow-perfect"
             content={
               <div className="space-y-1">
                 <div className="font-medium">
@@ -128,14 +128,14 @@ export default function TaskItem({
               </div>
             }
           >
-            <span className="text-sm font-medium text-ds-text-neutral-default-default block overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium text-ds-text-neutral-default-default">
               {task.summary || task.question || t('layout.new-project')}
             </span>
           </TooltipSimple>
         </div>
       </div>
 
-      <div className="gap-2 flex flex-shrink-0 items-center">
+      <div className="flex flex-shrink-0 items-center gap-2">
         {!isOngoing && getStatusTag(task.status)}
 
         <Tag variant="primary" tone="information" size="sm">
@@ -177,7 +177,7 @@ export default function TaskItem({
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm w-[98px] rounded-[12px] border border-solid"
+              className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm"
             >
               <div className="space-y-1">
                 {!isOngoing && (

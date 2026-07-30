@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
-from app.utils.workspace_paths import runtime_owner_key
+from app.utils.workspace_paths import runtime_owner_key, task_dir_name
 from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
@@ -231,7 +231,7 @@ async def list_project_files(
     project_root = _resolve_file_root(email, project_id, space_id, user_id)
     list_dir = str(project_root)
     if task_id:
-        list_dir = str(project_root / f"task_{task_id}")
+        list_dir = str(project_root / task_dir_name(task_id))
     if not Path(list_dir).exists():
         file_logger.debug(
             "list_project_files: path does not exist: %s",

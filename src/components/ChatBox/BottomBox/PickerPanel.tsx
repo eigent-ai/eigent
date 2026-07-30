@@ -12,9 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
 import { proxyFetchGet } from '@/api/http';
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
 import { Button } from '@/components/ui/button';
+import {
+  useIntegrationManagement,
+  type IntegrationItem,
+} from '@/hooks/useIntegrationManagement';
 import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
@@ -24,6 +29,7 @@ import {
 } from '@/lib/richText';
 import { skillNameToDirName } from '@/lib/skillToolkit';
 import { cn } from '@/lib/utils';
+import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { Check, Plus, Wrench } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -38,6 +44,8 @@ export interface PickerItem {
   id: string;
   name: string;
   token: string;
+  /** Provider icon URL for hosted connector items. */
+  iconUrl?: string;
 }
 
 /** A labelled section within a picker (e.g. built-in vs. your own connectors). */
@@ -205,9 +213,10 @@ interface WiredPickerPanelProps {
 const EXCLUDED_BUILTIN_CONNECTORS = ['Search', 'RAG'];
 
 /**
- * Full connector list matching the Connectors settings page: built-in
- * integrations (`/api/v1/config/info`) plus the user's own MCPs
- * (`/api/v1/mcp/users`), shown as two labelled sections.
+ * Connected connectors only, matching the Connectors page sidebar: connected
+ * hosted connectors (when the Connector Gateway is enabled), connected built-in
+ * integrations (`/api/v1/config/info` + configs), and the user's enabled MCPs
+ * (`/api/v1/mcp/users`), shown as labelled sections.
  */
 export function ConnectorPickerPanel({
   inputValue,
@@ -215,9 +224,26 @@ export function ConnectorPickerPanel({
 }: WiredPickerPanelProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [builtIn, setBuiltIn] = useState<PickerItem[]>([]);
+  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
+  const [openItems, setOpenItems] = useState<PickerItem[]>([]);
   const [yourMcps, setYourMcps] = useState<PickerItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const capabilities = useServerCapabilityStore((state) => state.capabilities);
+  const capabilityStatus = useServerCapabilityStore((state) => state.status);
+  const fetchCapabilities = useServerCapabilityStore(
+    (state) => state.fetchCapabilities
+  );
+  const gatewayEnabled =
+    capabilities.features.connector_gateway.enabled === true;
+
+  // Reuse the Connectors page's connected-state rules (OAuth tokens, config
+  // groups, Google Search defaults) instead of duplicating them here.
+  const { installed } = useIntegrationManagement(builtInItems);
+
+  useEffect(() => {
+    void fetchCapabilities();
+  }, [fetchCapabilities]);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,13 +258,15 @@ export function ConnectorPickerPanel({
           infoRes.value &&
           typeof infoRes.value === 'object'
         ) {
-          setBuiltIn(
+          setBuiltInItems(
             Object.keys(infoRes.value)
               .filter((key) => !EXCLUDED_BUILTIN_CONNECTORS.includes(key))
               .map((key) => ({
-                id: `builtin-${key}`,
+                key,
                 name: key,
-                token: connectorNameToToken(key),
+                desc: '',
+                env_vars: [],
+                onInstall: () => undefined,
               }))
           );
         }
@@ -247,11 +275,13 @@ export function ConnectorPickerPanel({
             ? usersRes.value
             : (usersRes.value?.items ?? []);
           setYourMcps(
-            list.map((item: { id: number; mcp_name: string }) => ({
-              id: `user-${item.id}`,
-              name: item.mcp_name,
-              token: connectorNameToToken(item.mcp_name),
-            }))
+            list
+              .filter((item: { status?: number }) => Number(item.status) === 1)
+              .map((item: { id: number; mcp_name: string }) => ({
+                id: `user-${item.id}`,
+                name: item.mcp_name,
+                token: connectorNameToToken(item.mcp_name),
+              }))
           );
         }
       })
@@ -263,7 +293,46 @@ export function ConnectorPickerPanel({
     };
   }, []);
 
+  useEffect(() => {
+    if (capabilityStatus !== 'ready' || !gatewayEnabled) {
+      setOpenItems([]);
+      return;
+    }
+    let cancelled = false;
+    fetchConnectedProviders()
+      .then((providers) => {
+        if (cancelled) return;
+        setOpenItems(
+          providers.map((provider) => ({
+            id: `open-${provider.service}`,
+            name: providerLabel(provider),
+            token: connectorNameToToken(providerLabel(provider)),
+            iconUrl: provider.iconUrl || undefined,
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOpenItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [capabilityStatus, gatewayEnabled]);
+
+  const builtIn = useMemo(
+    () =>
+      builtInItems
+        .filter((item) => installed[item.key])
+        .map((item) => ({
+          id: `builtin-${item.key}`,
+          name: item.name,
+          token: connectorNameToToken(item.key),
+        })),
+    [builtInItems, installed]
+  );
+
   const groups: PickerGroup[] = [
+    { id: 'open', label: t('connectors.gateway-connectors'), items: openItems },
     {
       id: 'builtin',
       label: t('setting.mcp-sidebar-built-in'),
@@ -289,6 +358,13 @@ export function ConnectorPickerPanel({
         </span>
       )}
       renderLogo={(item) => {
+        if (item.id.startsWith('open-')) {
+          return item.iconUrl ? (
+            <img src={item.iconUrl} alt="" className="h-4 w-4 object-contain" />
+          ) : (
+            <img src={ellipseIcon} alt="" className="h-3 w-3" />
+          );
+        }
         if (!item.id.startsWith('builtin-')) {
           return (
             <Wrench size={16} className="text-ds-icon-neutral-muted-default" />
