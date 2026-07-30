@@ -14,6 +14,7 @@
 
 import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
 import { SidePanelListRow } from '@/components/Session/SidePanelSections/primitives';
+import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -92,6 +93,7 @@ export function AgentFolderSection({
     const seen = new Set<string>();
     const out: FileInfo[] = [];
     for (const f of files) {
+      if (!isVisibleAgentFile(f)) continue;
       const key = f.path || f.name;
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -103,12 +105,12 @@ export function AgentFolderSection({
   return (
     <SidePanelAccordionBox title={title}>
       {unique.length === 0 ? (
-        <div className="text-ds-text-neutral-subtle-default text-body-sm px-1 py-1 opacity-60">
+        <div className="px-1 py-1 text-body-sm text-ds-text-neutral-subtle-default opacity-60">
           Files the agent writes or updates during this task appear here so you
           can open them.
         </div>
       ) : (
-        <motion.ul layout className="p-0 m-0 space-y-0.5 list-none">
+        <motion.ul layout className="m-0 list-none space-y-0.5 p-0">
           <AnimatePresence initial={false}>
             {unique.map((file) => {
               const Icon = iconFor(file);

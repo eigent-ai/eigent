@@ -298,7 +298,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         style={formControlTokenAliases}
       >
         {title && (
-          <div className="mb-1.5 gap-1 text-body-sm font-bold text-ds-text-neutral-default-default flex items-center">
+          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
             <span>{title}</span>
             {required && (
               <span className="text-ds-text-neutral-default-default">*</span>
@@ -319,20 +319,20 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           ref={containerRef}
           onClick={handleContainerClick}
           className={cn(
-            'rounded-lg shadow-sm px-3 gap-2 text-ds-text-neutral-default-default relative flex w-full cursor-text items-center border border-solid transition-all outline-none',
+            'relative flex w-full cursor-text items-center gap-2 rounded-lg border border-solid px-3 text-ds-text-neutral-default-default shadow-sm outline-none transition-[background-color,border-color,box-shadow,opacity]',
             formFieldInputSelectSizeClasses[size],
             stateCls.container,
             !disabled &&
               state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
+                'hover:bg-ds-bg-neutral-default-hover hover:ring-1 hover:ring-ds-ring-neutral-strong-default hover:ring-offset-0',
                 isOpen &&
-                  'bg-ds-bg-neutral-strong-default ring-ds-ring-brand-default-focus ring-1 ring-offset-0',
+                  'bg-ds-bg-neutral-strong-default ring-1 ring-ds-ring-brand-default-focus ring-offset-0',
               ]
           )}
         >
           {leadingIcon && (
-            <span className="h-4 w-4 text-ds-icon-neutral-default-default flex-shrink-0">
+            <span className="h-4 w-4 flex-shrink-0 text-ds-icon-neutral-default-default">
               {leadingIcon}
             </span>
           )}
@@ -350,7 +350,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           />
           <ChevronDown
             className={cn(
-              'h-4 w-4 text-ds-icon-neutral-default-default flex-shrink-0 transition-transform',
+              'h-4 w-4 flex-shrink-0 text-ds-icon-neutral-default-default transition-transform',
               isOpen && 'rotate-180'
             )}
           />
@@ -360,10 +360,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         {isOpen && (
           <div
             ref={dropdownRef}
-            className="left-0 right-0 mt-1 bg-ds-bg-neutral-default-default rounded-lg shadow-md absolute top-full z-50 overflow-hidden border border-solid border-transparent"
+            className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-solid border-transparent bg-ds-bg-neutral-default-default shadow-md"
           >
             <div
-              className="p-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+              className="overflow-y-auto overflow-x-hidden overscroll-contain p-1"
               style={{ maxHeight: maxDropdownHeight }}
               onWheel={handleDropdownWheel}
             >
@@ -372,14 +372,14 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   key={option.value}
                   onClick={() => handleOptionClick(option)}
                   className={cn(
-                    'rounded-lg py-1.5 pl-2 pr-8 text-sm hover:bg-ds-bg-neutral-default-hover relative flex w-full cursor-pointer items-center transition-colors outline-none select-none',
+                    'relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none transition-colors hover:bg-ds-bg-neutral-default-hover',
                     selectedOption?.value === option.value &&
                       'bg-ds-bg-neutral-default-hover'
                   )}
                 >
                   {option.label}
                   {selectedOption?.value === option.value && (
-                    <span className="right-2 h-3.5 w-3.5 absolute flex items-center justify-center">
+                    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
                       <Check className="h-4 w-4" />
                     </span>
                   )}

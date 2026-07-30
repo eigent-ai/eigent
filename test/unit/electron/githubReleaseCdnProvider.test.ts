@@ -44,7 +44,7 @@ describe('githubReleaseCdnProvider', () => {
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases/',
-        '1.0.1',
+        '1.0.2',
         'mac-arm64'
       )
     ).toBe('https://cdn.eigent.ai/releases/v1.0.0/mac-arm64/');
@@ -52,7 +52,7 @@ describe('githubReleaseCdnProvider', () => {
     expect(
       buildVersionedReleaseBaseUrl(
         'https://cdn.eigent.ai/releases',
-        '1.0.1',
+        '1.0.2',
         'win-x64'
       )
     ).toBe('https://cdn.eigent.ai/releases/v1.0.0/win-x64/');

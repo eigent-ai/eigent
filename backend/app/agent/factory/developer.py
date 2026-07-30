@@ -22,7 +22,10 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import DEVELOPER_SYS_PROMPT
+from app.agent.prompt import (
+    DEVELOPER_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
@@ -128,6 +131,7 @@ async def developer_agent(
         working_directory=working_directory,
         now_str=NOW_STR,
     )
+    system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.developer_agent,

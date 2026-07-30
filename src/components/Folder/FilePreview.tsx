@@ -32,6 +32,8 @@ export interface FilePreviewProps {
   file: FileInfo | null;
   /** Outer surface background class (project page uses default-default). */
   surfaceClassName?: string;
+  /** Remove the standalone rounded/margin frame when hosted in a tab shell. */
+  embedded?: boolean;
   /** Sibling project files, used by the HTML renderer to resolve local assets. */
   projectFiles?: FileInfo[];
   /** Close the preview column. */
@@ -51,6 +53,7 @@ export interface FilePreviewProps {
 export function FilePreview({
   file,
   surfaceClassName = 'bg-ds-bg-neutral-default-default',
+  embedded = false,
   projectFiles = [],
   onClose,
   onJumpToContext,
@@ -248,11 +251,12 @@ export function FilePreview({
       }
       projectFiles={projectFiles}
       surfaceClassName={surfaceClassName}
+      embedded={embedded}
       onRevealFile={handleRevealFile}
       onDownloadFile={handleDownloadFile}
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={
-        <div className="gap-3 px-6 text-ds-text-neutral-muted-default flex h-full w-full flex-1 flex-col items-center justify-center text-center">
+        <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-ds-text-neutral-muted-default">
           <FileText className="h-12 w-12 text-ds-icon-neutral-muted-default" />
           <p className="text-sm">
             {t('chat.no-file-selected', {

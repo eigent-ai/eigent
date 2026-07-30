@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { recordSignInFailed } from '@/lib/events/appEvents';
 import { useAuthStore } from '@/store/authStore';
 import { useStackApp } from '@stackframe/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -117,6 +118,7 @@ export default function Login() {
       navigate(redirectTo, { replace: true });
     } catch (error: any) {
       console.error('Auto login failed:', error);
+      recordSignInFailed({ reason: 'auto_login_error', method: 'auto' });
       setGeneralError(t('layout.login-failed-please-try-again'));
     } finally {
       setIsLoading(false);
@@ -136,6 +138,7 @@ export default function Login() {
 
         const errorMessage = getLoginErrorMessage(data);
         if (errorMessage) {
+          recordSignInFailed({ reason: 'rejected', method: 'stack' });
           setGeneralError(errorMessage);
           return;
         }
@@ -146,6 +149,7 @@ export default function Login() {
         navigate(redirectTo, { replace: true });
       } catch (error: any) {
         console.error('Login failed:', error);
+        recordSignInFailed({ reason: 'stack_error', method: 'stack' });
         setGeneralError(
           t('layout.login-failed-please-check-your-email-and-password')
         );
@@ -249,6 +253,10 @@ export default function Login() {
         navigate(redirectTo, { replace: true });
       } catch (e) {
         console.error('Failed to fetch user info:', e);
+        recordSignInFailed({
+          reason: 'user_fetch_error',
+          method: 'token',
+        });
         setGeneralError(t('layout.login-failed-please-try-again'));
       } finally {
         setIsLoading(false);
@@ -352,10 +360,10 @@ export default function Login() {
 
   // Render local mode: "Start Eigent" button only
   const renderLocalMode = () => (
-    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
       />
       <div className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default">
         Eigent
@@ -381,16 +389,16 @@ export default function Login() {
 
   // Render hybrid/app mode: waiting for external login callback
   const renderHybridMode = () => (
-    <div className="w-80 pt-8 relative flex flex-1 flex-col items-center justify-center">
+    <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="top-10 h-16 w-16 absolute left-1/2 -translate-x-1/2"
+        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
       />
       <div className="mb-4 text-heading-lg font-bold text-ds-text-neutral-default-default">
         {t('layout.login')}
       </div>
       {isLoading && (
-        <p className="mb-6 text-label-md text-ds-text-neutral-muted-default text-center">
+        <p className="mb-6 text-center text-label-md text-ds-text-neutral-muted-default">
           {t('layout.logging-in')}...
         </p>
       )}
@@ -424,7 +432,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="left-0 right-0 top-0 !h-9 py-1 pl-2 absolute z-50 flex items-center justify-between"
+        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -454,10 +462,10 @@ export default function Login() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`gap-2 px-1 pb-1 pt-10 flex h-full items-center justify-center`}
+        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
       >
         <div
-          className="min-h-0 rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2 flex h-full w-full flex-col items-center justify-center overflow-hidden"
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',

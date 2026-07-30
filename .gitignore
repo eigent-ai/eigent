@@ -17,6 +17,7 @@ dist-ssr
 dist-electron
 release
 *.local
+*.tsbuildinfo
 
 backend/context_files/
 
@@ -70,3 +71,6 @@ storybook-static
 nul
 
 backend/benchmark/jobs/
+
+# TypeScript incremental build info
+*.tsbuildinfo

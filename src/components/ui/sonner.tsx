@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useTheme } from 'next-themes';
+import { createPortal } from 'react-dom';
 import { Toaster as Sonner } from 'sonner';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
@@ -49,7 +50,7 @@ const FOLD_AT_THREE_CSS = `
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme();
 
-  return (
+  const toaster = (
     <>
       <style>{FOLD_AT_THREE_CSS}</style>
       <Sonner
@@ -70,6 +71,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       />
     </>
   );
+
+  // Render into <body>, not inside #root. #root has `backdrop-filter`, which
+  // creates a stacking context that would trap toasts *below* dialog/overlay
+  // portals (also body-level) no matter how high their z-index is.
+  if (typeof document === 'undefined') return toaster;
+  return createPortal(toaster, document.body);
 };
 
 export { Toaster };

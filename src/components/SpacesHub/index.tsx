@@ -137,8 +137,14 @@ export default function SpacesHub() {
         setActiveSpace(spaceId);
         projectStore.setActiveProject(project.id);
         setActiveWorkspaceTab('project');
+        const needsRemoteHistoryHydration =
+          projectStore.getProjectById(project.id)?.metadata
+            ?.remoteHistoryHydrationPending === true;
 
-        if (projectStore.peekActiveChatStore(project.id)) {
+        if (
+          projectStore.peekActiveChatStore(project.id) &&
+          !needsRemoteHistoryHydration
+        ) {
           return;
         }
 
@@ -153,6 +159,13 @@ export default function SpacesHub() {
           );
 
         if (taskIdsList.length === 0) {
+          if (needsRemoteHistoryHydration) {
+            projectStore.updateProject(project.id, {
+              metadata: { remoteHistoryHydrationPending: false },
+            });
+            setActiveWorkspaceTab('project');
+            return;
+          }
           projectStore.appendInitChatStore(project.id);
           setActiveWorkspaceTab('new-project');
           return;
@@ -160,6 +173,15 @@ export default function SpacesHub() {
 
         const firstTask = historyProject.tasks[0];
         const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
+        if (needsRemoteHistoryHydration) {
+          await projectStore.mergeProjectHistory(
+            project.id,
+            historyProject.tasks,
+            firstTask?.question || historyProject.last_prompt || ''
+          );
+          setActiveWorkspaceTab('project');
+          return;
+        }
         await projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
@@ -175,8 +197,10 @@ export default function SpacesHub() {
         console.error(`Failed to open Project ${project.id}:`, error);
         if (!projectStore.peekActiveChatStore(project.id)) {
           projectStore.appendInitChatStore(project.id);
+          setActiveWorkspaceTab('new-project');
+        } else {
+          setActiveWorkspaceTab('project');
         }
-        setActiveWorkspaceTab('new-project');
       } finally {
         setLoadingProjectId(null);
       }

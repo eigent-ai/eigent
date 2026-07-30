@@ -24,15 +24,14 @@ import { toast } from 'sonner';
 const FIELDS = [
   {
     key: 'GOOGLE_API_KEY',
-    label: 'Google API Key',
-    placeholder: 'Enter your Google API key from Google Cloud Console',
-    note: 'Learn how to get your Google API key → https://developers.google.com/custom-search/v1/overview',
+    labelKey: 'connectors.google-api-key',
+    placeholderKey: 'connectors.google-api-key-placeholder',
+    noteKey: 'connectors.google-api-key-note',
   },
   {
     key: 'SEARCH_ENGINE_ID',
-    label: 'Search Engine ID',
-    placeholder:
-      'Enter the Custom Search Engine ID associated with your API key',
+    labelKey: 'connectors.search-engine-id',
+    placeholderKey: 'connectors.search-engine-id-placeholder',
   },
 ] as const;
 
@@ -99,14 +98,11 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
       {requiresApiKey ? (
         <>
           <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
-            {t('setting.google-search-custom-desc', {
-              defaultValue:
-                'Connect to Google Custom Search. Requires a Google API key and a Custom Search Engine (CSE) ID.',
-            })}
+            {t('connectors.google-search-custom-desc')}
           </span>
 
           <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
-            {t('setting.tools', { defaultValue: 'Configuration' })}
+            {t('connectors.configuration-title')}
           </div>
 
           <div className="space-y-3">
@@ -115,9 +111,9 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
                 key={field.key}
                 id={field.key}
                 size="default"
-                title={field.label}
+                title={t(field.labelKey)}
                 type={showKeys[field.key] ? 'text' : 'password'}
-                placeholder={field.placeholder}
+                placeholder={t(field.placeholderKey)}
                 value={formData[field.key] || ''}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -125,7 +121,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
                     [field.key]: e.target.value,
                   }))
                 }
-                note={'note' in field ? field.note : undefined}
+                note={'noteKey' in field ? t(field.noteKey) : undefined}
                 backIcon={<Eye className="h-5 w-5" />}
                 onBackIconClick={() =>
                   setShowKeys((prev) => ({
@@ -145,10 +141,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
         </>
       ) : (
         <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-          {t('setting.google-search-default-desc', {
-            defaultValue:
-              'Google Search is enabled by default. No API key required.',
-          })}
+          {t('connectors.google-search-default-desc')}
         </div>
       )}
     </div>

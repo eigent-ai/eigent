@@ -34,7 +34,7 @@ const TabsContext = React.createContext<{ appearance?: TabsAppearance }>({
 
 /** Shared trigger styles — default and outline use the same dimensions. */
 const tabsTriggerClassName =
-  'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus gap-1 rounded-xl bg-ds-bg-neutral-strong-default px-2 py-1 text-body-sm font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-subtle-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
+  'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus gap-1 rounded-xl bg-ds-bg-neutral-strong-default px-2 py-1 text-body-sm font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-subtle-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-[background-color,color,box-shadow,opacity] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
 
 /**
  * Transparent triggers + hover chip (HistoryTabsNav); active selection is shown
@@ -173,13 +173,13 @@ const TabsList = React.forwardRef<
             className={cn(
               'inline-flex items-center justify-center',
               appearance === 'border' &&
-                'gap-2 p-0 rounded-none border-0 border-solid bg-transparent shadow-none',
+                'gap-2 rounded-none border-0 border-solid bg-transparent p-0 shadow-none',
               appearance === 'outline' &&
-                'rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5 relative border border-solid',
+                'relative rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-0.5',
               appearance === 'default' &&
-                'rounded-xl bg-ds-bg-neutral-strong-default ring-ds-ring-neutral-subtle-default ring-1',
+                'rounded-xl bg-ds-bg-neutral-strong-default ring-1 ring-ds-ring-neutral-subtle-default',
               appearance === 'ghost' &&
-                'gap-1.5 p-0 rounded-none border-0 bg-transparent shadow-none ring-0',
+                'gap-1.5 rounded-none border-0 bg-transparent p-0 shadow-none ring-0',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
               className
             )}
@@ -188,7 +188,7 @@ const TabsList = React.forwardRef<
           />
           {appearance === 'outline' && sliderStyle.width > 0 && (
             <motion.div
-              className="bottom-0 bg-text-heading absolute z-10 h-[1.5px]"
+              className="absolute bottom-0 z-10 h-[1.5px] bg-text-heading"
               initial={false}
               animate={{
                 left: sliderStyle.left,
@@ -204,7 +204,7 @@ const TabsList = React.forwardRef<
           {appearance === 'border' && borderBarStyle.width > 0 && (
             <motion.div
               aria-hidden
-              className="bg-ds-bg-brand-default-default h-0.5 pointer-events-none absolute z-10 rounded-full"
+              className="pointer-events-none absolute z-10 h-0.5 rounded-full bg-ds-bg-brand-default-default"
               initial={false}
               animate={{
                 left: borderBarStyle.left,
@@ -273,7 +273,7 @@ const TabsContent = React.forwardRef<
     <TabsPrimitive.Content
       ref={ref}
       className={cn(
-        'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus mt-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+        'mt-2 ring-offset-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2',
         className
       )}
       {...props}
@@ -285,7 +285,7 @@ const TabsContent = React.forwardRef<
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="gap-4 flex flex-col"
+          className="flex flex-col gap-4"
         >
           {children}
         </motion.div>

@@ -24,7 +24,7 @@ import {
   TaskStatus,
 } from '@/types/constants';
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Circle,
   CircleCheckBig,
@@ -72,6 +72,7 @@ interface NodeProps {
 }
 
 export function Node({ id, data }: NodeProps) {
+  const shouldReduceMotion = useReducedMotion();
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const [isExpanded, setIsExpanded] = useState(data.isExpanded);
@@ -241,11 +242,11 @@ export function Node({ id, data }: NodeProps) {
       setViewport(
         { x: -node.position.x, y: 0, zoom: 1 },
         {
-          duration: 500,
+          duration: shouldReduceMotion ? 0 : 250,
         }
       );
     }, 100);
-  }, [activeAgent, id, getNode, setViewport]);
+  }, [activeAgent, id, getNode, setViewport, shouldReduceMotion]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -275,10 +276,10 @@ export function Node({ id, data }: NodeProps) {
     setTimeout(() => {
       el.scrollTo({
         top: el.scrollHeight,
-        behavior: 'smooth',
+        behavior: shouldReduceMotion ? 'auto' : 'smooth',
       });
     }, 50);
-  }, []);
+  }, [shouldReduceMotion]);
 
   const toolkits = selectedTask?.toolkits;
   const lastToolkit = toolkits?.[toolkits.length - 1];
@@ -395,9 +396,9 @@ export function Node({ id, data }: NodeProps) {
         id="top"
       />
       <motion.div
-        layout
+        layout={!shouldReduceMotion}
         ref={nodeRef}
-        transition={{ layout: { duration: 0.3, ease: 'easeIn' } }}
+        transition={{ layout: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
         className={`${
           data.isEditMode
             ? `w-full ${isExpanded ? 'min-w-[684px]' : 'min-w-[342px]'}`
@@ -410,7 +411,7 @@ export function Node({ id, data }: NodeProps) {
           getCurrentTask()?.activeAgent === id
             ? `${displayInfo?.borderColor} z-50`
             : 'z-10 border-ds-border-neutral-default-default'
-        } transition-all duration-300 ease-in-out ${
+        } ease-[cubic-bezier(0.23,1,0.32,1)] transition-[border-color,opacity] duration-200 ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
@@ -621,7 +622,7 @@ export function Node({ id, data }: NodeProps) {
             onWheel={(e) => {
               e.stopPropagation();
             }}
-            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-500 ease-out animate-in fade-in-0 slide-in-from-bottom-4"
+            className="scrollbar scrollbar-always-visible ease-[cubic-bezier(0.23,1,0.32,1)] flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-200 animate-in fade-in-0 slide-in-from-bottom-4"
             style={{
               maxHeight:
                 data.img && data.img.length > 0
@@ -682,7 +683,7 @@ export function Node({ id, data }: NodeProps) {
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`flex gap-2 rounded-xl px-sm py-sm transition-all duration-300 ease-in-out animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
+                    className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-xl px-sm py-sm transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
                         ? 'hover:border-ds-border-status-completed-subtle-focus'
                         : task.status === TaskStatus.FAILED
@@ -798,11 +799,11 @@ export function Node({ id, data }: NodeProps) {
                         <div>{task.content}</div>
                       </div>
                       {task?.status === TaskStatus.RUNNING && (
-                        <div className="duration-400 mt-xs flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-2">
+                        <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-xs flex items-center gap-2 duration-200 animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
                           {lastActiveToolkit?.toolkitStatus ===
                             AgentStatusValue.RUNNING && (
-                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300 animate-in fade-in-0 slide-in-from-right-2">
+                            <div className="ease-[cubic-bezier(0.23,1,0.32,1)] flex min-w-0 flex-1 items-center justify-start gap-sm duration-200 animate-in fade-in-0 slide-in-from-right-2">
                               {getToolkitIcon(
                                 lastActiveToolkit.toolkitName ?? ''
                               )}
@@ -834,10 +835,23 @@ export function Node({ id, data }: NodeProps) {
           {isExpanded && (
             <motion.div
               key="log-panel"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.3, ease: 'easeIn' }}
+              initial={{
+                opacity: 0,
+                transform: shouldReduceMotion
+                  ? 'translateX(0px)'
+                  : 'translateX(24px)',
+              }}
+              animate={{ opacity: 1, transform: 'translateX(0px)' }}
+              exit={{
+                opacity: 0,
+                transform: shouldReduceMotion
+                  ? 'translateX(0px)'
+                  : 'translateX(24px)',
+              }}
+              transition={{
+                duration: shouldReduceMotion ? 0.16 : 0.2,
+                ease: [0.23, 1, 0.32, 1],
+              }}
               className="flex w-[342px] shrink-0 flex-col gap-sm overflow-hidden rounded-r-xl bg-ds-bg-neutral-subtle-default py-2 pl-sm"
             >
               <div
@@ -851,10 +865,23 @@ export function Node({ id, data }: NodeProps) {
                   {selectedTask && (
                     <motion.div
                       key={selectedTask.id}
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -16 }}
-                      transition={{ duration: 0.25, ease: 'easeIn' }}
+                      initial={{
+                        opacity: 0,
+                        transform: shouldReduceMotion
+                          ? 'translateX(0px)'
+                          : 'translateX(-16px)',
+                      }}
+                      animate={{ opacity: 1, transform: 'translateX(0px)' }}
+                      exit={{
+                        opacity: 0,
+                        transform: shouldReduceMotion
+                          ? 'translateX(0px)'
+                          : 'translateX(-16px)',
+                      }}
+                      transition={{
+                        duration: shouldReduceMotion ? 0.16 : 0.2,
+                        ease: [0.23, 1, 0.32, 1],
+                      }}
                       className="flex w-full flex-col gap-sm"
                     >
                       <TaskLogPanelContent

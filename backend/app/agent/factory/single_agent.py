@@ -21,7 +21,10 @@ from camel.messages import BaseMessage
 
 from app.agent.agent_model import agent_model
 from app.agent.factory.toolkit_assembler import assemble_single_agent_toolkits
-from app.agent.prompt import SINGLE_AGENT_SYS_PROMPT
+from app.agent.prompt import (
+    SINGLE_AGENT_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.utils import NOW_STR
 from app.hands.interface import IHands
 from app.model.chat import Chat
@@ -70,6 +73,7 @@ async def single_agent(
         working_directory=working_directory,
         now_str=NOW_STR,
     )
+    system_message = append_connected_app_mcp_notice(system_message)
 
     agent = agent_model(
         Agents.single_agent,

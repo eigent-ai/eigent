@@ -621,23 +621,27 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
-          if (!hasActiveNonLegacySpace) {
-            if (legacySpaceIdsWithProjects.size === 0) {
-              try {
-                initialBlankSpace = await proxyCreateSpace({
-                  name: INITIAL_BLANK_SPACE_NAME,
-                  source_type: 'blank',
-                  metadata: {
-                    createdFrom: INITIAL_BLANK_SPACE_CREATED_FROM,
-                    autoCreatedPlaceholder: true,
-                  },
-                });
-              } catch (error) {
-                console.warn(
-                  '[spaceStore] Failed to create initial blank Space:',
-                  error
-                );
-              }
+          const shouldCreateInitialBlankSpace =
+            !hasActiveNonLegacySpace &&
+            (activeOwnedSpaces.length === 0 || activeLegacySpaces.length > 0);
+          const shouldPreferInitialBlankSpace =
+            legacySpaceIdsWithProjects.size > 0;
+
+          if (shouldCreateInitialBlankSpace) {
+            try {
+              initialBlankSpace = await proxyCreateSpace({
+                name: INITIAL_BLANK_SPACE_NAME,
+                source_type: 'blank',
+                metadata: {
+                  createdFrom: INITIAL_BLANK_SPACE_CREATED_FROM,
+                  autoCreatedPlaceholder: true,
+                },
+              });
+            } catch (error) {
+              console.warn(
+                '[spaceStore] Failed to create initial blank Space:',
+                error
+              );
             }
           }
 
@@ -716,7 +720,9 @@ export const useSpaceStore = create<SpaceStore>()(
                 nextSpaces,
                 state.activeSpaceId,
                 localLegacyId,
-                initialBlankSpace?.id
+                shouldPreferInitialBlankSpace
+                  ? initialBlankSpace?.id
+                  : undefined
               ),
             };
           });
