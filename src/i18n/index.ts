@@ -39,13 +39,26 @@ const availableLanguages = Object.values(LocaleEnum);
 
 let initialLanguage: string;
 
-if (savedLanguage && availableLanguages.includes(savedLanguage as LocaleEnum)) {
-  initialLanguage = savedLanguage;
-} else {
-  const matched = availableLanguages.find((lang) =>
-    systemLanguage.startsWith(lang)
+// Compare case-insensitively so a persisted value like "zh-Hans" still
+// matches when normalised to "zh-hans", while the canonical locale code
+// (e.g. "zh-Hans") is used as the i18n resource key.  Issue #1779.
+if (savedLanguage) {
+  const match = availableLanguages.find(
+    (lang) => lang.toLowerCase() === savedLanguage
   );
-  initialLanguage = matched || LocaleEnum.English;
+  if (match) {
+    initialLanguage = match;
+  } else {
+    const browserMatch = availableLanguages.find((lang) =>
+      systemLanguage.startsWith(lang.toLowerCase())
+    );
+    initialLanguage = browserMatch || LocaleEnum.English;
+  }
+} else {
+  const browserMatch = availableLanguages.find((lang) =>
+    systemLanguage.startsWith(lang.toLowerCase())
+  );
+  initialLanguage = browserMatch || LocaleEnum.English;
 }
 
 i18n.use(initReactI18next).init({
