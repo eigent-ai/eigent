@@ -244,6 +244,17 @@ export const INIT_PROVODERS: Provider[] = [
     websiteUrl: 'https://docs.tokenfactory.nebius.com/quickstart',
   },
   {
+    id: 'ant-ling',
+    name: 'Ant Ling',
+    apiKey: '',
+    apiHost: 'https://api.ant-ling.com/v1',
+    description: 'Ant Ling model configuration',
+    is_valid: false,
+    model_type: '',
+    modelsEndpoint: '/models',
+    websiteUrl: 'https://developer.ant-ling.com',
+  },
+  {
     id: 'openai-compatible-model',
     name: 'OpenAI Compatible',
     apiKey: '',
