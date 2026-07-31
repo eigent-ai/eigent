@@ -15,8 +15,11 @@
   "gateway-connectors": "Connecteurs",
   "source-open": "Cloud",
   "source-built-in": "Intégré",
-  "source-local": "Local",
-  "source-remote": "Distant",
+  "source-local": "Personnalisé local",
+  "source-remote": "Personnalisé distant",
+  "type": "Type",
+  "connected": "Connecté",
+  "not-connected": "Non connecté",
   "load-built-in-failed": "Échec du chargement des connecteurs intégrés",
   "load-custom-failed": "Échec du chargement des connecteurs personnalisés",
   "load-gateway-failed": "Échec du chargement des connecteurs",
@@ -128,5 +131,10 @@
   "search-engine-id": "Identifiant du moteur de recherche",
   "search-engine-id-placeholder": "Saisissez l’identifiant du moteur de recherche personnalisé associé à votre clé API",
   "google-search-custom-desc": "Connectez Google Custom Search. Une clé API Google et un identifiant de moteur de recherche personnalisé (CSE) sont requis.",
-  "google-search-default-desc": "La recherche Google est activée par défaut. Aucune clé API n’est requise."
+  "google-search-default-desc": "La recherche Google est activée par défaut. Aucune clé API n’est requise.",
+  "exa-api-key": "Clé API Exa",
+  "google-check-failed": "Les identifiants Google n’ont pas pu être vérifiés.",
+  "exa-check-failed": "La clé API Exa n’a pas pu être vérifiée.",
+  "optional": "Facultatif",
+  "enter-field": "Saisissez {{field}}"
 }

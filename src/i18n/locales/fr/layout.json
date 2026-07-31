@@ -215,6 +215,7 @@
   "browser-connections": "Connexions",
   "browser-connections-description": "Configuration du protocole Chrome DevTools pour l'automatisation du navigateur.",
   "browser-plugins": "Plugins",
+  "browser-extension": "Extension",
   "browser-plugins-description": "Gérer les extensions du navigateur pour des fonctionnalités améliorées.",
   "restart-to-apply": "Redémarrer pour Appliquer",
   "browser-cookie": "Cookies",
@@ -529,5 +530,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "Confirmer",
+  "confirm-content": "Voulez-vous vraiment continuer ?",
+  "settings-dialog-description": "Configurez les paramètres de l’espace de travail, de l’appareil et de l’application.",
+  "workspace": "Espace de travail",
+  "device": "Appareil",
+  "workspace-profile": "Profil de l’espace de travail",
+  "workspace-profile-card-description": "Profil de configuration de l’espace de travail",
+  "workspace-profile-sub-agents-description": "Configurez les sous-agents distants pour cet espace de travail.",
+  "workspace-profile-open": "Ouvrir les paramètres de {{name}}",
+  "failed-to-load-browsers": "Impossible de charger les navigateurs",
+  "external-browser-name": "Navigateur externe ({{port}})",
+  "browser-name": "Navigateur {{port}}",
+  "loading-browser-connections": "Chargement des connexions de navigateur",
+  "delete-cookies-for-domain": "Supprimer les cookies de {{domain}}"
 }

@@ -215,6 +215,7 @@
   "browser-connections": "接続",
   "browser-connections-description": "ブラウザ自動化のためのChrome DevTools Protocol設定。",
   "browser-plugins": "プラグイン",
+  "browser-extension": "拡張機能",
   "browser-plugins-description": "機能強化のためのブラウザ拡張機能を管理。",
   "restart-to-apply": "適用するために再起動",
   "browser-cookie": "Cookies",
@@ -529,5 +530,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "確認",
+  "confirm-content": "続行してもよろしいですか？",
+  "settings-dialog-description": "ワークスペース、デバイス、アプリケーションの設定を構成します。",
+  "workspace": "ワークスペース",
+  "device": "デバイス",
+  "workspace-profile": "ワークスペースプロファイル",
+  "workspace-profile-card-description": "ワークスペース構成プロファイル",
+  "workspace-profile-sub-agents-description": "このワークスペースのリモートサブエージェントを構成します。",
+  "workspace-profile-open": "{{name}} の設定を開く",
+  "failed-to-load-browsers": "ブラウザを読み込めませんでした",
+  "external-browser-name": "外部ブラウザ（{{port}}）",
+  "browser-name": "ブラウザ {{port}}",
+  "loading-browser-connections": "ブラウザ接続を読み込んでいます",
+  "delete-cookies-for-domain": "{{domain}} の Cookie を削除"
 }

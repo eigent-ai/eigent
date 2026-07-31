@@ -18,6 +18,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { AlertCircle, ChevronLeft, X } from 'lucide-react';
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -38,7 +39,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'inset-0 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50 bg-transparent',
+      'fixed inset-0 z-50 bg-transparent backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className
     )}
     {...props}
@@ -104,46 +105,50 @@ const DialogContent = React.forwardRef<
       ...props
     },
     ref
-  ) => (
-    <DialogPortal>
-      <DialogOverlay
-        className={cn(
-          overlayVariant === 'light' && 'bg-dialog-overlay-light',
-          overlayVariant === 'dark' && 'bg-dialog-overlay-dark',
-          overlayVariant === 'dimmed' && 'bg-dialog-overlay-scrim',
-          overlayClassName
-        )}
-      />
-      <DialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          dialogContentVariants({ size }),
-          overlayVariant !== 'default' && 'z-[51]',
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close asChild>
-            <Button
-              variant="ghost"
-              size="xs"
-              buttonContent="icon-only"
-              className={cn(
-                'right-4 top-4 absolute focus:ring-0 focus:ring-offset-0 focus:outline-none',
-                closeButtonClassName
-              )}
-              onClick={onClose}
-            >
-              {closeButtonIcon || <X className="h-4 w-4" />}
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  )
+  ) => {
+    const { t } = useTranslation();
+
+    return (
+      <DialogPortal>
+        <DialogOverlay
+          className={cn(
+            overlayVariant === 'light' && 'bg-dialog-overlay-light',
+            overlayVariant === 'dark' && 'bg-dialog-overlay-dark',
+            overlayVariant === 'dimmed' && 'bg-dialog-overlay-scrim',
+            overlayClassName
+          )}
+        />
+        <DialogPrimitive.Content
+          ref={ref}
+          className={cn(
+            dialogContentVariants({ size }),
+            overlayVariant !== 'default' && 'z-[51]',
+            className
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close asChild>
+              <Button
+                variant="ghost"
+                size="xs"
+                buttonContent="icon-only"
+                className={cn(
+                  'absolute right-4 top-4 focus:outline-none focus:ring-0 focus:ring-offset-0',
+                  closeButtonClassName
+                )}
+                onClick={onClose}
+              >
+                {closeButtonIcon || <X className="h-4 w-4" aria-hidden />}
+                <span className="sr-only">{t('layout.close')}</span>
+              </Button>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  }
 );
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
@@ -175,12 +180,12 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
     <div
       ref={ref}
       className={cn(
-        'gap-2 rounded-t-xl bg-ds-bg-neutral-strong-default p-4 relative flex w-full shrink-0 items-center justify-between overflow-hidden',
+        'relative flex w-full shrink-0 items-center justify-between gap-2 overflow-hidden rounded-t-xl bg-ds-bg-neutral-strong-default p-4',
         className
       )}
       {...props}
     >
-      <div className="gap-2 flex items-center">
+      <div className="flex items-center gap-2">
         {showBackButton && (
           <Button
             variant="ghost"
@@ -192,11 +197,11 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
             <ChevronLeft className="h-4 w-4 text-ds-icon-neutral-default-default" />
           </Button>
         )}
-        <div className="sm:text-left flex flex-col text-center">
+        <div className="flex flex-col text-center sm:text-left">
           {title && (
-            <div className="gap-1 flex items-center">
+            <div className="flex items-center gap-1">
               <DialogPrimitive.Title asChild>
-                <span className="text-body-md font-bold text-ds-text-neutral-default-default my-[1px]">
+                <span className="my-[1px] text-body-md font-bold text-ds-text-neutral-default-default">
                   {title}
                 </span>
               </DialogPrimitive.Title>
@@ -227,7 +232,7 @@ const DialogContentSection = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('min-h-0 p-4 flex-1', className)} {...props} />
+  <div ref={ref} className={cn('min-h-0 flex-1 p-4', className)} {...props} />
 ));
 DialogContentSection.displayName = 'DialogContentSection';
 
@@ -267,8 +272,8 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
       className,
       showConfirmButton = false,
       showCancelButton = false,
-      confirmButtonText = 'Confirm',
-      cancelButtonText = 'Cancel',
+      confirmButtonText: confirmButtonTextProp,
+      cancelButtonText: cancelButtonTextProp,
       onConfirm,
       onCancel,
       confirmButtonVariant = 'primary',
@@ -280,8 +285,11 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
     },
     ref
   ) => {
+    const { t } = useTranslation();
     const footerRef = React.useRef<HTMLDivElement>(null);
     const [hasScrollbar, setHasScrollbar] = React.useState(false);
+    const confirmButtonText = confirmButtonTextProp ?? t('layout.confirm');
+    const cancelButtonText = cancelButtonTextProp ?? t('layout.cancel');
 
     // Combine local ref with forwarded ref
     React.useImperativeHandle(ref, () => footerRef.current as HTMLDivElement);
@@ -339,9 +347,9 @@ const DialogFooter = React.forwardRef<HTMLDivElement, DialogFooterProps>(
       <div
         ref={footerRef}
         className={cn(
-          'gap-2 px-4 pb-4 pt-2 relative flex w-full shrink-0 items-center justify-end',
+          'relative flex w-full shrink-0 items-center justify-end gap-2 px-4 pb-4 pt-2',
           hasScrollbar &&
-            'border-ds-border-neutral-default-default border-x-0 border-t-[0.5px] border-b-0 border-solid',
+            'border-x-0 border-b-0 border-t-[0.5px] border-solid border-ds-border-neutral-default-default',
           className
         )}
         {...props}

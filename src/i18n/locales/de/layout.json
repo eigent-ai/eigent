@@ -215,6 +215,7 @@
   "browser-connections": "Verbindungen",
   "browser-connections-description": "Chrome DevTools Protocol-Konfiguration für Browser-Automatisierung.",
   "browser-plugins": "Plugins",
+  "browser-extension": "Erweiterung",
   "browser-plugins-description": "Browser-Erweiterungen für erweiterte Funktionalität verwalten.",
   "restart-to-apply": "Neu starten, um anzuwenden",
   "browser-cookie": "Cookies",
@@ -529,5 +530,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "Bestätigen",
+  "confirm-content": "Möchten Sie wirklich fortfahren?",
+  "settings-dialog-description": "Arbeitsbereichs-, Geräte- und Anwendungseinstellungen konfigurieren.",
+  "workspace": "Arbeitsbereich",
+  "device": "Gerät",
+  "workspace-profile": "Arbeitsbereichsprofil",
+  "workspace-profile-card-description": "Konfigurationsprofil des Arbeitsbereichs",
+  "workspace-profile-sub-agents-description": "Remote-Unteragenten für diesen Arbeitsbereich konfigurieren.",
+  "workspace-profile-open": "Einstellungen für {{name}} öffnen",
+  "failed-to-load-browsers": "Browser konnten nicht geladen werden",
+  "external-browser-name": "Externer Browser ({{port}})",
+  "browser-name": "Browser {{port}}",
+  "loading-browser-connections": "Browser-Verbindungen werden geladen",
+  "delete-cookies-for-domain": "Cookies für {{domain}} löschen"
 }

@@ -224,6 +224,7 @@
   "browser-connections": "Connections",
   "browser-connections-description": "Chrome DevTools Protocol configuration for browser automation.",
   "browser-plugins": "Plugins",
+  "browser-extension": "Extension",
   "browser-plugins-description": "Manage browser extensions for enhanced functionality.",
   "restart-to-apply": "Restart to Apply",
   "browser-cookie": "Cookies",
@@ -529,5 +530,19 @@
   "thinking-effort-medium": "Medium",
   "thinking-effort-high": "High",
   "thinking-effort-extra_high": "Extra High",
-  "thinking-effort-ultra": "Ultra"
+  "thinking-effort-ultra": "Ultra",
+  "confirm": "Confirm",
+  "confirm-content": "Are you sure you want to continue?",
+  "settings-dialog-description": "Configure Workspace, Device, and application settings.",
+  "workspace": "Workspace",
+  "device": "Device",
+  "workspace-profile": "Workspace profile",
+  "workspace-profile-card-description": "Workspace configuration profile",
+  "workspace-profile-sub-agents-description": "Configure remote sub-agents for this workspace.",
+  "workspace-profile-open": "Open settings for {{name}}",
+  "failed-to-load-browsers": "Failed to load browsers",
+  "external-browser-name": "External Browser ({{port}})",
+  "browser-name": "Browser {{port}}",
+  "loading-browser-connections": "Loading browser connections",
+  "delete-cookies-for-domain": "Delete cookies for {{domain}}"
 }

@@ -23,7 +23,7 @@ import Layout from '@/components/Layout';
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
-const History = lazy(() => import('@/pages/History'));
+const Home = lazy(() => import('@/pages/Home'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 
@@ -163,15 +163,7 @@ const AppRoutes = () => (
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
         <Route path="/" element={<Workspace />} />
-        <Route path="/history" element={<History />} />
-        <Route
-          path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
-        />
-        <Route
-          path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
-        />
+        <Route path="/home" element={<Home />} />
       </Route>
     </Route>
     <Route path="*" element={<NotFound />} />

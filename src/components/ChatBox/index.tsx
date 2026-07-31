@@ -33,6 +33,7 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { openSettingsDialog } from '@/store/settingsDialogStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -45,7 +46,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { ProjectChatContainer } from './ProjectChatContainer';
@@ -370,11 +371,9 @@ export default function ChatBox(): JSX.Element {
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
 
-  const navigate = useNavigate();
-
   const handleSelectModel = useCallback(() => {
-    navigate('/history?tab=agents');
-  }, [navigate]);
+    openSettingsDialog('models');
+  }, []);
 
   // Task time tracking
   const [, setTaskTime] = useState(
@@ -534,7 +533,7 @@ export default function ChatBox(): JSX.Element {
           return;
         }
         toast.error('Please select a model first.');
-        navigate('/history?tab=agents');
+        openSettingsDialog('models');
         return;
       }
 
@@ -572,7 +571,6 @@ export default function ChatBox(): JSX.Element {
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
-      navigate,
       t,
     ]
   );
@@ -645,7 +643,7 @@ export default function ChatBox(): JSX.Element {
         return;
       }
       toast.error('Please select a model first.');
-      navigate('/history?tab=agents');
+      openSettingsDialog('models');
       return;
     }
 

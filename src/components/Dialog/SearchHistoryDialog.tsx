@@ -94,12 +94,12 @@ export function SearchHistoryDialog() {
   };
 
   const handleDelete = (taskId: string) => {
-    // TODO: Implement delete functionality similar to HistorySidebar
+    // TODO: Implement delete functionality
     console.log('Delete task:', taskId);
   };
 
   const handleShare = (taskId: string) => {
-    // TODO: Implement share functionality similar to HistorySidebar
+    // TODO: Implement share functionality
     console.log('Share task:', taskId);
   };
 

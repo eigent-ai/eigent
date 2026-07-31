@@ -37,7 +37,7 @@ export const TaskType = ({ type }: { type: 1 | 2 | 3 }) => {
   };
   return (
     <div
-      className={`h-6 gap-1 px-2 py-1 flex items-center rounded-full ${typeMap[type].bgColor} ${typeMap[type].textColor} text-xs font-medium leading-17`}
+      className={`flex h-6 items-center gap-1 rounded-full px-2 py-1 ${typeMap[type].bgColor} ${typeMap[type].textColor} text-xs font-medium leading-17`}
     >
       <div className={`h-2 w-2 ${typeMap[type].dotColor} rounded-full`}></div>
       <span>{typeMap[type].label}</span>

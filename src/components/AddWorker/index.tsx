@@ -15,6 +15,10 @@
 import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost, proxyFetchGet } from '@/api/http';
 import githubIcon from '@/assets/icon/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,10 +45,6 @@ import {
   buildAgentModelConfig,
   buildAgentModelConfigFromProvider,
 } from '@/lib/modelConfig';
-import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';

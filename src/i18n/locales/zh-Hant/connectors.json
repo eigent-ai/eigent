@@ -15,8 +15,11 @@
   "gateway-connectors": "連接器",
   "source-open": "雲端",
   "source-built-in": "內建",
-  "source-local": "本機",
-  "source-remote": "遠端",
+  "source-local": "自訂本機",
+  "source-remote": "自訂遠端",
+  "type": "類型",
+  "connected": "已連線",
+  "not-connected": "未連線",
   "load-built-in-failed": "載入內建連接器失敗",
   "load-custom-failed": "載入自訂連接器失敗",
   "load-gateway-failed": "載入連接器失敗",
@@ -128,5 +131,10 @@
   "search-engine-id": "搜尋引擎 ID",
   "search-engine-id-placeholder": "輸入與你的 API 金鑰相關聯的自訂搜尋引擎 ID",
   "google-search-custom-desc": "連接 Google 自訂搜尋。需要 Google API 金鑰和自訂搜尋引擎（CSE）ID。",
-  "google-search-default-desc": "Google 搜尋預設已啟用，無需 API 金鑰。"
+  "google-search-default-desc": "Google 搜尋預設已啟用，無需 API 金鑰。",
+  "exa-api-key": "Exa API 金鑰",
+  "google-check-failed": "無法驗證 Google 憑證。",
+  "exa-check-failed": "無法驗證 Exa API 金鑰。",
+  "optional": "選填",
+  "enter-field": "輸入{{field}}"
 }

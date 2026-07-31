@@ -215,6 +215,7 @@
   "browser-connections": "連線",
   "browser-connections-description": "Chrome 開發者工具協定設定，用於瀏覽器自動化。",
   "browser-plugins": "外掛程式",
+  "browser-extension": "擴充功能",
   "browser-plugins-description": "管理瀏覽器擴充功能以增強功能。",
   "restart-to-apply": "重新啟動以套用",
   "browser-cookie": "Cookies",
@@ -529,5 +530,19 @@
   "support-download": "Download",
   "support-log-saved": "Log saved to {{path}}",
   "support-log-empty": "No log files found yet.",
-  "support-log-export-failed": "Could not export the log."
+  "support-log-export-failed": "Could not export the log.",
+  "confirm": "確認",
+  "confirm-content": "確定要繼續嗎？",
+  "settings-dialog-description": "設定工作區、裝置和應用程式設定。",
+  "workspace": "工作區",
+  "device": "裝置",
+  "workspace-profile": "工作區設定檔",
+  "workspace-profile-card-description": "工作區設定資料",
+  "workspace-profile-sub-agents-description": "設定此工作區的遠端子代理。",
+  "workspace-profile-open": "開啟 {{name}} 的設定",
+  "failed-to-load-browsers": "無法載入瀏覽器",
+  "external-browser-name": "外部瀏覽器（{{port}}）",
+  "browser-name": "瀏覽器 {{port}}",
+  "loading-browser-connections": "正在載入瀏覽器連線",
+  "delete-cookies-for-domain": "刪除 {{domain}} 的 Cookie"
 }
