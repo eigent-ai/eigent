@@ -23,6 +23,7 @@ from camel.tasks import Task
 from app.exception.exception import ProgramException
 from app.model.chat import Status, SupplementChat, TaskContent, UpdateData
 from app.service.task import (
+    TASK_LOCK_CLEANUP_SENTINEL,
     Action,
     ActionAskData,
     ActionCreateAgentData,
@@ -248,10 +249,48 @@ class TestTaskLock:
         task_lock.add_human_input_listen(agent_name)
         assert agent_name in task_lock.human_input
 
-        # Put and get human input
+        # A reply is accepted only while the agent is actively waiting.
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
         await task_lock.put_human_input(agent_name, "user response")
-        response = await task_lock.get_human_input(agent_name)
+        response = await waiting_reply
         assert response == "user response"
+
+        # Duplicate/stale replies must not remain queued for a future ask.
+        with pytest.raises(KeyError):
+            await task_lock.put_human_input(agent_name, "stale response")
+
+    @pytest.mark.asyncio
+    async def test_task_lock_delivers_only_one_reply_per_wait(self):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+        agent_name = "test_agent"
+        task_lock.add_human_input_listen(agent_name)
+
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
+        await task_lock.put_human_input(agent_name, "first response")
+
+        with pytest.raises(KeyError):
+            await task_lock.put_human_input(agent_name, "duplicate response")
+
+        assert await waiting_reply == "first response"
+
+    @pytest.mark.asyncio
+    async def test_task_lock_cleanup_unblocks_human_input_wait(self):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+        task_lock.add_human_input_listen("test_agent")
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input("test_agent")
+        )
+        await asyncio.sleep(0)
+
+        await task_lock.cleanup()
+
+        assert await waiting_reply == TASK_LOCK_CLEANUP_SENTINEL
 
     @pytest.mark.asyncio
     async def test_task_lock_background_task_management(self):
@@ -577,8 +616,12 @@ class TestTaskServiceIntegration:
         assert retrieved_data.data.question == "Improve this"
 
         # Test human input operations
+        waiting_reply = asyncio.create_task(
+            task_lock.get_human_input(agent_name)
+        )
+        await asyncio.sleep(0)
         await task_lock.put_human_input(agent_name, "User response")
-        user_response = await task_lock.get_human_input(agent_name)
+        user_response = await waiting_reply
         assert user_response == "User response"
 
         # Test background task management
