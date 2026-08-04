@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The preview slice for the currently scoped project. */
 function slice() {
@@ -22,6 +22,10 @@ function slice() {
 
 describe('pageTabStore session preview', () => {
   beforeEach(() => {
+    window.electronAPI = {
+      ...window.electronAPI,
+      terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+    };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
@@ -78,6 +82,58 @@ describe('pageTabStore session preview', () => {
       const active = slice().tabs.find((tab) => tab.id === slice().activeTabId);
       expect(active?.type).toBe(kind);
     });
+  });
+
+  it('gives a fresh terminal tab a project-scoped shell id', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().tabs[0].id;
+
+    store.choosePreviewTabType(chooserId, 'terminal');
+    const terminal = slice().tabs[0];
+    expect(terminal.type).toBe('terminal');
+    expect(terminal.type === 'terminal' && terminal.shellId).toContain(
+      'session-shell:project-a:'
+    );
+    expect(terminal.type === 'terminal' && terminal.agentSourceId).toBeFalsy();
+  });
+
+  it('opens agent streams in terminal tabs, converting the chooser in place', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().tabs[0].id;
+
+    store.openAgentTerminalPreview(
+      'chat-1:turn-1:sub-1',
+      'Developer Agent',
+      chooserId
+    );
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
+      type: 'terminal',
+      title: 'Developer Agent',
+      agentSourceId: 'chat-1:turn-1:sub-1',
+    });
+    const firstTabId = slice().tabs[0].id;
+
+    // Same stream again — focuses the existing tab instead of duplicating.
+    store.addChooserPreviewTab();
+    const secondChooser = slice().activeTabId!;
+    store.openAgentTerminalPreview(
+      'chat-1:turn-1:sub-1',
+      'Developer Agent',
+      secondChooser
+    );
+    expect(slice().activeTabId).toBe(firstTabId);
+    expect(slice().tabs.filter((tab) => tab.type === 'terminal')).toHaveLength(
+      1
+    );
+
+    // A different stream without a chooser reference appends a new tab.
+    store.openAgentTerminalPreview('chat-1:turn-1:sub-2', 'Developer Agent');
+    expect(slice().tabs.filter((tab) => tab.type === 'terminal')).toHaveLength(
+      2
+    );
   });
 
   it('reuses the chooser tab when a file is opened', () => {
@@ -217,5 +273,27 @@ describe('pageTabStore session preview', () => {
       persisted.tabs.filter((tab) => tab.type === 'file' && tab.file !== null)
     ).toHaveLength(1);
     expect(persisted.activeTabId).toBe(slice().activeTabId);
+  });
+
+  it('disposes shells and drops persisted preview state with a project', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().activeTabId!, 'terminal');
+    const terminal = slice().tabs[0];
+    expect(terminal.type).toBe('terminal');
+    const shellId = terminal.type === 'terminal' ? terminal.shellId : undefined;
+
+    store.setSessionPreviewProject('project-b');
+    store.toggleSessionPreview();
+    store.removeSessionPreviewProject('project-a');
+
+    expect(window.electronAPI.terminalDispose).toHaveBeenCalledWith(shellId);
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-a']
+    ).toBeUndefined();
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-b'
+    );
+    expect(slice().open).toBe(true);
   });
 });

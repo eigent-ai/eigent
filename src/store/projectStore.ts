@@ -37,6 +37,7 @@ import {
   hasActiveSSEConnection,
   VanillaChatStore,
 } from './chatStore';
+import { usePageTabStore } from './pageTabStore';
 import {
   projectMetaFromServer,
   useSpaceStore,
@@ -829,6 +830,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const nextProjects = { ...projects };
     for (const projectId of projectIdsToRemove) {
       delete nextProjects[projectId];
+      usePageTabStore.getState().removeSessionPreviewProject(projectId);
       useSpaceStore.getState().removeProjectMeta(projectId);
     }
 
@@ -1123,6 +1125,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         staleProjectIds: nextStale,
       };
     });
+    usePageTabStore.getState().removeSessionPreviewProject(projectId);
     useSpaceStore.getState().removeProjectMeta(projectId);
   },
 

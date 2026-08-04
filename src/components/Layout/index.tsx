@@ -93,7 +93,7 @@ const Layout = () => {
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
   return (
-    <div className="bg-ds-bg-neutral-muted-default relative flex h-full flex-col overflow-hidden">
+    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-muted-default">
       <div
         className={
           actualShouldShowInstallScreen
@@ -103,7 +103,7 @@ const Layout = () => {
       >
         <TopBar />
       </div>
-      <div className="min-h-0 relative h-full flex-1 overflow-hidden">
+      <div className="relative h-full min-h-0 flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}
 

@@ -197,6 +197,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.off(channel, listener);
     };
   },
+  // interactive terminal (session preview terminal tabs)
+  terminalCreate: (options: {
+    id: string;
+    cwd?: string;
+    cols?: number;
+    rows?: number;
+  }) => ipcRenderer.invoke('terminal-create', options),
+  terminalInput: (id: string, data: string) =>
+    ipcRenderer.send('terminal-input', { id, data }),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.send('terminal-resize', { id, cols, rows }),
+  terminalDispose: (id: string) => ipcRenderer.invoke('terminal-dispose', id),
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void
+  ) => {
+    const channel = 'terminal-data';
+    const listener = (_event: any, payload: { id: string; data: string }) =>
+      callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
+  onTerminalExit: (
+    callback: (payload: { id: string; exitCode: number }) => void
+  ) => {
+    const channel = 'terminal-exit';
+    const listener = (_event: any, payload: { id: string; exitCode: number }) =>
+      callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.off(channel, listener);
+    };
+  },
   // Skills: all operations via Brain REST API, no IPC
 });
 
