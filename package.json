@@ -114,7 +114,7 @@
     "node-pty": "^1.1.0",
     "papaparse": "^5.5.3",
     "postprocessing": "^6.37.8",
-    "react-day-picker": "^9.13.0",
+    "react-day-picker": "^10.0.1",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^3.0.4",
     "react-router-dom": "^7.6.0",
