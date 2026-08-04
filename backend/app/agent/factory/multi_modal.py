@@ -23,7 +23,10 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import MULTI_MODAL_SYS_PROMPT
+from app.agent.prompt import (
+    MULTI_MODAL_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 
@@ -38,6 +41,7 @@ from app.agent.toolkit.video_download_toolkit import VideoDownloaderToolkit
 from app.agent.utils import NOW_STR
 from app.hands.interface import IHands
 from app.model.chat import Chat
+from app.model.subscription_runtime import is_subscription_auth
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
 
@@ -129,7 +133,8 @@ def multi_modal_agent(
         )
         tools.extend(terminal_toolkit.get_tools())
         tool_names.append(TerminalToolkit.toolkit_name())
-    if options.is_cloud():
+    uses_subscription_auth = is_subscription_auth(options)
+    if options.is_cloud() and not uses_subscription_auth:
         open_ai_image_toolkit = OpenAIImageToolkit(
             options.project_id,
             model="dall-e-3",
@@ -145,13 +150,21 @@ def multi_modal_agent(
         )
         tools.extend(open_ai_image_toolkit.get_tools())
         tool_names.append(OpenAIImageToolkit.toolkit_name())
+    elif options.is_cloud():
+        logger.info(
+            "Skipping OpenAI image toolkit for subscription auth; "
+            "the subscription token is only used for chat model runtime."
+        )
     # Convert string model_platform to enum for comparison
     try:
         model_platform_enum = ModelPlatformType(options.model_platform.lower())
     except (ValueError, AttributeError):
         model_platform_enum = None
 
-    if model_platform_enum == ModelPlatformType.OPENAI:
+    if (
+        model_platform_enum == ModelPlatformType.OPENAI
+        and not uses_subscription_auth
+    ):
         audio_analysis_toolkit = AudioAnalysisToolkit(
             options.project_id,
             working_directory,
@@ -165,8 +178,13 @@ def multi_modal_agent(
         )
         tools.extend(audio_analysis_toolkit.get_tools())
         tool_names.append(AudioAnalysisToolkit.toolkit_name())
+    elif model_platform_enum == ModelPlatformType.OPENAI:
+        logger.info(
+            "Skipping OpenAI audio toolkit for subscription auth; "
+            "audio APIs require a platform API key."
+        )
 
-    tool_names = [
+    ordered_tool_names = [
         VideoDownloaderToolkit.toolkit_name(),
         AudioAnalysisToolkit.toolkit_name(),
         ScreenshotToolkit.toolkit_name(),
@@ -177,12 +195,17 @@ def multi_modal_agent(
         SearchToolkit.toolkit_name(),
         SkillToolkit.toolkit_name(),
     ]
+    available_tool_names = set(tool_names)
+    tool_names = [
+        name for name in ordered_tool_names if name in available_tool_names
+    ]
     system_message = MULTI_MODAL_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),
         working_directory=working_directory,
         now_str=NOW_STR,
     )
+    system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.multi_modal_agent,

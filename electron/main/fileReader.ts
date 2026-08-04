@@ -13,15 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { BrowserWindow, app } from 'electron';
-import fs from 'fs';
-import http from 'http';
-import https from 'https';
 import mammoth from 'mammoth';
+import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
+import path from 'node:path';
+import { URL } from 'node:url';
 import Papa from 'papaparse';
-import path from 'path';
 import * as unzipper from 'unzipper';
-import { URL } from 'url';
 import { parseStringPromise } from 'xml2js';
+import { normalizeLegacySandboxPath } from './utils/filePath';
+import { findDirectoriesByName } from './utils/log';
+import { resolveProjectStoragePath } from './utils/projectStoragePath';
 
 interface FileInfo {
   path: string;
@@ -474,6 +477,8 @@ export class FileReader {
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
+        filePath = normalizeLegacySandboxPath(filePath);
+
         // check if it is a remote file
         if (!this.isLocalFile(filePath)) {
           console.log('detect remote file, start downloading:', filePath);
@@ -633,6 +638,79 @@ export class FileReader {
     }
   }
 
+  private sanitizeIdentity(identity: string): string {
+    return identity
+      .split('@')[0]
+      .replace(/[\\/*?:"<>|\s]/g, '_')
+      .replace(/^\.+|\.+$/g, '');
+  }
+
+  private normalizeTaskId(taskId: string): string {
+    return String(taskId).replace(/^task_/, '');
+  }
+
+  private taskDirName(taskId: string): string {
+    return `task_${this.normalizeTaskId(taskId)}`;
+  }
+
+  private taskDirNameCandidates(taskId: string): string[] {
+    return [...new Set([this.taskDirName(taskId), `task_${taskId}`])];
+  }
+
+  private getStorageIdentityCandidates(
+    email: string,
+    userId?: string | number | null
+  ): string[] {
+    const candidates = [this.sanitizeIdentity(email)];
+    if (userId !== undefined && userId !== null && userId !== '') {
+      const rawUserId = String(userId);
+      candidates.push(
+        this.sanitizeIdentity(
+          rawUserId.startsWith('user_') ? rawUserId : `user_${rawUserId}`
+        )
+      );
+    }
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  private resolveProjectPath(
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ): string {
+    return resolveProjectStoragePath({
+      homeDir: app.getPath('home'),
+      email,
+      projectId,
+      userId,
+      existsSync: fs.existsSync,
+    });
+  }
+
+  private findProjectTaskPath(
+    userHome: string,
+    rootDir: 'eigent' | '.eigent',
+    identities: string[],
+    projectId: string,
+    taskId: string
+  ): string | null {
+    for (const identity of identities) {
+      for (const taskDirName of this.taskDirNameCandidates(taskId)) {
+        const taskPath = path.join(
+          userHome,
+          rootDir,
+          identity,
+          `project_${projectId}`,
+          taskDirName
+        );
+        if (fs.existsSync(taskPath)) {
+          return taskPath;
+        }
+      }
+    }
+    return null;
+  }
+
   private findTaskInProjects(userDir: string, taskId: string): string | null {
     try {
       if (!fs.existsSync(userDir)) {
@@ -645,10 +723,12 @@ export class FileReader {
       for (const entry of entries) {
         if (entry.startsWith('project_')) {
           const projectDir = path.join(userDir, entry);
-          const taskDir = path.join(projectDir, `task_${taskId}`);
+          for (const taskDirName of this.taskDirNameCandidates(taskId)) {
+            const taskDir = path.join(projectDir, taskDirName);
 
-          if (fs.existsSync(taskDir)) {
-            return taskDir;
+            if (fs.existsSync(taskDir)) {
+              return taskDir;
+            }
           }
         }
       }
@@ -663,35 +743,50 @@ export class FileReader {
   private resolveTaskPaths(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): {
     dirPath: string;
     logPath: string;
   } {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const safeEmail = identities[0] || this.sanitizeIdentity(email);
     const userHome = app.getPath('home');
 
     let dirPath: string;
     let logPath: string;
 
     if (projectId) {
-      dirPath = path.join(
-        userHome,
-        'eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
-      logPath = path.join(
-        userHome,
-        '.eigent',
-        safeEmail,
-        `project_${projectId}`,
-        `task_${taskId}`
-      );
+      dirPath =
+        this.findProjectTaskPath(
+          userHome,
+          'eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          'eigent',
+          safeEmail,
+          `project_${projectId}`,
+          this.taskDirName(taskId)
+        );
+      logPath =
+        this.findProjectTaskPath(
+          userHome,
+          '.eigent',
+          identities,
+          projectId,
+          taskId
+        ) ||
+        path.join(
+          userHome,
+          '.eigent',
+          safeEmail,
+          `project_${projectId}`,
+          this.taskDirName(taskId)
+        );
       return { dirPath, logPath };
     }
 
@@ -707,28 +802,45 @@ export class FileReader {
           '.eigent',
           safeEmail,
           projectMatch[0],
-          `task_${taskId}`
+          this.taskDirName(taskId)
         );
       } else {
-        logPath = path.join(userHome, '.eigent', safeEmail, `task_${taskId}`);
+        logPath = path.join(
+          userHome,
+          '.eigent',
+          safeEmail,
+          this.taskDirName(taskId)
+        );
       }
       return { dirPath, logPath };
     }
 
-    dirPath = path.join(userHome, 'eigent', safeEmail, `task_${taskId}`);
-    logPath = path.join(userHome, '.eigent', safeEmail, `task_${taskId}`);
+    dirPath = path.join(
+      userHome,
+      'eigent',
+      safeEmail,
+      this.taskDirName(taskId)
+    );
+    logPath = path.join(
+      userHome,
+      '.eigent',
+      safeEmail,
+      this.taskDirName(taskId)
+    );
     return { dirPath, logPath };
   }
 
   public getFileList(
     email: string,
     taskId: string,
-    projectId?: string
+    projectId?: string,
+    userId?: string | number | null
   ): FileInfo[] {
     const { dirPath, logPath } = this.resolveTaskPaths(
       email,
       taskId,
-      projectId
+      projectId,
+      userId
     );
     const camelLogPath = path.join(logPath, 'camel_logs');
 
@@ -755,6 +867,56 @@ export class FileReader {
       console.error('Load file failed:', err);
       return [];
     }
+  }
+
+  /**
+   * Resolves the `camel_logs` directories to export as `{ src, destName }`
+   * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
+   *
+   * Prefers the specific task the user last ran (via {@link resolveTaskPaths},
+   * the same resolution `get-file-list` uses). Falls back to every `camel_logs`
+   * folder under the user's identity roots when no task is supplied or its
+   * folder is missing.
+   */
+  public getCamelLogEntries(
+    email: string,
+    taskId?: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): { src: string; destName: string }[] {
+    const userHome = app.getPath('home');
+    const eigentRoot = path.join(userHome, '.eigent');
+    const toEntry = (dir: string) => ({
+      src: dir,
+      destName: path.relative(eigentRoot, dir) || path.basename(dir),
+    });
+
+    if (taskId) {
+      const { logPath } = this.resolveTaskPaths(
+        email,
+        taskId,
+        projectId,
+        userId
+      );
+      const camelLogPath = path.join(logPath, 'camel_logs');
+      if (fs.existsSync(camelLogPath)) {
+        return [toEntry(camelLogPath)];
+      }
+      return [];
+    }
+
+    const identities = this.getStorageIdentityCandidates(email, userId);
+    const seen = new Set<string>();
+    const entries: { src: string; destName: string }[] = [];
+    for (const identity of identities) {
+      const identityRoot = path.join(eigentRoot, identity);
+      for (const dir of findDirectoriesByName(identityRoot, 'camel_logs', 4)) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        entries.push(toEntry(dir));
+      }
+    }
+    return entries;
   }
 
   public deleteTaskFiles(
@@ -810,19 +972,10 @@ export class FileReader {
 
   public createProjectStructure(
     email: string,
-    projectId: string
+    projectId: string,
+    userId?: string | number | null
   ): { success: boolean; path: string } {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
-    const userHome = app.getPath('home');
-    const projectPath = path.join(
-      userHome,
-      'eigent',
-      safeEmail,
-      `project_${projectId}`
-    );
+    const projectPath = this.resolveProjectPath(email, projectId, userId);
 
     try {
       if (!fs.existsSync(projectPath)) {
@@ -929,7 +1082,7 @@ export class FileReader {
           const stats = fs.statSync(taskPath);
 
           if (stats.isDirectory()) {
-            const taskId = entry.replace('task_', '');
+            const taskId = entry.replace(/^task_/, '');
 
             tasks.push({
               id: taskId,
@@ -962,18 +1115,20 @@ export class FileReader {
     const userHome = app.getPath('home');
 
     // Source path (legacy structure)
-    const sourcePath = path.join(
-      userHome,
-      'eigent',
-      safeEmail,
-      `task_${taskId}`
-    );
-    const sourceLogPath = path.join(
-      userHome,
-      '.eigent',
-      safeEmail,
-      `task_${taskId}`
-    );
+    const sourcePath =
+      this.taskDirNameCandidates(taskId)
+        .map((taskDirName) =>
+          path.join(userHome, 'eigent', safeEmail, taskDirName)
+        )
+        .find((candidate) => fs.existsSync(candidate)) ||
+      path.join(userHome, 'eigent', safeEmail, this.taskDirName(taskId));
+    const sourceLogPath =
+      this.taskDirNameCandidates(taskId)
+        .map((taskDirName) =>
+          path.join(userHome, '.eigent', safeEmail, taskDirName)
+        )
+        .find((candidate) => fs.existsSync(candidate)) ||
+      path.join(userHome, '.eigent', safeEmail, this.taskDirName(taskId));
 
     // Destination paths (project structure)
     const projectPath = path.join(
@@ -982,13 +1137,13 @@ export class FileReader {
       safeEmail,
       `project_${projectId}`
     );
-    const destPath = path.join(projectPath, `task_${taskId}`);
+    const destPath = path.join(projectPath, this.taskDirName(taskId));
     const destLogPath = path.join(
       userHome,
       '.eigent',
       safeEmail,
       `project_${projectId}`,
-      `task_${taskId}`
+      this.taskDirName(taskId)
     );
 
     try {
@@ -1023,26 +1178,21 @@ export class FileReader {
     }
   }
 
-  public getProjectFileList(email: string, projectId: string): FileInfo[] {
-    const safeEmail = email
-      .split('@')[0]
-      .replace(/[\\/*?:"<>|\s]/g, '_')
-      .replace(/^\.+|\.+$/g, '');
-    const userHome = app.getPath('home');
-    const projectPath = path.join(
-      userHome,
-      'eigent',
-      safeEmail,
-      `project_${projectId}`
-    );
+  public getProjectFileList(
+    email: string,
+    projectId: string,
+    userId?: string | number | null
+  ): FileInfo[] {
+    const projectPath = this.resolveProjectPath(email, projectId, userId);
 
     try {
       if (!fs.existsSync(projectPath)) {
         return [];
       }
 
-      const allFiles = this.getFilesRecursive(projectPath, projectPath).map(
-        (file) => {
+      const allFiles = this.getFilesRecursive(projectPath, projectPath)
+        .filter((file) => !file.isFolder)
+        .map((file) => {
           const relativePath = path.relative(projectPath, file.path);
           const taskMatch = relativePath.match(/^task_([^/\\]+)/);
 
@@ -1052,8 +1202,7 @@ export class FileReader {
             project_id: projectId,
             relativePath: relativePath === '.' ? '' : relativePath,
           };
-        }
-      );
+        });
 
       return allFiles.sort((a, b) => {
         return a.path.localeCompare(b.path);

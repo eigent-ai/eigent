@@ -15,7 +15,6 @@
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
 import { ChevronDown, FileText } from 'lucide-react';
@@ -64,7 +63,7 @@ const AgentResultCard: React.FC<{
 
       {/* Collapsible body */}
       <div
-        className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
         <div className="border-t border-ds-border-neutral-default-default px-1 py-1">
           <AgentMessageCard
@@ -137,26 +136,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
-  const activeProjectId = useProjectRuntimeStore(
-    (state) => state.activeProjectId
-  );
-  const setActiveWorkspaceTab = usePageTabStore(
-    (state) => state.setActiveWorkspaceTab
+  const openFilePreviewInPanel = usePageTabStore(
+    (state) => state.openFilePreview
   );
   const openFilePreview = useCallback(
     (file: FileInfo) => {
-      const state = chatStore.getState();
-      const taskId = state.activeTaskId;
-      if (!taskId) return;
-
-      state.setSelectedFile(taskId, file);
-      state.setNuwFileNum(taskId, 0);
-      state.setActiveWorkspace(taskId, 'documentWorkSpace');
-      setActiveWorkspaceTab('inbox', {
-        clearInboxForProjectId: activeProjectId,
-      });
+      openFilePreviewInPanel(file);
     },
-    [activeProjectId, chatStore, setActiveWorkspaceTab]
+    [openFilePreviewInPanel]
   );
 
   // Subscribe to streaming decompose text separately for efficient updates

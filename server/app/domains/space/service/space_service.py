@@ -29,6 +29,7 @@ from app.model.project import (
     Project,
     ProjectIn,
     ProjectOut,
+    ProjectStatus,
     ProjectUpdate,
     ProjectWorkdirMode,
 )
@@ -506,12 +507,31 @@ class SpaceService:
     @staticmethod
     def list_spaces(user_id: int | str, s: Session) -> list[SpaceOut]:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        SpaceService.ensure_legacy_space(canonical_user_id, s)
         spaces = s.exec(
             select(Space)
             .where(Space.user_id == canonical_user_id)
             .order_by(Space.updated_at.desc())
         ).all()
+        legacy_space_ids = [
+            space.id
+            for space in spaces
+            if space.source_type == SpaceSourceType.LEGACY
+        ]
+        if legacy_space_ids:
+            legacy_space_ids_with_projects = set(
+                s.exec(
+                    select(Project.space_id)
+                    .where(Project.user_id == canonical_user_id)
+                    .where(Project.space_id.in_(legacy_space_ids))
+                    .where(Project.status != ProjectStatus.ARCHIVED)
+                ).all()
+            )
+            spaces = [
+                space
+                for space in spaces
+                if space.source_type != SpaceSourceType.LEGACY
+                or space.id in legacy_space_ids_with_projects
+            ]
         return [SpaceOut.from_model(space) for space in spaces]
 
     @staticmethod

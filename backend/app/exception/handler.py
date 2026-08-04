@@ -14,14 +14,12 @@
 
 import logging
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app import api
 from app.component import code
-from app.component.pydantic.i18n import get_language, trans
 from app.exception.exception import (
     NoPermissionException,
     ProgramException,
@@ -32,35 +30,38 @@ from app.exception.exception import (
 logger = logging.getLogger("exception_handler")
 
 
-@api.exception_handler(RequestValidationError)
 async def request_exception(request: Request, e: RequestValidationError):
-    if (lang := get_language(request.headers.get("Accept-Language"))) is None:
-        lang = "en_US"
     logger.warning(f"Validation error on {request.url.path}: {e.errors()}")
+    errors = list(e.errors())
+    try:
+        # Translation support is optional in the packaged local runtime. Keep
+        # exception registration independent from fastapi-babel/Jinja2 so a
+        # missing template dependency cannot prevent the API from starting.
+        from app.component.pydantic.i18n import get_language, trans
+
+        lang = get_language(request.headers.get("Accept-Language")) or "en_US"
+        errors = trans.translate(errors, locale=lang)
+    except ImportError:
+        logger.info("Validation translation unavailable; using raw errors")
 
     return JSONResponse(
         content={
             "code": code.form_error,
-            "error": jsonable_encoder(
-                trans.translate(list(e.errors()), locale=lang)
-            ),
+            "error": jsonable_encoder(errors),
         }
     )
 
 
-@api.exception_handler(TokenException)
 async def token_exception(request: Request, e: TokenException):
     logger.warning(f"Token exception on {request.url.path}: {e.text}")
     return JSONResponse(content={"code": e.code, "text": e.text})
 
 
-@api.exception_handler(UserException)
 async def user_exception(request: Request, e: UserException):
     logger.info(f"User exception on {request.url.path}: {e.description}")
     return JSONResponse(content={"code": e.code, "text": e.description})
 
 
-@api.exception_handler(NoPermissionException)
 async def no_permission(request: Request, exception: NoPermissionException):
     logger.warning(f"No permission on {request.url.path}: {exception.text}")
     return JSONResponse(
@@ -69,10 +70,7 @@ async def no_permission(request: Request, exception: NoPermissionException):
     )
 
 
-@api.exception_handler(ProgramException)
-async def program_exception(
-    request: Request, exception: NoPermissionException
-):
+async def program_exception(request: Request, exception: ProgramException):
     logger.error(
         f"Program exception on {request.url.path}: {exception.text}",
         exc_info=True,
@@ -83,7 +81,6 @@ async def program_exception(
     )
 
 
-@api.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(
         f"Unhandled exception on {request.method} {request.url.path}: {exc}",
@@ -103,3 +100,13 @@ async def global_exception_handler(request: Request, exc: Exception):
             "message": str(exc),
         },
     )
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Register Eigent's API error envelope on a FastAPI application."""
+    app.add_exception_handler(RequestValidationError, request_exception)
+    app.add_exception_handler(TokenException, token_exception)
+    app.add_exception_handler(UserException, user_exception)
+    app.add_exception_handler(NoPermissionException, no_permission)
+    app.add_exception_handler(ProgramException, program_exception)
+    app.add_exception_handler(Exception, global_exception_handler)

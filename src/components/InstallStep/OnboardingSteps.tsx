@@ -21,8 +21,10 @@ import {
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
 import { LocaleEnum, switchLanguage } from '@/i18n';
+import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -123,16 +125,16 @@ function StepLanguage({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="gap-8 flex flex-col">
-      <div className="gap-2 flex flex-col items-center">
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col items-center gap-2">
         <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
           {t('layout.onboarding-setup-language-title')}
         </span>
-        <span className="mt-2 text-body-base text-ds-text-neutral-muted-default">
+        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
       </div>
-      <div className="gap-2 grid grid-cols-3">
+      <div className="grid grid-cols-3 gap-2">
         {LANGUAGE_OPTIONS.map(({ key, nativeLabel }) => {
           const active = selected === key;
           const displayLabel =
@@ -142,10 +144,10 @@ function StepLanguage({
               key={key}
               onClick={() => onSelect(key)}
               className={cn(
-                'rounded-xl px-6 py-3 text-body-sm font-medium transition-color flex items-center justify-between border border-solid duration-100',
+                'transition-color flex items-center justify-between rounded-xl border border-solid px-6 py-3 text-body-sm font-medium duration-100',
                 active
                   ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                  : 'bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-default-hover hover:text-ds-text-neutral-muted-hover border-transparent'
+                  : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
               )}
             >
               <span>{displayLabel}</span>
@@ -194,16 +196,16 @@ function StepTheme({
   ];
 
   return (
-    <div className="gap-8 flex flex-col">
+    <div className="flex flex-col gap-8">
       {/* Mode selection */}
-      <div className="gap-4 flex w-full flex-col items-center">
+      <div className="flex w-full flex-col items-center gap-4">
         <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
           {t('layout.onboarding-setup-appearance-title')}
         </span>
-        <span className="mt-2 text-body-base text-ds-text-neutral-muted-default">
+        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
-        <div className="gap-3 flex w-full">
+        <div className="flex w-full gap-3">
           {MODES.map(({ id, label, Icon }) => {
             const active = appearanceMode === id;
             return (
@@ -211,10 +213,10 @@ function StepTheme({
                 key={id}
                 onClick={() => onModeChange(id)}
                 className={cn(
-                  'gap-2 rounded-xl py-4 flex flex-1 flex-col items-center border border-solid transition-colors duration-100',
+                  'flex flex-1 flex-col items-center gap-2 rounded-xl border border-solid py-4 transition-colors duration-100',
                   active
                     ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                    : 'bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-default-hover hover:text-ds-text-neutral-muted-hover border-transparent'
+                    : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
                 )}
               >
                 <Icon size={20} strokeWidth={1.5} />
@@ -226,13 +228,13 @@ function StepTheme({
       </div>
 
       {/* Color theme selection */}
-      <div className="gap-4 flex w-full flex-col items-center">
+      <div className="flex w-full flex-col items-center gap-4">
         <div>
           <span className="text-body-lg font-semibold text-ds-text-neutral-default-default">
             {t('layout.onboarding-setup-color-theme')}
           </span>
         </div>
-        <div className="gap-3 grid w-full grid-cols-4">
+        <div className="grid w-full grid-cols-4 gap-3">
           {THEME_PRESETS.map(({ id, label, lightAccent, darkAccent }) => {
             const accent = appearance === 'dark' ? darkAccent : lightAccent;
             const active = activeThemeId === id;
@@ -241,14 +243,14 @@ function StepTheme({
                 key={id}
                 onClick={() => onThemeChange(id)}
                 className={cn(
-                  'gap-3 rounded-xl p-4 flex flex-col items-center border border-solid transition-colors duration-100',
+                  'flex flex-col items-center gap-3 rounded-xl border border-solid p-4 transition-colors duration-100',
                   active
                     ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-                    : 'bg-ds-bg-neutral-default-default hover:bg-ds-bg-neutral-default-hover hover:border-ds-border-neutral-default-hover border-transparent'
+                    : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover'
                 )}
               >
                 <div
-                  className="h-10 w-10 rounded-lg ring-2 ring-offset-2 transition-all"
+                  className="h-10 w-10 rounded-lg ring-2 ring-offset-2 transition-[background-color,box-shadow]"
                   style={
                     {
                       backgroundColor: accent,
@@ -295,17 +297,17 @@ function PatternPreviewCard({
     <button
       onClick={onSelect}
       className={cn(
-        'gap-2 rounded-xl p-2 ition-colors flex flex-col items-center border border-solid',
+        'ition-colors flex flex-col items-center gap-2 rounded-xl border border-solid p-2',
         selected
           ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-          : 'bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-default border-transparent'
+          : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-default'
       )}
     >
-      <div className="h-24 rounded-xl bg-ds-bg-neutral-subtle-default relative isolate w-full overflow-hidden">
+      <div className="relative isolate h-24 w-full overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default">
         {Component && <Component />}
         {selected && (
-          <div className="inset-0 absolute flex items-center justify-center">
-            <div className="bg-ds-bg-neutral-strong-default p-1 h-6 w-6 shadow-sm rounded-full">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-6 w-6 rounded-full bg-ds-bg-neutral-strong-default p-1 shadow-sm">
               <Check
                 size={12}
                 strokeWidth={2.5}
@@ -338,16 +340,16 @@ function StepBackground({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="gap-8 flex w-full flex-col">
-      <div className="gap-2 flex flex-col items-center">
+    <div className="flex w-full flex-col gap-8">
+      <div className="flex flex-col items-center gap-2">
         <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
           {t('layout.onboarding-setup-workspace-title')}
         </span>
-        <span className="mt-2 text-body-base text-ds-text-neutral-muted-default">
+        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
           {t('layout.onboarding-setup-workspace-subtitle')}
         </span>
       </div>
-      <div className="gap-3 grid w-full grid-cols-3">
+      <div className="grid w-full grid-cols-3 gap-3">
         {BG_PATTERN_DEFS.map(({ id, labelKey, Component }) => (
           <PatternPreviewCard
             key={id}
@@ -368,6 +370,8 @@ function StepBackground({
 export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const shouldReduceMotion = useReducedMotion();
 
   const {
     language,
@@ -410,24 +414,58 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
     setColorThemeForMode('dark', themeId);
   };
 
+  const stepName = (s: Step) =>
+    s === 1 ? 'language' : s === 2 ? 'theme' : 'background';
+
   const handleComplete = () => {
+    recordOnboardingStepCompleted({
+      step_id: 3,
+      step_name: 'background',
+    });
     setOnboardingCompleted(true);
     setIsFirstLaunch(false);
     onComplete();
   };
 
+  const stepVariants = {
+    enter: (navigationDirection: 1 | -1) => ({
+      opacity: 0,
+      transform: shouldReduceMotion
+        ? 'translateX(0px)'
+        : `translateX(${navigationDirection * 12}px)`,
+    }),
+    center: {
+      opacity: 1,
+      transform: 'translateX(0px)',
+      transition: {
+        duration: shouldReduceMotion ? 0.16 : 0.22,
+        ease: [0.23, 1, 0.32, 1] as const,
+      },
+    },
+    exit: (navigationDirection: 1 | -1) => ({
+      opacity: 0,
+      transform: shouldReduceMotion
+        ? 'translateX(0px)'
+        : `translateX(${navigationDirection * -8}px)`,
+      transition: {
+        duration: 0.16,
+        ease: [0.23, 1, 0.32, 1] as const,
+      },
+    }),
+  };
+
   return (
-    <div className="rounded-2xl bg-ds-bg-neutral-subtle-default relative flex h-full w-full flex-col overflow-hidden">
+    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default">
       {LivePatternComponent && <LivePatternComponent />}
 
-      <div className="px-8 py-6 relative z-[1] flex h-full flex-col">
+      <div className="relative z-[1] flex h-full flex-col px-8 py-6">
         {/* Step indicator dots */}
-        <div className="mb-8 gap-2 flex items-center justify-center">
+        <div className="mb-8 flex items-center justify-center gap-2">
           {([1, 2, 3] as Step[]).map((s) => (
             <div
               key={s}
               className={cn(
-                'h-1.5 rounded-full transition-all duration-300',
+                'ease-[cubic-bezier(0.23,1,0.32,1)] h-1.5 rounded-full transition-[background-color,opacity] duration-200',
                 s === step
                   ? 'w-8 bg-ds-text-neutral-default-default'
                   : s < step
@@ -439,24 +477,35 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
         </div>
 
         <div className="flex-1 overflow-auto">
-          {step === 1 && (
-            <StepLanguage selected={language} onSelect={handleLanguage} />
-          )}
-          {step === 2 && (
-            <StepTheme
-              appearanceMode={appearanceMode}
-              appearance={appearance}
-              activeThemeId={activeThemeId}
-              onModeChange={setAppearanceMode}
-              onThemeChange={handleThemePreset}
-            />
-          )}
-          {step === 3 && (
-            <StepBackground
-              selected={workspaceMainBackground}
-              onSelect={setWorkspaceMainBackground}
-            />
-          )}
+          <AnimatePresence mode="wait" initial={false} custom={direction}>
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+            >
+              {step === 1 && (
+                <StepLanguage selected={language} onSelect={handleLanguage} />
+              )}
+              {step === 2 && (
+                <StepTheme
+                  appearanceMode={appearanceMode}
+                  appearance={appearance}
+                  activeThemeId={activeThemeId}
+                  onModeChange={setAppearanceMode}
+                  onThemeChange={handleThemePreset}
+                />
+              )}
+              {step === 3 && (
+                <StepBackground
+                  selected={workspaceMainBackground}
+                  onSelect={setWorkspaceMainBackground}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Navigation */}
@@ -469,7 +518,10 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
             className={cn(
               step === 1 ? 'pointer-events-none opacity-0' : 'opacity-100'
             )}
-            onClick={() => setStep((s) => (s - 1) as Step)}
+            onClick={() => {
+              setDirection(-1);
+              setStep((s) => (s - 1) as Step);
+            }}
           >
             <ArrowLeftIcon />
             {t('layout.back')}
@@ -482,7 +534,14 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
               textWeight="semibold"
               buttonContent="text"
               buttonRadius="lg"
-              onClick={() => setStep((s) => (s + 1) as Step)}
+              onClick={() => {
+                recordOnboardingStepCompleted({
+                  step_id: step,
+                  step_name: stepName(step),
+                });
+                setDirection(1);
+                setStep((s) => (s + 1) as Step);
+              }}
             >
               {t('layout.continue')}
               <ArrowRightIcon />

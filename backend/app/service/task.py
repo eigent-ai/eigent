@@ -52,6 +52,7 @@ class Action(str, Enum):
     create_agent = "create_agent"  # backend -> user
     activate_agent = "activate_agent"  # backend -> user
     deactivate_agent = "deactivate_agent"  # backend -> user
+    request_usage = "request_usage"  # backend -> user
     assign_task = "assign_task"  # backend -> user
     activate_toolkit = "activate_toolkit"  # backend -> user
     deactivate_toolkit = "deactivate_toolkit"  # backend -> user
@@ -158,6 +159,21 @@ class DataDict(TypedDict):
 class ActionDeactivateAgentData(BaseModel):
     action: Literal[Action.deactivate_agent] = Action.deactivate_agent
     data: DataDict
+
+
+class RequestUsageDataDict(TypedDict):
+    agent_name: str
+    agent_id: str
+    process_task_id: str
+    tokens: int
+    request_index: int
+    response_id: str
+    step_total_tokens: int
+
+
+class ActionRequestUsageData(BaseModel):
+    action: Literal[Action.request_usage] = Action.request_usage
+    data: RequestUsageDataDict
 
 
 class ActionAssignTaskData(BaseModel):
@@ -298,6 +314,7 @@ ActionData = (
     | ActionCreateAgentData
     | ActionActivateAgentData
     | ActionDeactivateAgentData
+    | ActionRequestUsageData
     | ActionAssignTaskData
     | ActionActivateToolkitData
     | ActionDeactivateToolkitData
@@ -345,6 +362,9 @@ class TaskLock:
     human_input: dict[str, asyncio.Queue[str]]
     """After receiving user's reply, put the reply into the
     corresponding agent's queue"""
+    human_input_waiters: dict[str, list[asyncio.Future[Any]]]
+    """Live human-input waits. Replies are delivered directly to one waiter
+    so stale or duplicate HTTP requests cannot leak into a future question."""
     created_at: datetime
     last_accessed: datetime
     background_tasks: set[asyncio.Task]
@@ -402,6 +422,7 @@ class TaskLock:
         self.id = id
         self.queue = queue
         self.human_input = human_input
+        self.human_input_waiters = {}
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.background_tasks = set()
@@ -459,20 +480,44 @@ class TaskLock:
                 "has_data": data is not None,
             },
         )
-        await self.human_input[agent].put(data)
+        if agent not in self.human_input:
+            raise KeyError(agent)
+
+        waiters = self.human_input_waiters.get(agent, [])
+        while waiters:
+            waiter = waiters.pop(0)
+            if waiter.done():
+                continue
+            waiter.set_result(data)
+            return
+
+        raise KeyError(agent)
 
     async def get_human_input(self, agent: str):
         logger.debug(
             "Getting human input", extra={"task_id": self.id, "agent": agent}
         )
-        return await self.human_input[agent].get()
+        if agent not in self.human_input:
+            raise KeyError(agent)
+
+        waiter = asyncio.get_running_loop().create_future()
+        waiters = self.human_input_waiters.setdefault(agent, [])
+        waiters.append(waiter)
+        try:
+            return await waiter
+        finally:
+            if waiter in waiters:
+                waiters.remove(waiter)
 
     def add_human_input_listen(self, agent: str):
         logger.debug(
             "Adding human input listener",
             extra={"task_id": self.id, "agent": agent},
         )
-        self.human_input[agent] = asyncio.Queue(1)
+        # Toolkit recreation must not replace a queue while an earlier
+        # instance is already waiting for the user's answer.
+        self.human_input.setdefault(agent, asyncio.Queue(1))
+        self.human_input_waiters.setdefault(agent, [])
 
     def add_background_task(self, task: asyncio.Task) -> None:
         r"""Add a task to track and clean up weak references"""
@@ -504,15 +549,14 @@ class TaskLock:
                     pass
         self.background_tasks.clear()
 
-        # Unblock agents waiting on human input so shutdown can proceed.
-        for agent, queue in self.human_input.items():
-            try:
-                queue.put_nowait(TASK_LOCK_CLEANUP_SENTINEL)
-            except asyncio.QueueFull:
-                logger.debug(
-                    "Human input queue already full during cleanup",
-                    extra={"task_id": self.id, "agent": agent},
-                )
+        # Unblock every agent currently waiting on human input so shutdown can
+        # proceed. Future-based delivery avoids leaving cleanup sentinels in a
+        # queue where a later question could consume them.
+        for waiters in self.human_input_waiters.values():
+            for waiter in list(waiters):
+                if not waiter.done():
+                    waiter.set_result(TASK_LOCK_CLEANUP_SENTINEL)
+            waiters.clear()
 
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
         for toolkit in self.registered_toolkits:

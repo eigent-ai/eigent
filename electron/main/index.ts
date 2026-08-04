@@ -50,6 +50,12 @@ import {
   PromiseReturnType,
 } from './install-deps';
 import { setRoundedCorners } from './native/macos-window';
+import {
+  completeCodexOAuthCallback,
+  getCodexResolverEnv,
+  registerCodexSubscriptionAuthIpcHandlers,
+} from './subscriptionAuth';
+import { disposeAllTerminals, registerTerminalIpcHandlers } from './terminal';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -59,7 +65,7 @@ import {
   removeEnvKey,
   updateEnvBlock,
 } from './utils/envUtil';
-import { createDiagnosticsZip, zipFolder } from './utils/log';
+import { createDiagnosticsZip, zipDirectories, zipFolder } from './utils/log';
 import { addMcp, readMcpConfig, removeMcp, updateMcp } from './utils/mcpConfig';
 import {
   checkVenvExistsForPreCheck,
@@ -81,13 +87,27 @@ const VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 // ==================== global variables ====================
 let win: BrowserWindow | null = null;
+let createWindowPromise: Promise<void> | null = null;
 let webViewManager: WebViewManager | null = null;
 let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
+let backendStartPromise: Promise<BackendStartResult> | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+
+const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
+
+const isHttpOrHttpsUrl = (url: unknown): url is string => {
+  if (typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -102,6 +122,99 @@ let cdpLastAssignedPort = 9223; // tracks the highest port ever assigned, never 
 let cdpHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const CDP_POOL_FILE = path.join(os.homedir(), '.eigent', 'cdp-browsers.json');
+
+type BackendStartOptions = {
+  forceRestart?: boolean;
+};
+
+type BackendStartResult =
+  | { success: true; port: number }
+  | { success: false; error: string };
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isBrokenConsolePipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ((error as NodeJS.ErrnoException).code === 'EPIPE' ||
+      (error as NodeJS.ErrnoException).code === 'ERR_STREAM_DESTROYED')
+  );
+}
+
+function disableConsoleLogTransport(): void {
+  if (log.transports.console.level !== false) {
+    log.transports.console.level = false;
+  }
+}
+
+function handleProcessPipeError(error: Error): void {
+  if (isBrokenConsolePipeError(error)) {
+    disableConsoleLogTransport();
+    return;
+  }
+
+  setImmediate(() => {
+    throw error;
+  });
+}
+
+process.stdout.on('error', handleProcessPipeError);
+process.stderr.on('error', handleProcessPipeError);
+
+function isPythonProcessRunning(): boolean {
+  return Boolean(
+    python_process &&
+    !python_process.killed &&
+    python_process.exitCode === null &&
+    python_process.signalCode === null
+  );
+}
+
+function notifyBackendReady(result: BackendStartResult): void {
+  if (!win || win.isDestroyed()) {
+    return;
+  }
+
+  win.webContents.send(
+    'backend-ready',
+    result.success
+      ? {
+          success: true,
+          port: result.port,
+        }
+      : {
+          success: false,
+          error: result.error,
+        }
+  );
+}
+
+function checkBackendHealth(port: number): Promise<boolean> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const req = http.get(
+      `http://127.0.0.1:${port}/health`,
+      { timeout: 1000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
 
 /** Persist pool to disk. */
 function saveCdpPool(): void {
@@ -450,29 +563,33 @@ const setupProtocolHandlers = () => {
 
 // ==================== protocol url handle ====================
 function handleProtocolUrl(url: string) {
-  log.info('enter handleProtocolUrl', url);
+  log.info('enter handleProtocolUrl');
 
   // If window is not ready, queue the URL
   if (!isWindowReady || !win || win.isDestroyed()) {
-    log.info('Window not ready, queuing protocol URL:', url);
+    log.info('Window not ready, queuing protocol URL');
     protocolUrlQueue.push(url);
     return;
   }
 
-  processProtocolUrl(url);
+  void processProtocolUrl(url);
 }
 
 // Process a single protocol URL
-function processProtocolUrl(url: string) {
+async function processProtocolUrl(url: string) {
   const urlObj = new URL(url);
   const code = urlObj.searchParams.get('code');
   const token = urlObj.searchParams.get('token');
   const share_token = urlObj.searchParams.get('share_token');
 
-  log.info('urlObj', urlObj);
-  log.info('code', code);
-  log.info('token', token);
-  log.info('share_token', share_token);
+  log.info('urlObj', {
+    protocol: urlObj.protocol,
+    host: urlObj.host,
+    pathname: urlObj.pathname,
+  });
+  log.info('code present', Boolean(code));
+  log.info('token present', Boolean(token));
+  log.info('share_token present', Boolean(share_token));
 
   if (win && !win.isDestroyed()) {
     log.info('urlObj.pathname', urlObj.pathname);
@@ -481,7 +598,17 @@ function processProtocolUrl(url: string) {
       log.info('oauth');
       const provider = urlObj.searchParams.get('provider');
       const code = urlObj.searchParams.get('code');
-      log.info('protocol oauth', provider, code);
+      const codexResult = await completeCodexOAuthCallback(urlObj);
+      if (codexResult.handled) {
+        win.webContents.send(
+          'subscription-auth:codex-status-changed',
+          codexResult.error_code
+            ? { error_code: codexResult.error_code }
+            : undefined
+        );
+        return;
+      }
+      log.info('protocol oauth', provider, Boolean(code));
       win.webContents.send('oauth-authorized', { provider, code });
       return;
     }
@@ -493,7 +620,7 @@ function processProtocolUrl(url: string) {
     }
 
     if (code) {
-      log.error('protocol code:', code);
+      log.info('protocol code received');
       win.webContents.send('auth-code-received', code);
     }
 
@@ -522,7 +649,7 @@ function processQueuedProtocolUrls() {
     protocolUrlQueue = [];
 
     urls.forEach((url) => {
-      processProtocolUrl(url);
+      void processProtocolUrl(url);
     });
   }
 }
@@ -658,6 +785,9 @@ const checkManagerInstance = (manager: any, name: string) => {
 };
 
 function registerIpcHandlers() {
+  registerCodexSubscriptionAuthIpcHandlers(ipcMain);
+  registerTerminalIpcHandlers();
+
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
     const port = await startAuthCallbackServer();
@@ -946,20 +1076,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('restart-backend', async () => {
     try {
-      if (backendPort) {
-        log.info('Restarting backend service...');
-        await cleanupPythonProcess();
-        await checkAndStartBackend();
+      const result = await restartBackendService();
+      if (result.success) {
         log.info('Backend restart completed successfully');
-        return { success: true };
-      } else {
-        log.warn('No backend port found, starting fresh backend');
-        await checkAndStartBackend();
-        return { success: true };
       }
+      return result;
     } catch (error) {
       log.error('Failed to restart backend:', error);
-      return { success: false, error: String(error) };
+      return { success: false, error: formatErrorMessage(error) };
     }
   });
   ipcMain.handle('get-system-language', getSystemLanguage);
@@ -1111,6 +1235,55 @@ function registerIpcHandlers() {
     }
   });
 
+  // Camel (backend) logs live per task at
+  // ~/.eigent/<identity>/[project_<id>/]task_<taskId>/camel_logs.
+  // Targets the task the user last ran when provided; otherwise exports all.
+  ipcMain.handle(
+    'export-camel-log',
+    async (
+      _event,
+      email: string,
+      taskId?: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      try {
+        if (typeof email !== 'string' || !email) {
+          return { success: false, error: 'Missing email' };
+        }
+
+        const manager = checkManagerInstance(fileReader, 'FileReader');
+        const camelLogEntries = manager.getCamelLogEntries(
+          email,
+          taskId,
+          projectId,
+          userId
+        );
+        if (camelLogEntries.length === 0) {
+          return { success: false, error: 'no log file' };
+        }
+
+        const appVersion = app.getVersion();
+        const defaultFileName = `eigent-camel-logs-${appVersion}-${Date.now()}.zip`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Save Camel logs',
+          defaultPath: defaultFileName,
+          filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+        });
+
+        if (canceled || !filePath) {
+          return { success: false, error: '' };
+        }
+
+        await zipDirectories(filePath, camelLogEntries);
+        return { success: true, savedPath: filePath };
+      } catch (error: any) {
+        log.error('export-camel-log failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
   ipcMain.handle('get-diagnostics-info', async () => {
     return {
       version: app.getVersion(),
@@ -1197,6 +1370,18 @@ function registerIpcHandlers() {
     try {
       if (typeof url !== 'string' || !url.startsWith('mailto:')) {
         return { success: false, error: 'Invalid mailto URL' };
+      }
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    try {
+      if (!isHttpOrHttpsUrl(url)) {
+        return { success: false, error: 'Invalid external URL' };
       }
       await shell.openExternal(url);
       return { success: true };
@@ -1478,6 +1663,31 @@ function registerIpcHandlers() {
     }
   );
 
+  // Persist a pasted file (e.g. a clipboard image) so it can join the
+  // path-based attachment flow; pasted File objects carry no filesystem path.
+  ipcMain.handle(
+    'save-pasted-file',
+    async (_event, fileName: string, data: ArrayBuffer) => {
+      try {
+        const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
+        await fsp.mkdir(pastedDir, { recursive: true });
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\..+/, '')
+          .replace('T', '-');
+        const safeName = (fileName || 'pasted-file').replace(/[^\w.-]+/g, '_');
+        const unique = crypto.randomUUID();
+        const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
+        await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
+        return { success: true, filePath, fileName: safeName };
+      } catch (error: any) {
+        log.error('Failed to save pasted file:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  );
+
   ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
     try {
       const stats = await fs.promises
@@ -1586,9 +1796,14 @@ function registerIpcHandlers() {
   // ==================== IDE integration handler ====================
   ipcMain.handle(
     'get-project-folder-path',
-    async (_event, email: string, projectId: string) => {
+    async (
+      _event,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      const result = manager.createProjectStructure(email, projectId);
+      const result = manager.createProjectStructure(email, projectId, userId);
       return result.path;
     }
   );
@@ -1913,9 +2128,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-file-list',
-    async (_, email: string, taskId: string, projectId?: string) => {
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getFileList(email, taskId, projectId);
+      return manager.getFileList(email, taskId, projectId, userId);
     }
   );
 
@@ -1930,9 +2151,14 @@ function registerIpcHandlers() {
   // New project management handlers
   ipcMain.handle(
     'create-project-structure',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.createProjectStructure(email, projectId);
+      return manager.createProjectStructure(email, projectId, userId);
     }
   );
 
@@ -1959,9 +2185,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'get-project-file-list',
-    async (_, email: string, projectId: string) => {
+    async (
+      _,
+      email: string,
+      projectId: string,
+      userId?: string | number | null
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getProjectFileList(email, projectId);
+      return manager.getProjectFileList(email, projectId, userId);
     }
   );
 
@@ -2100,6 +2331,7 @@ const ensureEigentDirectories = () => {
 // ==================== skills (used at startup and by IPC) ====================
 const SKILLS_ROOT = path.join(os.homedir(), '.eigent', 'skills');
 const SKILL_FILE = 'SKILL.md';
+const EXAMPLE_SKILL_MARKER = '.eigent-example-skill';
 
 const getExampleSkillsSourceDir = (): string => {
   if (app.isPackaged) {
@@ -2126,7 +2358,86 @@ async function copyDirRecursive(src: string, dst: string): Promise<void> {
   }
 }
 
-async function seedDefaultSkillsIfEmpty(): Promise<void> {
+function parseSkillName(content: string): string | null {
+  const match = content.match(/^\s*name\s*:\s*(.+)$/m);
+  return match?.[1]?.trim().replace(/^['"]|['"]$/g, '') || null;
+}
+
+async function readSkillName(skillDir: string): Promise<string | null> {
+  try {
+    const content = await fsp.readFile(
+      path.join(skillDir, SKILL_FILE),
+      'utf-8'
+    );
+    return parseSkillName(content);
+  } catch {
+    return null;
+  }
+}
+
+async function isManagedExampleSkill(
+  dstDir: string,
+  srcDir: string
+): Promise<boolean> {
+  if (existsSync(path.join(dstDir, EXAMPLE_SKILL_MARKER))) return true;
+  const [dstName, srcName] = await Promise.all([
+    readSkillName(dstDir),
+    readSkillName(srcDir),
+  ]);
+  return !!dstName && dstName === srcName;
+}
+
+async function writeExampleSkillMarker(
+  dstDir: string,
+  sourceDirName: string
+): Promise<void> {
+  await fsp.writeFile(
+    path.join(dstDir, EXAMPLE_SKILL_MARKER),
+    `source=${sourceDirName}\n`,
+    'utf-8'
+  );
+}
+
+async function listRegularFiles(
+  root: string,
+  ignoredNames = new Set<string>()
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  const walk = async (dir: string) => {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || ignoredNames.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        files.set(path.relative(root, fullPath), fullPath);
+      }
+    }
+  };
+  await walk(root);
+  return files;
+}
+
+async function dirContentsMatch(src: string, dst: string): Promise<boolean> {
+  const [srcFiles, dstFiles] = await Promise.all([
+    listRegularFiles(src),
+    listRegularFiles(dst, new Set([EXAMPLE_SKILL_MARKER])),
+  ]);
+  if (srcFiles.size !== dstFiles.size) return false;
+  for (const [relativePath, srcPath] of srcFiles) {
+    const dstPath = dstFiles.get(relativePath);
+    if (!dstPath) return false;
+    const [srcContent, dstContent] = await Promise.all([
+      fsp.readFile(srcPath),
+      fsp.readFile(dstPath),
+    ]);
+    if (!srcContent.equals(dstContent)) return false;
+  }
+  return true;
+}
+
+async function syncDefaultSkillsFromBundle(): Promise<void> {
   if (!existsSync(SKILLS_ROOT)) {
     await fsp.mkdir(SKILLS_ROOT, { recursive: true });
   }
@@ -2137,22 +2448,48 @@ async function seedDefaultSkillsIfEmpty(): Promise<void> {
   }
   const sourceEntries = await fsp.readdir(exampleDir, { withFileTypes: true });
   let copiedCount = 0;
+  let updatedCount = 0;
   for (const e of sourceEntries) {
     if (!e.isDirectory() || e.name.startsWith('.')) continue;
     const skillMd = path.join(exampleDir, e.name, SKILL_FILE);
     if (!existsSync(skillMd)) continue;
     const destDir = path.join(SKILLS_ROOT, e.name);
-    if (existsSync(destDir)) continue; // Skip if user already has this skill
     const srcDir = path.join(exampleDir, e.name);
+    if (!existsSync(destDir)) {
+      await copyDirRecursive(srcDir, destDir);
+      await writeExampleSkillMarker(destDir, e.name);
+      copiedCount++;
+      continue;
+    }
+
+    const destStats = await fsp.stat(destDir).catch(() => null);
+    if (!destStats?.isDirectory()) continue;
+
+    if (!(await isManagedExampleSkill(destDir, srcDir))) {
+      log.warn('Skipping default skill sync due to local conflict:', destDir);
+      continue;
+    }
+
+    if (await dirContentsMatch(srcDir, destDir)) {
+      await writeExampleSkillMarker(destDir, e.name);
+      continue;
+    }
+
+    await fsp.rm(destDir, { recursive: true, force: true });
     await copyDirRecursive(srcDir, destDir);
-    copiedCount++;
+    await writeExampleSkillMarker(destDir, e.name);
+    updatedCount++;
   }
-  if (copiedCount > 0) {
+  if (copiedCount > 0 || updatedCount > 0) {
     log.info(
-      `Seeded ${copiedCount} default skill(s) to ~/.eigent/skills from`,
+      `Synced default skill(s) to ~/.eigent/skills: copied=${copiedCount} updated=${updatedCount} from`,
       exampleDir
     );
   }
+}
+
+async function seedDefaultSkillsIfEmpty(): Promise<void> {
+  await syncDefaultSkillsFromBundle();
 }
 
 // ==================== Shared backend startup logic ====================
@@ -2176,6 +2513,30 @@ let installationLock: Promise<PromiseReturnType> = Promise.resolve({
 
 // ==================== window create ====================
 async function createWindow() {
+  const existingWindow =
+    win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0];
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    win = existingWindow;
+    win.focus();
+    return;
+  }
+
+  if (createWindowPromise) {
+    await createWindowPromise;
+    if (win && !win.isDestroyed()) {
+      win.focus();
+    }
+    return;
+  }
+
+  createWindowPromise = createWindowInternal().finally(() => {
+    createWindowPromise = null;
+  });
+
+  return createWindowPromise;
+}
+
+async function createWindowInternal() {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
 
@@ -2244,6 +2605,55 @@ async function createWindow() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  // Renderer <webview> guests (session preview browser) host arbitrary web
+  // content, and the host window itself runs with elevated webPreferences.
+  // Enforce safe guest settings at attach time so no tag attribute (even one
+  // forged by a compromised renderer) can grant a guest host privileges.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.webSecurity = true;
+    webPreferences.partition = PREVIEW_WEBVIEW_PARTITION;
+
+    if (
+      params.partition !== PREVIEW_WEBVIEW_PARTITION ||
+      !isHttpOrHttpsUrl(params.src)
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  // Route window.open / target=_blank into the same guest instead of spawning
+  // popup windows, and only allow web URLs. Together with the attach guard
+  // above, this is the only main-process involvement the guests need.
+  win.webContents.on('did-attach-webview', (_event, contents) => {
+    const preventUnsafeNavigation = (
+      event: Electron.Event,
+      navigationUrl: string
+    ) => {
+      if (!isHttpOrHttpsUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    };
+    const guestNavigationEvents = contents as unknown as {
+      on: (
+        eventName: string,
+        listener: (event: Electron.Event, navigationUrl: string) => void
+      ) => void;
+    };
+
+    guestNavigationEvents.on('will-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-frame-navigate', preventUnsafeNavigation);
+    guestNavigationEvents.on('will-redirect', preventUnsafeNavigation);
+    contents.setWindowOpenHandler(({ url }) => {
+      if (isHttpOrHttpsUrl(url)) {
+        void contents.loadURL(url);
+      }
+      return { action: 'deny' };
+    });
   });
 
   if (process.platform === 'darwin') {
@@ -2694,58 +3104,112 @@ const setupExternalLinkHandling = () => {
 };
 
 // ==================== check and start backend ====================
-const checkAndStartBackend = async () => {
-  log.info('Checking and starting backend service...');
-  try {
-    // Clean up any existing backend process before starting new one
-    if (python_process && !python_process.killed) {
-      log.info('Cleaning up existing backend process before restart...');
-      await cleanupPythonProcess();
-      python_process = null;
-    }
+async function restartBackendService(): Promise<BackendStartResult> {
+  if (backendStartPromise) {
+    log.info(
+      'Backend startup already in progress, waiting before forced restart...'
+    );
+    await backendStartPromise;
+  }
 
-    const isToolInstalled = await checkToolInstalled();
-    if (isToolInstalled.success) {
-      log.info('Tool installed, starting backend service...');
+  log.info('Restarting backend service...');
+  return checkAndStartBackend({ forceRestart: true });
+}
 
-      // Start backend and wait for health check to pass
-      python_process = await startBackend((port) => {
-        backendPort = port;
-        log.info('Backend service started successfully', { port });
-      });
+const checkAndStartBackend = async (
+  options: BackendStartOptions = {}
+): Promise<BackendStartResult> => {
+  if (backendStartPromise) {
+    log.info('Backend startup already in progress, waiting...');
+    return backendStartPromise;
+  }
 
-      // Notify frontend that backend is ready
-      if (win && !win.isDestroyed()) {
+  backendStartPromise = (async () => {
+    log.info('Checking and starting backend service...');
+    try {
+      if (isPythonProcessRunning()) {
+        if (!options.forceRestart) {
+          const isHealthy = await checkBackendHealth(backendPort);
+          if (isHealthy) {
+            log.info('Backend service is already running', {
+              port: backendPort,
+            });
+            const result: BackendStartResult = {
+              success: true,
+              port: backendPort,
+            };
+            notifyBackendReady(result);
+            return result;
+          }
+
+          log.warn(
+            'Backend process is running but health check failed; restarting...'
+          );
+        } else {
+          log.info('Cleaning up existing backend process before restart...');
+        }
+
+        await cleanupPythonProcess();
+      } else if (python_process) {
+        python_process = null;
+      }
+
+      const isToolInstalled = await checkToolInstalled();
+      if (isToolInstalled.success) {
+        log.info('Tool installed, starting backend service...');
+        const codexResolverEnv = await getCodexResolverEnv();
+        const exampleSkillsDir = getExampleSkillsSourceDir();
+
+        // Start backend and wait for health check to pass
+        python_process = await startBackend(
+          (port) => {
+            backendPort = port;
+            log.info('Backend service started successfully', { port });
+          },
+          {
+            ...codexResolverEnv,
+            EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+          }
+        );
+
+        // Notify frontend that backend is ready
         log.info('Backend is ready, notifying frontend...');
-        win.webContents.send('backend-ready', {
+        const result: BackendStartResult = {
           success: true,
           port: backendPort,
-        });
-      }
+        };
+        notifyBackendReady(result);
 
-      python_process?.on('exit', (code, signal) => {
-        log.info('Python process exited', { code, signal });
-      });
-    } else {
-      log.warn('Tool not installed, cannot start backend service');
-      // Notify frontend that backend cannot start
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('backend-ready', {
+        python_process?.on('exit', (code, signal) => {
+          log.info('Python process exited', { code, signal });
+        });
+
+        return result;
+      } else {
+        log.warn('Tool not installed, cannot start backend service');
+        // Notify frontend that backend cannot start
+        const result: BackendStartResult = {
           success: false,
           error: 'Tools not installed',
-        });
+        };
+        notifyBackendReady(result);
+        return result;
       }
-    }
-  } catch (error) {
-    log.error('Failed to start backend:', error);
-    // Notify frontend of backend startup failure
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('backend-ready', {
+    } catch (error) {
+      log.error('Failed to start backend:', error);
+      // Notify frontend of backend startup failure
+      const result: BackendStartResult = {
         success: false,
-        error: String(error),
-      });
+        error: formatErrorMessage(error),
+      };
+      notifyBackendReady(result);
+      return result;
     }
-  }
+  })().finally(() => {
+    backendStartPromise = null;
+  });
+
+  return backendStartPromise;
 };
 
 // ==================== process cleanup ====================
@@ -3024,15 +3488,21 @@ app.on('window-all-closed', () => {
 });
 
 // ==================== app activate event ====================
-app.on('activate', () => {
+app.on('activate', async () => {
   const allWindows = BrowserWindow.getAllWindows();
   log.info('activate', allWindows.length);
 
   if (allWindows.length) {
     allWindows[0].focus();
   } else {
-    cleanupPythonProcess();
-    createWindow();
+    const backendStart = checkAndStartBackend();
+    await createWindow();
+    const result = await backendStart;
+    if (!result.success) {
+      log.warn('Backend start during app activation failed:', result.error);
+    } else {
+      notifyBackendReady(result);
+    }
   }
 });
 
@@ -3052,6 +3522,8 @@ app.on('before-quit', async (event) => {
     // No need to sync between different profile directories
 
     // Clean up resources
+    disposeAllTerminals();
+
     if (webViewManager) {
       webViewManager.destroy();
       webViewManager = null;

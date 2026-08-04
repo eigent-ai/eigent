@@ -15,7 +15,6 @@
 import {
   fetchDelete,
   fetchPost,
-  fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
   uploadFileToBrain,
@@ -370,6 +369,7 @@ export default function ChatBox(): JSX.Element {
   const handleSendRef = useRef<
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
+  const autoReplyAttemptRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -378,7 +378,7 @@ export default function ChatBox(): JSX.Element {
   }, [navigate]);
 
   // Task time tracking
-  const [taskTime, setTaskTime] = useState(
+  const [, setTaskTime] = useState(
     chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
       '00:00'
   );
@@ -387,7 +387,19 @@ export default function ChatBox(): JSX.Element {
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
-  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
+  const activeAskTask = chatStore?.tasks[activeTaskId as string];
+  const activeAsk = activeAskTask?.activeAsk;
+  const activeAskMessageId = activeAskTask?.messages.findLast(
+    (item) => item.step === AgentStep.ASK
+  )?.id;
+  const isInteractiveHumanReply =
+    activeAskTask?.type !== 'replay' &&
+    activeAskTask?.type !== 'share' &&
+    activeAskTask?.status !== ChatTaskStatus.FINISHED;
+  const activeHumanReplyKey =
+    activeTaskId && activeAsk && isInteractiveHumanReply
+      ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
+      : null;
 
   useEffect(() => {
     if (!chatStore?.activeTaskId) return;
@@ -400,23 +412,24 @@ export default function ChatBox(): JSX.Element {
   }, [chatStore?.activeTaskId, chatStore]);
 
   useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
+    if (!activeHumanReplyKey || !activeTaskId) {
+      autoReplyAttemptRef.current = null;
+      return;
     }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, chatStore, activeTaskId]);
+    if (message.trim() || autoReplyAttemptRef.current === activeHumanReplyKey) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      // A failed request must not create an endless 30-second retry loop for
+      // the same question. The prompt remains visible so the user can retry.
+      if (autoReplyAttemptRef.current === activeHumanReplyKey) return;
+      autoReplyAttemptRef.current = activeHumanReplyKey;
+      void handleSendRef.current?.('skip', activeTaskId);
+    }, 30000);
+
+    return () => window.clearTimeout(timer);
+  }, [activeHumanReplyKey, activeTaskId, message]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -726,6 +739,9 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
       if (requiresHumanReply) {
+        if (activeHumanReplyKey) {
+          autoReplyAttemptRef.current = activeHumanReplyKey;
+        }
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',
@@ -743,10 +759,22 @@ export default function ChatBox(): JSX.Element {
 
         chatStore.setIsPending(_taskId, true);
 
-        await fetchPost(`/chat/${targetProjectId}/human-reply`, {
-          agent: chatStore.tasks[_taskId].activeAsk,
-          reply: tempMessageContent,
-        });
+        const replyResult = await fetchPost(
+          `/chat/${targetProjectId}/human-reply`,
+          {
+            agent: chatStore.tasks[_taskId].activeAsk,
+            reply: tempMessageContent,
+          }
+        );
+        if (replyResult?.code === 1) {
+          chatStore.setIsPending(_taskId, false);
+          chatStore.setActiveAskList(_taskId, []);
+          chatStore.setActiveAsk(_taskId, '');
+          toast.error(
+            replyResult.text || 'This task is no longer waiting for a reply.'
+          );
+          return;
+        }
         chatStore.setAttaches(_taskId, []);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');
@@ -1030,31 +1058,6 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  // Pause/Resume handler
-  const handlePauseResume = () => {
-    const taskId = chatStore.activeTaskId as string;
-    const task = chatStore.tasks[taskId];
-    const type = task.status === 'running' ? 'pause' : 'resume';
-
-    setIsPauseResumeLoading(true);
-    if (type === 'pause') {
-      let { taskTime, elapsed } = task;
-      const now = Date.now();
-      elapsed += now - taskTime;
-      chatStore.setElapsed(taskId, elapsed);
-      chatStore.setTaskTime(taskId, 0);
-      chatStore.setStatus(taskId, 'pause');
-    } else {
-      chatStore.setTaskTime(taskId, Date.now());
-      chatStore.setStatus(taskId, 'running');
-    }
-
-    fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
-      action: type,
-    });
-    setIsPauseResumeLoading(false);
-  };
-
   // Stop task handler - triggers Action.skip_task which preserves context
   const handleSkip = async () => {
     const taskId = chatStore.activeTaskId as string;
@@ -1248,10 +1251,10 @@ export default function ChatBox(): JSX.Element {
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
-      <div className="min-h-0 min-w-0 relative flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 pl-2 flex-1 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
         >
           {hasAnyMessages ? (
             <ProjectChatContainer
@@ -1262,7 +1265,7 @@ export default function ChatBox(): JSX.Element {
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
-              <div className="gap-1 pb-4 flex flex-1 flex-col items-center justify-end"></div>
+              <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
               {chatStore.activeTaskId && (
                 <BottomBox
@@ -1293,9 +1296,10 @@ export default function ChatBox(): JSX.Element {
                     textareaRef: textareaRef,
                     allowDragDrop: true,
                     useCloudModelInDev: useCloudModelInDev,
-                    sessionMode: effectiveSessionMode,
-                    sessionModeSelectInteractive: false,
                   }}
+                  sessionMode={effectiveSessionMode}
+                  sessionModeSelectInteractive={false}
+                  modelSelectProjectId={activeProjectId}
                 />
               )}
             </div>
@@ -1309,9 +1313,9 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="inset-x-0 bottom-0 pointer-events-none absolute z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
-            <div className="px-2 pointer-events-auto mx-auto w-full max-w-[600px]">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
@@ -1349,10 +1353,6 @@ export default function ChatBox(): JSX.Element {
                   }
                 }}
                 onEdit={handleEditQuery}
-                taskTime={taskTime}
-                taskStatus={chatStore.tasks[chatStore.activeTaskId]?.status}
-                onPauseResume={handlePauseResume}
-                pauseResumeLoading={isPauseResumeLoading}
                 loading={loading}
                 inputProps={{
                   value: message,
@@ -1376,9 +1376,10 @@ export default function ChatBox(): JSX.Element {
                   textareaRef: textareaRef,
                   allowDragDrop: true,
                   useCloudModelInDev: useCloudModelInDev,
-                  sessionMode: displaySessionMode,
-                  sessionModeSelectInteractive: false,
                 }}
+                sessionMode={displaySessionMode}
+                sessionModeSelectInteractive={false}
+                modelSelectProjectId={activeProjectId}
               />
             </div>
           </div>
@@ -1388,7 +1389,7 @@ export default function ChatBox(): JSX.Element {
   );
 
   return (
-    <div className="min-h-0 relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {chatColumn}
     </div>
   );

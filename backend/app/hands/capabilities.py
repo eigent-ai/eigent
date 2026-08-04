@@ -91,6 +91,24 @@ def _can_launch_local_cdp_browser() -> bool:
         return False
 
 
+def _has_terminal_shell() -> bool:
+    """Return whether the runtime has a shell suitable for terminal tools."""
+    if os.name == "nt":
+        candidates = (
+            "bash",
+            "pwsh",
+            "pwsh.exe",
+            "powershell",
+            "powershell.exe",
+            "cmd",
+            "cmd.exe",
+        )
+    else:
+        candidates = ("bash", "sh")
+
+    return any(shutil.which(candidate) is not None for candidate in candidates)
+
+
 @dataclass
 class BrainCapabilities:
     """
@@ -151,7 +169,7 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
             logger.info("Brain running in Docker, using limited capabilities")
             deployment = "docker"
             caps = BrainCapabilities(
-                has_terminal=shutil.which("bash") is not None,
+                has_terminal=_has_terminal_shell(),
                 has_browser=False,
                 filesystem_scope="workspace_only",
                 mcp_mode="all",  # MCP available in all deployment modes
@@ -174,7 +192,7 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
                     "not running under Electron host, and no launchable browser found."
                 )
             caps = BrainCapabilities(
-                has_terminal=shutil.which("bash") is not None,
+                has_terminal=_has_terminal_shell(),
                 has_browser=has_browser,
                 filesystem_scope="full",
                 mcp_mode="all",
@@ -188,7 +206,7 @@ def detect_capabilities(config: dict | None = None) -> BrainCapabilities:
     else:
         # sandbox / docker / container -> limited capabilities
         caps = BrainCapabilities(
-            has_terminal=shutil.which("bash") is not None,
+            has_terminal=_has_terminal_shell(),
             has_browser=False,
             filesystem_scope="workspace_only",
             mcp_mode="all",  # MCP available in all deployment modes

@@ -50,6 +50,7 @@ from app.memory.events import (
 from app.memory.local_store import LocalMemoryStore
 from app.memory.paths import canonical_user_id
 from app.run_context import RunContext
+from app.utils.workspace_paths import task_dir_name
 
 logger = logging.getLogger("memory.service")
 
@@ -194,7 +195,7 @@ def finalize_task_lock_run_memory(
     try:
         service.register_runtime_log_artifact(
             run_context=run_context,
-            relative_path=f"task_{run_context.run_id}/camel_logs",
+            relative_path=f"{task_dir_name(run_context.run_id)}/camel_logs",
         )
         service.on_run_end(
             run_context=run_context,
@@ -337,6 +338,38 @@ class MemoryService:
         except Exception:  # noqa: BLE001
             logger.warning(
                 "memory.service.on_assistant_message: append failed",
+                extra={
+                    "project_id": run_context.project_id,
+                    "run_id": run_context.run_id,
+                },
+                exc_info=True,
+            )
+            return None
+
+    def on_human_reply(
+        self,
+        *,
+        run_context: RunContext,
+        content: str,
+    ) -> str | None:
+        """Persist a mid-run Human Toolkit reply as a user conversation turn."""
+        if not content.strip():
+            return None
+        user_key = _resolve_user_key(run_context)
+        if user_key is None:
+            return None
+        try:
+            return self._append_conversation(
+                user_key=user_key,
+                run_context=run_context,
+                role="user",
+                content=content,
+                source="chat",
+                now=_utc_now(),
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory.service.on_human_reply: append failed",
                 extra={
                     "project_id": run_context.project_id,
                     "run_id": run_context.run_id,

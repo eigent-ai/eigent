@@ -23,7 +23,7 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies - moved to top before other imports
 vi.mock('@/api/http', async () => {
@@ -121,13 +121,22 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
-import { proxyFetchGet, waitForBackendReady } from '@/api/http';
+import {
+  fetchPost,
+  fetchPut,
+  proxyFetchGet,
+  waitForBackendReady,
+} from '@/api/http';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
   collectTaskUploadFiles,
+  extractEndPayloadText,
+  extractFinalOutputFileList,
   getCloudModelPlatform,
+  mergeFileInfoLists,
   resolveConfirmedUserMessageContent,
+  resolveEndMessageText,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -179,6 +188,174 @@ describe('ChatStore - Core Functionality', () => {
           isFollowUpConfirm: false,
         })
       ).toBe('first prompt');
+    });
+  });
+
+  describe('Cached task hydration', () => {
+    it('does not resurrect a stale human-reply wait', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      const cachedTask = {
+        ...result.current.getState().tasks[taskId],
+        activeAsk: 'Agents.single_agent',
+        askList: [
+          {
+            id: 'queued-ask',
+            role: 'agent',
+            content: 'Old question',
+            step: 'ask',
+          },
+        ],
+        isPending: true,
+      } as any;
+
+      act(() => {
+        result.current.getState().hydrateTask(taskId, cachedTask);
+      });
+
+      const hydrated = result.current.getState().tasks[taskId];
+      expect(hydrated.activeAsk).toBe('');
+      expect(hydrated.askList).toEqual([]);
+      expect(hydrated.isPending).toBe(false);
+    });
+  });
+
+  describe('END message resolution', () => {
+    it('keeps non-empty END payload ahead of prior agent summaries', () => {
+      expect(
+        resolveEndMessageText('Final task output', [
+          { step: 'agent_summary_end', summary: 'Older summary' },
+        ] as any)
+      ).toBe('Final task output');
+    });
+
+    it('extracts result-shaped END payloads', () => {
+      expect(
+        extractEndPayloadText({
+          result: 'Final result from replay payload',
+          tokens: 10,
+        })
+      ).toBe('Final result from replay payload');
+    });
+
+    it('falls back to completed subtask reports when END payload is empty', () => {
+      expect(
+        resolveEndMessageText('', [], {
+          taskAssigning: [
+            {
+              tasks: [
+                { report: 'Created INC0494320' },
+                { report: 'Generated ticket report with 27 rows' },
+              ],
+            },
+          ],
+        } as any)
+      ).toContain('Generated ticket report with 27 rows');
+    });
+  });
+
+  describe('Final output file extraction', () => {
+    it('extracts sandbox paths without treating the scheme suffix as a drive', () => {
+      const files = extractFinalOutputFileList(
+        'Created [CSV](sandbox:/Users/test/eigent/space_123/report.csv).'
+      );
+
+      expect(files).toMatchObject([
+        {
+          name: 'report.csv',
+          path: '/Users/test/eigent/space_123/report.csv',
+          type: 'csv',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('keeps supported absolute POSIX and Windows paths', () => {
+      const files = extractFinalOutputFileList(
+        'Outputs: /Users/test/report.md and C:\\Users\\test\\report.xlsx'
+      );
+
+      expect(files.map((file) => file.path)).toEqual([
+        '/Users/test/report.md',
+        'C:/Users/test/report.xlsx',
+      ]);
+    });
+
+    it('does not turn unknown schemes or embedded drive-like text into paths', () => {
+      const files = extractFinalOutputFileList(
+        [
+          'unknown:/Users/test/report.csv',
+          'wordC:/Users/test/report.md',
+          'https://example.com/report.csv',
+          'file:///Users/test/report.md',
+        ].join(' ')
+      );
+
+      expect(files).toEqual([]);
+    });
+
+    it('still builds project stream URLs for project-scoped outputs', () => {
+      const [file] = extractFinalOutputFileList(
+        'sandbox:/tmp/project_42/results/report.csv',
+        '42',
+        'dev@example.com',
+        'http://localhost:5001/'
+      );
+
+      expect(file).toMatchObject({
+        path: 'http://localhost:5001/files/stream?path=results%2Freport.csv&project_id=42&email=dev%40example.com',
+        relativePath: 'results/report.csv',
+        isRemote: true,
+      });
+    });
+
+    it('replaces a legacy x-prefixed path when replaying old output cards', () => {
+      const extractedFiles = extractFinalOutputFileList(
+        'sandbox:/Users/test/eigent/space_123/report.csv'
+      );
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'x:/Users/test/eigent/space_123/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        extractedFiles
+      );
+
+      expect(mergedFiles).toMatchObject([
+        {
+          name: 'report.csv',
+          path: '/Users/test/eigent/space_123/report.csv',
+          type: 'csv',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('does not replace an unrelated X drive path with the same file name', () => {
+      const mergedFiles = mergeFileInfoLists(
+        [
+          {
+            name: 'report.csv',
+            path: 'X:/exports/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ],
+        [
+          {
+            name: 'report.csv',
+            path: '/Users/test/report.csv',
+            type: 'csv',
+            isRemote: false,
+          },
+        ]
+      );
+
+      expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
     });
   });
 
@@ -288,6 +465,55 @@ describe('ChatStore - Core Functionality', () => {
           name: 'notes.txt',
           uploadName: 'user_attachment/notes.txt',
           source: 'user_attachment',
+        },
+      ]);
+    });
+
+    it('collects generated files from task output file lists', () => {
+      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          type: 'html',
+        },
+        {
+          path: 'https://example.com/files/remote.html',
+          name: 'remote.html',
+          type: 'html',
+        },
+      ] as any);
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/space_x/index.html',
+          name: 'index.html',
+          uploadName: 'project_output/index.html',
+          source: 'project_output',
+        },
+      ]);
+    });
+
+    it('keeps camel log upload names nested under camel_log', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [
+          {
+            path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+            name: 'conv.json',
+            relativePath: 'agent',
+            source: 'camel_log',
+          },
+        ],
+        [],
+        [],
+        'task-123'
+      );
+
+      expect(uploadFiles).toEqual([
+        {
+          path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
+          name: 'conv.json',
+          uploadName: 'camel_log/agent/conv.json',
+          source: 'camel_log',
         },
       ]);
     });
@@ -822,6 +1048,46 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
+  describe('Plan confirmation', () => {
+    it('rolls back confirmed plan UI when backend start request fails', async () => {
+      vi.mocked(fetchPut).mockRejectedValueOnce(new Error('network down'));
+      const { result } = renderHook(() => useChatStore());
+
+      let taskId: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId);
+        result.current.getState().setTaskInfo(taskId, [
+          {
+            id: 'task.1',
+            content: 'Do the work',
+            status: 'empty',
+          } as any,
+        ]);
+        result.current.getState().addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'agent',
+          content: '',
+          step: 'to_sub_tasks',
+          isConfirm: false,
+        });
+      });
+
+      await act(async () => {
+        await result.current.getState().handleConfirmTask('project-1', taskId!);
+      });
+
+      const task = result.current.getState().tasks[taskId!];
+      const planMessage = task.messages.find(
+        (message) => message.step === 'to_sub_tasks'
+      );
+      expect(planMessage?.isConfirm).toBe(false);
+      expect(task.status).toBe(ChatTaskStatus.PENDING);
+      expect(task.taskTime).toBe(0);
+      expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
+    });
+  });
+
   /**
    * Issue #1212: Duplicate task execution after network reconnection / system wake-up.
    * When the task is already FINISHED, SSE onerror must not retry (throw to stop retry).
@@ -870,10 +1136,72 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
+  describe('SSE request usage events', () => {
+    // clearAllMocks doesn't reset implementations; avoid leaking into later tests.
+    afterEach(() => {
+      vi.mocked(fetchEventSource).mockReset();
+    });
+
+    it('should accumulate tokens from request_usage event in non-stream mode', async () => {
+      vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
+        url?.includes?.('snapshots')
+          ? Promise.resolve([])
+          : Promise.resolve({
+              value: '',
+              api_url: '',
+              items: [],
+              warning_code: null,
+            })
+      );
+
+      const mockFetchEventSource = vi.mocked(fetchEventSource);
+      mockFetchEventSource.mockImplementation(async (_url, opts) => {
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'request_usage',
+            data: { tokens: 11 },
+          }),
+        } as any);
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'deactivate_agent',
+            data: { tokens: 0 },
+          }),
+        } as any);
+        return Promise.resolve();
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      let taskId!: string;
+      await act(async () => {
+        taskId = result.current.getState().create();
+        result.current.getState().setActiveTaskId(taskId);
+        result.current.getState().setHasMessages(taskId, true);
+        result.current.getState().addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: 'Test message',
+        });
+      });
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0.2);
+      });
+
+      expect(result.current.getState().tasks[taskId].tokens).toBe(11);
+    });
+  });
+
   describe('Replay', () => {
     const replayProjectState = () => ({
       activeProjectId: 'proj-replay',
       getHistoryId: () => null,
+      getProjectById: () => ({
+        id: 'proj-replay',
+        mode: 'single',
+      }),
     });
 
     beforeEach(() => {
@@ -903,6 +1231,93 @@ describe('ChatStore - Core Functionality', () => {
       expect(result.current.getState().tasks['replay-1']).toBeDefined();
       expect(result.current.getState().activeTaskId).toBe('replay-1');
       expect(fetchEventSource).toHaveBeenCalled();
+    });
+
+    it('replays a recorded human reply without leaving an active wait', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const event of [
+          {
+            step: 'ask',
+            data: {
+              agent: 'Agents.single_agent',
+              question: 'What kind of script?',
+            },
+          },
+          {
+            step: 'human_reply',
+            data: {
+              agent: 'Agents.single_agent',
+              reply: 'A simple script is enough',
+            },
+          },
+          { step: 'end', data: 'Created the script' },
+        ]) {
+          opts.onmessage?.({ data: JSON.stringify(event) } as any);
+        }
+        return Promise.resolve();
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      result.current.getState().addMessages(taskId, {
+        id: generateUniqueId(),
+        role: 'user',
+        content: 'Create a script',
+      });
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0);
+      });
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'agent',
+            step: 'ask',
+            content: 'What kind of script?',
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: 'A simple script is enough',
+          }),
+        ])
+      );
+      expect(task.activeAsk).toBe('');
+      expect(task.askList).toEqual([]);
+      expect(task.status).toBe(ChatTaskStatus.FINISHED);
+    });
+
+    it('clears legacy replay ASK state when the task ends', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'ask',
+            data: {
+              agent: 'Agents.single_agent',
+              question: 'Historical question',
+            },
+          }),
+        } as any);
+        opts.onmessage?.({
+          data: JSON.stringify({ step: 'end', data: 'Finished' }),
+        } as any);
+        return Promise.resolve();
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0);
+      });
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task.activeAsk).toBe('');
+      expect(task.askList).toEqual([]);
+      expect(task.status).toBe(ChatTaskStatus.FINISHED);
     });
 
     it('replay SSE: AbortError does not throw', async () => {

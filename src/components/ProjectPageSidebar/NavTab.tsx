@@ -73,12 +73,7 @@ export function NavTabReconnectSuffix({
   const { t } = useTranslation();
   const reconnectLabel = t('layout.triggers-reconnect-hint');
   return (
-    <TooltipSimple
-      content={reconnectLabel}
-      side="top"
-      sideOffset={8}
-      delayDuration={300}
-    >
+    <TooltipSimple content={reconnectLabel} side="top" sideOffset={8}>
       <button
         type="button"
         className={cn(
@@ -178,7 +173,7 @@ function tabMainInner({
         {showNotificationDot && (
           <span
             className={cn(
-              'shrink-0 rounded-full transition-all duration-300',
+              'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 rounded-full transition-colors',
               notificationDotTone === 'attention'
                 ? 'bg-ds-text-status-error-strong-default'
                 : 'bg-ds-bg-brand-default-default',
@@ -305,6 +300,7 @@ export function NavTab({
       side="right"
       align="center"
       enabled={tooltipEnabled}
+      variant="instant"
       className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
     >
       <button

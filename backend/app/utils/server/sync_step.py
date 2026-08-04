@@ -93,6 +93,36 @@ def sync_step(func):
     return wrapper
 
 
+def sync_step_event(
+    *,
+    task_id: str,
+    step: str,
+    data: dict,
+    authorization: str | None,
+    run_id: str | None = None,
+    server_url: str | None = None,
+) -> None:
+    """Schedule one non-SSE event for cloud playback history."""
+    sync_base = _normalize_server_url(server_url or env("SERVER_URL", ""))
+    if not sync_base or not authorization:
+        return
+
+    payload = {
+        "task_id": task_id,
+        "run_id": run_id or task_id,
+        "step": step,
+        "data": data,
+        "timestamp": time.time_ns() / 1_000_000_000,
+    }
+    asyncio.create_task(
+        _send(
+            f"{sync_base}/chat/steps",
+            payload,
+            {"Authorization": authorization},
+        )
+    )
+
+
 def _try_sync(args, value, sync_url):
     data = _parse_value(value)
     if not data:

@@ -450,7 +450,7 @@ export default function HistorySidebar() {
               {/* Search */}
               <SearchInput value={searchValue} onChange={handleSearch} />
               <Button variant="ghost" size="md" onClick={createChat}>
-                <Plus className="h-8 w-8 text-ds-icon-neutral-muted-default transition-all duration-300 group-hover:text-ds-icon-neutral-default-default" />
+                <Plus className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] h-8 w-8 text-ds-icon-neutral-muted-default transition-colors group-hover:text-ds-icon-neutral-default-default" />
               </Button>
             </div>
             <div className="scrollbar-hide mt-2 min-h-0 flex-1 overflow-y-auto">
@@ -474,7 +474,7 @@ export default function HistorySidebar() {
                         navigate(`/`);
                         close();
                       }}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
+                      className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-colors hover:bg-ds-bg-neutral-default-hover"
                     >
                       <FolderClock className="h-5 w-5 flex-shrink-0 text-ds-icon-status-running-default-default" />
 
@@ -618,7 +618,7 @@ export default function HistorySidebar() {
                         );
                       }}
                       key={project.project_id}
-                      className="relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-all duration-300 hover:bg-ds-bg-neutral-default-hover"
+                      className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] relative flex w-full max-w-full cursor-pointer items-center justify-between gap-sm rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-4 py-3 shadow-history-item transition-colors hover:bg-ds-bg-neutral-default-hover"
                     >
                       <FolderCheck className="h-5 w-5 flex-shrink-0 text-ds-icon-neutral-subtle-default" />
 

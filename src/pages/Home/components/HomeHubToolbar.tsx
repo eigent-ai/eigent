@@ -244,7 +244,7 @@ export default function HomeHubToolbar({
         </TooltipSimple>
 
         <DropdownMenu>
-          <TooltipSimple content={sortLabel}>
+          <TooltipSimple content={sortLabel} variant="instant">
             <span className="inline-flex">
               <DropdownMenuTrigger asChild>
                 <Button
@@ -281,21 +281,21 @@ export default function HomeHubToolbar({
         >
           <TabsList appearance="default">
             <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
-              <TooltipSimple content={t('dashboard.grid')}>
+              <TooltipSimple content={t('dashboard.grid')} variant="instant">
                 <div className="inline-flex h-5 w-5 items-center justify-center">
                   <LayoutGrid size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="list" aria-label={t('dashboard.list')}>
-              <TooltipSimple content={t('dashboard.list')}>
+              <TooltipSimple content={t('dashboard.list')} variant="instant">
                 <div className="inline-flex h-5 w-5 items-center justify-center">
                   <List size={16} />
                 </div>
               </TooltipSimple>
             </TabsTrigger>
             <TabsTrigger value="board" aria-label={t('dashboard.board')}>
-              <TooltipSimple content={t('dashboard.board')}>
+              <TooltipSimple content={t('dashboard.board')} variant="instant">
                 <div className="inline-flex h-5 w-5 items-center justify-center">
                   <Columns2 size={16} />
                 </div>

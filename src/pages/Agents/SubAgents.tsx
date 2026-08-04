@@ -227,7 +227,7 @@ export default function SubAgents() {
       <button
         key={REMOTE_SUB_AGENT_PROVIDER}
         onClick={() => setSelectedProvider(REMOTE_SUB_AGENT_PROVIDER)}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-all duration-200 ${
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-200 ${
           isActive
             ? 'bg-fill-fill-transparent-active'
             : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'

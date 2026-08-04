@@ -18,12 +18,18 @@ import logging
 import platform
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from camel.models import ModelProcessingError
 from camel.tasks import Task
 from camel.toolkits import ToolkitMessageIntegration
 from camel.types import ModelPlatformType
+from camel.utils.stream_utils import (
+    consume_response_content,
+    consume_response_content_async,
+    is_streaming_response,
+)
 from fastapi import Request
 from inflection import titleize
 from pydash import chain
@@ -43,7 +49,10 @@ from app.agent.factory.remote_sub_agent import (
     remote_sub_agent_enabled,
 )
 from app.agent.listen_chat_agent import ListenChatAgent
-from app.agent.prompt import build_remote_sub_agent_planning_notice
+from app.agent.prompt import (
+    append_connected_app_mcp_notice,
+    build_remote_sub_agent_planning_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
@@ -55,6 +64,7 @@ from app.memory import (
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
+from app.model.subscription_runtime import is_subscription_auth
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -1694,6 +1704,8 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 yield sse_json("activate_agent", item.data)
             elif item.action == Action.deactivate_agent:
                 yield sse_json("deactivate_agent", dict(item.data))
+            elif item.action == Action.request_usage:
+                yield sse_json("request_usage", dict(item.data))
             elif item.action == Action.assign_task:
                 yield sse_json("assign_task", item.data)
             elif item.action == Action.activate_toolkit:
@@ -2334,23 +2346,70 @@ def _extract_agent_response_content(resp) -> str | None:
     return None
 
 
+def _response_with_content(resp, content: str):
+    if not content:
+        return resp
+
+    msg = getattr(resp, "msg", None)
+    if msg is not None:
+        try:
+            msg.content = content
+            return resp
+        except Exception:
+            pass
+
+    msgs = getattr(resp, "msgs", None)
+    if msgs:
+        try:
+            msgs[0].content = content
+            return resp
+        except Exception:
+            pass
+
+    msg = SimpleNamespace(content=content)
+    return SimpleNamespace(
+        msg=msg,
+        msgs=[msg],
+        info=getattr(resp, "info", {}),
+    )
+
+
+async def _materialize_agent_step_result(result):
+    if asyncio.iscoroutine(result):
+        result = await result
+
+    if not is_streaming_response(result):
+        return result
+
+    from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
+
+    if isinstance(result, AsyncStreamingChatAgentResponse):
+        response, content = await consume_response_content_async(result)
+    else:
+        response, content = await asyncio.to_thread(
+            consume_response_content,
+            result,
+        )
+
+    return _response_with_content(response, content)
+
+
 async def _run_agent_step(agent: ListenChatAgent, prompt: str):
     """Run one model step with backward-compatible priority.
 
     Some call sites and tests still stub synchronous ``step`` while newer paths
     provide ``astep``. Prefer ``step`` when available to preserve existing
-    behavior, and fall back to ``astep``.
+    behavior, but run it off the event loop because real model calls are
+    blocking. Fall back to ``astep``.
     """
     step_fn = getattr(agent, "step", None)
     if callable(step_fn):
-        result = step_fn(prompt)
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        result = await asyncio.to_thread(step_fn, prompt)
+        return await _materialize_agent_step_result(result)
 
     astep_fn = getattr(agent, "astep", None)
     if callable(astep_fn):
-        return await astep_fn(prompt)
+        return await _materialize_agent_step_result(astep_fn(prompt))
 
     raise AttributeError("Agent has neither step nor astep")
 
@@ -2663,6 +2722,10 @@ the current date.
     workforce_metrics = WorkforceMetricsCallback(
         project_id=options.project_id, task_id=options.task_id
     )
+    use_native_structured_output = (
+        model_platform_enum == ModelPlatformType.OPENAI
+        and not is_subscription_auth(options)
+    )
 
     workforce = Workforce(
         options.project_id,
@@ -2672,9 +2735,7 @@ the current date.
         coordinator_agent=coordinator_agent,
         task_agent=task_agent,
         new_worker_agent=new_worker_agent,
-        use_structured_output_handler=False
-        if model_platform_enum == ModelPlatformType.OPENAI
-        else True,
+        use_structured_output_handler=not use_native_structured_output,
     )
 
     # Register workforce metrics callback
@@ -2754,7 +2815,15 @@ async def new_agent_model(
         },
     )
     logger.debug(
-        "New agent data", extra={"agent_data": data.model_dump_json()}
+        "New agent data",
+        extra={
+            "agent_name": data.name,
+            "tools": list(data.tools),
+            "has_mcp_tools": bool(data.mcp_tools),
+            "has_custom_model_config": (
+                getattr(data, "custom_model_config", None) is not None
+            ),
+        },
     )
     working_directory = get_working_directory(options)
     tool_names = []
@@ -2801,6 +2870,9 @@ The current date is {datetime.date.today()}. \
 For any date-related tasks, you MUST use this as \
 the current date.
 """
+    enhanced_description = append_connected_app_mcp_notice(
+        enhanced_description
+    )
     message_integration = ToolkitMessageIntegration(
         message_handler=HumanToolkit(
             options.project_id, data.name

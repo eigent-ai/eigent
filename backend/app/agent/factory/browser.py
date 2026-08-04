@@ -25,7 +25,10 @@ from app.agent.factory.remote_sub_agent import (
     attach_remote_sub_agent_if_enabled,
 )
 from app.agent.listen_chat_agent import logger
-from app.agent.prompt import BROWSER_SYS_PROMPT
+from app.agent.prompt import (
+    BROWSER_SYS_PROMPT,
+    append_connected_app_mcp_notice,
+)
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 
@@ -382,6 +385,7 @@ def browser_agent(
         now_str=NOW_STR,
         external_browser_notice=external_browser_notice,
     )
+    system_message = append_connected_app_mcp_notice(system_message)
     system_message = attach_remote_sub_agent_if_enabled(
         options=options,
         agent_name=Agents.browser_agent,

@@ -54,19 +54,19 @@ export function NoticeCard() {
 
   return (
     <div>
-      <div className="gap-2 py-sm flex h-auto w-full flex-col transition-all duration-300">
-        <div className="rounded-xl py-3 pr-5 relative h-auto w-full overflow-hidden backdrop-blur-[5px]">
+      <div className="flex h-auto w-full flex-col gap-2 py-sm">
+        <div className="relative h-auto w-full overflow-hidden rounded-xl py-3 pr-5 backdrop-blur-[5px]">
           <div className="relative">
             <Button
               size="xs"
               buttonContent="icon-only"
               variant="ghost"
-              className="top-0 absolute right-[-15px]"
+              className="absolute right-[-15px] top-0"
               onClick={() => setIsExpanded(!isExpanded)}
             >
               <ChevronDown
                 size={16}
-                className={`transition-transform duration-300 ${
+                className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] transition-transform motion-reduce:transition-none ${
                   isExpanded ? 'rotate-180' : ''
                 }`}
               />
@@ -75,7 +75,7 @@ export function NoticeCard() {
               ref={contentRef}
               className={`${
                 isExpanded ? 'overflow-y-auto' : 'max-h-[200px] overflow-y-auto'
-              } scrollbar-hide ease-in-out relative transition-all duration-300`}
+              } scrollbar-hide relative`}
               style={{
                 maskImage: isExpanded
                   ? 'none'
@@ -85,15 +85,15 @@ export function NoticeCard() {
                   : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
               }}
             >
-              <div className="mt-sm gap-2 px-2 flex flex-col">
+              <div className="mt-sm flex flex-col gap-2 px-2">
                 {cotList.map((cot: string, index: number) => {
                   return (
                     <div
                       key={`taskList-${index}`}
-                      className={`gap-2 rounded-lg ease-in-out animate-in fade-in-0 slide-in-from-left-2 flex cursor-pointer border border-solid border-transparent transition-all duration-300`}
+                      className="ease-[cubic-bezier(0.23,1,0.32,1)] flex cursor-pointer gap-2 rounded-lg border border-solid border-transparent duration-200 animate-in fade-in-0 slide-in-from-left-2"
                     >
                       <div className="m-1.5 mt-2 h-1 w-1 rounded-full bg-ds-icon-neutral-default-default"></div>
-                      <div className="text-sm font-normal leading-normal flex flex-1 flex-col items-start justify-center">
+                      <div className="flex flex-1 flex-col items-start justify-center text-sm font-normal leading-normal">
                         {cot}
                       </div>
                     </div>

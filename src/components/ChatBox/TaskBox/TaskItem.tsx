@@ -67,29 +67,29 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group min-h-2 gap-0 rounded-lg p-sm hover:bg-ds-bg-neutral-default-hover mb-2 relative flex w-full items-start border border-solid ${
+        className={`group relative mb-2 flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-ds-bg-neutral-default-hover ${
           isFocus
             ? 'border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default'
             : 'border-ds-border-neutral-subtle-default group-hover:border-transparent'
         }`}
       >
-        <div className="h-4 w-7 pr-sm pt-0.5 flex flex-shrink-0 cursor-pointer items-center justify-center">
+        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
           {taskInfo.id === '' ? (
             <CircleDashed
               size={13}
               className="text-ds-icon-neutral-muted-default"
             />
           ) : (
-            <div className="h-2 w-2 bg-ds-icon-information-default-default rounded-full"></div>
+            <div className="h-2 w-2 rounded-full bg-ds-icon-information-default-default"></div>
           )}
         </div>
-        <div className="min-h-4 min-w-0 py-0.5 relative flex flex-1 items-center self-stretch overflow-hidden transition-all duration-300">
+        <div className="relative flex min-h-4 min-w-0 flex-1 items-center self-stretch overflow-hidden py-0.5">
           <Textarea
             ref={textareaRef}
             placeholder={t('layout.add-new-task')}
             className={`${
               isFocus && 'w-[calc(100%-52px)]'
-            } min-h-2 min-w-0 p-0 text-xs resize-none overflow-hidden rounded-none border-none bg-transparent leading-[20px] break-words shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
+            } min-h-2 min-w-0 resize-none overflow-hidden break-words rounded-none border-none bg-transparent p-0 text-xs leading-[20px] shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0`}
             value={taskInfo.content}
             onChange={(e) => onUpdate(e.target.value)}
             onBlur={() => {
@@ -101,11 +101,11 @@ export function TaskItem({
             rows={1}
           />
           {!isFocus && (
-            <div className="inset-0 absolute h-full w-full bg-transparent"></div>
+            <div className="absolute inset-0 h-full w-full bg-transparent"></div>
           )}
         </div>
         <div
-          className={`right-2 top-2 gap-xs absolute flex items-center group-hover:opacity-100 ${
+          className={`absolute right-2 top-2 flex items-center gap-xs group-hover:opacity-100 ${
             isFocus ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-300`}
         >

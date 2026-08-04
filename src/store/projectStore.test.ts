@@ -12,15 +12,49 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
+const { hasActiveSSEConnectionMock } = vi.hoisted(() => ({
+  hasActiveSSEConnectionMock: vi.fn(),
+}));
+
+vi.mock('@/service/spaceApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/service/spaceApi')>();
+  return {
+    ...actual,
+    proxyUpdateSpaceProject: vi.fn().mockResolvedValue({}),
+  };
+});
+
+vi.mock('./chatStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./chatStore')>();
+  return {
+    ...actual,
+    hasActiveSSEConnection: hasActiveSSEConnectionMock,
+  };
+});
+
 describe('projectStore runtime shape', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    hasActiveSSEConnectionMock.mockReturnValue(false);
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
+      navLeadByProjectId: {},
+      historyLoadingProjectIds: {},
+      staleProjectIds: new Set(),
+    });
+    globalThis.electronAPI = {
+      ...globalThis.electronAPI,
+      terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+    };
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
     });
     useSpaceStore.setState({
       activeSpaceId: 'space_test',
@@ -40,6 +74,30 @@ describe('projectStore runtime shape', () => {
       projectIdIndex: {},
       projectsSyncedAt: {},
     });
+  });
+
+  it('disposes the preview shell when its project is removed', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Terminal Project', undefined, 'project_terminal');
+    const pageTabs = usePageTabStore.getState();
+    pageTabs.setSessionPreviewProject(projectId);
+    pageTabs.toggleSessionPreview();
+    pageTabs.choosePreviewTabType(
+      getSessionPreviewSlice(usePageTabStore.getState()).activeTabId!,
+      'terminal'
+    );
+    const terminal = getSessionPreviewSlice(usePageTabStore.getState()).tabs[0];
+    const shellId = terminal.type === 'terminal' ? terminal.shellId : undefined;
+
+    useProjectStore.getState().removeProject(projectId);
+
+    expect(globalThis.electronAPI.terminalDispose).toHaveBeenCalledWith(
+      shellId
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[projectId]
+    ).toBeUndefined();
   });
 
   it('appends project runs into the same primary chat store', () => {
@@ -65,5 +123,213 @@ describe('projectStore runtime shape', () => {
     expect(tasks.task_a).toBeDefined();
     expect(tasks.task_b).toBeDefined();
     expect(firstRun?.chatStore.getState().activeTaskId).toBe('task_b');
+  });
+
+  it('stores and returns the per-project model selection', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Test Project', undefined, 'project_model_test');
+
+    expect(useProjectStore.getState().getProjectModel(projectId)).toBeNull();
+
+    useProjectStore.getState().setProjectModel(projectId, {
+      modelType: 'cloud',
+      cloud_model_type: 'model_a',
+      model_platform: 'platform_a',
+      model_type: 'model_a',
+    });
+
+    const selection = useProjectStore.getState().getProjectModel(projectId);
+    expect(selection).toEqual({
+      modelType: 'cloud',
+      cloud_model_type: 'model_a',
+      model_platform: 'platform_a',
+      model_type: 'model_a',
+    });
+
+    // The pin must also reach the persisted space meta so it survives an
+    // app restart (the runtime project store is not persisted).
+    const meta = useSpaceStore.getState().getProjectMeta(projectId);
+    expect(meta?.metadata?.modelSelection).toEqual(selection);
+  });
+
+  it('falls back to the space meta when the runtime project is gone', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Test Project', undefined, 'project_meta_fallback');
+
+    useProjectStore.getState().setProjectModel(projectId, {
+      modelType: 'custom',
+      provider_id: 7,
+      model_platform: 'platform_b',
+      model_type: 'model_b',
+    });
+
+    // Simulate a restart: runtime projects are wiped, space meta persists.
+    useProjectStore.setState({ activeProjectId: null, projects: {} });
+
+    const selection = useProjectStore.getState().getProjectModel(projectId);
+    expect(selection).toEqual({
+      modelType: 'custom',
+      provider_id: 7,
+      model_platform: 'platform_b',
+      model_type: 'model_b',
+    });
+  });
+
+  it('keeps stale project runtime while one of its tasks has an active SSE stream', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_live');
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'task_live');
+    useProjectStore.setState({
+      staleProjectIds: new Set([projectId]),
+    });
+    hasActiveSSEConnectionMock.mockImplementation((taskIds: string[]) =>
+      taskIds.includes('task_live')
+    );
+
+    useProjectStore.getState()._evictStaleOnTransition('project_next');
+
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
+      true
+    );
+    expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_live'])
+    );
+  });
+
+  it('evicts a stale project runtime on a later transition after active SSE is gone', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_safe');
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'task_finished');
+    useProjectStore.setState({
+      staleProjectIds: new Set([projectId]),
+    });
+    hasActiveSSEConnectionMock.mockReturnValue(false);
+
+    useProjectStore.getState()._evictStaleOnTransition('project_next');
+
+    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
+      false
+    );
+    expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
+    expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+  });
+
+  it('merges missing history into a background remote Project without stealing focus', async () => {
+    const activeProjectId = useProjectStore
+      .getState()
+      .createProject('Active Project', undefined, 'project_active');
+    const remoteProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Remote Project',
+        undefined,
+        'project_remote',
+        undefined,
+        'history_remote',
+        false,
+        {
+          spaceId: 'space_test',
+          metadata: { remoteHistoryHydrationPending: true },
+        }
+      );
+    const remoteRun = useProjectStore
+      .getState()
+      .appendInitChatStore(remoteProjectId, 'task_remote');
+    const chatStore = remoteRun?.chatStore;
+    expect(chatStore).toBeDefined();
+    chatStore?.getState().addMessages('task_remote', {
+      id: 'msg_remote',
+      role: 'user',
+      content: 'remote prompt',
+    });
+
+    const replay = vi.fn(async (taskId: string, question: string) => {
+      const state = chatStore!.getState();
+      state.create(taskId, 'replay');
+      state.addMessages(taskId, {
+        id: `msg_${taskId}`,
+        role: 'user',
+        content: question,
+      });
+      state.setActiveTaskId(taskId);
+    });
+    chatStore?.setState({ replay } as any);
+
+    await useProjectStore.getState().mergeProjectHistory(
+      remoteProjectId,
+      [
+        { task_id: 'task_old', question: 'old prompt' },
+        { task_id: 'task_remote', question: 'remote prompt' },
+      ],
+      'fallback prompt'
+    );
+
+    expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(replay).toHaveBeenCalledWith(
+      'task_old',
+      'old prompt',
+      0,
+      remoteProjectId
+    );
+    expect(chatStore?.getState().tasks.task_old).toBeDefined();
+    expect(chatStore?.getState().tasks.task_remote).toBeDefined();
+    expect(Object.keys(chatStore?.getState().tasks ?? {}).slice(0, 2)).toEqual([
+      'task_old',
+      'task_remote',
+    ]);
+    expect(chatStore?.getState().activeTaskId).toBe('task_remote');
+    expect(
+      useProjectStore.getState().projects[remoteProjectId].metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(false);
+  });
+
+  it('does not start a second remote history merge while one is already loading', async () => {
+    const remoteProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Remote Project',
+        undefined,
+        'project_remote_loading',
+        undefined,
+        'history_remote',
+        false,
+        {
+          spaceId: 'space_test',
+          metadata: { remoteHistoryHydrationPending: true },
+        }
+      );
+    const chatStore = useProjectStore.getState().getChatStore(remoteProjectId);
+    const replay = vi.fn(async () => undefined);
+    chatStore?.setState({ replay } as any);
+    useProjectStore.getState().setHistoryLoadingProject(remoteProjectId, true);
+
+    await useProjectStore
+      .getState()
+      .mergeProjectHistory(
+        remoteProjectId,
+        [{ task_id: 'task_old', question: 'old prompt' }],
+        'fallback prompt'
+      );
+
+    expect(replay).not.toHaveBeenCalled();
+    expect(
+      useProjectStore.getState().projects[remoteProjectId].metadata
+        ?.remoteHistoryHydrationPending
+    ).toBe(true);
+    expect(
+      useProjectStore.getState().historyLoadingProjectIds[remoteProjectId]
+    ).toBe(true);
   });
 });
