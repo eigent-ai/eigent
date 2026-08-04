@@ -21,6 +21,11 @@ export function getFileExtension(value?: string): string {
   return lastSegment.split('.').pop()?.toLowerCase() || '';
 }
 
+/** Remove the link-only sandbox scheme before passing a local path to Electron. */
+export function normalizeFileInfoPath(path: string): string {
+  return path.replace(/^sandbox:(?=(?:[A-Za-z]:)?[\\/])/i, '');
+}
+
 /**
  * Build a minimal {@link FileInfo} from a file path (and optional display name),
  * inferring `type` from the extension and `isRemote` from an http(s) prefix.
@@ -28,11 +33,13 @@ export function getFileExtension(value?: string): string {
  * a path/name is available.
  */
 export function fileInfoFromPath(path: string, name?: string): FileInfo {
-  const cleanName = name || path.split(/[\\/]/).pop() || path;
+  const normalizedPath = normalizeFileInfoPath(path);
+  const cleanName =
+    name || normalizedPath.split(/[\\/]/).pop() || normalizedPath;
   return {
     name: cleanName,
-    path,
-    type: getFileExtension(cleanName) || getFileExtension(path),
-    isRemote: /^https?:\/\//i.test(path),
+    path: normalizedPath,
+    type: getFileExtension(cleanName) || getFileExtension(normalizedPath),
+    isRemote: /^https?:\/\//i.test(normalizedPath),
   };
 }

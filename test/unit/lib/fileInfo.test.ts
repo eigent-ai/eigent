@@ -12,19 +12,26 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export function normalizeLegacySandboxPath(
-  filePath: string,
-  platform: NodeJS.Platform = process.platform
-): string {
-  const withoutSandboxScheme = filePath.replace(
-    /^sandbox:(?=(?:[A-Za-z]:)?[\\/])/i,
-    ''
-  );
-  const hadSandboxScheme = withoutSandboxScheme !== filePath;
+import { fileInfoFromPath } from '@/lib/fileInfo';
+import { describe, expect, it } from 'vitest';
 
-  if (platform === 'win32') return withoutSandboxScheme;
+describe('fileInfoFromPath', () => {
+  it('turns sandbox file links into local file paths', () => {
+    expect(
+      fileInfoFromPath('sandbox:/Users/test/project/simple_greeting.py')
+    ).toEqual({
+      name: 'simple_greeting.py',
+      path: '/Users/test/project/simple_greeting.py',
+      type: 'py',
+      isRemote: false,
+    });
+  });
 
-  const normalized = withoutSandboxScheme.replace(/\\/g, '/');
-  if (/^x:\//i.test(normalized)) return normalized.slice(2);
-  return hadSandboxScheme ? normalized : filePath;
-}
+  it('preserves remote URLs', () => {
+    expect(fileInfoFromPath('https://example.com/report.csv')).toMatchObject({
+      path: 'https://example.com/report.csv',
+      type: 'csv',
+      isRemote: true,
+    });
+  });
+});

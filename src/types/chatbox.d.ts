@@ -142,6 +142,7 @@ declare global {
       state?: string;
       message?: string;
       question?: string;
+      reply?: string;
       agent?: string;
       file_path?: string;
       process_task_id?: string;

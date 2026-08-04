@@ -369,6 +369,7 @@ export default function ChatBox(): JSX.Element {
   const handleSendRef = useRef<
     ((messageStr?: string, taskId?: string) => Promise<void>) | null
   >(null);
+  const autoReplyAttemptRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -386,7 +387,19 @@ export default function ChatBox(): JSX.Element {
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
-  const activeAsk = chatStore?.tasks[activeTaskId as string]?.activeAsk;
+  const activeAskTask = chatStore?.tasks[activeTaskId as string];
+  const activeAsk = activeAskTask?.activeAsk;
+  const activeAskMessageId = activeAskTask?.messages.findLast(
+    (item) => item.step === AgentStep.ASK
+  )?.id;
+  const isInteractiveHumanReply =
+    activeAskTask?.type !== 'replay' &&
+    activeAskTask?.type !== 'share' &&
+    activeAskTask?.status !== ChatTaskStatus.FINISHED;
+  const activeHumanReplyKey =
+    activeTaskId && activeAsk && isInteractiveHumanReply
+      ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
+      : null;
 
   useEffect(() => {
     if (!chatStore?.activeTaskId) return;
@@ -399,23 +412,24 @@ export default function ChatBox(): JSX.Element {
   }, [chatStore?.activeTaskId, chatStore]);
 
   useEffect(() => {
-    if (!chatStore) return;
-    const _activeAsk = activeAsk;
-    let timer: NodeJS.Timeout;
-    if (_activeAsk && _activeAsk !== '') {
-      const _taskId = chatStore.activeTaskId as string;
-      timer = setTimeout(() => {
-        if (handleSendRef.current) {
-          handleSendRef.current('skip', _taskId);
-        }
-      }, 30000); // 30 seconds
-      return () => clearTimeout(timer); // clear previous timer
+    if (!activeHumanReplyKey || !activeTaskId) {
+      autoReplyAttemptRef.current = null;
+      return;
     }
-    // if activeAsk is empty, also clear timer
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [activeAsk, chatStore, activeTaskId]);
+    if (message.trim() || autoReplyAttemptRef.current === activeHumanReplyKey) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      // A failed request must not create an endless 30-second retry loop for
+      // the same question. The prompt remains visible so the user can retry.
+      if (autoReplyAttemptRef.current === activeHumanReplyKey) return;
+      autoReplyAttemptRef.current = activeHumanReplyKey;
+      void handleSendRef.current?.('skip', activeTaskId);
+    }, 30000);
+
+    return () => window.clearTimeout(timer);
+  }, [activeHumanReplyKey, activeTaskId, message]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -725,6 +739,9 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
       if (requiresHumanReply) {
+        if (activeHumanReplyKey) {
+          autoReplyAttemptRef.current = activeHumanReplyKey;
+        }
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
           role: 'user',

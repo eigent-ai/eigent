@@ -429,7 +429,7 @@ class TestChatController:
             mock_task_lock.put_queue.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_human_reply_success(self, mock_task_lock):
+    async def test_human_reply_success(self, mock_task_lock, mock_request):
         """Test successful human reply."""
         task_id = "test_task_123"
         reply_data = HumanReply(agent="test_agent", reply="This is my reply")
@@ -439,17 +439,40 @@ class TestChatController:
                 "app.controller.chat_controller.get_task_lock_if_exists",
                 return_value=mock_task_lock,
             ),
+            patch(
+                "app.controller.chat_controller.sync_step_event"
+            ) as mock_sync_step,
         ):
-            response = await human_reply(task_id, reply_data)
+            mock_request.headers = {"authorization": "Bearer test"}
+            mock_task_lock.memory_service = None
+            mock_task_lock.run_context = None
+            mock_task_lock.current_task_id = task_id
+            response = await human_reply(task_id, reply_data, mock_request)
 
             assert isinstance(response, Response)
             assert response.status_code == 201
             mock_task_lock.put_human_input.assert_awaited_once_with(
                 "test_agent", "This is my reply"
             )
+            mock_task_lock.add_conversation.assert_called_once_with(
+                "human_reply",
+                {"agent": "test_agent", "reply": "This is my reply"},
+            )
+            mock_sync_step.assert_called_once_with(
+                task_id=task_id,
+                run_id=task_id,
+                step="human_reply",
+                data={
+                    "agent": "test_agent",
+                    "reply": "This is my reply",
+                },
+                authorization="Bearer test",
+            )
 
     @pytest.mark.asyncio
-    async def test_human_reply_missing_task_lock_returns_user_error(self):
+    async def test_human_reply_missing_task_lock_returns_user_error(
+        self, mock_request
+    ):
         """Expired human replies should not raise backend program errors."""
         task_id = "test_task_123"
         reply_data = HumanReply(agent="test_agent", reply="late reply")
@@ -459,7 +482,7 @@ class TestChatController:
             return_value=None,
         ):
             with pytest.raises(UserException):
-                await human_reply(task_id, reply_data)
+                await human_reply(task_id, reply_data, mock_request)
 
     def test_install_mcp_success(self, mock_task_lock):
         """Test successful MCP installation."""

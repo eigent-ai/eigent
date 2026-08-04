@@ -40,6 +40,7 @@ export const AgentStep = {
   REMOVE_TASK: 'remove_task',
   NOTICE: 'notice',
   ASK: 'ask',
+  HUMAN_REPLY: 'human_reply',
   SYNC: 'sync',
   NOTICE_CARD: 'notice_card',
   FAILED: 'failed',
