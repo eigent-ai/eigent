@@ -235,6 +235,21 @@ interface ElectronAPI {
     data?: any;
     error?: string;
   }>;
+  terminalCreate: (options: {
+    id: string;
+    cwd?: string;
+    cols?: number;
+    rows?: number;
+  }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
+  terminalInput: (id: string, data: string) => void;
+  terminalResize: (id: string, cols: number, rows: number) => void;
+  terminalDispose: (id: string) => Promise<{ success: boolean }>;
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void
+  ) => () => void;
+  onTerminalExit: (
+    callback: (payload: { id: string; exitCode: number }) => void
+  ) => () => void;
 }
 
 declare global {

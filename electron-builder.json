@@ -3,6 +3,7 @@
   "productName": "Eigent",
   "appId": "com.eigent.app",
   "asar": true,
+  "asarUnpack": ["node_modules/node-pty/**"],
   "directories": {
     "output": "release"
   },

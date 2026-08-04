@@ -14,21 +14,37 @@
 
 import { cn } from '@/lib/utils';
 import type { PreviewTabKind } from '@/store/pageTabStore';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, SquareTerminal } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PREVIEW_TAB_KINDS } from '../tabKinds';
+import type { TerminalSource } from './terminal/terminalSources';
+import { useSessionTerminalSources } from './terminal/useSessionTerminalSources';
 
 export interface ChooserTabProps {
   /** Open the given content kind (replaces this chooser tab in place). */
   onChoose: (kind: PreviewTabKind) => void;
+  /** Open one of the project's agent terminal streams (servers / scripts). */
+  onChooseAgentStream?: (source: TerminalSource) => void;
 }
 
 /**
- * The default starter tab. Lists every content kind as a vertical row; picking
- * one turns this tab into that kind via the store's `choosePreviewTabType`.
+ * The default starter tab. Lists every content kind as a vertical row —
+ * picking one turns this tab into that kind — plus a project section with
+ * the agent terminal streams of this session (started servers, background
+ * scripts), which open as read-only terminal tabs.
  */
-export function ChooserTab({ onChoose }: ChooserTabProps) {
+export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
   const { t } = useTranslation();
+  const sources = useSessionTerminalSources({ trackOutput: false });
+  // Newest first, with still-running streams (servers, watchers) on top.
+  const projectStreams = useMemo(() => {
+    const newestFirst = [...sources].reverse();
+    return [
+      ...newestFirst.filter((source) => source.status === 'running'),
+      ...newestFirst.filter((source) => source.status !== 'running'),
+    ];
+  }, [sources]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-4">
@@ -76,6 +92,54 @@ export function ChooserTab({ onChoose }: ChooserTabProps) {
             )
           )}
         </div>
+
+        {onChooseAgentStream && projectStreams.length > 0 ? (
+          <>
+            <p className="mb-2 mt-6 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
+              {t('layout.preview-chooser-project-title', {
+                defaultValue: 'From this project',
+              })}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {projectStreams.map((source) => (
+                <button
+                  key={source.id}
+                  type="button"
+                  onClick={() => onChooseAgentStream(source)}
+                  className={cn(
+                    'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors',
+                    'hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover'
+                  )}
+                >
+                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default">
+                    <SquareTerminal className="h-[18px] w-[18px]" aria-hidden />
+                    {source.status === 'running' ? (
+                      <span
+                        aria-hidden
+                        className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-ds-bg-status-running-default-default"
+                      />
+                    ) : null}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-ds-text-neutral-default-default">
+                      {source.agentName}
+                    </span>
+                    <span className="truncate text-xs text-ds-text-neutral-muted-default">
+                      {source.taskLabel ||
+                        t('layout.preview-chooser-stream-desc', {
+                          defaultValue: 'Command output from this session.',
+                        })}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
+                    aria-hidden
+                  />
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
