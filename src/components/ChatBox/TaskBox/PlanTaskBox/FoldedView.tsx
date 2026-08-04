@@ -119,7 +119,10 @@ export function FoldedView({
 
       {showPreview && (
         <div
-          className="scrollbar relative m-2 overflow-y-auto rounded-xl bg-transparent"
+          className={cn(
+            'relative m-2 rounded-xl bg-transparent',
+            canExpand ? 'overflow-hidden' : 'scrollbar overflow-y-auto'
+          )}
           style={{ height: PREVIEW_MAX_HEIGHT_PX }}
         >
           <div className="flex flex-col px-3 py-2">
