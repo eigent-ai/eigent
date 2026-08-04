@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { PreviewTabKind, SessionPreviewTab } from '@/store/pageTabStore';
+import type {
+  PreviewTabDestinationKind,
+  SessionPreviewTab,
+} from '@/store/pageTabStore';
 import {
   ClipboardCheck,
   FileText,
@@ -24,7 +27,7 @@ import {
 } from 'lucide-react';
 
 export interface PreviewKindMeta {
-  kind: PreviewTabKind;
+  kind: PreviewTabDestinationKind;
   icon: LucideIcon;
   /** i18n key + fallback used for the tab title and chooser row label. */
   labelKey: string;
@@ -64,10 +67,19 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     kind: 'terminal',
     icon: SquareTerminal,
     labelKey: 'layout.preview-kind-terminal',
-    defaultLabel: 'Terminal',
+    defaultLabel: 'Project terminal',
     descriptionKey: 'layout.preview-kind-terminal-desc',
     defaultDescription:
-      'Open a local terminal that starts in this project’s folder.',
+      'Open the project terminal in the Brain-resolved working directory.',
+  },
+  {
+    kind: 'local-terminal',
+    icon: SquareTerminal,
+    labelKey: 'layout.preview-kind-local-terminal',
+    defaultLabel: 'Local shell',
+    descriptionKey: 'layout.preview-kind-local-terminal-desc',
+    defaultDescription:
+      'Open your desktop login shell independently of the project runtime.',
   },
 ];
 

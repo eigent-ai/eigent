@@ -225,6 +225,104 @@ async def workspace_current(
     }
 
 
+@router.get("/workspace/effective-directory")
+async def workspace_effective_directory(
+    space_id: str = Query(..., description="Space ID"),
+    project_id: str = Query(..., description="Project ID"),
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Canonical user ID"),
+    task_id: str | None = Query(None, description="Run/task ID"),
+    workdir_mode: str | None = Query(
+        None, description="Project working-directory mode"
+    ),
+) -> dict[str, Any]:
+    """Return the Brain-authoritative directory for a Project terminal."""
+    resolver = get_workspace_resolver()
+
+    if task_id:
+        snapshot = resolver.store.get_snapshot(email, task_id, user_id)
+        if (
+            snapshot is not None
+            and snapshot.project_id == project_id
+            and snapshot.space_id == space_id
+        ):
+            working_directory = Path(snapshot.working_directory).expanduser()
+            if working_directory.is_dir():
+                return {
+                    "space_id": space_id,
+                    "project_id": project_id,
+                    "task_id": task_id,
+                    "working_directory": str(working_directory),
+                    "source": "task_snapshot",
+                    "workdir_mode": snapshot.workdir_mode,
+                }
+
+    task_lock = get_task_lock_if_exists(project_id)
+    if (
+        task_lock is not None
+        and task_lock.working_directory
+        and (
+            task_lock.project_id is None or task_lock.project_id == project_id
+        )
+        and (task_lock.space_id is None or task_lock.space_id == space_id)
+        and (task_id is None or task_lock.current_task_id == task_id)
+    ):
+        working_directory = Path(task_lock.working_directory).expanduser()
+        if working_directory.is_dir():
+            return {
+                "space_id": space_id,
+                "project_id": project_id,
+                "task_id": task_lock.current_task_id,
+                "working_directory": str(working_directory),
+                "source": "active_run",
+                "workdir_mode": task_lock.workdir_mode,
+            }
+
+    latest_snapshot = resolver.store.get_latest_project_snapshot(
+        email, project_id, space_id, user_id
+    )
+    if latest_snapshot is not None:
+        working_directory = Path(
+            latest_snapshot.working_directory
+        ).expanduser()
+        if working_directory.is_dir():
+            return {
+                "space_id": space_id,
+                "project_id": project_id,
+                "task_id": latest_snapshot.task_id,
+                "working_directory": str(working_directory),
+                "source": "task_snapshot",
+                "workdir_mode": latest_snapshot.workdir_mode,
+            }
+
+    fallback_workdir_mode = (
+        latest_snapshot.workdir_mode
+        if latest_snapshot is not None
+        else workdir_mode
+    )
+    if fallback_workdir_mode in {None, "direct-write"}:
+        binding = resolver.store.get_binding(email, space_id, user_id)
+        if binding is not None:
+            working_directory = Path(binding.workspace_root).expanduser()
+            if working_directory.is_dir():
+                return {
+                    "space_id": space_id,
+                    "project_id": project_id,
+                    "task_id": None,
+                    "working_directory": str(working_directory),
+                    "source": "binding",
+                    "workdir_mode": fallback_workdir_mode,
+                }
+
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "code": "effective_workspace_unavailable",
+            "message": "No Brain-resolved working directory is available for this Project.",
+        },
+    )
+
+
 @router.post("/workspace/scratch")
 async def workspace_scratch(
     payload: WorkspaceScratchRequest, request: Request

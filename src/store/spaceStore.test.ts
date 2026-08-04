@@ -100,7 +100,12 @@ describe('spaceStore user scoping', () => {
     };
     globalThis.electronAPI = {
       ...globalThis.electronAPI,
+      terminalCreate: vi.fn().mockResolvedValue({ success: true }),
+      terminalInput: vi.fn(),
+      terminalResize: vi.fn(),
       terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+      onTerminalData: vi.fn(() => () => {}),
+      onTerminalExit: vi.fn(() => () => {}),
     };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
@@ -203,6 +208,20 @@ describe('spaceStore user scoping', () => {
   });
 
   it('removes spaces and project metadata from the previous signed-in user', () => {
+    const pageTabs = usePageTabStore.getState();
+    pageTabs.setSessionPreviewProject('project_old');
+    pageTabs.toggleSessionPreview();
+    pageTabs.choosePreviewTabType(
+      getSessionPreviewSlice(usePageTabStore.getState()).activeTabId!,
+      'terminal'
+    );
+    const removedTerminal = getSessionPreviewSlice(usePageTabStore.getState())
+      .tabs[0];
+    const removedShellId =
+      removedTerminal.type === 'terminal' ? removedTerminal.shellId : undefined;
+    pageTabs.setSessionPreviewProject('project_new');
+    pageTabs.toggleSessionPreview();
+
     useSpaceStore.getState().resetForUser(2);
 
     const state = useSpaceStore.getState();
@@ -214,6 +233,15 @@ describe('spaceStore user scoping', () => {
       space_new_blank: 'project_new',
     });
     expect(state.projectsSyncedAt).toEqual({ space_new_blank: 200 });
+    expect(globalThis.electronAPI.terminalDispose).toHaveBeenCalledWith(
+      removedShellId
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.project_old
+    ).toBeUndefined();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject.project_new
+    ).toBeDefined();
   });
 
   it('hydrates new accounts with one blank space and hides empty legacy rows', async () => {

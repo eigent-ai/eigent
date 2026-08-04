@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import { useHost } from '@/host';
 import {
   ensureShellSession,
   getShellBuffer,
@@ -25,6 +24,7 @@ import {
   writeToShell,
   type ShellSessionState,
 } from '@/lib/shellSessions';
+import type { TerminalTransport } from '@/lib/terminalTransport';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
@@ -46,24 +46,28 @@ export interface ShellTerminalProps {
   shellId: string;
   /** Directory the shell starts in; falls back to the home directory. */
   cwd?: string;
+  /** Whether this explicitly local surface may fall back to the user's home. */
+  allowHomeFallback?: boolean;
+  /** Host-independent PTY transport selected by the surface router. */
+  transport: TerminalTransport;
   /** Called with the URL when a link in the output is clicked. */
   onOpenLink?: (url: string) => void;
 }
 
 /**
- * A real interactive terminal — xterm in front, a main-process PTY running
- * the user's login shell behind. Feels like the desktop terminal: native
- * prompt, arrow keys, colors, Ctrl+C, full-screen programs. Scrollback is
- * replayed from the session registry when the tab remounts.
+ * A real interactive terminal — xterm in front, a selected PTY transport
+ * behind. The Electron adapter feels like the desktop terminal; a Brain
+ * adapter can provide the same interaction remotely. Scrollback is replayed
+ * from the session registry when the tab remounts.
  */
 export function ShellTerminal({
   shellId,
   cwd,
+  allowHomeFallback = false,
+  transport,
   onOpenLink,
 }: ShellTerminalProps) {
   const { t } = useTranslation();
-  const host = useHost();
-  const electronAPI = host?.electronAPI;
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const [session, setSession] = useState<ShellSessionState>(() =>
@@ -78,8 +82,7 @@ export function ShellTerminal({
 
   useEffect(() => {
     const container = containerRef.current;
-    const api = electronAPI;
-    if (!container || !api?.terminalCreate) return;
+    if (!container) return;
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -129,14 +132,14 @@ export function ShellTerminal({
     );
 
     const inputDisposable = terminal.onData((data) =>
-      writeToShell(api, shellId, data)
+      writeToShell(transport, shellId, data)
     );
 
     const safeFit = () => {
       if (!container.clientWidth || !container.clientHeight) return;
       try {
         fitAddon.fit();
-        resizeShell(api, shellId, terminal.cols, terminal.rows);
+        resizeShell(transport, shellId, terminal.cols, terminal.rows);
       } catch {
         // Ignore: the next resize will refit.
       }
@@ -146,9 +149,10 @@ export function ShellTerminal({
     // container resizes (panel drag, window resize, side panel fold).
     let frame = requestAnimationFrame(() => {
       safeFit();
-      void ensureShellSession(api, {
+      void ensureShellSession(transport, {
         id: shellId,
         cwd,
+        allowHomeFallback,
         cols: terminal.cols,
         rows: terminal.rows,
       }).then(setSession);
@@ -171,11 +175,10 @@ export function ShellTerminal({
     };
     // cwd only matters at spawn time; a change never restarts a live shell.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shellId, runId, electronAPI]);
+  }, [shellId, runId, transport]);
 
   const handleRestart = async () => {
-    if (!electronAPI) return;
-    const disposed = await resetShellSession(electronAPI, shellId);
+    const disposed = await resetShellSession(transport, shellId);
     if (!disposed) return;
     setSession(getShellSessionState(shellId));
     setRunId((id) => id + 1);

@@ -12,23 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type {
+  TerminalCreateOptions,
+  TerminalTransport,
+} from '@/lib/terminalTransport';
+
 /**
- * Renderer-side registry for interactive shell sessions (main-process PTYs).
+ * Renderer-side registry for interactive shell sessions (transport-owned PTYs).
  * The PTY outlives the xterm UI — switching preview tabs unmounts the
  * terminal component — so this module owns the IPC listeners and a rolling
  * output buffer per shell, letting a remounted terminal replay its scrollback
  * and re-attach to the live stream.
  */
-
-type TerminalHostApi = Pick<
-  Window['electronAPI'],
-  | 'terminalCreate'
-  | 'terminalInput'
-  | 'terminalResize'
-  | 'terminalDispose'
-  | 'onTerminalData'
-  | 'onTerminalExit'
->;
 
 export interface ShellSessionState {
   /** The PTY was spawned (or confirmed alive) at least once. */
@@ -39,6 +34,7 @@ export interface ShellSessionState {
 }
 
 interface ShellSessionEntry extends ShellSessionState {
+  transport: TerminalTransport | null;
   buffer: string[];
   bufferCodeUnits: number;
   dataListeners: Set<(chunk: string) => void>;
@@ -50,7 +46,7 @@ interface ShellSessionEntry extends ShellSessionState {
 const MAX_BUFFER_CODE_UNITS = 1_000_000;
 
 const sessions = new Map<string, ShellSessionEntry>();
-let ipcBound = false;
+const boundTransports = new WeakSet<TerminalTransport>();
 
 function entryFor(id: string): ShellSessionEntry {
   let entry = sessions.get(id);
@@ -60,6 +56,7 @@ function entryFor(id: string): ShellSessionEntry {
       exited: false,
       exitCode: null,
       error: null,
+      transport: null,
       buffer: [],
       bufferCodeUnits: 0,
       dataListeners: new Set(),
@@ -88,16 +85,16 @@ function notifyState(entry: ShellSessionEntry) {
 }
 
 /** Attach the global IPC listeners once; they dispatch by shell id. */
-function bindIpc(api: TerminalHostApi) {
-  if (ipcBound) return;
-  ipcBound = true;
-  api.onTerminalData(({ id, data }: { id: string; data: string }) => {
+function bindTransport(transport: TerminalTransport) {
+  if (boundTransports.has(transport)) return;
+  boundTransports.add(transport);
+  transport.onData(({ id, data }) => {
     const entry = sessions.get(id);
     if (!entry) return;
     appendToBuffer(entry, data);
     entry.dataListeners.forEach((listener) => listener(data));
   });
-  api.onTerminalExit(({ id, exitCode }: { id: string; exitCode: number }) => {
+  transport.onExit(({ id, exitCode }) => {
     const entry = sessions.get(id);
     if (!entry) return;
     entry.exited = true;
@@ -106,29 +103,25 @@ function bindIpc(api: TerminalHostApi) {
   });
 }
 
-export interface EnsureShellOptions {
-  id: string;
-  cwd?: string;
-  cols?: number;
-  rows?: number;
-}
+export type EnsureShellOptions = TerminalCreateOptions;
 
 /**
  * Spawn the shell if it isn't already running. Safe to call on every mount:
  * the main process keeps one PTY per id and reports `existing` when alive.
  */
 export async function ensureShellSession(
-  api: TerminalHostApi,
+  transport: TerminalTransport,
   options: EnsureShellOptions
 ): Promise<ShellSessionState> {
-  bindIpc(api);
+  bindTransport(transport);
   const entry = entryFor(options.id);
+  entry.transport = transport;
   if (entry.created && !entry.exited) return snapshot(entry);
   if (entry.createPromise) return entry.createPromise;
 
-  const createPromise = api
-    .terminalCreate(options)
-    .then((result: Awaited<ReturnType<TerminalHostApi['terminalCreate']>>) => {
+  const createPromise = transport
+    .create(options)
+    .then((result) => {
       // The tab/project may have been disposed while IPC was in flight.
       if (sessions.get(options.id) !== entry) return snapshot(entry);
       if (result.success) {
@@ -161,11 +154,12 @@ export async function ensureShellSession(
 
 /** Kill the PTY and drop all local state (tab closed). */
 export function disposeShellSession(
-  api: TerminalHostApi | undefined,
+  fallbackTransport: TerminalTransport | null | undefined,
   id: string
 ) {
+  const transport = sessions.get(id)?.transport ?? fallbackTransport;
   sessions.delete(id);
-  void api?.terminalDispose(id);
+  void transport?.dispose(id);
 }
 
 /**
@@ -174,11 +168,12 @@ export function disposeShellSession(
  * to the old shell with blank scrollback.
  */
 export async function resetShellSession(
-  api: TerminalHostApi,
+  transport: TerminalTransport,
   id: string
 ): Promise<boolean> {
   try {
-    await api.terminalDispose(id);
+    const result = await transport.dispose(id);
+    if (!result.success) return false;
   } catch {
     return false;
   }
@@ -188,23 +183,28 @@ export async function resetShellSession(
   entry.exited = false;
   entry.exitCode = null;
   entry.error = null;
+  entry.transport = transport;
   entry.buffer = [];
   entry.bufferCodeUnits = 0;
   notifyState(entry);
   return true;
 }
 
-export function writeToShell(api: TerminalHostApi, id: string, data: string) {
-  api.terminalInput(id, data);
+export function writeToShell(
+  transport: TerminalTransport,
+  id: string,
+  data: string
+) {
+  transport.input(id, data);
 }
 
 export function resizeShell(
-  api: TerminalHostApi,
+  transport: TerminalTransport,
   id: string,
   cols: number,
   rows: number
 ) {
-  api.terminalResize(id, cols, rows);
+  transport.resize(id, cols, rows);
 }
 
 /** Buffered output for scrollback replay on remount. */

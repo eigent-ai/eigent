@@ -122,10 +122,7 @@ export enum ProjectType {
 
 export type ProjectMode = 'single-agent' | 'workforce';
 export type ProjectWorkdirMode =
-  | 'worktree'
-  | 'copy'
-  | 'direct-write'
-  | 'artifact-only';
+  'worktree' | 'copy' | 'direct-write' | 'artifact-only';
 
 interface TaskQueue {
   task_id: string;
@@ -1169,7 +1166,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     projectId?: string,
     historyId?: string
   ) => {
-    const { projects, removeProject, createProject, createChatStore } = get();
+    const { projects, _evictProjectRuntime, createProject, createChatStore } =
+      get();
 
     let replayProjectId: string;
 
@@ -1191,7 +1189,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (projectId) {
       if (projects[projectId]) {
         console.log(`[ProjectStore] Overwriting existing project ${projectId}`);
-        removeProject(projectId);
+        _evictProjectRuntime(projectId);
       }
       // Create project with the specific naming
       replayProjectId = createProject(
@@ -1274,7 +1272,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     taskQuestionsById?: Record<string, string>,
     serverUpdatedAt?: number | null
   ) => {
-    const { projects, removeProject, createProject, createChatStore } = get();
+    const { projects, _evictProjectRuntime, createProject, createChatStore } =
+      get();
     const existingProject = projects[projectId];
     const existingMeta = useSpaceStore.getState().getProjectMeta(projectId);
     const projectNameCandidate = (projectName ?? '').trim();
@@ -1296,7 +1295,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       console.log(
         `[ProjectStore] Overwriting existing project ${projectId} for load`
       );
-      removeProject(projectId);
+      _evictProjectRuntime(projectId);
     }
 
     const loadProjectId = createProject(

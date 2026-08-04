@@ -15,6 +15,7 @@
 import { createHost } from '@/host';
 import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
+import { createElectronTerminalTransport } from '@/lib/terminalTransport';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -82,6 +83,8 @@ export interface SessionTerminalTab {
    * Project-scoped so the shell survives tab switches within an app run.
    */
   shellId?: string;
+  /** Interactive terminal surface; old persisted tabs default to project. */
+  surface?: 'project' | 'local';
   /**
    * When set, the tab shows this agent terminal stream (read-only) instead of
    * a local shell. Ids come from `collectTerminalSources`.
@@ -109,6 +112,8 @@ export type SessionPreviewTab =
  * it is the picker itself, not a destination.
  */
 export type PreviewTabKind = Exclude<SessionPreviewTab['type'], 'chooser'>;
+/** Chooser destinations may map more than one surface to a terminal tab. */
+export type PreviewTabDestinationKind = PreviewTabKind | 'local-terminal';
 
 export interface PreviewBrowserViewport {
   x: number;
@@ -207,7 +212,7 @@ function browserTabTitleForUrl(url: string): string {
 
 /** Build a fresh tab of the requested kind. Browser tabs need the project id. */
 function createPreviewTabOfKind(
-  kind: PreviewTabKind,
+  kind: PreviewTabDestinationKind,
   projectId: string | null
 ): SessionPreviewTab {
   switch (kind) {
@@ -226,10 +231,21 @@ function createPreviewTabOfKind(
       return {
         id,
         type: 'terminal',
-        title: 'Terminal',
+        title: 'Project terminal',
         // Stable per-tab PTY id: the shell keeps running while the user
         // switches preview tabs, and dies when the tab is closed.
         shellId: `session-shell:${projectId ?? 'global'}:${id}`,
+        surface: 'project',
+      };
+    }
+    case 'local-terminal': {
+      const id = nextSessionPreviewTabId('terminal');
+      return {
+        id,
+        type: 'terminal',
+        title: 'Local shell',
+        shellId: `local-shell:${projectId ?? 'global'}:${id}`,
+        surface: 'local',
       };
     }
     case 'canvas':
@@ -282,9 +298,10 @@ function sanitizeSessionPreviewForPersist(
 
 function disposePreviewShellTabs(tabs: SessionPreviewTab[]) {
   const api = createHost().electronAPI ?? undefined;
+  const transport = createElectronTerminalTransport(api);
   for (const tab of tabs) {
     if (tab.type === 'terminal' && tab.shellId) {
-      disposeShellSession(api, tab.shellId);
+      disposeShellSession(transport, tab.shellId);
     }
   }
 }
@@ -422,7 +439,10 @@ interface PageTabState {
    * Turn a tab (typically the chooser) into the chosen content kind, in place.
    * Falls back to appending if the target tab no longer exists.
    */
-  choosePreviewTabType: (tabId: string, kind: PreviewTabKind) => void;
+  choosePreviewTabType: (
+    tabId: string,
+    kind: PreviewTabDestinationKind
+  ) => void;
   /** Open a file in a deduplicated file tab (reuses a blank starter tab). */
   openFilePreview: (file?: FileInfo | null) => void;
   /**
@@ -465,6 +485,11 @@ interface PageTabState {
    * interactive shell it owned, even when no preview component is mounted.
    */
   removeSessionPreviewProject: (projectId: string) => void;
+  /**
+   * Authentication-boundary cleanup. Keep only previews owned by Projects
+   * retained for the next user and terminate every removed interactive shell.
+   */
+  retainSessionPreviewProjects: (projectIds: string[]) => void;
 }
 
 type SetPageTabState = (
@@ -950,6 +975,36 @@ export const usePageTabStore = create<PageTabState>()(
                   previewBrowserViewport: null,
                 }
               : {}),
+          };
+        });
+      },
+      retainSessionPreviewProjects: (projectIds) => {
+        const retained = new Set(projectIds);
+        const current = get();
+        for (const [projectId, slice] of Object.entries(
+          current.sessionPreviewByProject
+        )) {
+          if (!retained.has(projectId)) {
+            disposePreviewShellTabs(slice.tabs);
+          }
+        }
+        set((state) => {
+          const sessionPreviewByProject = Object.fromEntries(
+            Object.entries(state.sessionPreviewByProject).filter(
+              ([projectId]) => retained.has(projectId)
+            )
+          );
+          const scopedProjectRetained =
+            state.sessionPreviewProjectId !== null &&
+            retained.has(state.sessionPreviewProjectId);
+          return {
+            sessionPreviewByProject,
+            ...(scopedProjectRetained
+              ? {}
+              : {
+                  sessionPreviewProjectId: null,
+                  previewBrowserViewport: null,
+                }),
           };
         });
       },

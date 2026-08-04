@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   handles: new Map<string, (...args: any[]) => any>(),
@@ -88,6 +88,7 @@ function createHandler() {
 
 describe('terminal IPC lifecycle', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     disposeAllTerminals();
     mocks.handles.clear();
     mocks.listeners.clear();
@@ -95,7 +96,12 @@ describe('terminal IPC lifecycle', () => {
     registerTerminalIpcHandlers();
   });
 
-  it('refreshes the output sender when a persisted shell id is reattached', async () => {
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('rejects reattachment of a persisted shell id by another renderer', async () => {
     const pty = fakePty();
     mocks.spawn.mockReturnValue(pty);
     const originalSender = sender();
@@ -110,23 +116,56 @@ describe('terminal IPC lifecycle', () => {
       { id: 'session-shell:project:tab' }
     );
     pty.emitData('ready');
+    vi.runOnlyPendingTimers();
 
-    expect(result).toMatchObject({ success: true, existing: true });
-    expect(originalSender.send).not.toHaveBeenCalled();
-    expect(reopenedSender.send).toHaveBeenCalledWith('terminal-data', {
+    expect(result).toMatchObject({ success: false });
+    expect(originalSender.send).toHaveBeenCalledWith('terminal-data', {
       id: 'session-shell:project:tab',
       data: 'ready',
     });
+    expect(reopenedSender.send).not.toHaveBeenCalled();
+  });
+
+  it('allows a restored renderer to adopt a shell whose owner was destroyed', async () => {
+    const pty = fakePty();
+    mocks.spawn.mockReturnValue(pty);
+    const closedWindowSender = sender();
+    const reopenedWindowSender = sender();
+
+    await createHandler()(
+      { sender: closedWindowSender },
+      { id: 'session-shell:project:restored-tab' }
+    );
+    closedWindowSender.isDestroyed.mockReturnValue(true);
+    const result = await createHandler()(
+      { sender: reopenedWindowSender },
+      { id: 'session-shell:project:restored-tab' }
+    );
+    pty.emitData('restored');
+    vi.runOnlyPendingTimers();
+
+    expect(result).toMatchObject({ success: true, existing: true });
+    expect(closedWindowSender.send).not.toHaveBeenCalled();
+    expect(reopenedWindowSender.send).toHaveBeenCalledWith('terminal-data', {
+      id: 'session-shell:project:restored-tab',
+      data: 'restored',
+    });
+
+    const disposed = await mocks.handles.get('terminal-dispose')!(
+      { sender: reopenedWindowSender },
+      'session-shell:project:restored-tab'
+    );
+    expect(disposed).toEqual({ success: true });
+    expect(pty.kill).toHaveBeenCalledTimes(1);
   });
 
   it('shares one spawn across concurrent creates for the same id', async () => {
     mocks.spawn.mockReturnValue(fakePty());
-    const firstSender = sender();
-    const secondSender = sender();
+    const owner = sender();
 
     const [first, second] = await Promise.all([
-      createHandler()({ sender: firstSender }, { id: 'shared-shell' }),
-      createHandler()({ sender: secondSender }, { id: 'shared-shell' }),
+      createHandler()({ sender: owner }, { id: 'shared-shell' }),
+      createHandler()({ sender: owner }, { id: 'shared-shell' }),
     ]);
 
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
@@ -142,12 +181,92 @@ describe('terminal IPC lifecycle', () => {
         OPENAI_API_KEY: 'secret',
         GH_TOKEN: 'secret',
         AWS_SECRET_ACCESS_KEY: 'secret',
+        AWS_ACCESS_KEY_ID: 'secret',
+        DATABASE_URL: 'postgres://secret',
+        REDIS_URL: 'redis://secret',
+        GITHUB_PAT: 'secret',
+        NPM_AUTH: 'secret',
+        SESSION_COOKIE: 'secret',
         CODEX_RESOLVER_SECRET: 'secret',
+        HTTP_PROXY: 'http://user:password@proxy.example',
+        HTTPS_PROXY: 'http://user:password@proxy.example',
+        ALL_PROXY: 'socks5://user:password@proxy.example',
+        NO_PROXY: 'localhost,127.0.0.1',
+        XDG_CONFIG_HOME: '/tmp/xdg',
       })
     ).toEqual({
       PATH: '/usr/bin',
       LANG: 'en_GB.UTF-8',
+      XDG_CONFIG_HOME: '/tmp/xdg',
     });
+  });
+
+  it('batches sustained output before crossing the renderer IPC boundary', async () => {
+    const pty = fakePty();
+    mocks.spawn.mockReturnValue(pty);
+    const outputSender = sender();
+    await createHandler()({ sender: outputSender }, { id: 'batched-shell' });
+
+    pty.emitData('one');
+    pty.emitData('two');
+    expect(outputSender.send).not.toHaveBeenCalled();
+
+    vi.runOnlyPendingTimers();
+    expect(outputSender.send).toHaveBeenCalledTimes(1);
+    expect(outputSender.send).toHaveBeenCalledWith('terminal-data', {
+      id: 'batched-shell',
+      data: 'onetwo',
+    });
+  });
+
+  it('rejects input, resize, and disposal from a non-owning renderer', async () => {
+    const pty = fakePty();
+    mocks.spawn.mockReturnValue(pty);
+    const owner = sender();
+    const stranger = sender();
+    await createHandler()({ sender: owner }, { id: 'owned-shell' });
+
+    mocks.listeners.get('terminal-input')!(
+      { sender: stranger },
+      { id: 'owned-shell', data: 'unsafe' }
+    );
+    mocks.listeners.get('terminal-resize')!(
+      { sender: stranger },
+      { id: 'owned-shell', cols: 100, rows: 40 }
+    );
+    const rejected = await mocks.handles.get('terminal-dispose')!(
+      { sender: stranger },
+      'owned-shell'
+    );
+
+    expect(pty.write).not.toHaveBeenCalled();
+    expect(pty.resize).not.toHaveBeenCalled();
+    expect(pty.kill).not.toHaveBeenCalled();
+    expect(rejected).toMatchObject({ success: false });
+
+    mocks.listeners.get('terminal-input')!(
+      { sender: owner },
+      { id: 'owned-shell', data: 'safe' }
+    );
+    expect(pty.write).toHaveBeenCalledWith('safe');
+  });
+
+  it('fails a Project terminal instead of silently falling back to home', async () => {
+    mocks.spawn.mockReturnValue(fakePty());
+    const result = await createHandler()(
+      { sender: sender() },
+      {
+        id: 'strict-project-shell',
+        cwd: '/definitely/missing/eigent-project-directory',
+        allowHomeFallback: false,
+      }
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'Project working directory is unavailable',
+    });
+    expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
   it('ignores a disposed PTY exit after a replacement shell starts', async () => {
@@ -164,6 +283,7 @@ describe('terminal IPC lifecycle', () => {
     await createHandler()({ sender: outputSender }, { id: 'restart-shell' });
     oldPty.emitData('stale output');
     oldPty.emitExit(0);
+    vi.runOnlyPendingTimers();
 
     expect(outputSender.send).not.toHaveBeenCalledWith('terminal-data', {
       id: 'restart-shell',
@@ -174,6 +294,7 @@ describe('terminal IPC lifecycle', () => {
       expect.anything()
     );
     replacementPty.emitData('replacement-ready');
+    vi.runOnlyPendingTimers();
     expect(outputSender.send).toHaveBeenCalledWith('terminal-data', {
       id: 'restart-shell',
       data: 'replacement-ready',
