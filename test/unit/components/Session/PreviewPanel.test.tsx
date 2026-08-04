@@ -35,6 +35,27 @@ vi.mock('@/components/Session/PreviewPanel/tabs/CanvasTab', () => ({
   CanvasTab: () => <div data-testid="canvas-tab" />,
 }));
 
+// xterm needs real layout/canvas APIs; the terminal tab has its own suite.
+vi.mock('@/components/Session/PreviewPanel/tabs/terminal/TerminalTab', () => ({
+  TerminalTab: () => <div data-testid="terminal-tab" />,
+}));
+
+// The chooser lists the project's agent terminal streams via this hook; keep
+// the suite off the chat-store dependency chain and drive it with fixtures.
+let mockTerminalSources: Array<{
+  id: string;
+  agentName: string;
+  taskLabel: string;
+  lines: string[];
+  status: 'running' | 'idle';
+}> = [];
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/terminal/useSessionTerminalSources',
+  () => ({
+    useSessionTerminalSources: () => mockTerminalSources,
+  })
+);
+
 // The desktop host is detected by electronAPI presence; embedded browsing
 // itself is <webview>-tag based and driven through the webview registry.
 const openExternal = vi.fn();
@@ -59,6 +80,7 @@ function activeType() {
 
 describe('PreviewPanel', () => {
   beforeEach(() => {
+    mockTerminalSources = [];
     openExternal.mockReset();
     openExternal.mockResolvedValue({ success: true });
     usePageTabStore.setState({
@@ -74,7 +96,7 @@ describe('PreviewPanel', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
     // Vertical options (test i18n echoes the key, not the label).
-    for (const kind of ['browser', 'file']) {
+    for (const kind of ['browser', 'file', 'terminal']) {
       expect(
         screen.getByRole('button', {
           name: new RegExp(`preview-kind-${kind}\\b`),
@@ -82,13 +104,43 @@ describe('PreviewPanel', () => {
       ).toBeInTheDocument();
     }
     // Reserved kinds stay hidden from the chooser until a later version.
-    for (const kind of ['review', 'terminal', 'canvas']) {
+    for (const kind of ['review', 'canvas']) {
       expect(
         screen.queryByRole('button', {
           name: new RegExp(`preview-kind-${kind}\\b`),
         })
       ).not.toBeInTheDocument();
     }
+  });
+
+  it('lists the project’s agent streams in the chooser and opens one in place', async () => {
+    const user = userEvent.setup();
+    mockTerminalSources = [
+      {
+        id: 'chat-1:turn-1:sub-1',
+        agentName: 'Developer Agent',
+        taskLabel: 'Start dev server',
+        lines: ['npm run dev'],
+        status: 'running',
+      },
+    ];
+    renderPanel();
+
+    expect(
+      screen.getByText('layout.preview-chooser-project-title')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Start dev server/ }));
+
+    const slice = previewSlice();
+    const active = slice.tabs.find((tab) => tab.id === slice.activeTabId);
+    expect(active).toMatchObject({
+      type: 'terminal',
+      title: 'Developer Agent',
+      agentSourceId: 'chat-1:turn-1:sub-1',
+    });
+    // The chooser was converted in place, not left behind.
+    expect(slice.tabs).toHaveLength(1);
+    expect(screen.getByTestId('terminal-tab')).toBeInTheDocument();
   });
 
   it('picking a chooser option turns the tab into that content kind', async () => {
@@ -130,7 +182,7 @@ describe('PreviewPanel', () => {
         <PreviewPanel />
       </HostProvider>
     );
-    expect(screen.getByText('Eigent:~$')).toBeInTheDocument();
+    expect(screen.getByTestId('terminal-tab')).toBeInTheDocument();
   });
 
   it('the + button adds a new chooser tab', async () => {

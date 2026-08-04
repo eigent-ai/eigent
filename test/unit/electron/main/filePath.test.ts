@@ -15,6 +15,21 @@
 import { normalizeLegacySandboxPath } from '../../../../electron/main/utils/filePath';
 
 describe('normalizeLegacySandboxPath', () => {
+  it('removes sandbox schemes from absolute local paths', () => {
+    expect(
+      normalizeLegacySandboxPath(
+        'sandbox:/Users/test/project/simple_greeting.py',
+        'darwin'
+      )
+    ).toBe('/Users/test/project/simple_greeting.py');
+    expect(
+      normalizeLegacySandboxPath(
+        'sandbox:C:\\Users\\test\\project\\report.csv',
+        'win32'
+      )
+    ).toBe('C:\\Users\\test\\project\\report.csv');
+  });
+
   it('repairs x-prefixed POSIX paths on non-Windows platforms', () => {
     expect(
       normalizeLegacySandboxPath('x:/Users/test/report.csv', 'darwin')
@@ -37,5 +52,8 @@ describe('normalizeLegacySandboxPath', () => {
     expect(
       normalizeLegacySandboxPath('https://example.com/report.csv', 'darwin')
     ).toBe('https://example.com/report.csv');
+    expect(
+      normalizeLegacySandboxPath('sandbox:relative/report.csv', 'darwin')
+    ).toBe('sandbox:relative/report.csv');
   });
 });

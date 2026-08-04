@@ -16,7 +16,11 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  usePageTabStore,
+  type SessionPreviewTab,
+} from '@/store/pageTabStore';
 import { Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +30,7 @@ import { CanvasTab } from './tabs/CanvasTab';
 import { ChooserTab } from './tabs/ChooserTab';
 import { FileTab } from './tabs/FileTab';
 import { ReviewTab } from './tabs/ReviewTab';
-import { TerminalTab } from './tabs/TerminalTab';
+import { TerminalTab } from './tabs/terminal/TerminalTab';
 
 // Tabs render at a comfortable default width and shrink evenly as more are
 // added, down to a minimum that keeps the title/close affordance legible.
@@ -72,10 +76,20 @@ export function PreviewPanel({
   const closeSessionPreviewTab = usePageTabStore(
     (state) => state.closeSessionPreviewTab
   );
+  const openAgentTerminalPreview = usePageTabStore(
+    (state) => state.openAgentTerminalPreview
+  );
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
     [activeTabId, tabs]
+  );
+
+  const handleCloseTab = useCallback(
+    (tab: SessionPreviewTab) => {
+      closeSessionPreviewTab(tab.id);
+    },
+    [closeSessionPreviewTab]
   );
   // Embedded browsing relies on the desktop host's <webview> tag; on the web
   // the panel still works but URLs open in a regular browser tab.
@@ -143,6 +157,13 @@ export function PreviewPanel({
         return (
           <ChooserTab
             onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
+            onChooseAgentStream={(source) =>
+              openAgentTerminalPreview(
+                source.id,
+                source.agentName,
+                activeTab.id
+              )
+            }
           />
         );
       case 'browser':
@@ -160,7 +181,8 @@ export function PreviewPanel({
       case 'review':
         return <ReviewTab />;
       case 'terminal':
-        return <TerminalTab />;
+        // Keyed so each terminal tab keeps its own shell / stream state.
+        return <TerminalTab key={activeTab.id} tab={activeTab} />;
       case 'canvas':
         return <CanvasTab key={activeTab.id} />;
       default:
@@ -169,7 +191,7 @@ export function PreviewPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-2">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-1">
       <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1.5">
         <div className="relative flex min-w-0 items-center">
           <div
@@ -220,7 +242,7 @@ export function PreviewPanel({
                     })}
                     onClick={(event) => {
                       event.stopPropagation();
-                      closeSessionPreviewTab(tab.id);
+                      handleCloseTab(tab);
                     }}
                     className={cn(
                       'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',

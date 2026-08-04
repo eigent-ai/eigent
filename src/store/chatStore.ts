@@ -1262,6 +1262,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Never resurrect a task as pending / awaiting confirmation
             // from a cached snapshot — those are in-flight flags only.
             isPending: false,
+            activeAsk: '',
+            askList: [],
             autoConfirmDeadline: null,
             streamingDecomposeText: '',
             // File handles can't round-trip through JSON, so cached
@@ -3677,6 +3679,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               setTaskAssigning(currentTaskId, taskAssigning);
 
               // Complete the current task with error status
+              setActiveAsk(currentTaskId, '');
+              setActiveAskList(currentTaskId, []);
               setStatus(currentTaskId, ChatTaskStatus.FINISHED);
               setIsPending(currentTaskId, false);
 
@@ -3874,6 +3878,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             addMessages(currentTaskId, endUiMessage);
             setIsPending(currentTaskId, false);
+            setActiveAsk(currentTaskId, '');
+            setActiveAskList(currentTaskId, []);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
 
@@ -4174,28 +4180,61 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
           if (agentMessages.step === AgentStep.SYNC) return;
-          if (agentMessages.step === AgentStep.ASK) {
-            if (tasks[currentTaskId].activeAsk != '') {
-              const newMessage: Message = {
+          if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            const reply =
+              agentMessages.data?.reply ||
+              agentMessages.data?.content ||
+              (typeof agentMessages.data === 'string'
+                ? agentMessages.data
+                : '');
+            if (reply) {
+              addMessages(currentTaskId, {
                 id: generateUniqueId(),
-                role: 'agent',
-                agent_name: agentMessages.data.agent || '',
-                content:
-                  agentMessages.data?.content ||
-                  agentMessages.data?.notice ||
-                  agentMessages.data?.answer ||
-                  agentMessages.data?.question ||
-                  (agentMessages.data as string) ||
-                  '',
-                step: agentMessages.step,
-                isConfirm: false,
-              };
+                role: 'user',
+                content: reply,
+              });
+            }
+
+            const [nextAsk, ...remainingAsks] = tasks[currentTaskId].askList;
+            setActiveAskList(currentTaskId, remainingAsks);
+            if (nextAsk) {
+              setActiveAsk(currentTaskId, nextAsk.agent_name || '');
+              addMessages(currentTaskId, nextAsk);
+            } else {
+              setActiveAsk(currentTaskId, '');
+            }
+            setIsPending(currentTaskId, false);
+            return;
+          }
+          if (agentMessages.step === AgentStep.ASK) {
+            const newMessage: Message = {
+              id: generateUniqueId(),
+              role: 'agent',
+              agent_name: agentMessages.data.agent || '',
+              content:
+                agentMessages.data?.content ||
+                agentMessages.data?.notice ||
+                agentMessages.data?.answer ||
+                agentMessages.data?.question ||
+                (agentMessages.data as string) ||
+                '',
+              step: agentMessages.step,
+              isConfirm: false,
+            };
+
+            if (tasks[currentTaskId].activeAsk != '') {
               let activeAskList = tasks[currentTaskId].askList;
               setActiveAskList(currentTaskId, [...activeAskList, newMessage]);
               return;
             }
+            // Playback ASK state is read-only: ChatBox excludes replay/share
+            // tasks from live input timers. Keeping the state here lets a
+            // recorded HUMAN_REPLY promote queued historical questions in
+            // the same order as the original run.
             setActiveAsk(currentTaskId, agentMessages.data.agent || '');
             setIsPending(currentTaskId, false);
+            addMessages(currentTaskId, newMessage);
+            return;
           }
           const newMessage: Message = {
             id: generateUniqueId(),

@@ -81,3 +81,9 @@ api.add_middleware(SecurityHeadersMiddleware)
 from app.router_layer import ChannelSessionMiddleware
 
 api.add_middleware(ChannelSessionMiddleware)
+
+# Exception handlers are part of the application boundary and must be
+# registered whenever the shared FastAPI instance is imported by Uvicorn.
+from app.exception.handler import register_exception_handlers  # noqa: E402
+
+register_exception_handlers(api)
