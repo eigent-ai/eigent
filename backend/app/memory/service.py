@@ -346,6 +346,38 @@ class MemoryService:
             )
             return None
 
+    def on_human_reply(
+        self,
+        *,
+        run_context: RunContext,
+        content: str,
+    ) -> str | None:
+        """Persist a mid-run Human Toolkit reply as a user conversation turn."""
+        if not content.strip():
+            return None
+        user_key = _resolve_user_key(run_context)
+        if user_key is None:
+            return None
+        try:
+            return self._append_conversation(
+                user_key=user_key,
+                run_context=run_context,
+                role="user",
+                content=content,
+                source="chat",
+                now=_utc_now(),
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory.service.on_human_reply: append failed",
+                extra={
+                    "project_id": run_context.project_id,
+                    "run_id": run_context.run_id,
+                },
+                exc_info=True,
+            )
+            return None
+
     # ----- Run End -----
 
     def on_run_end(
