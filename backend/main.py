@@ -287,13 +287,17 @@ atexit.register(sync_cleanup)
 # Log successful initialization
 app_logger.info("Application initialization completed successfully")
 
+DEFAULT_BRAIN_HOST = "127.0.0.1"
+
 
 def run_standalone():
     """Run Brain in standalone mode (no Electron dependency)."""
     import uvicorn
 
     port = int(env("EIGENT_BRAIN_PORT", "5001"))
-    host = env("EIGENT_BRAIN_HOST", "0.0.0.0")  # nosec B104 - bind all for Docker/dev
+    # Exposing Brain is an explicit deployment choice. Desktop and local dev
+    # default to loopback so LAN peers cannot reach mutable Chat/Run APIs.
+    host = env("EIGENT_BRAIN_HOST", DEFAULT_BRAIN_HOST)
     reload = os.environ.get("EIGENT_DEBUG", "").lower() in ("1", "true", "yes")
 
     app_logger.info(
