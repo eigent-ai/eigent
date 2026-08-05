@@ -16,6 +16,7 @@ import asyncio
 import inspect
 import logging
 import os
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -211,7 +212,21 @@ def _build_run_context(
         getattr(request.state, "browser_port", data.browser_port)
     )
     cdp_url = getattr(request.state, "cdp_url", None)
-    auth_header = request.headers.get("authorization")
+    request_headers = request.headers
+    headers = request_headers if isinstance(request_headers, Mapping) else {}
+    auth_header = headers.get("authorization")
+    try:
+        from app.run_sync.runtime import configure_default_cloud_sync_worker
+
+        configure_default_cloud_sync_worker(
+            server_url=data.server_url,
+            authorization=auth_header,
+            desktop_instance_id=headers.get("x-desktop-instance-id"),
+        )
+    except Exception:
+        # Cloud sync is a freshness projection. Local Run admission and history
+        # remain available when its configuration cannot be refreshed.
+        chat_logger.exception("Failed to configure Run cloud sync")
     return RunContext(
         space_id=data.space_id or data.project_id,
         project_id=data.project_id,

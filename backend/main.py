@@ -60,6 +60,7 @@ _enable_system_trust_store()
 from app import api
 from app.component.environment import env
 from app.router import register_routers
+from app.run_sync.middleware import cloud_sync_configuration_middleware
 from app.utils.event_loop_utils import set_main_event_loop
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -70,6 +71,8 @@ _fallback_camel_log_dir.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("CAMEL_LOG_DIR", str(_fallback_camel_log_dir))
 
 app_logger = logging.getLogger("main")
+
+api.middleware("http")(cloud_sync_configuration_middleware)
 
 # Log application startup
 app_logger.info("Starting Eigent Multi-Agent System API")
@@ -164,6 +167,14 @@ async def cleanup_resources():
         await close_default_run_coordinator()
     except Exception as e:
         app_logger.warning(f"RunCoordinator shutdown failed: {e}")
+
+    # Stop cloud outbox drain before closing its shared SQLite journal.
+    try:
+        from app.run_sync.runtime import close_default_cloud_sync_worker
+
+        await close_default_cloud_sync_worker()
+    except Exception as e:
+        app_logger.warning(f"CloudSyncWorker shutdown failed: {e}")
 
     from app.service.task import _cleanup_task, task_locks
 

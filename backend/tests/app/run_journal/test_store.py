@@ -24,6 +24,7 @@ from app.run_journal import (
     EventRecorder,
     IdempotencyConflictError,
     OptimisticConcurrencyError,
+    OutboxLeaseLostError,
     RunEventDraft,
     RunNotFoundError,
     SQLiteRunJournal,
@@ -241,6 +242,152 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
     with SQLiteRunJournal(path) as reopened:
         assert reopened.schema_version == SCHEMA_VERSION
         assert reopened.get_run("run-1") is not None
+
+
+def test_v1_database_upgrades_outbox_leases_without_losing_rows(tmp_path):
+    from app.run_journal.store import _MIGRATION_V1
+
+    path = tmp_path / "run-journal.sqlite3"
+    with sqlite3.connect(path, isolation_level=None) as connection:
+        connection.executescript(_MIGRATION_V1)
+        connection.execute(
+            """
+            INSERT INTO runs(
+                run_id, project_id, status, version, deadline_at,
+                timeout_policy_version, created_at, updated_at
+            ) VALUES ('run-1', 'project-1', 'running', 1, NULL, 'v1', 1, 1)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO run_events(
+                event_id, run_id, sequence, run_version, event_type,
+                payload_json, created_at
+            ) VALUES ('event-1', 'run-1', 1, 1, 'message.created', '{}', 1)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO run_event_sync_outbox(
+                event_id, run_id, run_sequence, next_attempt_at,
+                created_at, updated_at
+            ) VALUES ('event-1', 'run-1', 1, 1, 1, 1)
+            """
+        )
+
+    with SQLiteRunJournal(path) as upgraded:
+        assert upgraded.schema_version == SCHEMA_VERSION
+        row = upgraded.list_pending_outbox(now=2)[0]
+        assert row.event_id == "event-1"
+        assert row.lease_token is None
+        assert row.lease_until is None
+
+
+def test_outbox_claims_fifo_batches_across_runs(journal):
+    for run_id in ("run-1", "run-2"):
+        journal.ensure_run(run_id=run_id, project_id="project-1", now=1)
+        for sequence in range(1, 4):
+            journal.append_event(
+                run_id,
+                RunEventDraft(
+                    event_id=f"{run_id}-event-{sequence}",
+                    event_type="message.created",
+                    payload={"sequence": sequence},
+                    created_at=float(sequence),
+                ),
+            )
+
+    batches = journal.claim_ready_outbox_batches(
+        now=10,
+        max_runs=2,
+        batch_size=2,
+    )
+
+    assert {batch.run_id for batch in batches} == {"run-1", "run-2"}
+    assert all(
+        [event.sequence for event in batch.events] == [1, 2]
+        for batch in batches
+    )
+    for batch in batches:
+        journal.mark_outbox_batch_sent(batch, now=11)
+    next_batches = journal.claim_ready_outbox_batches(now=12, max_runs=2)
+    assert all(
+        [event.sequence for event in batch.events] == [3]
+        for batch in next_batches
+    )
+
+
+def test_expired_sending_lease_is_reclaimed_and_old_worker_is_fenced(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="event-1",
+            event_type="message.created",
+            payload={},
+            created_at=1,
+        ),
+    )
+    old_batch = journal.claim_ready_outbox_batches(now=2, lease_seconds=1)[0]
+    new_batch = journal.claim_ready_outbox_batches(now=4, lease_seconds=10)[0]
+
+    assert old_batch.lease_token != new_batch.lease_token
+    with pytest.raises(OutboxLeaseLostError):
+        journal.mark_outbox_batch_sent(old_batch, now=5)
+    journal.mark_outbox_batch_sent(new_batch, now=5)
+
+
+def test_dead_letter_blocks_only_its_run(journal):
+    for run_id in ("run-bad", "run-good"):
+        journal.ensure_run(run_id=run_id, project_id="project-1", now=1)
+        journal.append_event(
+            run_id,
+            RunEventDraft(
+                event_id=f"{run_id}-event-1",
+                event_type="message.created",
+                payload={},
+                created_at=1,
+            ),
+        )
+    batches = journal.claim_ready_outbox_batches(now=2, max_runs=2)
+    bad = next(batch for batch in batches if batch.run_id == "run-bad")
+    good = next(batch for batch in batches if batch.run_id == "run-good")
+    journal.block_outbox_batch(
+        bad,
+        failed_event_id=bad.events[0].event_id,
+        error="invalid payload",
+        now=3,
+    )
+    journal.retry_outbox_batch(
+        good,
+        error="network",
+        next_attempt_at=3,
+        now=3,
+    )
+
+    ready = journal.claim_ready_outbox_batches(now=4, max_runs=2)
+    assert [batch.run_id for batch in ready] == ["run-good"]
+
+
+@pytest.mark.asyncio
+async def test_event_recorder_wakeup_runs_after_durable_commit(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    seen: list[str] = []
+
+    def on_commit() -> None:
+        seen.extend(row.event_id for row in journal.list_pending_outbox())
+
+    recorder = EventRecorder(journal, on_commit=on_commit)
+    await recorder.commit(
+        "run-1",
+        RunEventDraft(
+            event_id="event-1",
+            event_type="message.created",
+            payload={},
+        ),
+    )
+
+    assert seen == ["event-1"]
 
 
 @pytest.mark.asyncio

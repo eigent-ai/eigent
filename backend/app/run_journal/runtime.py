@@ -33,6 +33,12 @@ _default_journal: SQLiteRunJournal | None = None
 _default_recorder: EventRecorder | None = None
 
 
+def _notify_cloud_sync() -> None:
+    from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+    notify_default_cloud_sync_worker()
+
+
 def configured_run_journal_path() -> Path:
     configured = str(env("EIGENT_RUN_JOURNAL_PATH", "")).strip()
     if configured:
@@ -58,7 +64,10 @@ def get_default_event_recorder() -> EventRecorder:
                 _default_journal = SQLiteRunJournal(
                     configured_run_journal_path()
                 )
-            _default_recorder = EventRecorder(_default_journal)
+            _default_recorder = EventRecorder(
+                _default_journal,
+                on_commit=_notify_cloud_sync,
+            )
         return _default_recorder
 
 
