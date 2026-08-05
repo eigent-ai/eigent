@@ -183,12 +183,39 @@ export interface RemoteControlSession {
 }
 
 export interface RemoteControlStep {
-  step_id: number;
+  step_id: number | string;
   task_id: string;
   project_id?: string | null;
   step: string;
   data: unknown;
   timestamp?: number | null;
+}
+
+export interface RemoteCanonicalEvent {
+  event_id: string;
+  project_id: string;
+  run_id: string;
+  run_sequence: number;
+  run_version: number;
+  cloud_cursor: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  legacy_step: string | null;
+  created_at: string;
+  ingested_at: string;
+}
+
+export interface RemoteProjectSnapshot {
+  project_id: string;
+  current_cursor: number;
+  runs: Array<{
+    run_id: string;
+    status: string;
+    expected_next_run_sequence: number;
+    updated_at: string;
+  }>;
+  recent_events: RemoteCanonicalEvent[];
+  events_truncated: boolean;
 }
 
 export interface RemoteControlCommandResponse {
@@ -258,6 +285,46 @@ export async function listRemoteControlSteps(
       since,
       limit,
       order: 'asc',
+    },
+    remoteLinkHeaders(linkToken)
+  );
+}
+
+export async function getRemoteControlSnapshot(
+  sessionId: string,
+  linkToken: string,
+  projectId?: string | null,
+  eventLimit = 1000
+): Promise<RemoteProjectSnapshot> {
+  return proxyFetchGet(
+    `/api/v1/remote-control/sessions/${sessionId}/snapshot`,
+    {
+      ...(projectId ? { project_id: projectId } : {}),
+      event_limit: eventLimit,
+    },
+    remoteLinkHeaders(linkToken)
+  );
+}
+
+export async function listRemoteControlEvents(
+  sessionId: string,
+  linkToken: string,
+  afterCursor: number,
+  limit = 1000,
+  projectId?: string | null
+): Promise<{
+  project_id: string;
+  current_cursor: number;
+  next_cursor: number;
+  has_more: boolean;
+  items: RemoteCanonicalEvent[];
+}> {
+  return proxyFetchGet(
+    `/api/v1/remote-control/sessions/${sessionId}/events`,
+    {
+      ...(projectId ? { project_id: projectId } : {}),
+      after_cursor: afterCursor,
+      limit,
     },
     remoteLinkHeaders(linkToken)
   );
