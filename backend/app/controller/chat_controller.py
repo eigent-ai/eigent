@@ -131,16 +131,22 @@ async def _classify_persisted_admission(
     if run is None:
         return "new", None
     attempts = await asyncio.to_thread(journal.list_run_attempts, run_id)
-    legacy_request_id = f"initial:{run_id}"
     matching = next(
         (
             attempt
             for attempt in attempts
-            if attempt.resume_request_id in {request_id, legacy_request_id}
+            if attempt.resume_request_id == request_id
         ),
         None,
     )
     if matching is None:
+        # Legacy attempts predate payload fingerprints. Their input cannot be
+        # proven equal to this request, so replay them but never re-execute.
+        if any(
+            attempt.resume_request_id == f"initial:{run_id}"
+            for attempt in attempts
+        ):
+            return "duplicate", None
         if not attempts and run.status in {"pending", "running"}:
             return "retry", None
         return "conflict", None
@@ -505,15 +511,16 @@ async def _prepare_chat_run(
         project_id=run_context.project_id,
         status="pending",
     )
+    request_id = _admission_request_id(
+        run_context.run_id,
+        question=data.question,
+        attaches=data.attaches or [],
+        project_context=data.project_context,
+    )
     attempt = await asyncio.to_thread(
         get_default_run_journal().create_run_attempt,
         run_context.run_id,
-        request_id=_admission_request_id(
-            run_context.run_id,
-            question=data.question,
-            attaches=data.attaches or [],
-            project_context=data.project_context,
-        ),
+        request_id=request_id,
         reason="initial_execution",
         activate=False,
     )
@@ -539,18 +546,13 @@ async def _prepare_chat_run(
         mode=memory_mode,
         user_prompt=data.question,
         prompt_source="chat",
+        conversation_event_id=f"memory:{request_id}",
     )
     task_lock.memory_service = memory_service
 
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
-    request_id = _admission_request_id(
-        run_context.run_id,
-        question=data.question,
-        attaches=data.attaches or [],
-        project_context=data.project_context,
-    )
     initial_action = ActionImproveData(
         data=ImprovePayload(
             question=data.question,
@@ -729,6 +731,7 @@ async def _improve_chat(
     # a browser that was manually connected through the Browser page.
     current_context = getattr(task_lock, "run_context", None)
     previous_run_id = getattr(current_context, "run_id", None)
+    previous_status = task_lock.status
     port = (
         current_context.browser_port
         if isinstance(current_context, RunContext)
@@ -871,6 +874,32 @@ async def _improve_chat(
         and refreshed_context.run_id == data.task_id
     )
     if rotation_succeeded:
+        if previous_run_id is not None:
+            rebound = await get_default_run_coordinator().rebind_run(
+                previous_run_id,
+                refreshed_context.run_id,
+            )
+            if not rebound:
+                # Runtime ownership is a prerequisite for admission. Restore
+                # the compatibility context before any canonical Run row,
+                # Attempt, or Memory event is written so the same request can
+                # be retried without leaving a replay-only orphan.
+                if isinstance(current_context, RunContext):
+                    task_lock.run_context = current_context
+                    await asyncio.to_thread(
+                        apply_run_env_for_third_party, current_context
+                    )
+                task_lock.status = previous_status
+                raise UserException(
+                    code.error,
+                    "The previous Run has no live consumer for this follow-up.",
+                )
+        resolved_request_id = admission_request_id or _admission_request_id(
+            refreshed_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        )
         await asyncio.to_thread(
             get_default_run_journal().ensure_run,
             run_id=refreshed_context.run_id,
@@ -880,13 +909,7 @@ async def _improve_chat(
         attempt = await asyncio.to_thread(
             get_default_run_journal().create_run_attempt,
             refreshed_context.run_id,
-            request_id=admission_request_id
-            or _admission_request_id(
-                refreshed_context.run_id,
-                question=data.question,
-                attaches=data.attaches or [],
-                project_context=data.project_context,
-            ),
+            request_id=resolved_request_id,
             reason="follow_up_execution",
             activate=False,
         )
@@ -903,17 +926,8 @@ async def _improve_chat(
             mode=None,  # mode unchanged; preserve existing project.json value
             user_prompt=data.question,
             prompt_source="improve",
+            conversation_event_id=f"memory:{resolved_request_id}",
         )
-        if previous_run_id is not None:
-            rebound = await get_default_run_coordinator().rebind_run(
-                previous_run_id,
-                refreshed_context.run_id,
-            )
-            if not rebound:
-                raise UserException(
-                    code.error,
-                    "The previous Run has no live consumer for this follow-up.",
-                )
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the
@@ -931,7 +945,7 @@ async def _improve_chat(
                 project_context=data.project_context,
             ),
             new_task_id=data.task_id,
-            request_id=admission_request_id,
+            request_id=(resolved_request_id if rotation_succeeded else None),
             run_id=(
                 refreshed_context.run_id if rotation_succeeded else None
             ),

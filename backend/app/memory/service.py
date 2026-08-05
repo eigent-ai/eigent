@@ -248,6 +248,7 @@ class MemoryService:
         prompt_source: Literal[
             "chat", "trigger", "improve", "imported"
         ] = "chat",
+        conversation_event_id: str | None = None,
     ) -> str | None:
         """Initialise Space/Project/Run records and append the user prompt.
 
@@ -297,6 +298,7 @@ class MemoryService:
                 content=user_prompt,
                 source=prompt_source,
                 now=now,
+                event_id=conversation_event_id,
             )
             return event_id
         except Exception:  # noqa: BLE001 — service is best-effort
@@ -670,14 +672,15 @@ class MemoryService:
         content: str,
         source: Literal["chat", "trigger", "improve", "imported"],
         now: str,
+        event_id: str | None = None,
     ) -> str:
-        event_id = _new_event_id()
+        resolved_event_id = event_id or _new_event_id()
         self._store.append_conversation(
             user_key,
             run_context.space_id,
             run_context.project_id,
             ConversationEvent(
-                event_id=event_id,
+                event_id=resolved_event_id,
                 run_id=run_context.run_id,
                 timestamp=now,
                 role=role,
@@ -686,8 +689,9 @@ class MemoryService:
                 visibility="context",
                 hash=_sha256(content),
             ),
+            if_absent=event_id is not None,
         )
-        return event_id
+        return resolved_event_id
 
 
 # Module-level singleton for callers that don't need to inject a custom store.

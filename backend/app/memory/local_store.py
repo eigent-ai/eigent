@@ -183,6 +183,33 @@ def _append_jsonl(path: Path, payload: Any) -> None:
             os.fsync(fh.fileno())
 
 
+def _append_jsonl_if_absent(
+    path: Path, payload: dict[str, Any], *, identity_key: str
+) -> bool:
+    """Append once by identity under the same lock as the durability write."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    identity = payload.get(identity_key)
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
+    with _path_lock(path):
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                for raw in fh:
+                    try:
+                        existing = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if existing.get(identity_key) == identity:
+                        return False
+        except FileNotFoundError:
+            pass
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+            fh.flush()
+            os.fsync(fh.fileno())
+    return True
+
+
 def _read_jsonl_lines(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -280,12 +307,20 @@ class LocalMemoryStore:
         space_id: str,
         project_id: str,
         event: ConversationEvent,
-    ) -> None:
+        *,
+        if_absent: bool = False,
+    ) -> bool:
         target = (
             self.project_path(user_key, space_id, project_id)
             / "conversation.jsonl"
         )
-        _append_jsonl(target, asdict(event))
+        payload = asdict(event)
+        if if_absent:
+            return _append_jsonl_if_absent(
+                target, payload, identity_key="event_id"
+            )
+        _append_jsonl(target, payload)
+        return True
 
     def read_conversation_tail(
         self,
