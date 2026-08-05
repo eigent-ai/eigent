@@ -6,6 +6,7 @@ import time
 import pytest
 
 from app.run_journal import SQLiteRunJournal
+from app.run_policy import RunTimeoutPolicy
 from app.run_runtime import RunCoordinator
 
 
@@ -104,4 +105,85 @@ async def test_execution_backend_failure_is_a_durable_terminal_event(tmp_path):
             await subscription.__anext__()
         assert journal.get_run("run-1").status == "failed"
         assert journal.list_events("run-1")[-1].event_type == "run.failed"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_deadline_configured_after_admission_is_enforced(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        coordinator = RunCoordinator(journal)
+
+        async def source():
+            await asyncio.Event().wait()
+            yield "never"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-1",
+            stream_factory=source,
+        )
+        journal.set_timeout_policy(
+            "run-1",
+            RunTimeoutPolicy(
+                policy_version="v2",
+                run_deadline_at=time.time() + 0.05,
+            ),
+        )
+        await coordinator.notify_deadline_changed("run-1")
+        await asyncio.sleep(0.1)
+
+        assert subscription.handle.execution_task is not None
+        assert subscription.handle.execution_task.cancelled()
+        assert journal.get_run("run-1").status == "failed"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_extending_deadline_reschedules_existing_watcher(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            deadline_at=time.time() + 0.05,
+        )
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        coordinator = RunCoordinator(journal)
+
+        async def source():
+            await asyncio.Event().wait()
+            yield "never"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-1",
+            stream_factory=source,
+        )
+        await asyncio.sleep(0.01)
+        journal.set_timeout_policy(
+            "run-1",
+            RunTimeoutPolicy(
+                policy_version="v2",
+                run_deadline_at=time.time() + 0.15,
+            ),
+        )
+        await coordinator.notify_deadline_changed("run-1")
+        await asyncio.sleep(0.07)
+
+        assert subscription.handle.consumer_alive
+        assert journal.get_run("run-1").status == "running"
+
+        await asyncio.sleep(0.12)
+        assert subscription.handle.execution_task is not None
+        assert subscription.handle.execution_task.cancelled()
+        assert journal.get_run("run-1").status == "failed"
         await coordinator.close()

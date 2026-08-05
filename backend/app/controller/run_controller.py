@@ -410,6 +410,7 @@ async def signal_run(run_id: str, body: RunSignalBody):
                 run_id,
                 RunTimeoutPolicy.from_dict(payload),
             )
+            await get_default_run_coordinator().notify_deadline_changed(run_id)
         elif body.signal_type == "approval.requested":
             result = await asyncio.to_thread(
                 journal.create_approval,

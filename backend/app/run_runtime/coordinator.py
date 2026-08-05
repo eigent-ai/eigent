@@ -95,6 +95,7 @@ class RuntimeHandle:
     run_id: str
     command_queue: asyncio.Queue[Any] | None = None
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    deadline_changed_event: asyncio.Event = field(default_factory=asyncio.Event)
     execution_task: asyncio.Task[None] | None = None
     deadline_task: asyncio.Task[None] | None = None
     started_at: float = field(default_factory=time.time)
@@ -341,7 +342,16 @@ class RunCoordinator:
 
             self._handles.pop(previous_run_id, None)
             handle.run_id = run_id
+            handle.deadline_changed_event.set()
             self._handles[run_id] = handle
+            return True
+
+    async def notify_deadline_changed(self, run_id: str) -> bool:
+        async with self._lock:
+            handle = self._handles.get(run_id)
+            if handle is None or not handle.consumer_alive:
+                return False
+            handle.deadline_changed_event.set()
             return True
 
     async def cancel(self, run_id: str) -> bool:
@@ -506,61 +516,104 @@ class RunCoordinator:
     async def _watch_deadline(self, handle: RuntimeHandle) -> None:
         if self._journal is None:
             return
+        from app.run_journal import InvalidRunTransitionError
         from app.run_policy import TimeoutOutcome, TimeoutScope
 
-        run = await asyncio.to_thread(self._journal.get_run, handle.run_id)
-        if run is None or run.deadline_at is None:
-            return
         try:
-            await asyncio.sleep(max(0.0, run.deadline_at - time.time()))
-            current = await asyncio.to_thread(
-                self._journal.get_run, handle.run_id
-            )
-            if (
-                current is None
-                or current.deadline_at is None
-                or current.status in {"completed", "failed", "cancelled"}
-                or time.time() < current.deadline_at
-            ):
-                return
-            attempt = (
-                await asyncio.to_thread(
-                    self._journal.get_run_attempt,
-                    current.active_attempt_id,
+            while True:
+                # Clear before reading SQLite. A concurrent policy change either
+                # becomes visible in this read or sets the Event afterwards.
+                handle.deadline_changed_event.clear()
+                current = await asyncio.to_thread(
+                    self._journal.get_run, handle.run_id
                 )
-                if current.active_attempt_id
-                else None
-            )
-            await asyncio.to_thread(
-                self._journal.record_timeout_outcome,
-                TimeoutOutcome(
-                    scope=TimeoutScope.RUN_DEADLINE,
-                    policy_version=current.timeout_policy_version,
-                    reason="persisted_run_deadline_reached",
-                    started_at=attempt.started_at
-                    if attempt
-                    else current.created_at,
-                    ended_at=current.deadline_at,
-                    run_id=current.run_id,
-                    attempt_id=attempt.attempt_id if attempt else None,
-                ),
-            )
-            try:
-                from app.run_sync.runtime import (
-                    notify_default_cloud_sync_worker,
+                if current is None or current.status in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    return
+                if current.deadline_at is None:
+                    try:
+                        await asyncio.wait_for(
+                            handle.deadline_changed_event.wait(),
+                            timeout=1.0,
+                        )
+                    except TimeoutError:
+                        pass
+                    continue
+                remaining = current.deadline_at - time.time()
+                if remaining > 0:
+                    try:
+                        await asyncio.wait_for(
+                            handle.deadline_changed_event.wait(),
+                            timeout=remaining,
+                        )
+                    except TimeoutError:
+                        pass
+                    else:
+                        continue
+                    # Re-read after the timer. An extension that missed the
+                    # notification must reschedule instead of disabling the
+                    # watcher permanently.
+                    current = await asyncio.to_thread(
+                        self._journal.get_run, handle.run_id
+                    )
+                    if (
+                        current is None
+                        or current.deadline_at is None
+                        or current.status
+                        in {"completed", "failed", "cancelled"}
+                    ):
+                        return
+                    if time.time() < current.deadline_at:
+                        continue
+                attempt = (
+                    await asyncio.to_thread(
+                        self._journal.get_run_attempt,
+                        current.active_attempt_id,
+                    )
+                    if current.active_attempt_id
+                    else None
                 )
+                try:
+                    await asyncio.to_thread(
+                        self._journal.record_timeout_outcome,
+                        TimeoutOutcome(
+                            scope=TimeoutScope.RUN_DEADLINE,
+                            policy_version=current.timeout_policy_version,
+                            reason="persisted_run_deadline_reached",
+                            started_at=(
+                                attempt.started_at
+                                if attempt
+                                else current.created_at
+                            ),
+                            ended_at=current.deadline_at,
+                            run_id=current.run_id,
+                            attempt_id=attempt.attempt_id if attempt else None,
+                        ),
+                    )
+                except InvalidRunTransitionError:
+                    # A policy update won the SQLite transaction race. Re-read
+                    # and schedule the new authoritative deadline.
+                    continue
+                try:
+                    from app.run_sync.runtime import (
+                        notify_default_cloud_sync_worker,
+                    )
 
-                notify_default_cloud_sync_worker()
-            except Exception:
-                logger.exception(
-                    "Failed to wake cloud sync after Run deadline",
-                    extra={"run_id": handle.run_id},
-                )
-            handle.cancel_event.set()
-            execution = handle.execution_task
-            if execution is not None and not execution.done():
-                execution.cancel()
-                await asyncio.gather(execution, return_exceptions=True)
+                    notify_default_cloud_sync_worker()
+                except Exception:
+                    logger.exception(
+                        "Failed to wake cloud sync after Run deadline",
+                        extra={"run_id": handle.run_id},
+                    )
+                handle.cancel_event.set()
+                execution = handle.execution_task
+                if execution is not None and not execution.done():
+                    execution.cancel()
+                    await asyncio.gather(execution, return_exceptions=True)
+                return
         except asyncio.CancelledError:
             raise
         except Exception:

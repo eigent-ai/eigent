@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,13 +25,25 @@ from camel.responses import ChatAgentResponse
 from camel.toolkits import FunctionTool
 from camel.types.agents import ToolCallingRecord
 
-from app.agent.listen_chat_agent import ListenChatAgent
+from app.agent.listen_chat_agent import ListenChatAgent, _reported_tool_error
 from app.model.chat import Chat
+from app.run_runtime.tool_checkpoint import (
+    ToolCheckpointError,
+    UnsafeToolOutcomeError,
+)
 from app.service.task import process_task
 
 _LCA = "app.agent.listen_chat_agent"
 
 pytestmark = pytest.mark.unit
+
+
+def test_reported_tool_error_detects_adapter_error_mapping():
+    error = _reported_tool_error({"error": "remote write failed"})
+
+    assert isinstance(error, RuntimeError)
+    assert str(error) == "remote write failed"
+    assert _reported_tool_error({"result": "ok"}) is None
 
 
 class TestListenChatAgent:
@@ -625,6 +638,66 @@ class TestListenChatAgent:
             # Should handle task lock errors gracefully
             with pytest.raises(Exception):
                 agent.step("Test message")
+
+
+def _checkpoint_test_agent() -> ListenChatAgent:
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {}
+    agent._tool_checkpoint_error_lock = threading.Lock()
+    agent._tool_checkpoint_error = None
+    return agent
+
+
+def test_unregistered_streamed_tool_fails_instead_of_completing_checkpoint():
+    agent = _checkpoint_test_agent()
+
+    with pytest.raises(ToolCheckpointError, match="not registered"):
+        agent._execute_tool_from_stream_data(
+            {
+                "id": "call-1",
+                "function": {"name": "unknown_write", "arguments": "{}"},
+            }
+        )
+
+
+def test_sync_stream_propagates_checkpoint_error_swallowed_by_camel():
+    agent = _checkpoint_test_agent()
+    failure = UnsafeToolOutcomeError("external outcome unknown")
+
+    def swallowed(parent, *_args, **_kwargs):
+        parent._remember_tool_checkpoint_error(failure)
+        return
+        yield
+
+    with patch.object(
+        ChatAgent,
+        "_execute_tools_sync_with_status_accumulator",
+        new=swallowed,
+    ):
+        with pytest.raises(UnsafeToolOutcomeError, match="outcome unknown"):
+            list(agent._execute_tools_sync_with_status_accumulator({}, []))
+
+
+@pytest.mark.asyncio
+async def test_async_stream_propagates_checkpoint_error_swallowed_by_camel():
+    agent = _checkpoint_test_agent()
+    failure = UnsafeToolOutcomeError("external outcome unknown")
+
+    async def swallowed(parent, *_args, **_kwargs):
+        parent._remember_tool_checkpoint_error(failure)
+        return
+        yield
+
+    with patch.object(
+        ChatAgent,
+        "_execute_tools_async_with_status_accumulator",
+        new=swallowed,
+    ):
+        with pytest.raises(UnsafeToolOutcomeError, match="outcome unknown"):
+            async for _ in agent._execute_tools_async_with_status_accumulator(
+                {}, MagicMock(), {}, []
+            ):
+                pass
 
 
 @pytest.mark.model_backend
