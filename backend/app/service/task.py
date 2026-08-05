@@ -413,6 +413,10 @@ class TaskLock:
     """Legacy cleanup marker for default output directories."""
     memory_service: Any | None
     """MemoryService bound for this Run; used by single_agent_service for on_run_end."""
+    local_history_degraded: bool
+    """True after a Phase 1 RunJournal write failure; never auto-cleared."""
+    local_history_last_error: str | None
+    """Latest local history persistence error for diagnostics."""
     _memory_finalized_runs: set[str]
     """Run ids whose durable memory lifecycle has already been finalized."""
 
@@ -449,6 +453,8 @@ class TaskLock:
         self.base_snapshot_id = None
         self.new_folder_path = None
         self.memory_service = None
+        self.local_history_degraded = False
+        self.local_history_last_error = None
         self._memory_finalized_runs = set()
 
         logger.info(
@@ -463,6 +469,21 @@ class TaskLock:
             extra={"task_id": self.id, "action": data.action},
         )
         await self.queue.put(data)
+
+    def mark_local_history_degraded(self, error: str) -> None:
+        """Record a non-fatal Phase 1 RunJournal persistence failure."""
+
+        first_failure = not self.local_history_degraded
+        self.local_history_degraded = True
+        self.local_history_last_error = error
+        logger.warning(
+            "Task local history is degraded",
+            extra={
+                "task_id": self.id,
+                "first_failure": first_failure,
+                "journal_error": error,
+            },
+        )
 
     async def get_queue(self):
         self.last_accessed = datetime.now()

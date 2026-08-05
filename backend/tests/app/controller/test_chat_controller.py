@@ -458,8 +458,9 @@ class TestChatController:
                 "human_reply",
                 {"agent": "test_agent", "reply": "This is my reply"},
             )
-            mock_sync_step.assert_called_once_with(
+            mock_sync_step.assert_awaited_once_with(
                 task_id=task_id,
+                project_id=task_id,
                 run_id=task_id,
                 step="human_reply",
                 data={
@@ -619,6 +620,9 @@ class TestChatControllerIntegration:
         ):
             mock_task_lock = MagicMock()
             mock_task_lock.put_human_input = AsyncMock()
+            mock_task_lock.current_task_id = task_id
+            mock_task_lock.memory_service = None
+            mock_task_lock.run_context = None
             mock_get_lock.return_value = mock_task_lock
 
             response = client.post(
