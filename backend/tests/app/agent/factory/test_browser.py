@@ -121,7 +121,7 @@ def test_browser_agent_prefers_preconnected_cdp_url(sample_chat_data):
         patch.dict(
             os.environ,
             {"EIGENT_CDP_URL": "http://worker-17:9222"},
-            clear=True,
+            clear=False,
         ),
     ):
         mock_human_toolkit.get_can_use_tools.return_value = []
