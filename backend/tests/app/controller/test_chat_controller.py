@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,11 +28,14 @@ from app.controller.chat_controller import (
     improve,
     install_mcp,
     post,
+    start_chat_stream,
+    status,
     stop,
     supplement,
 )
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
+from app.run_runtime import RunCoordinator
 
 
 @pytest.mark.unit
@@ -77,6 +81,99 @@ class TestChatController:
 
             assert isinstance(response, StreamingResponse)
             assert response.media_type == "text/event-stream"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_chat_admission_attaches_without_repeating_setup(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        chat_data = Chat(**sample_chat_data)
+        run_id = chat_data.run_id or chat_data.task_id
+        run_context = SimpleNamespace(run_id=run_id)
+        mock_task_lock.run_context = run_context
+        mock_task_lock.queue = asyncio.Queue()
+        coordinator = RunCoordinator()
+        release = asyncio.Event()
+
+        async def source():
+            await release.wait()
+            yield "data: once\n\n"
+
+        prepare = AsyncMock(return_value=(mock_task_lock, run_context))
+        with (
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_chat_run",
+                new=prepare,
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve",
+                side_effect=lambda *_args: source(),
+            ) as execution,
+        ):
+            first_stream = await start_chat_stream(chat_data, mock_request)
+            # Let the detached consumer enter the patched ExecutionBackend
+            # before the patch scope can end.
+            await asyncio.sleep(0)
+            retry_stream = await start_chat_stream(chat_data, mock_request)
+
+            handle = await coordinator.get_handle(run_id)
+            assert handle is not None
+            assert handle.subscriber_count == 2
+            prepare.assert_awaited_once_with(chat_data, mock_request)
+            assert execution.call_count == 1
+
+            first_next = asyncio.create_task(first_stream.__anext__())
+            retry_next = asyncio.create_task(retry_stream.__anext__())
+            release.set()
+            assert await asyncio.gather(first_next, retry_next) == [
+                "data: once\n\n",
+                "data: once\n\n",
+            ]
+            await first_stream.aclose()
+            await retry_stream.aclose()
+            await coordinator.close()
+
+    @pytest.mark.asyncio
+    async def test_status_distinguishes_lock_from_live_consumer(
+        self, mock_task_lock
+    ):
+        coordinator = RunCoordinator()
+        release = asyncio.Event()
+        mock_task_lock.status = Status.processing
+        mock_task_lock.current_task_id = "task-1"
+        mock_task_lock.run_context = SimpleNamespace(run_id="run-1")
+
+        async def source():
+            await release.wait()
+            yield "done"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-1",
+            stream_factory=source,
+        )
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock_if_exists",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+        ):
+            result = await status("project-1")
+
+        assert result["has_lock"] is True
+        assert result["run_id"] == "run-1"
+        assert result["consumer_alive"] is True
+        assert result["subscriber_count"] == 1
+
+        await subscription.aclose()
+        release.set()
+        await subscription.handle.wait()
 
     @pytest.mark.asyncio
     async def test_post_chat_sets_run_context_and_third_party_env(

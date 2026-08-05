@@ -54,6 +54,7 @@ from app.service.task import (
     ActionStopData,
     ActionSupplementData,
     ImprovePayload,
+    TaskLock,
     get_or_create_task_lock,
     get_task_lock,
     get_task_lock_if_exists,
@@ -311,11 +312,10 @@ async def timeout_stream_wrapper(
             await close()
 
 
-async def start_chat_stream(data: Chat, request: Request):
-    """
-    Setup and start chat stream. Used by POST /chat and Message Router.
-    Returns async generator of SSE chunks.
-    """
+async def _prepare_chat_run(
+    data: Chat, request: Request
+) -> tuple[TaskLock, RunContext]:
+    """Perform the one-time compatibility setup for a newly admitted Run."""
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
     # workspace snapshot, artifact path, or task lock is resolved.
@@ -421,16 +421,33 @@ async def start_chat_stream(data: Chat, request: Request):
             "binding_source": frozen_dirs.binding_source,
         },
     )
+    return task_lock, run_context
+
+
+async def start_chat_stream(data: Chat, request: Request):
+    """Admit one detached execution or attach this SSE to an existing one."""
+
+    run_id = data.run_id or data.task_id
     coordinator = get_default_run_coordinator()
-    subscription = await coordinator.start_with_subscription(
-        run_id=run_context.run_id,
-        stream_factory=lambda: stream_with_run_context(
-            step_solve(data, request, task_lock),
-            lambda: getattr(task_lock, "run_context", run_context),
-        ),
-        command_queue=task_lock.queue,
-    )
-    return timeout_stream_wrapper(subscription, run_id=run_context.run_id)
+    async with coordinator.admission_scope(run_id):
+        subscription = await coordinator.attach_if_running(run_id)
+        if subscription is None:
+            task_lock, run_context = await _prepare_chat_run(data, request)
+            subscription = await coordinator.start_with_subscription(
+                run_id=run_context.run_id,
+                stream_factory=lambda: stream_with_run_context(
+                    step_solve(data, request, task_lock),
+                    lambda: getattr(task_lock, "run_context", run_context),
+                ),
+                command_queue=task_lock.queue,
+            )
+        else:
+            chat_logger.info(
+                "Attached retry to existing Run consumer",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+
+    return timeout_stream_wrapper(subscription, run_id=run_id)
 
 
 @router.post("/chat", name="start chat")
@@ -451,12 +468,25 @@ async def status(project_id: str):
             "has_lock": False,
             "status": "offline",
             "current_task_id": None,
+            "run_id": None,
+            "consumer_alive": False,
+            "subscriber_count": 0,
         }
+    run_context = getattr(task_lock, "run_context", None)
+    run_id = getattr(run_context, "run_id", None)
+    handle = (
+        await get_default_run_coordinator().get_handle(run_id)
+        if run_id is not None
+        else None
+    )
     return {
         "project_id": project_id,
         "has_lock": True,
         "status": task_lock.status.value,
         "current_task_id": task_lock.current_task_id,
+        "run_id": run_id,
+        "consumer_alive": bool(handle and handle.consumer_alive),
+        "subscriber_count": handle.subscriber_count if handle else 0,
     }
 
 
