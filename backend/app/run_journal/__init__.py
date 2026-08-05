@@ -15,6 +15,7 @@
 from app.run_journal.models import (
     CommittedRunEvent,
     RunEventDraft,
+    RunEventSyncBatch,
     RunEventSyncOutboxRecord,
     RunRecord,
 )
@@ -30,6 +31,7 @@ from app.run_journal.store import (
     SCHEMA_VERSION,
     IdempotencyConflictError,
     OptimisticConcurrencyError,
+    OutboxLeaseLostError,
     RunJournalError,
     RunNotFoundError,
     SQLiteRunJournal,
@@ -42,7 +44,9 @@ __all__ = [
     "EventRecorder",
     "IdempotencyConflictError",
     "OptimisticConcurrencyError",
+    "OutboxLeaseLostError",
     "RunEventDraft",
+    "RunEventSyncBatch",
     "RunEventSyncOutboxRecord",
     "RunJournalError",
     "RunNotFoundError",

@@ -66,5 +66,16 @@ class RunEventSyncOutboxRecord:
     attempt_count: int
     next_attempt_at: float
     last_error: str | None
+    lease_token: str | None
+    lease_until: float | None
     created_at: float
     updated_at: float
+
+
+@dataclass(frozen=True)
+class RunEventSyncBatch:
+    project_id: str
+    run_id: str
+    lease_token: str
+    attempt_count: int
+    events: tuple[CommittedRunEvent, ...]

@@ -16,6 +16,7 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
 import { createHost } from '@/host/createHost';
+import { getDesktopInstanceId } from '@/lib/desktopIdentity';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -76,6 +77,9 @@ function buildBrainHeaders(
   }
   if (token && shouldAttachAuthHeader(url)) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (shouldAttachAuthHeader(url)) {
+    headers['X-Desktop-Instance-ID'] = getDesktopInstanceId();
   }
   if (user_id != null) {
     headers['X-User-ID'] = String(user_id);

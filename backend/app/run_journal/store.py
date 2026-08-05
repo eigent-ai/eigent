@@ -26,6 +26,7 @@ import json
 import sqlite3
 import threading
 import time
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,12 +35,13 @@ from typing import Any
 from app.run_journal.models import (
     CommittedRunEvent,
     RunEventDraft,
+    RunEventSyncBatch,
     RunEventSyncOutboxRecord,
     RunRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATION_V1 = """
 BEGIN IMMEDIATE;
@@ -152,6 +154,25 @@ PRAGMA user_version = 1;
 COMMIT;
 """
 
+_MIGRATION_V2 = """
+BEGIN IMMEDIATE;
+
+ALTER TABLE run_event_sync_outbox ADD COLUMN lease_token TEXT;
+ALTER TABLE run_event_sync_outbox ADD COLUMN lease_until REAL;
+
+DROP INDEX IF EXISTS run_event_sync_pending_idx;
+CREATE INDEX run_event_sync_pending_idx
+ON run_event_sync_outbox(
+    status, next_attempt_at, lease_until, run_id, run_sequence
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (2, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 2;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -170,6 +191,10 @@ class IdempotencyConflictError(RunJournalError):
 
 
 class UnsupportedSchemaVersionError(RunJournalError):
+    pass
+
+
+class OutboxLeaseLostError(RunJournalError):
     pass
 
 
@@ -456,6 +481,195 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._outbox_from_row(row) for row in rows]
 
+    def claim_ready_outbox_batches(
+        self,
+        *,
+        now: float | None = None,
+        max_runs: int = 4,
+        batch_size: int = 100,
+        lease_seconds: float = 30.0,
+    ) -> list[RunEventSyncBatch]:
+        """Lease one consecutive FIFO batch from each ready Run.
+
+        A dead-letter row remains the earliest non-sent row and therefore blocks
+        only its own Run. Expired ``sending`` rows are reclaimed after a crash.
+        """
+
+        if max_runs < 1 or batch_size < 1 or lease_seconds <= 0:
+            raise ValueError("outbox claim limits and lease must be positive")
+        timestamp = now if now is not None else time.time()
+        lease_until = timestamp + lease_seconds
+        batches: list[RunEventSyncBatch] = []
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                UPDATE run_event_sync_outbox
+                SET status = 'pending', lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE status = 'sending'
+                  AND (lease_until IS NULL OR lease_until <= ?)
+                """,
+                (timestamp, timestamp),
+            )
+            candidates = connection.execute(
+                """
+                SELECT o.run_id, r.project_id, o.run_sequence
+                FROM run_event_sync_outbox AS o
+                JOIN runs AS r ON r.run_id = o.run_id
+                WHERE o.status = 'pending'
+                  AND o.next_attempt_at <= ?
+                  AND o.run_sequence = (
+                      SELECT MIN(head.run_sequence)
+                      FROM run_event_sync_outbox AS head
+                      WHERE head.run_id = o.run_id
+                        AND head.status != 'sent'
+                  )
+                ORDER BY o.updated_at, o.run_id
+                LIMIT ?
+                """,
+                (timestamp, max_runs),
+            ).fetchall()
+            for candidate in candidates:
+                rows = connection.execute(
+                    """
+                    SELECT e.event_id, e.run_id, e.sequence, e.run_version,
+                           e.event_type, e.payload_json, e.legacy_step,
+                           e.created_at, o.status, o.attempt_count,
+                           o.next_attempt_at
+                    FROM run_event_sync_outbox AS o
+                    JOIN run_events AS e ON e.event_id = o.event_id
+                    WHERE o.run_id = ? AND o.run_sequence >= ?
+                      AND o.status != 'sent'
+                    ORDER BY o.run_sequence
+                    LIMIT ?
+                    """,
+                    (
+                        candidate["run_id"],
+                        candidate["run_sequence"],
+                        batch_size,
+                    ),
+                ).fetchall()
+                ready: list[sqlite3.Row] = []
+                expected = int(candidate["run_sequence"])
+                for row in rows:
+                    if (
+                        int(row["sequence"]) != expected
+                        or row["status"] != "pending"
+                        or float(row["next_attempt_at"]) > timestamp
+                    ):
+                        break
+                    ready.append(row)
+                    expected += 1
+                if not ready:
+                    continue
+                lease_token = uuid.uuid4().hex
+                event_ids = [row["event_id"] for row in ready]
+                placeholders = ",".join("?" for _ in event_ids)
+                claimed = connection.execute(
+                    f"""
+                    UPDATE run_event_sync_outbox
+                    SET status = 'sending', lease_token = ?, lease_until = ?,
+                        updated_at = ?
+                    WHERE status = 'pending' AND event_id IN ({placeholders})
+                    """,
+                    (lease_token, lease_until, timestamp, *event_ids),
+                )
+                if claimed.rowcount != len(event_ids):
+                    raise OutboxLeaseLostError(
+                        f"failed to lease all events for {candidate['run_id']!r}"
+                    )
+                batches.append(
+                    RunEventSyncBatch(
+                        project_id=candidate["project_id"],
+                        run_id=candidate["run_id"],
+                        lease_token=lease_token,
+                        attempt_count=int(ready[0]["attempt_count"]),
+                        events=tuple(
+                            self._event_from_row(row) for row in ready
+                        ),
+                    )
+                )
+        return batches
+
+    def mark_outbox_batch_sent(
+        self,
+        batch: RunEventSyncBatch,
+        *,
+        now: float | None = None,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        event_ids = [event.event_id for event in batch.events]
+        with self._write_transaction() as connection:
+            self._assert_batch_lease(connection, batch, event_ids)
+            placeholders = ",".join("?" for _ in event_ids)
+            connection.execute(
+                f"""
+                UPDATE run_event_sync_outbox
+                SET status = 'sent', lease_token = NULL, lease_until = NULL,
+                    last_error = NULL, updated_at = ?
+                WHERE event_id IN ({placeholders})
+                """,
+                (timestamp, *event_ids),
+            )
+
+    def retry_outbox_batch(
+        self,
+        batch: RunEventSyncBatch,
+        *,
+        error: str,
+        next_attempt_at: float,
+        now: float | None = None,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        event_ids = [event.event_id for event in batch.events]
+        with self._write_transaction() as connection:
+            self._assert_batch_lease(connection, batch, event_ids)
+            placeholders = ",".join("?" for _ in event_ids)
+            connection.execute(
+                f"""
+                UPDATE run_event_sync_outbox
+                SET status = 'pending', attempt_count = attempt_count + 1,
+                    next_attempt_at = ?, last_error = ?, lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE event_id IN ({placeholders})
+                """,
+                (next_attempt_at, error[:4000], timestamp, *event_ids),
+            )
+
+    def block_outbox_batch(
+        self,
+        batch: RunEventSyncBatch,
+        *,
+        failed_event_id: str,
+        error: str,
+        now: float | None = None,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        event_ids = [event.event_id for event in batch.events]
+        if failed_event_id not in event_ids:
+            raise ValueError("failed event must belong to the leased batch")
+        with self._write_transaction() as connection:
+            self._assert_batch_lease(connection, batch, event_ids)
+            placeholders = ",".join("?" for _ in event_ids)
+            connection.execute(
+                f"""
+                UPDATE run_event_sync_outbox
+                SET status = 'pending', lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE event_id IN ({placeholders})
+                """,
+                (timestamp, *event_ids),
+            )
+            connection.execute(
+                """
+                UPDATE run_event_sync_outbox
+                SET status = 'dead_letter', attempt_count = attempt_count + 1,
+                    last_error = ?, updated_at = ?
+                WHERE event_id = ?
+                """,
+                (error[:4000], timestamp, failed_event_id),
+            )
+
     def _migrate(self) -> None:
         version = int(
             self._connection.execute("PRAGMA user_version").fetchone()[0]
@@ -467,6 +681,8 @@ class SQLiteRunJournal:
             )
         if version < 1:
             self._connection.executescript(_MIGRATION_V1)
+        if version < 2:
+            self._connection.executescript(_MIGRATION_V2)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -499,6 +715,31 @@ class SQLiteRunJournal:
                 f"event_id {draft.event_id!r} was reused with different data"
             )
         return self._event_from_row(row)
+
+    @staticmethod
+    def _assert_batch_lease(
+        connection: sqlite3.Connection,
+        batch: RunEventSyncBatch,
+        event_ids: list[str],
+    ) -> None:
+        if not event_ids:
+            raise ValueError("outbox batch must contain events")
+        placeholders = ",".join("?" for _ in event_ids)
+        count = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM run_event_sync_outbox
+                WHERE status = 'sending' AND lease_token = ?
+                  AND event_id IN ({placeholders})
+                """,
+                (batch.lease_token, *event_ids),
+            ).fetchone()[0]
+        )
+        if count != len(event_ids):
+            raise OutboxLeaseLostError(
+                f"outbox lease for {batch.run_id!r} is stale"
+            )
 
     @staticmethod
     def _run_from_row(row: sqlite3.Row) -> RunRecord:
@@ -537,6 +778,12 @@ class SQLiteRunJournal:
             attempt_count=int(row["attempt_count"]),
             next_attempt_at=float(row["next_attempt_at"]),
             last_error=row["last_error"],
+            lease_token=row["lease_token"],
+            lease_until=(
+                float(row["lease_until"])
+                if row["lease_until"] is not None
+                else None
+            ),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
         )
