@@ -11,7 +11,11 @@ from app.auth.local_control import (
     LOCAL_CONTROL_CAPABILITY_HEADER,
     require_local_control_principal,
 )
-from app.controller import remote_command_controller, run_controller
+from app.controller import (
+    chat_controller,
+    remote_command_controller,
+    run_controller,
+)
 from app.run_journal import IdempotencyConflictError, RunNotFoundError
 
 
@@ -192,6 +196,46 @@ def test_run_and_command_routers_enforce_the_control_principal(monkeypatch):
         )
         assert response.status_code == 200
         assert response.json() == {"items": []}
+
+
+def test_mutating_chat_routes_require_the_control_principal(monkeypatch):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    app = FastAPI()
+    app.include_router(chat_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+
+    assert client.delete("/chat/project-1").status_code == 401
+    assert (
+        client.post(
+            "/chat/project-1/human-reply",
+            json={"agent": "browser", "reply": "approve"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.delete(
+            "/chat/project-1",
+            headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+        ).status_code
+        == 204
+    )
+
+
+def test_every_mutating_chat_route_declares_the_control_principal():
+    mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    mutating_routes = [
+        route
+        for route in chat_controller.router.routes
+        if set(getattr(route, "methods", set())) & mutating_methods
+    ]
+
+    assert mutating_routes
+    for route in mutating_routes:
+        assert any(
+            dependency.call is require_local_control_principal
+            for dependency in route.dependant.dependencies
+        ), f"{sorted(route.methods)} {route.path} is missing control auth"
 
 
 def test_command_result_maps_missing_command_to_not_found(monkeypatch):

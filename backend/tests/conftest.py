@@ -204,12 +204,16 @@ def app() -> FastAPI:
     """Create FastAPI test application."""
     from fastapi import FastAPI
 
+    from app.auth import require_local_control_principal
     from app.controller.chat_controller import router as chat_router
     from app.controller.model_controller import router as model_router
     from app.controller.task_controller import router as task_router
     from app.controller.tool_controller import router as tool_router
 
     app = FastAPI()
+    app.dependency_overrides[require_local_control_principal] = lambda: {
+        "kind": "test"
+    }
     app.include_router(chat_router)
     app.include_router(model_router)
     app.include_router(task_router)

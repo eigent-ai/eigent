@@ -24,9 +24,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.auth import require_local_control_principal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
@@ -79,6 +80,7 @@ from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
 
 router = APIRouter()
+_CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
 
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
@@ -640,7 +642,9 @@ async def start_chat_stream(data: Chat, request: Request):
     return timeout_stream_wrapper(subscription, run_id=run_id)
 
 
-@router.post("/chat", name="start chat")
+@router.post(
+    "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
+)
 async def post(data: Chat, request: Request):
     stream = await start_chat_stream(data, request)
     return StreamingResponse(
@@ -680,7 +684,11 @@ async def status(project_id: str):
     }
 
 
-@router.post("/chat/{id}", name="improve chat")
+@router.post(
+    "/chat/{id}",
+    name="improve chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 async def improve(id: str, data: SupplementChat, request: Request):
     if data.task_id:
         coordinator = get_default_run_coordinator()
@@ -959,7 +967,11 @@ async def _improve_chat(
     return Response(status_code=201)
 
 
-@router.put("/chat/{id}", name="supplement task")
+@router.put(
+    "/chat/{id}",
+    name="supplement task",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
@@ -974,7 +986,11 @@ def supplement(id: str, data: SupplementChat):
     return Response(status_code=201)
 
 
-@router.delete("/chat/{id}", name="stop chat")
+@router.delete(
+    "/chat/{id}",
+    name="stop chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 async def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
@@ -1015,7 +1031,9 @@ async def stop(id: str):
     return Response(status_code=204)
 
 
-@router.post("/chat/{id}/human-reply")
+@router.post(
+    "/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES
+)
 async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
@@ -1107,7 +1125,9 @@ async def human_reply(id: str, data: HumanReply, request: Request):
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/install-mcp")
+@router.post(
+    "/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES
+)
 def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",
@@ -1126,7 +1146,11 @@ def install_mcp(id: str, data: McpServers):
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/add-task", name="add task to workforce")
+@router.post(
+    "/chat/{id}/add-task",
+    name="add task to workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
@@ -1160,6 +1184,7 @@ def add_task(id: str, data: AddTaskRequest):
 @router.delete(
     "/chat/{project_id}/remove-task/{task_id}",
     name="remove task from workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
@@ -1193,7 +1218,11 @@ def remove_task(project_id: str, task_id: str):
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
 
 
-@router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
+@router.post(
+    "/chat/{project_id}/skip-task",
+    name="skip task in workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def skip_task(project_id: str):
     """
     Skip/Stop current task execution while preserving context.
