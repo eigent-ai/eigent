@@ -40,6 +40,10 @@ class RunEventSyncProtocolError(RuntimeError):
     pass
 
 
+class RunSyncInfrastructureError(RuntimeError):
+    """A device/route control-plane failure, never a poison Run event."""
+
+
 class RunEventSyncTransport(Protocol):
     async def ingest(
         self,
@@ -124,20 +128,31 @@ class HttpRunEventSyncTransport:
             return
         async with self._registration_lock:
             if device_key not in self._registered_devices:
-                await self._json_request(
-                    "POST",
-                    f"{base}/devices/register",
-                    configuration,
-                    {"capabilities": {"run_event_sync": 1, "command_sync": 1}},
-                )
+                try:
+                    await self._json_request(
+                        "POST",
+                        f"{base}/devices/register",
+                        configuration,
+                        {
+                            "capabilities": {
+                                "run_event_sync": 1,
+                                "command_sync": 1,
+                            }
+                        },
+                    )
+                except RunEventSyncHttpError as exc:
+                    raise RunSyncInfrastructureError(str(exc)) from exc
                 self._registered_devices.add(device_key)
             if route_key not in self._claimed_routes:
-                await self._json_request(
-                    "PUT",
-                    f"{base}/projects/{project_id}/execution-route",
-                    configuration,
-                    {},
-                )
+                try:
+                    await self._json_request(
+                        "PUT",
+                        f"{base}/projects/{project_id}/execution-route",
+                        configuration,
+                        {},
+                    )
+                except RunEventSyncHttpError as exc:
+                    raise RunSyncInfrastructureError(str(exc)) from exc
                 self._claimed_routes.add(route_key)
 
     async def ingest(

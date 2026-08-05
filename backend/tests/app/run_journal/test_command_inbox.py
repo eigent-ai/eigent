@@ -140,6 +140,62 @@ def test_poison_event_blocks_only_its_command_lane(tmp_path):
         assert [batch.command_id for batch in ready] == ["command-2"]
 
 
+def test_tail_poison_does_not_block_prior_command_prefix(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _persist(journal)
+        journal.append_command_result(
+            "command-1",
+            event_type="admission.accepted",
+            event_id="command-1:admission",
+            occurred_at=101.0,
+        )
+        journal.append_command_result(
+            "command-1",
+            event_type="execution.completed",
+            event_id="command-1:result",
+            payload={"result": {"ok": True}},
+            occurred_at=102.0,
+        )
+        batch = journal.claim_command_result_batches(now=102.0)[0]
+        journal.block_command_result_batch(
+            batch,
+            failed_event_id="command-1:result",
+            error="poison tail",
+            now=103.0,
+        )
+
+        prefix = journal.claim_command_result_batches(now=104.0)[0]
+
+        assert [event.event_id for event in prefix.events] == [
+            "command-1:receipt",
+            "command-1:admission",
+        ]
+
+
+def test_latest_execution_result_is_available_for_durable_ack_replay(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _persist(journal)
+        journal.append_command_result(
+            "command-1",
+            event_type="admission.accepted",
+            event_id="command-1:admission",
+            occurred_at=101.0,
+        )
+        journal.append_command_result(
+            "command-1",
+            event_type="execution.failed",
+            event_id="command-1:result",
+            payload={"error_code": "FAILED", "error": "boom"},
+            occurred_at=102.0,
+        )
+
+        result = journal.get_latest_command_execution_result("command-1")
+
+        assert result is not None
+        assert result.event_type == "execution.failed"
+        assert result.payload["error"] == "boom"
+
+
 def test_stale_command_outbox_worker_cannot_overwrite_new_lease(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         _persist(journal)
