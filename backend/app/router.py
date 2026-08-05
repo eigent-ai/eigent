@@ -89,11 +89,13 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": run_controller.router,
             "tags": ["Runs"],
             "description": "Durable Run snapshots, event replay, and live streams",
+            "self_authenticated": True,
         },
         {
             "router": remote_command_controller.router,
             "tags": ["Remote Command Inbox"],
             "description": "Durable Remote Control Inbox and command-result lane",
+            "self_authenticated": True,
         },
         {
             "router": model_controller.router,
@@ -131,6 +133,7 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         dependencies = (
             []
             if config["tags"] == ["Health"]
+            or config.get("self_authenticated", False)
             else [Depends(get_brain_auth_context)]
         )
         app.include_router(
