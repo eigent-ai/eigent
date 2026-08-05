@@ -27,7 +27,12 @@ export function deriveLiveEffects(
       });
     }
   }
-  if (next.needsResync && !previous.needsResync) {
+  if (
+    next.needsResync &&
+    (!previous.needsResync ||
+      next.resyncReason !== previous.resyncReason ||
+      next.resyncTargetCursor !== previous.resyncTargetCursor)
+  ) {
     effects.push({
       type: 'request_resync',
       reason: next.resyncReason || 'unknown_gap',
