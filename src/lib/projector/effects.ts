@@ -14,17 +14,18 @@ export function deriveLiveEffects(
   if (mode !== 'live' || previous.seenEventIds[event.eventId]) {
     return [];
   }
-  const effects: ProjectorEffect[] = [
-    { type: 'scroll_to_latest', eventId: event.eventId },
-  ];
-  const run = next.runs[event.runId];
-  if (run && run.status !== 'running') {
-    effects.push({
-      type: 'notify_terminal',
-      eventId: event.eventId,
-      runId: event.runId,
-      status: run.status,
-    });
+  const effects: ProjectorEffect[] = [];
+  if (next.seenEventIds[event.eventId]) {
+    effects.push({ type: 'scroll_to_latest', eventId: event.eventId });
+    const run = next.runs[event.runId];
+    if (run && run.status !== 'running') {
+      effects.push({
+        type: 'notify_terminal',
+        eventId: event.eventId,
+        runId: event.runId,
+        status: run.status,
+      });
+    }
   }
   if (next.needsResync && !previous.needsResync) {
     effects.push({

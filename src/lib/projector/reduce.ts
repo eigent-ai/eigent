@@ -8,10 +8,48 @@ import type {
 const TERMINAL_STATUS: Record<string, ProjectedRun['status']> = {
   'run.completed': 'completed',
   'run.failed': 'failed',
-  'run.timed_out': 'failed',
+  'run.deadline_reached': 'failed',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
 };
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableValue(item)])
+    );
+  }
+  return value;
+}
+
+function sameAskData(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(stableValue(left)) === JSON.stringify(stableValue(right))
+  );
+}
+
+function hasEquivalentOpenAsk(
+  state: ProjectViewState,
+  event: CanonicalProjectEvent,
+  data: unknown
+): boolean {
+  for (let index = state.legacySteps.length - 1; index >= 0; index -= 1) {
+    const step = state.legacySteps[index];
+    if (step.projectId !== event.projectId || step.taskId !== event.runId) {
+      continue;
+    }
+    if (step.step === 'end' || step.step === 'human_reply') {
+      return false;
+    }
+    if (step.step === 'ask' && sameAskData(step.data, data)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export function createProjectViewState(
   projectId: string,
@@ -22,12 +60,38 @@ export function createProjectViewState(
     mode,
     seenEventIds: {},
     currentCursor: 0,
+    eventsTruncated: false,
     lastSyncedAt: null,
     needsResync: false,
     resyncReason: null,
+    resyncTargetCursor: null,
     runs: {},
     legacySteps: [],
     unknownEvents: [],
+  };
+}
+
+export function completeProjectViewResync(
+  state: ProjectViewState,
+  authoritativeCursor: number
+): ProjectViewState {
+  const deltaRecoverable =
+    state.resyncReason?.startsWith('cloud_cursor_gap:') ||
+    state.resyncReason?.startsWith('run_sequence_gap:');
+  if (
+    !state.needsResync ||
+    !deltaRecoverable ||
+    state.currentCursor < authoritativeCursor ||
+    (state.resyncTargetCursor !== null &&
+      state.currentCursor < state.resyncTargetCursor)
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    needsResync: false,
+    resyncReason: null,
+    resyncTargetCursor: null,
   };
 }
 
@@ -43,19 +107,28 @@ export function reduceProjectView(
       ...state,
       needsResync: true,
       resyncReason: `project_scope_mismatch:${event.projectId}`,
+      resyncTargetCursor: null,
     };
   }
 
-  let needsResync = state.needsResync;
-  let resyncReason = state.resyncReason;
+  if (
+    event.cloudCursor !== null &&
+    event.source === 'canonical' &&
+    event.cloudCursor <= state.currentCursor
+  ) {
+    // A snapshot watermark covers canonical events that precede it even when
+    // their individual event IDs were truncated from the snapshot payload.
+    return state;
+  }
+
+  let gapReason: string | null = null;
   if (
     event.cloudCursor !== null &&
     event.source === 'canonical' &&
     event.cloudCursor > state.currentCursor + 1 &&
     (state.currentCursor > 0 || state.mode === 'live')
   ) {
-    needsResync = true;
-    resyncReason = `cloud_cursor_gap:${state.currentCursor + 1}:${event.cloudCursor}`;
+    gapReason = `cloud_cursor_gap:${state.currentCursor + 1}:${event.cloudCursor}`;
   }
   const previousRun = state.runs[event.runId];
   if (
@@ -63,8 +136,17 @@ export function reduceProjectView(
     event.runSequence > (previousRun?.lastSequence || 0) + 1 &&
     (previousRun !== undefined || state.mode === 'live')
   ) {
-    needsResync = true;
-    resyncReason = `run_sequence_gap:${event.runId}:${(previousRun?.lastSequence || 0) + 1}:${event.runSequence}`;
+    gapReason = `run_sequence_gap:${event.runId}:${(previousRun?.lastSequence || 0) + 1}:${event.runSequence}`;
+  }
+  if (gapReason) {
+    // Do not consume the out-of-order event or move the authoritative cursor.
+    // Delta replay must see this event again after filling the missing prefix.
+    return {
+      ...state,
+      needsResync: true,
+      resyncReason: gapReason,
+      resyncTargetCursor: event.cloudCursor,
+    };
   }
 
   const status =
@@ -75,26 +157,51 @@ export function reduceProjectView(
   const run: ProjectedRun = {
     runId: event.runId,
     status,
-    lastSequence: Math.max(previousRun?.lastSequence || 0, event.runSequence),
-    runVersion: Math.max(previousRun?.runVersion || 0, event.runVersion),
+    // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
+    // They must never move the canonical Run gap-detection watermark.
+    lastSequence:
+      event.source === 'canonical'
+        ? Math.max(previousRun?.lastSequence || 0, event.runSequence)
+        : previousRun?.lastSequence || 0,
+    runVersion:
+      event.source === 'canonical'
+        ? Math.max(previousRun?.runVersion || 0, event.runVersion)
+        : previousRun?.runVersion || 0,
     updatedAt: event.createdAt,
   };
-  const legacySteps = event.legacyStep
-    ? [
-        ...state.legacySteps,
-        {
-          eventId: event.eventId,
-          stepId:
-            (event.payload.__legacy_step_id as number | string | undefined) ||
-            event.eventId,
-          taskId: event.runId,
-          projectId: event.projectId,
-          step: event.legacyStep,
-          data: event.payload.__legacy_data ?? event.payload,
-          timestamp: Date.parse(event.createdAt) / 1000 || null,
-        },
-      ]
-    : state.legacySteps;
+  const legacyStepId =
+    (event.payload.__legacy_step_id as number | string | undefined) ||
+    event.eventId;
+  const legacyData = event.payload.__legacy_data ?? event.payload;
+  const hasLegacyStepId =
+    event.legacyStep !== null &&
+    state.legacySteps.some(
+      (step) =>
+        step.projectId === event.projectId &&
+        step.taskId === event.runId &&
+        String(step.stepId) === String(legacyStepId)
+    );
+  const hasLegacyStep =
+    hasLegacyStepId ||
+    (event.legacyStep === 'ask' &&
+      hasEquivalentOpenAsk(state, event, legacyData));
+  const legacySteps =
+    event.legacyStep && !hasLegacyStep
+      ? [
+          ...state.legacySteps,
+          {
+            eventId: event.eventId,
+            stepId: legacyStepId,
+            taskId: event.runId,
+            projectId: event.projectId,
+            step: event.legacyStep,
+            data: legacyData,
+            timestamp: Date.parse(event.createdAt) / 1000 || null,
+            runSequence: event.runSequence,
+            cloudCursor: event.cloudCursor,
+          },
+        ]
+      : state.legacySteps;
 
   return {
     ...state,
@@ -104,8 +211,8 @@ export function reduceProjectView(
         ? state.currentCursor
         : Math.max(state.currentCursor, event.cloudCursor),
     lastSyncedAt: event.createdAt,
-    needsResync,
-    resyncReason,
+    needsResync: state.needsResync,
+    resyncReason: state.resyncReason,
     runs: { ...state.runs, [event.runId]: run },
     legacySteps,
     unknownEvents:

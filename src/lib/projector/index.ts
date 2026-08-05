@@ -3,6 +3,7 @@ export * from './effects';
 export * from './importers';
 export * from './normalize';
 export * from './reduce';
+export * from './selectors';
 export * from './types';
 
 import { deriveLiveEffects } from './effects';
@@ -51,7 +52,8 @@ export function projectRawEvents(
 }
 
 export function projectSnapshot(
-  snapshot: ProjectSnapshotInput
+  snapshot: ProjectSnapshotInput,
+  previous?: ProjectViewState | null
 ): ProjectViewState {
   const projected = projectRawEvents(
     snapshot.project_id,
@@ -72,11 +74,89 @@ export function projectSnapshot(
       updatedAt: aggregate.updated_at,
     };
   }
+  const mergeExistingState =
+    previous !== null &&
+    previous !== undefined &&
+    previous.projectId === snapshot.project_id;
+  if (mergeExistingState) {
+    for (const [runId, existing] of Object.entries(previous.runs)) {
+      const snapshotRun = runs[runId];
+      if (
+        !snapshotRun ||
+        existing.lastSequence > snapshotRun.lastSequence ||
+        (existing.lastSequence === snapshotRun.lastSequence &&
+          existing.updatedAt > snapshotRun.updatedAt)
+      ) {
+        runs[runId] = existing;
+      }
+    }
+  }
+  const legacySteps = mergeExistingState
+    ? [...projected.legacySteps, ...previous.legacySteps]
+    : [...projected.legacySteps];
+  if (mergeExistingState) {
+    for (let index = legacySteps.length - 1; index >= 0; index -= 1) {
+      const step = legacySteps[index];
+      if (
+        legacySteps.findIndex(
+          (existing) =>
+            existing.projectId === step.projectId &&
+            existing.taskId === step.taskId &&
+            String(existing.stepId) === String(step.stepId)
+        ) !== index
+      ) {
+        legacySteps.splice(index, 1);
+      }
+    }
+    legacySteps.sort((left, right) => {
+      if (
+        left.taskId === right.taskId &&
+        left.runSequence !== right.runSequence
+      ) {
+        return left.runSequence - right.runSequence;
+      }
+      if (left.timestamp !== null && right.timestamp !== null) {
+        return left.timestamp - right.timestamp;
+      }
+      if (left.cloudCursor !== null && right.cloudCursor !== null) {
+        return left.cloudCursor - right.cloudCursor;
+      }
+      return 0;
+    });
+  }
+  const unknownEvents = mergeExistingState
+    ? [
+        ...projected.unknownEvents,
+        ...previous.unknownEvents.filter(
+          (event) =>
+            !projected.unknownEvents.some(
+              (existing) => existing.eventId === event.eventId
+            )
+        ),
+      ].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    : projected.unknownEvents;
+  const snapshotCoversResync =
+    !mergeExistingState ||
+    !previous.needsResync ||
+    previous.resyncTargetCursor === null ||
+    snapshot.current_cursor >= previous.resyncTargetCursor;
   return {
     ...projected,
-    currentCursor: snapshot.current_cursor,
-    needsResync: false,
-    resyncReason: null,
+    seenEventIds: mergeExistingState
+      ? { ...previous.seenEventIds, ...projected.seenEventIds }
+      : projected.seenEventIds,
+    currentCursor: Math.max(
+      snapshot.current_cursor,
+      mergeExistingState ? previous.currentCursor : 0
+    ),
+    eventsTruncated: Boolean(snapshot.events_truncated),
+    needsResync: snapshotCoversResync ? false : previous.needsResync,
+    resyncReason: snapshotCoversResync ? null : previous.resyncReason,
+    resyncTargetCursor: snapshotCoversResync
+      ? null
+      : previous.resyncTargetCursor,
     runs,
+    legacySteps,
+    unknownEvents,
   };
 }

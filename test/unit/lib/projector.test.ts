@@ -1,4 +1,5 @@
 import {
+  completeProjectViewResync,
   createProjectViewState,
   deriveLiveEffects,
   importIndexedDbV1,
@@ -8,6 +9,7 @@ import {
   projectRawEvents,
   projectSnapshot,
   reduceProjectView,
+  selectPendingLegacyAsk,
 } from '@/lib/projector';
 import { describe, expect, it } from 'vitest';
 
@@ -57,6 +59,79 @@ describe('projector pipeline', () => {
     );
     expect(next.needsResync).toBe(true);
     expect(next.resyncReason).toContain('run_sequence_gap');
+    expect(next.currentCursor).toBe(1);
+    expect(next.resyncTargetCursor).toBe(3);
+    expect(next.seenEventIds['event-3']).toBeUndefined();
+    expect(next.legacySteps).toHaveLength(1);
+  });
+
+  it('replays a cursor gap from the last contiguous cursor', () => {
+    const initial = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      normalizeEvent(event())
+    );
+    const gap = reduceProjectView(
+      initial,
+      normalizeEvent(
+        event({ event_id: 'event-3', cloud_cursor: 3, run_sequence: 3 })
+      )
+    );
+    const filled = reduceProjectView(
+      gap,
+      normalizeEvent(
+        event({ event_id: 'event-2', cloud_cursor: 2, run_sequence: 2 })
+      )
+    );
+    const replayed = reduceProjectView(
+      filled,
+      normalizeEvent(
+        event({ event_id: 'event-3', cloud_cursor: 3, run_sequence: 3 })
+      )
+    );
+
+    expect(filled.currentCursor).toBe(2);
+    expect(replayed.currentCursor).toBe(3);
+    expect(replayed.seenEventIds['event-3']).toBe(true);
+    const recovered = completeProjectViewResync(replayed, 3);
+    expect(recovered.needsResync).toBe(false);
+    expect(recovered.resyncReason).toBeNull();
+    expect(recovered.resyncTargetCursor).toBeNull();
+  });
+
+  it('keeps resync active until the authoritative cursor is contiguous', () => {
+    const state = {
+      ...createProjectViewState('project-1', 'live'),
+      currentCursor: 3,
+      needsResync: true,
+      resyncReason: 'cloud_cursor_gap:4:5',
+      resyncTargetCursor: 5,
+    };
+
+    expect(completeProjectViewResync(state, 5)).toBe(state);
+  });
+
+  it('does not clear a concurrently observed live gap after an older delta page', () => {
+    const state = {
+      ...createProjectViewState('project-1', 'live'),
+      currentCursor: 10,
+      needsResync: true,
+      resyncReason: 'cloud_cursor_gap:11:12',
+      resyncTargetCursor: 12,
+    };
+
+    expect(completeProjectViewResync(state, 10)).toBe(state);
+  });
+
+  it('does not clear a non-gap resync at a matching cursor', () => {
+    const state = {
+      ...createProjectViewState('project-1', 'live'),
+      currentCursor: 3,
+      needsResync: true,
+      resyncReason: 'project_scope_mismatch:project-2',
+      resyncTargetCursor: null,
+    };
+
+    expect(completeProjectViewResync(state, 3)).toBe(state);
   });
 
   it('detects a missing prefix when the first live event does not start at one', () => {
@@ -103,9 +178,284 @@ describe('projector pipeline', () => {
       events_truncated: true,
     });
     expect(snapshot.currentCursor).toBe(12);
+    expect(snapshot.eventsTruncated).toBe(true);
     expect(snapshot.mode).toBe('rehydrate');
     expect(snapshot.needsResync).toBe(false);
     expect(snapshot.runs['run-1'].lastSequence).toBe(1);
+  });
+
+  it('preserves known local history when a replacement snapshot is truncated', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        event(),
+        event({
+          event_id: 'event-2',
+          cloud_cursor: 2,
+          run_sequence: 2,
+          payload: { content: 'older local history', __legacy_step_id: 2 },
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 12,
+        recent_events: [
+          event({
+            event_id: 'event-12',
+            cloud_cursor: 12,
+            run_sequence: 12,
+            payload: { content: 'recent', __legacy_step_id: 12 },
+          }),
+        ],
+        events_truncated: true,
+      },
+      previous
+    );
+
+    expect(snapshot.eventsTruncated).toBe(true);
+    expect(snapshot.legacySteps.map((step) => step.stepId)).toEqual([
+      'event-1',
+      2,
+      12,
+    ]);
+  });
+
+  it('does not regress live history or cursor when a snapshot response is stale', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        event(),
+        event({
+          event_id: 'event-2',
+          cloud_cursor: 2,
+          run_sequence: 2,
+          created_at: '2026-08-05T10:00:02Z',
+          payload: { __legacy_step_id: 2 },
+        }),
+      ],
+      'live'
+    ).state;
+    const staleSnapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        recent_events: [event()],
+        events_truncated: false,
+      },
+      previous
+    );
+
+    expect(staleSnapshot.currentCursor).toBe(2);
+    expect(staleSnapshot.legacySteps.map((step) => step.stepId)).toEqual([
+      'event-1',
+      2,
+    ]);
+    expect(staleSnapshot.runs['run-1'].lastSequence).toBe(2);
+  });
+
+  it('does not let a stale snapshot clear a newer live gap', () => {
+    const gap = reduceProjectView(
+      reduceProjectView(
+        createProjectViewState('project-1', 'live'),
+        normalizeEvent(event({ cloud_cursor: 10, run_sequence: 1 }))
+      ),
+      normalizeEvent(
+        event({ event_id: 'event-12', cloud_cursor: 12, run_sequence: 2 })
+      )
+    );
+    const staleSnapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 10,
+        recent_events: [],
+        events_truncated: true,
+      },
+      gap
+    );
+
+    expect(staleSnapshot.needsResync).toBe(true);
+    expect(staleSnapshot.resyncTargetCursor).toBe(12);
+  });
+
+  it('preserves legacy-only live history across a complete canonical snapshot', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        importLegacyChatSteps([
+          {
+            project_id: 'project-1',
+            task_id: 'run-1',
+            step_id: 7,
+            step: 'ask',
+            data: { content: 'Continue?' },
+          },
+        ])[0],
+      ],
+      'live'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        recent_events: [event()],
+        events_truncated: false,
+      },
+      previous
+    );
+
+    expect(snapshot.eventsTruncated).toBe(false);
+    expect(snapshot.legacySteps.map((step) => step.step)).toEqual([
+      'activate_agent',
+      'ask',
+    ]);
+    expect(snapshot.legacySteps.at(-1)?.step).toBe('ask');
+  });
+
+  it('deduplicates canonical and legacy frames by stable step identity', () => {
+    const canonical = normalizeEvent(
+      event({ payload: { __legacy_step_id: 9, __legacy_data: { value: 1 } } })
+    );
+    const legacy = importLegacyChatSteps([
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 9,
+        step: 'activate_agent',
+        data: { value: 1 },
+      },
+    ])[0];
+    const initial = createProjectViewState('project-1', 'live');
+    const first = reduceProjectView(initial, legacy);
+    const second = reduceProjectView(first, canonical);
+
+    expect(second.legacySteps).toHaveLength(1);
+    expect(second.seenEventIds[legacy.eventId]).toBe(true);
+    expect(second.seenEventIds[canonical.eventId]).toBe(true);
+  });
+
+  it('deduplicates an ask across legacy and canonical lanes by content', () => {
+    const legacyAsk = importLegacyChatSteps([
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 9,
+        step: 'ask',
+        data: { content: 'Continue?', agent: 'browser' },
+      },
+    ])[0];
+    const canonicalAsk = normalizeEvent(
+      event({
+        event_id: 'canonical-ask',
+        legacy_step: 'ask',
+        payload: { agent: 'browser', content: 'Continue?' },
+      })
+    );
+    const first = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      legacyAsk
+    );
+    const second = reduceProjectView(first, canonicalAsk);
+
+    expect(second.legacySteps).toHaveLength(1);
+    expect(second.legacySteps[0].stepId).toBe(9);
+    expect(second.seenEventIds[canonicalAsk.eventId]).toBe(true);
+  });
+
+  it('keeps a legacy pending ask when a canonical frame arrives later', () => {
+    const legacyAsk = importLegacyChatSteps([
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 9,
+        step: 'ask',
+        data: { agent: 'browser', content: 'Continue?' },
+      },
+    ])[0];
+    const withAsk = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      legacyAsk
+    );
+    const afterCanonical = reduceProjectView(
+      withAsk,
+      normalizeEvent(
+        event({
+          event_id: 'canonical-2',
+          cloud_cursor: 1,
+          run_sequence: 1,
+          legacy_step: 'notice',
+        })
+      )
+    );
+
+    expect(afterCanonical.legacySteps.map((step) => step.step)).toEqual([
+      'ask',
+      'notice',
+    ]);
+    expect(afterCanonical.runs['run-1'].lastSequence).toBe(1);
+    expect(selectPendingLegacyAsk(afterCanonical, new Set())?.stepId).toBe(9);
+  });
+
+  it('closes a pending ask after a durable human reply', () => {
+    const state = projectRawEvents(
+      'project-1',
+      importLegacyChatSteps([
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 9,
+          step: 'ask',
+          data: { content: 'Continue?' },
+        },
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 10,
+          step: 'human_reply',
+          data: { content: 'Yes' },
+        },
+      ]),
+      'live'
+    ).state;
+
+    expect(selectPendingLegacyAsk(state, new Set())).toBeNull();
+  });
+
+  it('allows the same question to be asked again after a human reply', () => {
+    const state = projectRawEvents(
+      'project-1',
+      importLegacyChatSteps([
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 9,
+          step: 'ask',
+          data: { content: 'Continue?' },
+        },
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 10,
+          step: 'human_reply',
+          data: { content: 'Yes' },
+        },
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 11,
+          step: 'ask',
+          data: { content: 'Continue?' },
+        },
+      ]),
+      'live'
+    ).state;
+
+    expect(
+      state.legacySteps.filter((step) => step.step === 'ask')
+    ).toHaveLength(2);
+    expect(selectPendingLegacyAsk(state, new Set())?.stepId).toBe(11);
   });
 
   it('uses snapshot run aggregates even when recent events are truncated', () => {

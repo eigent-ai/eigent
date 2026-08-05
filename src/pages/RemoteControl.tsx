@@ -13,9 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  completeProjectViewResync,
   importLegacyChatSteps,
   projectRawEvents,
   projectSnapshot,
+  selectPendingLegacyAsk,
+  type ProjectedLegacyStep,
   type ProjectViewState,
 } from '@/lib/projector';
 import {
@@ -83,15 +86,19 @@ function renderStepData(data: unknown): string {
   }
 }
 
-function projectedSteps(view: ProjectViewState): RemoteControlStep[] {
-  return view.legacySteps.map((step) => ({
+function remoteControlStep(step: ProjectedLegacyStep): RemoteControlStep {
+  return {
     step_id: step.stepId,
     task_id: step.taskId,
     project_id: step.projectId,
     step: step.step,
     data: step.data,
     timestamp: step.timestamp,
-  }));
+  };
+}
+
+function projectedSteps(view: ProjectViewState): RemoteControlStep[] {
+  return view.legacySteps.map(remoteControlStep);
 }
 
 function getRemoteLinkToken(searchParams: URLSearchParams): string {
@@ -133,15 +140,16 @@ export default function RemoteControlPage() {
     const syncedAt = projectView.lastSyncedAt
       ? new Date(projectView.lastSyncedAt).toLocaleTimeString()
       : 'not synced';
-    return `Cursor ${projectView.currentCursor} · synced ${syncedAt}`;
+    const coverage = projectView.eventsTruncated
+      ? 'partial history'
+      : 'full history';
+    return `Cursor ${projectView.currentCursor} · ${coverage} · synced ${syncedAt}`;
   }, [projectView]);
   const pendingAsk = useMemo(() => {
-    const latest = steps[steps.length - 1] || null;
-    if (latest?.step === 'ask' && !answeredAskStepIds.has(latest.step_id)) {
-      return latest;
-    }
-    return null;
-  }, [answeredAskStepIds, steps]);
+    if (!projectView) return null;
+    const ask = selectPendingLegacyAsk(projectView, answeredAskStepIds);
+    return ask ? remoteControlStep(ask) : null;
+  }, [answeredAskStepIds, projectView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,14 +179,16 @@ export default function RemoteControlPage() {
             5000
           );
           const projectedSnapshot = projectSnapshot(snapshot);
-          projected = projectedSnapshot.legacySteps.length
-            ? projectedSnapshot
-            : projectRawEvents(
-                snapshot.project_id,
-                importLegacyChatSteps(history.items || []),
-                'rehydrate',
-                projectedSnapshot
-              ).state;
+          projected = {
+            ...projectRawEvents(
+              snapshot.project_id,
+              importLegacyChatSteps(history.items || []),
+              'rehydrate',
+              projectedSnapshot
+            ).state,
+            eventsTruncated:
+              snapshot.events_truncated || Boolean(history.has_more),
+          };
         } catch (snapshotError) {
           // Rolling upgrades may briefly serve the legacy ChatStep endpoint
           // before snapshot/cursor APIs are available. The same pure reducer
@@ -270,7 +280,7 @@ export default function RemoteControlPage() {
       );
       if (!stopped) {
         publishProjection({
-          ...projectSnapshot(snapshot),
+          ...projectSnapshot(snapshot, current),
           lastSyncedAt: new Date().toISOString(),
         });
       }
@@ -282,6 +292,7 @@ export default function RemoteControlPage() {
       }
       const operation = (async () => {
         let cursor = projectorRef.current?.currentCursor || 0;
+        let authoritativeCursor = cursor;
         for (;;) {
           const page = await listRemoteControlEvents(
             sessionId,
@@ -293,11 +304,20 @@ export default function RemoteControlPage() {
           if (stopped) return;
           applyCanonicalEvents(page.items || []);
           cursor = page.next_cursor;
+          authoritativeCursor = page.current_cursor;
           if (!page.has_more) break;
         }
         const view = projectorRef.current;
         if (view?.needsResync) {
-          await rehydrateSnapshot();
+          const recovered = completeProjectViewResync(
+            view,
+            authoritativeCursor
+          );
+          if (recovered === view) {
+            await rehydrateSnapshot();
+          } else {
+            publishProjection(recovered);
+          }
         }
       })().finally(() => {
         syncInFlightRef.current = null;
@@ -364,16 +384,13 @@ export default function RemoteControlPage() {
             });
           }
           if (payload.type === 'step') {
-            setSteps((current) => {
-              if (current.some((step) => step.step_id === payload.step_id)) {
-                return current;
-              }
+            applyCanonicalEvents(importLegacyChatSteps([payload]));
+            if (typeof payload.step_id === 'number') {
               nextSinceRef.current = Math.max(
                 nextSinceRef.current,
                 payload.step_id
               );
-              return [...current, payload];
-            });
+            }
           }
           if (payload.type === 'bridge_status') {
             setSession((current) =>
