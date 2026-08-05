@@ -25,18 +25,27 @@ _REDACTED_KEYS = {
 # enumerated so mutating operations cannot inherit safety from a shared prefix.
 _SAFE_READ_TOOL_NAMES = frozenset(
     {
+        "ask_human_via_gui",
         "browser_console_view",
         "browser_get_page_snapshot",
         "browser_sheet_read",
         "get_website_content",
+        "information_retrieval",
+        "query_knowledge_base",
         "read_file",
+        "read_files",
         "read_page",
+        "search_google",
+        "search_mcp_from_url",
         "screenshot",
         "search_web",
         "view_image",
+        "web_fetch_and_analyze",
     }
 )
 _IDEMPOTENT_WRITE_TOOL_KEYS: dict[str, str] = {}
+_TOOL_SAFETY_ATTRIBUTE = "_eigent_tool_safety"
+_TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE = "_eigent_idempotency_argument"
 _MAX_CHECKPOINT_JSON_BYTES = 16_000
 
 
@@ -106,11 +115,76 @@ def classify_tool_safety(
     return ToolSafetyClass.UNSAFE_WRITE, None
 
 
+def declare_tool_safety(
+    tool: Any,
+    safety_class: ToolSafetyClass,
+    *,
+    idempotency_argument: str | None = None,
+) -> Any:
+    """Attach a trusted safety declaration to a tool assembled by Eigent.
+
+    The model never controls these attributes. Third-party and MCP tools that
+    do not carry a declaration remain conservative UNSAFE_WRITE operations.
+    """
+
+    if (
+        safety_class is ToolSafetyClass.IDEMPOTENT_WRITE
+        and not idempotency_argument
+    ):
+        raise ValueError("idempotent tool declarations require a key field")
+    setattr(tool, _TOOL_SAFETY_ATTRIBUTE, safety_class.value)
+    if idempotency_argument:
+        setattr(
+            tool,
+            _TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE,
+            idempotency_argument,
+        )
+    return tool
+
+
+def declared_tool_safety(
+    tool: Any,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> tuple[ToolSafetyClass, str | None]:
+    """Resolve code-owned metadata before the conservative name fallback."""
+
+    targets = (tool, getattr(tool, "func", None))
+    for target in targets:
+        if target is None:
+            continue
+        attributes = getattr(target, "__dict__", {})
+        raw_safety = (
+            attributes.get(_TOOL_SAFETY_ATTRIBUTE)
+            if isinstance(attributes, dict)
+            else None
+        )
+        if raw_safety is None:
+            continue
+        try:
+            safety = ToolSafetyClass(raw_safety)
+        except (TypeError, ValueError):
+            # Dynamic proxies/mocks may synthesize arbitrary attributes. Only
+            # a valid, explicitly stored enum value is a trusted declaration.
+            continue
+        if safety is not ToolSafetyClass.IDEMPOTENT_WRITE:
+            return safety, None
+        key_name = attributes.get(_TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE)
+        value = arguments.get(key_name) if key_name else None
+        if value is not None and str(value).strip():
+            return safety, str(value)
+        # A broken trusted declaration must fail conservative instead of
+        # accepting an LLM-provided field with a guessed name.
+        return ToolSafetyClass.UNSAFE_WRITE, None
+    return classify_tool_safety(tool_name, arguments)
+
+
 def prepare_tool_checkpoint(
     *,
     raw_tool_call_id: str,
     tool_name: str,
     arguments: dict[str, Any],
+    declared_safety: tuple[ToolSafetyClass, str | None] | None = None,
     journal: SQLiteRunJournal | None = None,
 ) -> ToolCheckpointContext | None:
     run_context = get_current_run_context()
@@ -127,7 +201,9 @@ def prepare_tool_checkpoint(
         raise RuntimeError(
             f"tool {tool_name!r} has no active durable RunAttempt"
         )
-    safety, idempotency_key = classify_tool_safety(tool_name, arguments)
+    safety, idempotency_key = declared_safety or classify_tool_safety(
+        tool_name, arguments
+    )
     call_id = raw_tool_call_id.strip() or uuid.uuid4().hex
     canonical_id = f"{run_context.run_id}:{call_id}"
     request = _bounded_record(arguments)
@@ -165,6 +241,7 @@ def finish_tool_checkpoint(
     *,
     result: Any = None,
     error: Exception | None = None,
+    outcome_known: bool = False,
     journal: SQLiteRunJournal | None = None,
 ) -> None:
     if checkpoint is None:
@@ -174,6 +251,15 @@ def finish_tool_checkpoint(
         status = "completed"
         outcome = "completed"
         result_payload = _bounded_record(result)
+    elif outcome_known:
+        # A structured error returned by the tool is an observed outcome, not
+        # an ambiguous external side effect. Keep it model-visible/retryable
+        # without poisoning explicit Run resume.
+        status = "failed"
+        outcome = "failed"
+        result_payload = _bounded_record(
+            result if result is not None else {"error": str(error)}
+        )
     elif checkpoint.safety_class is ToolSafetyClass.UNSAFE_WRITE:
         status = "outcome_unknown"
         outcome = "outcome_unknown"
