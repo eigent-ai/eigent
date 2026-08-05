@@ -401,6 +401,88 @@ describe('projector pipeline', () => {
     expect(second.seenEventIds[canonical.eventId]).toBe(true);
   });
 
+  it('deduplicates the production canonical shape without a legacy step id', () => {
+    const createdAt = '2026-08-05T10:00:00Z';
+    const legacy = importLegacyChatSteps([
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 9,
+        step: 'activate_agent',
+        data: { value: 1 },
+        timestamp: Date.parse(createdAt) / 1000 + 0.01,
+      },
+    ])[0];
+    const canonical = normalizeEvent(
+      event({
+        event_id: 'canonical-production-event',
+        payload: { value: 1 },
+        created_at: createdAt,
+      })
+    );
+    const initial = createProjectViewState('project-1', 'live');
+    const projected = reduceProjectView(
+      reduceProjectView(initial, legacy),
+      canonical
+    );
+
+    expect(projected.legacySteps).toHaveLength(1);
+    expect(projected.legacySteps[0].stepId).toBe(9);
+    expect(projected.legacySteps[0].crossLaneEventIds).toEqual([
+      'canonical-production-event',
+    ]);
+  });
+
+  it('pairs repeated identical steps one-for-one across the two lanes', () => {
+    const createdAt = Date.parse('2026-08-05T10:00:00Z') / 1000;
+    const legacy = importLegacyChatSteps([
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 9,
+        step: 'activate_agent',
+        data: { value: 1 },
+        timestamp: createdAt,
+      },
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 10,
+        step: 'activate_agent',
+        data: { value: 1 },
+        timestamp: createdAt + 1,
+      },
+    ]);
+    const canonical = [
+      normalizeEvent(
+        event({
+          event_id: 'canonical-1',
+          payload: { value: 1 },
+          created_at: new Date(createdAt * 1000).toISOString(),
+        })
+      ),
+      normalizeEvent(
+        event({
+          event_id: 'canonical-2',
+          cloud_cursor: 2,
+          run_sequence: 2,
+          run_version: 2,
+          payload: { value: 1 },
+          created_at: new Date((createdAt + 1) * 1000).toISOString(),
+        })
+      ),
+    ];
+    const projected = [...legacy, ...canonical].reduce(
+      reduceProjectView,
+      createProjectViewState('project-1', 'live')
+    );
+
+    expect(projected.legacySteps).toHaveLength(2);
+    expect(
+      projected.legacySteps.map((step) => step.crossLaneEventIds?.length)
+    ).toEqual([1, 1]);
+  });
+
   it('deduplicates an ask across legacy and canonical lanes by content', () => {
     const legacyAsk = importLegacyChatSteps([
       {
