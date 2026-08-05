@@ -22,6 +22,7 @@ from camel.tasks.task import TaskState
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.service.chat_service import (
+    _activate_improve_admission,
     _extract_stream_chunk_content,
     _render_subtask_report,
     _trim_in_process_history,
@@ -72,6 +73,34 @@ class _AgentStepResponse:
     def __init__(self, content: str):
         self.msg = None
         self.msgs = [MagicMock(content=content)]
+
+
+@pytest.mark.asyncio
+async def test_improve_admission_activates_once_and_deduplicates_retry():
+    task_lock = MagicMock()
+    task_lock.processed_improve_request_ids = set()
+    journal = MagicMock()
+    item = ActionImproveData(
+        data=ImprovePayload(question="hello"),
+        request_id="request-1",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+
+    with patch(
+        "app.run_runtime.admission.get_default_run_journal",
+        return_value=journal,
+    ):
+        assert await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+        assert not await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+
+    journal.activate_run_attempt.assert_called_once_with(
+        "attempt-1", expected_run_id="run-1"
+    )
 
 
 @pytest.mark.unit

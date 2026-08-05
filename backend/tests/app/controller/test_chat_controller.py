@@ -24,6 +24,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.controller.chat_controller import (
+    _PreparedChatRun,
+    _admission_request_id,
+    _classify_persisted_admission,
+    _classify_persisted_admission,
     human_reply,
     improve,
     install_mcp,
@@ -36,6 +40,8 @@ from app.controller.chat_controller import (
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
 from app.run_context import RunContext
+from app.run_journal import SQLiteRunJournal
+from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 
 
@@ -43,6 +49,14 @@ from app.run_runtime import RunCoordinator
 def controller_run_journal():
     journal = MagicMock()
     journal.get_run.return_value = None
+    journal.create_run_attempt.return_value = SimpleNamespace(
+        attempt_id="attempt-1", status="pending"
+    )
+    journal.list_run_attempts.return_value = []
+    journal.create_run_attempt.return_value = SimpleNamespace(
+        attempt_id="attempt-1",
+        status="pending",
+    )
     with patch(
         "app.controller.chat_controller.get_default_run_journal",
         return_value=journal,
@@ -97,6 +111,7 @@ class TestChatController:
             controller_run_journal.ensure_run.assert_called_once_with(
                 run_id=chat_data.run_id or chat_data.task_id,
                 project_id=chat_data.project_id,
+                status="pending",
             )
 
     @pytest.mark.asyncio
@@ -115,7 +130,14 @@ class TestChatController:
             await release.wait()
             yield "data: once\n\n"
 
-        prepare = AsyncMock(return_value=(mock_task_lock, run_context))
+        prepare = AsyncMock(
+            return_value=_PreparedChatRun(
+                task_lock=mock_task_lock,
+                run_context=run_context,
+                attempt_id="attempt-1",
+                initial_action=MagicMock(),
+            )
+        )
         with (
             patch(
                 "app.controller.chat_controller.get_default_run_coordinator",
@@ -154,6 +176,47 @@ class TestChatController:
             await coordinator.close()
 
     @pytest.mark.asyncio
+    async def test_pending_partial_admission_is_retryable_but_reuse_conflicts(
+        self, tmp_path
+    ):
+        run_id = "run-partial"
+        request_id = _admission_request_id(
+            run_id,
+            question="original",
+            attaches=[],
+            project_context=None,
+        )
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id=run_id, project_id="project-1", status="pending"
+            )
+            journal.create_run_attempt(
+                run_id,
+                request_id=request_id,
+                reason="initial_execution",
+                activate=False,
+            )
+
+            retry, _attempt = await _classify_persisted_admission(
+                journal,
+                run_id=run_id,
+                request_id=request_id,
+            )
+            conflict, _attempt = await _classify_persisted_admission(
+                journal,
+                run_id=run_id,
+                request_id=_admission_request_id(
+                    run_id,
+                    question="different",
+                    attaches=[],
+                    project_context=None,
+                ),
+            )
+
+        assert retry == "retry"
+        assert conflict == "conflict"
+
+    @pytest.mark.asyncio
     async def test_persisted_run_replays_without_implicit_restart(
         self,
         sample_chat_data,
@@ -165,8 +228,19 @@ class TestChatController:
         coordinator = RunCoordinator()
         controller_run_journal.get_run.return_value = SimpleNamespace(
             run_id=run_id,
-            status="running",
+            status="completed",
         )
+        controller_run_journal.list_run_attempts.return_value = [
+            SimpleNamespace(
+                resume_request_id=_admission_request_id(
+                    run_id,
+                    question=chat_data.question,
+                    attaches=chat_data.attaches,
+                    project_context=chat_data.project_context,
+                ),
+                status="completed",
+            )
+        ]
         controller_run_journal.list_events.return_value = [
             SimpleNamespace(
                 legacy_step="end",
@@ -523,6 +597,7 @@ class TestChatController:
         controller_run_journal.ensure_run.assert_called_once_with(
             run_id="run-new",
             project_id="project-1",
+            status="pending",
         )
         assert await coordinator.get_handle("run-old") is None
         assert await coordinator.get_handle("run-new") is subscription.handle
@@ -540,8 +615,19 @@ class TestChatController:
     ):
         data = SupplementChat(question="duplicate", task_id="run-existing")
         controller_run_journal.get_run.return_value = SimpleNamespace(
-            run_id="run-existing"
+            run_id="run-existing", status="completed"
         )
+        controller_run_journal.list_run_attempts.return_value = [
+            SimpleNamespace(
+                resume_request_id=_admission_request_id(
+                    "run-existing",
+                    question=data.question,
+                    attaches=data.attaches,
+                    project_context=data.project_context,
+                ),
+                status="completed",
+            )
+        ]
 
         with patch(
             "app.controller.chat_controller._improve_chat",
@@ -634,14 +720,9 @@ class TestChatController:
                 new=AsyncMock(return_value=True),
             ),
         ):
-            response = await improve(
-                "project_x", supplement_data, mock_request
-            )
+            with pytest.raises(UserException, match="durably prepare"):
+                await improve("project_x", supplement_data, mock_request)
 
-            assert isinstance(response, Response)
-            # The improve request itself still succeeds -- chat must not break
-            # because durable memory is unhappy.
-            assert response.status_code == 201
             # Critical assertion: on_run_start was NOT called against the stale
             # context. The R26 fix only checked data.task_id; R27 strengthens
             # it to compare refreshed_context.run_id == data.task_id.

@@ -29,6 +29,7 @@ from app.memory import (
 )
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
+from app.run_runtime.admission import activate_improve_admission
 from app.service.task import (
     Action,
     ActionData,
@@ -304,6 +305,13 @@ async def single_agent_solve(
 
                 if item.action == Action.improve:
                     assert isinstance(item, ActionImproveData)
+                    if not await activate_improve_admission(
+                        task_lock,
+                        item,
+                        project_id=options.project_id,
+                        logger=logger,
+                    ):
+                        continue
                     if item.new_task_id:
                         current_task_id = item.new_task_id
                         set_current_task_id(

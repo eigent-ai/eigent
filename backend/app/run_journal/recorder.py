@@ -75,8 +75,14 @@ class EventRecorder:
         data: dict[str, Any],
         event_id: str | None = None,
         created_at: float | None = None,
+        allow_terminal: bool = False,
     ) -> CommittedRunEvent:
         """Persist one legacy SSE/ChatStep for an already admitted Run."""
+
+        if step == "end" and not allow_terminal:
+            raise ValueError(
+                "legacy end is reserved for the trusted execution stream"
+            )
 
         values: dict[str, Any] = {
             "event_type": f"legacy.{step}",

@@ -457,3 +457,26 @@ async def test_event_recorder_rejects_cross_project_attribution(journal):
             data={"message": "original"},
             event_id="event-1",
         )
+
+
+@pytest.mark.asyncio
+async def test_legacy_end_requires_trusted_execution_stream(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    recorder = EventRecorder(journal)
+
+    with pytest.raises(ValueError, match="trusted execution stream"):
+        await recorder.record_legacy_step(
+            project_id="project-1",
+            run_id="run-1",
+            step="end",
+            data={},
+        )
+
+    await recorder.record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="end",
+        data={},
+        allow_terminal=True,
+    )
+    assert journal.get_run("run-1").status == "completed"

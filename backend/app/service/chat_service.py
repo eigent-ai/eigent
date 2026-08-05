@@ -65,6 +65,7 @@ from app.memory import (
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
+from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -94,6 +95,20 @@ logger = logging.getLogger("chat_service")
 
 SUMMARY_TASK_NAME_MAX_LENGTH = 80
 SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+async def _activate_improve_admission(
+    task_lock: TaskLock,
+    item: ActionImproveData,
+    *,
+    project_id: str,
+) -> bool:
+    return await activate_improve_admission(
+        task_lock,
+        item,
+        project_id=project_id,
+        logger=logger,
+    )
 
 
 def _truncate_summary_part(value: str, max_length: int) -> str:
@@ -547,6 +562,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             )
             # Continue waiting instead of breaking on queue error
             continue
+
+        if isinstance(item, ActionImproveData):
+            if not await _activate_improve_admission(
+                task_lock,
+                item,
+                project_id=options.project_id,
+            ):
+                continue
 
         try:
             if item.action == Action.improve or start_event_loop:

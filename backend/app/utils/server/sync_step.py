@@ -202,6 +202,7 @@ async def _record_local_step(args, value) -> None:
         run_id=run_id,
         step=data["step"],
         data=data["data"],
+        allow_terminal=data["step"] == "end",
     )
 
 
