@@ -23,6 +23,7 @@ lock makes the intended single-writer boundary explicit when async callers use
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -47,6 +48,14 @@ from app.run_journal.models import (
     ToolCallRecord,
 )
 from app.run_journal.paths import default_run_journal_path
+from app.run_journal.transitions import (
+    ATTEMPT_ACTIVE_STATES,
+    ATTEMPT_TRANSITIONS,
+    COMMAND_TRANSITIONS,
+    RUN_TRANSITIONS,
+    TOOL_TRANSITIONS,
+    transition_allowed,
+)
 from app.run_policy import (
     RunTimeoutPolicy,
     TimeoutOutcome,
@@ -56,6 +65,7 @@ from app.run_policy import (
 )
 
 SCHEMA_VERSION = 4
+logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
 BEGIN IMMEDIATE;
@@ -579,6 +589,19 @@ class SQLiteRunJournal:
             raise ValueError("attempt request_id and reason are required")
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    f"cannot create an attempt for terminal run {run_id!r}"
+                )
+            if run["cancel_request_id"] is not None:
+                raise InvalidRunTransitionError(
+                    f"run {run_id!r} has a persisted cancel intent"
+                )
             duplicate = connection.execute(
                 """
                 SELECT * FROM run_attempts
@@ -592,15 +615,6 @@ class SQLiteRunJournal:
                         f"attempt request_id {request_id!r} was reused with a different reason"
                     )
                 return self._attempt_from_row(duplicate)
-            run = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            if run is None:
-                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-            if run["status"] in {"completed", "failed", "cancelled"}:
-                raise InvalidRunTransitionError(
-                    f"cannot create an attempt for terminal run {run_id!r}"
-                )
             active = connection.execute(
                 """
                 SELECT attempt_id FROM run_attempts
@@ -772,7 +786,11 @@ class SQLiteRunJournal:
                 )
             if attempt["status"] == "running":
                 return self._attempt_from_row(attempt)
-            if attempt["status"] != "pending":
+            if not transition_allowed(
+                ATTEMPT_TRANSITIONS,
+                str(attempt["status"]),
+                "running",
+            ):
                 raise InvalidRunTransitionError(
                     f"attempt {attempt_id!r} is not pending"
                 )
@@ -1047,23 +1065,8 @@ class SQLiteRunJournal:
         timeout_reason: str | None = None,
         now: float | None = None,
     ) -> ToolCallRecord:
-        transitions = {
-            None: {"prepared"},
-            "prepared": {"prepared", "dispatched", "failed"},
-            "dispatched": {
-                "dispatched",
-                "completed",
-                "failed",
-                "timed_out",
-                "outcome_unknown",
-            },
-            "timed_out": {"completed", "failed", "outcome_unknown"},
-            "outcome_unknown": {"completed", "failed"},
-            "completed": {"completed"},
-            "failed": {"failed"},
-        }
         if status not in {
-            value for allowed in transitions.values() for value in allowed
+            value for allowed in TOOL_TRANSITIONS.values() for value in allowed
         }:
             raise ValueError("unsupported tool checkpoint status")
         if (
@@ -1108,9 +1111,17 @@ class SQLiteRunJournal:
                         f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                     )
             previous = existing["status"] if existing is not None else None
-            if status not in transitions.get(previous, set()):
+            if not transition_allowed(TOOL_TRANSITIONS, previous, status):
                 raise InvalidRunTransitionError(
                     f"tool call {tool_call_id!r} cannot move from {previous!r} to {status!r}"
+                )
+            if (
+                status == "timed_out"
+                and safety_class is ToolSafetyClass.UNSAFE_WRITE
+            ):
+                raise InvalidRunTransitionError(
+                    f"unsafe write tool {tool_call_id!r} must enter outcome_unknown, "
+                    "not timed_out"
                 )
             if existing is not None and (
                 existing["run_id"] != run_id
@@ -1232,15 +1243,37 @@ class SQLiteRunJournal:
             prompt, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         )
         with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT status, active_attempt_id FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    f"terminal run {run_id!r} cannot request approval"
+                )
             if attempt_id is not None:
                 attempt = connection.execute(
-                    "SELECT run_id FROM run_attempts WHERE attempt_id = ?",
+                    "SELECT run_id, status FROM run_attempts WHERE attempt_id = ?",
                     (attempt_id,),
                 ).fetchone()
                 if attempt is None or attempt["run_id"] != run_id:
                     raise IdempotencyConflictError(
                         f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                     )
+                if not transition_allowed(
+                    ATTEMPT_TRANSITIONS,
+                    str(attempt["status"]),
+                    "waiting_for_user",
+                ) or run["active_attempt_id"] != attempt_id:
+                    raise InvalidRunTransitionError(
+                        f"approval attempt {attempt_id!r} must be the active running attempt"
+                    )
+            elif run["active_attempt_id"] is not None:
+                raise InvalidRunTransitionError(
+                    "approval for a Run with an active attempt must bind that attempt"
+                )
             existing = connection.execute(
                 "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
             ).fetchone()
@@ -1274,13 +1307,17 @@ class SQLiteRunJournal:
                 ),
             )
             if attempt_id is not None:
-                connection.execute(
+                updated_attempt = connection.execute(
                     """
                     UPDATE run_attempts SET status = 'waiting_for_user'
                     WHERE attempt_id = ? AND status = 'running'
                     """,
                     (attempt_id,),
                 )
+                if updated_attempt.rowcount != 1:
+                    raise InvalidRunTransitionError(
+                        f"approval attempt {attempt_id!r} is no longer running"
+                    )
             self._append_event_in_transaction(
                 connection,
                 run_id,
@@ -1354,7 +1391,20 @@ class SQLiteRunJournal:
                 raise OptimisticConcurrencyError(
                     f"approval {approval_id!r} expected version {expected_version}"
                 )
+            run = connection.execute(
+                "SELECT status FROM runs WHERE run_id = ?",
+                (approval["run_id"],),
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(
+                    f"run_id {approval['run_id']!r} does not exist"
+                )
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    f"terminal run {approval['run_id']!r} cannot accept an approval decision"
+                )
             can_continue = False
+            attempt_status: str | None = None
             if continue_active_attempt and approval["attempt_id"] is not None:
                 attempt = connection.execute(
                     "SELECT status FROM run_attempts WHERE attempt_id = ?",
@@ -1363,6 +1413,21 @@ class SQLiteRunJournal:
                 can_continue = (
                     attempt is not None
                     and attempt["status"] == "waiting_for_user"
+                )
+                attempt_status = attempt["status"] if attempt is not None else None
+            elif approval["attempt_id"] is not None:
+                attempt = connection.execute(
+                    "SELECT status FROM run_attempts WHERE attempt_id = ?",
+                    (approval["attempt_id"],),
+                ).fetchone()
+                attempt_status = attempt["status"] if attempt is not None else None
+            if (
+                attempt_status in ATTEMPT_ACTIVE_STATES
+                and attempt_status != "waiting_for_user"
+            ):
+                raise InvalidRunTransitionError(
+                    f"approval {approval_id!r} is bound to active attempt state "
+                    f"{attempt_status!r}, not waiting_for_user"
                 )
             connection.execute(
                 """
@@ -1482,6 +1547,19 @@ class SQLiteRunJournal:
                     raise RunNotFoundError(
                         f"tool_call_id {outcome.tool_call_id!r} does not exist"
                     )
+                if tool["status"] in {"completed", "failed"}:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} is already {tool['status']}"
+                    )
+                if tool["status"] not in {
+                    "dispatched",
+                    "timed_out",
+                    "outcome_unknown",
+                }:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} cannot time out from "
+                        f"{tool['status']!r}"
+                    )
                 safety = ToolSafetyClass(tool["safety_class"])
                 replayable = automatic_tool_replay_allowed(
                     safety, idempotency_key=tool["idempotency_key"]
@@ -1598,78 +1676,107 @@ class SQLiteRunJournal:
                 """
                 SELECT * FROM runs
                 WHERE status IN ('pending', 'running', 'waiting_for_user')
+                   OR (status = 'interrupted' AND cancel_request_id IS NOT NULL)
                 ORDER BY created_at
                 """
             ).fetchall()
             for run in runs:
-                active_attempts = connection.execute(
-                    """
-                    SELECT * FROM run_attempts
-                    WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
-                    """,
-                    (run["run_id"],),
-                ).fetchall()
-                if run["cancel_request_id"] is not None:
-                    target_status = "cancelled"
-                    event_type = "run.cancelled"
-                    completed_cancels.append(run["run_id"])
-                elif (
-                    run["deadline_at"] is not None
-                    and float(run["deadline_at"]) <= timestamp
-                ):
-                    target_status = "failed"
-                    event_type = "run.deadline_reached"
-                    deadline_runs.append(run["run_id"])
-                elif (
-                    run["status"] == "waiting_for_user" and not active_attempts
-                ):
-                    continue
-                else:
-                    target_status = (
-                        "waiting_for_user"
-                        if run["status"] == "waiting_for_user"
-                        else "interrupted"
+                run_interrupted = False
+                run_cancelled = False
+                run_deadline = False
+                run_attempt_ids: list[str] = []
+                try:
+                    with self._savepoint(connection, "startup_run"):
+                        active_attempts = connection.execute(
+                            """
+                            SELECT * FROM run_attempts
+                            WHERE run_id = ?
+                              AND status IN ('pending', 'running', 'waiting_for_user')
+                            """,
+                            (run["run_id"],),
+                        ).fetchall()
+                        if run["cancel_request_id"] is not None:
+                            target_status = "cancelled"
+                            event_type = "run.cancelled"
+                            run_cancelled = True
+                        elif (
+                            run["deadline_at"] is not None
+                            and float(run["deadline_at"]) <= timestamp
+                        ):
+                            target_status = "failed"
+                            event_type = "run.deadline_reached"
+                            run_deadline = True
+                        elif (
+                            run["status"] == "waiting_for_user"
+                            and not active_attempts
+                        ):
+                            continue
+                        else:
+                            target_status = (
+                                "waiting_for_user"
+                                if run["status"] == "waiting_for_user"
+                                else "interrupted"
+                            )
+                            event_type = "runtime.interrupted"
+                            run_interrupted = True
+                        run_attempt_ids = [
+                            attempt["attempt_id"] for attempt in active_attempts
+                        ]
+                        connection.execute(
+                            """
+                            UPDATE run_attempts
+                            SET status = ?, ended_at = COALESCE(ended_at, ?),
+                                outcome = COALESCE(outcome, ?)
+                            WHERE run_id = ?
+                              AND status IN ('pending', 'running', 'waiting_for_user')
+                            """,
+                            (
+                                "cancelled"
+                                if target_status == "cancelled"
+                                else (
+                                    "timed_out"
+                                    if event_type == "run.deadline_reached"
+                                    else "interrupted"
+                                ),
+                                timestamp,
+                                event_type,
+                                run["run_id"],
+                            ),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            run["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    f"startup:{event_type}:{run['run_id']}:"
+                                    f"{run['version']}"
+                                ),
+                                event_type=event_type,
+                                payload={
+                                    "previous_status": run["status"],
+                                    "reason": "brain_restart",
+                                    "policy_version": run[
+                                        "timeout_policy_version"
+                                    ],
+                                },
+                                created_at=timestamp,
+                            ),
+                            run_status=target_status,
+                            clear_active_attempt=True,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one Run",
+                        extra={"run_id": run["run_id"]},
                     )
-                    event_type = "runtime.interrupted"
+                    continue
+                detached_attempts.extend(run_attempt_ids)
+                if run_interrupted:
                     interrupted_runs.append(run["run_id"])
-                for attempt in active_attempts:
-                    detached_attempts.append(attempt["attempt_id"])
-                connection.execute(
-                    """
-                    UPDATE run_attempts
-                    SET status = ?, ended_at = COALESCE(ended_at, ?),
-                        outcome = COALESCE(outcome, ?)
-                    WHERE run_id = ? AND status IN ('pending', 'running', 'waiting_for_user')
-                    """,
-                    (
-                        "cancelled"
-                        if target_status == "cancelled"
-                        else (
-                            "timed_out"
-                            if event_type == "run.deadline_reached"
-                            else "interrupted"
-                        ),
-                        timestamp,
-                        event_type,
-                        run["run_id"],
-                    ),
-                )
-                self._append_event_in_transaction(
-                    connection,
-                    run["run_id"],
-                    RunEventDraft(
-                        event_id=f"startup:{event_type}:{run['run_id']}:{run['version']}",
-                        event_type=event_type,
-                        payload={
-                            "previous_status": run["status"],
-                            "reason": "brain_restart",
-                            "policy_version": run["timeout_policy_version"],
-                        },
-                        created_at=timestamp,
-                    ),
-                    run_status=target_status,
-                    clear_active_attempt=True,
-                )
+                if run_cancelled:
+                    completed_cancels.append(run["run_id"])
+                if run_deadline:
+                    deadline_runs.append(run["run_id"])
             tool_rows = connection.execute(
                 """
                 SELECT * FROM tool_calls
@@ -1677,78 +1784,118 @@ class SQLiteRunJournal:
                 """
             ).fetchall()
             for tool in tool_rows:
-                connection.execute(
-                    """
-                    UPDATE tool_calls
-                    SET status = 'outcome_unknown', outcome = 'outcome_unknown',
-                        updated_at = ? WHERE tool_call_id = ?
-                    """,
-                    (timestamp, tool["tool_call_id"]),
-                )
+                try:
+                    with self._savepoint(connection, "startup_tool"):
+                        connection.execute(
+                            """
+                            UPDATE tool_calls
+                            SET status = 'outcome_unknown',
+                                outcome = 'outcome_unknown', updated_at = ?
+                            WHERE tool_call_id = ? AND status = 'dispatched'
+                            """,
+                            (timestamp, tool["tool_call_id"]),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            tool["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    "startup:tool-outcome-unknown:"
+                                    f"{tool['tool_call_id']}"
+                                ),
+                                event_type="tool.outcome_unknown",
+                                payload={
+                                    "tool_call_id": tool["tool_call_id"],
+                                    "safety_class": tool["safety_class"],
+                                    "reason": "brain_restart_after_dispatch",
+                                },
+                                created_at=timestamp,
+                            ),
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one ToolCall",
+                        extra={"tool_call_id": tool["tool_call_id"]},
+                    )
+                    continue
                 unknown_tools.append(tool["tool_call_id"])
-                self._append_event_in_transaction(
-                    connection,
-                    tool["run_id"],
-                    RunEventDraft(
-                        event_id=f"startup:tool-outcome-unknown:{tool['tool_call_id']}",
-                        event_type="tool.outcome_unknown",
-                        payload={
-                            "tool_call_id": tool["tool_call_id"],
-                            "safety_class": tool["safety_class"],
-                            "reason": "brain_restart_after_dispatch",
-                        },
-                        created_at=timestamp,
-                    ),
-                )
             expired_approvals = connection.execute(
                 """
-                SELECT * FROM approvals
-                WHERE status = 'pending' AND expiry_action = 'reject'
-                  AND expires_at IS NOT NULL AND expires_at <= ?
-                ORDER BY expires_at, approval_id
+                SELECT approvals.*, runs.status AS run_status
+                FROM approvals
+                JOIN runs ON runs.run_id = approvals.run_id
+                WHERE approvals.status = 'pending'
+                  AND approvals.expiry_action = 'reject'
+                  AND approvals.expires_at IS NOT NULL
+                  AND approvals.expires_at <= ?
+                ORDER BY approvals.expires_at, approvals.approval_id
                 """,
                 (timestamp,),
             ).fetchall()
             for approval in expired_approvals:
-                decision_json = json.dumps(
-                    {"decision": "rejected", "reason": "approval_expired"},
-                    separators=(",", ":"),
-                    sort_keys=True,
-                )
-                connection.execute(
-                    """
-                    UPDATE approvals
-                    SET status = 'rejected', decision_json = ?, resolved_at = ?,
-                        version = version + 1
-                    WHERE approval_id = ? AND status = 'pending'
-                    """,
-                    (decision_json, timestamp, approval["approval_id"]),
-                )
-                connection.execute(
-                    """
-                    UPDATE run_attempts
-                    SET status = 'interrupted', ended_at = COALESCE(ended_at, ?),
-                        outcome = 'approval_expired'
-                    WHERE attempt_id = ? AND status = 'waiting_for_user'
-                    """,
-                    (timestamp, approval["attempt_id"]),
-                )
-                self._append_event_in_transaction(
-                    connection,
-                    approval["run_id"],
-                    RunEventDraft(
-                        event_id=f"approval:{approval['approval_id']}:expired",
-                        event_type="approval.expired_rejected",
-                        payload={
-                            "approval_id": approval["approval_id"],
-                            "expiry_action": "reject",
-                            "reason": "approval_expired",
-                        },
-                        created_at=timestamp,
-                    ),
-                    run_status="interrupted",
-                    clear_active_attempt=True,
-                )
+                if approval["run_status"] in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    continue
+                try:
+                    with self._savepoint(connection, "startup_approval"):
+                        decision_json = json.dumps(
+                            {
+                                "decision": "rejected",
+                                "reason": "approval_expired",
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        )
+                        connection.execute(
+                            """
+                            UPDATE approvals
+                            SET status = 'rejected', decision_json = ?,
+                                resolved_at = ?, version = version + 1
+                            WHERE approval_id = ? AND status = 'pending'
+                            """,
+                            (
+                                decision_json,
+                                timestamp,
+                                approval["approval_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE run_attempts
+                            SET status = 'interrupted',
+                                ended_at = COALESCE(ended_at, ?),
+                                outcome = 'approval_expired'
+                            WHERE attempt_id = ?
+                              AND status = 'waiting_for_user'
+                            """,
+                            (timestamp, approval["attempt_id"]),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            approval["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    f"approval:{approval['approval_id']}:expired"
+                                ),
+                                event_type="approval.expired_rejected",
+                                payload={
+                                    "approval_id": approval["approval_id"],
+                                    "expiry_action": "reject",
+                                    "reason": "approval_expired",
+                                },
+                                created_at=timestamp,
+                            ),
+                            run_status="interrupted",
+                            clear_active_attempt=True,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one Approval",
+                        extra={"approval_id": approval["approval_id"]},
+                    )
             approvals = connection.execute(
                 "SELECT approval_id FROM approvals WHERE status = 'pending' ORDER BY created_at"
             ).fetchall()
@@ -2025,6 +2172,21 @@ class SQLiteRunJournal:
                 raise RunNotFoundError(
                     f"command_id {command_id!r} does not exist"
                 )
+            next_state = state_by_event.get(event_type)
+            if next_state is not None and not transition_allowed(
+                COMMAND_TRANSITIONS,
+                str(inbox["state"]),
+                next_state,
+            ):
+                raise InvalidRunTransitionError(
+                    f"command {command_id!r} cannot move from "
+                    f"{inbox['state']!r} to {next_state!r}"
+                )
+            if event_type == "execution.started" and inbox["state"] != "accepted":
+                raise InvalidRunTransitionError(
+                    f"command {command_id!r} cannot start execution from "
+                    f"{inbox['state']!r}"
+                )
             sequence = int(
                 connection.execute(
                     """
@@ -2067,7 +2229,6 @@ class SQLiteRunJournal:
                     timestamp,
                 ),
             )
-            next_state = state_by_event.get(event_type)
             if next_state is not None:
                 connection.execute(
                     """
@@ -2516,14 +2677,13 @@ class SQLiteRunJournal:
         ).fetchone()
         if run is None:
             raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-        if (
-            run_status is not None
-            and run["status"] in {"completed", "failed", "cancelled"}
-            and run["status"] != run_status
+        if run_status is not None and not transition_allowed(
+            RUN_TRANSITIONS,
+            str(run["status"]),
+            run_status,
         ):
             raise InvalidRunTransitionError(
-                f"terminal run {run_id!r} cannot move from {run['status']!r} "
-                f"to {run_status!r}"
+                f"run {run_id!r} cannot move from {run['status']!r} to {run_status!r}"
             )
         if (
             expected_project_id is not None
@@ -2643,6 +2803,23 @@ class SQLiteRunJournal:
             else:
                 self._connection.commit()
 
+    @contextmanager
+    def _savepoint(
+        self,
+        connection: sqlite3.Connection,
+        prefix: str,
+    ) -> Iterator[None]:
+        name = f"{prefix}_{uuid.uuid4().hex}"
+        connection.execute(f"SAVEPOINT {name}")
+        try:
+            yield
+        except BaseException:
+            connection.execute(f"ROLLBACK TO SAVEPOINT {name}")
+            connection.execute(f"RELEASE SAVEPOINT {name}")
+            raise
+        else:
+            connection.execute(f"RELEASE SAVEPOINT {name}")
+
     def _resolve_duplicate_event(
         self,
         connection: sqlite3.Connection,
@@ -2719,7 +2896,7 @@ class SQLiteRunJournal:
             SELECT tool_call_id, safety_class, idempotency_key
             FROM tool_calls
             WHERE run_id = ?
-              AND status IN ('dispatched', 'outcome_unknown')
+              AND status IN ('dispatched', 'timed_out', 'outcome_unknown')
             ORDER BY created_at
             """,
             (run_id,),
