@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getBaseURL, proxyFetchGet } from '@/api/http';
+import { getBaseURL, proxyFetchGet, proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import {
   getRemoteControlDesktopInstanceId,
@@ -51,6 +51,10 @@ type RemoteCommand = {
   type: string;
   payload: Record<string, any>;
   next_task_id?: string | null;
+  route_version?: number;
+  expires_at?: string;
+  receipt_grace_until?: string;
+  requires_online_receipt_confirmation?: boolean;
 };
 
 type CacheEntry =
@@ -891,6 +895,65 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       return executeRemoteCommand(command, token);
     };
 
+    const persistCommandAndExecute = async (
+      command: RemoteCommand
+    ): Promise<BridgeAck> => {
+      const persisted = await proxyFetchPost(
+        '/remote-control/commands/inbox',
+        command,
+        brainHeaders(command)
+      );
+      send({
+        type: 'command_delivered',
+        command_id: command.id,
+      });
+      if (!persisted?.may_execute) {
+        await proxyFetchPost(
+          `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
+          {
+            status: 'rejected',
+            event_id: `${command.id}:admission`,
+            reason: 'expired_or_receipt_not_confirmed',
+          },
+          brainHeaders(command)
+        );
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_RECEIPT_NOT_CONFIRMED',
+          error: 'Command expired or could not pass its receipt gate',
+        };
+      }
+
+      await proxyFetchPost(
+        `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
+        {
+          status: 'accepted',
+          event_id: `${command.id}:admission`,
+        },
+        brainHeaders(command)
+      );
+      let ack: BridgeAck;
+      try {
+        ack = await executeCommand(command);
+      } catch (error) {
+        ack = commandErrorAck(command.id, error);
+      }
+      await proxyFetchPost(
+        `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
+        {
+          status: ack.status === 'acknowledged' ? 'completed' : 'failed',
+          event_id: `${command.id}:result`,
+          result: ack.result || {},
+          error_code: ack.error_code,
+          error: ack.error,
+        },
+        brainHeaders(command)
+      );
+      return ack;
+    };
+
     const handleCommand = (command: RemoteCommand) => {
       console.info('[RemoteControlBridge][RC-TRACE] command received', {
         command_id: command.id,
@@ -924,12 +987,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       cache.set(command.id, { state: 'in_progress', promise });
       trimCache(cache);
 
-      send({
-        type: 'command_delivered',
-        command_id: command.id,
-      });
-
-      executeCommand(command)
+      persistCommandAndExecute(command)
         .then(resolveAck!)
         .catch((error) => resolveAck!(commandErrorAck(command.id, error)));
 
@@ -948,6 +1006,26 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         });
         sendAck(ack);
       });
+    };
+
+    const replayDurableInbox = async () => {
+      try {
+        const response = await proxyFetchGet(
+          '/remote-control/commands/inbox/pending',
+          { limit: 100 }
+        );
+        const items = Array.isArray(response?.items) ? response.items : [];
+        for (const item of items) {
+          if (item?.payload?.id) {
+            handleCommand(item.payload as RemoteCommand);
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[RemoteControlBridge] Durable Inbox reconciliation failed',
+          error
+        );
+      }
     };
 
     const connect = async () => {
@@ -988,6 +1066,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
               { desktop_instance_id: desktopInstanceId }
             );
             setRemoteControlBridgeConnected(true);
+            void replayDurableInbox();
             return;
           }
           if (message?.type === 'auth_expired') {
