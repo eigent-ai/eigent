@@ -13,7 +13,10 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from app.run_journal.models import (
+    CommandResultEvent,
+    CommandResultSyncBatch,
     CommittedRunEvent,
+    RemoteCommandInboxRecord,
     RunEventDraft,
     RunEventSyncBatch,
     RunEventSyncOutboxRecord,
@@ -41,6 +44,8 @@ from app.run_journal.store import (
 __all__ = [
     "SCHEMA_VERSION",
     "CommittedRunEvent",
+    "CommandResultEvent",
+    "CommandResultSyncBatch",
     "EventRecorder",
     "IdempotencyConflictError",
     "OptimisticConcurrencyError",
@@ -51,6 +56,7 @@ __all__ = [
     "RunJournalError",
     "RunNotFoundError",
     "RunRecord",
+    "RemoteCommandInboxRecord",
     "SQLiteRunJournal",
     "UnsupportedSchemaVersionError",
     "close_default_run_journal",

@@ -79,3 +79,43 @@ class RunEventSyncBatch:
     lease_token: str
     attempt_count: int
     events: tuple[CommittedRunEvent, ...]
+
+
+@dataclass(frozen=True)
+class RemoteCommandInboxRecord:
+    command_id: str
+    session_id: str
+    user_id: int
+    project_id: str
+    run_id: str | None
+    route_version: int
+    command_type: str
+    payload: dict[str, Any]
+    expires_at: float
+    receipt_grace_until: float
+    requires_online_receipt_confirmation: bool
+    receipt_event_id: str
+    receipt_status: str
+    state: str
+    dispatch_attempt_count: int
+    last_error: str | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class CommandResultEvent:
+    event_id: str
+    command_id: str
+    command_event_sequence: int
+    event_type: str
+    payload: dict[str, Any]
+    occurred_at: float
+
+
+@dataclass(frozen=True)
+class CommandResultSyncBatch:
+    command_id: str
+    lease_token: str
+    attempt_count: int
+    events: tuple[CommandResultEvent, ...]

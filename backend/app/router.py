@@ -29,6 +29,7 @@ from app.controller import (
     mcp_controller,
     message_controller,
     model_controller,
+    remote_command_controller,
     remote_sub_agent_controller,
     run_controller,
     skill_controller,
@@ -88,6 +89,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": run_controller.router,
             "tags": ["Runs"],
             "description": "Durable Run snapshots, event replay, and live streams",
+        },
+        {
+            "router": remote_command_controller.router,
+            "tags": ["Remote Command Inbox"],
+            "description": "Durable Remote Control Inbox and command-result lane",
         },
         {
             "router": model_controller.router,

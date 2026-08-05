@@ -61,19 +61,35 @@ class HttpRunEventSyncTransport:
             timeout=timeout_seconds,
             transport=transport,
         )
+        self._registered_devices: set[tuple[str, str]] = set()
+        self._claimed_routes: set[tuple[str, str, str]] = set()
+        self._registration_lock = asyncio.Lock()
 
-    async def ingest(
+    @staticmethod
+    def _headers(
+        configuration: CloudSyncConfiguration,
+    ) -> dict[str, str]:
+        return {
+            "Authorization": configuration.authorization,
+            "X-Desktop-Instance-ID": configuration.desktop_instance_id,
+        }
+
+    @staticmethod
+    def _sync_base(configuration: CloudSyncConfiguration) -> str:
+        return configuration.endpoint_url.rsplit("/", 1)[0]
+
+    async def _json_request(
         self,
+        method: str,
+        url: str,
         configuration: CloudSyncConfiguration,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        response = await self._client.post(
-            configuration.endpoint_url,
+        response = await self._client.request(
+            method,
+            url,
             json=payload,
-            headers={
-                "Authorization": configuration.authorization,
-                "X-Desktop-Instance-ID": configuration.desktop_instance_id,
-            },
+            headers=self._headers(configuration),
         )
         if response.is_error:
             try:
@@ -85,13 +101,60 @@ class HttpRunEventSyncTransport:
             result = response.json()
         except ValueError as exc:
             raise RunEventSyncProtocolError(
-                "Run event ingest returned non-JSON success response"
+                "Run sync endpoint returned non-JSON success response"
             ) from exc
         if not isinstance(result, dict):
             raise RunEventSyncProtocolError(
-                "Run event ingest response must be a JSON object"
+                "Run sync response must be a JSON object"
             )
         return result
+
+    async def _ensure_device_and_route(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+    ) -> None:
+        base = self._sync_base(configuration)
+        device_key = (
+            base,
+            configuration.desktop_instance_id,
+        )
+        route_key = (*device_key, project_id)
+        if route_key in self._claimed_routes:
+            return
+        async with self._registration_lock:
+            if device_key not in self._registered_devices:
+                await self._json_request(
+                    "POST",
+                    f"{base}/devices/register",
+                    configuration,
+                    {"capabilities": {"run_event_sync": 1, "command_sync": 1}},
+                )
+                self._registered_devices.add(device_key)
+            if route_key not in self._claimed_routes:
+                await self._json_request(
+                    "PUT",
+                    f"{base}/projects/{project_id}/execution-route",
+                    configuration,
+                    {},
+                )
+                self._claimed_routes.add(route_key)
+
+    async def ingest(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        await self._ensure_device_and_route(
+            configuration,
+            str(payload["project_id"]),
+        )
+        return await self._json_request(
+            "POST",
+            configuration.endpoint_url,
+            configuration,
+            payload,
+        )
 
     async def close(self) -> None:
         await self._client.aclose()

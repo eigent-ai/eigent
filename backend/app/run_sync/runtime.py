@@ -12,10 +12,15 @@ from app.run_sync.cloud_sync import (
     CloudSyncWorker,
     HttpRunEventSyncTransport,
 )
+from app.run_sync.command_sync import (
+    CommandControlWorker,
+    HttpCommandSyncTransport,
+)
 
 logger = logging.getLogger("run_sync.runtime")
 
 _default_worker: CloudSyncWorker | None = None
+_default_command_worker: CommandControlWorker | None = None
 _worker_loop: asyncio.AbstractEventLoop | None = None
 
 
@@ -42,7 +47,7 @@ def configure_default_cloud_sync_worker(
     authorization: str | None,
     desktop_instance_id: str | None,
 ) -> bool:
-    global _default_worker, _worker_loop
+    global _default_command_worker, _default_worker, _worker_loop
     endpoint = _sync_endpoint(server_url)
     auth = str(authorization or "").strip()
     instance_id = str(
@@ -64,16 +69,22 @@ def configure_default_cloud_sync_worker(
         )
         _worker_loop = loop
         _default_worker.start()
+        _default_command_worker = CommandControlWorker(
+            get_default_run_journal(),
+            HttpCommandSyncTransport(),
+        )
+        _default_command_worker.start()
     elif _worker_loop is not loop:
         logger.error("Refusing to move CloudSyncWorker across event loops")
         return False
-    _default_worker.configure(
-        CloudSyncConfiguration(
-            endpoint_url=endpoint,
-            authorization=auth,
-            desktop_instance_id=instance_id,
-        )
+    configuration = CloudSyncConfiguration(
+        endpoint_url=endpoint,
+        authorization=auth,
+        desktop_instance_id=instance_id,
     )
+    _default_worker.configure(configuration)
+    if _default_command_worker is not None:
+        _default_command_worker.configure(configuration)
     return True
 
 
@@ -83,12 +94,28 @@ def notify_default_cloud_sync_worker() -> None:
     if worker is None or loop is None or loop.is_closed():
         return
     loop.call_soon_threadsafe(worker.notify)
+    if _default_command_worker is not None:
+        loop.call_soon_threadsafe(_default_command_worker.notify)
+
+
+async def persist_and_confirm_remote_command(
+    command: dict,
+) -> tuple[object, bool]:
+    worker = _default_command_worker
+    if worker is None:
+        raise RuntimeError("Command control worker is not configured")
+    record = await worker.persist_command(command)
+    return await worker.confirm_receipt(record.command_id)
 
 
 async def close_default_cloud_sync_worker() -> None:
-    global _default_worker, _worker_loop
+    global _default_command_worker, _default_worker, _worker_loop
     worker = _default_worker
+    command_worker = _default_command_worker
     _default_worker = None
+    _default_command_worker = None
     _worker_loop = None
     if worker is not None:
         await worker.close()
+    if command_worker is not None:
+        await command_worker.close()
