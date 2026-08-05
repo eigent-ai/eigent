@@ -23,6 +23,8 @@ export type ProjectedLegacyStep = {
   step: string;
   data: unknown;
   timestamp: number | null;
+  runSequence: number;
+  cloudCursor: number | null;
 };
 
 export type ProjectedRun = {
@@ -38,9 +40,11 @@ export type ProjectViewState = {
   mode: ProjectorMode;
   seenEventIds: Record<string, true>;
   currentCursor: number;
+  eventsTruncated: boolean;
   lastSyncedAt: string | null;
   needsResync: boolean;
   resyncReason: string | null;
+  resyncTargetCursor: number | null;
   runs: Record<string, ProjectedRun>;
   legacySteps: ProjectedLegacyStep[];
   unknownEvents: CanonicalProjectEvent[];
