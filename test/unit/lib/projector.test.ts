@@ -147,6 +147,30 @@ describe('projector pipeline', () => {
     });
   });
 
+  it('requests another resync when a later gap extends the missing range', () => {
+    const initial = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      normalizeEvent(event())
+    );
+    const firstGapEvent = normalizeEvent(
+      event({ event_id: 'event-3', cloud_cursor: 3, run_sequence: 3 })
+    );
+    const firstGap = reduceProjectView(initial, firstGapEvent);
+    const laterGapEvent = normalizeEvent(
+      event({ event_id: 'event-4', cloud_cursor: 4, run_sequence: 4 })
+    );
+    const laterGap = reduceProjectView(firstGap, laterGapEvent);
+
+    expect(
+      deriveLiveEffects(firstGap, laterGap, laterGapEvent, 'live')
+    ).toEqual([
+      {
+        type: 'request_resync',
+        reason: 'run_sequence_gap:run-1:2:4',
+      },
+    ]);
+  });
+
   it('derives effects only in live mode', () => {
     const normalized = normalizeEvent(
       event({ event_type: 'run.completed', legacy_step: 'end' })
