@@ -251,3 +251,20 @@ async def test_explicit_step_failure_is_fail_open_and_marks_degraded(
     task_lock.mark_local_history_degraded.assert_called_once_with(
         "OSError: busy timeout"
     )
+
+
+def test_event_attribution_prefers_immutable_run_context(monkeypatch):
+    mutable_task_lock = SimpleNamespace(current_task_id="mutable-run")
+    monkeypatch.setattr(
+        sync_step_module,
+        "get_current_run_context",
+        lambda: SimpleNamespace(run_id="immutable-run"),
+    )
+    monkeypatch.setattr(
+        sync_step_module,
+        "get_task_lock_if_exists",
+        lambda _project_id: mutable_task_lock,
+    )
+    chat = SimpleNamespace(task_id="chat-task", project_id="project-1")
+
+    assert sync_step_module._get_task_id((chat,)) == "immutable-run"

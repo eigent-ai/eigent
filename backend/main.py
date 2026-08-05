@@ -156,6 +156,15 @@ async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
 
+    # Stop detached execution consumers before cleaning their compatibility
+    # TaskLocks. RunJournal remains open until all producers have stopped.
+    try:
+        from app.run_runtime import close_default_run_coordinator
+
+        await close_default_run_coordinator()
+    except Exception as e:
+        app_logger.warning(f"RunCoordinator shutdown failed: {e}")
+
     from app.service.task import _cleanup_task, task_locks
 
     if _cleanup_task and not _cleanup_task.done():
