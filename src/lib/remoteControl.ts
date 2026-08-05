@@ -22,8 +22,109 @@ import {
 import { getDesktopInstanceId } from '@/lib/desktopIdentity';
 
 const BRIDGE_READY_EVENT = 'eigent-remote-control-bridge-ready';
+const PENDING_COMMAND_REQUESTS_KEY =
+  'eigent:remote-control-command-requests:v1';
+const PENDING_COMMAND_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+const PENDING_COMMAND_REQUEST_LIMIT = 32;
 
 let remoteControlBridgeConnected = false;
+
+type PendingCommandRequest = {
+  fingerprint: string;
+  requestId: string;
+  createdAt: number;
+};
+
+let pendingCommandRequestsFallback: PendingCommandRequest[] = [];
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableValue(item)])
+    );
+  }
+  return value;
+}
+
+function readPendingCommandRequests(): PendingCommandRequest[] {
+  const now = Date.now();
+  try {
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(PENDING_COMMAND_REQUESTS_KEY) || '[]'
+    );
+    pendingCommandRequestsFallback = Array.isArray(parsed)
+      ? parsed
+          .filter(
+            (item): item is PendingCommandRequest =>
+              typeof item?.fingerprint === 'string' &&
+              typeof item?.requestId === 'string' &&
+              typeof item?.createdAt === 'number' &&
+              now - item.createdAt <= PENDING_COMMAND_REQUEST_TTL_MS
+          )
+          .slice(-PENDING_COMMAND_REQUEST_LIMIT)
+      : [];
+  } catch {
+    pendingCommandRequestsFallback = pendingCommandRequestsFallback
+      .filter((item) => now - item.createdAt <= PENDING_COMMAND_REQUEST_TTL_MS)
+      .slice(-PENDING_COMMAND_REQUEST_LIMIT);
+  }
+  return pendingCommandRequestsFallback;
+}
+
+function writePendingCommandRequests(items: PendingCommandRequest[]): void {
+  pendingCommandRequestsFallback = items.slice(-PENDING_COMMAND_REQUEST_LIMIT);
+  try {
+    window.sessionStorage.setItem(
+      PENDING_COMMAND_REQUESTS_KEY,
+      JSON.stringify(pendingCommandRequestsFallback)
+    );
+  } catch {
+    // The in-memory fallback still preserves identity within this page load.
+  }
+}
+
+function createClientRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join(
+    ''
+  );
+}
+
+function commandRequestIdentity(
+  sessionId: string,
+  body: Record<string, unknown>
+): { fingerprint: string; requestId: string } {
+  const fingerprint = JSON.stringify(
+    stableValue({ session_id: sessionId, ...body })
+  );
+  const existing = readPendingCommandRequests().find(
+    (item) => item.fingerprint === fingerprint
+  );
+  if (existing) {
+    return { fingerprint, requestId: existing.requestId };
+  }
+  const requestId = createClientRequestId();
+  writePendingCommandRequests([
+    ...pendingCommandRequestsFallback,
+    { fingerprint, requestId, createdAt: Date.now() },
+  ]);
+  return { fingerprint, requestId };
+}
+
+function clearCommandRequestIdentity(fingerprint: string): void {
+  writePendingCommandRequests(
+    readPendingCommandRequests().filter(
+      (item) => item.fingerprint !== fingerprint
+    )
+  );
+}
 
 export function getRemoteControlDesktopInstanceId(): string {
   return getDesktopInstanceId();
@@ -341,19 +442,37 @@ export async function sendRemoteControlCommand(
   },
   linkToken?: string | null
 ): Promise<RemoteControlCommandResponse> {
-  return proxyFetchPost(
+  const commandBody = {
+    type,
+    payload,
+    source_channel: 'remote_web',
+    target_project_id: target?.project_id,
+    target_task_id: target?.task_id,
+    target_brain_session_id: target?.brain_session_id,
+  };
+  const identity = commandRequestIdentity(sessionId, commandBody);
+  const response = await proxyFetchPost(
     `/api/v1/remote-control/sessions/${sessionId}/commands`,
     {
-      type,
-      payload,
-      source_channel: 'remote_web',
-      target_project_id: target?.project_id,
-      target_task_id: target?.task_id,
-      target_brain_session_id: target?.brain_session_id,
+      ...commandBody,
+      client_request_id: identity.requestId,
     },
     remoteLinkHeaders(linkToken)
   );
+  clearCommandRequestIdentity(identity.fingerprint);
+  return response;
 }
+
+export const __remoteControlTestHooks = {
+  resetPendingCommandRequests() {
+    pendingCommandRequestsFallback = [];
+    try {
+      window.sessionStorage.removeItem(PENDING_COMMAND_REQUESTS_KEY);
+    } catch {
+      // no-op
+    }
+  },
+};
 
 export async function patchRemoteControlTarget(
   sessionId: string,
