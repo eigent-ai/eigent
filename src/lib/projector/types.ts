@@ -26,6 +26,7 @@ export type ProjectedLegacyStep = {
   runSequence: number;
   cloudCursor: number | null;
   source: CanonicalProjectEvent['source'];
+  crossLaneEventIds?: string[];
 };
 
 export type ProjectedRun = {

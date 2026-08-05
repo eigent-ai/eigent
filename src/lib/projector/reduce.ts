@@ -31,6 +31,38 @@ function sameAskData(left: unknown, right: unknown): boolean {
   );
 }
 
+const CROSS_LANE_MATCH_WINDOW_SECONDS = 120;
+
+function findEquivalentCrossLaneStep(
+  state: ProjectViewState,
+  event: CanonicalProjectEvent,
+  data: unknown
+): number {
+  if (!event.legacyStep) return -1;
+  const eventIsCanonical = event.source === 'canonical';
+  const eventTimestamp = Date.parse(event.createdAt) / 1000;
+  if (!Number.isFinite(eventTimestamp)) return -1;
+
+  for (let index = state.legacySteps.length - 1; index >= 0; index -= 1) {
+    const step = state.legacySteps[index];
+    if (
+      step.projectId !== event.projectId ||
+      step.taskId !== event.runId ||
+      step.step !== event.legacyStep ||
+      (step.source === 'canonical') === eventIsCanonical ||
+      (step.crossLaneEventIds?.length || 0) > 0 ||
+      step.timestamp === null ||
+      Math.abs(step.timestamp - eventTimestamp) >
+        CROSS_LANE_MATCH_WINDOW_SECONDS ||
+      !sameAskData(step.data, data)
+    ) {
+      continue;
+    }
+    return index;
+  }
+  return -1;
+}
+
 function hasEquivalentOpenAsk(
   state: ProjectViewState,
   event: CanonicalProjectEvent,
@@ -181,28 +213,44 @@ export function reduceProjectView(
         step.taskId === event.runId &&
         String(step.stepId) === String(legacyStepId)
     );
+  const equivalentCrossLaneStep = hasLegacyStepId
+    ? -1
+    : findEquivalentCrossLaneStep(state, event, legacyData);
   const hasLegacyStep =
     hasLegacyStepId ||
+    equivalentCrossLaneStep >= 0 ||
     (event.legacyStep === 'ask' &&
       hasEquivalentOpenAsk(state, event, legacyData));
-  const legacySteps =
-    event.legacyStep && !hasLegacyStep
-      ? [
-          ...state.legacySteps,
-          {
-            eventId: event.eventId,
-            stepId: legacyStepId,
-            taskId: event.runId,
-            projectId: event.projectId,
-            step: event.legacyStep,
-            data: legacyData,
-            timestamp: Date.parse(event.createdAt) / 1000 || null,
-            runSequence: event.runSequence,
-            cloudCursor: event.cloudCursor,
-            source: event.source,
-          },
-        ]
-      : state.legacySteps;
+  let legacySteps = state.legacySteps;
+  if (equivalentCrossLaneStep >= 0) {
+    legacySteps = state.legacySteps.map((step, index) =>
+      index === equivalentCrossLaneStep
+        ? {
+            ...step,
+            crossLaneEventIds: [
+              ...(step.crossLaneEventIds || []),
+              event.eventId,
+            ],
+          }
+        : step
+    );
+  } else if (event.legacyStep && !hasLegacyStep) {
+    legacySteps = [
+      ...state.legacySteps,
+      {
+        eventId: event.eventId,
+        stepId: legacyStepId,
+        taskId: event.runId,
+        projectId: event.projectId,
+        step: event.legacyStep,
+        data: legacyData,
+        timestamp: Date.parse(event.createdAt) / 1000 || null,
+        runSequence: event.runSequence,
+        cloudCursor: event.cloudCursor,
+        source: event.source,
+      },
+    ];
+  }
 
   return {
     ...state,
