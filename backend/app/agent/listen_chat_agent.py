@@ -40,6 +40,7 @@ from pydantic import BaseModel
 from app.component.environment import env
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
+    declared_tool_safety,
     finish_tool_checkpoint,
     prepare_tool_checkpoint,
 )
@@ -77,11 +78,12 @@ def default_step_timeout() -> float | None:
 
 
 def _reported_tool_error(result: Any) -> RuntimeError | None:
-    """Turn a tool-level error result into a journal failure outcome.
+    """Turn a tool-level error result into a *known* journal failure.
 
     Some tool adapters deliberately return an error mapping instead of raising.
-    Treating that mapping as a successful result would make an unsafe write look
-    replay-safe after a crash.
+    The mapping proves the invocation returned normally, so it must not be
+    escalated into an unknown external side effect even when the tool itself is
+    conservatively classified as an unsafe write.
     """
 
     if isinstance(result, dict) and result.get("error"):
@@ -735,6 +737,11 @@ class ListenChatAgent(ChatAgent):
                 raw_tool_call_id=tool_call_id,
                 tool_name=func_name,
                 arguments=args,
+                declared_safety=declared_tool_safety(
+                    tool,
+                    func_name,
+                    args,
+                ),
             )
 
             # Only send activate event if tool is
@@ -762,7 +769,12 @@ class ListenChatAgent(ChatAgent):
             if reported_error is None:
                 finish_tool_checkpoint(checkpoint, result=raw_result)
             else:
-                finish_tool_checkpoint(checkpoint, error=reported_error)
+                finish_tool_checkpoint(
+                    checkpoint,
+                    result=raw_result,
+                    error=reported_error,
+                    outcome_known=True,
+                )
             logger.debug(f"Tool {func_name} executed successfully")
             if self.mask_tool_output:
                 self._secure_result_store[tool_call_id] = raw_result
@@ -928,6 +940,11 @@ class ListenChatAgent(ChatAgent):
             raw_tool_call_id=tool_call_id,
             tool_name=func_name,
             arguments=args,
+            declared_safety=declared_tool_safety(
+                tool,
+                func_name,
+                args,
+            ),
         )
 
         # Only send activate event if tool is NOT wrapped by @listen_toolkit
@@ -1019,7 +1036,9 @@ class ListenChatAgent(ChatAgent):
                 await asyncio.to_thread(
                     finish_tool_checkpoint,
                     checkpoint,
+                    result=result,
                     error=reported_error,
+                    outcome_known=True,
                 )
 
         # Prepare result message with truncation

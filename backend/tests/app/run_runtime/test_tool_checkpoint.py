@@ -5,12 +5,14 @@ from pathlib import Path
 import pytest
 
 from app.run_context import RunContext, run_context_scope
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointPersistenceError,
     UnsafeToolOutcomeError,
     classify_tool_safety,
+    declare_tool_safety,
+    declared_tool_safety,
     finish_tool_checkpoint,
     prepare_tool_checkpoint,
 )
@@ -90,6 +92,47 @@ def test_unsafe_external_error_is_recorded_then_fails_closed(tmp_path):
         assert tool.result["external_effect_may_have_occurred"] is True
 
 
+def test_unsafe_tool_soft_error_is_known_failed_and_does_not_block_resume(
+    tmp_path,
+):
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-soft-error",
+                tool_name="search_vendor_catalog",
+                arguments={"query": "widgets"},
+                journal=journal,
+            )
+            finish_tool_checkpoint(
+                checkpoint,
+                result={"error": "rate limited"},
+                error=RuntimeError("rate limited"),
+                outcome_known=True,
+                journal=journal,
+            )
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.safety_class == ToolSafetyClass.UNSAFE_WRITE.value
+        assert tool.status == "failed"
+        assert tool.outcome == "failed"
+        assert tool.result == {"error": "rate limited"}
+
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="interrupt-after-soft-error",
+                event_type="runtime.interrupted",
+                payload={"reason": "test"},
+            ),
+        )
+        resumed = journal.create_run_attempt(
+            "run-1",
+            request_id="resume-after-soft-error",
+            reason="explicit_resume",
+        )
+        assert resumed.status == "pending"
+
+
 def test_missing_journal_checkpoint_prevents_tool_dispatch(tmp_path):
     class BrokenJournal:
         def get_run(self, _run_id):
@@ -130,6 +173,32 @@ def test_tool_safety_is_conservative_and_requires_real_idempotency_key():
         "write_record", {"idempotency_key": "model-invented"}
     ) == (ToolSafetyClass.UNSAFE_WRITE, None)
     assert classify_tool_safety("write_record", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_builtin_read_tools_and_code_owned_declarations_are_trusted():
+    assert classify_tool_safety("search_google", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    assert classify_tool_safety("web_fetch_and_analyze", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+
+    class Tool:
+        pass
+
+    declared = declare_tool_safety(Tool(), ToolSafetyClass.SAFE_READ)
+    assert declared_tool_safety(declared, "vendor_lookup", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    # Arbitrary MCP tools remain conservative unless trusted application code
+    # attached a declaration to the concrete FunctionTool object.
+    assert declared_tool_safety(Tool(), "mcp_create_ticket", {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )

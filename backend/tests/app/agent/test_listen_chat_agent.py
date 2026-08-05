@@ -46,6 +46,40 @@ def test_reported_tool_error_detects_adapter_error_mapping():
     assert _reported_tool_error({"result": "ok"}) is None
 
 
+def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
+    def vendor_search():
+        return {"error": "rate limited"}
+
+    tool = FunctionTool(vendor_search)
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {"vendor_search": tool}
+    agent.api_task_id = "project-1"
+    agent.agent_name = "searcher"
+    agent.process_task_id = "process-1"
+    agent.mask_tool_output = False
+    agent._secure_result_store = {}
+    agent._record_tool_calling = MagicMock(return_value="recorded")
+    checkpoint = MagicMock()
+    request = ToolCallRequest(
+        tool_name="vendor_search",
+        args={},
+        tool_call_id="call-1",
+    )
+
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
+        patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.finish_tool_checkpoint") as finish,
+        patch(f"{_LCA}._schedule_async_task"),
+    ):
+        assert agent._execute_tool(request) == "recorded"
+
+    finish.assert_called_once()
+    assert finish.call_args.kwargs["result"] == {"error": "rate limited"}
+    assert isinstance(finish.call_args.kwargs["error"], RuntimeError)
+    assert finish.call_args.kwargs["outcome_known"] is True
+
+
 class TestListenChatAgent:
     """Test cases for ListenChatAgent class."""
 
