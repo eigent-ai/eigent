@@ -415,3 +415,225 @@ def test_terminal_event_closes_run_and_active_attempt_atomically(tmp_path):
         assert (
             journal.get_run_attempt(attempt.attempt_id).status == "completed"
         )
+
+
+def test_terminal_run_expired_approval_does_not_abort_other_startup_recovery(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="terminal", project_id="project-1")
+        terminal_attempt = journal.create_run_attempt(
+            "terminal",
+            request_id="terminal-initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="stale-approval",
+            run_id="terminal",
+            attempt_id=terminal_attempt.attempt_id,
+            prompt={"question": "Continue?"},
+            expires_at=2,
+            expiry_action="reject",
+            now=1,
+        )
+        journal.append_event(
+            "terminal",
+            RunEventDraft(
+                event_id="terminal-completed",
+                event_type="run.completed",
+                payload={},
+                created_at=1.5,
+            ),
+        )
+        journal.ensure_run(run_id="recoverable", project_id="project-1")
+        recoverable_attempt = journal.create_run_attempt(
+            "recoverable",
+            request_id="recoverable-initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+
+        result = journal.reconcile_startup(now=3)
+
+        assert result.interrupted_run_ids == ("recoverable",)
+        assert journal.get_run("terminal").status == "completed"
+        assert journal.list_approvals("terminal")[0].status == "pending"
+        assert journal.get_run("recoverable").status == "interrupted"
+        assert (
+            journal.get_run_attempt(recoverable_attempt.attempt_id).status
+            == "interrupted"
+        )
+
+
+def test_startup_reconciliation_isolates_one_run_failure(tmp_path, monkeypatch):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        for run_id in ("bad", "good"):
+            journal.ensure_run(run_id=run_id, project_id="project-1", now=1)
+            journal.create_run_attempt(
+                run_id,
+                request_id=f"initial:{run_id}",
+                reason="initial_execution",
+                activate=True,
+                now=1,
+            )
+
+        append = journal._append_event_in_transaction
+
+        def fail_one_run(connection, run_id, draft, **kwargs):
+            if run_id == "bad" and draft.event_type == "runtime.interrupted":
+                raise RuntimeError("corrupt run")
+            return append(connection, run_id, draft, **kwargs)
+
+        monkeypatch.setattr(journal, "_append_event_in_transaction", fail_one_run)
+
+        result = journal.reconcile_startup(now=2)
+
+        assert result.interrupted_run_ids == ("good",)
+        assert journal.get_run("bad").status == "running"
+        assert journal.get_run("good").status == "interrupted"
+
+
+def test_interrupted_cancel_intent_blocks_resume_and_is_completed_on_startup(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.record_timeout_outcome(
+            TimeoutOutcome(
+                scope=TimeoutScope.RUNTIME_LIVENESS,
+                policy_version="v1",
+                reason="consumer_lost",
+                started_at=1,
+                ended_at=2,
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+            )
+        )
+        journal.request_cancel(
+            "run-1", request_id="cancel-1", reason="user_request", now=3
+        )
+
+        with pytest.raises(InvalidRunTransitionError, match="cancel intent"):
+            journal.create_run_attempt(
+                "run-1",
+                request_id="resume-after-cancel",
+                reason="explicit_resume",
+                now=4,
+            )
+
+        result = journal.reconcile_startup(now=5)
+        assert result.completed_cancel_run_ids == ("run-1",)
+        assert journal.get_run("run-1").status == "cancelled"
+
+
+def test_approval_rejects_non_running_attempt_without_orphaning_it(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="interrupted"
+        )
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="pending-attempt",
+            reason="explicit_resume",
+            activate=False,
+            now=1,
+        )
+
+        with pytest.raises(
+            InvalidRunTransitionError, match="must be the active running attempt"
+        ):
+            journal.create_approval(
+                approval_id="approval-1",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"question": "Continue?"},
+                now=2,
+            )
+
+        assert journal.get_run("run-1").status == "pending"
+        assert journal.get_run_attempt(attempt.attempt_id).status == "pending"
+        assert journal.list_approvals("run-1") == []
+
+
+def test_late_tool_timeout_cannot_overwrite_completed_outcome(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="publish_message",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"channel": "public"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **values)
+        journal.checkpoint_tool_call(
+            status="completed",
+            result={"message_id": "m-1"},
+            outcome="completed",
+            now=4,
+            **values,
+        )
+
+        with pytest.raises(InvalidRunTransitionError, match="completed"):
+            journal.record_timeout_outcome(
+                TimeoutOutcome(
+                    scope=TimeoutScope.TOOL,
+                    policy_version="v1",
+                    reason="late_timer",
+                    started_at=2,
+                    ended_at=5,
+                    run_id="run-1",
+                    attempt_id=attempt.attempt_id,
+                    tool_call_id="tool-1",
+                )
+            )
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.status == "completed"
+        assert tool.outcome == "completed"
+
+
+def test_unsafe_write_cannot_enter_replayable_timed_out_state(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="publish_message",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"channel": "public"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **values)
+
+        with pytest.raises(
+            InvalidRunTransitionError, match="unsafe write.*outcome_unknown"
+        ):
+            journal.checkpoint_tool_call(status="timed_out", now=4, **values)

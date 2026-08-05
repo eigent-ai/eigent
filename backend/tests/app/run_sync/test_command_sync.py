@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_sync.cloud_sync import CloudSyncConfiguration
 from app.run_sync.command_sync import CommandControlWorker
 
@@ -95,3 +95,43 @@ async def test_high_risk_command_does_not_execute_without_cloud_config(
         _record, may_execute = await worker.confirm_receipt(record.command_id)
         assert may_execute is False
         await worker.close()
+
+
+def test_command_inbox_terminal_state_cannot_move_backwards(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        record = journal.persist_remote_command(
+            command_id="command-1",
+            session_id="session-1",
+            user_id=7,
+            project_id="project-1",
+            run_id=None,
+            route_version=1,
+            command_type="user_message",
+            payload={"content": "hello"},
+            expires_at=100,
+            receipt_grace_until=110,
+            requires_online_receipt_confirmation=False,
+            now=1,
+        )
+        journal.append_command_result(
+            record.command_id,
+            event_type="admission.accepted",
+            event_id="accepted",
+            occurred_at=2,
+        )
+        journal.append_command_result(
+            record.command_id,
+            event_type="execution.completed",
+            event_id="completed",
+            occurred_at=3,
+        )
+
+        with pytest.raises(InvalidRunTransitionError, match="completed"):
+            journal.append_command_result(
+                record.command_id,
+                event_type="admission.rejected",
+                event_id="late-rejected",
+                occurred_at=4,
+            )
+
+        assert journal.get_remote_command(record.command_id).state == "completed"
