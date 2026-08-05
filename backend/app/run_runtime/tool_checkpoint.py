@@ -20,20 +20,23 @@ _REDACTED_KEYS = {
     "secret",
     "token",
 }
-_SAFE_READ_PREFIXES = (
-    "ask_",
-    "browse",
-    "fetch",
-    "find",
-    "get_",
-    "inspect",
-    "list_",
-    "read_",
-    "search",
-    "send_message_to_user",
-    "screenshot",
-    "view_",
+# This allowlist is trusted code, unlike model-generated names and arguments.
+# Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
+# enumerated so mutating operations cannot inherit safety from a shared prefix.
+_SAFE_READ_TOOL_NAMES = frozenset(
+    {
+        "browser_console_view",
+        "browser_get_page_snapshot",
+        "browser_sheet_read",
+        "get_website_content",
+        "read_file",
+        "read_page",
+        "screenshot",
+        "search_web",
+        "view_image",
+    }
 )
+_IDEMPOTENT_WRITE_TOOL_KEYS: dict[str, str] = {}
 _MAX_CHECKPOINT_JSON_BYTES = 16_000
 
 
@@ -93,10 +96,11 @@ def classify_tool_safety(
     tool_name: str, arguments: dict[str, Any]
 ) -> tuple[ToolSafetyClass, str | None]:
     normalized = tool_name.strip().lower()
-    if normalized.startswith(_SAFE_READ_PREFIXES):
+    if normalized in _SAFE_READ_TOOL_NAMES:
         return ToolSafetyClass.SAFE_READ, None
-    for key in ("idempotency_key", "request_id", "operation_id"):
-        value = arguments.get(key)
+    idempotency_argument = _IDEMPOTENT_WRITE_TOOL_KEYS.get(normalized)
+    if idempotency_argument is not None:
+        value = arguments.get(idempotency_argument)
         if value is not None and str(value).strip():
             return ToolSafetyClass.IDEMPOTENT_WRITE, str(value)
     return ToolSafetyClass.UNSAFE_WRITE, None

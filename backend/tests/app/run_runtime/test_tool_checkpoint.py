@@ -110,10 +110,25 @@ def test_tool_safety_is_conservative_and_requires_real_idempotency_key():
         ToolSafetyClass.SAFE_READ,
         None,
     )
-    assert classify_tool_safety("write_record", {"request_id": "req-1"}) == (
-        ToolSafetyClass.IDEMPOTENT_WRITE,
-        "req-1",
+    assert classify_tool_safety("browser_get_page_snapshot", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
     )
+    assert classify_tool_safety("browser_click", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+    assert classify_tool_safety("browser_type", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+    assert classify_tool_safety("write_record", {"request_id": "req-1"}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+    assert classify_tool_safety(
+        "write_record", {"idempotency_key": "model-invented"}
+    ) == (ToolSafetyClass.UNSAFE_WRITE, None)
     assert classify_tool_safety("write_record", {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
