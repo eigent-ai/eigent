@@ -43,7 +43,7 @@ from app.run_context import (
     apply_run_env_for_third_party,
     stream_with_run_context,
 )
-from app.run_journal import get_default_run_journal
+from app.run_journal import SQLiteRunJournal, get_default_run_journal
 from app.run_runtime import get_default_run_coordinator
 from app.service.chat_service import step_solve
 from app.service.task import (
@@ -227,6 +227,20 @@ def _build_run_context(
         # Cloud sync is a freshness projection. Local Run admission and history
         # remain available when its configuration cannot be refreshed.
         chat_logger.exception("Failed to configure Run cloud sync")
+    permissions = {"workspace.read", "workspace.write"}
+    if data.allow_local_system:
+        permissions.update({"terminal", "local_system"})
+    if cdp_url or data.cdp_browsers:
+        permissions.add("browser")
+    permissions.update(
+        f"mcp:{name}" for name in (data.installed_mcp.get("mcpServers") or {})
+    )
+    credential_sources = {
+        "model": data.auth_source
+        or ("request_api_key" if data.api_key else "none"),
+        "cloud": "request_api_key" if data.is_cloud() else "none",
+        "search": "request_search_config" if data.search_config else "none",
+    }
     return RunContext(
         space_id=data.space_id or data.project_id,
         project_id=data.project_id,
@@ -250,6 +264,11 @@ def _build_run_context(
         extra_env={
             "baseSnapshotId": frozen_dirs.base_snapshot_id or "",
         },
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        model_parameters=dict(data.model_config_dict or {}),
+        permissions=frozenset(permissions),
+        credential_sources=credential_sources,
     )
 
 
@@ -421,6 +440,13 @@ async def _prepare_chat_run(
         run_id=run_context.run_id,
         project_id=run_context.project_id,
     )
+    await asyncio.to_thread(
+        get_default_run_journal().create_run_attempt,
+        run_context.run_id,
+        request_id=f"initial:{run_context.run_id}",
+        reason="initial_execution",
+        activate=True,
+    )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -479,6 +505,9 @@ async def start_chat_stream(data: Chat, request: Request):
 
     run_id = data.run_id or data.task_id
     coordinator = get_default_run_coordinator()
+    journal = get_default_run_journal()
+    if isinstance(journal, SQLiteRunJournal):
+        coordinator.bind_journal(journal)
     async with coordinator.admission_scope(run_id):
         subscription = await coordinator.attach_if_running(run_id)
         if subscription is not None:
@@ -489,7 +518,7 @@ async def start_chat_stream(data: Chat, request: Request):
             return timeout_stream_wrapper(subscription, run_id=run_id)
 
         persisted_run = await asyncio.to_thread(
-            get_default_run_journal().get_run,
+            journal.get_run,
             run_id,
         )
         if persisted_run is not None:
@@ -730,6 +759,13 @@ async def _improve_chat(id: str, data: SupplementChat, request: Request):
             project_id=refreshed_context.project_id,
         )
         await asyncio.to_thread(
+            get_default_run_journal().create_run_attempt,
+            refreshed_context.run_id,
+            request_id=f"initial:{refreshed_context.run_id}",
+            reason="follow_up_execution",
+            activate=True,
+        )
+        await asyncio.to_thread(
             get_memory_service().on_run_start,
             run_context=refreshed_context,
             space_name=None,
@@ -855,6 +891,41 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
+    run_context = getattr(task_lock, "run_context", None)
+    if isinstance(run_context, RunContext):
+        pending_approvals = await asyncio.to_thread(
+            get_default_run_journal().list_approvals,
+            run_context.run_id,
+            pending_only=True,
+        )
+        approval = next(
+            (
+                item
+                for item in reversed(pending_approvals)
+                if item.prompt.get("agent") == data.agent
+            ),
+            None,
+        )
+        if approval is not None:
+            await asyncio.to_thread(
+                get_default_run_journal().decide_approval,
+                approval.approval_id,
+                decision="approved",
+                details={"agent": data.agent, "reply": data.reply},
+                expected_version=approval.version,
+                expected_run_id=run_context.run_id,
+                continue_active_attempt=True,
+            )
+            try:
+                from app.run_sync.runtime import (
+                    notify_default_cloud_sync_worker,
+                )
+
+                notify_default_cloud_sync_worker()
+            except Exception:
+                chat_logger.exception(
+                    "Failed to wake cloud sync after Approval decision"
+                )
     try:
         await task_lock.put_human_input(data.agent, data.reply)
     except KeyError as exc:
@@ -872,7 +943,6 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         {"agent": data.agent, "reply": data.reply},
     )
     memory_service = getattr(task_lock, "memory_service", None)
-    run_context = getattr(task_lock, "run_context", None)
     if memory_service is not None and run_context is not None:
         memory_service.on_human_reply(
             run_context=run_context,

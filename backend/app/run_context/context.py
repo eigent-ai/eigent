@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 THIRD_PARTY_OS_ENV_KEYS = ("CAMEL_LOG_DIR", "CAMEL_WORKDIR")
 
@@ -46,6 +47,11 @@ class RunContext:
     auth_header: str | None = None
     search_config: dict[str, str] = field(default_factory=dict)
     extra_env: dict[str, str] = field(default_factory=dict)
+    model_platform: str | None = None
+    model_type: str | None = None
+    model_parameters: dict[str, Any] = field(default_factory=dict)
+    permissions: frozenset[str] = field(default_factory=frozenset)
+    credential_sources: dict[str, str] = field(default_factory=dict)
 
     def env_overrides(self) -> dict[str, str]:
         values: dict[str, str] = {

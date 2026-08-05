@@ -34,6 +34,73 @@ class RunRecord:
     timeout_policy_version: str
     created_at: float
     updated_at: float
+    parent_run_id: str | None = None
+    timeout_policy: dict[str, Any] = field(default_factory=dict)
+    cancel_request_id: str | None = None
+    cancel_requested_at: float | None = None
+
+
+@dataclass(frozen=True)
+class RunAttemptRecord:
+    attempt_id: str
+    run_id: str
+    attempt_number: int
+    status: str
+    started_at: float
+    ended_at: float | None
+    outcome: str | None
+    timeout_reason: str | None
+    resume_request_id: str | None
+    resume_reason: str
+    policy_version: str
+    elapsed_active_ms: int
+    last_consumer_heartbeat_at: float | None
+
+
+@dataclass(frozen=True)
+class ToolCallRecord:
+    tool_call_id: str
+    run_id: str
+    attempt_id: str | None
+    tool_name: str
+    status: str
+    safety_class: str
+    idempotency_key: str | None
+    request: dict[str, Any]
+    result: dict[str, Any] | None
+    outcome: str | None
+    timeout_reason: str | None
+    prepared_at: float | None
+    dispatched_at: float | None
+    completed_at: float | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class ApprovalRecord:
+    approval_id: str
+    run_id: str
+    attempt_id: str | None
+    status: str
+    prompt: dict[str, Any]
+    decision: dict[str, Any] | None
+    version: int
+    expires_at: float | None
+    expiry_action: str
+    created_at: float
+    resolved_at: float | None
+
+
+@dataclass(frozen=True)
+class StartupReconciliationResult:
+    interrupted_run_ids: tuple[str, ...]
+    completed_cancel_run_ids: tuple[str, ...]
+    deadline_run_ids: tuple[str, ...]
+    detached_attempt_ids: tuple[str, ...]
+    outcome_unknown_tool_call_ids: tuple[str, ...]
+    pending_approval_ids: tuple[str, ...]
+    reconcilable_command_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)

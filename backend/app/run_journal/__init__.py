@@ -13,14 +13,18 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from app.run_journal.models import (
+    ApprovalRecord,
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
     RemoteCommandInboxRecord,
+    RunAttemptRecord,
     RunEventDraft,
     RunEventSyncBatch,
     RunEventSyncOutboxRecord,
     RunRecord,
+    StartupReconciliationResult,
+    ToolCallRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.recorder import EventRecorder
@@ -33,21 +37,25 @@ from app.run_journal.runtime import (
 from app.run_journal.store import (
     SCHEMA_VERSION,
     IdempotencyConflictError,
+    InvalidRunTransitionError,
     OptimisticConcurrencyError,
     OutboxLeaseLostError,
     RunJournalError,
     RunNotFoundError,
     SQLiteRunJournal,
+    UnsafeResumeError,
     UnsupportedSchemaVersionError,
 )
 
 __all__ = [
     "SCHEMA_VERSION",
+    "ApprovalRecord",
     "CommittedRunEvent",
     "CommandResultEvent",
     "CommandResultSyncBatch",
     "EventRecorder",
     "IdempotencyConflictError",
+    "InvalidRunTransitionError",
     "OptimisticConcurrencyError",
     "OutboxLeaseLostError",
     "RunEventDraft",
@@ -56,8 +64,12 @@ __all__ = [
     "RunJournalError",
     "RunNotFoundError",
     "RunRecord",
+    "RunAttemptRecord",
     "RemoteCommandInboxRecord",
     "SQLiteRunJournal",
+    "StartupReconciliationResult",
+    "ToolCallRecord",
+    "UnsafeResumeError",
     "UnsupportedSchemaVersionError",
     "close_default_run_journal",
     "configured_run_journal_path",
