@@ -16,7 +16,6 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import { showTrafficToast } from '@/components/Toast/trafficToast';
 import { createHost } from '@/host/createHost';
-import { getDesktopInstanceId } from '@/lib/desktopIdentity';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
@@ -105,7 +104,6 @@ async function buildBrainHeaders(
     headers['Authorization'] = `Bearer ${token}`;
   }
   if (shouldAttachAuthHeader(url)) {
-    headers['X-Desktop-Instance-ID'] = getDesktopInstanceId();
     const localControlCapability = await getLocalControlCapability();
     if (localControlCapability) {
       headers[LOCAL_CONTROL_CAPABILITY_HEADER] = localControlCapability;

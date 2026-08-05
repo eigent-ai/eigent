@@ -126,7 +126,7 @@ function clearCommandRequestIdentity(fingerprint: string): void {
   );
 }
 
-export function getRemoteControlDesktopInstanceId(): string {
+export function getRemoteControlDesktopInstanceId(): Promise<string> {
   return getDesktopInstanceId();
 }
 

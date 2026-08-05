@@ -1007,7 +1007,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
     let reconnectTimer: number | null = null;
     let pingTimer: number | null = null;
     let reconnectAttempt = 0;
-    const desktopInstanceId = getRemoteControlDesktopInstanceId();
+    let desktopInstanceId = '';
 
     const send = (payload: Record<string, unknown>) => {
       if (ws?.readyState === WebSocket.OPEN) {
@@ -1307,13 +1307,31 @@ export function useRemoteControlBridge(token: string | null | undefined) {
     };
 
     const connect = async () => {
-      const url = await getRemoteControlWebSocketUrl(
-        '/api/v1/remote-control/bridge/subscribe'
-      );
-      if (stopped) {
+      let url = '';
+      try {
+        if (!desktopInstanceId) {
+          desktopInstanceId = await getRemoteControlDesktopInstanceId();
+        }
+        url = await getRemoteControlWebSocketUrl(
+          '/api/v1/remote-control/bridge/subscribe'
+        );
+        if (stopped) {
+          return;
+        }
+        ws = new WebSocket(url);
+      } catch (error) {
+        console.warn(
+          '[RemoteControlBridge] Bridge identity or URL resolution failed',
+          error
+        );
+        if (!stopped) {
+          const base = Math.min(30_000, 3_000 * 2 ** reconnectAttempt);
+          const delay = base + Math.floor(Math.random() * 1_000);
+          reconnectAttempt += 1;
+          reconnectTimer = window.setTimeout(() => void connect(), delay);
+        }
         return;
       }
-      ws = new WebSocket(url);
       console.info('[RemoteControlBridge][RC-TRACE] connecting bridge ws', {
         url,
         desktop_instance_id: desktopInstanceId,
@@ -1392,7 +1410,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           const base = Math.min(30_000, 3_000 * 2 ** reconnectAttempt);
           const delay = base + Math.floor(Math.random() * 1_000);
           reconnectAttempt += 1;
-          reconnectTimer = window.setTimeout(connect, delay);
+          reconnectTimer = window.setTimeout(() => void connect(), delay);
         }
       };
       ws.onerror = () => {

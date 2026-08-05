@@ -54,7 +54,6 @@ export type ProjectViewState = {
 
 export type ProjectorEffect =
   | { type: 'scroll_to_latest'; eventId: string }
-  | { type: 'notify_terminal'; eventId: string; runId: string; status: string }
   | { type: 'request_resync'; reason: string };
 
 export type ProjectSnapshotInput = {

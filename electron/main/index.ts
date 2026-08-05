@@ -37,6 +37,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
 import { copyBrowserData } from './copy';
+import { getOrCreateDesktopInstanceId } from './desktopIdentity';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -94,6 +95,7 @@ let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
 const localControlCapability = crypto.randomBytes(32).toString('base64url');
+let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
@@ -1067,6 +1069,18 @@ function registerIpcHandlers() {
       );
     }
     return localControlCapability;
+  });
+  ipcMain.handle('get-desktop-instance-id', (event, legacyRendererId) => {
+    if (!win || event.sender.id !== win.webContents.id) {
+      throw new Error('Desktop identity is restricted to the main renderer');
+    }
+    if (!desktopInstanceId) {
+      desktopInstanceId = getOrCreateDesktopInstanceId(
+        userData,
+        typeof legacyRendererId === 'string' ? legacyRendererId : null
+      );
+    }
+    return desktopInstanceId;
   });
 
   // ==================== restart app handler ====================

@@ -120,6 +120,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
   getLocalControlCapability: () =>
     ipcRenderer.invoke('get-local-control-capability'),
+  getDesktopInstanceId: (legacyRendererId?: string) =>
+    ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);

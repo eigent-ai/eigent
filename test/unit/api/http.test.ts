@@ -110,6 +110,11 @@ describe('api/http handleResponse', () => {
         }),
       })
     );
+    const headers = request.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers['X-Desktop-Instance-ID']).toBeUndefined();
   });
 });
 
