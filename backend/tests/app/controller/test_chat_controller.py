@@ -27,7 +27,6 @@ from app.controller.chat_controller import (
     _PreparedChatRun,
     _admission_request_id,
     _classify_persisted_admission,
-    _classify_persisted_admission,
     human_reply,
     improve,
     install_mcp,
@@ -40,7 +39,6 @@ from app.controller.chat_controller import (
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
 from app.run_context import RunContext
-from app.run_journal import SQLiteRunJournal
 from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 
@@ -215,6 +213,35 @@ class TestChatController:
 
         assert retry == "retry"
         assert conflict == "conflict"
+
+    @pytest.mark.asyncio
+    async def test_legacy_admission_without_fingerprint_is_replay_only(
+        self, tmp_path
+    ):
+        run_id = "run-legacy-partial"
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id=run_id, project_id="project-1", status="pending"
+            )
+            journal.create_run_attempt(
+                run_id,
+                request_id=f"initial:{run_id}",
+                reason="initial_execution",
+                activate=False,
+            )
+
+            admission, _attempt = await _classify_persisted_admission(
+                journal,
+                run_id=run_id,
+                request_id=_admission_request_id(
+                    run_id,
+                    question="unverifiable payload",
+                    attaches=[],
+                    project_context=None,
+                ),
+            )
+
+        assert admission == "duplicate"
 
     @pytest.mark.asyncio
     async def test_persisted_run_replays_without_implicit_restart(
@@ -637,6 +664,85 @@ class TestChatController:
 
         assert response.status_code == 201
         improve_chat.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_follow_up_rebind_failure_precedes_durable_admission(
+        self,
+        mock_task_lock,
+        mock_request,
+        controller_run_journal,
+        tmp_path,
+    ):
+        old_context = RunContext(
+            space_id="space-1",
+            project_id="project-1",
+            run_id="run-old",
+            task_id="run-old",
+            email="u@example.com",
+            user_id="42",
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "old-output",
+            camel_log_dir=tmp_path / "old-log",
+            binding_source="test",
+            workdir_mode=None,
+            browser_port=9222,
+        )
+        mock_task_lock.run_context = old_context
+        mock_task_lock.status = Status.processing
+        mock_task_lock.email = "u@example.com"
+        mock_task_lock.user_id = "42"
+        mock_request.state = SimpleNamespace(browser_port=9222, cdp_url=None)
+        frozen_dirs = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "new-output",
+            snapshot=MagicMock(),
+            binding_source="test",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories_for.return_value = frozen_dirs
+        memory_service = MagicMock()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=RunCoordinator(),
+            ),
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.get_workspace_resolver",
+                return_value=resolver,
+            ),
+            patch(
+                "app.controller.chat_controller.get_memory_service",
+                return_value=memory_service,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.controller.chat_controller._camel_log_dir",
+                return_value=tmp_path / "new-log",
+            ),
+            patch(
+                "app.controller.chat_controller.apply_run_env_for_third_party"
+            ),
+        ):
+            with pytest.raises(UserException, match="no live consumer"):
+                await improve(
+                    "project-1",
+                    SupplementChat(question="next", task_id="run-new"),
+                    mock_request,
+                )
+
+        controller_run_journal.ensure_run.assert_not_called()
+        controller_run_journal.create_run_attempt.assert_not_called()
+        memory_service.on_run_start.assert_not_called()
+        mock_task_lock.put_queue.assert_not_awaited()
+        assert mock_task_lock.run_context is old_context
 
     @pytest.mark.asyncio
     async def test_improve_chat_task_done_resets_to_confirming(
