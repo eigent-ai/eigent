@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import httpx
 import pytest
 
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_sync import (
     CloudSyncConfiguration,
     CloudSyncWorker,
+    HttpRunEventSyncTransport,
     RunEventSyncHttpError,
 )
 
@@ -220,4 +222,27 @@ async def test_invalid_success_response_is_retried(journal):
     pending = journal.list_pending_outbox(now=float("inf"))
     assert pending[0].attempt_count == 1
     assert "scope does not match" in pending[0].last_error
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_device_registration_conflict_retries_without_poisoning_event(
+    journal,
+):
+    _append(journal, "run-1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/devices/register")
+        return httpx.Response(409, json={"detail": "route temporarily owned"})
+
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 0
+    pending = journal.list_pending_outbox(now=float("inf"))
+    assert pending[0].status == "pending"
+    assert pending[0].attempt_count == 1
+    assert "route temporarily owned" in (pending[0].last_error or "")
     await worker.close()

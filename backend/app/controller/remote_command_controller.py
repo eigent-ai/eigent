@@ -94,7 +94,15 @@ async def persist_command_inbox(body: RemoteCommandInboxIn):
         raise HTTPException(
             status_code=422, detail=f"missing command field: {exc.args[0]}"
         ) from exc
-    return {"command": asdict(record), "may_execute": may_execute}
+    execution_event = await asyncio.to_thread(
+        get_default_run_journal().get_latest_command_execution_result,
+        record.command_id,
+    )
+    return {
+        "command": asdict(record),
+        "may_execute": may_execute,
+        "execution_event": asdict(execution_event) if execution_event else None,
+    }
 
 
 @router.get("/inbox/pending")

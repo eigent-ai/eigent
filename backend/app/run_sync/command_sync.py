@@ -24,6 +24,12 @@ from app.run_sync.cloud_sync import (
 
 logger = logging.getLogger("command_sync")
 
+_EXECUTABLE_INBOX_STATES = frozenset({"received", "dispatched"})
+
+
+class CommandSyncInfrastructureError(RuntimeError):
+    """Device registration failure, not a poison command result event."""
+
 
 def _timestamp(value: str | float | int) -> float:
     if isinstance(value, (float, int)):
@@ -102,18 +108,21 @@ class HttpCommandSyncTransport:
         async with self._lock:
             if key in self._registered:
                 return
-            await self._request(
-                "POST",
-                f"{key[0]}/devices/register",
-                configuration,
-                payload={
-                    "capabilities": {
-                        "run_event_sync": 1,
-                        "command_inbox": 1,
-                        "command_result_sync": 1,
-                    }
-                },
-            )
+            try:
+                await self._request(
+                    "POST",
+                    f"{key[0]}/devices/register",
+                    configuration,
+                    payload={
+                        "capabilities": {
+                            "run_event_sync": 1,
+                            "command_inbox": 1,
+                            "command_result_sync": 1,
+                        }
+                    },
+                )
+            except RunEventSyncHttpError as exc:
+                raise CommandSyncInfrastructureError(str(exc)) from exc
             self._registered.add(key)
 
     async def pull_pending(
@@ -280,7 +289,7 @@ class CommandControlWorker:
         if command is None:
             raise KeyError(command_id)
         if command.receipt_status == "confirmed":
-            return command, True
+            return command, command.state in _EXECUTABLE_INBOX_STATES
         if command.receipt_status == "expired_late":
             return command, False
         configuration = self._configuration
@@ -288,7 +297,8 @@ class CommandControlWorker:
             # Low-risk commands may proceed during a Cloud outage inside a small
             # skew window. High-risk actions remain gated on the Cloud CAS.
             may_execute = (
-                not command.requires_online_receipt_confirmation
+                command.state in _EXECUTABLE_INBOX_STATES
+                and not command.requires_online_receipt_confirmation
                 and time.time() <= command.expires_at + 5
             )
             return command, may_execute
@@ -297,6 +307,7 @@ class CommandControlWorker:
                 configuration, command
             )
         except (
+            CommandSyncInfrastructureError,
             httpx.HTTPError,
             RunEventSyncHttpError,
             RunEventSyncProtocolError,
@@ -306,7 +317,8 @@ class CommandControlWorker:
                 extra={"command_id": command_id},
             )
             may_execute = (
-                not command.requires_online_receipt_confirmation
+                command.state in _EXECUTABLE_INBOX_STATES
+                and not command.requires_online_receipt_confirmation
                 and time.time() <= command.expires_at + 5
             )
             return command, may_execute
@@ -317,59 +329,87 @@ class CommandControlWorker:
             command_id,
             status,
         )
-        return updated, bool(response.get("may_execute"))
+        return updated, bool(response.get("may_execute")) and (
+            updated.state in _EXECUTABLE_INBOX_STATES
+        )
 
     async def drain_once(self) -> int:
         configuration = self._configuration
         if configuration is None:
             return 0
-        pulled = await self._transport.pull_pending(
-            configuration, limit=self._max_commands
-        )
-        for item in pulled:
-            await self.persist_command(
-                {
-                    "id": item["command_id"],
-                    "session_id": item["session_id"],
-                    "user_id": item["user_id"],
-                    "project_id": item["project_id"],
-                    "run_id": item.get("run_id"),
-                    "route_version": item["route_version"],
-                    "type": item["command_type"],
-                    "payload": item.get("payload") or {},
-                    "space_id": item.get("space_id"),
-                    "target_task_id": item.get("run_id"),
-                    "target_brain_session_id": item.get(
-                        "target_brain_session_id"
-                    ),
-                    "source_channel": item.get("source_channel"),
-                    "next_task_id": item.get("next_task_id"),
-                    "expires_at": item["expires_at"],
-                    "receipt_grace_until": item["receipt_grace_until"],
-                    "requires_online_receipt_confirmation": item.get(
-                        "requires_online_receipt_confirmation", False
-                    ),
-                }
-            )
-        for command in await asyncio.to_thread(
-            self._journal.list_reconcilable_commands,
-            limit=self._max_commands,
-        ):
-            if command.receipt_status == "pending":
-                await self.confirm_receipt(command.command_id)
+        synced = await self._drain_outbound(configuration)
+        pulled_count = await self._pull_and_reconcile(configuration)
+        return synced + pulled_count
 
+    async def _drain_outbound(
+        self, configuration: CloudSyncConfiguration
+    ) -> int:
         batches = await asyncio.to_thread(
             self._journal.claim_command_result_batches,
             max_commands=self._max_commands,
             batch_size=self._batch_size,
         )
         if not batches:
-            return len(pulled)
+            return 0
         results = await asyncio.gather(
             *(self._sync_batch(batch, configuration) for batch in batches)
         )
         self.notify()
-        return len(pulled) + sum(results)
+        return sum(results)
+
+    async def _pull_and_reconcile(
+        self, configuration: CloudSyncConfiguration
+    ) -> int:
+        pulled_count = 0
+        try:
+            pulled = await self._transport.pull_pending(
+                configuration, limit=self._max_commands
+            )
+        except Exception:
+            logger.exception("Remote command pull failed; outbound lane remains live")
+            pulled = []
+        for item in pulled:
+            try:
+                await self.persist_command(
+                    {
+                        "id": item["command_id"],
+                        "session_id": item["session_id"],
+                        "user_id": item["user_id"],
+                        "project_id": item["project_id"],
+                        "run_id": item.get("run_id"),
+                        "route_version": item["route_version"],
+                        "type": item["command_type"],
+                        "payload": item.get("payload") or {},
+                        "space_id": item.get("space_id"),
+                        "target_task_id": item.get("run_id"),
+                        "target_brain_session_id": item.get(
+                            "target_brain_session_id"
+                        ),
+                        "source_channel": item.get("source_channel"),
+                        "next_task_id": item.get("next_task_id"),
+                        "expires_at": item["expires_at"],
+                        "receipt_grace_until": item["receipt_grace_until"],
+                        "requires_online_receipt_confirmation": item.get(
+                            "requires_online_receipt_confirmation", False
+                        ),
+                    }
+                )
+                pulled_count += 1
+            except Exception:
+                logger.exception("Ignoring malformed or conflicting remote command")
+        for command in await asyncio.to_thread(
+            self._journal.list_reconcilable_commands,
+            limit=self._max_commands,
+        ):
+            if command.receipt_status == "pending":
+                try:
+                    await self.confirm_receipt(command.command_id)
+                except Exception:
+                    logger.exception(
+                        "Remote command receipt reconciliation failed",
+                        extra={"command_id": command.command_id},
+                    )
+        return pulled_count
 
     async def _sync_batch(
         self,

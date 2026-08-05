@@ -2042,6 +2042,24 @@ class SQLiteRunJournal:
             ).fetchone()
             return self._command_from_row(row) if row is not None else None
 
+    def get_latest_command_execution_result(
+        self, command_id: str
+    ) -> CommandResultEvent | None:
+        """Return the durable terminal execution result used for ACK replay."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM command_result_events
+                WHERE command_id = ?
+                  AND event_type IN ('execution.completed', 'execution.failed')
+                ORDER BY command_event_sequence DESC
+                LIMIT 1
+                """,
+                (command_id,),
+            ).fetchone()
+            return self._command_event_from_row(row) if row is not None else None
+
     def list_reconcilable_commands(
         self, *, limit: int = 100
     ) -> list[RemoteCommandInboxRecord]:
@@ -2277,13 +2295,21 @@ class SQLiteRunJournal:
             )
             candidates = connection.execute(
                 """
-                SELECT command_id, MIN(command_event_sequence) AS head_sequence
-                FROM command_result_outbox
-                WHERE status != 'sent'
-                GROUP BY command_id
-                HAVING SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) = 0
-                   AND MIN(CASE WHEN status = 'pending' THEN next_attempt_at END) <= ?
-                ORDER BY MIN(updated_at), command_id
+                WITH heads AS (
+                    SELECT command_id,
+                           MIN(command_event_sequence) AS head_sequence
+                    FROM command_result_outbox
+                    WHERE status != 'sent'
+                    GROUP BY command_id
+                )
+                SELECT heads.command_id, heads.head_sequence
+                FROM heads
+                JOIN command_result_outbox AS head
+                  ON head.command_id = heads.command_id
+                 AND head.command_event_sequence = heads.head_sequence
+                WHERE head.status = 'pending'
+                  AND head.next_attempt_at <= ?
+                ORDER BY head.updated_at, heads.command_id
                 LIMIT ?
                 """,
                 (timestamp, max_commands),

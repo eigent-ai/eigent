@@ -36,6 +36,23 @@ type BridgeAck = {
   replayed_from_cache?: boolean;
 };
 
+type CommandResultBody = {
+  status: 'completed' | 'failed';
+  event_id: string;
+  result: Record<string, any>;
+  error_code?: string;
+  error?: string;
+};
+
+type DurableCommandEvent = {
+  event_type?: string;
+  payload?: {
+    result?: Record<string, any>;
+    error_code?: string;
+    error?: string;
+  };
+};
+
 type RemoteCommand = {
   id: string;
   session_id: string;
@@ -65,6 +82,7 @@ const CACHE_LIMIT = 200;
 const COMMAND_TIMEOUT_MS = 10000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_COMMANDS = 5;
+const PENDING_COMMAND_RESULTS_KEY = 'eigent:remote-command-results:v1';
 const remoteHistoryHydrationInFlight = new Set<string>();
 const BRIDGE_CAPABILITIES = {
   bridge_version: 1,
@@ -84,6 +102,82 @@ const BRIDGE_CAPABILITIES = {
     'space_discard_project_overlays',
   ],
 };
+
+type PendingCommandResult = {
+  command: RemoteCommand;
+  body: CommandResultBody;
+};
+
+function readPendingCommandResults(): PendingCommandResult[] {
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(PENDING_COMMAND_RESULTS_KEY) || '[]'
+    );
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingCommandResults(items: PendingCommandResult[]) {
+  try {
+    window.localStorage.setItem(
+      PENDING_COMMAND_RESULTS_KEY,
+      JSON.stringify(items)
+    );
+  } catch (error) {
+    console.warn(
+      '[RemoteControlBridge] Could not persist pending command result',
+      error
+    );
+  }
+}
+
+function queuePendingCommandResult(item: PendingCommandResult) {
+  const items = readPendingCommandResults().filter(
+    (candidate) => candidate.command.id !== item.command.id
+  );
+  items.push(item);
+  writePendingCommandResults(items);
+}
+
+function removePendingCommandResult(commandId: string) {
+  writePendingCommandResults(
+    readPendingCommandResults().filter(
+      (candidate) => candidate.command.id !== commandId
+    )
+  );
+}
+
+export function ackFromDurableExecution(
+  commandId: string,
+  event?: DurableCommandEvent | null
+): BridgeAck | null {
+  if (!event?.event_type) {
+    return null;
+  }
+  const payload = event.payload || {};
+  if (event.event_type === 'execution.completed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'acknowledged',
+      result: payload.result || {},
+      replayed_from_cache: true,
+    };
+  }
+  if (event.event_type === 'execution.failed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'failed',
+      error_code: payload.error_code || 'COMMAND_FAILED',
+      error: payload.error || 'Remote command failed',
+      replayed_from_cache: true,
+    };
+  }
+  return null;
+}
 
 function trimCache(cache: Map<string, CacheEntry>) {
   if (cache.size <= CACHE_LIMIT) {
@@ -895,6 +989,32 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       return executeRemoteCommand(command, token);
     };
 
+    const persistCommandResult = async (
+      command: RemoteCommand,
+      body: CommandResultBody
+    ) => {
+      queuePendingCommandResult({ command, body });
+      await proxyFetchPost(
+        `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
+        body,
+        brainHeaders(command)
+      );
+      removePendingCommandResult(command.id);
+    };
+
+    const flushPendingCommandResults = async () => {
+      for (const item of readPendingCommandResults()) {
+        try {
+          await persistCommandResult(item.command, item.body);
+        } catch (error) {
+          console.warn(
+            '[RemoteControlBridge] Pending command result remains queued',
+            { command_id: item.command.id, error }
+          );
+        }
+      }
+    };
+
     const persistCommandAndExecute = async (
       command: RemoteCommand
     ): Promise<BridgeAck> => {
@@ -907,6 +1027,61 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         type: 'command_delivered',
         command_id: command.id,
       });
+      const durableAck = ackFromDurableExecution(
+        command.id,
+        persisted?.execution_event
+      );
+      if (durableAck) {
+        return durableAck;
+      }
+      const inboxState = persisted?.command?.state;
+      if (inboxState === 'accepted') {
+        // A previous renderer durably admitted this command. Re-executing after
+        // restart could duplicate an external side effect, so close the unknown
+        // outcome explicitly and let the independent result lane retry it.
+        const unknownAck: BridgeAck = {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_OUTCOME_UNKNOWN_AFTER_RESTART',
+          error:
+            'The command was admitted before Desktop restarted; it was not replayed.',
+        };
+        try {
+          await persistCommandResult(command, {
+            status: 'failed',
+            event_id: `${command.id}:result`,
+            result: {},
+            error_code: unknownAck.error_code,
+            error: unknownAck.error,
+          });
+        } catch (error) {
+          console.warn(
+            '[RemoteControlBridge] Outcome-unknown result queued for retry',
+            error
+          );
+        }
+        return unknownAck;
+      }
+      if (inboxState === 'rejected') {
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_REJECTED',
+          error: persisted?.command?.last_error || 'Command was rejected',
+          replayed_from_cache: true,
+        };
+      }
+      if (inboxState === 'completed' || inboxState === 'failed') {
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_RESULT_INTEGRITY_ERROR',
+          error: 'Durable command state has no replayable execution result',
+        };
+      }
       if (!persisted?.may_execute) {
         await proxyFetchPost(
           `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
@@ -940,17 +1115,23 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       } catch (error) {
         ack = commandErrorAck(command.id, error);
       }
-      await proxyFetchPost(
-        `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
-        {
+      try {
+        await persistCommandResult(command, {
           status: ack.status === 'acknowledged' ? 'completed' : 'failed',
           event_id: `${command.id}:result`,
           result: ack.result || {},
           error_code: ack.error_code,
           error: ack.error,
-        },
-        brainHeaders(command)
-      );
+        });
+      } catch (error) {
+        // The execution outcome is authoritative. Keep its exact payload in a
+        // durable renderer queue and retry it; never replace it with a fake
+        // execution.failed ACK caused by an upload/notification failure.
+        console.warn('[RemoteControlBridge] Command result queued for retry', {
+          command_id: command.id,
+          error,
+        });
+      }
       return ack;
     };
 
@@ -1066,7 +1247,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
               { desktop_instance_id: desktopInstanceId }
             );
             setRemoteControlBridgeConnected(true);
-            void replayDurableInbox();
+            void flushPendingCommandResults().then(replayDurableInbox);
             return;
           }
           if (message?.type === 'auth_expired') {
