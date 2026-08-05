@@ -29,10 +29,11 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.auth import require_local_control_principal
 from app.run_journal import (
     CommittedRunEvent,
     IdempotencyConflictError,
@@ -54,7 +55,7 @@ from app.run_runtime import (
     get_default_run_coordinator,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 
 _EVENT_PAGE_SIZE = 500
 _DEFAULT_HEARTBEAT_SECONDS = 15.0

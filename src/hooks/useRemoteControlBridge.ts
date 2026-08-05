@@ -12,7 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getBaseURL, proxyFetchGet, proxyFetchPost } from '@/api/http';
+import {
+  fetchGet,
+  fetchPost,
+  getBaseURL,
+  getLocalControlCapability,
+  proxyFetchGet,
+} from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import {
   getRemoteControlDesktopInstanceId,
@@ -290,12 +296,16 @@ async function requestBrain(
   );
   try {
     const baseURL = await getBaseURL();
+    const localControlCapability = await getLocalControlCapability();
     const response = await fetch(`${baseURL}${path}`, {
       method,
       signal: controller.signal,
       headers: {
         ...brainHeaders(command),
         Authorization: `Bearer ${token}`,
+        ...(localControlCapability
+          ? { 'X-Eigent-Local-Capability': localControlCapability }
+          : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -994,7 +1004,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       body: CommandResultBody
     ) => {
       queuePendingCommandResult({ command, body });
-      await proxyFetchPost(
+      await fetchPost(
         `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
         body,
         brainHeaders(command)
@@ -1018,7 +1028,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
     const persistCommandAndExecute = async (
       command: RemoteCommand
     ): Promise<BridgeAck> => {
-      const persisted = await proxyFetchPost(
+      const persisted = await fetchPost(
         '/remote-control/commands/inbox',
         command,
         brainHeaders(command)
@@ -1083,7 +1093,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         };
       }
       if (!persisted?.may_execute) {
-        await proxyFetchPost(
+        await fetchPost(
           `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
           {
             status: 'rejected',
@@ -1101,7 +1111,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         };
       }
 
-      await proxyFetchPost(
+      await fetchPost(
         `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
         {
           status: 'accepted',
@@ -1191,7 +1201,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
 
     const replayDurableInbox = async () => {
       try {
-        const response = await proxyFetchGet(
+        const response = await fetchGet(
           '/remote-control/commands/inbox/pending',
           { limit: 100 }
         );

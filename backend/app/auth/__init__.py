@@ -19,6 +19,12 @@ from app.auth.brain_auth import (
     set_brain_auth_provider,
     with_brain_auth_provider,
 )
+from app.auth.local_control import (
+    LOCAL_CONTROL_CAPABILITY_ENV,
+    LOCAL_CONTROL_CAPABILITY_HEADER,
+    LocalControlPrincipal,
+    require_local_control_principal,
+)
 from app.auth.interface import IAuthProvider, NoneAuth
 
 __all__ = [
@@ -29,4 +35,8 @@ __all__ = [
     "get_brain_auth_provider",
     "set_brain_auth_provider",
     "with_brain_auth_provider",
+    "LOCAL_CONTROL_CAPABILITY_ENV",
+    "LOCAL_CONTROL_CAPABILITY_HEADER",
+    "LocalControlPrincipal",
+    "require_local_control_principal",
 ]

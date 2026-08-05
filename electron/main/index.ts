@@ -93,6 +93,7 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
+const localControlCapability = crypto.randomBytes(32).toString('base64url');
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
@@ -1059,6 +1060,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  ipcMain.handle('get-local-control-capability', (event) => {
+    if (!win || event.sender.id !== win.webContents.id) {
+      throw new Error(
+        'Local control capability is restricted to the main renderer'
+      );
+    }
+    return localControlCapability;
+  });
 
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
@@ -3169,6 +3178,7 @@ const checkAndStartBackend = async (
           {
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+            EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
           }
         );
 
