@@ -826,8 +826,9 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         )
 
     cloud_task_id = getattr(task_lock, "current_task_id", None) or id
-    sync_step_event(
+    await sync_step_event(
         task_id=cloud_task_id,
+        project_id=id,
         run_id=cloud_task_id,
         step="human_reply",
         data={"agent": data.agent, "reply": data.reply},

@@ -173,6 +173,14 @@ async def cleanup_resources():
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
 
+    # Close the process-owned SQLite RunJournal after producers have stopped.
+    try:
+        from app.run_journal.runtime import close_default_run_journal
+
+        close_default_run_journal()
+    except Exception as e:
+        app_logger.warning(f"RunJournal shutdown failed: {e}")
+
     # Remove PID file
     pid_file = dir / "run.pid"
     if pid_file.exists():
