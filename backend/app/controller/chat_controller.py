@@ -16,7 +16,7 @@ import asyncio
 import inspect
 import logging
 import os
-import time
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -42,6 +42,7 @@ from app.run_context import (
     apply_run_env_for_third_party,
     stream_with_run_context,
 )
+from app.run_runtime import get_default_run_coordinator
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -53,12 +54,10 @@ from app.service.task import (
     ActionStopData,
     ActionSupplementData,
     ImprovePayload,
-    delete_task_lock,
     get_or_create_task_lock,
     get_task_lock,
     get_task_lock_if_exists,
     set_current_task_id,
-    task_locks,
 )
 from app.utils.browser_launcher import (
     ensure_cdp_browser_endpoint,
@@ -254,131 +253,62 @@ def _camel_log_dir(
     return camel_log_root(email, project_id, task_id, user_id)
 
 
-async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
-    """Safely cleanup task lock with existence check.
-
-    Args:
-        task_lock: The task lock to cleanup
-        reason: Reason for cleanup (for logging)
-
-    Returns:
-        True if cleanup was performed, False otherwise
-    """
-    if not task_lock:
-        return False
-
-    # Check if task_lock still exists before attempting cleanup
-    if task_lock.id not in task_locks:
-        chat_logger.debug(
-            f"[{reason}] Task lock already removed, skipping cleanup",
-            extra={"task_id": task_lock.id},
-        )
-        return False
-
-    try:
-        task_lock.status = Status.done
-        await delete_task_lock(task_lock.id)
-        chat_logger.info(
-            f"[{reason}] Task lock cleanup completed",
-            extra={"task_id": task_lock.id},
-        )
-        return True
-    except Exception as e:
-        chat_logger.error(
-            f"[{reason}] Failed to cleanup task lock",
-            extra={"task_id": task_lock.id, "error": str(e)},
-            exc_info=True,
-        )
-        return False
-
-
-def _should_preserve_task_lock_on_cancel(task_lock) -> bool:
-    """Keep completed Project state alive for follow-up turns.
-
-    The frontend closes the SSE stream after a run reaches `end`. That close is
-    reported to FastAPI as a cancellation, but for multi-turn Project semantics
-    it is not a user stop. The TaskLock carries the short-term conversation
-    context used by follow-up `/chat/{project_id}` requests, especially for the
-    single-agent harness, so completed locks with history must survive it.
-    """
-    if not task_lock:
-        return False
-    if getattr(task_lock, "status", None) not in {
-        Status.done,
-        Status.confirming,
-    }:
-        return False
-    return bool(getattr(task_lock, "conversation_history", None))
-
-
 async def timeout_stream_wrapper(
     stream_generator,
-    timeout_seconds: int = SSE_TIMEOUT_SECONDS,
-    task_lock=None,
+    timeout_seconds: float = SSE_TIMEOUT_SECONDS,
+    run_id: str | None = None,
 ):
-    """Wraps a stream generator with timeout handling.
+    """Keep one transport subscriber alive without owning Run lifecycle."""
 
-    Closes the SSE connection if no data is received within the timeout period.
-    Triggers cleanup if timeout occurs to prevent resource leaks.
-    """
-    last_data_time = time.time()
     generator = stream_generator.__aiter__()
-    cleanup_triggered = False
+    pending_next: asyncio.Task | None = None
 
     try:
         while True:
-            elapsed = time.time() - last_data_time
-            remaining_timeout = timeout_seconds - elapsed
-
-            try:
-                data = await asyncio.wait_for(
-                    generator.__anext__(), timeout=remaining_timeout
-                )
-                last_data_time = time.time()
-                yield data
-            except TimeoutError:
-                chat_logger.warning(
-                    "SSE timeout: No data received, closing connection",
-                    extra={"timeout_seconds": timeout_seconds},
-                )
-                timeout_min = timeout_seconds // 60
+            if pending_next is None:
+                pending_next = asyncio.create_task(generator.__anext__())
+            done, _ = await asyncio.wait(
+                {pending_next},
+                timeout=timeout_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
                 yield sse_json(
-                    "error",
+                    "heartbeat",
                     {
-                        "message": "Connection timeout: No data"
-                        f" received for {timeout_min}"
-                        " minutes"
+                        "scope": "transport",
+                        "run_id": run_id,
                     },
                 )
-                cleanup_triggered = await _cleanup_task_lock_safe(
-                    task_lock, "TIMEOUT"
-                )
-                break
+                continue
+            try:
+                data = pending_next.result()
             except StopAsyncIteration:
                 break
+            pending_next = None
+            yield data
 
     except asyncio.CancelledError:
         chat_logger.info(
-            "[STREAM-CANCELLED] Stream cancelled, triggering cleanup"
+            "SSE subscriber detached; Run execution continues",
+            extra={"run_id": run_id},
         )
-        if _should_preserve_task_lock_on_cancel(task_lock):
-            chat_logger.info(
-                "[STREAM-CANCELLED] Preserving completed task lock for follow-up context",
-                extra={"task_id": getattr(task_lock, "id", None)},
-            )
-            raise
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
     except Exception as e:
         chat_logger.error(
-            "[STREAM-ERROR] Unexpected error in stream wrapper",
-            extra={"error": str(e)},
+            "SSE subscriber failed; Run lifecycle is unchanged",
+            extra={"run_id": run_id, "error": str(e)},
             exc_info=True,
         )
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "ERROR")
         raise
+    finally:
+        if pending_next is not None and not pending_next.done():
+            pending_next.cancel()
+            with suppress(asyncio.CancelledError):
+                await pending_next
+        close = getattr(generator, "aclose", None)
+        if close is not None:
+            await close()
 
 
 async def start_chat_stream(data: Chat, request: Request):
@@ -491,13 +421,16 @@ async def start_chat_stream(data: Chat, request: Request):
             "binding_source": frozen_dirs.binding_source,
         },
     )
-    return timeout_stream_wrapper(
-        stream_with_run_context(
+    coordinator = get_default_run_coordinator()
+    subscription = await coordinator.start_with_subscription(
+        run_id=run_context.run_id,
+        stream_factory=lambda: stream_with_run_context(
             step_solve(data, request, task_lock),
             lambda: getattr(task_lock, "run_context", run_context),
         ),
-        task_lock=task_lock,
+        command_queue=task_lock.queue,
     )
+    return timeout_stream_wrapper(subscription, run_id=run_context.run_id)
 
 
 @router.post("/chat", name="start chat")
@@ -825,7 +758,12 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             content=data.reply,
         )
 
-    cloud_task_id = getattr(task_lock, "current_task_id", None) or id
+    current_context = getattr(task_lock, "run_context", None)
+    cloud_task_id = (
+        current_context.run_id
+        if isinstance(current_context, RunContext)
+        else (getattr(task_lock, "current_task_id", None) or id)
+    )
     await sync_step_event(
         task_id=cloud_task_id,
         project_id=id,

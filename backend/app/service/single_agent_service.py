@@ -286,17 +286,6 @@ async def single_agent_solve(
 
     try:
         while True:
-            if await request.is_disconnected():
-                logger.info(
-                    "Single Agent client disconnected; pausing session",
-                    extra={"project_id": options.project_id},
-                )
-                pause_event.clear()
-                task_lock.status = Status.confirming
-                if running_turn and not running_turn.done():
-                    running_turn.cancel()
-                break
-
             wait_for = {pending_queue_get}
             if running_turn is not None:
                 wait_for.add(running_turn)

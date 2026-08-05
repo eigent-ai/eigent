@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.component.environment import env
+from app.run_context import get_current_run_context
 from app.run_journal.runtime import get_default_event_recorder
 from app.service.task import get_task_lock_if_exists
 
@@ -364,6 +365,10 @@ def _parse_value(value):
 
 
 def _get_task_id(args):
+    run_context = get_current_run_context()
+    if run_context is not None:
+        return run_context.run_id
+
     if not args or not hasattr(args[0], "task_id"):
         return None
 

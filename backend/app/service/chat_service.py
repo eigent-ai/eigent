@@ -533,47 +533,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             },
         )
 
-        if await request.is_disconnected():
-            logger.warning("=" * 80)
-            logger.warning(
-                "[LIFECYCLE] CLIENT DISCONNECTED "
-                f"for project {options.project_id}"
-            )
-            logger.warning("=" * 80)
-            if workforce is not None:
-                logger.info(
-                    "[LIFECYCLE] Stopping workforce "
-                    "due to client disconnect, "
-                    "workforce._running="
-                    f"{workforce._running}"
-                )
-                if workforce._running:
-                    workforce.stop()
-                workforce.stop_gracefully()
-                logger.info(
-                    "[LIFECYCLE] Workforce stopped after client disconnect"
-                )
-            else:
-                logger.info("[LIFECYCLE] Workforce is None, no need to stop")
-            task_lock.status = Status.done
-            finalize_task_lock_run_memory(
-                task_lock,
-                state="cancelled",
-                final_result="<summary>Client disconnected</summary>Client disconnected",
-            )
-            try:
-                await delete_task_lock(task_lock.id)
-                logger.info(
-                    "[LIFECYCLE] Task lock deleted after client disconnect"
-                )
-            except Exception as e:
-                logger.error(f"Error deleting task lock on disconnect: {e}")
-            logger.info(
-                "[LIFECYCLE] Breaking out of "
-                "step_solve loop due to "
-                "client disconnect"
-            )
-            break
         try:
             item = await task_lock.get_queue()
         except Exception as e:

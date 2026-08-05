@@ -47,6 +47,7 @@ from app.service.task import (
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
+    ActionStopData,
     ImprovePayload,
     TaskLock,
 )
@@ -1372,29 +1373,52 @@ class TestChatServiceIntegration:
             assert len(responses) > 0
 
     @pytest.mark.asyncio
-    async def test_step_solve_with_disconnected_request(
-        self, sample_chat_data, mock_request, mock_task_lock
+    async def test_step_solve_ignores_transport_disconnect(
+        self, sample_chat_data, mock_task_lock
     ):
-        """Test step_solve handles disconnected request."""
+        """Execution lifecycle no longer polls the SSE request transport."""
         options = Chat(**sample_chat_data)
-        mock_request.is_disconnected = AsyncMock(return_value=True)
+        request = MagicMock()
+        request.state.hands = None
+        request.headers = {}
+        request.is_disconnected = AsyncMock(return_value=True)
+        mock_task_lock.get_queue = AsyncMock(return_value=ActionStopData())
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
+        mock_task_lock.last_task_result = ""
+        mock_task_lock.summary_generated = False
+        mock_task_lock.memory_service = None
+        mock_task_lock.run_context = None
+        mock_task_lock.question_agent = MagicMock()
+        mock_task_lock.question_agent.astep = AsyncMock(
+            return_value=_AgentStepResponse("still running")
+        )
 
         mock_workforce = MagicMock()
 
-        with patch(
-            "app.service.chat_service.construct_workforce",
-            return_value=(mock_workforce, MagicMock()),
+        with (
+            patch(
+                "app.service.chat_service.question_confirm",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "app.service.chat_service.construct_workforce",
+                return_value=(mock_workforce, MagicMock()),
+            ),
+            patch(
+                "app.service.chat_service.delete_task_lock",
+                new=AsyncMock(),
+            ) as mock_delete_task_lock,
         ):
-            # Should exit immediately if request is disconnected
             responses = []
-            async for response in step_solve(
-                options, mock_request, mock_task_lock
-            ):
+            async for response in step_solve(options, request, mock_task_lock):
                 responses.append(response)
 
-            # Should not have any responses due to immediate disconnection
-            assert len(responses) == 0
-            # Note: Workforce might not be created/stopped if request is immediately disconnected
+            assert len(responses) == 1
+            assert "still running" in responses[0]
+            request.is_disconnected.assert_not_awaited()
+            mock_delete_task_lock.assert_awaited_once_with(mock_task_lock.id)
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Gets Stuck for some reason.")
