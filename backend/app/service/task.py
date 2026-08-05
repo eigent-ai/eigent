@@ -88,6 +88,9 @@ class ActionImproveData(BaseModel):
     action: Literal[Action.improve] = Action.improve
     data: ImprovePayload
     new_task_id: str | None = None
+    request_id: str | None = None
+    run_id: str | None = None
+    attempt_id: str | None = None
 
 
 class ActionStartData(BaseModel):
@@ -419,6 +422,8 @@ class TaskLock:
     """Latest local history persistence error for diagnostics."""
     _memory_finalized_runs: set[str]
     """Run ids whose durable memory lifecycle has already been finalized."""
+    processed_improve_request_ids: set[str]
+    """In-process dedupe for durable admission retries that enqueue twice."""
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -453,6 +458,7 @@ class TaskLock:
         self.base_snapshot_id = None
         self.new_folder_path = None
         self.memory_service = None
+        self.processed_improve_request_ids = set()
         self.local_history_degraded = False
         self.local_history_last_error = None
         self._memory_finalized_runs = set()

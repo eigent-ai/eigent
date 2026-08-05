@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.controller.run_controller import (
+    _is_terminal,
     get_run,
     get_run_events,
     stream_run_events,
@@ -54,6 +55,21 @@ def _event(sequence: int, step: str) -> CommittedRunEvent:
         created_at=float(sequence),
         run_version=sequence,
     )
+
+
+def test_deadline_reached_is_a_terminal_stream_event():
+    event = CommittedRunEvent(
+        event_id="deadline",
+        run_id="run-1",
+        sequence=1,
+        event_type="run.deadline_reached",
+        payload={},
+        legacy_step=None,
+        created_at=1.0,
+        run_version=1,
+    )
+
+    assert _is_terminal(event) is True
 
 
 def _decode_sse(value: str) -> tuple[int | None, str, dict]:

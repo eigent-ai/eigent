@@ -62,7 +62,7 @@ _TERMINAL_EVENT_TYPES = {
     "run.completed",
     "run.failed",
     "run.cancelled",
-    "run.timed_out",
+    "run.deadline_reached",
 }
 
 

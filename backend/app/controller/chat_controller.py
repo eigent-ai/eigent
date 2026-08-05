@@ -13,12 +13,14 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import hashlib
 import inspect
+import json
 import logging
 import os
 from collections.abc import Mapping
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -86,6 +88,68 @@ SSE_TIMEOUT_SECONDS = 60 * 60
 
 # CAMEL reads this as a process-level logging toggle, not as per-run state.
 os.environ.setdefault("CAMEL_MODEL_LOG_ENABLED", "true")
+
+
+@dataclass(frozen=True)
+class _PreparedChatRun:
+    task_lock: TaskLock
+    run_context: RunContext
+    attempt_id: str
+    initial_action: ActionImproveData
+
+
+def _admission_request_id(
+    run_id: str,
+    *,
+    question: str,
+    attaches: list[str],
+    project_context: str | None,
+) -> str:
+    canonical = json.dumps(
+        {
+            "question": question,
+            "attaches": attaches,
+            "project_context": project_context,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    return f"initial:{run_id}:{digest}"
+
+
+async def _classify_persisted_admission(
+    journal,
+    *,
+    run_id: str,
+    request_id: str,
+) -> tuple[str, object | None]:
+    """Classify an existing Run as retryable, duplicate, or conflicting."""
+
+    run = await asyncio.to_thread(journal.get_run, run_id)
+    if run is None:
+        return "new", None
+    attempts = await asyncio.to_thread(journal.list_run_attempts, run_id)
+    legacy_request_id = f"initial:{run_id}"
+    matching = next(
+        (
+            attempt
+            for attempt in attempts
+            if attempt.resume_request_id in {request_id, legacy_request_id}
+        ),
+        None,
+    )
+    if matching is None:
+        if not attempts and run.status in {"pending", "running"}:
+            return "retry", None
+        return "conflict", None
+    if run.status in {"pending", "running"} and matching.status in {
+        "pending",
+        "running",
+    }:
+        return "retry", matching
+    return "duplicate", matching
 
 
 def _is_remote_browser_hands(request: Request | None) -> bool:
@@ -378,7 +442,7 @@ async def _replay_persisted_run(run_id: str):
 
 async def _prepare_chat_run(
     data: Chat, request: Request
-) -> tuple[TaskLock, RunContext]:
+) -> _PreparedChatRun:
     """Perform the one-time compatibility setup for a newly admitted Run."""
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
@@ -439,13 +503,19 @@ async def _prepare_chat_run(
         get_default_run_journal().ensure_run,
         run_id=run_context.run_id,
         project_id=run_context.project_id,
+        status="pending",
     )
-    await asyncio.to_thread(
+    attempt = await asyncio.to_thread(
         get_default_run_journal().create_run_attempt,
         run_context.run_id,
-        request_id=f"initial:{run_context.run_id}",
+        request_id=_admission_request_id(
+            run_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        ),
         reason="initial_execution",
-        activate=True,
+        activate=False,
     )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
@@ -475,16 +545,22 @@ async def _prepare_chat_run(
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
-    # Put initial action in queue to start processing
-    await task_lock.put_queue(
-        ActionImproveData(
-            data=ImprovePayload(
-                question=data.question,
-                attaches=data.attaches or [],
-                project_context=data.project_context,
-            ),
-            new_task_id=data.task_id,
-        )
+    request_id = _admission_request_id(
+        run_context.run_id,
+        question=data.question,
+        attaches=data.attaches or [],
+        project_context=data.project_context,
+    )
+    initial_action = ActionImproveData(
+        data=ImprovePayload(
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        ),
+        new_task_id=data.task_id,
+        request_id=request_id,
+        run_id=run_context.run_id,
+        attempt_id=attempt.attempt_id,
     )
 
     chat_logger.info(
@@ -497,7 +573,12 @@ async def _prepare_chat_run(
             "binding_source": frozen_dirs.binding_source,
         },
     )
-    return task_lock, run_context
+    return _PreparedChatRun(
+        task_lock=task_lock,
+        run_context=run_context,
+        attempt_id=attempt.attempt_id,
+        initial_action=initial_action,
+    )
 
 
 async def start_chat_stream(data: Chat, request: Request):
@@ -517,25 +598,41 @@ async def start_chat_stream(data: Chat, request: Request):
             )
             return timeout_stream_wrapper(subscription, run_id=run_id)
 
-        persisted_run = await asyncio.to_thread(
-            journal.get_run,
+        request_id = _admission_request_id(
             run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
         )
-        if persisted_run is not None:
+        admission, _attempt = await _classify_persisted_admission(
+            journal,
+            run_id=run_id,
+            request_id=request_id,
+        )
+        if admission == "conflict":
+            raise UserException(
+                code.error,
+                "This Run id is already bound to a different request.",
+            )
+        if admission == "duplicate":
             chat_logger.info(
                 "Replaying persisted Run without implicit restart",
                 extra={"run_id": run_id, "project_id": data.project_id},
             )
             return _replay_persisted_run(run_id)
 
-        task_lock, run_context = await _prepare_chat_run(data, request)
+        prepared = await _prepare_chat_run(data, request)
+        await prepared.task_lock.put_queue(prepared.initial_action)
+        execution_stream = step_solve(data, request, prepared.task_lock)
         subscription = await coordinator.start_with_subscription(
-            run_id=run_context.run_id,
+            run_id=prepared.run_context.run_id,
             stream_factory=lambda: stream_with_run_context(
-                step_solve(data, request, task_lock),
-                lambda: getattr(task_lock, "run_context", run_context),
+                execution_stream,
+                lambda: getattr(
+                    prepared.task_lock, "run_context", prepared.run_context
+                ),
             ),
-            command_queue=task_lock.queue,
+            command_queue=prepared.task_lock.queue,
         )
 
     return timeout_stream_wrapper(subscription, run_id=run_id)
@@ -586,21 +683,42 @@ async def improve(id: str, data: SupplementChat, request: Request):
     if data.task_id:
         coordinator = get_default_run_coordinator()
         async with coordinator.admission_scope(data.task_id):
-            persisted_run = await asyncio.to_thread(
-                get_default_run_journal().get_run,
+            request_id = _admission_request_id(
                 data.task_id,
+                question=data.question,
+                attaches=data.attaches or [],
+                project_context=data.project_context,
             )
-            if persisted_run is not None:
+            admission, attempt = await _classify_persisted_admission(
+                get_default_run_journal(),
+                run_id=data.task_id,
+                request_id=request_id,
+            )
+            if admission == "conflict":
+                return Response(status_code=409)
+            if admission == "duplicate" or (
+                admission == "retry"
+                and getattr(attempt, "status", None) == "running"
+                and await coordinator.get_handle(data.task_id) is not None
+            ):
                 chat_logger.info(
                     "Ignored duplicate follow-up Run admission",
                     extra={"project_id": id, "run_id": data.task_id},
                 )
                 return Response(status_code=201)
-            return await _improve_chat(id, data, request)
+            return await _improve_chat(
+                id, data, request, admission_request_id=request_id
+            )
     return await _improve_chat(id, data, request)
 
 
-async def _improve_chat(id: str, data: SupplementChat, request: Request):
+async def _improve_chat(
+    id: str,
+    data: SupplementChat,
+    request: Request,
+    *,
+    admission_request_id: str | None = None,
+):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -757,13 +875,20 @@ async def _improve_chat(id: str, data: SupplementChat, request: Request):
             get_default_run_journal().ensure_run,
             run_id=refreshed_context.run_id,
             project_id=refreshed_context.project_id,
+            status="pending",
         )
-        await asyncio.to_thread(
+        attempt = await asyncio.to_thread(
             get_default_run_journal().create_run_attempt,
             refreshed_context.run_id,
-            request_id=f"initial:{refreshed_context.run_id}",
+            request_id=admission_request_id
+            or _admission_request_id(
+                refreshed_context.run_id,
+                question=data.question,
+                attaches=data.attaches or [],
+                project_context=data.project_context,
+            ),
             reason="follow_up_execution",
-            activate=True,
+            activate=False,
         )
         await asyncio.to_thread(
             get_memory_service().on_run_start,
@@ -780,26 +905,22 @@ async def _improve_chat(id: str, data: SupplementChat, request: Request):
             prompt_source="improve",
         )
         if previous_run_id is not None:
-            await get_default_run_coordinator().rebind_run(
+            rebound = await get_default_run_coordinator().rebind_run(
                 previous_run_id,
                 refreshed_context.run_id,
             )
+            if not rebound:
+                raise UserException(
+                    code.error,
+                    "The previous Run has no live consumer for this follow-up.",
+                )
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the
         # user gets a response, but we leave a breadcrumb for diagnosis.
-        chat_logger.warning(
-            "Skipped durable on_run_start: run_context did not rotate to"
-            " requested task_id",
-            extra={
-                "project_id": id,
-                "requested_task_id": data.task_id,
-                "current_run_id": (
-                    refreshed_context.run_id
-                    if isinstance(refreshed_context, RunContext)
-                    else None
-                ),
-            },
+        raise UserException(
+            code.error,
+            "Could not durably prepare the requested follow-up Run.",
         )
 
     await task_lock.put_queue(
@@ -810,6 +931,11 @@ async def _improve_chat(id: str, data: SupplementChat, request: Request):
                 project_context=data.project_context,
             ),
             new_task_id=data.task_id,
+            request_id=admission_request_id,
+            run_id=(
+                refreshed_context.run_id if rotation_succeeded else None
+            ),
+            attempt_id=(attempt.attempt_id if rotation_succeeded else None),
         )
     )
     chat_logger.info(
