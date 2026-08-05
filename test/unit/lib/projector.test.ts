@@ -304,6 +304,47 @@ describe('projector pipeline', () => {
     expect(staleSnapshot.resyncTargetCursor).toBe(12);
   });
 
+  it('orders cross-lane steps by time instead of comparing incompatible sequences', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      importLegacyChatSteps([
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 100,
+          step: 'ask',
+          data: { content: 'Continue?' },
+          timestamp: 200,
+        },
+      ]),
+      'live'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 2,
+        recent_events: [
+          event({
+            event_id: 'reply-2',
+            cloud_cursor: 2,
+            run_sequence: 2,
+            legacy_step: 'human_reply',
+            payload: { content: 'Yes' },
+            created_at: '2026-08-05T10:00:01Z',
+          }),
+        ],
+        events_truncated: true,
+      },
+      previous
+    );
+
+    expect(snapshot.legacySteps.map((step) => step.step)).toEqual([
+      'ask',
+      'human_reply',
+    ]);
+    expect(selectPendingLegacyAsk(snapshot, new Set())).toBeNull();
+  });
+
   it('preserves legacy-only live history across a complete canonical snapshot', () => {
     const previous = projectRawEvents(
       'project-1',

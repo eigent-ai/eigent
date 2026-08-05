@@ -199,6 +199,7 @@ export function reduceProjectView(
             timestamp: Date.parse(event.createdAt) / 1000 || null,
             runSequence: event.runSequence,
             cloudCursor: event.cloudCursor,
+            source: event.source,
           },
         ]
       : state.legacySteps;

@@ -25,6 +25,7 @@ export type ProjectedLegacyStep = {
   timestamp: number | null;
   runSequence: number;
   cloudCursor: number | null;
+  source: CanonicalProjectEvent['source'];
 };
 
 export type ProjectedRun = {
