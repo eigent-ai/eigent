@@ -12,7 +12,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.auth import require_local_control_principal
-from app.run_journal import get_default_run_journal
+from app.run_journal import (
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
+    RunJournalError,
+    RunNotFoundError,
+    get_default_run_journal,
+)
 from app.run_sync.runtime import (
     notify_default_cloud_sync_worker,
     persist_and_confirm_remote_command,
@@ -30,6 +36,25 @@ _HIGH_RISK_COMMAND_TYPES = {
     "space_apply_project_run",
     "space_discard_project_overlays",
 }
+
+
+def _raise_journal_http_error(exc: RunJournalError) -> None:
+    if isinstance(exc, RunNotFoundError):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "REMOTE_COMMAND_NOT_FOUND", "message": str(exc)},
+        ) from exc
+    if isinstance(
+        exc, (IdempotencyConflictError, InvalidRunTransitionError)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REMOTE_COMMAND_CONFLICT", "message": str(exc)},
+        ) from exc
+    raise HTTPException(
+        status_code=503,
+        detail={"code": "RUN_JOURNAL_UNAVAILABLE", "message": str(exc)},
+    ) from exc
 
 
 class RemoteCommandInboxIn(BaseModel):
@@ -92,6 +117,8 @@ async def persist_command_inbox(body: RemoteCommandInboxIn):
         record, may_execute = await persist_and_confirm_remote_command(
             _normalized_command(body)
         )
+    except RunJournalError as exc:
+        _raise_journal_http_error(exc)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except KeyError as exc:
@@ -135,14 +162,17 @@ async def record_command_admission(command_id: str, body: CommandAdmissionIn):
         raise HTTPException(
             status_code=409, detail="Expired command cannot be admitted"
         )
-    event = await asyncio.to_thread(
-        journal.append_command_result,
-        command_id,
-        event_type=f"admission.{body.status}",
-        event_id=body.event_id,
-        payload={"reason": body.reason} if body.reason else {},
-        occurred_at=time.time(),
-    )
+    try:
+        event = await asyncio.to_thread(
+            journal.append_command_result,
+            command_id,
+            event_type=f"admission.{body.status}",
+            event_id=body.event_id,
+            payload={"reason": body.reason} if body.reason else {},
+            occurred_at=time.time(),
+        )
+    except RunJournalError as exc:
+        _raise_journal_http_error(exc)
     notify_default_cloud_sync_worker()
     return asdict(event)
 
@@ -152,17 +182,20 @@ async def record_command_result(
     command_id: str, body: CommandExecutionResultIn
 ):
     journal = get_default_run_journal()
-    event = await asyncio.to_thread(
-        journal.append_command_result,
-        command_id,
-        event_type=f"execution.{body.status}",
-        event_id=body.event_id,
-        payload={
-            "result": body.result,
-            "error_code": body.error_code,
-            "error": body.error,
-        },
-        occurred_at=time.time(),
-    )
+    try:
+        event = await asyncio.to_thread(
+            journal.append_command_result,
+            command_id,
+            event_type=f"execution.{body.status}",
+            event_id=body.event_id,
+            payload={
+                "result": body.result,
+                "error_code": body.error_code,
+                "error": body.error,
+            },
+            occurred_at=time.time(),
+        )
+    except RunJournalError as exc:
+        _raise_journal_http_error(exc)
     notify_default_cloud_sync_worker()
     return asdict(event)

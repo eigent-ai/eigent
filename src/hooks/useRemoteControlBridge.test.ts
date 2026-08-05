@@ -12,9 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ackFromDurableExecution } from './useRemoteControlBridge';
+import {
+  __remoteControlBridgeTestHooks,
+  ackFromDurableExecution,
+} from './useRemoteControlBridge';
 
 describe('remote command durable ACK replay', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it('replays the canonical completed outcome without executing again', () => {
     expect(
       ackFromDurableExecution('command-1', {
@@ -40,6 +47,48 @@ describe('remote command durable ACK replay', () => {
       status: 'failed',
       error_code: 'TOOL_FAILED',
       error: 'original failure',
+    });
+  });
+
+  it('preserves a queued execution result when restart reconciliation races it', () => {
+    const command = {
+      id: 'command-1',
+      session_id: 'session-1',
+      user_id: 1,
+      source_channel: 'remote_control' as const,
+      type: 'user_message',
+      target_project_id: 'project-1',
+      payload: {},
+    };
+    const completed = {
+      status: 'completed' as const,
+      event_id: 'command-1:execution-result',
+      result: { run_id: 'run-1' },
+    };
+
+    __remoteControlBridgeTestHooks.queuePendingCommandResult({
+      command,
+      body: completed,
+    });
+    const durable = __remoteControlBridgeTestHooks.queuePendingCommandResult({
+      command,
+      body: {
+        status: 'failed',
+        event_id: 'command-1:recovery-outcome-unknown',
+        result: {},
+        error_code: 'COMMAND_OUTCOME_UNKNOWN_AFTER_RESTART',
+      },
+    });
+
+    expect(durable.body).toEqual(completed);
+    expect(
+      __remoteControlBridgeTestHooks.ackFromPendingCommandResult(
+        command.id,
+        durable.body
+      )
+    ).toMatchObject({
+      status: 'acknowledged',
+      result: { run_id: 'run-1' },
     });
   });
 });
