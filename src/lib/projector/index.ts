@@ -111,11 +111,17 @@ export function projectSnapshot(
     legacySteps.sort((left, right) => {
       if (
         left.taskId === right.taskId &&
+        left.source === 'canonical' &&
+        right.source === 'canonical' &&
         left.runSequence !== right.runSequence
       ) {
         return left.runSequence - right.runSequence;
       }
-      if (left.timestamp !== null && right.timestamp !== null) {
+      if (
+        left.timestamp !== null &&
+        right.timestamp !== null &&
+        left.timestamp !== right.timestamp
+      ) {
         return left.timestamp - right.timestamp;
       }
       if (left.cloudCursor !== null && right.cloudCursor !== null) {
