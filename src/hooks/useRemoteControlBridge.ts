@@ -89,6 +89,8 @@ const COMMAND_TIMEOUT_MS = 10000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_COMMANDS = 5;
 const PENDING_COMMAND_RESULTS_KEY = 'eigent:remote-command-results:v1';
+const PENDING_COMMAND_RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PENDING_COMMAND_RESULT_LIMIT = 200;
 const remoteHistoryHydrationInFlight = new Set<string>();
 const BRIDGE_CAPABILITIES = {
   bridge_version: 1,
@@ -112,6 +114,7 @@ const BRIDGE_CAPABILITIES = {
 type PendingCommandResult = {
   command: RemoteCommand;
   body: CommandResultBody;
+  createdAt: number;
 };
 
 function readPendingCommandResults(): PendingCommandResult[] {
@@ -119,7 +122,22 @@ function readPendingCommandResults(): PendingCommandResult[] {
     const value = JSON.parse(
       window.localStorage.getItem(PENDING_COMMAND_RESULTS_KEY) || '[]'
     );
-    return Array.isArray(value) ? value : [];
+    const now = Date.now();
+    return Array.isArray(value)
+      ? value
+          .filter(
+            (item) =>
+              item?.command?.id &&
+              item?.body?.event_id &&
+              now - Number(item.createdAt || now) <=
+                PENDING_COMMAND_RESULT_TTL_MS
+          )
+          .map((item) => ({
+            ...item,
+            createdAt: Number(item.createdAt || now),
+          }))
+          .slice(-PENDING_COMMAND_RESULT_LIMIT)
+      : [];
   } catch {
     return [];
   }
@@ -129,7 +147,7 @@ function writePendingCommandResults(items: PendingCommandResult[]) {
   try {
     window.localStorage.setItem(
       PENDING_COMMAND_RESULTS_KEY,
-      JSON.stringify(items)
+      JSON.stringify(items.slice(-PENDING_COMMAND_RESULT_LIMIT))
     );
   } catch (error) {
     console.warn(
@@ -139,12 +157,38 @@ function writePendingCommandResults(items: PendingCommandResult[]) {
   }
 }
 
-function queuePendingCommandResult(item: PendingCommandResult) {
-  const items = readPendingCommandResults().filter(
-    (candidate) => candidate.command.id !== item.command.id
+function queuePendingCommandResult(
+  item: Omit<PendingCommandResult, 'createdAt'>
+): PendingCommandResult {
+  const items = readPendingCommandResults();
+  const existing = items.find(
+    (candidate) => candidate.command.id === item.command.id
   );
-  items.push(item);
+  if (existing) {
+    if (JSON.stringify(existing.body) !== JSON.stringify(item.body)) {
+      console.warn(
+        '[RemoteControlBridge] Preserving first durable command outcome',
+        {
+          command_id: item.command.id,
+          existing_event_id: existing.body.event_id,
+          ignored_event_id: item.body.event_id,
+        }
+      );
+    }
+    return existing;
+  }
+  const queued = { ...item, createdAt: Date.now() };
+  items.push(queued);
   writePendingCommandResults(items);
+  return queued;
+}
+
+function pendingCommandResult(commandId: string): PendingCommandResult | null {
+  return (
+    readPendingCommandResults().find(
+      (candidate) => candidate.command.id === commandId
+    ) || null
+  );
 }
 
 function removePendingCommandResult(commandId: string) {
@@ -183,6 +227,29 @@ export function ackFromDurableExecution(
     };
   }
   return null;
+}
+
+export function ackFromPendingCommandResult(
+  commandId: string,
+  body: CommandResultBody
+): BridgeAck {
+  if (body.status === 'completed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'acknowledged',
+      result: body.result,
+      replayed_from_cache: true,
+    };
+  }
+  return {
+    type: 'command_ack',
+    command_id: commandId,
+    status: 'failed',
+    error_code: body.error_code || 'COMMAND_FAILED',
+    error: body.error || 'Remote command failed',
+    replayed_from_cache: true,
+  };
 }
 
 function trimCache(cache: Map<string, CacheEntry>) {
@@ -912,8 +979,12 @@ async function executeSpaceCommand(
 }
 
 export const __remoteControlBridgeTestHooks = {
+  ackFromPendingCommandResult,
   ensureRemoteProjectLoaded,
   executeRemoteCommand,
+  pendingCommandResult,
+  queuePendingCommandResult,
+  removePendingCommandResult,
 };
 
 export function useRemoteControlBridge(token: string | null | undefined) {
@@ -1003,11 +1074,11 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       command: RemoteCommand,
       body: CommandResultBody
     ) => {
-      queuePendingCommandResult({ command, body });
+      const queued = queuePendingCommandResult({ command, body });
       await fetchPost(
         `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
-        body,
-        brainHeaders(command)
+        queued.body,
+        brainHeaders(queued.command)
       );
       removePendingCommandResult(command.id);
     };
@@ -1046,9 +1117,25 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       }
       const inboxState = persisted?.command?.state;
       if (inboxState === 'accepted') {
+        const pendingResult = pendingCommandResult(command.id);
+        if (pendingResult) {
+          try {
+            await persistCommandResult(
+              pendingResult.command,
+              pendingResult.body
+            );
+          } catch (error) {
+            console.warn(
+              '[RemoteControlBridge] Existing execution result remains queued',
+              { command_id: command.id, error }
+            );
+          }
+          return ackFromPendingCommandResult(command.id, pendingResult.body);
+        }
         // A previous renderer durably admitted this command. Re-executing after
         // restart could duplicate an external side effect, so close the unknown
-        // outcome explicitly and let the independent result lane retry it.
+        // outcome explicitly. This event identity is intentionally disjoint
+        // from the real execution result lane.
         const unknownAck: BridgeAck = {
           type: 'command_ack',
           command_id: command.id,
@@ -1060,7 +1147,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         try {
           await persistCommandResult(command, {
             status: 'failed',
-            event_id: `${command.id}:result`,
+            event_id: `${command.id}:recovery-outcome-unknown`,
             result: {},
             error_code: unknownAck.error_code,
             error: unknownAck.error,
@@ -1128,7 +1215,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       try {
         await persistCommandResult(command, {
           status: ack.status === 'acknowledged' ? 'completed' : 'failed',
-          event_id: `${command.id}:result`,
+          event_id: `${command.id}:execution-result`,
           result: ack.result || {},
           error_code: ack.error_code,
           error: ack.error,

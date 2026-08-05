@@ -12,6 +12,7 @@ from app.auth.local_control import (
     require_local_control_principal,
 )
 from app.controller import remote_command_controller, run_controller
+from app.run_journal import IdempotencyConflictError, RunNotFoundError
 
 
 class _VerifiedAuth(IAuthProvider):
@@ -191,3 +192,59 @@ def test_run_and_command_routers_enforce_the_control_principal(monkeypatch):
         )
         assert response.status_code == 200
         assert response.json() == {"items": []}
+
+
+def test_command_result_maps_missing_command_to_not_found(monkeypatch):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    app = FastAPI()
+    app.include_router(remote_command_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    journal = MagicMock()
+    journal.append_command_result.side_effect = RunNotFoundError("missing")
+
+    with patch(
+        "app.controller.remote_command_controller.get_default_run_journal",
+        return_value=journal,
+    ):
+        response = client.post(
+            "/remote-control/commands/missing/result",
+            headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+            json={
+                "status": "completed",
+                "event_id": "missing:execution-result",
+                "result": {},
+            },
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "REMOTE_COMMAND_NOT_FOUND"
+
+
+def test_command_result_maps_idempotency_conflict(monkeypatch):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    app = FastAPI()
+    app.include_router(remote_command_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    journal = MagicMock()
+    journal.append_command_result.side_effect = IdempotencyConflictError(
+        "event payload differs"
+    )
+
+    with patch(
+        "app.controller.remote_command_controller.get_default_run_journal",
+        return_value=journal,
+    ):
+        response = client.post(
+            "/remote-control/commands/command-1/result",
+            headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+            json={
+                "status": "failed",
+                "event_id": "command-1:recovery-outcome-unknown",
+                "result": {},
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "REMOTE_COMMAND_CONFLICT"
