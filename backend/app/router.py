@@ -30,6 +30,7 @@ from app.controller import (
     message_controller,
     model_controller,
     remote_sub_agent_controller,
+    run_controller,
     skill_controller,
     task_controller,
     tool_controller,
@@ -82,6 +83,11 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": message_controller.router,
             "tags": ["Message Router"],
             "description": "Phase 2 Message Router - /messages endpoint (prefix-aware)",
+        },
+        {
+            "router": run_controller.router,
+            "tags": ["Runs"],
+            "description": "Durable Run snapshots, event replay, and live streams",
         },
         {
             "router": model_controller.router,

@@ -286,8 +286,7 @@ class SQLiteRunJournal:
         draft: RunEventDraft,
         *,
         expected_version: int | None = None,
-        project_id_for_missing_run: str | None = None,
-        timeout_policy_version: str = "v1",
+        expected_project_id: str | None = None,
     ) -> CommittedRunEvent:
         payload_json = json.dumps(
             dict(draft.payload),
@@ -302,6 +301,20 @@ class SQLiteRunJournal:
                 (draft.event_id,),
             ).fetchone()
             if duplicate is not None:
+                if expected_project_id is not None:
+                    owner = connection.execute(
+                        "SELECT project_id FROM runs WHERE run_id = ?",
+                        (duplicate["run_id"],),
+                    ).fetchone()
+                    if (
+                        owner is not None
+                        and owner["project_id"] != expected_project_id
+                    ):
+                        raise IdempotencyConflictError(
+                            f"event_id {draft.event_id!r} belongs to project "
+                            f"{owner['project_id']!r}, not "
+                            f"{expected_project_id!r}"
+                        )
                 return self._resolve_duplicate_event(
                     connection,
                     duplicate,
@@ -313,28 +326,16 @@ class SQLiteRunJournal:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
             ).fetchone()
-            if run is None and project_id_for_missing_run is not None:
-                connection.execute(
-                    """
-                    INSERT INTO runs(
-                        run_id, project_id, status, version,
-                        timeout_policy_version, created_at, updated_at
-                    ) VALUES (?, ?, 'running', 0, ?, ?, ?)
-                    """,
-                    (
-                        run_id,
-                        project_id_for_missing_run,
-                        timeout_policy_version,
-                        draft.created_at,
-                        draft.created_at,
-                    ),
-                )
-                run = connection.execute(
-                    "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-                ).fetchone()
-
             if run is None:
                 raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if (
+                expected_project_id is not None
+                and run["project_id"] != expected_project_id
+            ):
+                raise IdempotencyConflictError(
+                    f"run_id {run_id!r} belongs to project "
+                    f"{run['project_id']!r}, not {expected_project_id!r}"
+                )
 
             current_version = int(run["version"])
             if (
@@ -415,19 +416,27 @@ class SQLiteRunJournal:
             )
 
     def list_events(
-        self, run_id: str, *, after_sequence: int = 0
+        self,
+        run_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int | None = None,
     ) -> list[CommittedRunEvent]:
+        if limit is not None and limit < 1:
+            raise ValueError("event query limit must be positive")
+        query = """
+            SELECT event_id, run_id, sequence, run_version, event_type,
+                   payload_json, legacy_step, created_at
+            FROM run_events
+            WHERE run_id = ? AND sequence > ?
+            ORDER BY sequence
+        """
+        parameters: list[Any] = [run_id, after_sequence]
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters.append(limit)
         with self._lock:
-            rows = self._connection.execute(
-                """
-                SELECT event_id, run_id, sequence, run_version, event_type,
-                       payload_json, legacy_step, created_at
-                FROM run_events
-                WHERE run_id = ? AND sequence > ?
-                ORDER BY sequence
-                """,
-                (run_id, after_sequence),
-            ).fetchall()
+            rows = self._connection.execute(query, parameters).fetchall()
             return [self._event_from_row(row) for row in rows]
 
     def list_pending_outbox(

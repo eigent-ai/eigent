@@ -52,9 +52,8 @@ class EventRecorder:
         data: dict[str, Any],
         event_id: str | None = None,
         created_at: float | None = None,
-        timeout_policy_version: str = "v1",
     ) -> CommittedRunEvent:
-        """Persist one legacy SSE/ChatStep shape without parsing it later."""
+        """Persist one legacy SSE/ChatStep for an already admitted Run."""
 
         values: dict[str, Any] = {
             "event_type": f"legacy.{step}",
@@ -70,6 +69,5 @@ class EventRecorder:
             self._journal.append_event,
             run_id,
             draft,
-            project_id_for_missing_run=project_id,
-            timeout_policy_version=timeout_policy_version,
+            expected_project_id=project_id,
         )

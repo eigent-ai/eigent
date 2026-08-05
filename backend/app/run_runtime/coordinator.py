@@ -284,6 +284,27 @@ class RunCoordinator:
         async with self._lock:
             return self._handles.get(run_id)
 
+    async def rebind_run(self, previous_run_id: str, run_id: str) -> bool:
+        """Move a compatibility consumer to a newly admitted follow-up Run."""
+
+        async with self._lock:
+            handle = self._handles.get(previous_run_id)
+            if handle is None or not handle.consumer_alive:
+                return False
+            if previous_run_id == run_id:
+                return True
+
+            target = self._handles.get(run_id)
+            if target is not None and target is not handle:
+                raise RunRuntimeError(
+                    f"run {run_id!r} already has a live consumer"
+                )
+
+            self._handles.pop(previous_run_id, None)
+            handle.run_id = run_id
+            self._handles[run_id] = handle
+            return True
+
     async def cancel(self, run_id: str) -> bool:
         async with self._lock:
             handle = self._handles.get(run_id)

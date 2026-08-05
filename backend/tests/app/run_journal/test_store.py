@@ -25,6 +25,7 @@ from app.run_journal import (
     IdempotencyConflictError,
     OptimisticConcurrencyError,
     RunEventDraft,
+    RunNotFoundError,
     SQLiteRunJournal,
 )
 
@@ -212,6 +213,25 @@ def test_concurrent_writers_allocate_contiguous_run_sequence(journal):
     )
 
 
+def test_list_events_applies_sequence_cursor_and_limit(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    for index in range(5):
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id=f"event-{index}",
+                event_type="message.created",
+                payload={"index": index},
+            ),
+        )
+
+    events = journal.list_events("run-1", after_sequence=1, limit=2)
+
+    assert [event.sequence for event in events] == [2, 3]
+    with pytest.raises(ValueError, match="limit must be positive"):
+        journal.list_events("run-1", limit=0)
+
+
 def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
     path = tmp_path / "run-journal.sqlite3"
     with SQLiteRunJournal(path) as first:
@@ -224,10 +244,24 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_event_recorder_compatibility_path_creates_run_and_event(
+async def test_event_recorder_requires_admitted_run_and_records_event(
     journal,
 ):
     recorder = EventRecorder(journal)
+
+    with pytest.raises(RunNotFoundError):
+        await recorder.record_legacy_step(
+            project_id="project-1",
+            run_id="run-1",
+            step="activate_agent",
+            data={"agent": "browser"},
+        )
+
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        timeout_policy_version="timeouts-v3",
+    )
 
     committed = await recorder.record_legacy_step(
         project_id="project-1",
@@ -236,7 +270,6 @@ async def test_event_recorder_compatibility_path_creates_run_and_event(
         data={"agent": "browser"},
         event_id="event-1",
         created_at=10.0,
-        timeout_policy_version="timeouts-v3",
     )
 
     run = journal.get_run("run-1")
@@ -247,3 +280,33 @@ async def test_event_recorder_compatibility_path_creates_run_and_event(
     assert committed.event_type == "legacy.activate_agent"
     assert committed.payload == {"agent": "browser"}
     assert journal.list_pending_outbox(now=10.0)[0].event_id == "event-1"
+
+
+@pytest.mark.asyncio
+async def test_event_recorder_rejects_cross_project_attribution(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    recorder = EventRecorder(journal)
+
+    with pytest.raises(IdempotencyConflictError, match="project-1"):
+        await recorder.record_legacy_step(
+            project_id="project-2",
+            run_id="run-1",
+            step="notice",
+            data={"message": "wrong project"},
+        )
+
+    await recorder.record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="notice",
+        data={"message": "original"},
+        event_id="event-1",
+    )
+    with pytest.raises(IdempotencyConflictError, match="project-1"):
+        await recorder.record_legacy_step(
+            project_id="project-2",
+            run_id="run-1",
+            step="notice",
+            data={"message": "original"},
+            event_id="event-1",
+        )

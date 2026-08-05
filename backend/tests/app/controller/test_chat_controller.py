@@ -35,7 +35,19 @@ from app.controller.chat_controller import (
 )
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
+from app.run_context import RunContext
 from app.run_runtime import RunCoordinator
+
+
+@pytest.fixture(autouse=True)
+def controller_run_journal():
+    journal = MagicMock()
+    journal.get_run.return_value = None
+    with patch(
+        "app.controller.chat_controller.get_default_run_journal",
+        return_value=journal,
+    ):
+        yield journal
 
 
 @pytest.mark.unit
@@ -49,6 +61,7 @@ class TestChatController:
         mock_request,
         mock_task_lock,
         mock_environment_variables,
+        controller_run_journal,
     ):
         """Test successful chat initialization."""
         chat_data = Chat(**sample_chat_data)
@@ -81,6 +94,10 @@ class TestChatController:
 
             assert isinstance(response, StreamingResponse)
             assert response.media_type == "text/event-stream"
+            controller_run_journal.ensure_run.assert_called_once_with(
+                run_id=chat_data.run_id or chat_data.task_id,
+                project_id=chat_data.project_id,
+            )
 
     @pytest.mark.asyncio
     async def test_duplicate_chat_admission_attaches_without_repeating_setup(
@@ -135,6 +152,47 @@ class TestChatController:
             await first_stream.aclose()
             await retry_stream.aclose()
             await coordinator.close()
+
+    @pytest.mark.asyncio
+    async def test_persisted_run_replays_without_implicit_restart(
+        self,
+        sample_chat_data,
+        mock_request,
+        controller_run_journal,
+    ):
+        chat_data = Chat(**sample_chat_data)
+        run_id = chat_data.run_id or chat_data.task_id
+        coordinator = RunCoordinator()
+        controller_run_journal.get_run.return_value = SimpleNamespace(
+            run_id=run_id,
+            status="running",
+        )
+        controller_run_journal.list_events.return_value = [
+            SimpleNamespace(
+                legacy_step="end",
+                event_type="legacy.end",
+                payload={"summary": "already finished"},
+            )
+        ]
+        prepare = AsyncMock()
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_chat_run",
+                new=prepare,
+            ),
+        ):
+            stream = await start_chat_stream(chat_data, mock_request)
+            chunks = [chunk async for chunk in stream]
+
+        prepare.assert_not_awaited()
+        assert len(chunks) == 1
+        assert '"step": "end"' in chunks[0]
+        assert "already finished" in chunks[0]
 
     @pytest.mark.asyncio
     async def test_status_distinguishes_lock_from_live_consumer(
@@ -378,6 +436,121 @@ class TestChatController:
             assert isinstance(response, Response)
             assert response.status_code == 201
             mock_task_lock.put_queue.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_follow_up_admission_persists_and_rebinds_live_consumer(
+        self,
+        mock_task_lock,
+        mock_request,
+        controller_run_journal,
+        tmp_path,
+    ):
+        coordinator = RunCoordinator()
+        release = asyncio.Event()
+
+        async def source():
+            await release.wait()
+            yield "done"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-old",
+            stream_factory=source,
+        )
+        mock_task_lock.status = Status.processing
+        mock_task_lock.email = "u@example.com"
+        mock_task_lock.user_id = "42"
+        mock_task_lock.space_id = "space-1"
+        mock_task_lock.run_context = RunContext(
+            space_id="space-1",
+            project_id="project-1",
+            run_id="run-old",
+            task_id="run-old",
+            email="u@example.com",
+            user_id="42",
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "old-output",
+            camel_log_dir=tmp_path / "old-log",
+            binding_source="test",
+            workdir_mode=None,
+            browser_port=9222,
+        )
+        mock_request.state = SimpleNamespace(browser_port=9222, cdp_url=None)
+        frozen_dirs = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "new-output",
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+            base_snapshot_id=None,
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories_for.return_value = frozen_dirs
+        memory_service = MagicMock()
+        data = SupplementChat(question="next turn", task_id="run-new")
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+            patch(
+                "app.controller.chat_controller.get_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.get_workspace_resolver",
+                return_value=resolver,
+            ),
+            patch(
+                "app.controller.chat_controller.get_memory_service",
+                return_value=memory_service,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.controller.chat_controller._camel_log_dir",
+                return_value=tmp_path / "new-log",
+            ),
+            patch(
+                "app.controller.chat_controller.apply_run_env_for_third_party"
+            ),
+        ):
+            response = await improve("project-1", data, mock_request)
+
+        assert response.status_code == 201
+        controller_run_journal.ensure_run.assert_called_once_with(
+            run_id="run-new",
+            project_id="project-1",
+        )
+        assert await coordinator.get_handle("run-old") is None
+        assert await coordinator.get_handle("run-new") is subscription.handle
+        mock_task_lock.put_queue.assert_awaited_once()
+
+        await subscription.aclose()
+        release.set()
+        await subscription.handle.wait()
+
+    @pytest.mark.asyncio
+    async def test_duplicate_follow_up_run_is_not_queued_again(
+        self,
+        mock_request,
+        controller_run_journal,
+    ):
+        data = SupplementChat(question="duplicate", task_id="run-existing")
+        controller_run_journal.get_run.return_value = SimpleNamespace(
+            run_id="run-existing"
+        )
+
+        with patch(
+            "app.controller.chat_controller._improve_chat",
+            new=AsyncMock(),
+        ) as improve_chat:
+            response = await improve("project-1", data, mock_request)
+
+        assert response.status_code == 201
+        improve_chat.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_improve_chat_task_done_resets_to_confirming(

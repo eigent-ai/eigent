@@ -140,6 +140,32 @@ async def test_detaching_last_subscriber_does_not_cancel_execution():
 
 
 @pytest.mark.asyncio
+async def test_rebind_moves_live_consumer_to_follow_up_run():
+    coordinator = RunCoordinator()
+    release = asyncio.Event()
+
+    async def source():
+        await release.wait()
+        yield "follow-up"
+
+    subscription = await coordinator.start_with_subscription(
+        run_id="run-1",
+        stream_factory=source,
+    )
+
+    assert await coordinator.rebind_run("run-1", "run-2") is True
+    assert await coordinator.get_handle("run-1") is None
+    assert await coordinator.get_handle("run-2") is subscription.handle
+    assert subscription.handle.run_id == "run-2"
+
+    release.set()
+    assert await subscription.__anext__() == "follow-up"
+    with pytest.raises(StopAsyncIteration):
+        await subscription.__anext__()
+    assert await coordinator.get_handle("run-2") is None
+
+
+@pytest.mark.asyncio
 async def test_execution_failure_is_forwarded_without_unhandled_task_error():
     coordinator = RunCoordinator()
 

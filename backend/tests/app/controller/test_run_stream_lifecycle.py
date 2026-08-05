@@ -64,3 +64,29 @@ async def test_idle_heartbeat_does_not_cancel_detached_execution():
     release.set()
     await handle.wait()
     assert completed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_uses_rebound_follow_up_run_id():
+    coordinator = RunCoordinator()
+
+    async def source():
+        await asyncio.Event().wait()
+        yield "never"
+
+    subscription = await coordinator.start_with_subscription(
+        run_id="run-1",
+        stream_factory=source,
+    )
+    await coordinator.rebind_run("run-1", "run-2")
+    stream = timeout_stream_wrapper(
+        subscription,
+        timeout_seconds=0.01,
+        run_id="run-1",
+    )
+
+    heartbeat = _decode_sse(await stream.__anext__())
+    assert heartbeat["data"]["run_id"] == "run-2"
+
+    await stream.aclose()
+    await coordinator.close()
