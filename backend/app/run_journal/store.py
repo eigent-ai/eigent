@@ -443,6 +443,19 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"run_id {run_id!r} already belongs to another project"
                 )
+            if row["timeout_policy_version"] != timeout_policy_version:
+                raise IdempotencyConflictError(
+                    f"run_id {run_id!r} was reused with a different timeout policy"
+                )
+            persisted_deadline = (
+                float(row["deadline_at"])
+                if row["deadline_at"] is not None
+                else None
+            )
+            if persisted_deadline != deadline_at:
+                raise IdempotencyConflictError(
+                    f"run_id {run_id!r} was reused with a different deadline"
+                )
             return self._run_from_row(row)
 
     def get_run(self, run_id: str) -> RunRecord | None:
@@ -594,14 +607,6 @@ class SQLiteRunJournal:
             ).fetchone()
             if run is None:
                 raise RunNotFoundError(f"run_id {run_id!r} does not exist")
-            if run["status"] in {"completed", "failed", "cancelled"}:
-                raise InvalidRunTransitionError(
-                    f"cannot create an attempt for terminal run {run_id!r}"
-                )
-            if run["cancel_request_id"] is not None:
-                raise InvalidRunTransitionError(
-                    f"run {run_id!r} has a persisted cancel intent"
-                )
             duplicate = connection.execute(
                 """
                 SELECT * FROM run_attempts
@@ -615,6 +620,14 @@ class SQLiteRunJournal:
                         f"attempt request_id {request_id!r} was reused with a different reason"
                     )
                 return self._attempt_from_row(duplicate)
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    f"cannot create an attempt for terminal run {run_id!r}"
+                )
+            if run["cancel_request_id"] is not None:
+                raise InvalidRunTransitionError(
+                    f"run {run_id!r} has a persisted cancel intent"
+                )
             active = connection.execute(
                 """
                 SELECT attempt_id FROM run_attempts
@@ -1902,7 +1915,8 @@ class SQLiteRunJournal:
             commands = connection.execute(
                 """
                 SELECT command_id FROM remote_command_inbox
-                WHERE state IN ('received', 'dispatched') ORDER BY updated_at
+                WHERE state IN ('received', 'dispatched', 'accepted')
+                ORDER BY updated_at
                 """
             ).fetchall()
         return StartupReconciliationResult(
@@ -2897,6 +2911,8 @@ class SQLiteRunJournal:
         batch: CommandResultSyncBatch,
         event_ids: list[str],
     ) -> None:
+        if not event_ids:
+            raise ValueError("command outbox batch must contain events")
         placeholders = ",".join("?" for _ in event_ids)
         count = int(
             connection.execute(

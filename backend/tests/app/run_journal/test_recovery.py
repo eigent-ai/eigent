@@ -42,6 +42,38 @@ def test_attempt_admission_is_idempotent_and_startup_interrupts_it(tmp_path):
         )
 
 
+def test_attempt_replay_precedes_terminal_and_cancel_guards(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.request_cancel(
+            "run-1", request_id="cancel-1", reason="user_cancel", now=2
+        )
+
+        assert (
+            journal.create_run_attempt(
+                "run-1",
+                request_id="initial",
+                reason="initial_execution",
+                now=3,
+            )
+            == attempt
+        )
+        with pytest.raises(InvalidRunTransitionError, match="cancel intent"):
+            journal.create_run_attempt(
+                "run-1",
+                request_id="new-attempt",
+                reason="explicit_resume",
+                now=3,
+            )
+
+
 def test_pending_approval_survives_restart_but_old_attempt_detaches(tmp_path):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
