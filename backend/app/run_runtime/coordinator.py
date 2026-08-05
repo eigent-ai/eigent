@@ -25,6 +25,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -182,12 +183,66 @@ class RuntimeHandle:
         queue.put_nowait(item)
 
 
+@dataclass
+class _AdmissionGate:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    users: int = 0
+
+
 class RunCoordinator:
     """Own live execution tasks separately from transport subscribers."""
 
     def __init__(self) -> None:
         self._handles: dict[str, RuntimeHandle] = {}
+        self._admission_gates: dict[str, _AdmissionGate] = {}
         self._lock = asyncio.Lock()
+
+    @asynccontextmanager
+    async def admission_scope(self, run_id: str) -> AsyncIterator[None]:
+        """Serialize admission side effects for one Run, not all Runs.
+
+        The controller must enter this scope before creating durable memory,
+        mutating compatibility TaskLock state, or queueing the initial command.
+        A concurrent retry can then attach to the first consumer without
+        repeating any of those effects.
+        """
+
+        async with self._lock:
+            gate = self._admission_gates.get(run_id)
+            if gate is None:
+                gate = _AdmissionGate()
+                self._admission_gates[run_id] = gate
+            gate.users += 1
+
+        acquired = False
+        try:
+            await gate.lock.acquire()
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                gate.lock.release()
+            async with self._lock:
+                gate.users -= 1
+                if (
+                    gate.users == 0
+                    and self._admission_gates.get(run_id) is gate
+                ):
+                    self._admission_gates.pop(run_id, None)
+
+    async def attach_if_running(
+        self,
+        run_id: str,
+        *,
+        max_buffer: int = _DEFAULT_SUBSCRIBER_BUFFER,
+    ) -> RuntimeSubscription | None:
+        """Attach to a live consumer without admitting a second execution."""
+
+        async with self._lock:
+            handle = self._handles.get(run_id)
+            if handle is None or not handle.consumer_alive:
+                return None
+            return handle.subscribe(max_buffer=max_buffer)
 
     async def start_with_subscription(
         self,

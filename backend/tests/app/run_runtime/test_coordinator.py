@@ -39,6 +39,60 @@ async def test_initial_subscriber_is_registered_before_first_publish():
 
 
 @pytest.mark.asyncio
+async def test_admission_scope_deduplicates_concurrent_run_start():
+    coordinator = RunCoordinator()
+    first_admission_entered = asyncio.Event()
+    release_first_admission = asyncio.Event()
+    finish_execution = asyncio.Event()
+    prepare_count = 0
+
+    async def source():
+        await finish_execution.wait()
+        yield "done"
+
+    async def admit():
+        nonlocal prepare_count
+        async with coordinator.admission_scope("run-1"):
+            existing = await coordinator.attach_if_running("run-1")
+            if existing is not None:
+                return existing, False
+
+            prepare_count += 1
+            first_admission_entered.set()
+            await release_first_admission.wait()
+            subscription = await coordinator.start_with_subscription(
+                run_id="run-1",
+                stream_factory=source,
+            )
+            return subscription, True
+
+    first = asyncio.create_task(admit())
+    await first_admission_entered.wait()
+    second = asyncio.create_task(admit())
+    await asyncio.sleep(0)
+    release_first_admission.set()
+
+    (
+        (first_subscription, first_started),
+        (
+            second_subscription,
+            second_started,
+        ),
+    ) = await asyncio.gather(first, second)
+
+    assert prepare_count == 1
+    assert first_started is True
+    assert second_started is False
+    assert first_subscription.handle is second_subscription.handle
+    assert first_subscription.handle.subscriber_count == 2
+
+    await first_subscription.aclose()
+    await second_subscription.aclose()
+    finish_execution.set()
+    await first_subscription.handle.wait()
+
+
+@pytest.mark.asyncio
 async def test_terminal_marker_has_reserved_capacity():
     coordinator = RunCoordinator()
 
