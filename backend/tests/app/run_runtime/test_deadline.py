@@ -8,6 +8,7 @@ import pytest
 from app.run_journal import SQLiteRunJournal
 from app.run_policy import RunTimeoutPolicy
 from app.run_runtime import RunCoordinator
+from app.run_runtime.coordinator import RuntimeHandle
 
 
 @pytest.mark.asyncio
@@ -77,6 +78,33 @@ async def test_coordinator_without_persisted_deadline_keeps_execution_alive(
         with pytest.raises(StopAsyncIteration):
             await subscription.__anext__()
         assert journal.get_run("run-1").status == "completed"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_watcher_without_deadline_waits_for_policy_signal(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        coordinator = RunCoordinator(journal)
+        handle = RuntimeHandle(run_id="run-1")
+        reads = 0
+        original_get_run = journal.get_run
+
+        def counted_get_run(run_id: str):
+            nonlocal reads
+            reads += 1
+            return original_get_run(run_id)
+
+        journal.get_run = counted_get_run  # type: ignore[method-assign]
+        watcher = asyncio.create_task(coordinator._watch_deadline(handle))
+        await asyncio.sleep(0.05)
+        assert reads == 1
+
+        handle.deadline_changed_event.set()
+        await asyncio.sleep(0.01)
+        assert reads == 2
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
         await coordinator.close()
 
 

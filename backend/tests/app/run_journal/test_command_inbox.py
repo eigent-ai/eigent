@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.run_journal import (
+    CommandResultSyncBatch,
     IdempotencyConflictError,
     OutboxLeaseLostError,
     SQLiteRunJournal,
@@ -32,7 +33,6 @@ def test_inbox_commit_also_persists_receipt_outbox(tmp_path):
         command = _persist(journal)
         assert command.state == "received"
         assert command.receipt_status == "pending"
-
         batches = journal.claim_command_result_batches(now=100.0)
         assert len(batches) == 1
         assert batches[0].command_id == "command-1"
@@ -40,6 +40,39 @@ def test_inbox_commit_also_persists_receipt_outbox(tmp_path):
             "receipt.durably_received"
         ]
         assert batches[0].events[0].command_event_sequence == 1
+
+
+def test_startup_reconciliation_includes_accepted_commands(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        _persist(journal)
+        journal.append_command_result(
+            "command-1",
+            event_type="admission.accepted",
+            event_id="command-1:admission",
+            occurred_at=101.0,
+        )
+
+    with SQLiteRunJournal(path) as reopened:
+        reconciliation = reopened.reconcile_startup(now=102.0)
+        assert reconciliation.reconcilable_command_ids == ("command-1",)
+        assert [
+            command.command_id
+            for command in reopened.list_reconcilable_commands()
+        ] == ["command-1"]
+
+
+def test_empty_command_result_batch_is_rejected_before_sql(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        batch = CommandResultSyncBatch(
+            command_id="command-1",
+            lease_token="lease-1",
+            attempt_count=0,
+            events=(),
+        )
+
+        with pytest.raises(ValueError, match="must contain events"):
+            journal.mark_command_result_batch_sent(batch)
 
 
 def test_duplicate_command_requires_identical_canonical_envelope(tmp_path):

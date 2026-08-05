@@ -63,6 +63,39 @@ def test_initializes_schema_and_durability_pragmas(journal):
     } <= tables
 
 
+def test_ensure_run_rejects_policy_and_deadline_drift(journal):
+    first = journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        timeout_policy_version="timeouts-v2",
+        deadline_at=100.0,
+    )
+
+    assert (
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            timeout_policy_version="timeouts-v2",
+            deadline_at=100.0,
+        )
+        == first
+    )
+    with pytest.raises(IdempotencyConflictError, match="timeout policy"):
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            timeout_policy_version="timeouts-v3",
+            deadline_at=100.0,
+        )
+    with pytest.raises(IdempotencyConflictError, match="deadline"):
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            timeout_policy_version="timeouts-v2",
+            deadline_at=101.0,
+        )
+
+
 def test_event_and_outbox_commit_atomically(journal):
     journal.ensure_run(
         run_id="run-1",

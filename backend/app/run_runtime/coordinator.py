@@ -534,13 +534,10 @@ class RunCoordinator:
                 }:
                     return
                 if current.deadline_at is None:
-                    try:
-                        await asyncio.wait_for(
-                            handle.deadline_changed_event.wait(),
-                            timeout=1.0,
-                        )
-                    except TimeoutError:
-                        pass
+                    # No deadline means there is nothing to poll. Policy
+                    # persistence explicitly signals this Event, and handle
+                    # shutdown cancels the watcher.
+                    await handle.deadline_changed_event.wait()
                     continue
                 remaining = current.deadline_at - time.time()
                 if remaining > 0:
