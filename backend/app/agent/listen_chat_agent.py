@@ -38,6 +38,11 @@ from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
 from app.component.environment import env
+from app.run_runtime.tool_checkpoint import (
+    ToolCheckpointError,
+    finish_tool_checkpoint,
+    prepare_tool_checkpoint,
+)
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -650,6 +655,7 @@ class ListenChatAgent(ChatAgent):
         # The proper fix is to unify event sending:
         # remove activate/deactivate from @listen_toolkit, only send here
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
+        checkpoint = None
 
         try:
             task_lock = get_task_lock(self.api_task_id)
@@ -663,6 +669,11 @@ class ListenChatAgent(ChatAgent):
                 f"Agent {self.agent_name} executing tool: "
                 f"{func_name} from toolkit: {toolkit_name} "
                 f"with args: {json.dumps(args, ensure_ascii=False)}"
+            )
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id=tool_call_id,
+                tool_name=func_name,
+                arguments=args,
             )
 
             # Only send activate event if tool is
@@ -686,6 +697,7 @@ class ListenChatAgent(ChatAgent):
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
                 raw_result = tool(**args)
+            finish_tool_checkpoint(checkpoint, result=raw_result)
             logger.debug(f"Tool {func_name} executed successfully")
             if self.mask_tool_output:
                 self._secure_result_store[tool_call_id] = raw_result
@@ -727,7 +739,10 @@ class ListenChatAgent(ChatAgent):
                         )
                     )
                 )
+        except ToolCheckpointError:
+            raise
         except Exception as e:
+            finish_tool_checkpoint(checkpoint, error=e)
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
@@ -776,8 +791,23 @@ class ListenChatAgent(ChatAgent):
                 tool_call_data
             )
             if tool_call_request.tool_name not in self._internal_tools:
-                return super()._execute_tool_from_stream_data(tool_call_data)
+                checkpoint = prepare_tool_checkpoint(
+                    raw_tool_call_id=tool_call_request.tool_call_id,
+                    tool_name=tool_call_request.tool_name,
+                    arguments=tool_call_request.args,
+                )
+                try:
+                    result = super()._execute_tool_from_stream_data(
+                        tool_call_data
+                    )
+                except Exception as error:
+                    finish_tool_checkpoint(checkpoint, error=error)
+                    raise
+                finish_tool_checkpoint(checkpoint, result=result)
+                return result
             return self._execute_tool(tool_call_request)
+        except ToolCheckpointError:
+            raise
         except Exception as e:
             logger.error(f"Error processing streaming tool call: {e}")
             return None
@@ -838,6 +868,13 @@ class ListenChatAgent(ChatAgent):
         # If so, the decorator will handle activate/deactivate events
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
 
+        checkpoint = await asyncio.to_thread(
+            prepare_tool_checkpoint,
+            raw_tool_call_id=tool_call_id,
+            tool_name=func_name,
+            arguments=args,
+        )
+
         # Only send activate event if tool is NOT wrapped by @listen_toolkit
         if not has_listen_decorator:
             await task_lock.put_queue(
@@ -851,6 +888,7 @@ class ListenChatAgent(ChatAgent):
                     },
                 )
             )
+        execution_error: Exception | None = None
         try:
             # Set process_task context for all tool executions
             with set_process_task(self.process_task_id):
@@ -893,12 +931,25 @@ class ListenChatAgent(ChatAgent):
                         result = await result
 
         except Exception as e:
+            execution_error = e
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                error=e,
+            )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
             result = {"error": error_msg}
             logger.error(
                 f"Async tool execution failed for {func_name}: {e}",
                 exc_info=True,
+            )
+
+        if execution_error is None:
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                result=result,
             )
 
         # Prepare result message with truncation
@@ -944,10 +995,32 @@ class ListenChatAgent(ChatAgent):
                 tool_call_data
             )
             if tool_call_request.tool_name not in self._internal_tools:
-                return await super()._aexecute_tool_from_stream_data(
-                    tool_call_data
+                checkpoint = await asyncio.to_thread(
+                    prepare_tool_checkpoint,
+                    raw_tool_call_id=tool_call_request.tool_call_id,
+                    tool_name=tool_call_request.tool_name,
+                    arguments=tool_call_request.args,
                 )
+                try:
+                    result = await super()._aexecute_tool_from_stream_data(
+                        tool_call_data
+                    )
+                except Exception as error:
+                    await asyncio.to_thread(
+                        finish_tool_checkpoint,
+                        checkpoint,
+                        error=error,
+                    )
+                    raise
+                await asyncio.to_thread(
+                    finish_tool_checkpoint,
+                    checkpoint,
+                    result=result,
+                )
+                return result
             return await self._aexecute_tool(tool_call_request)
+        except ToolCheckpointError:
+            raise
         except Exception as e:
             logger.error(f"Error processing async streaming tool call: {e}")
             return None

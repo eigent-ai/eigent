@@ -134,6 +134,30 @@ async def startup_event():
     pid_task = asyncio.create_task(write_pid_file())
     app_logger.info("PID write task created")
 
+    # Reconcile durable execution facts before accepting new Run admission.
+    # No Python coroutine or external Tool call is restarted implicitly.
+    from app.run_journal.runtime import get_default_run_journal
+
+    reconciliation = await asyncio.to_thread(
+        get_default_run_journal().reconcile_startup
+    )
+    app_logger.info(
+        "RunJournal startup reconciliation complete",
+        extra={
+            "interrupted_runs": len(reconciliation.interrupted_run_ids),
+            "completed_cancels": len(reconciliation.completed_cancel_run_ids),
+            "deadline_runs": len(reconciliation.deadline_run_ids),
+            "detached_attempts": len(reconciliation.detached_attempt_ids),
+            "outcome_unknown_tools": len(
+                reconciliation.outcome_unknown_tool_call_ids
+            ),
+            "pending_approvals": len(reconciliation.pending_approval_ids),
+            "reconcilable_commands": len(
+                reconciliation.reconcilable_command_ids
+            ),
+        },
+    )
+
     # Initialize EnvironmentHands from Brain deployment (full on local/cloud_vm, sandbox in Docker)
     from app.router_layer.hands_resolver import init_environment_hands
 
