@@ -375,7 +375,7 @@ export default function RemoteControlPage() {
             });
           }
           if (
-            payload.type === 'pong' &&
+            (payload.type === 'pong' || payload.type === 'watermark') &&
             typeof payload.current_cursor === 'number' &&
             payload.current_cursor > (projectorRef.current?.currentCursor || 0)
           ) {

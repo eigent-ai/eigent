@@ -1,32 +1,46 @@
+import { createHost } from '@/host/createHost';
+
 const DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
-let memoryInstanceId = '';
+let desktopInstanceIdPromise: Promise<string> | null = null;
 
-function randomId(prefix: string): string {
-  const cryptoApi = globalThis.crypto;
-  if (cryptoApi?.randomUUID) {
-    return `${prefix}_${cryptoApi.randomUUID().replaceAll('-', '')}`;
-  }
-  return `${prefix}_${Date.now().toString(36)}_${Math.random()
-    .toString(36)
-    .slice(2)}`;
-}
-
-export function getDesktopInstanceId(): string {
-  if (memoryInstanceId) {
-    return memoryInstanceId;
-  }
+function legacyRendererIdentity(): string {
   try {
-    const existing = localStorage.getItem(DESKTOP_INSTANCE_STORAGE_KEY);
-    if (existing) {
-      memoryInstanceId = existing;
-      return existing;
-    }
-    const next = randomId('desk');
-    localStorage.setItem(DESKTOP_INSTANCE_STORAGE_KEY, next);
-    memoryInstanceId = next;
-    return next;
+    return localStorage.getItem(DESKTOP_INSTANCE_STORAGE_KEY) || '';
   } catch {
-    memoryInstanceId = randomId('desk');
-    return memoryInstanceId;
+    return '';
   }
 }
+
+export async function getDesktopInstanceId(): Promise<string> {
+  const api = createHost().electronAPI;
+  if (!api?.getDesktopInstanceId) {
+    // Remote Web and ordinary browsers are not Desktop devices and must never
+    // mint an identity that the Cloud could mistake for an installation.
+    return '';
+  }
+  if (!desktopInstanceIdPromise) {
+    desktopInstanceIdPromise = Promise.resolve(
+      api.getDesktopInstanceId(legacyRendererIdentity() || undefined)
+    )
+      .then((identity) => {
+        if (!identity) throw new Error('Electron returned an empty device id');
+        try {
+          localStorage.setItem(DESKTOP_INSTANCE_STORAGE_KEY, identity);
+        } catch {
+          // The main-process file remains authoritative.
+        }
+        return identity;
+      })
+      .catch((error) => {
+        desktopInstanceIdPromise = null;
+        throw error;
+      });
+  }
+  return desktopInstanceIdPromise;
+}
+
+export const __desktopIdentityTestHooks = {
+  reset: () => {
+    desktopInstanceIdPromise = null;
+  },
+};

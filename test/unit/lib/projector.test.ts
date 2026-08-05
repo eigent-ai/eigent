@@ -179,12 +179,6 @@ describe('projector pipeline', () => {
     const next = reduceProjectView(initial, normalized);
     expect(deriveLiveEffects(initial, next, normalized, 'live')).toEqual([
       { type: 'scroll_to_latest', eventId: 'event-1' },
-      {
-        type: 'notify_terminal',
-        eventId: 'event-1',
-        runId: 'run-1',
-        status: 'completed',
-      },
     ]);
     expect(deriveLiveEffects(initial, next, normalized, 'rehydrate')).toEqual(
       []
