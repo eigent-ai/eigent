@@ -42,6 +42,7 @@ from app.run_context import (
     apply_run_env_for_third_party,
     stream_with_run_context,
 )
+from app.run_journal import get_default_run_journal
 from app.run_runtime import get_default_run_coordinator
 from app.service.chat_service import step_solve
 from app.service.task import (
@@ -264,6 +265,10 @@ async def timeout_stream_wrapper(
     generator = stream_generator.__aiter__()
     pending_next: asyncio.Task | None = None
 
+    def current_run_id() -> str | None:
+        handle = getattr(stream_generator, "handle", None)
+        return getattr(handle, "run_id", run_id)
+
     try:
         while True:
             if pending_next is None:
@@ -278,7 +283,7 @@ async def timeout_stream_wrapper(
                     "heartbeat",
                     {
                         "scope": "transport",
-                        "run_id": run_id,
+                        "run_id": current_run_id(),
                     },
                 )
                 continue
@@ -292,13 +297,13 @@ async def timeout_stream_wrapper(
     except asyncio.CancelledError:
         chat_logger.info(
             "SSE subscriber detached; Run execution continues",
-            extra={"run_id": run_id},
+            extra={"run_id": current_run_id()},
         )
         raise
     except Exception as e:
         chat_logger.error(
             "SSE subscriber failed; Run lifecycle is unchanged",
-            extra={"run_id": run_id, "error": str(e)},
+            extra={"run_id": current_run_id(), "error": str(e)},
             exc_info=True,
         )
         raise
@@ -310,6 +315,31 @@ async def timeout_stream_wrapper(
         close = getattr(generator, "aclose", None)
         if close is not None:
             await close()
+
+
+async def _replay_persisted_run(run_id: str):
+    """Replay durable history without implicitly restarting execution."""
+
+    events = await asyncio.to_thread(
+        get_default_run_journal().list_events,
+        run_id,
+    )
+    if not events:
+        yield sse_json(
+            "run_interrupted",
+            {
+                "run_id": run_id,
+                "message": "Run has durable state but no live consumer; "
+                "explicit resume is required.",
+            },
+        )
+        return
+
+    for event in events:
+        yield sse_json(
+            event.legacy_step or event.event_type,
+            event.payload,
+        )
 
 
 async def _prepare_chat_run(
@@ -371,6 +401,11 @@ async def _prepare_chat_run(
     )
     camel_log.mkdir(parents=True, exist_ok=True)
     run_context = _build_run_context(data, frozen_dirs, request, camel_log)
+    await asyncio.to_thread(
+        get_default_run_journal().ensure_run,
+        run_id=run_context.run_id,
+        project_id=run_context.project_id,
+    )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -431,21 +466,33 @@ async def start_chat_stream(data: Chat, request: Request):
     coordinator = get_default_run_coordinator()
     async with coordinator.admission_scope(run_id):
         subscription = await coordinator.attach_if_running(run_id)
-        if subscription is None:
-            task_lock, run_context = await _prepare_chat_run(data, request)
-            subscription = await coordinator.start_with_subscription(
-                run_id=run_context.run_id,
-                stream_factory=lambda: stream_with_run_context(
-                    step_solve(data, request, task_lock),
-                    lambda: getattr(task_lock, "run_context", run_context),
-                ),
-                command_queue=task_lock.queue,
-            )
-        else:
+        if subscription is not None:
             chat_logger.info(
                 "Attached retry to existing Run consumer",
                 extra={"run_id": run_id, "project_id": data.project_id},
             )
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        persisted_run = await asyncio.to_thread(
+            get_default_run_journal().get_run,
+            run_id,
+        )
+        if persisted_run is not None:
+            chat_logger.info(
+                "Replaying persisted Run without implicit restart",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+            return _replay_persisted_run(run_id)
+
+        task_lock, run_context = await _prepare_chat_run(data, request)
+        subscription = await coordinator.start_with_subscription(
+            run_id=run_context.run_id,
+            stream_factory=lambda: stream_with_run_context(
+                step_solve(data, request, task_lock),
+                lambda: getattr(task_lock, "run_context", run_context),
+            ),
+            command_queue=task_lock.queue,
+        )
 
     return timeout_stream_wrapper(subscription, run_id=run_id)
 
@@ -492,6 +539,24 @@ async def status(project_id: str):
 
 @router.post("/chat/{id}", name="improve chat")
 async def improve(id: str, data: SupplementChat, request: Request):
+    if data.task_id:
+        coordinator = get_default_run_coordinator()
+        async with coordinator.admission_scope(data.task_id):
+            persisted_run = await asyncio.to_thread(
+                get_default_run_journal().get_run,
+                data.task_id,
+            )
+            if persisted_run is not None:
+                chat_logger.info(
+                    "Ignored duplicate follow-up Run admission",
+                    extra={"project_id": id, "run_id": data.task_id},
+                )
+                return Response(status_code=201)
+            return await _improve_chat(id, data, request)
+    return await _improve_chat(id, data, request)
+
+
+async def _improve_chat(id: str, data: SupplementChat, request: Request):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -501,6 +566,7 @@ async def improve(id: str, data: SupplementChat, request: Request):
     # Reuse an existing endpoint when possible to avoid tearing down
     # a browser that was manually connected through the Browser page.
     current_context = getattr(task_lock, "run_context", None)
+    previous_run_id = getattr(current_context, "run_id", None)
     port = (
         current_context.browser_port
         if isinstance(current_context, RunContext)
@@ -644,6 +710,11 @@ async def improve(id: str, data: SupplementChat, request: Request):
     )
     if rotation_succeeded:
         await asyncio.to_thread(
+            get_default_run_journal().ensure_run,
+            run_id=refreshed_context.run_id,
+            project_id=refreshed_context.project_id,
+        )
+        await asyncio.to_thread(
             get_memory_service().on_run_start,
             run_context=refreshed_context,
             space_name=None,
@@ -657,6 +728,11 @@ async def improve(id: str, data: SupplementChat, request: Request):
             user_prompt=data.question,
             prompt_source="improve",
         )
+        if previous_run_id is not None:
+            await get_default_run_coordinator().rebind_run(
+                previous_run_id,
+                refreshed_context.run_id,
+            )
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the
