@@ -16,9 +16,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
+  fetchGet: vi.fn(() => Promise.resolve({ items: [] })),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   getBaseURL: vi.fn(() => Promise.resolve('')),
+  getLocalControlCapability: vi.fn(() =>
+    Promise.resolve('renderer-capability')
+  ),
   proxyFetchGet: vi.fn(() => Promise.resolve({ items: [] })),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'history-id' })),
   proxyFetchPut: vi.fn(),
@@ -120,6 +124,13 @@ describe('useRemoteControlBridge internals', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
     expect(fetchSpy.mock.calls[1]?.[0]).toBe('/chat/project-target');
+    expect(fetchSpy.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Eigent-Local-Capability': 'renderer-capability',
+        }),
+      })
+    );
   });
 
   it('starts local user_message tasks against the target Project without switching foreground Project', async () => {

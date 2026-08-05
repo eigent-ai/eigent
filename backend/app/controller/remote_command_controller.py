@@ -8,16 +8,20 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth import require_local_control_principal
 from app.run_journal import get_default_run_journal
 from app.run_sync.runtime import (
     notify_default_cloud_sync_worker,
     persist_and_confirm_remote_command,
 )
 
-router = APIRouter(prefix="/remote-control/commands")
+router = APIRouter(
+    prefix="/remote-control/commands",
+    dependencies=[Depends(require_local_control_principal)],
+)
 
 _HIGH_RISK_COMMAND_TYPES = {
     "stop",
