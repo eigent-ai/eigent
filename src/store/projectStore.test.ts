@@ -363,10 +363,7 @@ describe('projectStore runtime shape', () => {
         project_id: 'project_local',
         limit: 100,
       });
-      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
-        userId: 10,
-        projectId: 'project_local',
-      });
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
       expect(getCachedProjectMock).not.toHaveBeenCalled();
       expect(replayMock).toHaveBeenCalledWith(
         'task_local',

@@ -82,6 +82,25 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // "ongoing"). Clamp before sending; the full text still lives in the run's
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
+
+/** Adapt a canonical RunEvent to the legacy message reducer during migration. */
+export const canonicalRunEventToLegacyMessage = (
+  value: unknown
+): AgentMessage | null => {
+  if (!value || typeof value !== 'object') return null;
+  const event = value as {
+    legacy_step?: unknown;
+    payload?: unknown;
+  };
+  if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
+    return null;
+  }
+  return {
+    step: event.legacy_step,
+    data: event.payload,
+  } as AgentMessage;
+};
+
 const clampHistorySummary = (
   value: string | undefined | null
 ): string | undefined =>
@@ -1670,7 +1689,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
             ? startOptions.replaySource === 'local_durable'
-              ? `/runs/${encodeURIComponent(newTaskId)}/legacy-stream?after_sequence=0`
+              ? `/runs/${encodeURIComponent(newTaskId)}/stream?after_sequence=0`
               : `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
             : '/chat';
 
@@ -1685,6 +1704,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
       let playbackLastStepTimeMs: number | null = null;
+      let localDurableLegacyEventCount = 0;
 
       // replay or share request
       if (type && startOptions.replaySource !== 'local_durable') {
@@ -2197,7 +2217,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           let agentMessages: AgentMessage;
 
           try {
-            agentMessages = JSON.parse(event.data);
+            const parsed = JSON.parse(event.data);
+            if (startOptions.replaySource === 'local_durable') {
+              // /runs/{id}/stream returns the canonical RunEvent envelope.
+              // The existing Desktop reducer remains legacy-shaped during
+              // migration, so typed-only/control events advance the stream
+              // cursor but do not enter the UI projector.
+              const projected = canonicalRunEventToLegacyMessage(parsed);
+              if (!projected) {
+                return;
+              }
+              localDurableLegacyEventCount += 1;
+              agentMessages = projected;
+            } else {
+              agentMessages = parsed;
+            }
           } catch (error) {
             console.error('Failed to parse SSE message:', error);
             console.error('Raw event.data:', event.data);
@@ -4292,6 +4326,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
         async onopen(respond) {
           console.log('open', respond);
+          if (!respond.ok) {
+            const error: any = new Error(
+              `Replay stream returned HTTP ${respond.status}`
+            );
+            error.status = respond.status;
+            throw error;
+          }
           const { setAttaches, activeTaskId } = get();
           setAttaches(activeTaskId as string, []);
           return;
@@ -4409,9 +4450,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (type === 'replay') {
         try {
           await ssePromise;
+          if (
+            startOptions.replaySource === 'local_durable' &&
+            localDurableLegacyEventCount === 0
+          ) {
+            throw new Error(
+              `Canonical Run ${newTaskId} contained no legacy UI events`
+            );
+          }
         } catch (err) {
           if (err instanceof DOMException && err.name === 'AbortError') {
             // Expected: stream closed normally, we aborted to resolve the promise
+            if (
+              startOptions.replaySource === 'local_durable' &&
+              localDurableLegacyEventCount === 0
+            ) {
+              throw new Error(
+                `Canonical Run ${newTaskId} contained no legacy UI events`
+              );
+            }
             return;
           }
           // Unexpected: actual error during stream
@@ -4446,16 +4503,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         return;
       }
 
-      create(taskId, 'replay');
-      setHasMessages(taskId, true);
-      addMessages(taskId, {
-        id: generateUniqueId(),
-        role: 'user',
-        content: question.split('|')[0],
-      });
+      const resetReplayTask = () => {
+        create(taskId, 'replay');
+        setHasMessages(taskId, true);
+        addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: question.split('|')[0],
+        });
+      };
 
-      try {
-        await startTask(
+      const startReplay = (replaySource: 'cloud' | 'local_durable') =>
+        startTask(
           taskId,
           'replay',
           undefined,
@@ -4465,8 +4524,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           undefined,
           project_id,
           undefined,
-          { replaySource: source }
+          { replaySource }
         );
+
+      resetReplayTask();
+
+      try {
+        try {
+          await startReplay(source);
+        } catch (localReplayError) {
+          if (source !== 'local_durable') {
+            throw localReplayError;
+          }
+          console.warn(
+            `[ChatStore] Canonical replay failed for ${taskId}; falling back to cloud playback`,
+            localReplayError
+          );
+          resetReplayTask();
+          await startReplay('cloud');
+        }
         setActiveTaskId(taskId);
         handleConfirmTask(project_id, taskId, 'replay');
       } catch (error) {
