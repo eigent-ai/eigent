@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -106,7 +107,7 @@ const ArtifactChangeList: React.FC<{
       </div>
       <div className="px-4 py-2">
         {visibleFiles.map((file, fileIndex) => {
-          const detail = file.relativePath || file.path || file.name;
+          const detail = getWorkspaceRelativeFilePath(file);
           const changeLabel =
             file.artifactChange === 'generated'
               ? 'Generated'
