@@ -132,13 +132,27 @@ def declare_tool_safety(
         and not idempotency_argument
     ):
         raise ValueError("idempotent tool declarations require a key field")
-    setattr(tool, _TOOL_SAFETY_ATTRIBUTE, safety_class.value)
-    if idempotency_argument:
-        setattr(
-            tool,
-            _TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE,
-            idempotency_argument,
-        )
+    targets = [tool]
+    try:
+        wrapped = getattr(tool, "func", None)
+    except Exception:
+        wrapped = None
+    if wrapped is not None and wrapped is not tool:
+        targets.append(wrapped)
+    for target in targets:
+        try:
+            # Write the key first so a partially writable proxy can never
+            # expose an idempotent declaration without its required key.
+            if idempotency_argument:
+                setattr(
+                    target,
+                    _TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE,
+                    idempotency_argument,
+                )
+            setattr(target, _TOOL_SAFETY_ATTRIBUTE, safety_class.value)
+        except Exception:
+            continue
+        break
     return tool
 
 
