@@ -85,10 +85,17 @@ class RunContext:
 current_run_context: ContextVar[RunContext | None] = ContextVar(
     "current_run_context", default=None
 )
+current_run_context_getter: ContextVar[
+    Callable[[], RunContext | None] | None
+] = ContextVar("current_run_context_getter", default=None)
 
 
 def get_current_run_context() -> RunContext | None:
-    return current_run_context.get()
+    context = current_run_context.get()
+    if context is not None:
+        return context
+    getter = current_run_context_getter.get()
+    return getter() if getter is not None else None
 
 
 def get_run_env_override(key: str) -> str | None:
@@ -129,19 +136,15 @@ async def stream_with_run_context(
 ) -> AsyncIterator[str]:
     iterator = stream.__aiter__()
     while True:
-        context = context_getter()
-        if context is None:
-            try:
-                yield await iterator.__anext__()
-            except StopAsyncIteration:
-                return
-            continue
-
-        token = current_run_context.set(context)
+        # Store the getter, not a snapshot. A queue-backed stream can block in
+        # __anext__ while a follow-up atomically rebinds TaskLock.run_context;
+        # journal writes inside the generator must observe that new immutable
+        # RunContext rather than attribute the first event to the prior Run.
+        token = current_run_context_getter.set(context_getter)
         try:
             item = await iterator.__anext__()
         except StopAsyncIteration:
             return
         finally:
-            current_run_context.reset(token)
+            current_run_context_getter.reset(token)
         yield item

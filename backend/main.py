@@ -141,6 +141,41 @@ async def startup_event():
     reconciliation = await asyncio.to_thread(
         get_default_run_journal().reconcile_startup
     )
+    # LocalMemory is a compatibility/context projection, never an execution
+    # status authority. Repair its status files from the canonical journal so
+    # a hard process exit cannot leave UI/context consumers seeing "running"
+    # or "cancelled" for an interrupted Run.
+    from app.memory import get_memory_service
+
+    journal = get_default_run_journal()
+    canonical_runs = await asyncio.to_thread(journal.list_all_runs)
+    memory_states = {
+        run.run_id: (
+            {
+                "pending": "running",
+                "running": "running",
+                "waiting_for_user": "running",
+                "completed": "done",
+                "failed": "failed",
+                "cancelled": "cancelled",
+                "interrupted": "interrupted",
+            }[run.status],
+            (
+                "brain_restart"
+                if run.status == "interrupted"
+                else (
+                    "run_deadline_reached"
+                    if run.run_id in reconciliation.deadline_run_ids
+                    else None
+                )
+            ),
+        )
+        for run in canonical_runs
+    }
+    await asyncio.to_thread(
+        get_memory_service().project_canonical_run_statuses,
+        memory_states,
+    )
     app_logger.info(
         "RunJournal startup reconciliation complete",
         extra={

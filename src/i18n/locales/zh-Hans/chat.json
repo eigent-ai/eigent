@@ -112,5 +112,13 @@
   "expand-plan": "展开计划",
   "minimize-plan": "最小化计划",
   "expand-subtasks": "展开子任务",
-  "add-subtask-placeholder": "添加新的子任务，按 Enter 添加更多"
+  "add-subtask-placeholder": "添加新的子任务，按 Enter 添加更多",
+  "run-interrupted-title": "任务已中断",
+  "run-interrupted-description": "Eigent 在任务完成前退出。已完成的工作已保存；恢复后会创建新的执行尝试，且不会自动重做已经完成的外部操作。",
+  "run-resume": "恢复任务",
+  "run-resuming": "正在恢复…",
+  "run-cancel": "结束任务",
+  "run-cancelling": "正在结束…",
+  "run-resume-failed": "恢复任务失败，请重试。",
+  "run-cancel-failed": "结束任务失败，请重试。"
 }

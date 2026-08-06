@@ -104,6 +104,11 @@ class Chat(BaseModel):
     # Durable Project context reconstructed from persisted runs after restart.
     # In-process follow-ups still prefer TaskLock.conversation_history.
     project_context: str | None = None
+    # Explicitly resumes an interrupted durable Run. This is never inferred
+    # from question text (for example, a user typing "continue"). The request
+    # id makes a lost HTTP/SSE response safe to retry without creating another
+    # Attempt.
+    resume_request_id: str | None = Field(default=None, min_length=1)
 
     @field_validator("model_type")
     @classmethod

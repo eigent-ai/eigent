@@ -524,6 +524,77 @@ class LocalMemoryStore:
         )
         return _from_dataclass_payload(RunStatus, payload)
 
+    def project_canonical_run_status(
+        self,
+        run_id: str,
+        *,
+        state: str,
+        ended_at: str | None,
+        last_error: str | None = None,
+    ) -> int:
+        """Update legacy status projections matching a canonical Run id.
+
+        RunJournal is the source of truth. This bounded compatibility scan is
+        used only at Brain startup so stale LocalMemory cannot advertise a
+        contradictory state after a process crash.
+        """
+
+        return self.project_canonical_run_statuses(
+            {run_id: (state, ended_at, last_error)}
+        )
+
+    def project_canonical_run_statuses(
+        self,
+        statuses: dict[str, tuple[str, str | None, str | None]],
+    ) -> int:
+        """Apply a canonical status map in one bounded filesystem scan."""
+
+        updated = 0
+        for path in self._root.glob(
+            "users/*/spaces/*/projects/*/runs/*/status.json"
+        ):
+            run_id = path.parent.name
+            canonical = statuses.get(run_id)
+            if canonical is None:
+                continue
+            state, ended_at, last_error = canonical
+            existing = _from_dataclass_payload(RunStatus, _read_json(path))
+            resolved_end = (
+                None
+                if state == "running"
+                else (
+                    existing.ended_at
+                    if existing is not None and existing.state == state
+                    else ended_at
+                )
+            )
+            if (
+                existing is not None
+                and existing.state == state
+                and existing.ended_at == resolved_end
+                and existing.last_error == last_error
+            ):
+                continue
+            started_at = (
+                existing.started_at
+                if existing is not None
+                else ended_at or ""
+            )
+            _atomic_write_json(
+                path,
+                _to_dataclass_dict(
+                    RunStatus(
+                        run_id=run_id,
+                        state=state,  # type: ignore[arg-type]
+                        started_at=started_at,
+                        ended_at=resolved_end,
+                        last_error=last_error,
+                    )
+                ),
+            )
+            updated += 1
+        return updated
+
     def write_run_summary(
         self,
         user_key: str,

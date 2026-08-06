@@ -12,6 +12,7 @@ from app.controller.run_controller import (
     RunSignalBody,
     cancel_run,
     fork_run,
+    list_project_runs,
     resume_run,
     signal_run,
 )
@@ -91,3 +92,27 @@ async def test_signal_api_rejects_cross_run_approval_mutation(tmp_path):
                 )
         assert error.value.status_code == 409
         assert journal.list_approvals("run-1")[0].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="older", project_id="project-1", now=1
+        )
+        journal.reconcile_startup(now=2)
+        journal.ensure_run(
+            run_id="other", project_id="project-2", now=3
+        )
+        with patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ):
+            result = await list_project_runs(
+                project_id="project-1",
+                status=["interrupted"],
+                limit=1,
+            )
+
+    assert [run["run_id"] for run in result["runs"]] == ["older"]
+    assert result["runs"][0]["status"] == "interrupted"

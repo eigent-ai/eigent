@@ -459,12 +459,13 @@ async def single_agent_solve(
             pause_event.clear()
             task_lock.status = Status.confirming
             running_turn.cancel()
-        # If the loop exits without a clean done/failed end-of-turn (client
-        # disconnect, stop, exception), record a cancelled run. The
+        # If the loop exits without a clean done/failed/cancelled end-of-turn,
+        # project it as interrupted. Only an explicit cancel may produce the
+        # cancelled state; transport/process teardown is resumable. The
         # `_memory_finalized_runs` set on task_lock makes this idempotent:
         # a prior done/failed write wins, this only catches the unfinished
         # case.
-        _finalize_memory_for_turn(task_lock, state="cancelled")
+        _finalize_memory_for_turn(task_lock, state="interrupted")
         if agent is not None:
             release_cdp = getattr(agent, "_cdp_release_callback", None)
             if callable(release_cdp):

@@ -112,5 +112,13 @@
   "expand-plan": "Expand plan",
   "minimize-plan": "Minimize plan",
   "expand-subtasks": "Expand subtasks",
-  "add-subtask-placeholder": "Add a new subtask and press Enter to add more"
+  "add-subtask-placeholder": "Add a new subtask and press Enter to add more",
+  "run-interrupted-title": "Run interrupted",
+  "run-interrupted-description": "Eigent stopped before this Run finished. Completed work is saved. Resume continues in a new attempt and will not automatically replay completed external actions.",
+  "run-resume": "Resume",
+  "run-resuming": "Resuming…",
+  "run-cancel": "Cancel Run",
+  "run-cancelling": "Cancelling…",
+  "run-resume-failed": "Failed to resume this Run.",
+  "run-cancel-failed": "Failed to cancel this Run."
 }

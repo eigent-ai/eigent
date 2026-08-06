@@ -112,5 +112,13 @@
   "expand-plan": "Développer le plan",
   "minimize-plan": "Réduire le plan",
   "expand-subtasks": "Développer les sous-tâches",
-  "add-subtask-placeholder": "Ajoutez une nouvelle sous-tâche et appuyez sur Entrée pour en ajouter d’autres"
+  "add-subtask-placeholder": "Ajoutez une nouvelle sous-tâche et appuyez sur Entrée pour en ajouter d’autres",
+  "run-interrupted-title": "Exécution interrompue",
+  "run-interrupted-description": "Eigent s’est arrêté avant la fin de cette exécution. Le travail terminé est enregistré. Reprendre crée une nouvelle tentative sans répéter automatiquement les actions externes déjà effectuées.",
+  "run-resume": "Reprendre",
+  "run-resuming": "Reprise…",
+  "run-cancel": "Annuler l’exécution",
+  "run-cancelling": "Annulation…",
+  "run-resume-failed": "Impossible de reprendre cette exécution.",
+  "run-cancel-failed": "Impossible d’annuler cette exécution."
 }
