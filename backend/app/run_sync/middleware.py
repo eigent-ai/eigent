@@ -18,7 +18,7 @@ async def cloud_sync_configuration_middleware(
 ) -> Response:
     authorization = request.headers.get("authorization")
     desktop_instance_id = request.headers.get("x-desktop-instance-id")
-    if authorization and desktop_instance_id:
+    if authorization:
         try:
             configure_default_cloud_sync_worker(
                 server_url=None,

@@ -99,6 +99,33 @@ let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
+
+function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
+  if (!desktopInstanceId) {
+    desktopInstanceId = getOrCreateDesktopInstanceId(
+      userData,
+      legacyRendererId
+    );
+  }
+  return desktopInstanceId;
+}
+
+async function primeDesktopInstanceIdFromRenderer(): Promise<void> {
+  if (desktopInstanceId || !win || win.isDestroyed()) return;
+  let legacyRendererId: string | null = null;
+  try {
+    legacyRendererId = await win.webContents.executeJavaScript(
+      `window.localStorage.getItem(${JSON.stringify(
+        LEGACY_DESKTOP_INSTANCE_STORAGE_KEY
+      )})`,
+      true
+    );
+  } catch (error) {
+    log.warn('Unable to read legacy renderer device identity', error);
+  }
+  resolveDesktopInstanceId(legacyRendererId);
+}
 
 const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
 
@@ -1074,13 +1101,9 @@ function registerIpcHandlers() {
     if (!win || event.sender.id !== win.webContents.id) {
       throw new Error('Desktop identity is restricted to the main renderer');
     }
-    if (!desktopInstanceId) {
-      desktopInstanceId = getOrCreateDesktopInstanceId(
-        userData,
-        typeof legacyRendererId === 'string' ? legacyRendererId : null
-      );
-    }
-    return desktopInstanceId;
+    return resolveDesktopInstanceId(
+      typeof legacyRendererId === 'string' ? legacyRendererId : null
+    );
   });
 
   // ==================== restart app handler ====================
@@ -2524,6 +2547,10 @@ const startBackendAfterInstall = async () => {
   // Add a small delay to ensure any previous processes are fully cleaned up
   await new Promise((resolve) => setTimeout(resolve, 500));
 
+  // Existing installations originally stored the device id in renderer
+  // localStorage. Migrate it before the Brain environment first resolves the
+  // new main-process-owned identity file.
+  await primeDesktopInstanceIdFromRenderer();
   await checkAndStartBackend();
 };
 
@@ -3193,6 +3220,7 @@ const checkAndStartBackend = async (
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
             EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
+            EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
           }
         );
 
