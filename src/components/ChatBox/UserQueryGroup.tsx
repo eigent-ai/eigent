@@ -79,6 +79,63 @@ const AgentResultCard: React.FC<{
   );
 };
 
+/** Run-scoped artifact delta. Every item opens in the existing preview panel. */
+const ArtifactChangeList: React.FC<{
+  files?: FileInfo[];
+  onOpen: (file: FileInfo) => void;
+}> = ({ files, onOpen }) => {
+  if (!files?.length) return null;
+
+  return (
+    <section className="my-3 rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-3">
+      <div className="mb-2 flex items-center gap-2 text-label-sm font-semibold text-ds-text-neutral-default-default">
+        <FileText size={15} aria-hidden />
+        <span>Files changed</span>
+        <span className="bg-ds-bg-neutral-secondary-default rounded-full px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+          {files.length}
+        </span>
+      </div>
+      <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+        {files.map((file, fileIndex) => {
+          const detail = file.relativePath || file.path || file.name;
+          const changeLabel =
+            file.artifactChange === 'generated'
+              ? 'Generated'
+              : file.artifactChange === 'changed'
+                ? 'Changed'
+                : file.type || 'File';
+          return (
+            <button
+              type="button"
+              key={`artifact-${detail}-${fileIndex}`}
+              title={detail}
+              onClick={() => onOpen(file)}
+              className="bg-ds-bg-neutral-primary-default flex min-w-0 items-center gap-3 rounded-lg border border-ds-border-neutral-default-default px-3 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-hover"
+            >
+              <FileText
+                size={18}
+                aria-hidden
+                className="shrink-0 text-ds-icon-neutral-default-default"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                  {file.name}
+                </span>
+                <span className="block truncate text-label-xs text-ds-text-neutral-muted-default">
+                  {file.relativePath || changeLabel}
+                </span>
+              </span>
+              <span className="shrink-0 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                {changeLabel}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
 /** Typewriter only for the agent message currently being produced (latest agent row while task is running). */
 function shouldUseLiveAgentTypewriter(
   task: {
@@ -429,35 +486,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onTyping={() => {}}
                   deferredFooter={
                     message.fileList?.length ? (
-                      <div className="my-2 flex flex-wrap gap-2">
-                        {message.fileList.map(
-                          (file: any, fileIndex: number) => (
-                            <motion.div
-                              key={`file-${message.id}-${file.name}-${fileIndex}`}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 0.05 }}
-                              onClick={() => {
-                                openFilePreview(file);
-                              }}
-                              className="flex w-[140px] cursor-pointer items-center gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                            >
-                              <FileText
-                                size={16}
-                                className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                              />
-                              <div className="flex flex-col">
-                                <div className="max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
-                                  {file.name.split('.')[0]}
-                                </div>
-                                <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-                                  {file.type}
-                                </div>
-                              </div>
-                            </motion.div>
-                          )
-                        )}
-                      </div>
+                      <ArtifactChangeList
+                        files={message.fileList}
+                        onOpen={openFilePreview}
+                      />
                     ) : undefined
                   }
                 />
@@ -527,35 +559,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               transition={{ delay: 0.2 }}
               className="flex flex-col gap-4"
             >
-              {message.fileList && (
-                <div className="flex flex-wrap gap-2">
-                  {message.fileList.map((file: any, fileIndex: number) => (
-                    <motion.div
-                      key={`file-${message.id}-${file.name}-${fileIndex}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.3 }}
-                      onClick={() => {
-                        openFilePreview(file);
-                      }}
-                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                    >
-                      <FileText
-                        size={16}
-                        className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                      />
-                      <div className="flex flex-col">
-                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
-                          {file.name.split('.')[0]}
-                        </div>
-                        <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
-                          {file.type}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
+              <ArtifactChangeList
+                files={message.fileList}
+                onOpen={openFilePreview}
+              />
             </motion.div>
           );
         }

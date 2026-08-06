@@ -31,6 +31,7 @@ vi.mock('@/api/http', async () => {
   const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
 
   return {
+    fetchGet: vi.fn(),
     fetchPost: vi.fn(),
     fetchPut: vi.fn(),
     getBaseURL,
@@ -135,6 +136,7 @@ import {
   extractFinalOutputFileList,
   getCloudModelPlatform,
   mergeFileInfoLists,
+  normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   useChatStore,
@@ -255,6 +257,78 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Final output file extraction', () => {
+    it('normalizes the local artifact change index into previewable files', () => {
+      const files = normalizeTaskArtifactFileList([
+        {
+          filename: 'final_report.md',
+          path: '/Users/test/project/reports/final_report.md',
+          relativePath: 'reports/final_report.md',
+          changeType: 'changed',
+        },
+        {
+          filename: 'chart.png',
+          path: '/Users/test/outputs/chart.png',
+          relativePath: 'chart.png',
+          changeType: 'generated',
+        },
+      ]);
+
+      expect(files).toMatchObject([
+        {
+          name: 'final_report.md',
+          type: 'md',
+          relativePath: 'reports/final_report.md',
+          artifactChange: 'changed',
+          isRemote: false,
+        },
+        {
+          name: 'chart.png',
+          type: 'png',
+          artifactChange: 'generated',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('drops malformed and duplicate artifact index rows', () => {
+      expect(
+        normalizeTaskArtifactFileList([
+          { filename: 'a.csv', path: '/tmp/a.csv', relativePath: 'a.csv' },
+          { filename: 'a.csv', path: '/tmp/other.csv', relativePath: 'a.csv' },
+          { filename: 'missing.txt' },
+        ])
+      ).toHaveLength(1);
+    });
+
+    it('keeps an existing preview path while adding artifact change metadata', () => {
+      const [file] = mergeFileInfoLists(
+        [
+          {
+            name: 'report.md',
+            path: 'http://localhost/files/stream?path=report.md',
+            type: 'md',
+            isRemote: true,
+          },
+        ],
+        [
+          {
+            name: 'report.md',
+            path: '/Users/test/project/report.md',
+            type: 'md',
+            relativePath: 'report.md',
+            artifactChange: 'changed',
+          },
+        ]
+      );
+
+      expect(file).toMatchObject({
+        path: 'http://localhost/files/stream?path=report.md',
+        relativePath: 'report.md',
+        artifactChange: 'changed',
+        isRemote: true,
+      });
+    });
+
     it('extracts sandbox paths without treating the scheme suffix as a drive', () => {
       const files = extractFinalOutputFileList(
         'Created [CSV](sandbox:/Users/test/eigent/space_123/report.csv).'
