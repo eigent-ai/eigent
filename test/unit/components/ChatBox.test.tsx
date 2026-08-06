@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -737,6 +737,109 @@ describe('ChatBox Component', async () => {
         const apiCalled = (_mockFetchPost as any).mock.calls.length > 0;
         expect(storeCalled || apiCalled).toBe(true);
       });
+    });
+
+    it('should auto-skip a failed human reply only once per question', async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const timeoutSpy = vi.spyOn(window, 'setTimeout');
+      _mockFetchPost.mockRejectedValue(new Error('Backend unavailable'));
+
+      const activeAskTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        activeAsk: 'test-agent',
+        hasMessages: true,
+        messages: [
+          {
+            id: 'ask-1',
+            role: 'agent',
+            content: 'Please clarify',
+            step: 'ask',
+          },
+        ],
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': activeAskTask },
+        } as any,
+      });
+
+      const rendered = renderChatBox();
+      const autoReplyTimer = timeoutSpy.mock.calls.find(
+        ([, delay]) => delay === 30000
+      );
+      expect(autoReplyTimer).toBeDefined();
+      await act(async () => {
+        (autoReplyTimer![0] as TimerHandler)();
+        await Promise.resolve();
+      });
+
+      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id/human-reply',
+        { agent: 'test-agent', reply: 'skip' }
+      );
+
+      // Store snapshots change as messages/pending state update. Re-rendering
+      // the same prompt must not arm another automatic reply timer.
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': { ...activeAskTask } },
+        } as any,
+      });
+      rendered.rerender(
+        <BrowserRouter>
+          <ChatBox />
+        </BrowserRouter>
+      );
+      await act(async () => {
+        (autoReplyTimer![0] as TimerHandler)();
+        await Promise.resolve();
+      });
+
+      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
+      ).toHaveLength(1);
+      timeoutSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should not auto-skip a question while replaying history', () => {
+      const timeoutSpy = vi.spyOn(window, 'setTimeout');
+      const replayTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        type: 'replay',
+        activeAsk: 'test-agent',
+        hasMessages: true,
+        messages: [
+          {
+            id: 'historical-ask-1',
+            role: 'agent',
+            content: 'Historical question',
+            step: 'ask',
+          },
+        ],
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': replayTask },
+        } as any,
+      });
+
+      renderChatBox();
+
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
+      ).toHaveLength(0);
+      timeoutSpy.mockRestore();
     });
   });
 
