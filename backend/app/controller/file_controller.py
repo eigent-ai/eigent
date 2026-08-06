@@ -263,12 +263,16 @@ def _list_task_changed_files(snapshot, max_entries: int = 500) -> list[dict]:
 
             seen_paths.add(identity)
             remaining -= 1
+            stat_result = path.stat()
             result.append(
                 {
                     "filename": path.name,
                     "path": identity,
                     "relativePath": relative_path,
                     "changeType": "generated" if include_all else "changed",
+                    "size": stat_result.st_size,
+                    "modifiedAt": stat_result.st_mtime * 1000,
+                    "supportsRanges": True,
                 }
             )
             if remaining <= 0:
@@ -372,6 +376,7 @@ async def list_project_files(
             )
             # URL-encode the relative path for stream endpoint
             path_param = quote(rel, safe="")
+            stat_result = Path(abs_path).stat()
             result.append(
                 {
                     "filename": Path(abs_path).name,
@@ -383,6 +388,9 @@ async def list_project_files(
                         + (f"&user_id={quote(user_id)}" if user_id else "")
                     ),
                     "relativePath": rel,
+                    "size": stat_result.st_size,
+                    "modifiedAt": stat_result.st_mtime * 1000,
+                    "supportsRanges": True,
                 }
             )
         except (ValueError, OSError):

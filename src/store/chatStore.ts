@@ -1039,6 +1039,8 @@ type TaskArtifactChange = {
   path?: unknown;
   relativePath?: unknown;
   changeType?: unknown;
+  size?: unknown;
+  modifiedAt?: unknown;
 };
 
 /** Convert Brain's capability-protected local artifact index into preview cards. */
@@ -1074,6 +1076,14 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
       isRemote: false,
       artifactChange:
         candidate.changeType === 'generated' ? 'generated' : 'changed',
+      size:
+        typeof candidate.size === 'number' && candidate.size >= 0
+          ? candidate.size
+          : undefined,
+      modifiedAt:
+        typeof candidate.modifiedAt === 'number'
+          ? candidate.modifiedAt
+          : undefined,
     });
   }
   return files;
@@ -1161,11 +1171,17 @@ export function mergeFileInfoLists(
       return;
     }
 
-    if (file.artifactChange && !existingFile.artifactChange) {
+    if (
+      (file.artifactChange && !existingFile.artifactChange) ||
+      (file.size !== undefined && existingFile.size === undefined) ||
+      (file.modifiedAt !== undefined && existingFile.modifiedAt === undefined)
+    ) {
       merged[existingIndex] = {
         ...existingFile,
-        artifactChange: file.artifactChange,
+        artifactChange: existingFile.artifactChange || file.artifactChange,
         relativePath: existingFile.relativePath || file.relativePath,
+        size: existingFile.size ?? file.size,
+        modifiedAt: existingFile.modifiedAt ?? file.modifiedAt,
       };
     }
   });

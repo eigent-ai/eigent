@@ -264,6 +264,8 @@ describe('ChatStore - Core Functionality', () => {
           path: '/Users/test/project/reports/final_report.md',
           relativePath: 'reports/final_report.md',
           changeType: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
         },
         {
           filename: 'chart.png',
@@ -279,6 +281,8 @@ describe('ChatStore - Core Functionality', () => {
           type: 'md',
           relativePath: 'reports/final_report.md',
           artifactChange: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
           isRemote: false,
         },
         {
@@ -317,6 +321,8 @@ describe('ChatStore - Core Functionality', () => {
             type: 'md',
             relativePath: 'report.md',
             artifactChange: 'changed',
+            size: 2048,
+            modifiedAt: 123456,
           },
         ]
       );
@@ -325,6 +331,8 @@ describe('ChatStore - Core Functionality', () => {
         path: 'http://localhost/files/stream?path=report.md',
         relativePath: 'report.md',
         artifactChange: 'changed',
+        size: 2048,
+        modifiedAt: 123456,
         isRemote: true,
       });
     });
