@@ -44,9 +44,13 @@ _navigation_locks_guard = asyncio.Lock()
 _browser_bringup_locks: dict[str, asyncio.Lock] = {}
 _browser_bringup_locks_guard = asyncio.Lock()
 
-# Global registry: tab_id -> session_id (ensures each tab belongs to only one session)
-_global_tab_registry: dict[str, str] = {}
+# Global registry: (CDP endpoint, tab_id) -> session_id. Namespacing prevents
+# unrelated browser instances from consuming each other's tab budget.
+_global_tab_registry: dict[tuple[str, str], str] = {}
 _global_tab_registry_lock = asyncio.Lock()
+
+_DEFAULT_MAX_SESSION_TABS = 4
+_DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT = 8
 
 
 def _timeout_value_to_seconds(value: Any, *, fallback_seconds: float) -> float:
@@ -69,6 +73,21 @@ def _env_timeout_seconds(name: str, fallback_seconds: float) -> float:
     return _timeout_value_to_seconds(
         env(name, ""), fallback_seconds=fallback_seconds
     )
+
+
+def _env_positive_int(name: str, fallback: int) -> int:
+    raw_value = env(name, "").strip()
+    if not raw_value:
+        return fallback
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %s", name, raw_value, fallback)
+        return fallback
+    if value < 1:
+        logger.warning("Invalid %s=%r; using %s", name, raw_value, fallback)
+        return fallback
+    return value
 
 
 def _endpoint_lock_key(cdp_url: str | None) -> str:
@@ -111,7 +130,10 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         super().__init__(config)
         logger.info(f"WebSocketBrowserWrapper using ts_dir: {self.ts_dir}")
         # Track tabs opened by this session for isolation
-        self._session_tab_ids: set = set()
+        self._session_tab_ids: set[str] = set()
+        # Oldest-to-newest access order. This lets us recycle an Eigent-owned
+        # background page without ever closing a user's unrelated Chrome tab.
+        self._session_tab_order: list[str] = []
         self._wrapper_session_id: str = str(uuid.uuid4())
 
     def _fail_all_pending(self, exc: Exception) -> None:
@@ -151,6 +173,136 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             "BROWSER_NAVIGATION_LOCK_TIMEOUT_SECONDS",
             fallback_seconds=command_timeout + 5.0,
         )
+
+    def _max_session_tabs(self) -> int:
+        return _env_positive_int(
+            "EIGENT_BROWSER_MAX_TABS_PER_SESSION",
+            _DEFAULT_MAX_SESSION_TABS,
+        )
+
+    def _max_managed_tabs_per_endpoint(self) -> int:
+        return _env_positive_int(
+            "EIGENT_BROWSER_MAX_MANAGED_TABS",
+            _DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT,
+        )
+
+    def _tab_registry_key(self, tab_id: str) -> tuple[str, str]:
+        return (self._navigation_lock_key(), tab_id)
+
+    def _touch_session_tab(self, tab_id: str) -> None:
+        try:
+            self._session_tab_order.remove(tab_id)
+        except ValueError:
+            pass
+        self._session_tab_order.append(tab_id)
+
+    def _forget_session_tab(self, tab_id: str) -> None:
+        self._session_tab_ids.discard(tab_id)
+        try:
+            self._session_tab_order.remove(tab_id)
+        except ValueError:
+            pass
+
+    async def _track_and_limit_tabs(
+        self,
+        all_tabs: list[dict[str, Any]],
+        *,
+        reserve_slots: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Track the active tab and keep Eigent-managed tabs bounded.
+
+        ``reserve_slots=1`` is used before ``visit_page`` because CAMEL opens
+        each URL in a new tab. Only tabs owned by this wrapper are eligible for
+        recycling; pre-existing user tabs are deliberately left untouched.
+        """
+        endpoint = self._navigation_lock_key()
+        session_id = self._wrapper_session_id
+        live_tab_ids = {
+            str(tab["tab_id"])
+            for tab in all_tabs
+            if tab.get("tab_id") is not None
+        }
+        current_tab = next(
+            (tab for tab in all_tabs if tab.get("is_current")), None
+        )
+        current_tab_id = (
+            str(current_tab["tab_id"])
+            if current_tab and current_tab.get("tab_id") is not None
+            else None
+        )
+
+        async with _global_tab_registry_lock:
+            # A tab may have been closed by the user or by Chrome while this
+            # wrapper was idle. Remove stale ownership before counting limits.
+            for key in list(_global_tab_registry):
+                if key[0] == endpoint and key[1] not in live_tab_ids:
+                    del _global_tab_registry[key]
+            for tab_id in list(self._session_tab_ids):
+                if tab_id not in live_tab_ids:
+                    self._forget_session_tab(tab_id)
+
+            if current_tab_id is not None:
+                key = self._tab_registry_key(current_tab_id)
+                owner = _global_tab_registry.get(key)
+                if owner is None:
+                    _global_tab_registry[key] = session_id
+                    self._session_tab_ids.add(current_tab_id)
+                    self._touch_session_tab(current_tab_id)
+                    logger.info(
+                        "[Session Tab Tracking] Auto-tracked current tab: %s, "
+                        "session %s now has tabs: %s",
+                        current_tab_id,
+                        session_id,
+                        self._session_tab_ids,
+                    )
+                elif owner == session_id:
+                    self._session_tab_ids.add(current_tab_id)
+                    self._touch_session_tab(current_tab_id)
+
+            managed_count = sum(
+                1 for key in _global_tab_registry if key[0] == endpoint
+            )
+
+        session_limit = self._max_session_tabs()
+        endpoint_limit = self._max_managed_tabs_per_endpoint()
+        recycle_count = max(
+            len(self._session_tab_ids) + reserve_slots - session_limit,
+            managed_count + reserve_slots - endpoint_limit,
+            0,
+        )
+        if recycle_count == 0:
+            return all_tabs
+
+        victim_ids = [
+            tab_id
+            for tab_id in self._session_tab_order
+            if tab_id in live_tab_ids and tab_id != current_tab_id
+        ]
+        if len(victim_ids) < recycle_count:
+            raise RuntimeError(
+                "Browser tab limit reached and this session has no inactive "
+                "Eigent-managed tab that can be safely recycled "
+                f"(session_limit={session_limit}, "
+                f"endpoint_limit={endpoint_limit})."
+            )
+
+        recycled_ids = victim_ids[:recycle_count]
+        for victim_id in recycled_ids:
+            logger.warning(
+                "[Browser Tab Limit] Recycling least-recently-used tab %s "
+                "before opening another page (session=%s, session_limit=%s, "
+                "endpoint_limit=%s)",
+                victim_id,
+                session_id,
+                session_limit,
+                endpoint_limit,
+            )
+            await self.close_tab(victim_id)
+        return [
+            tab
+            for tab in all_tabs
+            if str(tab.get("tab_id")) not in recycled_ids
+        ]
 
     async def _close_current_websocket(self) -> None:
         websocket = self.websocket
@@ -363,6 +515,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             f"[visit_page] Acquired navigation lock ({lock_key}), navigating to {url}"
         )
         try:
+            all_tabs = await super().get_tab_info()
+            await self._track_and_limit_tabs(all_tabs, reserve_slots=1)
             result = await super().visit_page(url)
             logger.debug("[visit_page] Navigation completed, releasing lock")
             return result
@@ -383,23 +537,8 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         global _global_tab_registry, _global_tab_registry_lock
 
         all_tabs = await super().get_tab_info()
+        all_tabs = await self._track_and_limit_tabs(all_tabs)
         session_id = self._wrapper_session_id  # Stable UUID for this wrapper
-
-        # Auto-track: add current tab to this session's tracked tabs (with global lock)
-        current_tab = next((t for t in all_tabs if t.get("is_current")), None)
-        if current_tab and current_tab.get("tab_id"):
-            tab_id = current_tab["tab_id"]
-            async with _global_tab_registry_lock:
-                # Only track if not already owned by another session
-                if tab_id not in _global_tab_registry:
-                    _global_tab_registry[tab_id] = session_id
-                    self._session_tab_ids.add(tab_id)
-                    logger.info(
-                        f"[Session Tab Tracking] Auto-tracked current tab: {tab_id}, session {session_id} now has tabs: {self._session_tab_ids}"
-                    )
-                elif _global_tab_registry[tab_id] == session_id:
-                    # Already owned by this session, ensure local tracking
-                    self._session_tab_ids.add(tab_id)
 
         # Filter: only return tabs belonging to this session
         filtered_tabs = [
@@ -421,10 +560,11 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
 
         # Remove from tracking if it was ours
         if tab_id in self._session_tab_ids:
-            self._session_tab_ids.discard(tab_id)
+            self._forget_session_tab(tab_id)
             async with _global_tab_registry_lock:
-                if tab_id in _global_tab_registry:
-                    del _global_tab_registry[tab_id]
+                key = self._tab_registry_key(tab_id)
+                if _global_tab_registry.get(key) == self._wrapper_session_id:
+                    del _global_tab_registry[key]
             logger.info(
                 f"[Session Tab Tracking] Removed closed tab: {tab_id}, session now has tabs: {self._session_tab_ids}"
             )
@@ -445,10 +585,12 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         async with _global_tab_registry_lock:
             cleaned_count = len(self._session_tab_ids)
             for tab_id in list(self._session_tab_ids):
-                if tab_id in _global_tab_registry:
-                    del _global_tab_registry[tab_id]
+                key = self._tab_registry_key(tab_id)
+                if _global_tab_registry.get(key) == self._wrapper_session_id:
+                    del _global_tab_registry[key]
             # Clear inside lock to prevent race with concurrent get_tab_info
             self._session_tab_ids.clear()
+            self._session_tab_order.clear()
             logger.info(
                 f"[Session Tab Tracking] Cleaned up {cleaned_count} tabs for session {self._wrapper_session_id}"
             )
