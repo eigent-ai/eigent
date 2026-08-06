@@ -5,12 +5,15 @@ import type {
   ProjectorMode,
 } from './types';
 
-const TERMINAL_STATUS: Record<string, ProjectedRun['status']> = {
+const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
+  'run.attempt_created': 'running',
+  'run.attempt_started': 'running',
   'run.completed': 'completed',
   'run.failed': 'failed',
   'run.deadline_reached': 'failed',
   'run.cancelled': 'cancelled',
   'run.interrupted': 'interrupted',
+  'runtime.interrupted': 'interrupted',
 };
 
 function stableValue(value: unknown): unknown {
@@ -182,7 +185,7 @@ export function reduceProjectView(
   }
 
   const status =
-    TERMINAL_STATUS[event.eventType] ||
+    RUN_STATUS_BY_EVENT[event.eventType] ||
     (event.legacyStep === 'end'
       ? 'completed'
       : previousRun?.status || 'running');
@@ -265,7 +268,7 @@ export function reduceProjectView(
     runs: { ...state.runs, [event.runId]: run },
     legacySteps,
     unknownEvents:
-      event.legacyStep || TERMINAL_STATUS[event.eventType]
+      event.legacyStep || RUN_STATUS_BY_EVENT[event.eventType]
         ? state.unknownEvents
         : [...state.unknownEvents, event],
   };

@@ -657,6 +657,43 @@ describe('projector pipeline', () => {
     expect(result.effects).toEqual([]);
   });
 
+  it.each([
+    ['run.deadline_reached', 'failed'],
+    ['runtime.interrupted', 'interrupted'],
+  ] as const)('projects %s as the terminal status %s', (eventType, status) => {
+    const result = projectRawEvents(
+      'project-1',
+      [event({ event_type: eventType, legacy_step: null })],
+      'rehydrate'
+    );
+
+    expect(result.state.runs['run-1'].status).toBe(status);
+  });
+
+  it('projects a new attempt as running after an interruption', () => {
+    const result = projectRawEvents(
+      'project-1',
+      [
+        event({
+          event_id: 'interrupted-1',
+          event_type: 'runtime.interrupted',
+          legacy_step: null,
+        }),
+        event({
+          event_id: 'attempt-2',
+          event_type: 'run.attempt_started',
+          legacy_step: null,
+          cloud_cursor: 2,
+          run_sequence: 2,
+          run_version: 2,
+        }),
+      ],
+      'rehydrate'
+    );
+
+    expect(result.state.runs['run-1'].status).toBe('running');
+  });
+
   it('accepts already-normalized importer output without decoding it twice', () => {
     const imported = importLegacyChatSteps([
       {
