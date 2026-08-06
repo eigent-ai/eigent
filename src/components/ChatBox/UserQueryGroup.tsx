@@ -84,19 +84,28 @@ const ArtifactChangeList: React.FC<{
   files?: FileInfo[];
   onOpen: (file: FileInfo) => void;
 }> = ({ files, onOpen }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   if (!files?.length) return null;
 
+  const collapsedCount = 3;
+  const hiddenCount = Math.max(0, files.length - collapsedCount);
+  const visibleFiles = isExpanded ? files : files.slice(0, collapsedCount);
+
   return (
-    <section className="my-3 rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-3">
-      <div className="mb-2 flex items-center gap-2 text-label-sm font-semibold text-ds-text-neutral-default-default">
-        <FileText size={15} aria-hidden />
-        <span>Files changed</span>
-        <span className="bg-ds-bg-neutral-secondary-default rounded-full px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+    <section className="bg-ds-bg-neutral-primary-default my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default">
+      <div className="flex items-center gap-3 border-b border-ds-border-neutral-default-default px-4 py-3">
+        <span className="bg-ds-bg-neutral-secondary-default flex size-8 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
+          <FileText size={18} aria-hidden />
+        </span>
+        <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
+          Files changed
+        </span>
+        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
           {files.length}
         </span>
       </div>
-      <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-        {files.map((file, fileIndex) => {
+      <div className="px-4 py-2">
+        {visibleFiles.map((file, fileIndex) => {
           const detail = file.relativePath || file.path || file.name;
           const changeLabel =
             file.artifactChange === 'generated'
@@ -110,27 +119,32 @@ const ArtifactChangeList: React.FC<{
               key={`artifact-${detail}-${fileIndex}`}
               title={detail}
               onClick={() => onOpen(file)}
-              className="bg-ds-bg-neutral-primary-default flex min-w-0 items-center gap-3 rounded-lg border border-ds-border-neutral-default-default px-3 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-hover"
+              className="group flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-ds-bg-neutral-default-hover"
             >
-              <FileText
-                size={18}
-                aria-hidden
-                className="shrink-0 text-ds-icon-neutral-default-default"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
-                  {file.name}
-                </span>
-                <span className="block truncate text-label-xs text-ds-text-neutral-muted-default">
-                  {file.relativePath || changeLabel}
-                </span>
+              <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
+                {detail}
               </span>
-              <span className="shrink-0 text-label-xs font-medium text-ds-text-neutral-muted-default">
+              <span className="shrink-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
                 {changeLabel}
               </span>
             </button>
           );
         })}
+        {hiddenCount > 0 ? (
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((value) => !value)}
+            className="mt-1 flex items-center gap-1 rounded-lg px-2 py-2 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover"
+          >
+            {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
+            <ChevronDown
+              size={15}
+              aria-hidden
+              className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </button>
+        ) : null}
       </div>
     </section>
   );
