@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from contextlib import suppress
@@ -56,6 +57,7 @@ from app.run_runtime import (
 )
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
+logger = logging.getLogger("run_controller")
 
 _EVENT_PAGE_SIZE = 500
 _DEFAULT_HEARTBEAT_SECONDS = 15.0
@@ -263,6 +265,17 @@ async def list_project_runs(
 ):
     """Return canonical Run state for the main Desktop Project UI."""
 
+    # Middleware has already handed the authenticated Cloud credentials to the
+    # worker. Waiting here closes the first-open race after local SQLite was
+    # deleted: the Project query sees restored canonical history immediately,
+    # rather than only after the next navigation.
+    try:
+        from app.run_sync.runtime import bootstrap_default_cloud_history
+
+        await bootstrap_default_cloud_history()
+    except Exception:
+        # Offline Cloud repair never makes locally durable history unavailable.
+        logger.exception("Cloud Run history bootstrap failed before Project read")
     journal = get_default_run_journal()
     runs = await asyncio.to_thread(
         journal.list_runs,

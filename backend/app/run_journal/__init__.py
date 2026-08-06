@@ -14,6 +14,8 @@
 
 from app.run_journal.models import (
     ApprovalRecord,
+    CloudRunEventReplica,
+    CloudRunReplica,
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
@@ -50,6 +52,8 @@ from app.run_journal.store import (
 __all__ = [
     "SCHEMA_VERSION",
     "ApprovalRecord",
+    "CloudRunEventReplica",
+    "CloudRunReplica",
     "CommittedRunEvent",
     "CommandResultEvent",
     "CommandResultSyncBatch",

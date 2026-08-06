@@ -2187,6 +2187,20 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
+    'get-camel-log-file-list',
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getCamelLogFileList(email, taskId, projectId, userId);
+    }
+  );
+
+  ipcMain.handle(
     'delete-task-files',
     async (_, email: string, taskId: string, projectId?: string) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');

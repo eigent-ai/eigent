@@ -42,4 +42,19 @@ describe('InterruptedRunBanner', () => {
     expect(screen.getByRole('button', { name: 'Resuming…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel Run' })).toBeDisabled();
   });
+
+  it('renders cloud-restored history without execution actions', () => {
+    render(
+      <InterruptedRunBanner
+        {...props}
+        action={null}
+        readOnly
+        title="History restored from cloud"
+      />
+    );
+
+    expect(screen.getByText('History restored from cloud')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel Run' })).toBeNull();
+  });
 });

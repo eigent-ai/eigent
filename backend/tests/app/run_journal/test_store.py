@@ -21,8 +21,11 @@ import pytest
 
 from app.run_journal import (
     SCHEMA_VERSION,
+    CloudRunEventReplica,
+    CloudRunReplica,
     EventRecorder,
     IdempotencyConflictError,
+    InvalidRunTransitionError,
     OptimisticConcurrencyError,
     OutboxLeaseLostError,
     RunEventDraft,
@@ -122,6 +125,95 @@ def test_event_and_outbox_commit_atomically(journal):
     assert [(row.event_id, row.run_sequence) for row in outbox] == [
         ("event-1", 1)
     ]
+
+
+def test_cloud_history_restore_is_read_only_and_does_not_echo_to_outbox(
+    journal,
+):
+    event = CloudRunEventReplica(
+        event_id="cloud-event-1",
+        project_id="project-cloud",
+        run_id="run-cloud",
+        run_sequence=1,
+        run_version=1,
+        cloud_cursor=1,
+        event_type="message.created",
+        payload={"content": "restored"},
+        legacy_step="decompose_text",
+        created_at=10.0,
+    )
+
+    assert (
+        journal.import_cloud_project_page(
+            project_id="project-cloud",
+            after_cursor=0,
+            next_cursor=1,
+            events=[event],
+            now=11.0,
+        )
+        == 1
+    )
+    journal.reconcile_cloud_project_runs(
+        project_id="project-cloud",
+        current_cursor=1,
+        runs=[
+            CloudRunReplica(
+                run_id="run-cloud",
+                status="running",
+                expected_next_run_sequence=2,
+                updated_at=12.0,
+            )
+        ],
+        now=12.0,
+    )
+
+    restored = journal.get_run("run-cloud")
+    assert restored is not None
+    assert restored.status == "interrupted"
+    assert restored.origin == "cloud_restore"
+    assert restored.resume_blocked_reason == "cloud_restore_workspace_missing"
+    assert journal.list_events("run-cloud")[0].payload == {
+        "content": "restored"
+    }
+    assert journal.list_pending_outbox(now=float("inf")) == []
+    with pytest.raises(InvalidRunTransitionError, match="restored from Cloud"):
+        journal.create_run_attempt(
+            "run-cloud",
+            request_id="resume-cloud",
+            reason="explicit_resume",
+        )
+    with pytest.raises(InvalidRunTransitionError, match="read-only"):
+        journal.append_event(
+            "run-cloud",
+            RunEventDraft(
+                event_id="local-mutation",
+                event_type="message.created",
+                payload={"content": "must not mutate restored history"},
+            ),
+        )
+
+
+def test_cloud_history_restore_rejects_cursor_gaps(journal):
+    with pytest.raises(IdempotencyConflictError, match="not contiguous"):
+        journal.import_cloud_project_page(
+            project_id="project-cloud",
+            after_cursor=0,
+            next_cursor=2,
+            events=[
+                CloudRunEventReplica(
+                    event_id="event-2",
+                    project_id="project-cloud",
+                    run_id="run-cloud",
+                    run_sequence=1,
+                    run_version=1,
+                    cloud_cursor=2,
+                    event_type="message.created",
+                    payload={},
+                    legacy_step=None,
+                    created_at=10.0,
+                )
+            ],
+        )
 
 
 def test_duplicate_event_id_returns_original_without_allocating_sequence(

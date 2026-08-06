@@ -8,10 +8,13 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from urllib.parse import quote
 
 import httpx
 
 from app.run_journal import (
+    CloudRunEventReplica,
+    CloudRunReplica,
     OutboxLeaseLostError,
     RunEventSyncBatch,
     SQLiteRunJournal,
@@ -51,6 +54,26 @@ class RunEventSyncTransport(Protocol):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
+    async def list_projects(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> dict[str, Any]: ...
+
+    async def project_snapshot(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+    ) -> dict[str, Any]: ...
+
+    async def list_project_events(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+        *,
+        after_cursor: int,
+        limit: int,
+    ) -> dict[str, Any]: ...
+
     async def close(self) -> None: ...
 
 
@@ -87,7 +110,7 @@ class HttpRunEventSyncTransport:
         method: str,
         url: str,
         configuration: CloudSyncConfiguration,
-        payload: dict[str, Any],
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         response = await self._client.request(
             method,
@@ -113,36 +136,46 @@ class HttpRunEventSyncTransport:
             )
         return result
 
+    async def _ensure_device(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> None:
+        base = self._sync_base(configuration)
+        device_key = (base, configuration.desktop_instance_id)
+        if device_key in self._registered_devices:
+            return
+        async with self._registration_lock:
+            if device_key in self._registered_devices:
+                return
+            try:
+                await self._json_request(
+                    "POST",
+                    f"{base}/devices/register",
+                    configuration,
+                    {
+                        "capabilities": {
+                            "run_event_sync": 1,
+                            "run_history_restore": 1,
+                            "command_sync": 1,
+                        }
+                    },
+                )
+            except RunEventSyncHttpError as exc:
+                raise RunSyncInfrastructureError(str(exc)) from exc
+            self._registered_devices.add(device_key)
+
     async def _ensure_device_and_route(
         self,
         configuration: CloudSyncConfiguration,
         project_id: str,
     ) -> None:
         base = self._sync_base(configuration)
-        device_key = (
-            base,
-            configuration.desktop_instance_id,
-        )
+        device_key = (base, configuration.desktop_instance_id)
         route_key = (*device_key, project_id)
         if route_key in self._claimed_routes:
             return
+        await self._ensure_device(configuration)
         async with self._registration_lock:
-            if device_key not in self._registered_devices:
-                try:
-                    await self._json_request(
-                        "POST",
-                        f"{base}/devices/register",
-                        configuration,
-                        {
-                            "capabilities": {
-                                "run_event_sync": 1,
-                                "command_sync": 1,
-                            }
-                        },
-                    )
-                except RunEventSyncHttpError as exc:
-                    raise RunSyncInfrastructureError(str(exc)) from exc
-                self._registered_devices.add(device_key)
             if route_key not in self._claimed_routes:
                 try:
                     await self._json_request(
@@ -169,6 +202,48 @@ class HttpRunEventSyncTransport:
             configuration.endpoint_url,
             configuration,
             payload,
+        )
+
+    async def list_projects(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        return await self._json_request(
+            "GET",
+            f"{self._sync_base(configuration)}/projects",
+            configuration,
+        )
+
+    async def project_snapshot(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        encoded_project_id = quote(project_id, safe="")
+        return await self._json_request(
+            "GET",
+            f"{self._sync_base(configuration)}/projects/{encoded_project_id}/snapshot"
+            "?event_limit=1",
+            configuration,
+        )
+
+    async def list_project_events(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+        *,
+        after_cursor: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        encoded_project_id = quote(project_id, safe="")
+        return await self._json_request(
+            "GET",
+            f"{self._sync_base(configuration)}/projects/{encoded_project_id}/events"
+            f"?after_cursor={after_cursor}&limit={limit}",
+            configuration,
         )
 
     async def close(self) -> None:
@@ -202,8 +277,16 @@ class CloudSyncWorker:
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._closed = False
+        self._bootstrap_pending = False
+        self._bootstrap_lock = asyncio.Lock()
+        self._bootstrap_attempt_count = 0
+        self._bootstrap_next_attempt_at = 0.0
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
+        if configuration != self._configuration:
+            self._bootstrap_pending = True
+            self._bootstrap_attempt_count = 0
+            self._bootstrap_next_attempt_at = 0.0
         self._configuration = configuration
         self.notify()
 
@@ -225,6 +308,18 @@ class CloudSyncWorker:
         configuration = self._configuration
         if configuration is None:
             return 0
+        if (
+            self._bootstrap_pending
+            and time.monotonic() >= self._bootstrap_next_attempt_at
+        ):
+            try:
+                await self.bootstrap_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Restore freshness must not block the durable outbound lane.
+                # Keep the flag set so the normal poll loop retries.
+                logger.exception("Cloud Run history bootstrap failed")
         batches = await asyncio.to_thread(
             self._journal.claim_ready_outbox_batches,
             max_runs=self._max_parallel_runs,
@@ -239,6 +334,210 @@ class CloudSyncWorker:
         # Drain another slice without waiting when more Runs or events are ready.
         self.notify()
         return sum(results)
+
+    async def bootstrap_once(self) -> None:
+        """Synchronously repair the local read replica once per credential set."""
+
+        configuration = self._configuration
+        if (
+            configuration is None
+            or not self._bootstrap_pending
+            or time.monotonic() < self._bootstrap_next_attempt_at
+        ):
+            return
+        async with self._bootstrap_lock:
+            configuration = self._configuration
+            if (
+                configuration is None
+                or not self._bootstrap_pending
+                or time.monotonic() < self._bootstrap_next_attempt_at
+            ):
+                return
+            try:
+                await self._bootstrap_history(configuration)
+            except Exception:
+                self._bootstrap_attempt_count += 1
+                self._bootstrap_next_attempt_at = time.monotonic() + min(
+                    2 ** min(self._bootstrap_attempt_count, 8),
+                    self._max_retry_seconds,
+                )
+                raise
+
+    async def _bootstrap_history(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> None:
+        list_projects = getattr(self._transport, "list_projects", None)
+        project_snapshot = getattr(self._transport, "project_snapshot", None)
+        list_events = getattr(self._transport, "list_project_events", None)
+        if (
+            not callable(list_projects)
+            or not callable(project_snapshot)
+            or not callable(list_events)
+        ):
+            # Compatibility for custom transports written before bootstrap was
+            # introduced. Production HTTP transport always implements it.
+            self._bootstrap_pending = False
+            self._bootstrap_attempt_count = 0
+            self._bootstrap_next_attempt_at = 0.0
+            return
+        projects_response = await list_projects(configuration)
+        project_items = projects_response.get("items")
+        if not isinstance(project_items, list):
+            raise RunEventSyncProtocolError(
+                "Run sync project list must contain an items array"
+            )
+        for item in project_items:
+            if not isinstance(item, dict) or not str(
+                item.get("project_id") or ""
+            ).strip():
+                raise RunEventSyncProtocolError(
+                    "invalid Run sync project descriptor"
+                )
+            project_id = str(item["project_id"])
+            # Snapshot and event paging may race a new ingest. Repeat until the
+            # snapshot watermark matches the locally imported cursor.
+            for _ in range(3):
+                snapshot = await project_snapshot(configuration, project_id)
+                if snapshot.get("project_id") != project_id:
+                    raise RunEventSyncProtocolError(
+                        "Run sync snapshot scope does not match request"
+                    )
+                target_cursor = int(snapshot.get("current_cursor", 0))
+                cursor = await asyncio.to_thread(
+                    self._journal.get_cloud_project_cursor, project_id
+                )
+                if cursor > target_cursor:
+                    # The local replica may have observed a newer page watermark
+                    # than this concurrently generated snapshot; refresh it.
+                    continue
+                while cursor < target_cursor:
+                    page = await list_events(
+                        configuration,
+                        project_id,
+                        after_cursor=cursor,
+                        limit=self._batch_size,
+                    )
+                    if page.get("project_id") != project_id:
+                        raise RunEventSyncProtocolError(
+                            "Run sync event page scope does not match request"
+                        )
+                    raw_items = page.get("items")
+                    if not isinstance(raw_items, list):
+                        raise RunEventSyncProtocolError(
+                            "Run sync event page must contain an items array"
+                        )
+                    replicas = [
+                        self._cloud_event_from_payload(project_id, raw)
+                        for raw in raw_items
+                    ]
+                    next_cursor = int(page.get("next_cursor", cursor))
+                    if next_cursor <= cursor:
+                        raise RunEventSyncProtocolError(
+                            "Run sync event page did not advance its cursor"
+                        )
+                    await asyncio.to_thread(
+                        self._journal.import_cloud_project_page,
+                        project_id=project_id,
+                        after_cursor=cursor,
+                        next_cursor=next_cursor,
+                        events=replicas,
+                    )
+                    cursor = next_cursor
+                    target_cursor = max(
+                        target_cursor, int(page.get("current_cursor", cursor))
+                    )
+                if target_cursor != int(snapshot.get("current_cursor", 0)):
+                    continue
+                raw_runs = snapshot.get("runs")
+                if not isinstance(raw_runs, list):
+                    raise RunEventSyncProtocolError(
+                        "Run sync snapshot must contain a runs array"
+                    )
+                runs = [self._cloud_run_from_payload(raw) for raw in raw_runs]
+                try:
+                    await asyncio.to_thread(
+                        self._journal.reconcile_cloud_project_runs,
+                        project_id=project_id,
+                        current_cursor=target_cursor,
+                        runs=runs,
+                    )
+                except Exception:
+                    if target_cursor != int(snapshot.get("current_cursor", 0)):
+                        continue
+                    raise
+                break
+            else:
+                raise RunEventSyncProtocolError(
+                    f"Run sync snapshot for {project_id!r} did not stabilize"
+                )
+        if self._configuration == configuration:
+            self._bootstrap_pending = False
+            self._bootstrap_attempt_count = 0
+            self._bootstrap_next_attempt_at = 0.0
+
+    @staticmethod
+    def _timestamp(value: Any) -> float:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if not isinstance(value, str):
+            raise RunEventSyncProtocolError("Run sync timestamp is invalid")
+        try:
+            return datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            ).timestamp()
+        except ValueError as exc:
+            raise RunEventSyncProtocolError(
+                "Run sync timestamp is invalid"
+            ) from exc
+
+    @classmethod
+    def _cloud_event_from_payload(
+        cls,
+        project_id: str,
+        raw: Any,
+    ) -> CloudRunEventReplica:
+        if not isinstance(raw, dict) or not isinstance(
+            raw.get("payload"), dict
+        ):
+            raise RunEventSyncProtocolError("invalid canonical Run event")
+        try:
+            return CloudRunEventReplica(
+                event_id=str(raw["event_id"]),
+                project_id=str(raw.get("project_id") or project_id),
+                run_id=str(raw["run_id"]),
+                run_sequence=int(raw["run_sequence"]),
+                run_version=int(raw["run_version"]),
+                cloud_cursor=int(raw["cloud_cursor"]),
+                event_type=str(raw["event_type"]),
+                payload=dict(raw["payload"]),
+                legacy_step=(
+                    str(raw["legacy_step"])
+                    if raw.get("legacy_step") is not None
+                    else None
+                ),
+                created_at=cls._timestamp(raw["created_at"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RunEventSyncProtocolError(
+                "invalid canonical Run event"
+            ) from exc
+
+    @classmethod
+    def _cloud_run_from_payload(cls, raw: Any) -> CloudRunReplica:
+        if not isinstance(raw, dict):
+            raise RunEventSyncProtocolError("invalid canonical Run")
+        try:
+            return CloudRunReplica(
+                run_id=str(raw["run_id"]),
+                status=str(raw["status"]),
+                expected_next_run_sequence=int(
+                    raw["expected_next_run_sequence"]
+                ),
+                updated_at=cls._timestamp(raw["updated_at"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RunEventSyncProtocolError("invalid canonical Run") from exc
 
     async def _run(self) -> None:
         while not self._closed:

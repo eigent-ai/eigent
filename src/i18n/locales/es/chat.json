@@ -113,6 +113,8 @@
   "minimize-plan": "Minimizar plan",
   "expand-subtasks": "Expandir subtareas",
   "add-subtask-placeholder": "Añade una nueva subtarea y pulsa Enter para añadir más",
+  "run-cloud-restored-title": "Historial restaurado desde la nube",
+  "run-cloud-restored-description": "Esta ejecución está disponible como historial de solo lectura. Este dispositivo no tiene el espacio de trabajo ni el contexto de ejecución originales; envía un seguimiento para iniciar una ejecución nueva.",
   "run-interrupted-title": "Ejecución interrumpida",
   "run-interrupted-description": "Eigent se cerró antes de terminar esta ejecución. El trabajo completado está guardado. Al reanudar se creará un nuevo intento y no se repetirán automáticamente las acciones externas completadas.",
   "run-resume": "Reanudar",

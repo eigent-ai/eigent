@@ -14,6 +14,7 @@ interface InterruptedRunBannerProps {
   onResume: () => void;
   onCancel: () => void;
   compact?: boolean;
+  readOnly?: boolean;
 }
 
 export function InterruptedRunBanner({
@@ -28,6 +29,7 @@ export function InterruptedRunBanner({
   onResume,
   onCancel,
   compact = false,
+  readOnly = false,
 }: InterruptedRunBannerProps) {
   return (
     <div
@@ -49,26 +51,28 @@ export function InterruptedRunBanner({
             )}
           </div>
           <p className="mt-1 text-xs leading-5 opacity-80">{description}</p>
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onResume}
-              disabled={action !== null}
-              className="text-white inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-900 px-3 text-xs font-medium disabled:opacity-50 dark:bg-amber-100 dark:text-amber-950"
-            >
-              <RotateCcw className="size-3.5" aria-hidden="true" />
-              {action === 'resuming' ? resumingLabel : resumeLabel}
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={action !== null}
-              className="dark:hover:bg-amber-900/50 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium opacity-75 hover:bg-amber-100 disabled:opacity-40"
-            >
-              <X className="size-3.5" aria-hidden="true" />
-              {action === 'cancelling' ? cancellingLabel : cancelLabel}
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onResume}
+                disabled={action !== null}
+                className="text-white inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-900 px-3 text-xs font-medium disabled:opacity-50 dark:bg-amber-100 dark:text-amber-950"
+              >
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                {action === 'resuming' ? resumingLabel : resumeLabel}
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={action !== null}
+                className="dark:hover:bg-amber-900/50 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium opacity-75 hover:bg-amber-100 disabled:opacity-40"
+              >
+                <X className="size-3.5" aria-hidden="true" />
+                {action === 'cancelling' ? cancellingLabel : cancelLabel}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

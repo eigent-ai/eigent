@@ -113,6 +113,8 @@
   "minimize-plan": "Riduci piano",
   "expand-subtasks": "Espandi sottoattività",
   "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre",
+  "run-cloud-restored-title": "Cronologia ripristinata dal cloud",
+  "run-cloud-restored-description": "Questa esecuzione è disponibile come cronologia di sola lettura. Lo spazio di lavoro locale e il contesto di esecuzione originali non sono presenti su questo dispositivo; invia un follow-up per avviare una nuova esecuzione.",
   "run-interrupted-title": "Esecuzione interrotta",
   "run-interrupted-description": "Eigent si è arrestato prima del completamento. Il lavoro completato è stato salvato. La ripresa crea un nuovo tentativo e non ripete automaticamente le azioni esterne già completate.",
   "run-resume": "Riprendi",

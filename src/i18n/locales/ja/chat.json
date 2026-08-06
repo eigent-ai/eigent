@@ -113,6 +113,8 @@
   "minimize-plan": "計画を最小化",
   "expand-subtasks": "サブタスクを展開",
   "add-subtask-placeholder": "新しいサブタスクを追加し、Enter キーでさらに追加",
+  "run-cloud-restored-title": "クラウドから履歴を復元しました",
+  "run-cloud-restored-description": "この実行は読み取り専用の履歴として利用できます。この端末には元のローカルワークスペースと実行コンテキストがないため再開できません。フォローアップを送信すると新しい実行が開始されます。",
   "run-interrupted-title": "実行が中断されました",
   "run-interrupted-description": "この実行が完了する前に Eigent が終了しました。完了済みの作業は保存されています。再開すると新しい試行が作成され、完了済みの外部操作は自動的に繰り返されません。",
   "run-resume": "再開",

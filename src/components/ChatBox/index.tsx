@@ -88,6 +88,8 @@ interface DurableRunSummary {
   project_id: string;
   status: string;
   updated_at: number;
+  origin?: 'local' | 'cloud_restore';
+  resume_blocked_reason?: string | null;
   latest_attempt?: {
     attempt_number: number;
     status: string;
@@ -298,6 +300,7 @@ export default function ChatBox(): JSX.Element {
     useState<DurableRunSummary | null>(null);
   const [durableRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
+  const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
   const refreshInterruptedRun = useCallback(async () => {
     if (!activeProjectId) {
@@ -1423,8 +1426,16 @@ export default function ChatBox(): JSX.Element {
 
               {interruptedRun && (
                 <InterruptedRunBanner
-                  title={t('chat.run-interrupted-title')}
-                  description={t('chat.run-interrupted-description')}
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}
@@ -1432,6 +1443,7 @@ export default function ChatBox(): JSX.Element {
                   cancellingLabel={t('chat.run-cancelling')}
                   onResume={handleResumeInterruptedRun}
                   onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
                 />
               )}
 
@@ -1487,8 +1499,16 @@ export default function ChatBox(): JSX.Element {
               {interruptedRun && (
                 <InterruptedRunBanner
                   compact
-                  title={t('chat.run-interrupted-title')}
-                  description={t('chat.run-interrupted-description')}
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
                   attemptNumber={interruptedRun.latest_attempt?.attempt_number}
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
@@ -1497,6 +1517,7 @@ export default function ChatBox(): JSX.Element {
                   cancellingLabel={t('chat.run-cancelling')}
                   onResume={handleResumeInterruptedRun}
                   onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
                 />
               )}
               <BottomBox

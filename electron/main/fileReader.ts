@@ -870,6 +870,31 @@ export class FileReader {
   }
 
   /**
+   * Return diagnostic logs only. This intentionally does not traverse the
+   * selected project folder: collecting logs must never discover or imply
+   * upload consent for files that already existed in a user's workspace.
+   */
+  public getCamelLogFileList(
+    email: string,
+    taskId: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): FileInfo[] {
+    const { logPath } = this.resolveTaskPaths(email, taskId, projectId, userId);
+    const camelLogPath = path.join(logPath, 'camel_logs');
+    if (!fs.existsSync(camelLogPath)) return [];
+    try {
+      return this.getFilesRecursive(camelLogPath, camelLogPath).map((file) => ({
+        ...file,
+        source: 'camel_log' as const,
+      }));
+    } catch (err) {
+      console.error('Load camel logs failed:', err);
+      return [];
+    }
+  }
+
+  /**
    * Resolves the `camel_logs` directories to export as `{ src, destName }`
    * entries (destName is the path inside `~/.eigent`, so the zip stays readable).
    *

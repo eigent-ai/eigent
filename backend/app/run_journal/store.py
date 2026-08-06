@@ -35,6 +35,8 @@ from typing import Any
 
 from app.run_journal.models import (
     ApprovalRecord,
+    CloudRunEventReplica,
+    CloudRunReplica,
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
@@ -64,7 +66,7 @@ from app.run_policy import (
     automatic_tool_replay_allowed,
 )
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -307,6 +309,27 @@ PRAGMA user_version = 4;
 COMMIT;
 """
 
+_MIGRATION_V5 = """
+BEGIN IMMEDIATE;
+
+ALTER TABLE runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'local' CHECK (
+    origin IN ('local', 'cloud_restore')
+);
+ALTER TABLE runs ADD COLUMN resume_blocked_reason TEXT;
+
+CREATE TABLE cloud_project_replicas (
+    project_id TEXT PRIMARY KEY,
+    last_cursor INTEGER NOT NULL DEFAULT 0 CHECK (last_cursor >= 0),
+    last_synced_at REAL NOT NULL
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (5, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 5;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -499,6 +522,264 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._run_from_row(row) for row in rows]
 
+    def get_cloud_project_cursor(self, project_id: str) -> int:
+        """Return the last canonical Cloud cursor imported into this device."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT last_cursor FROM cloud_project_replicas WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            return int(row["last_cursor"]) if row is not None else 0
+
+    def import_cloud_project_page(
+        self,
+        *,
+        project_id: str,
+        after_cursor: int,
+        next_cursor: int,
+        events: list[CloudRunEventReplica],
+        now: float | None = None,
+    ) -> int:
+        """Import a canonical PG event page without creating a new upload outbox.
+
+        This is a read replica repair path. Imported history is deliberately
+        marked ``cloud_restore`` so it can be rendered after local data loss,
+        but cannot be mistaken for a locally executable Run with a bound
+        workspace and credentials.
+        """
+
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        if after_cursor < 0 or next_cursor < after_cursor:
+            raise ValueError("invalid cloud cursor range")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            cursor_row = connection.execute(
+                "SELECT last_cursor FROM cloud_project_replicas WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            persisted_cursor = (
+                int(cursor_row["last_cursor"]) if cursor_row is not None else 0
+            )
+            if persisted_cursor != after_cursor:
+                raise OptimisticConcurrencyError(
+                    f"project {project_id!r} cloud cursor expected {after_cursor}, "
+                    f"found {persisted_cursor}"
+                )
+            expected_cursors = list(
+                range(after_cursor + 1, after_cursor + 1 + len(events))
+            )
+            if [event.cloud_cursor for event in events] != expected_cursors:
+                raise IdempotencyConflictError(
+                    f"project {project_id!r} cloud event page is not contiguous"
+                )
+            if (events[-1].cloud_cursor if events else after_cursor) != next_cursor:
+                raise IdempotencyConflictError(
+                    f"project {project_id!r} next_cursor does not match its event page"
+                )
+
+            for event in events:
+                if event.project_id != project_id:
+                    raise IdempotencyConflictError(
+                        f"event {event.event_id!r} belongs to another project"
+                    )
+                if event.run_sequence < 1 or event.run_version < 1:
+                    raise ValueError("cloud Run sequence and version must be positive")
+                payload_json = json.dumps(
+                    event.payload,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                run = connection.execute(
+                    "SELECT * FROM runs WHERE run_id = ?", (event.run_id,)
+                ).fetchone()
+                if run is None:
+                    connection.execute(
+                        """
+                        INSERT INTO runs(
+                            run_id, project_id, status, version,
+                            active_attempt_id, deadline_at,
+                            timeout_policy_version, created_at, updated_at,
+                            origin, resume_blocked_reason
+                        ) VALUES (?, ?, 'interrupted', 0, NULL, NULL, 'v1',
+                                  ?, ?, 'cloud_restore',
+                                  'cloud_restore_workspace_missing')
+                        """,
+                        (
+                            event.run_id,
+                            project_id,
+                            event.created_at,
+                            event.created_at,
+                        ),
+                    )
+                    run = connection.execute(
+                        "SELECT * FROM runs WHERE run_id = ?", (event.run_id,)
+                    ).fetchone()
+                assert run is not None
+                if run["project_id"] != project_id:
+                    raise IdempotencyConflictError(
+                        f"run_id {event.run_id!r} belongs to another project"
+                    )
+
+                duplicate = connection.execute(
+                    "SELECT * FROM run_events WHERE event_id = ?",
+                    (event.event_id,),
+                ).fetchone()
+                sequence_owner = connection.execute(
+                    "SELECT * FROM run_events WHERE run_id = ? AND sequence = ?",
+                    (event.run_id, event.run_sequence),
+                ).fetchone()
+                existing = duplicate or sequence_owner
+                if existing is not None:
+                    if (
+                        existing["event_id"] != event.event_id
+                        or existing["run_id"] != event.run_id
+                        or int(existing["sequence"]) != event.run_sequence
+                        or int(existing["run_version"]) != event.run_version
+                        or existing["event_type"] != event.event_type
+                        or existing["payload_json"] != payload_json
+                        or existing["legacy_step"] != event.legacy_step
+                    ):
+                        raise IdempotencyConflictError(
+                            f"cloud event {event.event_id!r} conflicts with local history"
+                        )
+                else:
+                    connection.execute(
+                        """
+                        INSERT INTO run_events(
+                            event_id, run_id, sequence, run_version, event_type,
+                            payload_json, legacy_step, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            event.event_id,
+                            event.run_id,
+                            event.run_sequence,
+                            event.run_version,
+                            event.event_type,
+                            payload_json,
+                            event.legacy_step,
+                            event.created_at,
+                        ),
+                    )
+                projected_status = self._terminal_status_for_event(
+                    RunEventDraft(
+                        event_id=event.event_id,
+                        event_type=event.event_type,
+                        payload=event.payload,
+                        legacy_step=event.legacy_step,
+                        created_at=event.created_at,
+                    )
+                )
+                if run["origin"] == "cloud_restore":
+                    connection.execute(
+                        """
+                        UPDATE runs
+                        SET version = MAX(version, ?),
+                            status = COALESCE(?, status),
+                            updated_at = MAX(updated_at, ?)
+                        WHERE run_id = ?
+                        """,
+                        (
+                            event.run_version,
+                            projected_status,
+                            event.created_at,
+                            event.run_id,
+                        ),
+                    )
+
+            connection.execute(
+                """
+                INSERT INTO cloud_project_replicas(project_id, last_cursor, last_synced_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    last_cursor = excluded.last_cursor,
+                    last_synced_at = excluded.last_synced_at
+                """,
+                (project_id, next_cursor, timestamp),
+            )
+            return next_cursor
+
+    def reconcile_cloud_project_runs(
+        self,
+        *,
+        project_id: str,
+        current_cursor: int,
+        runs: list[CloudRunReplica],
+        now: float | None = None,
+    ) -> None:
+        """Apply Cloud aggregate status after every event page was imported."""
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            cursor = connection.execute(
+                "SELECT last_cursor FROM cloud_project_replicas WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            local_cursor = int(cursor["last_cursor"]) if cursor else 0
+            if local_cursor != current_cursor:
+                raise OptimisticConcurrencyError(
+                    f"project {project_id!r} bootstrap ended at {local_cursor}, "
+                    f"server watermark is {current_cursor}"
+                )
+            for replica in runs:
+                row = connection.execute(
+                    "SELECT * FROM runs WHERE run_id = ?", (replica.run_id,)
+                ).fetchone()
+                if row is None:
+                    # A canonical Run without events is not executable either;
+                    # retain it so the UI can show that recovery is incomplete.
+                    connection.execute(
+                        """
+                        INSERT INTO runs(
+                            run_id, project_id, status, version,
+                            active_attempt_id, deadline_at,
+                            timeout_policy_version, created_at, updated_at,
+                            origin, resume_blocked_reason
+                        ) VALUES (?, ?, ?, ?, NULL, NULL, 'v1', ?, ?,
+                                  'cloud_restore',
+                                  'cloud_restore_workspace_missing')
+                        """,
+                        (
+                            replica.run_id,
+                            project_id,
+                            self._cloud_restored_status(replica.status),
+                            max(0, replica.expected_next_run_sequence - 1),
+                            replica.updated_at,
+                            replica.updated_at,
+                        ),
+                    )
+                    continue
+                if row["project_id"] != project_id:
+                    raise IdempotencyConflictError(
+                        f"run_id {replica.run_id!r} belongs to another project"
+                    )
+                if row["origin"] == "cloud_restore":
+                    connection.execute(
+                        """
+                        UPDATE runs
+                        SET status = ?, version = MAX(version, ?),
+                            updated_at = MAX(updated_at, ?),
+                            resume_blocked_reason = 'cloud_restore_workspace_missing'
+                        WHERE run_id = ?
+                        """,
+                        (
+                            self._cloud_restored_status(replica.status),
+                            max(0, replica.expected_next_run_sequence - 1),
+                            replica.updated_at,
+                            replica.run_id,
+                        ),
+                    )
+            connection.execute(
+                """
+                UPDATE cloud_project_replicas
+                SET last_synced_at = ? WHERE project_id = ?
+                """,
+                (timestamp, project_id),
+            )
+
     def append_event(
         self,
         run_id: str,
@@ -654,6 +935,12 @@ class SQLiteRunJournal:
                         f"attempt request_id {request_id!r} was reused with a different reason"
                     )
                 return self._attempt_from_row(duplicate)
+            if run["origin"] == "cloud_restore":
+                raise InvalidRunTransitionError(
+                    f"run {run_id!r} was restored from Cloud without its local "
+                    "workspace and execution context; start a new Run or fork it "
+                    "after explicitly binding a workspace"
+                )
             if run["status"] in {"completed", "failed", "cancelled"}:
                 raise InvalidRunTransitionError(
                     f"cannot create an attempt for terminal run {run_id!r}"
@@ -2756,6 +3043,10 @@ class SQLiteRunJournal:
         ).fetchone()
         if run is None:
             raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+        if run["origin"] == "cloud_restore":
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} is read-only Cloud-restored history"
+            )
         if run_status is not None and not transition_allowed(
             RUN_TRANSITIONS,
             str(run["status"]),
@@ -2869,6 +3160,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V3)
         if version < 4:
             self._connection.executescript(_MIGRATION_V4)
+        if version < 5:
+            self._connection.executescript(_MIGRATION_V5)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -3046,7 +3339,15 @@ class SQLiteRunJournal:
                 if row["cancel_requested_at"] is not None
                 else None
             ),
+            origin=row["origin"],
+            resume_blocked_reason=row["resume_blocked_reason"],
         )
+
+    @staticmethod
+    def _cloud_restored_status(status: str) -> str:
+        if status in {"completed", "failed", "cancelled"}:
+            return status
+        return "interrupted"
 
     @staticmethod
     def _attempt_from_row(row: sqlite3.Row) -> RunAttemptRecord:
