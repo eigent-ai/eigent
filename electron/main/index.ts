@@ -53,6 +53,7 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import { filePathFromLocalFileUrl } from './localFileUrl';
 import { setRoundedCorners } from './native/macos-window';
 import {
   completeCodexOAuthCallback,
@@ -3455,14 +3456,17 @@ app.whenReady().then(async () => {
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, _webContents) => {
     item.once('done', (_event, _state) => {
-      shell.showItemInFolder(item.getURL().replace('localfile://', ''));
+      const itemUrl = item.getURL();
+      if (itemUrl.startsWith('localfile:')) {
+        shell.showItemInFolder(filePathFromLocalFileUrl(itemUrl));
+      }
     });
   });
 
   // ==================== protocol handle ====================
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
-    const url = decodeURIComponent(request.url.replace('localfile://', ''));
+    const url = filePathFromLocalFileUrl(request.url);
     const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
     const filePath = path.resolve(path.normalize(normalizedUrl));
 

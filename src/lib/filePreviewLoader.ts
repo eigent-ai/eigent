@@ -185,16 +185,10 @@ async function readRemotePrefix(
   };
 }
 
-function toLocalPreviewUrl(filePath: string): string {
+export function toLocalPreviewUrl(filePath: string): string {
   if (/^(localfile|https?|blob|data):/i.test(filePath)) return filePath;
   const normalized = filePath.replace(/\\/g, '/');
-  const encoded = normalized
-    .split('/')
-    .map((segment, index) =>
-      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
-    )
-    .join('/');
-  return `localfile://${encoded}`;
+  return `localfile://preview/?path=${encodeURIComponent(normalized)}`;
 }
 
 function truncateCell(value: unknown): string {
