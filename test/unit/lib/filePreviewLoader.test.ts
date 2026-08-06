@@ -15,6 +15,7 @@
 import {
   loadFilePreview,
   parseBoundedCsvPreview,
+  toLocalPreviewUrl,
 } from '@/lib/filePreviewLoader';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +50,12 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  it('keeps an absolute local path out of the custom URL hostname', () => {
+    expect(toLocalPreviewUrl('/Users/Example User/report.pdf')).toBe(
+      'localfile://preview/?path=%2FUsers%2FExample%20User%2Freport.pdf'
+    );
+  });
+
   it('uses metadata then returns a range URL without reading PDF content', async () => {
     const invoke = vi.fn().mockResolvedValue({
       size: 1024,
@@ -66,7 +73,9 @@ describe('loadFilePreview', () => {
       'get-file-preview-metadata',
       '/workspace/report.pdf'
     );
-    expect(result.content).toBe('localfile:///workspace/report.pdf');
+    expect(result.content).toBe(
+      'localfile://preview/?path=%2Fworkspace%2Freport.pdf'
+    );
     expect(result.preview).toMatchObject({ kind: 'range-pdf', size: 1024 });
   });
 
