@@ -644,6 +644,48 @@ def test_late_tool_timeout_cannot_overwrite_completed_outcome(tmp_path):
         assert tool.outcome == "completed"
 
 
+def test_tool_timeout_cannot_mutate_a_tool_owned_by_another_run(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.ensure_run(run_id="run-2", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-owned-by-run-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="publish_message",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"channel": "public"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **values)
+
+        with pytest.raises(
+            InvalidRunTransitionError, match="belongs to run 'run-1'"
+        ):
+            journal.record_timeout_outcome(
+                TimeoutOutcome(
+                    scope=TimeoutScope.TOOL,
+                    policy_version="v1",
+                    reason="cross_run_timer",
+                    started_at=2,
+                    ended_at=4,
+                    run_id="run-2",
+                    tool_call_id="tool-owned-by-run-1",
+                )
+            )
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.status == "dispatched"
+        assert tool.outcome is None
+
+
 def test_unsafe_write_cannot_enter_replayable_timed_out_state(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")

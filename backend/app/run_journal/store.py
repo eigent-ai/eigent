@@ -1560,6 +1560,11 @@ class SQLiteRunJournal:
                     raise RunNotFoundError(
                         f"tool_call_id {outcome.tool_call_id!r} does not exist"
                     )
+                if tool["run_id"] != outcome.run_id:
+                    raise InvalidRunTransitionError(
+                        f"tool call {outcome.tool_call_id!r} belongs to run "
+                        f"{tool['run_id']!r}, not {outcome.run_id!r}"
+                    )
                 if tool["status"] in {"completed", "failed"}:
                     raise InvalidRunTransitionError(
                         f"tool call {outcome.tool_call_id!r} is already {tool['status']}"
