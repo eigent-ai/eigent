@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchGet, proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import {
   deleteCachedProject,
@@ -1342,6 +1342,41 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         : null;
 
     try {
+      // A local RunJournal entry is newer and stronger than both the legacy
+      // cloud playback projection and an IndexedDB snapshot derived from it.
+      // Query once per Project, then replay matching tasks through Brain's
+      // canonical SQLite stream. Projects created on another device have no
+      // local Run and intentionally retain the cloud fallback.
+      const localRunsById = new Map<string, { status?: string }>();
+      try {
+        const localRuns = await fetchGet('/runs', {
+          project_id: loadProjectId,
+          limit: 100,
+        });
+        for (const run of localRuns?.runs ?? []) {
+          if (run?.run_id) {
+            localRunsById.set(String(run.run_id), {
+              status: typeof run.status === 'string' ? run.status : undefined,
+            });
+          }
+        }
+      } catch (localRunError) {
+        console.info(
+          `[ProjectStore] Local RunJournal unavailable for ${loadProjectId}; using cloud history`,
+          localRunError
+        );
+      }
+
+      const hasCanonicalLocalHistory = taskIds.some((taskId) =>
+        localRunsById.has(taskId)
+      );
+      if (hasCanonicalLocalHistory && cacheScope) {
+        // Do not leave a legacy-derived snapshot available for a later
+        // session to mistake for canonical history if Brain was temporarily
+        // unavailable during that open.
+        await deleteCachedProject(cacheScope);
+      }
+
       // Fast path: rehydrate only a cache snapshot proven current by the
       // server freshness anchor. If the server moved on while the renderer
       // was detached, discard the snapshot and replay during this same open.
@@ -1352,7 +1387,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // Concurrency: the `await getCachedProject` yields control. The user
       // might switch to a different project before it resolves. We bail
       // before mutating state if the active project no longer matches.
-      if (cacheScope) {
+      if (cacheScope && !hasCanonicalLocalHistory) {
         try {
           const cached = await getCachedProject(cacheScope);
           if (get().activeProjectId !== loadProjectId) {
@@ -1438,14 +1473,23 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const chatStore = project.chatStores[chatId];
           if (chatStore) {
             try {
-              await chatStore
-                .getState()
-                .replay(
+              const replay = chatStore.getState().replay;
+              if (localRunsById.has(taskId)) {
+                await replay(
+                  taskId,
+                  taskQuestionsById?.[taskId] || question,
+                  0,
+                  loadProjectId,
+                  'local_durable'
+                );
+              } else {
+                await replay(
                   taskId,
                   taskQuestionsById?.[taskId] || question,
                   0,
                   loadProjectId
                 );
+              }
               loadedChatStoresByTaskId.set(taskId, chatStore);
               console.log(`[ProjectStore] Loaded task ${taskId}`);
             } catch (error) {
@@ -1537,6 +1581,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         );
         if (
           cacheScope &&
+          !hasCanonicalLocalHistory &&
           liveUserId === cacheScope.userId &&
           allTasksLoaded &&
           loadedChatStoresByTaskId.size > 0
