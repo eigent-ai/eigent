@@ -19,12 +19,14 @@ import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
 const {
   deleteCachedProjectMock,
+  fetchGetMock,
   getCachedProjectMock,
   hasActiveSSEConnectionMock,
   proxyFetchGetMock,
   replayMock,
 } = vi.hoisted(() => ({
   deleteCachedProjectMock: vi.fn(),
+  fetchGetMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
@@ -35,6 +37,7 @@ vi.mock('@/api/http', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/http')>();
   return {
     ...actual,
+    fetchGet: fetchGetMock,
     proxyFetchGet: proxyFetchGetMock,
   };
 });
@@ -77,6 +80,7 @@ describe('projectStore runtime shape', () => {
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    fetchGetMock.mockResolvedValue({ runs: [] });
     proxyFetchGetMock.mockResolvedValue({ tasks: [] });
     replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
@@ -311,6 +315,66 @@ describe('projectStore runtime shape', () => {
       expect(
         useProjectStore.getState().staleProjectIds.has('project_stale_cache')
       ).toBe(false);
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('prefers canonical local Run history over a fresh legacy cache', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [{ run_id: 'task_local', status: 'completed' }],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 1,
+        cachedAt: 200,
+        serverUpdatedAt: 200,
+        taskIds: ['task_local'],
+        tasks: {
+          task_local: {
+            taskState: {
+              status: 'running',
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_local'],
+          'long-running prompt',
+          'project_local',
+          'history_local',
+          'Local canonical project',
+          'space_test',
+          { task_local: 'long-running prompt' },
+          200
+        );
+
+      expect(fetchGetMock).toHaveBeenCalledWith('/runs', {
+        project_id: 'project_local',
+        limit: 100,
+      });
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_local',
+      });
+      expect(getCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_local',
+        'long-running prompt',
+        0,
+        'project_local',
+        'local_durable'
+      );
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }

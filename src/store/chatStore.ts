@@ -742,6 +742,8 @@ export interface StartTaskOptions {
   historyId?: string | number | null;
   /** Execute a new Attempt on an existing interrupted durable Run. */
   resumeRequestId?: string;
+  /** Reconstruct replay UI from the canonical local RunJournal. */
+  replaySource?: 'cloud' | 'local_durable';
 }
 
 export interface ChatStore {
@@ -766,7 +768,8 @@ export interface ChatStore {
     taskId: string,
     question: string,
     time: number,
-    projectId?: string
+    projectId?: string,
+    source?: 'cloud' | 'local_durable'
   ) => Promise<void>;
   startTask: (
     taskId: string,
@@ -1666,7 +1669,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         type == 'share'
           ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            ? startOptions.replaySource === 'local_durable'
+              ? `/runs/${encodeURIComponent(newTaskId)}/legacy-stream?after_sequence=0`
+              : `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
             : '/chat';
 
       const { tasks: _tasks } = get();
@@ -1682,7 +1687,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let playbackLastStepTimeMs: number | null = null;
 
       // replay or share request
-      if (type) {
+      if (type && startOptions.replaySource !== 'local_durable') {
         const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
@@ -4420,7 +4425,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       taskId: string,
       question: string,
       time: number,
-      projectId?: string
+      projectId?: string,
+      source: 'cloud' | 'local_durable' = 'cloud'
     ) => {
       const {
         create,
@@ -4457,7 +4463,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           undefined,
           undefined,
           undefined,
-          project_id
+          project_id,
+          undefined,
+          { replaySource: source }
         );
         setActiveTaskId(taskId);
         handleConfirmTask(project_id, taskId, 'replay');

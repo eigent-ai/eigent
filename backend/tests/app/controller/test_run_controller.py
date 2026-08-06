@@ -24,6 +24,7 @@ from app.controller.run_controller import (
     _is_terminal,
     get_run,
     get_run_events,
+    stream_run_legacy_events,
     stream_run_events,
 )
 from app.run_journal import CommittedRunEvent, RunRecord
@@ -206,3 +207,50 @@ async def test_stream_subscribes_before_replay_and_deduplicates_by_sequence():
             await stream.__anext__()
 
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_stream_replays_only_ui_events_from_canonical_journal():
+    typed_event = CommittedRunEvent(
+        event_id="typed-2",
+        run_id="run-1",
+        sequence=2,
+        event_type="tool.completed",
+        payload={"outcome": "completed"},
+        legacy_step=None,
+        created_at=2.0,
+        run_version=2,
+    )
+    journal = MagicMock()
+    journal.get_run.return_value = _run_record()
+    journal.list_events.return_value = [
+        _event(1, "confirmed"),
+        typed_event,
+        _event(3, "end"),
+    ]
+    coordinator = RunCoordinator()
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ),
+    ):
+        response = await stream_run_legacy_events(
+            "run-1", after_sequence=0
+        )
+        chunks = [chunk async for chunk in response.body_iterator]
+
+    decoded = [_decode_sse(chunk) for chunk in chunks]
+    assert decoded == [
+        (
+            1,
+            "message",
+            {"step": "confirmed", "data": {"value": 1}},
+        ),
+        (3, "message", {"step": "end", "data": {"value": 3}}),
+    ]
