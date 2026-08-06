@@ -360,14 +360,9 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Task Upload Files', () => {
-    it('collects project outputs, camel logs, and unique user attachments', () => {
+    it('collects camel logs and unique explicit user attachments', () => {
       const uploadFiles = collectTaskUploadFiles(
         [
-          {
-            path: '/tmp/project/report.md',
-            name: 'report.md',
-            source: 'project_output',
-          },
           {
             path: '/tmp/logs/ba4462e1/agent.log',
             name: 'agent.log',
@@ -403,17 +398,10 @@ describe('ChatStore - Core Functionality', () => {
             fileName: 'followup.csv',
             filePath: '/Users/test/Documents/followup.csv',
           },
-        ],
-        'task-123'
+        ]
       );
 
       expect(uploadFiles).toEqual([
-        {
-          path: '/tmp/project/report.md',
-          name: 'report.md',
-          uploadName: 'project_output/report.md',
-          source: 'project_output',
-        },
         {
           path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
@@ -424,6 +412,12 @@ describe('ChatStore - Core Functionality', () => {
           path: '/Users/test/Documents/brief.pdf',
           name: 'brief.pdf',
           uploadName: 'user_attachment/brief.pdf',
+          source: 'user_attachment',
+        },
+        {
+          path: '/tmp/project/report.md',
+          name: 'report.md',
+          uploadName: 'user_attachment/report.md',
           source: 'user_attachment',
         },
         {
@@ -455,8 +449,7 @@ describe('ChatStore - Core Functionality', () => {
             ],
           },
         ] as any,
-        [],
-        'task-456'
+        []
       );
 
       expect(uploadFiles).toEqual([
@@ -470,7 +463,7 @@ describe('ChatStore - Core Functionality', () => {
     });
 
     it('collects generated files from task output file lists', () => {
-      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+      const uploadFiles = collectTaskUploadFiles([], [], [], [
         {
           path: '/Users/test/.eigent/user_1/space_x/index.html',
           name: 'index.html',
@@ -504,8 +497,7 @@ describe('ChatStore - Core Functionality', () => {
           },
         ],
         [],
-        [],
-        'task-123'
+        []
       );
 
       expect(uploadFiles).toEqual([
@@ -516,6 +508,30 @@ describe('ChatStore - Core Functionality', () => {
           source: 'camel_log',
         },
       ]);
+    });
+
+    it('never uploads files merely discovered in a selected folder or final answer', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [],
+        [
+          {
+            id: 'agent-result',
+            role: 'agent',
+            content: 'I read the existing files.',
+            fileList: [
+              {
+                path: '/Users/test/selected-folder/private.xlsx',
+                name: 'private.xlsx',
+                type: 'xlsx',
+              },
+            ],
+          },
+        ] as any,
+        [],
+        []
+      );
+
+      expect(uploadFiles).toEqual([]);
     });
   });
 

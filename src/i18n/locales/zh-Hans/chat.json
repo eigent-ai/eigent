@@ -113,6 +113,8 @@
   "minimize-plan": "最小化计划",
   "expand-subtasks": "展开子任务",
   "add-subtask-placeholder": "添加新的子任务，按 Enter 添加更多",
+  "run-cloud-restored-title": "已从云端恢复历史",
+  "run-cloud-restored-description": "该任务仅以只读历史形式恢复。此设备没有原本的本地工作目录和执行上下文，因此不能直接恢复执行；发送后续消息会创建一个新的任务。",
   "run-interrupted-title": "任务已中断",
   "run-interrupted-description": "Eigent 在任务完成前退出。已完成的工作已保存；恢复后会创建新的执行尝试，且不会自动重做已经完成的外部操作。",
   "run-resume": "恢复任务",

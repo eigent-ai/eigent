@@ -113,6 +113,8 @@
   "minimize-plan": "Plan minimieren",
   "expand-subtasks": "Teilaufgaben erweitern",
   "add-subtask-placeholder": "Neue Teilaufgabe hinzufügen und Enter drücken, um weitere hinzuzufügen",
+  "run-cloud-restored-title": "Verlauf aus der Cloud wiederhergestellt",
+  "run-cloud-restored-description": "Diese Ausführung ist als schreibgeschützter Verlauf verfügbar. Der ursprüngliche lokale Arbeitsbereich und Ausführungskontext fehlen auf diesem Gerät; eine Folgenachricht startet eine neue Ausführung.",
   "run-interrupted-title": "Ausführung unterbrochen",
   "run-interrupted-description": "Eigent wurde beendet, bevor diese Ausführung abgeschlossen war. Erledigte Arbeit ist gespeichert. Beim Fortsetzen wird ein neuer Versuch erstellt; abgeschlossene externe Aktionen werden nicht automatisch wiederholt.",
   "run-resume": "Fortsetzen",

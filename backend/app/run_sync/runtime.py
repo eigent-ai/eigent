@@ -98,6 +98,15 @@ def notify_default_cloud_sync_worker() -> None:
         loop.call_soon_threadsafe(_default_command_worker.notify)
 
 
+async def bootstrap_default_cloud_history() -> None:
+    """Wait for the configured one-shot PG -> SQLite history repair."""
+
+    worker = _default_worker
+    if worker is None:
+        return
+    await worker.bootstrap_once()
+
+
 async def persist_and_confirm_remote_command(
     command: dict,
 ) -> tuple[object, bool]:

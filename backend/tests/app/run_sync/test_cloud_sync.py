@@ -23,6 +23,9 @@ class FakeTransport:
         self.active = 0
         self.max_active = 0
         self.wait_for_parallel = False
+        self.projects: list[dict[str, Any]] = []
+        self.snapshots: dict[str, dict[str, Any]] = {}
+        self.project_events: dict[str, list[dict[str, Any]]] = {}
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -56,6 +59,32 @@ class FakeTransport:
             }
         finally:
             self.active -= 1
+
+    async def list_projects(self, configuration):
+        return {"items": self.projects}
+
+    async def project_snapshot(self, configuration, project_id):
+        return self.snapshots[project_id]
+
+    async def list_project_events(
+        self, configuration, project_id, *, after_cursor, limit
+    ):
+        items = [
+            event
+            for event in self.project_events.get(project_id, [])
+            if event["cloud_cursor"] > after_cursor
+        ][:limit]
+        all_events = self.project_events.get(project_id, [])
+        current_cursor = all_events[-1]["cloud_cursor"] if all_events else 0
+        return {
+            "project_id": project_id,
+            "current_cursor": current_cursor,
+            "next_cursor": (
+                items[-1]["cloud_cursor"] if items else after_cursor
+            ),
+            "has_more": bool(items and items[-1]["cloud_cursor"] < current_cursor),
+            "items": items,
+        }
 
     async def close(self):
         self.closed = True
@@ -109,6 +138,57 @@ async def test_worker_sends_fifo_batch_and_marks_it_sent(journal):
     assert journal.list_pending_outbox(now=100) == []
     await worker.close()
     assert transport.closed is True
+
+
+@pytest.mark.asyncio
+async def test_worker_bootstraps_missing_history_without_upload_echo(journal):
+    transport = FakeTransport()
+    transport.projects = [
+        {
+            "project_id": "project-cloud",
+            "current_cursor": 1,
+            "updated_at": "2026-08-06T00:00:02+00:00",
+        }
+    ]
+    transport.snapshots["project-cloud"] = {
+        "project_id": "project-cloud",
+        "current_cursor": 1,
+        "runs": [
+            {
+                "run_id": "run-cloud",
+                "status": "completed",
+                "expected_next_run_sequence": 2,
+                "updated_at": "2026-08-06T00:00:02+00:00",
+            }
+        ],
+        "recent_events": [],
+        "events_truncated": False,
+    }
+    transport.project_events["project-cloud"] = [
+        {
+            "event_id": "cloud-event-1",
+            "project_id": "project-cloud",
+            "run_id": "run-cloud",
+            "run_sequence": 1,
+            "run_version": 1,
+            "cloud_cursor": 1,
+            "event_type": "run.completed",
+            "payload": {"message": "done"},
+            "legacy_step": "end",
+            "created_at": "2026-08-06T00:00:01+00:00",
+            "ingested_at": "2026-08-06T00:00:02+00:00",
+        }
+    ]
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 0
+    restored = journal.get_run("run-cloud")
+    assert restored is not None
+    assert restored.status == "completed"
+    assert restored.origin == "cloud_restore"
+    assert journal.get_cloud_project_cursor("project-cloud") == 1
+    assert journal.list_pending_outbox(now=float("inf")) == []
+    await worker.close()
 
 
 @pytest.mark.asyncio
@@ -246,3 +326,70 @@ async def test_device_registration_conflict_retries_without_poisoning_event(
     assert pending[0].attempt_count == 1
     assert "route temporarily owned" in (pending[0].last_error or "")
     await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_http_transport_uses_device_auth_for_history_bootstrap():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.headers["Authorization"] == "Bearer secret"
+        assert request.headers["X-Desktop-Instance-ID"] == "desk-1"
+        if request.url.path.endswith("/devices/register"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_id": "desk-1",
+                    "credential_version": 1,
+                    "registered_at": "2026-08-06T00:00:00+00:00",
+                },
+            )
+        if request.url.path.endswith("/sync/projects"):
+            return httpx.Response(200, json={"items": []})
+        if request.url.path.endswith("/snapshot"):
+            return httpx.Response(
+                200,
+                json={
+                    "project_id": "project/one",
+                    "current_cursor": 0,
+                    "runs": [],
+                    "recent_events": [],
+                    "events_truncated": False,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "project_id": "project/one",
+                "current_cursor": 0,
+                "next_cursor": 0,
+                "has_more": False,
+                "items": [],
+            },
+        )
+
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    configuration = CloudSyncConfiguration(
+        endpoint_url="https://example.test/api/v1/sync/events:ingest",
+        authorization="Bearer secret",
+        desktop_instance_id="desk-1",
+    )
+
+    assert await transport.list_projects(configuration) == {"items": []}
+    await transport.project_snapshot(configuration, "project/one")
+    await transport.list_project_events(
+        configuration,
+        "project/one",
+        after_cursor=0,
+        limit=100,
+    )
+
+    assert len(
+        [request for request in requests if request.url.path.endswith("/devices/register")]
+    ) == 1
+    assert any("/projects/project%2Fone/snapshot" in str(request.url) for request in requests)
+    assert any("event_limit=1" in str(request.url) for request in requests)
+    await transport.close()

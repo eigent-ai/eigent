@@ -38,6 +38,30 @@ class RunRecord:
     timeout_policy: dict[str, Any] = field(default_factory=dict)
     cancel_request_id: str | None = None
     cancel_requested_at: float | None = None
+    origin: str = "local"
+    resume_blocked_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class CloudRunReplica:
+    run_id: str
+    status: str
+    expected_next_run_sequence: int
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class CloudRunEventReplica:
+    event_id: str
+    project_id: str
+    run_id: str
+    run_sequence: int
+    run_version: int
+    cloud_cursor: int
+    event_type: str
+    payload: dict[str, Any]
+    legacy_step: str | None
+    created_at: float
 
 
 @dataclass(frozen=True)

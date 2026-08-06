@@ -437,20 +437,20 @@ interface UploadCandidate {
   source: UploadFileSource;
 }
 
-interface GeneratedUploadFile {
-  path?: string;
-  name?: string;
-  isFolder?: boolean;
-  relativePath?: string;
-  source?: Exclude<UploadFileSource, 'user_attachment'>;
-}
-
 interface UploadOutcome {
   success: boolean;
   fileName: string;
   source: UploadFileSource;
   response?: unknown;
   error?: unknown;
+}
+
+interface CamelLogUploadFile {
+  path?: string;
+  name?: string;
+  isFolder?: boolean;
+  relativePath?: string;
+  source?: 'camel_log';
 }
 
 function getFileNameFromPath(filePath: string): string {
@@ -466,17 +466,14 @@ function isReadableLocalPath(filePath?: string): filePath is string {
 function buildUploadName(
   fileName: string,
   source: UploadFileSource,
-  taskId: string,
   attachmentIndex: number,
   relativePath?: string
 ): string {
   if (source === 'camel_log') {
-    if (relativePath) {
-      return `camel_log/${relativePath}/${fileName}`;
-    }
-    return `camel_log/${fileName}`;
+    return relativePath
+      ? `camel_log/${relativePath}/${fileName}`
+      : `camel_log/${fileName}`;
   }
-
   if (source === 'user_attachment') {
     return `user_attachment/${fileName}`;
   }
@@ -610,26 +607,31 @@ export function buildProjectContinuationContext(
 }
 
 export function collectTaskUploadFiles(
-  generatedFiles: GeneratedUploadFile[],
+  camelLogFiles: CamelLogUploadFile[],
   messages: Message[],
   pendingAttaches: File[] = [],
-  taskId = 'unknown_task',
   taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
     Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
   > = [];
 
-  for (const file of generatedFiles) {
+  // Diagnostics are deliberately isolated from project-folder discovery.
+  // The Electron endpoint behind this list traverses only camel_logs.
+  for (const file of camelLogFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
     uploadCandidates.push({
       path: file.path,
       name: file.name,
       relativePath: file.relativePath,
-      source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+      source: 'camel_log',
     });
   }
 
+  // Only WRITE_FILE events populate taskOutputFiles. Do not scan the selected
+  // workspace or infer upload consent from paths mentioned in a final answer:
+  // those paths may point at files that existed before Eigent opened the
+  // folder. Reading/referencing a local file is never upload consent.
   for (const file of taskOutputFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
     if (!isReadableLocalPath(file.path)) continue;
@@ -641,17 +643,8 @@ export function collectTaskUploadFiles(
     });
   }
 
-  for (const file of messages.flatMap((message) => message.fileList || [])) {
-    if (!file?.path || !file?.name || file.isFolder) continue;
-    if (!isReadableLocalPath(file.path)) continue;
-    uploadCandidates.push({
-      path: file.path,
-      name: file.name,
-      relativePath: file.relativePath,
-      source: 'project_output',
-    });
-  }
-
+  // ChatBox attachments are the other explicit consent boundary. This does
+  // not include files merely present in the selected folder.
   const attachmentFiles = [
     ...messages.flatMap((message) => message.attaches || []),
     ...pendingAttaches,
@@ -677,7 +670,6 @@ export function collectTaskUploadFiles(
         uploadName: buildUploadName(
           file.name,
           file.source,
-          taskId,
           file.source === 'user_attachment' ? attachmentIndex++ : 0,
           relativePath
         ),
@@ -4015,28 +4007,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   );
                 } else {
                   try {
-                    const generatedFiles =
+                    const camelLogFiles =
                       ((await hostIpcRenderer.invoke(
-                        'get-file-list',
+                        'get-camel-log-file-list',
                         email,
                         currentTaskId,
                         uploadTargetId,
                         user_id
-                      )) as GeneratedUploadFile[]) || [];
+                      )) as CamelLogUploadFile[]) || [];
                     const taskOutputFiles = tasks[
                       currentTaskId
                     ].taskAssigning.flatMap((agent) =>
                       agent.tasks.flatMap((task) => task.fileList || [])
                     );
                     const filesToUpload = collectTaskUploadFiles(
-                      generatedFiles,
+                      camelLogFiles,
                       tasks[currentTaskId].messages,
                       tasks[currentTaskId].attaches,
-                      currentTaskId,
                       taskOutputFiles
                     );
                     console.log('Task upload files collected:', {
-                      generatedFileCount: generatedFiles.length,
+                      camelLogFileCount: camelLogFiles.length,
                       taskOutputFileCount: taskOutputFiles.length,
                       uploadCandidateCount: filesToUpload.length,
                       uploadTargetId,

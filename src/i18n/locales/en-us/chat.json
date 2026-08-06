@@ -113,6 +113,8 @@
   "minimize-plan": "Minimize plan",
   "expand-subtasks": "Expand subtasks",
   "add-subtask-placeholder": "Add a new subtask and press Enter to add more",
+  "run-cloud-restored-title": "History restored from cloud",
+  "run-cloud-restored-description": "This Run is available as read-only history. Its original local workspace and execution context are not on this device, so it cannot be resumed here. Send a follow-up to start a new Run.",
   "run-interrupted-title": "Run interrupted",
   "run-interrupted-description": "Eigent stopped before this Run finished. Completed work is saved. Resume continues in a new attempt and will not automatically replay completed external actions.",
   "run-resume": "Resume",
