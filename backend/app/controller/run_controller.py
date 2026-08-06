@@ -148,7 +148,6 @@ async def _durable_event_stream(
     *,
     after_sequence: int,
     heartbeat_seconds: float = _DEFAULT_HEARTBEAT_SECONDS,
-    legacy_envelope: bool = False,
 ):
     """Subscribe first, then drain SQLite; sequence is the dedupe boundary."""
 
@@ -173,38 +172,15 @@ async def _durable_event_stream(
                 for event in events:
                     cursor = event.sequence
                     last_event = event
-                    if legacy_envelope:
-                        # The Desktop chat projector still consumes the
-                        # legacy {step, data} envelope.  Read it from the
-                        # canonical journal so renderer reconnect/reload does
-                        # not fall back to a stale cloud playback projection.
-                        # Typed-only events advance the durable cursor but do
-                        # not have a legacy UI representation.
-                        if event.legacy_step is not None:
-                            yield _sse(
-                                "message",
-                                {
-                                    "step": event.legacy_step,
-                                    "data": event.payload,
-                                },
-                                event_id=event.sequence,
-                            )
-                    else:
-                        yield _sse(
-                            "run_event",
-                            _event_payload(event),
-                            event_id=event.sequence,
-                        )
+                    yield _sse(
+                        "run_event",
+                        _event_payload(event),
+                        event_id=event.sequence,
+                    )
                 if len(events) < _EVENT_PAGE_SIZE:
                     break
 
             if subscription is None:
-                if legacy_envelope:
-                    # Canonical Run state is projected separately by the
-                    # Desktop status card.  The compatibility stream only
-                    # reconstructs chat content, so control-plane notices
-                    # must not become bogus chat messages.
-                    return
                 if subscriber_lagged:
                     yield _sse(
                         "replay_required",
@@ -240,15 +216,10 @@ async def _durable_event_stream(
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if not done:
-                if legacy_envelope:
-                    # SSE comments keep intermediaries alive without entering
-                    # the legacy chat event reducer.
-                    yield ": heartbeat\n\n"
-                else:
-                    yield _sse(
-                        "heartbeat",
-                        {"run_id": run_id, "after_sequence": cursor},
-                    )
+                yield _sse(
+                    "heartbeat",
+                    {"run_id": run_id, "after_sequence": cursor},
+                )
                 continue
 
             try:
@@ -371,30 +342,6 @@ async def stream_run_events(
     await _load_run_or_404(run_id)
     return StreamingResponse(
         _durable_event_stream(run_id, after_sequence=after_sequence),
-        media_type="text/event-stream",
-    )
-
-
-@router.get("/runs/{run_id}/legacy-stream")
-async def stream_run_legacy_events(
-    run_id: str,
-    after_sequence: int = Query(default=0, ge=0),
-):
-    """Project canonical Run events through the legacy Desktop envelope.
-
-    This is a migration adapter, not a second source of truth.  It preserves
-    the existing chat reducer while making RunJournal replay/reconnect the
-    Desktop's preferred local path.  Projects without a local Run continue to
-    use cloud history playback.
-    """
-
-    await _load_run_or_404(run_id)
-    return StreamingResponse(
-        _durable_event_stream(
-            run_id,
-            after_sequence=after_sequence,
-            legacy_envelope=True,
-        ),
         media_type="text/event-stream",
     )
 

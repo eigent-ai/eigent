@@ -1370,12 +1370,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       const hasCanonicalLocalHistory = taskIds.some((taskId) =>
         localRunsById.has(taskId)
       );
-      if (hasCanonicalLocalHistory && cacheScope) {
-        // Do not leave a legacy-derived snapshot available for a later
-        // session to mistake for canonical history if Brain was temporarily
-        // unavailable during that open.
-        await deleteCachedProject(cacheScope);
-      }
 
       // Fast path: rehydrate only a cache snapshot proven current by the
       // server freshness anchor. If the server moved on while the renderer
