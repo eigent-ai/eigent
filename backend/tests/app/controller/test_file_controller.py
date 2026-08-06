@@ -12,6 +12,15 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import os
+import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import file_controller
 
 
@@ -87,3 +96,85 @@ def test_resolve_project_root_without_user_id_stays_email_scoped(
     )
 
     assert resolved == expected
+
+
+def test_task_changes_include_all_outputs_but_only_recent_workspace_edits(
+    tmp_path,
+):
+    output_root = tmp_path / "outputs"
+    working_root = tmp_path / "workspace"
+    output_root.mkdir()
+    working_root.mkdir()
+    started_at = time.time()
+
+    copied_output = output_root / "copied-report.csv"
+    copied_output.write_text("output", encoding="utf-8")
+    old_workspace_file = working_root / "existing.md"
+    old_workspace_file.write_text("old", encoding="utf-8")
+    old_time = started_at - 60
+    os.utime(copied_output, (old_time, old_time))
+    os.utime(old_workspace_file, (old_time, old_time))
+    # Old files must be filtered before the 500-item result bound. Otherwise
+    # a large selected folder can hide a recent artifact later in the walk.
+    for index in range(510):
+        old_file = working_root / f"old-{index:03d}.txt"
+        old_file.write_text("old", encoding="utf-8")
+        os.utime(old_file, (old_time, old_time))
+    edited_workspace_file = working_root / "reports" / "final.md"
+    edited_workspace_file.parent.mkdir()
+    edited_workspace_file.write_text("new", encoding="utf-8")
+
+    files = file_controller._list_task_changed_files(
+        SimpleNamespace(
+            task_output_root=str(output_root),
+            working_directory=str(working_root),
+            task_start_time=started_at,
+        )
+    )
+
+    assert {item["path"] for item in files} == {
+        str(copied_output.resolve()),
+        str(edited_workspace_file.resolve()),
+    }
+    assert {item["relativePath"] for item in files} == {
+        "copied-report.csv",
+        "reports/final.md",
+    }
+    assert {item["path"]: item["changeType"] for item in files} == {
+        str(copied_output.resolve()): "generated",
+        str(edited_workspace_file.resolve()): "changed",
+    }
+
+
+def test_task_changes_endpoint_requires_local_capability(monkeypatch, tmp_path):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    snapshot = SimpleNamespace(
+        project_id="project-1",
+        task_output_root=str(tmp_path),
+        working_directory=str(tmp_path),
+        task_start_time=time.time(),
+    )
+    resolver = MagicMock()
+    resolver.store.get_snapshot.return_value = snapshot
+    monkeypatch.setattr(
+        file_controller, "get_workspace_resolver", lambda: resolver
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    params = {
+        "task_id": "task-1",
+        "project_id": "project-1",
+        "email": "user@example.com",
+    }
+
+    assert client.get("/files/changes", params=params).status_code == 401
+    response = client.get(
+        "/files/changes",
+        params=params,
+        headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+    )
+    assert response.status_code == 200
+    assert response.json() == []

@@ -34,6 +34,7 @@ declare global {
     isFolder?: boolean;
     isRemote?: boolean;
     relativePath?: string;
+    artifactChange?: 'generated' | 'changed';
   }
 
   interface ProjectInfo {

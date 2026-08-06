@@ -22,10 +22,19 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.auth import require_local_control_principal
 from app.component.environment import env
 from app.utils.file_utils import list_files, resolve_under_base
 from app.utils.workspace_paths import runtime_owner_key, task_dir_name
@@ -204,6 +213,87 @@ def _resolve_file_root(
         if space_root is not None:
             return space_root
     return _resolve_project_root(email, project_id, user_id)
+
+
+def _task_change_roots(snapshot) -> list[tuple[Path, bool]]:
+    """Return task roots as ``(path, include_all)`` tuples.
+
+    The output root is Run-owned, so every file there is an artifact even when
+    a copy operation preserves an old mtime. A distinct working directory may
+    contain user files; only files modified after Run admission are surfaced.
+    """
+    output_root = Path(snapshot.task_output_root).expanduser().resolve()
+    working_root = Path(snapshot.working_directory).expanduser().resolve()
+    roots: list[tuple[Path, bool]] = []
+    if output_root.is_dir():
+        roots.append((output_root, True))
+    if working_root != output_root and working_root.is_dir():
+        roots.append((working_root, False))
+    return roots
+
+
+def _list_task_changed_files(snapshot, max_entries: int = 500) -> list[dict]:
+    """List files generated or modified by one Run without uploading them."""
+    result: list[dict] = []
+    seen_paths: set[str] = set()
+    remaining = max_entries
+    # Account for filesystems whose mtimes have one-second resolution.
+    modified_after = snapshot.task_start_time - 1.0
+
+    for root, include_all in _task_change_roots(snapshot):
+        if remaining <= 0:
+            break
+        paths = list_files(
+            str(root),
+            base=str(root),
+            max_entries=remaining,
+            modified_after=None if include_all else modified_after,
+        )
+        for abs_path in paths:
+            try:
+                path = Path(abs_path).resolve()
+                if not path.is_file():
+                    continue
+                identity = str(path)
+                if identity in seen_paths:
+                    continue
+                relative_path = path.relative_to(root).as_posix()
+            except (OSError, ValueError):
+                continue
+
+            seen_paths.add(identity)
+            remaining -= 1
+            result.append(
+                {
+                    "filename": path.name,
+                    "path": identity,
+                    "relativePath": relative_path,
+                    "changeType": "generated" if include_all else "changed",
+                }
+            )
+            if remaining <= 0:
+                break
+
+    return sorted(result, key=lambda item: item["relativePath"])
+
+
+@router.get(
+    "/files/changes",
+    dependencies=[Depends(require_local_control_principal)],
+)
+async def list_task_changed_files(
+    task_id: str = Query(..., description="Run/task ID"),
+    project_id: str = Query(..., description="Project ID"),
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Optional canonical user ID"),
+) -> list[dict]:
+    """Return the Desktop-local preview index for one Run's changed files."""
+    snapshot = get_workspace_resolver().store.get_snapshot(
+        email, task_id, user_id
+    )
+    if snapshot is None or snapshot.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Task workspace not found")
+    return await run_in_threadpool(_list_task_changed_files, snapshot)
 
 
 @router.get("/files")

@@ -14,6 +14,7 @@
 
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   getBaseURL,
@@ -1033,6 +1034,81 @@ export function extractFinalOutputFileList(
   return fileInfos;
 }
 
+type TaskArtifactChange = {
+  filename?: unknown;
+  path?: unknown;
+  relativePath?: unknown;
+  changeType?: unknown;
+};
+
+/** Convert Brain's capability-protected local artifact index into preview cards. */
+export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
+  if (!Array.isArray(value)) return [];
+
+  const files: FileInfo[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value as TaskArtifactChange[]) {
+    const path =
+      typeof candidate.path === 'string'
+        ? normalizeOutputPath(candidate.path)
+        : '';
+    const name =
+      typeof candidate.filename === 'string'
+        ? candidate.filename.trim()
+        : getOutputFileNameFromPath(path);
+    const relativePath =
+      typeof candidate.relativePath === 'string'
+        ? normalizeOutputPath(candidate.relativePath)
+        : undefined;
+    const type = getFileTypeFromName(name);
+    const identity = (relativePath || path).toLowerCase();
+    if (!path || !name || !identity || seen.has(identity)) continue;
+
+    seen.add(identity);
+    files.push({
+      name,
+      type,
+      path,
+      relativePath,
+      icon: FileText,
+      isRemote: false,
+      artifactChange:
+        candidate.changeType === 'generated' ? 'generated' : 'changed',
+    });
+  }
+  return files;
+}
+
+async function loadTaskArtifactFileList({
+  taskId,
+  projectId,
+  email,
+  userId,
+}: {
+  taskId: string;
+  projectId?: string;
+  email?: string;
+  userId?: string | number | null;
+}): Promise<FileInfo[]> {
+  // The index contains absolute local paths and is intentionally Desktop-only.
+  if (!getHostIpcRenderer()?.invoke || !projectId || !email) return [];
+
+  try {
+    const changes = await fetchGet('/files/changes', {
+      task_id: taskId,
+      project_id: projectId,
+      email,
+      ...(userId ? { user_id: userId } : {}),
+    });
+    return normalizeTaskArtifactFileList(changes);
+  } catch (error) {
+    // Older Brain versions and cloud-only history do not expose the local
+    // artifact index. Existing WRITE_FILE/final-answer projections remain.
+    console.info(`[Artifacts] No local changes for task ${taskId}`, error);
+    return [];
+  }
+}
+
 function getFileInfoIdentities(file: FileInfo): string[] {
   return [
     file.relativePath,
@@ -1082,6 +1158,15 @@ export function mergeFileInfoLists(
         ...file,
       };
       mergedIdentities[existingIndex] = identities;
+      return;
+    }
+
+    if (file.artifactChange && !existingFile.artifactChange) {
+      merged[existingIndex] = {
+        ...existingFile,
+        artifactChange: file.artifactChange,
+        relativePath: existingFile.relativePath || file.relativePath,
+      };
     }
   });
 
@@ -4152,6 +4237,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             const outputProjectId =
               project_id || projectStore.activeProjectId || undefined;
+            const taskArtifactFileList = await loadTaskArtifactFileList({
+              taskId: currentTaskId,
+              projectId: outputProjectId,
+              email: email || undefined,
+              userId: user_id,
+            });
             const outputBaseURL = await getBaseURL().catch(() => '');
             const finalOutputFileList = extractFinalOutputFileList(
               endMessage,
@@ -4160,7 +4251,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               outputBaseURL || undefined
             );
             const mergedFileList = mergeFileInfoLists(
-              fileList,
+              mergeFileInfoLists(fileList, taskArtifactFileList),
               finalOutputFileList
             );
 
