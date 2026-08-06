@@ -30,7 +30,11 @@ export function getWorkspaceRelativeFilePath(file: FileInfo): string {
     !relativePath.includes('://') &&
     !relativeSegments.includes('..')
   ) {
-    return relativePath;
+    const normalizedName = normalizeRelativePath((file.name || '').trim());
+    const basename = relativeSegments.at(-1);
+    return normalizedName && basename !== normalizedName
+      ? `${relativePath}/${normalizedName}`
+      : relativePath;
   }
 
   if (file.name?.trim()) return file.name.trim();

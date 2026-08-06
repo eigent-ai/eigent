@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { FilePreviewPayload } from '../shared/filePreviewContract';
 import type {
   AgentMessageStatusType,
   AgentStatusType,
@@ -35,6 +36,11 @@ declare global {
     isRemote?: boolean;
     relativePath?: string;
     artifactChange?: 'generated' | 'changed';
+    size?: number;
+    modifiedAt?: number;
+    mimeType?: string;
+    supportsRanges?: boolean;
+    preview?: FilePreviewPayload;
   }
 
   interface ProjectInfo {

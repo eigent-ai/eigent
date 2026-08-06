@@ -144,6 +144,41 @@ def test_task_changes_include_all_outputs_but_only_recent_workspace_edits(
         str(copied_output.resolve()): "generated",
         str(edited_workspace_file.resolve()): "changed",
     }
+    assert {item["path"]: item["size"] for item in files} == {
+        str(copied_output.resolve()): 6,
+        str(edited_workspace_file.resolve()): 3,
+    }
+    assert all(item["modifiedAt"] > 0 for item in files)
+
+
+def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    payload = b"0123456789"
+    (project_root / "report.pdf").write_bytes(payload)
+    monkeypatch.setattr(
+        file_controller,
+        "_resolve_file_root",
+        lambda *_args, **_kwargs: project_root,
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app)
+    response = client.get(
+        "/files/stream",
+        params={
+            "path": "report.pdf",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+        headers={"Range": "bytes=2-5"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == b"2345"
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-range"] == "bytes 2-5/10"
 
 
 def test_task_changes_endpoint_requires_local_capability(monkeypatch, tmp_path):

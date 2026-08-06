@@ -27,6 +27,17 @@ describe('getWorkspaceRelativeFilePath', () => {
     ).toBe('research/reports/final_report.md');
   });
 
+  it('appends the file name when relativePath identifies only the directory', () => {
+    expect(
+      getWorkspaceRelativeFilePath({
+        name: 'final_report.md',
+        type: 'md',
+        path: '/Users/test/workspace/reports/final_report.md',
+        relativePath: 'reports',
+      })
+    ).toBe('reports/final_report.md');
+  });
+
   it('never falls back to an absolute path when a file name is available', () => {
     expect(
       getWorkspaceRelativeFilePath({

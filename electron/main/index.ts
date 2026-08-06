@@ -34,10 +34,13 @@ import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
+import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
 import { copyBrowserData } from './copy';
 import { getOrCreateDesktopInstanceId } from './desktopIdentity';
+import { resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -1225,6 +1228,12 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
+      const stats = await fsp.stat(filePath);
+      if (stats.size > FILE_PREVIEW_LIMITS.imageBytes) {
+        throw new Error(
+          `FILE_PREVIEW_TOO_LARGE:${stats.size}:${FILE_PREVIEW_LIMITS.imageBytes}`
+        );
+      }
       const file = fs.readFileSync(filePath);
       const mimeType =
         mime.getType(path.extname(filePath)) || 'application/octet-stream';
@@ -1749,6 +1758,17 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('open-local-file', async (_event, filePath: string) => {
+    const stats = await fsp.stat(filePath).catch(() => null);
+    if (!stats?.isFile()) {
+      return { success: false, error: 'File does not exist' };
+    }
+    const error = await shell.openPath(filePath);
+    return error
+      ? { success: false, error }
+      : { success: true, error: undefined };
+  });
+
   // Skills: all operations via Brain REST API (backend). No IPC.
 
   // ==================== read file handler ====================
@@ -2121,6 +2141,24 @@ function registerIpcHandlers() {
     async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
       return manager.openFile(type, filePath, isShowSourceCode);
+    }
+  );
+
+  ipcMain.handle('get-file-preview-metadata', async (_, filePath: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.getPreviewMetadata(filePath);
+  });
+
+  ipcMain.handle('preview-csv-file', async (_, filePath: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    return manager.previewCsvFile(filePath);
+  });
+
+  ipcMain.handle(
+    'preview-text-file',
+    async (_, filePath: string, limit?: number) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.previewTextFile(filePath, limit);
     }
   );
 
@@ -3466,46 +3504,38 @@ app.whenReady().then(async () => {
         return new Response('File Not Found', { status: 404 });
       }
 
-      const data = await fsp.readFile(filePath);
-      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
+      const stats = await fsp.stat(filePath);
+      if (!stats.isFile()) return new Response('Not Found', { status: 404 });
+      const contentType = mime.getType(filePath) || 'application/octet-stream';
+      const resolvedRange = resolveFileByteRange(
+        request.headers.get('range'),
+        stats.size
+      );
+      if (resolvedRange.status === 416) {
+        return new Response('Range Not Satisfiable', {
+          status: 416,
+          headers: { 'Content-Range': `bytes */${stats.size}` },
+        });
+      }
+      const { start, end, status } = resolvedRange;
 
-      // set correct Content-Type according to file extension
-      const ext = path.extname(filePath).toLowerCase();
-      let contentType = 'application/octet-stream';
-
-      switch (ext) {
-        case '.pdf':
-          contentType = 'application/pdf';
-          break;
-        case '.html':
-        case '.htm':
-          contentType = 'text/html';
-          break;
-        case '.png':
-          contentType = 'image/png';
-          break;
-        case '.jpg':
-        case '.jpeg':
-          contentType = 'image/jpeg';
-          break;
-        case '.gif':
-          contentType = 'image/gif';
-          break;
-        case '.svg':
-          contentType = 'image/svg+xml';
-          break;
-        case '.webp':
-          contentType = 'image/webp';
-          break;
+      const contentLength = stats.size === 0 ? 0 : end - start + 1;
+      const headers: Record<string, string> = {
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Content-Length': contentLength.toString(),
+      };
+      if (status === 206) {
+        headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;
+      }
+      if (request.method === 'HEAD' || stats.size === 0) {
+        return new Response(null, { status, headers });
       }
 
-      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
-
-      return new Response(new Uint8Array(data), {
-        headers: {
-          'Content-Type': contentType,
-          'Content-Length': data.length.toString(),
-        },
+      const stream = fs.createReadStream(filePath, { start, end });
+      return new Response(Readable.toWeb(stream) as BodyInit, {
+        status,
+        headers,
       });
     } catch (err) {
       log.error(`[PROTOCOL] Error reading file: ${err}`);
