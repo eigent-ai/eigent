@@ -112,5 +112,13 @@
   "expand-plan": "展開計劃",
   "minimize-plan": "最小化計劃",
   "expand-subtasks": "展開子任務",
-  "add-subtask-placeholder": "新增子任務，按 Enter 新增更多"
+  "add-subtask-placeholder": "新增子任務，按 Enter 新增更多",
+  "run-interrupted-title": "任務已中斷",
+  "run-interrupted-description": "Eigent 在任務完成前退出。已完成的工作已儲存；恢復後會建立新的執行嘗試，且不會自動重做已完成的外部操作。",
+  "run-resume": "恢復任務",
+  "run-resuming": "正在恢復…",
+  "run-cancel": "結束任務",
+  "run-cancelling": "正在結束…",
+  "run-resume-failed": "恢復任務失敗，請重試。",
+  "run-cancel-failed": "結束任務失敗，請重試。"
 }

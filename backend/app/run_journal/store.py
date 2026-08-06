@@ -465,6 +465,40 @@ class SQLiteRunJournal:
             ).fetchone()
             return self._run_from_row(row) if row is not None else None
 
+    def list_runs(
+        self,
+        *,
+        project_id: str,
+        statuses: tuple[str, ...] | None = None,
+        limit: int = 50,
+    ) -> list[RunRecord]:
+        """Read the canonical Runs for one Project, newest first."""
+
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        if limit < 1:
+            raise ValueError("run query limit must be positive")
+        parameters: list[Any] = [project_id]
+        query = "SELECT * FROM runs WHERE project_id = ?"
+        if statuses:
+            placeholders = ",".join("?" for _ in statuses)
+            query += f" AND status IN ({placeholders})"
+            parameters.extend(statuses)
+        query += " ORDER BY updated_at DESC, created_at DESC LIMIT ?"
+        parameters.append(limit)
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._run_from_row(row) for row in rows]
+
+    def list_all_runs(self) -> list[RunRecord]:
+        """Return canonical Runs for startup projection reconciliation."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM runs ORDER BY created_at"
+            ).fetchall()
+            return [self._run_from_row(row) for row in rows]
+
     def append_event(
         self,
         run_id: str,

@@ -46,7 +46,12 @@ from app.run_context import (
     apply_run_env_for_third_party,
     stream_with_run_context,
 )
-from app.run_journal import SQLiteRunJournal, get_default_run_journal
+from app.run_journal import (
+    RunEventDraft,
+    RunAttemptRecord,
+    SQLiteRunJournal,
+    get_default_run_journal,
+)
 from app.run_runtime import get_default_run_coordinator
 from app.service.chat_service import step_solve
 from app.service.task import (
@@ -98,6 +103,17 @@ class _PreparedChatRun:
     run_context: RunContext
     attempt_id: str
     initial_action: ActionImproveData
+
+
+_EXPLICIT_RESUME_INSTRUCTION = """
+Resume the interrupted Run from its persisted Project context and durable
+tool ledger. Continue only unfinished work. Treat completed tool calls and
+external side effects as already performed; do not repeat them unless the
+persisted result proves that repetition is both necessary and safe. If the
+durable context is insufficient, ask the user instead of guessing.
+""".strip()
+_RESUME_TOOL_LEDGER_MAX_CALLS = 50
+_RESUME_TOOL_RESULT_MAX_CHARS = 1000
 
 
 def _admission_request_id(
@@ -449,9 +465,12 @@ async def _replay_persisted_run(run_id: str):
 
 
 async def _prepare_chat_run(
-    data: Chat, request: Request
+    data: Chat,
+    request: Request,
+    *,
+    resume_attempt: RunAttemptRecord | None = None,
 ) -> _PreparedChatRun:
-    """Perform the one-time compatibility setup for a newly admitted Run."""
+    """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
     # workspace snapshot, artifact path, or task lock is resolved.
@@ -507,25 +526,30 @@ async def _prepare_chat_run(
     )
     camel_log.mkdir(parents=True, exist_ok=True)
     run_context = _build_run_context(data, frozen_dirs, request, camel_log)
-    await asyncio.to_thread(
-        get_default_run_journal().ensure_run,
-        run_id=run_context.run_id,
-        project_id=run_context.project_id,
-        status="pending",
-    )
-    request_id = _admission_request_id(
-        run_context.run_id,
-        question=data.question,
-        attaches=data.attaches or [],
-        project_context=data.project_context,
-    )
-    attempt = await asyncio.to_thread(
-        get_default_run_journal().create_run_attempt,
-        run_context.run_id,
-        request_id=request_id,
-        reason="initial_execution",
-        activate=False,
-    )
+    is_resume = resume_attempt is not None
+    if is_resume:
+        request_id = str(data.resume_request_id)
+        attempt = resume_attempt
+    else:
+        await asyncio.to_thread(
+            get_default_run_journal().ensure_run,
+            run_id=run_context.run_id,
+            project_id=run_context.project_id,
+            status="pending",
+        )
+        request_id = _admission_request_id(
+            run_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        )
+        attempt = await asyncio.to_thread(
+            get_default_run_journal().create_run_attempt,
+            run_context.run_id,
+            request_id=request_id,
+            reason="initial_execution",
+            activate=False,
+        )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -540,26 +564,70 @@ async def _prepare_chat_run(
         if data.space_id and data.space_id.startswith("legacy_")
         else ("folder" if data.space_root_path else "blank")
     )
-    memory_service.on_run_start(
-        run_context=run_context,
-        space_name=None,
-        project_name=None,
-        space_source_type=memory_space_source,
-        mode=memory_mode,
-        user_prompt=data.question,
-        prompt_source="chat",
-        conversation_event_id=f"memory:{request_id}",
-    )
+    if is_resume:
+        memory_service.on_run_resume(run_context=run_context)
+        # A prior consumer may have finalized the projection as interrupted in
+        # this process. The new Attempt owns its own future finalization.
+        finalized = getattr(task_lock, "_memory_finalized_runs", None)
+        if finalized is not None:
+            finalized.discard(run_context.run_id)
+    else:
+        memory_service.on_run_start(
+            run_context=run_context,
+            space_name=None,
+            project_name=None,
+            space_source_type=memory_space_source,
+            mode=memory_mode,
+            user_prompt=data.question,
+            prompt_source="chat",
+            conversation_event_id=f"memory:{request_id}",
+        )
     task_lock.memory_service = memory_service
 
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
+    resume_checkpoint = data.project_context
+    if is_resume:
+        tool_calls = await asyncio.to_thread(
+            get_default_run_journal().list_tool_calls,
+            run_context.run_id,
+        )
+        ledger_lines = ["=== Durable Tool Ledger (canonical) ==="]
+        for tool in tool_calls[-_RESUME_TOOL_LEDGER_MAX_CALLS:]:
+            ledger_lines.append(
+                f"- {tool.tool_call_id}: {tool.tool_name}; "
+                f"status={tool.status}; safety={tool.safety_class}; "
+                f"outcome={tool.outcome or 'none'}"
+            )
+            if tool.result is not None:
+                encoded_result = json.dumps(
+                    tool.result,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                ledger_lines.append(
+                    "  persisted_result="
+                    + encoded_result[:_RESUME_TOOL_RESULT_MAX_CHARS]
+                )
+        ledger_lines.append("=== End Durable Tool Ledger ===")
+        resume_checkpoint = "\n\n".join(
+            part
+            for part in (
+                data.project_context,
+                "\n".join(ledger_lines),
+            )
+            if part
+        )
+
     initial_action = ActionImproveData(
         data=ImprovePayload(
-            question=data.question,
+            question=(
+                _EXPLICIT_RESUME_INSTRUCTION if is_resume else data.question
+            ),
             attaches=data.attaches or [],
-            project_context=data.project_context,
+            project_context=resume_checkpoint,
         ),
         new_task_id=data.task_id,
         request_id=request_id,
@@ -600,6 +668,100 @@ async def start_chat_stream(data: Chat, request: Request):
                 "Attached retry to existing Run consumer",
                 extra={"run_id": run_id, "project_id": data.project_id},
             )
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        if data.resume_request_id:
+            run = await asyncio.to_thread(journal.get_run, run_id)
+            if run is None:
+                raise UserException(code.error, "The Run no longer exists.")
+            if run.project_id != data.project_id:
+                raise UserException(
+                    code.error, "The Run belongs to a different Project."
+                )
+            attempts = await asyncio.to_thread(
+                journal.list_run_attempts, run_id
+            )
+            existing_attempt = next(
+                (
+                    attempt
+                    for attempt in attempts
+                    if attempt.resume_request_id == data.resume_request_id
+                ),
+                None,
+            )
+            if existing_attempt is None and run.status != "interrupted":
+                raise UserException(
+                    code.error,
+                    f"Run cannot be resumed from state {run.status!r}.",
+                )
+            attempt = await asyncio.to_thread(
+                journal.create_run_attempt,
+                run_id,
+                request_id=data.resume_request_id,
+                reason="explicit_resume",
+                activate=False,
+            )
+            if attempt.status not in {"pending", "running"}:
+                raise UserException(
+                    code.error,
+                    "This Resume request already ended; start a new Resume action.",
+                )
+            try:
+                prepared = await _prepare_chat_run(
+                    data,
+                    request,
+                    resume_attempt=attempt,
+                )
+                await prepared.task_lock.put_queue(prepared.initial_action)
+                execution_stream = step_solve(
+                    data, request, prepared.task_lock
+                )
+                subscription = await coordinator.start_with_subscription(
+                    run_id=prepared.run_context.run_id,
+                    stream_factory=lambda: stream_with_run_context(
+                        execution_stream,
+                        lambda: getattr(
+                            prepared.task_lock,
+                            "run_context",
+                            prepared.run_context,
+                        ),
+                    ),
+                    command_queue=prepared.task_lock.queue,
+                )
+            except Exception:
+                # Do not leave a durable pending Attempt with no consumer. A
+                # fresh explicit Resume action can safely create Attempt N+1.
+                try:
+                    await asyncio.to_thread(
+                        journal.append_event,
+                        run_id,
+                        RunEventDraft(
+                            event_id=(
+                                f"resume-admission-failed:{attempt.attempt_id}"
+                            ),
+                            event_type="runtime.interrupted",
+                            payload={
+                                "reason": "resume_admission_failed",
+                                "attempt_id": attempt.attempt_id,
+                            },
+                        ),
+                    )
+                    from app.run_sync.runtime import (
+                        notify_default_cloud_sync_worker,
+                    )
+
+                    notify_default_cloud_sync_worker()
+                    get_memory_service().project_canonical_run_status(
+                        run_id,
+                        state="interrupted",
+                        error="resume_admission_failed",
+                    )
+                except Exception:
+                    chat_logger.exception(
+                        "Failed to close a partial Resume admission",
+                        extra={"run_id": run_id},
+                    )
+                raise
             return timeout_stream_wrapper(subscription, run_id=run_id)
 
         request_id = _admission_request_id(

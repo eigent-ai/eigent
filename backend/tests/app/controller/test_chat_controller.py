@@ -296,6 +296,140 @@ class TestChatController:
         assert "already finished" in chunks[0]
 
     @pytest.mark.asyncio
+    async def test_explicit_resume_creates_new_attempt_on_same_run(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+    ):
+        run_id = sample_chat_data["task_id"]
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id=run_id,
+            resume_request_id="resume-request-1",
+        )
+        coordinator = RunCoordinator()
+        release = asyncio.Event()
+        run_context = SimpleNamespace(run_id=run_id)
+        mock_task_lock.queue = asyncio.Queue()
+
+        async def source():
+            await release.wait()
+            yield "data: resumed\n\n"
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(run_id=run_id, project_id=chat_data.project_id)
+            first = journal.create_run_attempt(
+                run_id,
+                request_id="initial-request",
+                reason="initial_execution",
+                activate=True,
+                now=1,
+            )
+            journal.reconcile_startup(now=2)
+            prepare = AsyncMock(
+                return_value=_PreparedChatRun(
+                    task_lock=mock_task_lock,
+                    run_context=run_context,
+                    attempt_id="resume-attempt",
+                    initial_action=MagicMock(),
+                )
+            )
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller._prepare_chat_run",
+                    new=prepare,
+                ),
+                patch(
+                    "app.controller.chat_controller.step_solve",
+                    side_effect=lambda *_args: source(),
+                ),
+            ):
+                stream = await start_chat_stream(chat_data, mock_request)
+                attempts = journal.list_run_attempts(run_id)
+                assert len(attempts) == 2
+                assert attempts[0].attempt_id == first.attempt_id
+                assert attempts[1].attempt_number == 2
+                assert attempts[1].resume_reason == "explicit_resume"
+                assert attempts[1].resume_request_id == "resume-request-1"
+                prepare.assert_awaited_once()
+                assert prepare.await_args.kwargs["resume_attempt"].attempt_id == (
+                    attempts[1].attempt_id
+                )
+
+                release.set()
+                assert await stream.__anext__() == "data: resumed\n\n"
+                await stream.aclose()
+        await coordinator.close()
+
+    @pytest.mark.asyncio
+    async def test_resume_setup_failure_returns_run_to_interrupted(
+        self,
+        sample_chat_data,
+        mock_request,
+        tmp_path,
+    ):
+        run_id = sample_chat_data["task_id"]
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id=run_id,
+            resume_request_id="resume-request-fails",
+        )
+        coordinator = RunCoordinator()
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(run_id=run_id, project_id=chat_data.project_id)
+            journal.create_run_attempt(
+                run_id,
+                request_id="initial-request",
+                reason="initial_execution",
+                activate=True,
+                now=1,
+            )
+            journal.reconcile_startup(now=2)
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_default_run_coordinator",
+                    return_value=coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller._prepare_chat_run",
+                    new=AsyncMock(side_effect=RuntimeError("binding failed")),
+                ),
+                patch(
+                    "app.controller.chat_controller.get_memory_service"
+                ) as memory_service,
+            ):
+                with pytest.raises(RuntimeError, match="binding failed"):
+                    await start_chat_stream(chat_data, mock_request)
+
+            run = journal.get_run(run_id)
+            assert run is not None
+            assert run.status == "interrupted"
+            assert journal.list_run_attempts(run_id)[-1].status == "interrupted"
+            assert journal.list_events(run_id)[-1].payload["reason"] == (
+                "resume_admission_failed"
+            )
+            memory_service.return_value.project_canonical_run_status.assert_called_once_with(
+                run_id,
+                state="interrupted",
+                error="resume_admission_failed",
+            )
+        await coordinator.close()
+
+    @pytest.mark.asyncio
     async def test_status_distinguishes_lock_from_live_consumer(
         self, mock_task_lock
     ):

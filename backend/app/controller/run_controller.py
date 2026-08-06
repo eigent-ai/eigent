@@ -255,6 +255,37 @@ async def _load_run_or_404(run_id: str):
     return run
 
 
+@router.get("/runs")
+async def list_project_runs(
+    project_id: str = Query(min_length=1),
+    status: list[str] | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Return canonical Run state for the main Desktop Project UI."""
+
+    journal = get_default_run_journal()
+    runs = await asyncio.to_thread(
+        journal.list_runs,
+        project_id=project_id,
+        statuses=tuple(status) if status else None,
+        limit=limit,
+    )
+    items: list[dict[str, Any]] = []
+    for run in runs:
+        attempts = await asyncio.to_thread(
+            journal.list_run_attempts, run.run_id
+        )
+        items.append(
+            {
+                **asdict(run),
+                "latest_attempt": (
+                    asdict(attempts[-1]) if attempts else None
+                ),
+            }
+        )
+    return {"project_id": project_id, "runs": items}
+
+
 @router.get("/runs/{run_id}")
 async def get_run(run_id: str):
     run = await _load_run_or_404(run_id)

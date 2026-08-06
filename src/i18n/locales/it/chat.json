@@ -112,5 +112,13 @@
   "expand-plan": "Espandi piano",
   "minimize-plan": "Riduci piano",
   "expand-subtasks": "Espandi sottoattività",
-  "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre"
+  "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre",
+  "run-interrupted-title": "Esecuzione interrotta",
+  "run-interrupted-description": "Eigent si è arrestato prima del completamento. Il lavoro completato è stato salvato. La ripresa crea un nuovo tentativo e non ripete automaticamente le azioni esterne già completate.",
+  "run-resume": "Riprendi",
+  "run-resuming": "Ripresa in corso…",
+  "run-cancel": "Annulla esecuzione",
+  "run-cancelling": "Annullamento…",
+  "run-resume-failed": "Impossibile riprendere questa esecuzione.",
+  "run-cancel-failed": "Impossibile annullare questa esecuzione."
 }

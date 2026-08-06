@@ -112,5 +112,13 @@
   "expand-plan": "計画を展開",
   "minimize-plan": "計画を最小化",
   "expand-subtasks": "サブタスクを展開",
-  "add-subtask-placeholder": "新しいサブタスクを追加し、Enter キーでさらに追加"
+  "add-subtask-placeholder": "新しいサブタスクを追加し、Enter キーでさらに追加",
+  "run-interrupted-title": "実行が中断されました",
+  "run-interrupted-description": "この実行が完了する前に Eigent が終了しました。完了済みの作業は保存されています。再開すると新しい試行が作成され、完了済みの外部操作は自動的に繰り返されません。",
+  "run-resume": "再開",
+  "run-resuming": "再開中…",
+  "run-cancel": "実行を終了",
+  "run-cancelling": "終了中…",
+  "run-resume-failed": "この実行を再開できませんでした。",
+  "run-cancel-failed": "この実行を終了できませんでした。"
 }

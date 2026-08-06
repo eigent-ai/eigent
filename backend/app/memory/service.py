@@ -168,7 +168,7 @@ def build_durable_context_for_task_lock(
 def finalize_task_lock_run_memory(
     task_lock: Any,
     *,
-    state: Literal["done", "failed", "cancelled"],
+    state: Literal["done", "failed", "cancelled", "interrupted"],
     final_result: str | None = None,
     summary: str | None = None,
     error: str | None = None,
@@ -386,7 +386,7 @@ class MemoryService:
         self,
         *,
         run_context: RunContext,
-        state: Literal["done", "failed", "cancelled"],
+        state: Literal["done", "failed", "cancelled", "interrupted"],
         final_result: str | None = None,
         summary: str | None = None,
         error: str | None = None,
@@ -440,6 +440,89 @@ class MemoryService:
                 },
                 exc_info=True,
             )
+
+    def on_run_resume(self, *, run_context: RunContext) -> None:
+        """Refresh the legacy projection without inventing a new user turn."""
+
+        user_key = _resolve_user_key(run_context)
+        if user_key is None:
+            return
+        try:
+            self._set_run_status(
+                user_key=user_key,
+                run_context=run_context,
+                state="running",
+                started_at=None,
+                ended_at=None,
+                error=None,
+            )
+            self._touch_project(
+                user_key=user_key,
+                run_context=run_context,
+                now=_utc_now(),
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory.service.on_run_resume: projection failed",
+                extra={"run_id": run_context.run_id},
+                exc_info=True,
+            )
+
+    def project_canonical_run_status(
+        self,
+        run_id: str,
+        *,
+        state: Literal["failed", "cancelled", "interrupted"],
+        error: str | None = None,
+    ) -> int:
+        """Best-effort RunJournal -> LocalMemory compatibility projection."""
+
+        try:
+            return self._store.project_canonical_run_status(
+                run_id,
+                state=state,
+                ended_at=_utc_now(),
+                last_error=error,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory canonical status projection failed",
+                extra={"run_id": run_id, "state": state},
+                exc_info=True,
+            )
+            return 0
+
+    def project_canonical_run_statuses(
+        self,
+        statuses: dict[
+            str,
+            tuple[
+                Literal[
+                    "running", "done", "failed", "cancelled", "interrupted"
+                ],
+                str | None,
+            ],
+        ],
+    ) -> int:
+        """Batch RunJournal -> LocalMemory projection in one tree scan."""
+
+        now = _utc_now()
+        payload = {
+            run_id: (
+                state,
+                None if state == "running" else now,
+                error,
+            )
+            for run_id, (state, error) in statuses.items()
+        }
+        try:
+            return self._store.project_canonical_run_statuses(payload)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory canonical status batch projection failed",
+                exc_info=True,
+            )
+            return 0
 
     def register_runtime_log_artifact(
         self,
@@ -634,7 +717,9 @@ class MemoryService:
         *,
         user_key: str,
         run_context: RunContext,
-        state: Literal["running", "done", "failed", "cancelled"],
+        state: Literal[
+            "running", "done", "failed", "cancelled", "interrupted"
+        ],
         started_at: str | None,
         ended_at: str | None,
         error: str | None,

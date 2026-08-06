@@ -740,6 +740,8 @@ export interface StartTaskOptions {
   preserveTaskId?: boolean;
   skipHistoryCreate?: boolean;
   historyId?: string | number | null;
+  /** Execute a new Attempt on an existing interrupted durable Run. */
+  resumeRequestId?: string;
 }
 
 export interface ChatStore {
@@ -1513,7 +1515,36 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay') {
+      if (project_id && type !== 'replay' && startOptions.resumeRequestId) {
+        const existing = projectStore
+          .getAllChatStores(project_id)
+          .find(({ chatStore }) => chatStore.getState().tasks[taskId]);
+        if (existing) {
+          newTaskId = taskId;
+          targetChatStore = existing.chatStore;
+          projectStore.setActiveChatStore(project_id, existing.chatId);
+        } else {
+          const active = projectStore.getChatStore(project_id);
+          if (active) {
+            targetChatStore = active;
+            newTaskId = active.getState().create(taskId);
+          } else {
+            const created = projectStore.appendInitChatStore(
+              project_id,
+              taskId
+            );
+            if (created) {
+              newTaskId = created.taskId;
+              targetChatStore = created.chatStore;
+            }
+          }
+        }
+        const resumeState = targetChatStore.getState();
+        resumeState.setActiveTaskId(newTaskId);
+        resumeState.setStatus(newTaskId, ChatTaskStatus.PENDING);
+        resumeState.setIsPending(newTaskId, true);
+        resumeState.setHasWaitComfirm(newTaskId, false);
+      } else if (project_id && type !== 'replay') {
         console.log('Creating a new Chat Instance for current project on end');
         const newChatResult = projectStore.appendInitChatStore(
           project_id,
@@ -2108,9 +2139,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             run_id: newTaskId,
             space_root_path: spaceRootPath,
             workdir_mode: project?.workdirMode || undefined,
-            question:
-              messageContent ||
-              targetChatStore.getState().getLastUserMessage()?.content,
+            question: startOptions.resumeRequestId
+              ? targetChatStore.getState().getLastUserMessage()?.content ||
+                'Resume interrupted Run'
+              : messageContent ||
+                targetChatStore.getState().getLastUserMessage()?.content,
             model_platform: apiModel.model_platform,
             email,
             user_id: getAuthStore().user_id,
@@ -2139,8 +2172,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             remote_sub_agent_config: remoteSubAgentConfig,
             project_context: buildProjectContinuationContext(
               project_id,
-              newTaskId
+              startOptions.resumeRequestId ? undefined : newTaskId
             ),
+            resume_request_id: startOptions.resumeRequestId,
           }
         : undefined;
 

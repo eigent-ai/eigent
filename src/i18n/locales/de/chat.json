@@ -112,5 +112,13 @@
   "expand-plan": "Plan erweitern",
   "minimize-plan": "Plan minimieren",
   "expand-subtasks": "Teilaufgaben erweitern",
-  "add-subtask-placeholder": "Neue Teilaufgabe hinzufügen und Enter drücken, um weitere hinzuzufügen"
+  "add-subtask-placeholder": "Neue Teilaufgabe hinzufügen und Enter drücken, um weitere hinzuzufügen",
+  "run-interrupted-title": "Ausführung unterbrochen",
+  "run-interrupted-description": "Eigent wurde beendet, bevor diese Ausführung abgeschlossen war. Erledigte Arbeit ist gespeichert. Beim Fortsetzen wird ein neuer Versuch erstellt; abgeschlossene externe Aktionen werden nicht automatisch wiederholt.",
+  "run-resume": "Fortsetzen",
+  "run-resuming": "Wird fortgesetzt…",
+  "run-cancel": "Ausführung beenden",
+  "run-cancelling": "Wird beendet…",
+  "run-resume-failed": "Die Ausführung konnte nicht fortgesetzt werden.",
+  "run-cancel-failed": "Die Ausführung konnte nicht beendet werden."
 }
