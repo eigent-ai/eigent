@@ -371,8 +371,8 @@ interface ProjectStore {
    * Load project from history. Tries an IDB-backed cache first (skip-replay
    * fast path); falls back to SSE replay on miss. Resolves when loading
    * completes. `serverUpdatedAt` is the project's last-activity timestamp
-   * (ms) from the history API — used to invalidate stale cache entries in
-   * the background after rehydration.
+   * (ms) from the history API — stale cache entries are discarded before
+   * hydration so the same open renders the latest canonical history.
    */
   loadProjectFromHistory: (
     taskIds: string[],
@@ -1342,10 +1342,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         : null;
 
     try {
-      // SWR fast path: if we have a cached snapshot, rehydrate every task
-      // synchronously and skip the SSE replay entirely. Server freshness is
-      // checked after rehydration; a stale entry is invalidated so the next
-      // open replays from scratch (we never block the current open on it).
+      // Fast path: rehydrate only a cache snapshot proven current by the
+      // server freshness anchor. If the server moved on while the renderer
+      // was detached, discard the snapshot and replay during this same open.
+      // Showing stale progress until a second navigation contradicts the
+      // RunJournal's canonical terminal state and can leave a completed Run
+      // looking permanently active.
       //
       // Concurrency: the `await getCachedProject` yields control. The user
       // might switch to a different project before it resolves. We bail
@@ -1356,7 +1358,18 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (get().activeProjectId !== loadProjectId) {
             return loadProjectId;
           }
-          if (cached && cached.taskIds.length > 0) {
+          const cacheIsStale = Boolean(
+            cached &&
+            (cached.serverUpdatedAt == null ||
+              (serverUpdatedAt as number) > cached.serverUpdatedAt)
+          );
+          if (cacheIsStale) {
+            await deleteCachedProject(cacheScope);
+            console.info(
+              `[ProjectStore] Discarded stale cache for ${loadProjectId}; replaying latest history`
+            );
+          }
+          if (!cacheIsStale && cached && cached.taskIds.length > 0) {
             const rehydratedStores = new Map<string, VanillaChatStore>();
             for (const cachedTaskId of cached.taskIds) {
               const cachedTask = cached.tasks[cachedTaskId];
@@ -1394,33 +1407,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
               );
 
-              // Background freshness check: if the server has newer activity
-              // than what we cached — OR the cached entry has no anchor at
-              // all (legacy/unknown) — drop it so the *next* open re-runs
-              // the replay. We deliberately do not block or interrupt the
-              // current open; the user already sees the cached final state.
-              // `serverUpdatedAt` is guaranteed non-null here because
-              // `cacheScope` is null otherwise.
-              //
-              // We also mark the in-memory hydrated project as stale so
-              // `setActiveProject` evicts it on transition-away. Without
-              // this, intra-session re-selection of the same project would
-              // short-circuit on the in-memory entry (peekActiveChatStore
-              // / getProjectById) and never replay from the server until
-              // the page reloads.
-              const liveAnchor = serverUpdatedAt as number;
-              const cacheIsStale =
-                cached.serverUpdatedAt == null ||
-                liveAnchor > cached.serverUpdatedAt;
-              if (cacheIsStale) {
-                void deleteCachedProject(cacheScope).catch(() => undefined);
-                set((state) => {
-                  if (state.staleProjectIds.has(loadProjectId)) return state;
-                  const next = new Set(state.staleProjectIds);
-                  next.add(loadProjectId);
-                  return { staleProjectIds: next };
-                });
-              }
               return loadProjectId;
             }
           }

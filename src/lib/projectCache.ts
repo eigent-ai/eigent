@@ -16,10 +16,10 @@
  * IndexedDB-backed cache for reconstructed project chat state.
  *
  * Goal: avoid re-running the SSE playback for projects the user has already
- * opened in a previous session. On project open, hydrate from this cache
- * synchronously, then trigger a silent background refresh that compares the
- * server's `updated_at` against the cached value and invalidates the entry
- * if the project has moved on.
+ * opened in a previous session. On project open, compare the server's
+ * `updated_at` against the cached value first. A current snapshot can hydrate
+ * immediately; a stale snapshot must be discarded so the same open replays
+ * the latest history rather than rendering an obsolete terminal state.
  *
  * Bump `PROJECT_CACHE_SCHEMA_VERSION` whenever the persisted shape changes
  * in a backward-incompatible way — all existing entries are then ignored
