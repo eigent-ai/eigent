@@ -17,9 +17,36 @@ import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
-const { hasActiveSSEConnectionMock } = vi.hoisted(() => ({
+const {
+  deleteCachedProjectMock,
+  getCachedProjectMock,
+  hasActiveSSEConnectionMock,
+  proxyFetchGetMock,
+  replayMock,
+} = vi.hoisted(() => ({
+  deleteCachedProjectMock: vi.fn(),
+  getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
+  proxyFetchGetMock: vi.fn(),
+  replayMock: vi.fn(),
 }));
+
+vi.mock('@/api/http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/http')>();
+  return {
+    ...actual,
+    proxyFetchGet: proxyFetchGetMock,
+  };
+});
+
+vi.mock('@/lib/projectCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/projectCache')>();
+  return {
+    ...actual,
+    deleteCachedProject: deleteCachedProjectMock,
+    getCachedProject: getCachedProjectMock,
+  };
+});
 
 vi.mock('@/service/spaceApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/service/spaceApi')>();
@@ -33,6 +60,13 @@ vi.mock('./chatStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./chatStore')>();
   return {
     ...actual,
+    createChatStoreInstance: (
+      ...args: Parameters<typeof actual.createChatStoreInstance>
+    ) => {
+      const store = actual.createChatStoreInstance(...args);
+      store.setState({ replay: replayMock } as any);
+      return store;
+    },
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
   };
 });
@@ -40,7 +74,11 @@ vi.mock('./chatStore', async (importOriginal) => {
 describe('projectStore runtime shape', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    deleteCachedProjectMock.mockResolvedValue(undefined);
+    getCachedProjectMock.mockResolvedValue(null);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    proxyFetchGetMock.mockResolvedValue({ tasks: [] });
+    replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
@@ -222,6 +260,60 @@ describe('projectStore runtime shape', () => {
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
+  });
+
+  it('replays stale cached history during the same project open', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 1,
+        cachedAt: 100,
+        serverUpdatedAt: 100,
+        taskIds: ['task_stale'],
+        tasks: {
+          task_stale: {
+            taskState: {
+              status: 'running',
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_stale'],
+          'long-running prompt',
+          'project_stale_cache',
+          'history_stale',
+          'Stale cache project',
+          'space_test',
+          { task_stale: 'long-running prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_stale_cache',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_stale',
+        'long-running prompt',
+        0,
+        'project_stale_cache'
+      );
+      expect(
+        useProjectStore.getState().staleProjectIds.has('project_stale_cache')
+      ).toBe(false);
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
   });
 
   it('merges missing history into a background remote Project without stealing focus', async () => {
