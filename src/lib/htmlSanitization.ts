@@ -31,6 +31,53 @@ export const DANGEROUS_PATTERNS = [
   /contextIsolation/i,
 ];
 
+export const PREVIEW_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline' data: blob: localfile:",
+  "style-src 'unsafe-inline' data: blob: localfile:",
+  'img-src data: blob: localfile:',
+  'font-src data: blob: localfile:',
+  'media-src data: blob: localfile:',
+  "connect-src 'none'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "child-src 'none'",
+  "form-action 'none'",
+  "navigate-to 'none'",
+  'worker-src blob:',
+].join('; ');
+
+/**
+ * Give every srcDoc preview its own deny-by-default policy. The iframe may run
+ * report scripts, but those scripts cannot fetch, beacon, submit, frame, or
+ * otherwise exfiltrate files obtained through localfile://.
+ */
+export function injectPreviewContentSecurityPolicy(html: string): string {
+  if (typeof DOMParser === 'undefined') return html;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
+  const head = doc.head || doc.createElement('head');
+  const existing = head.querySelector(
+    'meta[http-equiv="Content-Security-Policy" i]'
+  );
+  existing?.remove();
+
+  const policy = doc.createElement('meta');
+  policy.setAttribute('http-equiv', 'Content-Security-Policy');
+  policy.setAttribute('content', PREVIEW_CONTENT_SECURITY_POLICY);
+  head.prepend(policy);
+
+  if (!doc.head) {
+    const htmlElement = doc.documentElement || doc.createElement('html');
+    htmlElement.prepend(head);
+    if (!doc.documentElement) doc.appendChild(htmlElement);
+  }
+
+  return `${doctype}${doc.documentElement?.outerHTML || html}`;
+}
+
 /**
  * Check if HTML content contains dangerous patterns that could attempt
  * to access Electron/Node.js APIs.

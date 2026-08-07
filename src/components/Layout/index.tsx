@@ -20,6 +20,7 @@ import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import CloseNoticeDialog from '../Dialog/CloseNotice';
@@ -35,6 +36,10 @@ const Layout = () => {
     setInitState: _setInitState,
   } = useAuthStore();
   const [noticeOpen, setNoticeOpen] = useState(false);
+  const activeWorkspaceRoot = useSpaceStore((state) => {
+    const activeSpaceId = state.activeSpaceId;
+    return activeSpaceId ? state.spaces[activeSpaceId]?.rootPath || null : null;
+  });
 
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
@@ -52,6 +57,21 @@ const Layout = () => {
   } = useInstallationUI();
 
   useInstallationSetup();
+
+  useEffect(() => {
+    if (!host?.ipcRenderer?.invoke) return;
+    void host.ipcRenderer
+      .invoke(
+        'set-local-file-preview-roots',
+        activeWorkspaceRoot ? [activeWorkspaceRoot] : []
+      )
+      .catch((error: unknown) => {
+        console.warn(
+          '[Layout] Failed to register the active workspace preview root:',
+          error
+        );
+      });
+  }, [activeWorkspaceRoot, host]);
 
   useEffect(() => {
     if (!host?.ipcRenderer || !host?.electronAPI) return;

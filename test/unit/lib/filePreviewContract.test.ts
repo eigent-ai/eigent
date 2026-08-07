@@ -55,4 +55,16 @@ describe('file preview policy', () => {
       decideFilePreview('md', { size: FILE_PREVIEW_LIMITS.textBytes + 1 })
     ).toMatchObject({ mode: 'bounded-text' });
   });
+
+  it('never fully decodes an unknown file in the renderer', () => {
+    expect(decideFilePreview('custom-data', { size: 20 })).toMatchObject({
+      mode: 'bounded-text',
+      limit: FILE_PREVIEW_LIMITS.textBytes,
+    });
+    expect(
+      decideFilePreview('custom-data', {
+        size: FILE_PREVIEW_LIMITS.defaultBytes,
+      })
+    ).toMatchObject({ mode: 'bounded-text' });
+  });
 });

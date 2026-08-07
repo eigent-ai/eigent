@@ -2064,7 +2064,12 @@ class SQLiteRunJournal:
                         connection.execute(
                             """
                             UPDATE run_attempts
-                            SET status = ?, ended_at = COALESCE(ended_at, ?),
+                            SET status = ?, ended_at = COALESCE(
+                                    ended_at,
+                                    last_consumer_heartbeat_at,
+                                    started_at,
+                                    ?
+                                ),
                                 outcome = COALESCE(outcome, ?)
                             WHERE run_id = ?
                               AND status IN ('pending', 'running', 'waiting_for_user')
