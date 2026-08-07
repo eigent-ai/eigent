@@ -72,7 +72,10 @@ import {
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
-import { containsDangerousContent } from '@/lib/htmlSanitization';
+import {
+  containsDangerousContent,
+  injectPreviewContentSecurityPolicy,
+} from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   formatFileSize,
@@ -2623,7 +2626,9 @@ function HtmlRenderer({
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
         setProcessedHtml(
-          injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+          injectPreviewContentSecurityPolicy(
+            injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+          )
         );
         return;
       }
@@ -2718,12 +2723,20 @@ function HtmlRenderer({
       );
 
       // Set the processed HTML with font styles - iframe sandbox provides security
-      setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));
+      setProcessedHtml(
+        injectPreviewContentSecurityPolicy(
+          injectFontStyles(htmlWithDeferredScripts)
+        )
+      );
     };
 
     processHtml().catch((error) => {
       console.error('[HtmlRenderer] Failed to process HTML:', error);
-      setProcessedHtml(injectFontStyles(selectedFile.content || ''));
+      setProcessedHtml(
+        injectPreviewContentSecurityPolicy(
+          injectFontStyles(selectedFile.content || '')
+        )
+      );
     });
   }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
 
@@ -2903,6 +2916,7 @@ export function FileViewerPanel({
   onRevealFile,
   onBreadcrumbSegmentClick,
   onDownloadFile,
+  onOpenExternalFile,
   onToggleSourceCode,
   headerActionsExtra,
   emptyState,

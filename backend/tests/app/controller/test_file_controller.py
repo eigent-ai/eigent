@@ -14,6 +14,7 @@
 
 import os
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -185,6 +186,43 @@ def test_task_changes_exclude_files_written_after_run_attempt(tmp_path):
     assert [item["relativePath"] for item in files] == [
         "bank-transfer.csv"
     ]
+
+
+def test_task_changes_skip_file_deleted_between_walk_and_stat(
+    monkeypatch, tmp_path
+):
+    output_root = tmp_path / "outputs"
+    output_root.mkdir()
+    disappearing = output_root / "ephemeral.txt"
+    disappearing.write_text("temporary", encoding="utf-8")
+    original_stat = Path.stat
+    target_stat_calls = 0
+
+    monkeypatch.setattr(
+        file_controller,
+        "list_files",
+        lambda *_args, **_kwargs: [str(disappearing)],
+    )
+
+    def disappearing_stat(path, *args, **kwargs):
+        nonlocal target_stat_calls
+        if path == disappearing:
+            target_stat_calls += 1
+            if target_stat_calls >= 2:
+                raise FileNotFoundError(path)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", disappearing_stat)
+
+    files = file_controller._list_task_changed_files(
+        SimpleNamespace(
+            task_output_root=str(output_root),
+            working_directory=str(output_root),
+            task_start_time=time.time() - 10,
+        )
+    )
+
+    assert files == []
 
 
 def test_task_changes_endpoint_freezes_completed_run_manifest(

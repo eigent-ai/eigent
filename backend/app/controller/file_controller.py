@@ -288,9 +288,16 @@ def _list_task_changed_files(
             except (OSError, ValueError):
                 continue
 
+            try:
+                stat_result = path.stat()
+            except OSError:
+                # The artifact list races with tools that atomically replace or
+                # remove generated files. One vanished file must not fail the
+                # whole Files changed panel.
+                continue
+
             seen_paths.add(identity)
             remaining -= 1
-            stat_result = path.stat()
             result.append(
                 {
                     "filename": path.name,

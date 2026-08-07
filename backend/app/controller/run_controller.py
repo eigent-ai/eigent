@@ -30,7 +30,7 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -554,10 +554,19 @@ async def get_run_events(
 async def stream_run_events(
     run_id: str,
     after_sequence: int = Query(default=0, ge=0),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ):
     await _load_run_or_404(run_id)
+    reconnect_sequence = after_sequence
+    if isinstance(last_event_id, str):
+        try:
+            parsed_last_event_id = int(last_event_id)
+        except ValueError:
+            parsed_last_event_id = -1
+        if parsed_last_event_id >= 0:
+            reconnect_sequence = max(reconnect_sequence, parsed_last_event_id)
     return StreamingResponse(
-        _durable_event_stream(run_id, after_sequence=after_sequence),
+        _durable_event_stream(run_id, after_sequence=reconnect_sequence),
         media_type="text/event-stream",
     )
 
