@@ -64,6 +64,10 @@
   "splitting-tasks": "تقسيم المهام",
   "working-on-tasks-for": "العمل على المهام لمدة <elapsed>{{time}}</elapsed>",
   "worked-for": "عُمل لمدة <elapsed>{{time}}</elapsed>",
+  "failed-after": "فشل بعد <elapsed>{{time}}</elapsed>",
+  "interrupted-after": "توقف بعد <elapsed>{{time}}</elapsed>",
+  "stopped-after": "أُوقف بعد <elapsed>{{time}}</elapsed>",
+  "run-no-final-response": "انتهى هذا الـ Run قبل تسجيل رد نهائي.",
   "start-task": "نفّذ الآن",
   "auto-start-in": "بدء تلقائي خلال {{seconds}}ث",
   "message-cannot-be-empty": "لا يمكن أن تكون الرسالة فارغة",
@@ -112,5 +116,15 @@
   "expand-plan": "توسيع الخطة",
   "minimize-plan": "تصغير الخطة",
   "expand-subtasks": "توسيع المهام الفرعية",
-  "add-subtask-placeholder": "أضف مهمة فرعية جديدة واضغط Enter لإضافة المزيد"
+  "add-subtask-placeholder": "أضف مهمة فرعية جديدة واضغط Enter لإضافة المزيد",
+  "run-cloud-restored-title": "تمت استعادة السجل من السحابة",
+  "run-cloud-restored-description": "هذا التشغيل متاح كسجل للقراءة فقط. لا توجد مساحة العمل المحلية وسياق التنفيذ الأصليان على هذا الجهاز؛ أرسل متابعة لبدء تشغيل جديد.",
+  "run-interrupted-title": "توقف التشغيل",
+  "run-interrupted-description": "توقف Eigent قبل اكتمال هذا التشغيل. تم حفظ العمل المكتمل. تؤدي المتابعة إلى إنشاء محاولة جديدة ولن تعيد تلقائيًا الإجراءات الخارجية المكتملة.",
+  "run-resume": "متابعة",
+  "run-resuming": "جارٍ المتابعة…",
+  "run-cancel": "إنهاء التشغيل",
+  "run-cancelling": "جارٍ الإنهاء…",
+  "run-resume-failed": "تعذرت متابعة هذا التشغيل.",
+  "run-cancel-failed": "تعذر إنهاء هذا التشغيل."
 }

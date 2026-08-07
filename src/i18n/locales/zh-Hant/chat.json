@@ -64,6 +64,10 @@
   "splitting-tasks": "拆分任務",
   "working-on-tasks-for": "正在處理任務 · <elapsed>{{time}}</elapsed>",
   "worked-for": "已工作 <elapsed>{{time}}</elapsed>",
+  "failed-after": "執行 <elapsed>{{time}}</elapsed> 後失敗",
+  "interrupted-after": "執行 <elapsed>{{time}}</elapsed> 後中斷",
+  "stopped-after": "執行 <elapsed>{{time}}</elapsed> 後停止",
+  "run-no-final-response": "該 Run 在記錄最終回覆前已結束。",
   "start-task": "立即執行",
   "auto-start-in": "{{seconds}}秒後自動開始",
   "message-cannot-be-empty": "訊息不能為空",
@@ -112,5 +116,15 @@
   "expand-plan": "展開計劃",
   "minimize-plan": "最小化計劃",
   "expand-subtasks": "展開子任務",
-  "add-subtask-placeholder": "新增子任務，按 Enter 新增更多"
+  "add-subtask-placeholder": "新增子任務，按 Enter 新增更多",
+  "run-cloud-restored-title": "已從雲端恢復歷史",
+  "run-cloud-restored-description": "此任務只會以唯讀歷史恢復。這台裝置沒有原本的本機工作資料夾與執行內容，因此無法直接恢復執行；傳送後續訊息會建立新的任務。",
+  "run-interrupted-title": "任務已中斷",
+  "run-interrupted-description": "Eigent 在任務完成前退出。已完成的工作已儲存；恢復後會建立新的執行嘗試，且不會自動重做已完成的外部操作。",
+  "run-resume": "恢復任務",
+  "run-resuming": "正在恢復…",
+  "run-cancel": "結束任務",
+  "run-cancelling": "正在結束…",
+  "run-resume-failed": "恢復任務失敗，請重試。",
+  "run-cancel-failed": "結束任務失敗，請重試。"
 }

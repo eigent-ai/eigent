@@ -197,6 +197,8 @@ def list_files(
     skip_dirs: set[str] | None = None,
     skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
+    modified_after: float | None = None,
+    modified_before: float | None = None,
     stats: dict[str, float | int] | None = None,
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
@@ -209,6 +211,13 @@ def list_files(
         skip_dirs (set[str] | None): Directory names to skip (default: DEFAULT_SKIP_DIRS).
         skip_extensions (tuple[str, ...]): File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
         skip_prefix (str): Skip dirs/files whose name starts with this prefix.
+        modified_after (float | None): If set, only include files whose mtime
+            is at or after this Unix timestamp. Filtering happens before the
+            result limit so recent artifacts are not hidden by older files.
+        modified_before (float | None): If set, only include files whose mtime
+            is at or before this Unix timestamp. This lets historical Run
+            artifact queries exclude files written by later Runs that share a
+            direct-write workspace.
 
     Returns:
         List of real absolute file paths under dir_path (subject to filters and max_entries).
@@ -256,6 +265,20 @@ def list_files(
                     continue
                 try:
                     file_path = os.path.join(root, name)
+                    if modified_after is not None or modified_before is not None:
+                        file_mtime = os.stat(
+                            file_path, follow_symlinks=False
+                        ).st_mtime
+                        if (
+                            modified_after is not None
+                            and file_mtime < modified_after
+                        ):
+                            continue
+                        if (
+                            modified_before is not None
+                            and file_mtime > modified_before
+                        ):
+                            continue
                     if os.path.islink(file_path):
                         symlink_count += 1
                         realpath_started = time.perf_counter()

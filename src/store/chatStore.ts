@@ -14,6 +14,7 @@
 
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   getBaseURL,
@@ -40,6 +41,7 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
+import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
 import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
@@ -50,6 +52,7 @@ import {
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -82,6 +85,100 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // "ongoing"). Clamp before sending; the full text still lives in the run's
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
+
+export async function admitDurableRunResume(
+  runId: string,
+  requestId: string,
+  post: typeof fetchPost = fetchPost
+): Promise<void> {
+  await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+    request_id: requestId,
+    reason: 'explicit_resume',
+  });
+}
+
+/** Adapt a canonical RunEvent to the legacy message reducer during migration. */
+export const canonicalRunEventToLegacyMessage = (
+  value: unknown
+): AgentMessage | null => {
+  if (!value || typeof value !== 'object') return null;
+  const event = value as {
+    legacy_step?: unknown;
+    payload?: unknown;
+    created_at?: unknown;
+  };
+  if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
+    return null;
+  }
+  return {
+    step: event.legacy_step,
+    data: event.payload,
+    // Canonical Run events use epoch seconds. Preserve the durable event time
+    // so history hydration measures the original execution instead of the
+    // few milliseconds taken by local SSE replay.
+    timestamp:
+      typeof event.created_at === 'number' && Number.isFinite(event.created_at)
+        ? event.created_at
+        : undefined,
+  } as AgentMessage;
+};
+
+export interface CanonicalRunEventCursor {
+  lastSequence: number;
+  recentEventIds: Set<string>;
+  eventIdOrder: string[];
+}
+
+const CANONICAL_EVENT_ID_WINDOW = 2048;
+
+export function createCanonicalRunEventCursor(
+  afterSequence = 0
+): CanonicalRunEventCursor {
+  return {
+    lastSequence: Math.max(0, Math.trunc(afterSequence)),
+    recentEventIds: new Set<string>(),
+    eventIdOrder: [],
+  };
+}
+
+/** Sequence is the primary replay boundary; event_id is defense in depth. */
+export function acceptCanonicalRunEvent(
+  cursor: CanonicalRunEventCursor,
+  value: unknown,
+  sseEventId?: unknown
+): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as { sequence?: unknown; event_id?: unknown };
+  const sequenceCandidate =
+    typeof envelope.sequence === 'number'
+      ? envelope.sequence
+      : typeof sseEventId === 'string' && sseEventId.trim()
+        ? Number(sseEventId)
+        : NaN;
+  const sequence = Number.isInteger(sequenceCandidate)
+    ? sequenceCandidate
+    : null;
+  const eventId =
+    typeof envelope.event_id === 'string' && envelope.event_id
+      ? envelope.event_id
+      : undefined;
+
+  if (sequence === null && !eventId) return false;
+  if (sequence !== null && sequence <= cursor.lastSequence) return false;
+  if (eventId && cursor.recentEventIds.has(eventId)) return false;
+
+  if (sequence !== null) cursor.lastSequence = sequence;
+  if (eventId) {
+    cursor.recentEventIds.add(eventId);
+    cursor.eventIdOrder.push(eventId);
+    if (cursor.eventIdOrder.length > CANONICAL_EVENT_ID_WINDOW) {
+      const expired = cursor.eventIdOrder.shift();
+      if (expired) cursor.recentEventIds.delete(expired);
+    }
+  }
+  return true;
+}
+
 const clampHistorySummary = (
   value: string | undefined | null
 ): string | undefined =>
@@ -365,6 +462,14 @@ async function resolveCdpBrowsersForRequest(
   return { browser_port, cdp_browsers };
 }
 
+export type DurableRunDisplayStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'stopped';
+
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
@@ -385,6 +490,8 @@ interface Task {
   hasMessages: boolean;
   activeAgent: string;
   status: ChatTaskStatusType;
+  /** Canonical Run outcome used when projecting historical/non-happy turns. */
+  durableRunStatus?: DurableRunDisplayStatus;
   taskTime: number;
   elapsed: number;
   tokens: number;
@@ -418,20 +525,20 @@ interface UploadCandidate {
   source: UploadFileSource;
 }
 
-interface GeneratedUploadFile {
-  path?: string;
-  name?: string;
-  isFolder?: boolean;
-  relativePath?: string;
-  source?: Exclude<UploadFileSource, 'user_attachment'>;
-}
-
 interface UploadOutcome {
   success: boolean;
   fileName: string;
   source: UploadFileSource;
   response?: unknown;
   error?: unknown;
+}
+
+interface CamelLogUploadFile {
+  path?: string;
+  name?: string;
+  isFolder?: boolean;
+  relativePath?: string;
+  source?: 'camel_log';
 }
 
 function getFileNameFromPath(filePath: string): string {
@@ -447,17 +554,14 @@ function isReadableLocalPath(filePath?: string): filePath is string {
 function buildUploadName(
   fileName: string,
   source: UploadFileSource,
-  taskId: string,
   attachmentIndex: number,
   relativePath?: string
 ): string {
   if (source === 'camel_log') {
-    if (relativePath) {
-      return `camel_log/${relativePath}/${fileName}`;
-    }
-    return `camel_log/${fileName}`;
+    return relativePath
+      ? `camel_log/${relativePath}/${fileName}`
+      : `camel_log/${fileName}`;
   }
-
   if (source === 'user_attachment') {
     return `user_attachment/${fileName}`;
   }
@@ -591,26 +695,31 @@ export function buildProjectContinuationContext(
 }
 
 export function collectTaskUploadFiles(
-  generatedFiles: GeneratedUploadFile[],
+  camelLogFiles: CamelLogUploadFile[],
   messages: Message[],
   pendingAttaches: File[] = [],
-  taskId = 'unknown_task',
   taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
     Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
   > = [];
 
-  for (const file of generatedFiles) {
+  // Diagnostics are deliberately isolated from project-folder discovery.
+  // The Electron endpoint behind this list traverses only camel_logs.
+  for (const file of camelLogFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
     uploadCandidates.push({
       path: file.path,
       name: file.name,
       relativePath: file.relativePath,
-      source: file.source === 'camel_log' ? 'camel_log' : 'project_output',
+      source: 'camel_log',
     });
   }
 
+  // Only WRITE_FILE events populate taskOutputFiles. Do not scan the selected
+  // workspace or infer upload consent from paths mentioned in a final answer:
+  // those paths may point at files that existed before Eigent opened the
+  // folder. Reading/referencing a local file is never upload consent.
   for (const file of taskOutputFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
     if (!isReadableLocalPath(file.path)) continue;
@@ -622,17 +731,8 @@ export function collectTaskUploadFiles(
     });
   }
 
-  for (const file of messages.flatMap((message) => message.fileList || [])) {
-    if (!file?.path || !file?.name || file.isFolder) continue;
-    if (!isReadableLocalPath(file.path)) continue;
-    uploadCandidates.push({
-      path: file.path,
-      name: file.name,
-      relativePath: file.relativePath,
-      source: 'project_output',
-    });
-  }
-
+  // ChatBox attachments are the other explicit consent boundary. This does
+  // not include files merely present in the selected folder.
   const attachmentFiles = [
     ...messages.flatMap((message) => message.attaches || []),
     ...pendingAttaches,
@@ -658,7 +758,6 @@ export function collectTaskUploadFiles(
         uploadName: buildUploadName(
           file.name,
           file.source,
-          taskId,
           file.source === 'user_attachment' ? attachmentIndex++ : 0,
           relativePath
         ),
@@ -740,6 +839,10 @@ export interface StartTaskOptions {
   preserveTaskId?: boolean;
   skipHistoryCreate?: boolean;
   historyId?: string | number | null;
+  /** Execute a new Attempt on an existing interrupted durable Run. */
+  resumeRequestId?: string;
+  /** Reconstruct replay UI from the canonical local RunJournal. */
+  replaySource?: 'cloud' | 'local_durable';
 }
 
 export interface ChatStore {
@@ -758,13 +861,18 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  setDurableRunStatus: (
+    taskId: string,
+    status: DurableRunDisplayStatus | undefined
+  ) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
     taskId: string,
     question: string,
     time: number,
-    projectId?: string
+    projectId?: string,
+    source?: 'cloud' | 'local_durable'
   ) => Promise<void>;
   startTask: (
     taskId: string,
@@ -1017,15 +1125,164 @@ export function extractFinalOutputFileList(
   return fileInfos;
 }
 
-function getFileInfoIdentities(file: FileInfo): string[] {
-  return [
-    file.relativePath,
-    file.path,
-    file.name,
-    getOutputFileNameFromPath(file.path || ''),
-  ]
-    .filter(Boolean)
-    .map((value) => normalizeOutputPath(value as string).toLowerCase());
+type TaskArtifactChange = {
+  filename?: unknown;
+  path?: unknown;
+  relativePath?: unknown;
+  changeType?: unknown;
+  size?: unknown;
+  modifiedAt?: unknown;
+};
+
+/** Convert Brain's capability-protected local artifact index into preview cards. */
+export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
+  if (!Array.isArray(value)) return [];
+
+  const files: FileInfo[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value as TaskArtifactChange[]) {
+    const path =
+      typeof candidate.path === 'string'
+        ? normalizeOutputPath(candidate.path)
+        : '';
+    const name =
+      typeof candidate.filename === 'string'
+        ? candidate.filename.trim()
+        : getOutputFileNameFromPath(path);
+    const relativePath =
+      typeof candidate.relativePath === 'string'
+        ? normalizeOutputPath(candidate.relativePath)
+        : undefined;
+    const type = getFileTypeFromName(name);
+    const identity = (relativePath || path).toLowerCase();
+    if (!path || !name || !identity || seen.has(identity)) continue;
+
+    seen.add(identity);
+    files.push({
+      name,
+      type,
+      path,
+      relativePath,
+      icon: FileText,
+      isRemote: false,
+      artifactChange:
+        candidate.changeType === 'generated' ? 'generated' : 'changed',
+      size:
+        typeof candidate.size === 'number' && candidate.size >= 0
+          ? candidate.size
+          : undefined,
+      modifiedAt:
+        typeof candidate.modifiedAt === 'number'
+          ? candidate.modifiedAt
+          : undefined,
+    });
+  }
+  return files;
+}
+
+type TaskArtifactFileListResult = {
+  canonical: boolean;
+  files: FileInfo[];
+};
+
+async function loadTaskArtifactFileList({
+  taskId,
+  projectId,
+  email,
+  userId,
+}: {
+  taskId: string;
+  projectId?: string;
+  email?: string;
+  userId?: string | number | null;
+}): Promise<TaskArtifactFileListResult> {
+  // The index contains absolute local paths and is intentionally Desktop-only.
+  if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
+    return { canonical: false, files: [] };
+  }
+
+  try {
+    const changes = await fetchGet('/files/changes', {
+      task_id: taskId,
+      project_id: projectId,
+      email,
+      ...(userId ? { user_id: userId } : {}),
+    });
+    return {
+      canonical: true,
+      files: normalizeTaskArtifactFileList(changes),
+    };
+  } catch (error) {
+    // Older Brain versions and cloud-only history do not expose the local
+    // artifact index. Existing WRITE_FILE/final-answer projections remain.
+    console.info(`[Artifacts] No local changes for task ${taskId}`, error);
+    return { canonical: false, files: [] };
+  }
+}
+
+function normalizedFileIdentity(value: string | undefined): string {
+  if (!value) return '';
+
+  let identity = normalizeOutputPath(value);
+  const queryIndex = identity.indexOf('?');
+  if (queryIndex !== -1) {
+    try {
+      const remoteUrl = new URL(identity, 'http://eigent.local');
+      const streamedPath = remoteUrl.searchParams.get('path');
+      if (streamedPath) identity = normalizeOutputPath(streamedPath);
+    } catch {
+      // Keep the original value when it is not a valid URL-shaped path.
+    }
+  }
+
+  // Older Desktop builds accidentally prefixed POSIX sandbox paths with a
+  // synthetic `x:` drive. It is identity noise, not part of the real path.
+  return identity.replace(/^x:(?=\/)/i, '').toLowerCase();
+}
+
+function pathEndsWithRelativePath(
+  absoluteOrRemotePath: string,
+  relativePath: string
+): boolean {
+  return (
+    absoluteOrRemotePath === relativePath ||
+    absoluteOrRemotePath.endsWith(`/${relativePath.replace(/^\/+/, '')}`)
+  );
+}
+
+function fileInfoMatches(left: FileInfo, right: FileInfo): boolean {
+  const leftPath = normalizedFileIdentity(left.path);
+  const rightPath = normalizedFileIdentity(right.path);
+  const leftRelative = normalizedFileIdentity(left.relativePath);
+  const rightRelative = normalizedFileIdentity(right.relativePath);
+
+  if (leftRelative && rightRelative && leftRelative === rightRelative) {
+    return true;
+  }
+  if (leftPath && rightPath && leftPath === rightPath) return true;
+  if (
+    leftRelative &&
+    rightPath &&
+    pathEndsWithRelativePath(rightPath, leftRelative)
+  ) {
+    return true;
+  }
+  if (
+    rightRelative &&
+    leftPath &&
+    pathEndsWithRelativePath(leftPath, rightRelative)
+  ) {
+    return true;
+  }
+
+  // Name-only rows are legacy data with no path identity. Use the basename
+  // only when neither side has enough path information to distinguish files.
+  if (!leftPath && !rightPath && !leftRelative && !rightRelative) {
+    return (
+      normalizedFileIdentity(left.name) === normalizedFileIdentity(right.name)
+    );
+  }
+  return false;
 }
 
 function isLegacySandboxDrivePath(
@@ -1042,17 +1299,14 @@ export function mergeFileInfoLists(
   extractedFileList: FileInfo[]
 ): FileInfo[] {
   const merged = [...existingFileList];
-  const mergedIdentities = merged.map(getFileInfoIdentities);
 
   extractedFileList.forEach((file) => {
-    const identities = getFileInfoIdentities(file);
-    const existingIndex = mergedIdentities.findIndex((existingIdentities) =>
-      identities.some((identity) => existingIdentities.includes(identity))
+    const existingIndex = merged.findIndex((existing) =>
+      fileInfoMatches(existing, file)
     );
 
     if (existingIndex === -1) {
       merged.push(file);
-      mergedIdentities.push(identities);
       return;
     }
 
@@ -1065,11 +1319,52 @@ export function mergeFileInfoLists(
         ...existingFile,
         ...file,
       };
-      mergedIdentities[existingIndex] = identities;
+      return;
+    }
+
+    if (
+      (file.artifactChange && !existingFile.artifactChange) ||
+      (file.size !== undefined && existingFile.size === undefined) ||
+      (file.modifiedAt !== undefined && existingFile.modifiedAt === undefined)
+    ) {
+      merged[existingIndex] = {
+        ...existingFile,
+        artifactChange: existingFile.artifactChange || file.artifactChange,
+        relativePath: existingFile.relativePath || file.relativePath,
+        size: existingFile.size ?? file.size,
+        modifiedAt: existingFile.modifiedAt ?? file.modifiedAt,
+      };
     }
   });
 
   return merged;
+}
+
+/**
+ * Resolve the final card's Run-scoped output list.
+ *
+ * A successful local artifact lookup is authoritative even when it returns an
+ * empty list. In that case paths merely mentioned in the final answer must not
+ * be promoted to "Files changed": they can point at files created by an older
+ * Run in the same direct-write workspace. Final-answer extraction remains a
+ * compatibility fallback for cloud history and older Brain versions that do
+ * not expose the canonical artifact endpoint.
+ */
+export function resolveRunOutputFileList({
+  writeEventFiles,
+  artifactFiles,
+  canonicalArtifactsAvailable,
+  finalAnswerFiles,
+}: {
+  writeEventFiles: FileInfo[];
+  artifactFiles: FileInfo[];
+  canonicalArtifactsAvailable: boolean;
+  finalAnswerFiles: FileInfo[];
+}): FileInfo[] {
+  return mergeFileInfoLists(
+    writeEventFiles,
+    canonicalArtifactsAvailable ? artifactFiles : finalAnswerFiles
+  );
 }
 
 const normalizeToolkitMessage = (value: unknown) => {
@@ -1428,13 +1723,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return state;
           }
 
+          const task = state.tasks[taskId];
+          const elapsed = settleTaskElapsedMs(task, Date.now());
           return {
             ...state,
             tasks: {
               ...state.tasks,
               [taskId]: {
-                ...state.tasks[taskId],
+                ...task,
                 status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'stopped',
+                taskTime: 0,
+                elapsed,
               },
             },
           };
@@ -1462,6 +1762,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (type === 'replay') {
         setDelayTime(taskId, delayTime as number);
         setType(taskId, type);
+        // A replay reconstructs persisted execution time from event
+        // timestamps. Never carry a stale live clock across an idle/restart
+        // interval or the END reducer will count that interval as work.
+        get().setTaskTime(taskId, 0);
       }
 
       //ProjectStore must exist as chatStore is already
@@ -1513,7 +1817,36 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       /**
        * Replay creates its own chatStore for each task with replayProject
        */
-      if (project_id && type !== 'replay') {
+      if (project_id && type !== 'replay' && startOptions.resumeRequestId) {
+        const existing = projectStore
+          .getAllChatStores(project_id)
+          .find(({ chatStore }) => chatStore.getState().tasks[taskId]);
+        if (existing) {
+          newTaskId = taskId;
+          targetChatStore = existing.chatStore;
+          projectStore.setActiveChatStore(project_id, existing.chatId);
+        } else {
+          const active = projectStore.getChatStore(project_id);
+          if (active) {
+            targetChatStore = active;
+            newTaskId = active.getState().create(taskId);
+          } else {
+            const created = projectStore.appendInitChatStore(
+              project_id,
+              taskId
+            );
+            if (created) {
+              newTaskId = created.taskId;
+              targetChatStore = created.chatStore;
+            }
+          }
+        }
+        const resumeState = targetChatStore.getState();
+        resumeState.setActiveTaskId(newTaskId);
+        resumeState.setStatus(newTaskId, ChatTaskStatus.PENDING);
+        resumeState.setIsPending(newTaskId, true);
+        resumeState.setHasWaitComfirm(newTaskId, false);
+      } else if (project_id && type !== 'replay') {
         console.log('Creating a new Chat Instance for current project on end');
         const newChatResult = projectStore.appendInitChatStore(
           project_id,
@@ -1631,11 +1964,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const serverBaseUrl = import.meta.env.DEV
         ? window.location.origin
         : import.meta.env.VITE_BASE_URL;
+      const canonicalReplayCursor = createCanonicalRunEventCursor();
       const api =
         type == 'share'
           ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
           : type == 'replay'
-            ? `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
+            ? startOptions.replaySource === 'local_durable'
+              ? `/runs/${encodeURIComponent(newTaskId)}/stream?after_sequence=${canonicalReplayCursor.lastSequence}`
+              : `${serverBaseUrl}/api/v1/chat/steps/playback/${newTaskId}?delay_time=${delayTime}`
             : '/chat';
 
       const { tasks: _tasks } = get();
@@ -1649,9 +1985,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let skipFirstConfirm = true;
       let playbackFirstStepTimeMs: number | null = null;
       let playbackLastStepTimeMs: number | null = null;
+      let localDurableLegacyEventCount = 0;
 
       // replay or share request
-      if (type) {
+      if (type && startOptions.replaySource !== 'local_durable') {
         const res = await proxyFetchGet(`/api/v1/chat/snapshots`, {
           api_task_id: taskId,
         });
@@ -2047,6 +2384,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         }
       }
 
+      // Use the Run control API as the authoritative Resume admission gate.
+      // It returns real 404/409 errors for terminal, cancelled, cloud-restored,
+      // or unsafe-to-replay Runs. Only after all local model/workspace preflight
+      // has succeeded do we create the durable pending Attempt.
+      if (startOptions.resumeRequestId) {
+        try {
+          await admitDurableRunResume(newTaskId, startOptions.resumeRequestId);
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+      }
+
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
       let lockedChatStore = targetChatStore;
@@ -2108,9 +2458,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             run_id: newTaskId,
             space_root_path: spaceRootPath,
             workdir_mode: project?.workdirMode || undefined,
-            question:
-              messageContent ||
-              targetChatStore.getState().getLastUserMessage()?.content,
+            question: startOptions.resumeRequestId
+              ? targetChatStore.getState().getLastUserMessage()?.content ||
+                'Resume interrupted Run'
+              : messageContent ||
+                targetChatStore.getState().getLastUserMessage()?.content,
             model_platform: apiModel.model_platform,
             email,
             user_id: getAuthStore().user_id,
@@ -2139,10 +2491,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             remote_sub_agent_config: remoteSubAgentConfig,
             project_context: buildProjectContinuationContext(
               project_id,
-              newTaskId
+              startOptions.resumeRequestId ? undefined : newTaskId
             ),
+            resume_request_id: startOptions.resumeRequestId,
           }
         : undefined;
+
+      let resumeStreamOpened = false;
+      let resolveResumeStreamOpen: (() => void) | undefined;
+      let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
+      const resumeStreamOpenPromise = startOptions.resumeRequestId
+        ? new Promise<void>((resolve, reject) => {
+            resolveResumeStreamOpen = resolve;
+            rejectResumeStreamOpen = reject;
+          })
+        : null;
 
       const ssePromise = sseTransport({
         url: api,
@@ -2158,7 +2521,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           let agentMessages: AgentMessage;
 
           try {
-            agentMessages = JSON.parse(event.data);
+            const parsed = JSON.parse(event.data);
+            if (startOptions.replaySource === 'local_durable') {
+              if (
+                !acceptCanonicalRunEvent(
+                  canonicalReplayCursor,
+                  parsed,
+                  event.id
+                )
+              ) {
+                return;
+              }
+              // /runs/{id}/stream returns the canonical RunEvent envelope.
+              // The existing Desktop reducer remains legacy-shaped during
+              // migration, so typed-only/control events advance the stream
+              // cursor but do not enter the UI projector.
+              const projected = canonicalRunEventToLegacyMessage(parsed);
+              if (!projected) {
+                return;
+              }
+              localDurableLegacyEventCount += 1;
+              agentMessages = projected;
+            } else {
+              agentMessages = parsed;
+            }
           } catch (error) {
             console.error('Failed to parse SSE message:', error);
             console.error('Raw event.data:', event.data);
@@ -2436,6 +2822,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             console.log(
               `[TTFT] Task ${ttftTaskId} confirmed at ${new Date().toISOString()}, starting TTFT measurement`
             );
+            const confirmedStore = getCurrentChatStore();
+            const confirmedTask = confirmedStore.tasks[ttftTaskId];
+            if (
+              !type &&
+              sessionModeForRequest === SessionMode.SINGLE_AGENT &&
+              confirmedTask?.taskTime === 0
+            ) {
+              // Single Agent has no manual plan-confirm boundary. Admission
+              // is the start of its durable Attempt, so seed the clock here
+              // instead of waiting for the first todo_state/model response.
+              // This also gives pre-TODO transport errors a non-zero duration.
+              confirmedStore.setTaskTime(ttftTaskId, Date.now());
+            }
             return;
           }
 
@@ -3644,6 +4043,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 'An error occurred while processing your request';
               const isProjectBusyError =
                 errorMessage === 'Single Agent is already processing a task.';
+              const isRetryableRunError =
+                agentMessages.data?.retryable === true;
+
+              // Freeze the live clock before switching to FINISHED. The work
+              // log only advances taskTime while RUNNING; skipping this step
+              // made every error path render "Worked for 0s".
+              const failedTask = tasks[currentTaskId];
+              const settledElapsed = settleTaskElapsedMs(
+                failedTask,
+                Date.now()
+              );
+              setTaskTime(currentTaskId, 0);
+              setElapsed(currentTaskId, settledElapsed);
+              get().setDurableRunStatus(currentTaskId, 'failed');
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -3731,6 +4144,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 } catch (error) {
                   console.log('Task may not exist on backend:', error);
                 }
+              }
+              if (isRetryableRunError && project_id) {
+                notifyDurableRunStatusChanged(project_id);
+                // The error SSE can reach the renderer a few milliseconds
+                // before Coordinator commits runtime.interrupted. One bounded
+                // follow-up closes that race without reinstating polling.
+                window.setTimeout(
+                  () => notifyDurableRunStatusChanged(project_id),
+                  300
+                );
               }
             } catch (error) {
               console.error('Failed to handle model error:', error);
@@ -3860,6 +4283,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const wasStoppedByUser = endMessageText.startsWith(
               '<summary>Task stopped</summary>'
             );
+            get().setDurableRunStatus(
+              currentTaskId,
+              wasStoppedByUser ? 'stopped' : 'completed'
+            );
 
             const endMessage = resolveEndMessageText(
               endMessageText,
@@ -3882,6 +4309,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setActiveAskList(currentTaskId, []);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
+
+            // Finish the local UI projection before any cloud upload or
+            // history request. Camel-log and generated-file uploads can take
+            // minutes on a large Run; keeping elapsed/artifacts behind those
+            // network operations made a completed task temporarily render as
+            // "Worked for 0s" with no Files changed section.
+            const completedTask = tasks[currentTaskId];
+            let completedElapsed = completedTask.elapsed;
+            const playbackElapsed =
+              type &&
+              playbackFirstStepTimeMs !== null &&
+              playbackLastStepTimeMs !== null
+                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                : null;
+            if (playbackElapsed !== null) {
+              completedElapsed = playbackElapsed;
+            } else if (completedTask.taskTime !== 0) {
+              completedElapsed += Date.now() - completedTask.taskTime;
+            }
+            setTaskTime(currentTaskId, 0);
+            setElapsed(currentTaskId, completedElapsed);
+
+            const writeEventFiles = completedTask.taskAssigning.flatMap(
+              (agent) =>
+                agent.tasks.flatMap((assignedTask) =>
+                  assignedTask.fileList ? assignedTask.fileList : []
+                )
+            );
+            const outputProjectId =
+              project_id || projectStore.activeProjectId || undefined;
+            const taskArtifactFileList = await loadTaskArtifactFileList({
+              taskId: currentTaskId,
+              projectId: outputProjectId,
+              email: email || undefined,
+              userId: user_id,
+            });
+            const outputBaseURL = await getBaseURL().catch(() => '');
+            const finalOutputFileList = extractFinalOutputFileList(
+              endMessage,
+              outputProjectId,
+              email || undefined,
+              outputBaseURL || undefined
+            );
+            const mergedFileList = resolveRunOutputFileList({
+              writeEventFiles,
+              artifactFiles: taskArtifactFileList.files,
+              canonicalArtifactsAvailable: taskArtifactFileList.canonical,
+              finalAnswerFiles: finalOutputFileList,
+            });
+            updateMessage(currentTaskId, endMessageId, {
+              ...endUiMessage,
+              fileList: mergedFileList,
+            });
 
             // Analytics: task outcome. Skip replay/share playback so only real
             // runs are measured, and keep stopped runs out of completion metrics.
@@ -3942,28 +4422,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   );
                 } else {
                   try {
-                    const generatedFiles =
+                    const camelLogFiles =
                       ((await hostIpcRenderer.invoke(
-                        'get-file-list',
+                        'get-camel-log-file-list',
                         email,
                         currentTaskId,
                         uploadTargetId,
                         user_id
-                      )) as GeneratedUploadFile[]) || [];
+                      )) as CamelLogUploadFile[]) || [];
                     const taskOutputFiles = tasks[
                       currentTaskId
                     ].taskAssigning.flatMap((agent) =>
                       agent.tasks.flatMap((task) => task.fileList || [])
                     );
                     const filesToUpload = collectTaskUploadFiles(
-                      generatedFiles,
+                      camelLogFiles,
                       tasks[currentTaskId].messages,
                       tasks[currentTaskId].attaches,
-                      currentTaskId,
                       taskOutputFiles
                     );
                     console.log('Task upload files collected:', {
-                      generatedFileCount: generatedFiles.length,
+                      camelLogFileCount: camelLogFiles.length,
                       taskOutputFileCount: taskOutputFiles.length,
                       uploadCandidateCount: filesToUpload.length,
                       uploadTargetId,
@@ -4057,54 +4536,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             });
             setTaskAssigning(currentTaskId, [...taskAssigning]);
             setTaskRunning(currentTaskId, [...taskRunning]);
-
-            const task = tasks[currentTaskId];
-            let taskTime = task.taskTime;
-            let elapsed = task.elapsed;
-            const playbackElapsed =
-              type &&
-              playbackFirstStepTimeMs !== null &&
-              playbackLastStepTimeMs !== null
-                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
-                : null;
-            if (playbackElapsed !== null) {
-              elapsed = playbackElapsed;
-            } else if (taskTime !== 0) {
-              const currentTime = Date.now();
-              elapsed += currentTime - taskTime;
-            }
-
-            setTaskTime(currentTaskId, 0);
-            setElapsed(currentTaskId, elapsed);
-            const fileList = tasks[currentTaskId].taskAssigning
-              .map((agent) => {
-                return agent.tasks
-                  .map((task) => {
-                    return task.fileList || [];
-                  })
-                  .flat();
-              })
-              .flat();
-
-            const outputProjectId =
-              project_id || projectStore.activeProjectId || undefined;
-            const outputBaseURL = await getBaseURL().catch(() => '');
-            const finalOutputFileList = extractFinalOutputFileList(
-              endMessage,
-              outputProjectId,
-              email || undefined,
-              outputBaseURL || undefined
-            );
-            const mergedFileList = mergeFileInfoLists(
-              fileList,
-              finalOutputFileList
-            );
-
-            console.log('endMessage', endMessage);
-            updateMessage(currentTaskId, endMessageId, {
-              ...endUiMessage,
-              fileList: mergedFileList,
-            });
 
             console.log(tasks[currentTaskId], 'end');
 
@@ -4253,6 +4684,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         },
         async onopen(respond) {
           console.log('open', respond);
+          const contentType = respond.headers.get('content-type') || '';
+          if (!respond.ok || !contentType.startsWith('text/event-stream')) {
+            let detail = `HTTP ${respond.status}`;
+            try {
+              const body = await respond.clone().json();
+              const bodyDetail = body?.detail ?? body?.message ?? body?.text;
+              if (typeof bodyDetail === 'string') detail = bodyDetail;
+              else if (bodyDetail) detail = JSON.stringify(bodyDetail);
+            } catch {
+              // Preserve the HTTP fallback for non-JSON error responses.
+            }
+            const error: any = new Error(
+              contentType.startsWith('text/event-stream')
+                ? `Run stream returned ${detail}`
+                : `Run admission did not return an event stream: ${detail}`
+            );
+            error.status = respond.status;
+            rejectResumeStreamOpen?.(error);
+            throw error;
+          }
+          resumeStreamOpened = true;
+          resolveResumeStreamOpen?.();
           const { setAttaches, activeTaskId } = get();
           setAttaches(activeTaskId as string, []);
           return;
@@ -4297,6 +4750,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             return;
           }
+
+          if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
 
           const currentTaskId = getCurrentTaskId();
           // Update trigger execution status to Completed for connection closed by server
@@ -4367,12 +4822,52 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         },
       });
+      if (resumeStreamOpenPromise) {
+        try {
+          await Promise.race([
+            resumeStreamOpenPromise,
+            ssePromise.then(() => {
+              if (!resumeStreamOpened) {
+                throw new Error(
+                  'Run stream closed before Resume admission completed'
+                );
+              }
+            }),
+          ]);
+        } catch (error) {
+          finishStartupFailure();
+          abortController.abort();
+          await ssePromise.catch(() => undefined);
+          throw error;
+        }
+        // The caller only waits for admission. Runtime streaming continues in
+        // the background and retains the existing reconnect behavior.
+        void ssePromise.catch((error) => {
+          console.error(`SSE stream failed for task ${newTaskId}:`, error);
+        });
+      }
       if (type === 'replay') {
         try {
           await ssePromise;
+          if (
+            startOptions.replaySource === 'local_durable' &&
+            localDurableLegacyEventCount === 0
+          ) {
+            throw new Error(
+              `Canonical Run ${newTaskId} contained no legacy UI events`
+            );
+          }
         } catch (err) {
           if (err instanceof DOMException && err.name === 'AbortError') {
             // Expected: stream closed normally, we aborted to resolve the promise
+            if (
+              startOptions.replaySource === 'local_durable' &&
+              localDurableLegacyEventCount === 0
+            ) {
+              throw new Error(
+                `Canonical Run ${newTaskId} contained no legacy UI events`
+              );
+            }
             return;
           }
           // Unexpected: actual error during stream
@@ -4386,7 +4881,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       taskId: string,
       question: string,
       time: number,
-      projectId?: string
+      projectId?: string,
+      source: 'cloud' | 'local_durable' = 'cloud'
     ) => {
       const {
         create,
@@ -4406,16 +4902,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         return;
       }
 
-      create(taskId, 'replay');
-      setHasMessages(taskId, true);
-      addMessages(taskId, {
-        id: generateUniqueId(),
-        role: 'user',
-        content: question.split('|')[0],
-      });
+      const resetReplayTask = () => {
+        create(taskId, 'replay');
+        setHasMessages(taskId, true);
+        addMessages(taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: question.split('|')[0],
+        });
+      };
 
-      try {
-        await startTask(
+      const startReplay = (replaySource: 'cloud' | 'local_durable') =>
+        startTask(
           taskId,
           'replay',
           undefined,
@@ -4423,8 +4921,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           undefined,
           undefined,
           undefined,
-          project_id
+          project_id,
+          undefined,
+          { replaySource }
         );
+
+      resetReplayTask();
+
+      try {
+        try {
+          await startReplay(source);
+        } catch (localReplayError) {
+          if (source !== 'local_durable') {
+            throw localReplayError;
+          }
+          console.warn(
+            `[ChatStore] Canonical replay failed for ${taskId}; falling back to cloud playback`,
+            localReplayError
+          );
+          resetReplayTask();
+          await startReplay('cloud');
+        }
         setActiveTaskId(taskId);
         handleConfirmTask(project_id, taskId, 'replay');
       } catch (error) {
@@ -4677,6 +5194,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           },
         },
       }));
+    },
+    setDurableRunStatus(
+      taskId: string,
+      durableRunStatus: DurableRunDisplayStatus | undefined
+    ) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              durableRunStatus,
+            },
+          },
+        };
+      });
     },
     handleConfirmTask: async (
       project_id: string,

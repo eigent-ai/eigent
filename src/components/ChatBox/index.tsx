@@ -21,6 +21,7 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
@@ -48,6 +49,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import {
+  InterruptedRunBanner,
+  InterruptedRunBannerAction,
+} from './InterruptedRunBanner';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
@@ -77,6 +82,32 @@ interface UsageLimitBannerState {
   actionLabel: string;
   severity: 'warning' | 'danger';
 }
+
+const runActionRequestId = (action: 'resume' | 'cancel', runId: string) => {
+  const key = `eigent:run:${runId}:${action}:request-id`;
+  try {
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const requestId = `${action}:${runId}:${generateUniqueId()}`;
+    window.sessionStorage.setItem(key, requestId);
+    return requestId;
+  } catch {
+    return `${action}:${runId}:${generateUniqueId()}`;
+  }
+};
+
+const clearRunActionRequestId = (
+  action: 'resume' | 'cancel',
+  runId: string
+) => {
+  try {
+    window.sessionStorage.removeItem(
+      `eigent:run:${runId}:${action}:request-id`
+    );
+  } catch {
+    // sessionStorage can be unavailable in hardened browser contexts.
+  }
+};
 
 const toFiniteNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -250,6 +281,14 @@ export default function ChatBox(): JSX.Element {
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
+  const {
+    run: interruptedRun,
+    setRun: setInterruptedRun,
+    refresh: refreshInterruptedRun,
+  } = useInterruptedRunStatus(activeProjectId);
+  const [durableRunAction, setDurableRunAction] =
+    useState<InterruptedRunBannerAction>(null);
+  const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
   const refreshUsageLimits = useCallback(async () => {
     if (modelType !== 'cloud' || !token) {
@@ -327,11 +366,9 @@ export default function ChatBox(): JSX.Element {
 
     if (modelType !== 'cloud' || !token) return;
 
-    const intervalId = window.setInterval(refreshUsageLimits, 60000);
     window.addEventListener('focus', refreshUsageLimits);
 
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshUsageLimits);
     };
   }, [modelType, token, refreshUsageLimits]);
@@ -377,12 +414,6 @@ export default function ChatBox(): JSX.Element {
     navigate('/history?tab=agents');
   }, [navigate]);
 
-  // Task time tracking
-  const [, setTaskTime] = useState(
-    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
-      '00:00'
-  );
-
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
@@ -400,16 +431,6 @@ export default function ChatBox(): JSX.Element {
     activeTaskId && activeAsk && isInteractiveHumanReply
       ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
       : null;
-
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
 
   useEffect(() => {
     if (!activeHumanReplyKey || !activeTaskId) {
@@ -956,6 +977,78 @@ export default function ChatBox(): JSX.Element {
 
   handleSendRef.current = handleSend;
 
+  const handleResumeInterruptedRun = async () => {
+    if (!interruptedRun || !activeProjectId || !chatStore) return;
+    if (!hasModel) {
+      toast.error('Please select a model before resuming this Run.');
+      return;
+    }
+    const run = interruptedRun;
+    const requestId = runActionRequestId('resume', run.run_id);
+    setDurableRunAction('resuming');
+    try {
+      ensureActiveProjectMode();
+      const resumePromise = chatStore.startTask(
+        run.run_id,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        activeProjectId,
+        effectiveSessionMode,
+        {
+          preserveTaskId: true,
+          skipHistoryCreate: true,
+          historyId: projectStore.getHistoryId(activeProjectId),
+          resumeRequestId: requestId,
+        }
+      );
+      // Admission is now owned by the existing task card/SSE. Hide the stale
+      // interrupted action immediately; a failed admission refreshes it from
+      // RunJournal in the catch path.
+      setInterruptedRun(null);
+      await resumePromise;
+      clearRunActionRequestId('resume', run.run_id);
+    } catch (error: any) {
+      console.error('[RunControl] Failed to resume Run', error);
+      clearRunActionRequestId('resume', run.run_id);
+      toast.error(error?.message || t('chat.run-resume-failed'));
+      await refreshInterruptedRun();
+    } finally {
+      setDurableRunAction(null);
+    }
+  };
+
+  const handleCancelInterruptedRun = async () => {
+    if (!interruptedRun) return;
+    const run = interruptedRun;
+    setDurableRunAction('cancelling');
+    try {
+      await fetchPost(`/runs/${encodeURIComponent(run.run_id)}/cancel`, {
+        request_id: runActionRequestId('cancel', run.run_id),
+        reason: 'explicit_cancel_from_desktop_ui',
+      });
+      clearRunActionRequestId('cancel', run.run_id);
+      setInterruptedRun(null);
+      for (const { chatStore: store } of projectStore.getAllChatStores(
+        run.project_id
+      )) {
+        const state = store.getState();
+        if (!state.tasks[run.run_id]) continue;
+        state.setIsPending(run.run_id, false);
+        state.setStatus(run.run_id, ChatTaskStatus.FINISHED);
+      }
+    } catch (error: any) {
+      console.error('[RunControl] Failed to cancel Run', error);
+      toast.error(error?.message || t('chat.run-cancel-failed'));
+      await refreshInterruptedRun();
+    } finally {
+      setDurableRunAction(null);
+    }
+  };
+
   // Reactive queuedMessages for the active project
   const queuedMessages = useMemo(() => {
     const pid = projectStore.activeProjectId;
@@ -1267,6 +1360,29 @@ export default function ChatBox(): JSX.Element {
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              {interruptedRun && (
+                <InterruptedRunBanner
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
+
               {chatStore.activeTaskId && (
                 <BottomBox
                   state="input"
@@ -1316,6 +1432,30 @@ export default function ChatBox(): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
+              {interruptedRun && (
+                <InterruptedRunBanner
+                  compact
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
+                  attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
               <BottomBox
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}

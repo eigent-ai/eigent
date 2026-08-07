@@ -150,6 +150,8 @@ interface ElectronAPI {
     error?: string;
   }>;
   getBackendPort: () => Promise<number | null>;
+  getLocalControlCapability: () => Promise<string>;
+  getDesktopInstanceId: (legacyRendererId?: string) => Promise<string>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
   onInstallDependenciesStart: (callback: () => void) => void;
   onInstallDependenciesLog: (

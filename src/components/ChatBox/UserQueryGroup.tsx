@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -25,10 +26,14 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
+import {
+  getTaskRunDisplayStatus,
+  TaskWorkLogAccordion,
+} from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
@@ -76,6 +81,77 @@ const AgentResultCard: React.FC<{
         </div>
       </div>
     </div>
+  );
+};
+
+/** Run-scoped artifact delta. Every item opens in the existing preview panel. */
+const ArtifactChangeList: React.FC<{
+  files?: FileInfo[];
+  onOpen: (file: FileInfo) => void;
+}> = ({ files, onOpen }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  if (!files?.length) return null;
+
+  const collapsedCount = 3;
+  const hiddenCount = Math.max(0, files.length - collapsedCount);
+  const visibleFiles = isExpanded ? files : files.slice(0, collapsedCount);
+
+  return (
+    <section className="bg-ds-bg-neutral-primary-default my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default">
+      <div className="flex items-center gap-3 border-b border-ds-border-neutral-default-default px-4 py-3">
+        <span className="bg-ds-bg-neutral-secondary-default flex size-8 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
+          <FileText size={18} aria-hidden />
+        </span>
+        <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
+          Files changed
+        </span>
+        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+          {files.length}
+        </span>
+      </div>
+      <div className="px-4 py-2">
+        {visibleFiles.map((file, fileIndex) => {
+          const detail = getWorkspaceRelativeFilePath(file);
+          const changeLabel =
+            file.artifactChange === 'generated'
+              ? 'Generated'
+              : file.artifactChange === 'changed'
+                ? 'Changed'
+                : file.type || 'File';
+          return (
+            <button
+              type="button"
+              key={`artifact-${detail}-${fileIndex}`}
+              title={detail}
+              onClick={() => onOpen(file)}
+              className="group flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-ds-bg-neutral-default-hover"
+            >
+              <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
+                {detail}
+              </span>
+              <span className="shrink-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
+                {changeLabel}
+              </span>
+            </button>
+          );
+        })}
+        {hiddenCount > 0 ? (
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((value) => !value)}
+            className="mt-1 flex items-center gap-1 rounded-lg px-2 py-2 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover"
+          >
+            {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
+            <ChevronDown
+              size={15}
+              aria-hidden
+              className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 };
 
@@ -132,6 +208,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   index,
   taskId: scopedTaskId,
 }) => {
+  const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
   const chatState = chatStore.getState();
 
@@ -247,6 +324,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
+  const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
+  const hasVisibleAgentOutput = queryGroup.otherMessages.some(
+    (message) =>
+      typeof message?.content === 'string' && message.content.trim().length > 0
+  );
+  const showMissingFinalResponse = Boolean(
+    task?.status === ChatTaskStatus.FINISHED &&
+    runDisplayStatus &&
+    !hasVisibleAgentOutput
+  );
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -429,35 +516,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onTyping={() => {}}
                   deferredFooter={
                     message.fileList?.length ? (
-                      <div className="my-2 flex flex-wrap gap-2">
-                        {message.fileList.map(
-                          (file: any, fileIndex: number) => (
-                            <motion.div
-                              key={`file-${message.id}-${file.name}-${fileIndex}`}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 0.05 }}
-                              onClick={() => {
-                                openFilePreview(file);
-                              }}
-                              className="flex w-[140px] cursor-pointer items-center gap-2 rounded-lg bg-ds-bg-neutral-default-default px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                            >
-                              <FileText
-                                size={16}
-                                className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                              />
-                              <div className="flex flex-col">
-                                <div className="max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
-                                  {file.name.split('.')[0]}
-                                </div>
-                                <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-                                  {file.type}
-                                </div>
-                              </div>
-                            </motion.div>
-                          )
-                        )}
-                      </div>
+                      <ArtifactChangeList
+                        files={message.fileList}
+                        onOpen={openFilePreview}
+                      />
                     ) : undefined
                   }
                 />
@@ -527,35 +589,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               transition={{ delay: 0.2 }}
               className="flex flex-col gap-4"
             >
-              {message.fileList && (
-                <div className="flex flex-wrap gap-2">
-                  {message.fileList.map((file: any, fileIndex: number) => (
-                    <motion.div
-                      key={`file-${message.id}-${file.name}-${fileIndex}`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.3 }}
-                      onClick={() => {
-                        openFilePreview(file);
-                      }}
-                      className="flex w-[120px] cursor-pointer items-center gap-2 rounded-2xl bg-ds-bg-neutral-default-default px-2 py-1 transition-colors hover:bg-ds-bg-neutral-default-hover"
-                    >
-                      <FileText
-                        size={16}
-                        className="flex-shrink-0 text-ds-icon-neutral-default-default"
-                      />
-                      <div className="flex flex-col">
-                        <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
-                          {file.name.split('.')[0]}
-                        </div>
-                        <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
-                          {file.type}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
+              <ArtifactChangeList
+                files={message.fileList}
+                onOpen={openFilePreview}
+              />
             </motion.div>
           );
         }
@@ -572,6 +609,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
         return null;
       })}
+
+      {showMissingFinalResponse ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-ds-bg-neutral-secondary-default mx-6 my-3 rounded-xl border border-ds-border-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default"
+        >
+          {t('chat.run-no-final-response')}
+        </motion.div>
+      ) : null}
 
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (

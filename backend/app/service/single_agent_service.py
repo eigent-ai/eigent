@@ -29,6 +29,8 @@ from app.memory import (
 )
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
+from app.run_runtime.admission import activate_improve_admission
+from app.run_runtime.coordinator import RunInterruptedError
 from app.service.task import (
     Action,
     ActionData,
@@ -44,6 +46,32 @@ from app.utils.agent_memory import (
 from app.utils.file_utils import get_working_directory
 
 logger = logging.getLogger("single_agent_service")
+
+_RETRYABLE_MODEL_STATUS_CODES = frozenset(
+    {408, 425, 429, 499, 500, 502, 503, 504}
+)
+
+
+def _is_retryable_turn_error(error: Exception) -> bool:
+    """Return whether a failed model turn can safely continue in a new Attempt.
+
+    These failures happen before Eigent receives a model response, so no tool
+    call from that response has been dispatched. Completed tool checkpoints
+    from earlier turns remain authoritative and are not replayed implicitly.
+    """
+
+    status_code = getattr(error, "status_code", None)
+    if status_code in _RETRYABLE_MODEL_STATUS_CODES:
+        return True
+    if type(error).__name__ in {"APIConnectionError", "APITimeoutError"}:
+        return True
+    message = str(error).strip().lower()
+    return message in {
+        "client closed request",
+        "connection error",
+        "request timed out",
+    }
+
 
 # Char budget for the durable memory bundle (~32k chars at 4 chars/token).
 # Override via EIGENT_MEMORY_TOKEN_BUDGET if you need to tune in the field.
@@ -286,17 +314,6 @@ async def single_agent_solve(
 
     try:
         while True:
-            if await request.is_disconnected():
-                logger.info(
-                    "Single Agent client disconnected; pausing session",
-                    extra={"project_id": options.project_id},
-                )
-                pause_event.clear()
-                task_lock.status = Status.confirming
-                if running_turn and not running_turn.done():
-                    running_turn.cancel()
-                break
-
             wait_for = {pending_queue_get}
             if running_turn is not None:
                 wait_for.add(running_turn)
@@ -315,6 +332,13 @@ async def single_agent_solve(
 
                 if item.action == Action.improve:
                     assert isinstance(item, ActionImproveData)
+                    if not await activate_improve_admission(
+                        task_lock,
+                        item,
+                        project_id=options.project_id,
+                        logger=logger,
+                    ):
+                        continue
                     if item.new_task_id:
                         current_task_id = item.new_task_id
                         set_current_task_id(
@@ -426,6 +450,7 @@ async def single_agent_solve(
                     final_result = "<summary>Task paused</summary>Task paused"
                     total_tokens = 0
                 except Exception as e:
+                    retryable = _is_retryable_turn_error(e)
                     logger.error(
                         "Single Agent turn failed",
                         extra={
@@ -437,11 +462,35 @@ async def single_agent_solve(
                     pause_event.clear()
                     task_lock.status = Status.confirming
                     _finalize_memory_for_turn(
-                        task_lock, state="failed", error=str(e)
+                        task_lock,
+                        state="interrupted" if retryable else "failed",
+                        error=str(e),
                     )
-                    yield sse_json("error", {"message": str(e)})
+                    yield sse_json(
+                        "error",
+                        {
+                            "message": str(e),
+                            "retryable": retryable,
+                            "reason": (
+                                "model_transport_error" if retryable else None
+                            ),
+                        },
+                    )
                     running_turn = None
-                    continue
+                    try:
+                        await delete_task_lock(task_lock.id)
+                    except Exception:
+                        # Cleanup failure must not downgrade a retryable model
+                        # interruption into a non-resumable execution failure.
+                        logger.exception(
+                            "Failed to clean task lock after turn error",
+                            extra={"task_id": task_lock.id},
+                        )
+                    if retryable:
+                        raise RunInterruptedError(
+                            str(e), reason="model_transport_error"
+                        ) from e
+                    raise
 
                 task_lock.status = Status.done
                 running_turn = None
@@ -462,12 +511,13 @@ async def single_agent_solve(
             pause_event.clear()
             task_lock.status = Status.confirming
             running_turn.cancel()
-        # If the loop exits without a clean done/failed end-of-turn (client
-        # disconnect, stop, exception), record a cancelled run. The
+        # If the loop exits without a clean done/failed/cancelled end-of-turn,
+        # project it as interrupted. Only an explicit cancel may produce the
+        # cancelled state; transport/process teardown is resumable. The
         # `_memory_finalized_runs` set on task_lock makes this idempotent:
         # a prior done/failed write wins, this only catches the unfinished
         # case.
-        _finalize_memory_for_turn(task_lock, state="cancelled")
+        _finalize_memory_for_turn(task_lock, state="interrupted")
         if agent is not None:
             release_cdp = getattr(agent, "_cdp_release_callback", None)
             if callable(release_cdp):

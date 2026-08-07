@@ -664,6 +664,13 @@ export const usePageTabStore = create<PageTabState>()(
           if (Date.now() < manualUntil && selectedTaskId !== taskId) {
             return state;
           }
+          if (
+            state.sidePanelViewedTurnByProject[projectId] === taskId &&
+            selectedTaskId === taskId &&
+            manualUntil === 0
+          ) {
+            return state;
+          }
           // Once the window expires, drive both fields so components only need
           // to read `sidePanelSelectedTurnByProject` — no Date.now() in render.
           return {

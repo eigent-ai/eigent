@@ -13,9 +13,20 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  completeProjectViewResync,
+  importLegacyChatSteps,
+  projectRawEvents,
+  projectSnapshot,
+  selectPendingLegacyAsk,
+  type ProjectedLegacyStep,
+  type ProjectViewState,
+} from '@/lib/projector';
+import {
   extendRemoteControlSession,
   getRemoteControlSession,
+  getRemoteControlSnapshot,
   getRemoteControlWebSocketUrl,
+  listRemoteControlEvents,
   listRemoteControlSteps,
   RemoteControlSession,
   RemoteControlStep,
@@ -75,6 +86,21 @@ function renderStepData(data: unknown): string {
   }
 }
 
+function remoteControlStep(step: ProjectedLegacyStep): RemoteControlStep {
+  return {
+    step_id: step.stepId,
+    task_id: step.taskId,
+    project_id: step.projectId,
+    step: step.step,
+    data: step.data,
+    timestamp: step.timestamp,
+  };
+}
+
+function projectedSteps(view: ProjectViewState): RemoteControlStep[] {
+  return view.legacySteps.map(remoteControlStep);
+}
+
 function getRemoteLinkToken(searchParams: URLSearchParams): string {
   const hash = window.location.hash.replace(/^#/, '');
   const fragmentToken = new URLSearchParams(hash).get('t');
@@ -96,22 +122,34 @@ export default function RemoteControlPage() {
   const [sending, setSending] = useState(false);
   const [controlLoading, setControlLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [answeredAskStepIds, setAnsweredAskStepIds] = useState<Set<number>>(
-    () => new Set()
-  );
+  const [answeredAskStepIds, setAnsweredAskStepIds] = useState<
+    Set<number | string>
+  >(() => new Set());
   const nextSinceRef = useRef(0);
+  const projectorRef = useRef<ProjectViewState | null>(null);
+  const [projectView, setProjectView] = useState<ProjectViewState | null>(null);
+  const syncInFlightRef = useRef<Promise<void> | null>(null);
 
   const bridgeOnline =
     session?.status === 'active' && session?.bridge_status === 'online';
 
   const lastCommand = useMemo(() => commands.slice().reverse()[0], [commands]);
+  const freshnessLabel = useMemo(() => {
+    if (!projectView) return 'Cloud history is loading';
+    if (projectView.needsResync) return 'History resync required';
+    const syncedAt = projectView.lastSyncedAt
+      ? new Date(projectView.lastSyncedAt).toLocaleTimeString()
+      : 'not synced';
+    const coverage = projectView.eventsTruncated
+      ? 'partial history'
+      : 'full history';
+    return `Cursor ${projectView.currentCursor} · ${coverage} · synced ${syncedAt}`;
+  }, [projectView]);
   const pendingAsk = useMemo(() => {
-    const latest = steps[steps.length - 1] || null;
-    if (latest?.step === 'ask' && !answeredAskStepIds.has(latest.step_id)) {
-      return latest;
-    }
-    return null;
-  }, [answeredAskStepIds, steps]);
+    if (!projectView) return null;
+    const ask = selectPendingLegacyAsk(projectView, answeredAskStepIds);
+    return ask ? remoteControlStep(ask) : null;
+  }, [answeredAskStepIds, projectView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,13 +168,57 @@ export default function RemoteControlPage() {
           sessionId,
           linkToken,
           0,
-          200
+          1000
         );
+        let projected: ProjectViewState;
+        try {
+          const snapshot = await getRemoteControlSnapshot(
+            sessionId,
+            linkToken,
+            loadedSession.current_project_id || loadedSession.project_id,
+            5000
+          );
+          const projectedSnapshot = projectSnapshot(snapshot);
+          projected = {
+            ...projectRawEvents(
+              snapshot.project_id,
+              importLegacyChatSteps(history.items || []),
+              'rehydrate',
+              projectedSnapshot
+            ).state,
+            eventsTruncated:
+              snapshot.events_truncated || Boolean(history.has_more),
+          };
+        } catch (snapshotError) {
+          // Rolling upgrades may briefly serve the legacy ChatStep endpoint
+          // before snapshot/cursor APIs are available. The same pure reducer
+          // keeps that compatibility path side-effect free.
+          console.warn(
+            '[RemoteControl] canonical snapshot unavailable; using legacy importer',
+            snapshotError
+          );
+          const projectId =
+            loadedSession.current_project_id ||
+            loadedSession.project_id ||
+            history.items?.[0]?.project_id ||
+            'legacy-project';
+          projected = projectRawEvents(
+            projectId,
+            importLegacyChatSteps(history.items || []),
+            'rehydrate'
+          ).state;
+        }
         if (cancelled) {
           return;
         }
         setSession(loadedSession);
-        setSteps(history.items || []);
+        const syncedProjection = {
+          ...projected,
+          lastSyncedAt: new Date().toISOString(),
+        };
+        projectorRef.current = syncedProjection;
+        setProjectView(syncedProjection);
+        setSteps(projectedSteps(syncedProjection));
         nextSinceRef.current = history.next_since || 0;
       } catch (err: any) {
         setError(err?.message || 'Failed to open remote control session.');
@@ -160,6 +242,90 @@ export default function RemoteControlPage() {
     let pingTimer: number | null = null;
     let stopped = false;
 
+    const publishProjection = (next: ProjectViewState) => {
+      projectorRef.current = next;
+      setProjectView(next);
+      setSteps(projectedSteps(next));
+    };
+
+    const applyCanonicalEvents = (events: unknown[]) => {
+      const current = projectorRef.current;
+      if (!current || !events.length) {
+        return;
+      }
+      const projected = projectRawEvents(current.projectId, events, 'live', {
+        ...current,
+        mode: 'live',
+      });
+      publishProjection({
+        ...projected.state,
+        lastSyncedAt: new Date().toISOString(),
+      });
+      if (
+        projected.effects.some((effect) => effect.type === 'request_resync')
+      ) {
+        void syncDeltas().catch((error) => {
+          console.warn('[RemoteControl] cursor recovery failed', error);
+        });
+      }
+    };
+
+    const rehydrateSnapshot = async () => {
+      const current = projectorRef.current;
+      const snapshot = await getRemoteControlSnapshot(
+        sessionId,
+        linkToken,
+        current?.projectId,
+        5000
+      );
+      if (!stopped) {
+        publishProjection({
+          ...projectSnapshot(snapshot, current),
+          lastSyncedAt: new Date().toISOString(),
+        });
+      }
+    };
+
+    const syncDeltas = async () => {
+      if (syncInFlightRef.current) {
+        return syncInFlightRef.current;
+      }
+      const operation = (async () => {
+        let cursor = projectorRef.current?.currentCursor || 0;
+        let authoritativeCursor = cursor;
+        for (;;) {
+          const page = await listRemoteControlEvents(
+            sessionId,
+            linkToken,
+            cursor,
+            1000,
+            projectorRef.current?.projectId
+          );
+          if (stopped) return;
+          applyCanonicalEvents(page.items || []);
+          cursor = page.next_cursor;
+          authoritativeCursor = page.current_cursor;
+          if (!page.has_more) break;
+        }
+        const view = projectorRef.current;
+        if (view?.needsResync) {
+          const recovered = completeProjectViewResync(
+            view,
+            authoritativeCursor
+          );
+          if (recovered === view) {
+            await rehydrateSnapshot();
+          } else {
+            publishProjection(recovered);
+          }
+        }
+      })().finally(() => {
+        syncInFlightRef.current = null;
+      });
+      syncInFlightRef.current = operation;
+      return operation;
+    };
+
     async function connect() {
       const url = await getRemoteControlWebSocketUrl(
         `/api/v1/remote-control/sessions/${sessionId}/events/subscribe`
@@ -173,6 +339,8 @@ export default function RemoteControlPage() {
           JSON.stringify({
             type: 'subscribe',
             link_token: linkToken,
+            subscribed_project_id: projectorRef.current?.projectId,
+            after_cursor: projectorRef.current?.currentCursor || 0,
           })
         );
         pingTimer = window.setInterval(() => {
@@ -182,17 +350,47 @@ export default function RemoteControlPage() {
       ws.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
+          if (payload.type === 'connected') {
+            if (
+              typeof payload.current_cursor === 'number' &&
+              payload.current_cursor >
+                (projectorRef.current?.currentCursor || 0)
+            ) {
+              void syncDeltas().catch((error) => {
+                console.warn('[RemoteControl] cursor recovery failed', error);
+              });
+            }
+          }
+          if (payload.type === 'canonical_event') {
+            applyCanonicalEvents([payload]);
+          }
+          if (payload.type === 'canonical_event_available') {
+            void syncDeltas().catch((error) => {
+              console.warn('[RemoteControl] cursor recovery failed', error);
+            });
+          }
+          if (payload.type === 'snapshot_required') {
+            void rehydrateSnapshot().catch((error) => {
+              console.warn('[RemoteControl] snapshot rehydrate failed', error);
+            });
+          }
+          if (
+            (payload.type === 'pong' || payload.type === 'watermark') &&
+            typeof payload.current_cursor === 'number' &&
+            payload.current_cursor > (projectorRef.current?.currentCursor || 0)
+          ) {
+            void syncDeltas().catch((error) => {
+              console.warn('[RemoteControl] cursor recovery failed', error);
+            });
+          }
           if (payload.type === 'step') {
-            setSteps((current) => {
-              if (current.some((step) => step.step_id === payload.step_id)) {
-                return current;
-              }
+            applyCanonicalEvents(importLegacyChatSteps([payload]));
+            if (typeof payload.step_id === 'number') {
               nextSinceRef.current = Math.max(
                 nextSinceRef.current,
                 payload.step_id
               );
-              return [...current, payload];
-            });
+            }
           }
           if (payload.type === 'bridge_status') {
             setSession((current) =>
@@ -214,6 +412,26 @@ export default function RemoteControlPage() {
                       ...command,
                       status: payload.status,
                       error: payload.error,
+                    }
+                  : command
+              )
+            );
+          }
+          if (payload.type === 'command_event' && payload.projection) {
+            const projection = payload.projection;
+            const status =
+              projection.execution_state !== 'not_started'
+                ? projection.execution_state
+                : projection.admission_state !== 'unknown'
+                  ? projection.admission_state
+                  : projection.receipt_state;
+            setCommands((current) =>
+              current.map((command) =>
+                command.id === payload.command_id
+                  ? {
+                      ...command,
+                      status,
+                      error: projection.integrity_alert || command.error,
                     }
                   : command
               )
@@ -384,6 +602,15 @@ export default function RemoteControlPage() {
                 {bridgeOnline
                   ? 'Desktop is online'
                   : 'Desktop is offline. Keep Eigent open on the original computer and stay on the chat view.'}
+              </p>
+              <p
+                className={`mt-1 text-xs ${
+                  projectView?.needsResync
+                    ? 'text-amber-600'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {freshnessLabel}
               </p>
             </div>
             <div

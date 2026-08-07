@@ -202,6 +202,19 @@ class TestTaskLock:
         assert isinstance(task_lock.created_at, datetime)
         assert isinstance(task_lock.last_accessed, datetime)
         assert len(task_lock.background_tasks) == 0
+        assert task_lock.local_history_degraded is False
+        assert task_lock.local_history_last_error is None
+
+    def test_mark_local_history_degraded_is_sticky_and_updates_last_error(
+        self,
+    ):
+        task_lock = TaskLock("test_123", asyncio.Queue(), {})
+
+        task_lock.mark_local_history_degraded("disk full")
+        task_lock.mark_local_history_degraded("busy timeout")
+
+        assert task_lock.local_history_degraded is True
+        assert task_lock.local_history_last_error == "busy timeout"
 
     @pytest.mark.asyncio
     async def test_task_lock_put_queue(self):

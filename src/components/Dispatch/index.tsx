@@ -446,7 +446,7 @@ export function WorkspaceDispatch() {
 
       const title = buildRemoteControlTitle(activeSpace?.name);
       const res = await createRemoteControlSession({
-        desktop_instance_id: getRemoteControlDesktopInstanceId(),
+        desktop_instance_id: await getRemoteControlDesktopInstanceId(),
         space_id: activeSpaceId,
         ...(activeProjectId ? { project_id: activeProjectId } : {}),
         ...(activeProjectId && brainSessionId
