@@ -14,6 +14,7 @@
 
 import { fetchGet } from '@/api/http';
 import { useHost } from '@/host';
+import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface DurableRunSummary {
@@ -30,10 +31,7 @@ export interface DurableRunSummary {
 }
 
 type RunsByProject = Record<string, DurableRunSummary | null>;
-type InterruptedRunState =
-  | RunsByProject
-  | DurableRunSummary
-  | null;
+type InterruptedRunState = RunsByProject | DurableRunSummary | null;
 
 /**
  * Vite Fast Refresh can preserve the pre-map hook state (a single Run or
@@ -71,6 +69,17 @@ function sameRunSummary(
 }
 
 /**
+ * Cloud-restored Runs are historical projections, not actionable local
+ * interruptions. Keep their provenance in the journal, but do not surface
+ * them through the Resume/Cancel product state.
+ */
+export function actionableInterruptedRun(
+  run: DurableRunSummary | null
+): DurableRunSummary | null {
+  return run?.origin === 'cloud_restore' ? null : run;
+}
+
+/**
  * Loads interrupted state at lifecycle boundaries instead of polling forever.
  *
  * Startup reconciliation completes before the first Desktop render in the
@@ -88,7 +97,8 @@ export function useInterruptedRunStatus(projectId: string | null) {
     projectId: string;
     promise: Promise<void>;
   } | null>(null);
-  const run = projectId ? (runsByProject[projectId] ?? null) : null;
+  const storedRun = projectId ? (runsByProject[projectId] ?? null) : null;
+  const run = actionableInterruptedRun(storedRun);
 
   const setRun = useCallback(
     (next: DurableRunSummary | null) => {
@@ -124,10 +134,7 @@ export function useInterruptedRunStatus(projectId: string | null) {
         setInterruptedRunState((current) => {
           const currentByProject = normalizeInterruptedRunState(current);
           const nextRun = next || null;
-          return sameRunSummary(
-            currentByProject[projectId] ?? null,
-            nextRun
-          )
+          return sameRunSummary(currentByProject[projectId] ?? null, nextRun)
             ? currentByProject
             : { ...currentByProject, [projectId]: nextRun };
         });
@@ -153,14 +160,29 @@ export function useInterruptedRunStatus(projectId: string | null) {
 
     const handleFocus = () => void refresh();
     const handleBackendReady = () => void refresh();
+    const handleDurableRunStatusChanged = (event: Event) => {
+      const changedProjectId = (event as CustomEvent<{ projectId?: string }>)
+        .detail?.projectId;
+      if (!changedProjectId || changedProjectId === projectId) {
+        void refresh();
+      }
+    };
     const ipcRenderer = host?.ipcRenderer;
     window.addEventListener('focus', handleFocus);
+    window.addEventListener(
+      DURABLE_RUN_STATUS_CHANGED_EVENT,
+      handleDurableRunStatusChanged
+    );
     ipcRenderer?.on('backend-ready', handleBackendReady);
     return () => {
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(
+        DURABLE_RUN_STATUS_CHANGED_EVENT,
+        handleDurableRunStatusChanged
+      );
       ipcRenderer?.off('backend-ready', handleBackendReady);
     };
-  }, [host?.ipcRenderer, refresh]);
+  }, [host?.ipcRenderer, projectId, refresh]);
 
   return { run, setRun, refresh };
 }
