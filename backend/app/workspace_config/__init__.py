@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.workspace_config.capabilities import ModelCapabilityRegistry
 from app.workspace_config.manifest import (
     load_workforce_manifest,
     parse_workforce_manifest,
@@ -45,6 +46,7 @@ __all__ = [
     "EffortResolution",
     "EnvironmentConfigResolver",
     "LocalMaterialization",
+    "ModelCapabilityRegistry",
     "ProviderModelCapability",
     "ResolvedConnectorBinding",
     "ResolvedContextSource",

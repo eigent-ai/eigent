@@ -27,8 +27,11 @@ import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
   ChatTaskStatus,
+  normalizeThinkingEffort,
   TaskStatus,
+  ThinkingEffort,
   type TaskStatusType,
+  type ThinkingEffortType,
 } from '@/types/constants';
 import { create } from 'zustand';
 import { getAuthStore } from './authStore';
@@ -177,6 +180,8 @@ interface ProjectMetadata {
   historyDisplayName?: string;
   /** Per-Project model pin; reused by startTask for follow-up runs. */
   modelSelection?: ProjectModelSelection;
+  /** Requested effort for new Runs; an active Attempt remains immutable. */
+  thinkingEffort?: ThinkingEffortType;
   serverSynced?: boolean;
   autoCreatedPlaceholder?: boolean;
   remoteHistoryHydrationPending?: boolean;
@@ -463,6 +468,11 @@ interface ProjectStore {
     modelSelection: ProjectModelSelection
   ) => void;
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
+  setProjectThinkingEffort: (
+    projectId: string,
+    effort: ThinkingEffortType
+  ) => void;
+  getProjectThinkingEffort: (projectId: string | null) => ThinkingEffortType;
 }
 
 // Helper function to check if a project is empty/unused
@@ -2266,6 +2276,57 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     return (
       useSpaceStore.getState().getProjectMeta(projectId)?.metadata
         ?.modelSelection ?? null
+    );
+  },
+
+  setProjectThinkingEffort: (projectId: string, effort: ThinkingEffortType) => {
+    const project = get().projects[projectId];
+    if (!project) {
+      console.warn(
+        `Project ${projectId} not found for setting thinking effort`
+      );
+      return;
+    }
+    if (project.metadata?.thinkingEffort === effort) return;
+
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          metadata: {
+            ...state.projects[projectId].metadata,
+            thinkingEffort: effort,
+          },
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+    const updatedProject = get().projects[projectId];
+    if (updatedProject) {
+      upsertSpaceProjectMetaFromProject(updatedProject);
+    }
+    const spaceId =
+      updatedProject?.spaceId ??
+      useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
+    if (spaceId) {
+      void proxyUpdateSpaceProject(spaceId, projectId, {
+        metadata: { thinkingEffort: effort },
+      }).catch((error) => {
+        console.warn(
+          `Failed to persist thinking effort for project ${projectId}:`,
+          error
+        );
+      });
+    }
+  },
+
+  getProjectThinkingEffort: (projectId: string | null) => {
+    if (!projectId) return ThinkingEffort.MEDIUM;
+    return normalizeThinkingEffort(
+      get().projects[projectId]?.metadata?.thinkingEffort ??
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
     );
   },
 

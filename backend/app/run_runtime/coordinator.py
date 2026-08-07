@@ -30,6 +30,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from app.run_journal.models import (
+        AttemptEnvironmentBinding,
+        RunAttemptRecord,
+    )
     from app.run_journal.store import SQLiteRunJournal
 
 logger = logging.getLogger("run_runtime.coordinator")
@@ -383,13 +387,55 @@ class RunCoordinator:
                 raise RunRuntimeError(
                     f"run {run_id!r} already has a live consumer"
                 )
+            journal = self._run_journal()
+            attempts = await asyncio.to_thread(
+                journal.list_run_attempts,
+                run_id,
+            )
+            environment = self._latest_environment_binding(attempts)
             return await asyncio.to_thread(
-                self._run_journal().create_run_attempt,
+                journal.create_run_attempt,
                 run_id,
                 request_id=request_id,
                 reason=reason,
                 activate=False,
+                environment=environment,
             )
+
+    @staticmethod
+    def _latest_environment_binding(
+        attempts: list[RunAttemptRecord],
+    ) -> AttemptEnvironmentBinding | None:
+        from app.run_journal.models import AttemptEnvironmentBinding
+
+        for attempt in reversed(attempts):
+            if attempt.environment_spec_id is None:
+                continue
+            values = {
+                "environment_spec_digest": attempt.environment_spec_digest,
+                "bundle_revision_id": attempt.bundle_revision_id,
+                "permission_profile_revision": (
+                    attempt.permission_profile_revision
+                ),
+                "thinking_effort_requested": (
+                    attempt.thinking_effort_requested
+                ),
+                "thinking_effort_effective": (
+                    attempt.thinking_effort_effective
+                ),
+                "provider_capability_revision": (
+                    attempt.provider_capability_revision
+                ),
+            }
+            if any(value is None for value in values.values()):
+                raise RunRuntimeError(
+                    "latest Run environment binding is incomplete"
+                )
+            return AttemptEnvironmentBinding(
+                environment_spec_id=attempt.environment_spec_id,
+                **values,
+            )
+        return None
 
     async def fork(
         self,

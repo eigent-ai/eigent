@@ -424,6 +424,15 @@ class TaskLock:
     """Run ids whose durable memory lifecycle has already been finalized."""
     processed_improve_request_ids: set[str]
     """In-process dedupe for durable admission retries that enqueue twice."""
+    environment_admission_template: Any | None
+    """Secret-free template used to bind follow-up Runs in this process."""
+    environment_spec_id: str | None
+    """Immutable EnvironmentSpec currently driving model/tool assembly."""
+    thinking_effort_requested: str | None
+    thinking_effort_effective: str | None
+    provider_effort_parameter_name: str | None
+    provider_effort_parameter_value: str | None
+    provider_capability_revision: str | None
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -459,6 +468,13 @@ class TaskLock:
         self.new_folder_path = None
         self.memory_service = None
         self.processed_improve_request_ids = set()
+        self.environment_admission_template = None
+        self.environment_spec_id = None
+        self.thinking_effort_requested = None
+        self.thinking_effort_effective = None
+        self.provider_effort_parameter_name = None
+        self.provider_effort_parameter_value = None
+        self.provider_capability_revision = None
         self.local_history_degraded = False
         self.local_history_last_error = None
         self._memory_finalized_runs = set()

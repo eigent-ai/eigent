@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
+    ModelCapabilityRegistry,
     ProviderModelCapability,
     ResolvedConnectorBinding,
     ResolvedContextSource,
@@ -166,6 +167,36 @@ def test_dynamic_provider_remap_is_opt_in_and_reported():
     assert resolved.effective is ThinkingEffort.LOW
     assert resolved.provider_value == "minimal"
     assert resolved.remapped is True
+
+
+def test_capability_registry_maps_product_max_without_blind_forwarding():
+    registry = ModelCapabilityRegistry()
+
+    codex = registry.resolve(
+        model_platform="openai",
+        model_type="gpt-5.5-codex",
+        auth_source="codex_subscription",
+    ).resolve(ThinkingEffort.MAX, allow_dynamic_remap=True)
+    openai = registry.resolve(
+        model_platform="openai",
+        model_type="gpt-5.5",
+    ).resolve(ThinkingEffort.XHIGH, allow_dynamic_remap=True)
+    unknown = registry.resolve(
+        model_platform="anthropic",
+        model_type="claude-next",
+    ).resolve(ThinkingEffort.MAX, allow_dynamic_remap=True)
+
+    assert (codex.requested, codex.effective) == (
+        ThinkingEffort.MAX,
+        ThinkingEffort.MAX,
+    )
+    assert codex.provider_parameter_name == "reasoning_effort"
+    assert codex.provider_value == "xhigh"
+    assert openai.effective is ThinkingEffort.HIGH
+    assert openai.provider_value == "high"
+    assert unknown.effective is ThinkingEffort.MEDIUM
+    assert unknown.provider_parameter_name is None
+    assert unknown.provider_value == "provider_default"
 
 
 def test_cloud_projection_redacts_local_paths_and_binding_ids():

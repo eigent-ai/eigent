@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
@@ -221,6 +222,35 @@ describe('projectStore runtime shape', () => {
       model_platform: 'platform_b',
       model_type: 'model_b',
     });
+  });
+
+  it('persists the requested thinking effort per project', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Effort Project', undefined, 'project_effort_test');
+
+    expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
+      ThinkingEffort.MEDIUM
+    );
+
+    useProjectStore
+      .getState()
+      .setProjectThinkingEffort(projectId, ThinkingEffort.MAX);
+
+    expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
+      ThinkingEffort.MAX
+    );
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBe(ThinkingEffort.MAX);
+  });
+
+  it('normalizes persisted legacy thinking effort aliases', () => {
+    expect(normalizeThinkingEffort('light')).toBe(ThinkingEffort.LOW);
+    expect(normalizeThinkingEffort('extra_high')).toBe(ThinkingEffort.XHIGH);
+    expect(normalizeThinkingEffort('ultra')).toBe(ThinkingEffort.MAX);
+    expect(normalizeThinkingEffort('unsupported')).toBe(ThinkingEffort.MEDIUM);
   });
 
   it('keeps stale project runtime while one of its tasks has an active SSE stream', () => {

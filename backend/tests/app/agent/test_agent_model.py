@@ -244,6 +244,37 @@ class TestAgentFactoryFunctions:
         assert task_config["stream"] is True
         assert browser_config["parallel_tool_calls"] is False
 
+    def test_environment_effort_overrides_untrusted_model_config(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {"reasoning_effort": "low"},
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = "xhigh"
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        assert (
+            mock_model_factory.create.call_args.kwargs["model_config_dict"][
+                "reasoning_effort"
+            ]
+            == "xhigh"
+        )
+
     def test_per_agent_explicit_model_config_overrides_task_config(
         self, sample_chat_data
     ):

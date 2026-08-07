@@ -18,6 +18,10 @@ from app.controller.run_controller import (
 )
 from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    LegacyEnvironmentImporter,
+)
 
 
 @pytest.mark.asyncio
@@ -51,6 +55,57 @@ async def test_run_control_api_creates_attempt_fork_and_cancel_intent(
                 CancelRunBody(request_id="cancel-1"),
             )
             assert cancelled["status"] == "cancelled"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_resume_control_inherits_latest_environment_binding(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-env", project_id="project-1")
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5",
+            auth_source="api_key",
+            requested_effort="high",
+            allow_local_system=True,
+        )
+        environment = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-env",
+            space_id="space-1",
+            working_directory=workspace,
+            created_by="test-user",
+            template=template,
+        )
+        journal.create_run_attempt(
+            "run-env",
+            request_id="initial:run-env",
+            reason="initial_execution",
+            activate=True,
+            environment=environment.binding,
+            now=1,
+        )
+        journal.reconcile_startup(now=2)
+
+        coordinator = RunCoordinator(journal)
+        with patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ):
+            resumed = await resume_run(
+                "run-env",
+                ResumeRunBody(request_id="resume-env"),
+            )
+
+        attempt = resumed["attempt"]
+        assert attempt["environment_spec_id"] == environment.spec.spec_id
+        assert attempt["environment_spec_digest"] == environment.spec.digest
+        assert attempt["thinking_effort_effective"] == "high"
+        assert (
+            attempt["provider_capability_revision"]
+            == environment.spec.provider_capability_revision
+        )
         await coordinator.close()
 
 

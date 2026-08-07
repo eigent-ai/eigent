@@ -28,6 +28,7 @@ from app.model.model_platform import (
 )
 from app.remote_sub_agent.config import RemoteSubAgentConfig
 from app.utils.workspace_paths import task_dir_name
+from app.workspace_config import ThinkingEffort, normalize_thinking_effort
 
 logger = logging.getLogger("chat_model")
 
@@ -88,6 +89,7 @@ class Chat(BaseModel):
     # top_p, or max_tokens. Constructor-only provider settings remain in
     # extra_params for backward compatibility.
     model_config_dict: dict[str, Any] | None = None
+    thinking_effort: ThinkingEffort | None = None
     # For provider-specific parameters like Azure
     extra_params: dict | None = None
     # User-specific search engine configurations
@@ -109,6 +111,13 @@ class Chat(BaseModel):
     # id makes a lost HTTP/SSE response safe to retry without creating another
     # Attempt.
     resume_request_id: str | None = Field(default=None, min_length=1)
+
+    @field_validator("thinking_effort", mode="before")
+    @classmethod
+    def normalize_requested_thinking_effort(cls, value):
+        if value is None:
+            return None
+        return normalize_thinking_effort(value)
 
     @field_validator("model_type")
     @classmethod
