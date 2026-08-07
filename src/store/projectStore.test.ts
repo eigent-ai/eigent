@@ -22,6 +22,7 @@ const {
   fetchGetMock,
   getCachedProjectMock,
   hasActiveSSEConnectionMock,
+  putCachedProjectMock,
   proxyFetchGetMock,
   replayMock,
 } = vi.hoisted(() => ({
@@ -29,6 +30,7 @@ const {
   fetchGetMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
+  putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
   replayMock: vi.fn(),
 }));
@@ -48,6 +50,7 @@ vi.mock('@/lib/projectCache', async (importOriginal) => {
     ...actual,
     deleteCachedProject: deleteCachedProjectMock,
     getCachedProject: getCachedProjectMock,
+    putCachedProject: putCachedProjectMock,
   };
 });
 
@@ -79,6 +82,7 @@ describe('projectStore runtime shape', () => {
     vi.clearAllMocks();
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
+    putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
     fetchGetMock.mockResolvedValue({ runs: [] });
     proxyFetchGetMock.mockResolvedValue({ tasks: [] });
@@ -320,7 +324,7 @@ describe('projectStore runtime shape', () => {
     }
   });
 
-  it('prefers canonical local Run history over a fresh legacy cache', async () => {
+  it('replays canonical local Run history when its cache anchor is stale', async () => {
     const { useAuthStore } = await import('./authStore');
     const previousUserId = useAuthStore.getState().user_id;
     useAuthStore.setState({ user_id: 10 });
@@ -330,6 +334,7 @@ describe('projectStore runtime shape', () => {
           {
             run_id: 'task_local',
             status: 'completed',
+            updated_at: 300,
             total_attempt_elapsed_ms: 613_328,
           },
         ],
@@ -340,9 +345,10 @@ describe('projectStore runtime shape', () => {
         chatStore.getState().create(taskId, 'replay');
       });
       getCachedProjectMock.mockResolvedValue({
-        schemaVersion: 1,
+        schemaVersion: 2,
         cachedAt: 200,
         serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 250,
         taskIds: ['task_local'],
         tasks: {
           task_local: {
@@ -374,8 +380,14 @@ describe('projectStore runtime shape', () => {
         project_id: 'project_local',
         limit: 100,
       });
-      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
-      expect(getCachedProjectMock).not.toHaveBeenCalled();
+      expect(getCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_local',
+      });
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_local',
+      });
       expect(replayMock).toHaveBeenCalledWith(
         'task_local',
         'long-running prompt',
@@ -387,6 +399,79 @@ describe('projectStore runtime shape', () => {
       const task =
         project.chatStores[project.activeChatId].getState().tasks.task_local;
       expect(task.elapsed).toBe(613_328);
+      expect(putCachedProjectMock).toHaveBeenCalledWith(
+        { userId: 10, projectId: 'project_local' },
+        expect.objectContaining({
+          serverUpdatedAt: 200,
+          localCanonicalUpdatedAt: 300,
+          taskIds: ['task_local'],
+        })
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_cached_local',
+            status: 'completed',
+            updated_at: 300,
+            total_attempt_elapsed_ms: 613_328,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 2,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_cached_local'],
+        tasks: {
+          task_cached_local: {
+            taskState: {
+              status: 'finished',
+              elapsed: 613_328,
+              taskTime: 0,
+              hasMessages: true,
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cached_local'],
+          'cached prompt',
+          'project_cached_local',
+          'history_cached_local',
+          'Cached local project',
+          'space_test',
+          { task_cached_local: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).not.toHaveBeenCalled();
+      const project = useProjectStore.getState().projects.project_cached_local;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_cached_local;
+      expect(task.elapsed).toBe(613_328);
+      expect(task.messages).toHaveLength(1);
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }
