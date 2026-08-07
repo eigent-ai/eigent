@@ -57,6 +57,7 @@ import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
@@ -1051,7 +1052,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   };
 
   const activeTaskId = selectedTurn.taskId ?? undefined;
-  const taskAssigning = selectedTurn.task?.taskAssigning;
+  const projectedFileRevision = useMemo(
+    () => getSidePanelOutputFilesRevision(selectedTurn.task),
+    [selectedTurn.task]
+  );
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
   const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
@@ -1093,17 +1097,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     .join(',');
   const projectFetchTargetsRef =
     useRef<ProjectFetchTarget[]>(projectFetchTargets);
-  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}`;
+  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}|${projectedFileRevision}`;
   const fileContextResetKey =
     useSpaceScopedRemoteFiles || useBrainWorkspaceFiles
       ? fileSpaceId
       : activeTaskId;
-  const taskRunning =
-    !!taskAssigning?.length &&
-    taskAssigning.some(
-      (agent) => agent.status === 'running' || agent.status === 'pending'
-    );
-
   // Reset state when the file context changes.
   useEffect(() => {
     hasFetchedRemote.current = false;
@@ -1230,7 +1228,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (
         !res.length ||
         !ipcRenderer ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ||
         useSpaceScopedRemoteFiles ||
         useBrainWorkspaceFiles
       ) {
@@ -1373,17 +1370,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
     const shouldFetch =
       lastFetchKey.current !== fetchKey || !hasFetchedRemote.current;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let inFlightController: AbortController | null = null;
     let inFlightMode: 'full' | 'merge' | null = null;
-
-    const activeProjectFetchTargets = () => {
-      const targets = projectFetchTargetsRef.current;
-      if (!taskRunning) return targets;
-      const activeTargets = targets.filter((target) => target.id === projectId);
-      return activeTargets.length ? activeTargets : targets.slice(0, 1);
-    };
 
     const runFileList = (
       targets = projectFetchTargetsRef.current,
@@ -1420,28 +1409,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       }, 120);
     }
 
-    if (taskRunning && isFileSidebarOpen) {
-      pollTimer = setInterval(() => {
-        runFileList(activeProjectFetchTargets(), { merge: true });
-      }, 5000);
-    }
-
     return () => {
       cancelled = true;
       if (debounceTimer) clearTimeout(debounceTimer);
-      if (pollTimer) clearInterval(pollTimer);
       inFlightController?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     fetchKey,
-    taskRunning,
     projectId,
     fileSpaceId,
     activeTaskId,
     authStore.email,
     authStore.user_id,
-    isFileSidebarOpen,
     projectFetchKey,
     useBrainWorkspaceFiles,
     useSpaceScopedRemoteFiles,

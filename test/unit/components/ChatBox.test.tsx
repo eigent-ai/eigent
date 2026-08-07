@@ -19,6 +19,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   proxyFetchDelete,
@@ -33,6 +34,7 @@ vi.mock('../../../src/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
 }));
 vi.mock('../../../src/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
 }));
 vi.mock('@/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
@@ -154,6 +157,7 @@ vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
 
 describe('ChatBox Component', async () => {
   const mockUseAuthStore = vi.mocked(useAuthStore);
+  const mockFetchGet = vi.mocked(fetchGet);
   const _mockFetchPost = vi.mocked(fetchPost);
   const _mockFetchPut = vi.mocked(fetchPut);
   const _mockFetchDelete = vi.mocked(fetchDelete);
@@ -268,6 +272,7 @@ describe('ChatBox Component', async () => {
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
+    mockFetchGet.mockResolvedValue({ runs: [] });
     mockProxyFetchGet.mockImplementation((url: string) => {
       if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
