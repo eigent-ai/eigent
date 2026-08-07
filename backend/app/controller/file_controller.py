@@ -36,6 +36,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.auth import require_local_control_principal
 from app.component.environment import env
+from app.run_journal import get_default_run_journal
 from app.utils.file_utils import list_files, resolve_under_base
 from app.utils.workspace_paths import runtime_owner_key, task_dir_name
 from app.utils.workspace_resolver import get_workspace_resolver
@@ -232,23 +233,49 @@ def _task_change_roots(snapshot) -> list[tuple[Path, bool]]:
     return roots
 
 
-def _list_task_changed_files(snapshot, max_entries: int = 500) -> list[dict]:
+def _list_task_changed_files(
+    snapshot,
+    max_entries: int = 500,
+    modification_windows: tuple[tuple[float, float | None], ...] | None = None,
+) -> list[dict]:
     """List files generated or modified by one Run without uploading them."""
     result: list[dict] = []
     seen_paths: set[str] = set()
     remaining = max_entries
-    # Account for filesystems whose mtimes have one-second resolution.
-    modified_after = snapshot.task_start_time - 1.0
+    # Account for filesystems whose mtimes have one-second resolution. Run
+    # attempt windows prevent a historical direct-write Run from absorbing
+    # files created by every later Run in the same selected Space folder.
+    windows = modification_windows or (
+        (snapshot.task_start_time - 1.0, None),
+    )
 
     for root, include_all in _task_change_roots(snapshot):
         if remaining <= 0:
             break
-        paths = list_files(
-            str(root),
-            base=str(root),
-            max_entries=remaining,
-            modified_after=None if include_all else modified_after,
-        )
+        if include_all:
+            paths = list_files(
+                str(root),
+                base=str(root),
+                max_entries=remaining,
+            )
+        else:
+            paths = []
+            window_seen: set[str] = set()
+            for modified_after, modified_before in windows:
+                if len(paths) >= remaining:
+                    break
+                window_paths = list_files(
+                    str(root),
+                    base=str(root),
+                    max_entries=remaining - len(paths),
+                    modified_after=modified_after,
+                    modified_before=modified_before,
+                )
+                for window_path in window_paths:
+                    if window_path in window_seen:
+                        continue
+                    window_seen.add(window_path)
+                    paths.append(window_path)
         for abs_path in paths:
             try:
                 path = Path(abs_path).resolve()
@@ -281,6 +308,43 @@ def _list_task_changed_files(snapshot, max_entries: int = 500) -> list[dict]:
     return sorted(result, key=lambda item: item["relativePath"])
 
 
+def _task_modification_windows(
+    task_id: str,
+    project_id: str,
+) -> tuple[tuple[tuple[float, float | None], ...] | None, bool]:
+    """Return filesystem-mtime windows owned by this Run's attempts.
+
+    ``None`` means the RunJournal has no matching canonical Run and callers
+    should retain the legacy start-time-only behavior.
+    """
+    journal = get_default_run_journal()
+    run = journal.get_run(task_id)
+    if run is None or run.project_id != project_id:
+        return None, False
+
+    attempts = journal.list_run_attempts(task_id)
+    windows: list[tuple[float, float | None]] = []
+    for attempt in attempts:
+        end = attempt.ended_at
+        if end is None and run.status not in {
+            "pending",
+            "running",
+            "waiting_for_user",
+        }:
+            end = run.updated_at
+        windows.append((attempt.started_at - 1.0, end))
+
+    if not windows:
+        end = (
+            run.updated_at
+            if run.status not in {"pending", "running", "waiting_for_user"}
+            else None
+        )
+        windows.append((run.created_at - 1.0, end))
+
+    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+
+
 @router.get(
     "/files/changes",
     dependencies=[Depends(require_local_control_principal)],
@@ -297,7 +361,27 @@ async def list_task_changed_files(
     )
     if snapshot is None or snapshot.project_id != project_id:
         raise HTTPException(status_code=404, detail="Task workspace not found")
-    return await run_in_threadpool(_list_task_changed_files, snapshot)
+    artifact_manifest = getattr(snapshot, "artifact_manifest", None)
+    if artifact_manifest is not None:
+        return [dict(item) for item in artifact_manifest]
+
+    windows, permanently_terminal = await run_in_threadpool(
+        _task_modification_windows, task_id, project_id
+    )
+    artifacts = await run_in_threadpool(
+        _list_task_changed_files,
+        snapshot,
+        500,
+        windows,
+    )
+    if permanently_terminal:
+        await run_in_threadpool(
+            get_workspace_resolver().store.freeze_artifact_manifest,
+            email,
+            snapshot,
+            artifacts,
+        )
+    return artifacts
 
 
 @router.get("/files")
