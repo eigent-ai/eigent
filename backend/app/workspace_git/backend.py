@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -74,6 +76,35 @@ class RepositoryProbe:
     nested_in_parent: bool
     head_oid: str | None
     branch: str | None
+
+
+@dataclass(frozen=True)
+class RepoStateToken:
+    head_oid: str | None
+    branch_or_detached_head: str
+    index_digest: str
+    operation_state: str
+
+    @property
+    def digest(self) -> str:
+        payload = "\0".join(
+            (
+                self.head_oid or "unborn",
+                self.branch_or_detached_head,
+                self.index_digest,
+                self.operation_state,
+            )
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class RepositoryDiagnostics:
+    healthy: bool
+    issues: tuple[str, ...]
+    state_token: RepoStateToken
+    has_submodules: bool
+    has_remotes: bool
 
 
 class GitBackend:
@@ -180,6 +211,56 @@ class GitBackend:
         )
         return result.stdout.strip() if result.returncode == 0 else None
 
+    def repo_state_token(self, repository_root: Path) -> RepoStateToken:
+        root = repository_root.expanduser().resolve()
+        probe = self.probe(root)
+        if not probe.is_repository or not probe.owns_requested_root:
+            raise GitBackendError(f"not an owned Git root: {root}")
+        index = self._run(root, ("ls-files", "--stage", "-z"))
+        status = self._run(
+            root,
+            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        )
+        worktree_metadata = self._status_metadata(root, status.stdout)
+        index_digest = hashlib.sha256(
+            (
+                index.stdout + "\0" + status.stdout + "\0" + worktree_metadata
+            ).encode("utf-8")
+        ).hexdigest()
+        return RepoStateToken(
+            head_oid=probe.head_oid,
+            branch_or_detached_head=(probe.branch or "DETACHED"),
+            index_digest=index_digest,
+            operation_state=self._operation_state(root),
+        )
+
+    def diagnostics(self, repository_root: Path) -> RepositoryDiagnostics:
+        root = repository_root.expanduser().resolve()
+        token = self.repo_state_token(root)
+        issues: list[str] = []
+        if token.operation_state != "clean":
+            issues.append(f"operation_in_progress:{token.operation_state}")
+        if token.head_oid is not None:
+            connectivity = self._run(
+                root,
+                ("cat-file", "-e", f"{token.head_oid}^{{commit}}"),
+                check=False,
+            )
+            if connectivity.returncode != 0:
+                issues.append("object_database_unhealthy")
+        staged = self._run(root, ("ls-files", "--stage"))
+        has_submodules = any(
+            line.startswith("160000 ") for line in staged.stdout.splitlines()
+        )
+        remotes = self._run(root, ("remote",))
+        return RepositoryDiagnostics(
+            healthy=not issues,
+            issues=tuple(issues),
+            state_token=token,
+            has_submodules=has_submodules,
+            has_remotes=bool(remotes.stdout.strip()),
+        )
+
     def changed_paths(
         self,
         repository_root: Path,
@@ -224,6 +305,7 @@ class GitBackend:
         if not message.strip():
             raise ValueError("Git commit message is required")
         pathspecs = self._relative_pathspecs(repository_root, paths)
+        self._assert_no_clean_filters(repository_root, pathspecs)
         self._run(repository_root, ("add", "--", *pathspecs))
         staged = self._run(
             repository_root,
@@ -278,6 +360,125 @@ class GitBackend:
         )
         return tuple(line for line in result.stdout.splitlines() if line)
 
+    def relative_paths(
+        self,
+        repository_root: Path,
+        paths: tuple[Path, ...],
+    ) -> tuple[str, ...]:
+        return self._relative_pathspecs(repository_root, paths)
+
+    def diff_paths(
+        self,
+        repository_root: Path,
+        paths: tuple[Path, ...],
+        *,
+        cached: bool = False,
+        source: str | None = None,
+    ) -> str:
+        pathspecs = self._relative_pathspecs(repository_root, paths)
+        args = ["diff", "--no-ext-diff", "--no-textconv"]
+        if cached:
+            args.append("--cached")
+        if source is not None:
+            self._validate_object_name(source)
+            args.append(source)
+        args.extend(("--", *pathspecs))
+        return self._run(repository_root, tuple(args)).stdout
+
+    def commit_parent(
+        self,
+        repository_root: Path,
+        commit_oid: str,
+    ) -> str | None:
+        self._validate_object_name(commit_oid)
+        result = self._run(
+            repository_root,
+            ("rev-parse", f"{commit_oid}^"),
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    def find_commit_by_operation(
+        self,
+        repository_root: Path,
+        operation_id: str,
+    ) -> str | None:
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", operation_id):
+            raise ValueError("invalid Git operation id")
+        result = self._run(
+            repository_root,
+            (
+                "log",
+                "--all",
+                "--fixed-strings",
+                f"--grep=Eigent-Operation: {operation_id}",
+                "-1",
+                "--format=%H",
+            ),
+            check=False,
+        )
+        value = result.stdout.strip()
+        return value if result.returncode == 0 and value else None
+
+    def update_eigent_ref(
+        self,
+        repository_root: Path,
+        ref_name: str,
+        commit_oid: str,
+        *,
+        expected_oid: str | None = None,
+    ) -> str:
+        if not ref_name.startswith("refs/eigent/") or not re.fullmatch(
+            r"refs/eigent/[A-Za-z0-9._/-]+", ref_name
+        ):
+            raise ValueError("ref must be inside refs/eigent/")
+        self._validate_object_name(commit_oid)
+        args = ["update-ref", ref_name, commit_oid]
+        if expected_oid is not None:
+            self._validate_object_name(expected_oid)
+            args.append(expected_oid)
+        self._run(repository_root, tuple(args))
+        return commit_oid
+
+    def ref_oid(
+        self,
+        repository_root: Path,
+        ref_name: str,
+    ) -> str | None:
+        if not ref_name.startswith("refs/eigent/"):
+            raise ValueError("only Eigent-owned refs may be queried")
+        result = self._run(
+            repository_root,
+            ("rev-parse", "--verify", ref_name),
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    def _operation_state(self, repository_root: Path) -> str:
+        markers = (
+            ("MERGE_HEAD", "merge"),
+            ("rebase-merge", "rebase"),
+            ("rebase-apply", "rebase"),
+            ("CHERRY_PICK_HEAD", "cherry-pick"),
+            ("REVERT_HEAD", "revert"),
+        )
+        for marker, state in markers:
+            result = self._run(
+                repository_root,
+                ("rev-parse", "--git-path", marker),
+            )
+            path = Path(result.stdout.strip())
+            if not path.is_absolute():
+                path = repository_root / path
+            if path.exists():
+                return state
+        return "clean"
+
+    @staticmethod
+    def _validate_object_name(value: str) -> None:
+        if not re.fullmatch(r"[0-9a-fA-F]{4,64}", value):
+            raise ValueError("Git object id must be hexadecimal")
+
     def _relative_pathspecs(
         self,
         repository_root: Path,
@@ -288,7 +489,10 @@ class GitBackend:
         root = repository_root.expanduser().resolve()
         pathspecs: list[str] = []
         for path in paths:
-            resolved = path.expanduser().resolve()
+            candidate = path.expanduser()
+            if not candidate.is_absolute():
+                candidate = root / candidate
+            resolved = candidate.resolve()
             try:
                 relative = resolved.relative_to(root)
             except ValueError as exc:
@@ -301,6 +505,55 @@ class GitBackend:
                 )
             pathspecs.append(relative.as_posix())
         return tuple(pathspecs)
+
+    @staticmethod
+    def _status_metadata(repository_root: Path, status_output: str) -> str:
+        records = status_output.split("\0")
+        metadata: list[str] = []
+        skip_next = False
+        for record in records:
+            if not record:
+                continue
+            if skip_next:
+                skip_next = False
+                continue
+            if len(record) < 4:
+                continue
+            state = record[:2]
+            relative_path = record[3:]
+            if "R" in state or "C" in state:
+                skip_next = True
+            path = repository_root / relative_path
+            try:
+                stat = path.lstat()
+                value = (
+                    f"{relative_path}\0{stat.st_mode}\0{stat.st_size}\0"
+                    f"{stat.st_mtime_ns}\0{stat.st_ino}"
+                )
+            except FileNotFoundError:
+                value = f"{relative_path}\0missing"
+            metadata.append(value)
+        return "\0".join(sorted(metadata))
+
+    def _assert_no_clean_filters(
+        self,
+        repository_root: Path,
+        pathspecs: tuple[str, ...],
+    ) -> None:
+        attributes = self._run(
+            repository_root,
+            ("check-attr", "-a", "-z", "--", *pathspecs),
+        ).stdout.split("\0")
+        for index in range(0, len(attributes) - 2, 3):
+            path, attribute, value = attributes[index : index + 3]
+            if attribute == "filter" and value not in {
+                "unspecified",
+                "unset",
+                "",
+            }:
+                raise GitBackendError(
+                    f"refusing to execute clean filter {value!r} for {path!r}"
+                )
 
     def _run(
         self,
@@ -343,6 +596,10 @@ class GitBackend:
             self.git_executable,
             "-c",
             f"core.hooksPath={self.hooks_path}",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
             "-C",
             str(cwd),
             *args,

@@ -42,6 +42,9 @@ from app.run_journal.models import (
     CommandResultSyncBatch,
     CommittedRunEvent,
     EffectiveEnvironmentSpecRecord,
+    GitCheckpointRecord,
+    GitOperationRecord,
+    GitRepositoryRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -76,7 +79,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -428,6 +431,113 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (6, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 6;
+COMMIT;
+"""
+
+_MIGRATION_V7 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE git_repositories (
+    repository_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    repository_role TEXT NOT NULL CHECK (
+        repository_role IN ('content', 'configuration')
+    ),
+    root_path TEXT NOT NULL,
+    root_path_digest TEXT NOT NULL CHECK (length(root_path_digest) = 64),
+    ownership TEXT NOT NULL CHECK (
+        ownership IN ('eigent_owned', 'adopted')
+    ),
+    state TEXT NOT NULL CHECK (
+        state IN ('ready', 'not_enabled', 'needs_attention', 'degraded')
+    ),
+    version_coverage TEXT NOT NULL CHECK (
+        version_coverage IN ('full', 'managed_files_only', 'degraded')
+    ),
+    hooks_mode TEXT NOT NULL DEFAULT 'disabled' CHECK (
+        hooks_mode IN ('disabled', 'trusted')
+    ),
+    repo_subdir TEXT,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(space_id, repository_role)
+);
+
+CREATE TABLE git_operations (
+    operation_id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    request_id TEXT NOT NULL,
+    operation_type TEXT NOT NULL,
+    payload_digest TEXT NOT NULL CHECK (length(payload_digest) = 64),
+    status TEXT NOT NULL CHECK (
+        status IN (
+            'prepared', 'dispatched', 'completed', 'failed',
+            'outcome_unknown'
+        )
+    ),
+    expected_repo_state_digest TEXT,
+    observed_repo_state_digest TEXT,
+    result_json TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(repository_id, request_id)
+);
+
+CREATE INDEX git_operations_reconcile_idx
+ON git_operations(status, updated_at, repository_id);
+
+CREATE TABLE git_checkpoints (
+    checkpoint_id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    operation_id TEXT NOT NULL UNIQUE REFERENCES git_operations(
+        operation_id
+    ) ON DELETE RESTRICT,
+    target_role TEXT NOT NULL CHECK (
+        target_role IN ('user', 'project', 'run', 'agent')
+    ),
+    target_id TEXT NOT NULL,
+    commit_oid TEXT NOT NULL,
+    parent_oid TEXT,
+    paths_json TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+
+CREATE INDEX git_checkpoints_repository_created_idx
+ON git_checkpoints(repository_id, created_at DESC);
+
+CREATE TABLE git_managed_paths (
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE CASCADE,
+    relative_path TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (
+        source IN (
+            'agent_created', 'agent_modified', 'user_selected',
+            'configuration', 'overlay_preimage'
+        )
+    ),
+    first_checkpoint_id TEXT REFERENCES git_checkpoints(
+        checkpoint_id
+    ) ON DELETE SET NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(repository_id, relative_path)
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (7, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 7;
 COMMIT;
 """
 
@@ -1005,6 +1115,609 @@ class SQLiteRunJournal:
                 if row is not None
                 else None
             )
+
+    def put_git_repository(
+        self,
+        *,
+        repository_id: str,
+        space_id: str,
+        repository_role: str,
+        root_path: str,
+        root_path_digest: str,
+        ownership: str,
+        state: str,
+        version_coverage: str,
+        hooks_mode: str = "disabled",
+        repo_subdir: str | None = None,
+        now: float | None = None,
+    ) -> GitRepositoryRecord:
+        timestamp = now if now is not None else time.time()
+        immutable_expected = (
+            repository_id,
+            space_id,
+            repository_role,
+            root_path,
+            root_path_digest,
+            ownership,
+            version_coverage,
+            hooks_mode,
+            repo_subdir,
+        )
+        with self._write_transaction() as connection:
+            by_identity = connection.execute(
+                "SELECT * FROM git_repositories WHERE repository_id = ?",
+                (repository_id,),
+            ).fetchone()
+            by_role = connection.execute(
+                """
+                SELECT * FROM git_repositories
+                WHERE space_id = ? AND repository_role = ?
+                """,
+                (space_id, repository_role),
+            ).fetchone()
+            row = by_identity or by_role
+            if row is not None:
+                actual = (
+                    row["repository_id"],
+                    row["space_id"],
+                    row["repository_role"],
+                    row["root_path"],
+                    row["root_path_digest"],
+                    row["ownership"],
+                    row["version_coverage"],
+                    row["hooks_mode"],
+                    row["repo_subdir"],
+                )
+                if actual != immutable_expected:
+                    raise IdempotencyConflictError(
+                        f"Git repository ownership for Space {space_id!r} "
+                        "conflicts with the persisted binding"
+                    )
+                if row["state"] != state:
+                    connection.execute(
+                        """
+                        UPDATE git_repositories
+                        SET state = ?, version = version + 1, updated_at = ?
+                        WHERE repository_id = ?
+                        """,
+                        (state, timestamp, row["repository_id"]),
+                    )
+                    row = connection.execute(
+                        """
+                        SELECT * FROM git_repositories
+                        WHERE repository_id = ?
+                        """,
+                        (row["repository_id"],),
+                    ).fetchone()
+                    assert row is not None
+                return self._git_repository_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO git_repositories(
+                    repository_id, space_id, repository_role, root_path,
+                    root_path_digest, ownership, state, version_coverage,
+                    hooks_mode, repo_subdir, version, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    *immutable_expected[:6],
+                    state,
+                    *immutable_expected[6:],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_repositories WHERE repository_id = ?",
+                (repository_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_repository_from_row(row)
+
+    def update_git_repository_state(
+        self,
+        repository_id: str,
+        *,
+        state: str,
+        expected_version: int,
+        now: float | None = None,
+    ) -> GitRepositoryRecord:
+        if state not in {
+            "ready",
+            "not_enabled",
+            "needs_attention",
+            "degraded",
+        }:
+            raise ValueError(f"unsupported Git repository state {state!r}")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_repositories WHERE repository_id = ?",
+                (repository_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Git repository {repository_id!r}")
+            if row["state"] == state:
+                return self._git_repository_from_row(row)
+            if int(row["version"]) != expected_version:
+                raise IdempotencyConflictError(
+                    f"Git repository {repository_id!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_repositories
+                SET state = ?, version = version + 1, updated_at = ?
+                WHERE repository_id = ? AND version = ?
+                """,
+                (state, timestamp, repository_id, expected_version),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_repositories WHERE repository_id = ?",
+                (repository_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_repository_from_row(row)
+
+    def get_git_repository(
+        self, repository_id: str
+    ) -> GitRepositoryRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM git_repositories WHERE repository_id = ?",
+                (repository_id,),
+            ).fetchone()
+            return (
+                self._git_repository_from_row(row) if row is not None else None
+            )
+
+    def get_space_git_repository(
+        self,
+        *,
+        space_id: str,
+        repository_role: str = "content",
+    ) -> GitRepositoryRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_repositories
+                WHERE space_id = ? AND repository_role = ?
+                """,
+                (space_id, repository_role),
+            ).fetchone()
+            return (
+                self._git_repository_from_row(row) if row is not None else None
+            )
+
+    def begin_git_operation(
+        self,
+        *,
+        operation_id: str,
+        repository_id: str,
+        request_id: str,
+        operation_type: str,
+        payload_digest: str,
+        expected_repo_state_digest: str | None,
+        now: float | None = None,
+    ) -> GitOperationRecord:
+        if len(payload_digest) != 64:
+            raise ValueError("Git operation payload digest must be SHA-256")
+        timestamp = now if now is not None else time.time()
+        expected = (
+            operation_id,
+            repository_id,
+            request_id,
+            operation_type,
+            payload_digest,
+            expected_repo_state_digest,
+        )
+        with self._write_transaction() as connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM git_repositories WHERE repository_id = ?",
+                    (repository_id,),
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"unknown Git repository {repository_id!r}")
+            row = connection.execute(
+                """
+                SELECT * FROM git_operations
+                WHERE operation_id = ? OR (
+                    repository_id = ? AND request_id = ?
+                )
+                """,
+                (operation_id, repository_id, request_id),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["operation_id"],
+                    row["repository_id"],
+                    row["request_id"],
+                    row["operation_type"],
+                    row["payload_digest"],
+                    row["expected_repo_state_digest"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"Git operation request {request_id!r} was reused "
+                        "with a different action"
+                    )
+                return self._git_operation_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO git_operations(
+                    operation_id, repository_id, request_id,
+                    operation_type, payload_digest, status,
+                    expected_repo_state_digest, observed_repo_state_digest,
+                    result_json, error_code, error_message,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'prepared', ?, NULL, NULL, NULL,
+                          NULL, ?, ?)
+                """,
+                (*expected, timestamp, timestamp),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_operation_from_row(row)
+
+    def mark_git_operation_dispatched(
+        self,
+        operation_id: str,
+        *,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> GitOperationRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Git operation {operation_id!r}")
+            if row["status"] in {"dispatched", "completed"}:
+                return self._git_operation_from_row(row)
+            if row["status"] != "prepared":
+                raise InvalidRunTransitionError(
+                    f"Git operation {operation_id!r} cannot dispatch from "
+                    f"{row['status']!r}"
+                )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'dispatched', observed_repo_state_digest = ?,
+                    updated_at = ?
+                WHERE operation_id = ? AND status = 'prepared'
+                """,
+                (observed_repo_state_digest, timestamp, operation_id),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_operation_from_row(row)
+
+    def complete_git_operation(
+        self,
+        operation_id: str,
+        *,
+        result: dict[str, Any],
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> GitOperationRecord:
+        timestamp = now if now is not None else time.time()
+        result_json = canonical_json(result)
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Git operation {operation_id!r}")
+            if row["status"] == "completed":
+                if row["result_json"] != result_json:
+                    raise IdempotencyConflictError(
+                        f"Git operation {operation_id!r} completed with a "
+                        "different result"
+                    )
+                return self._git_operation_from_row(row)
+            if row["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    f"Git operation {operation_id!r} cannot complete from "
+                    f"{row['status']!r}"
+                )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ?
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_operation_from_row(row)
+
+    def fail_git_operation(
+        self,
+        operation_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        outcome_unknown: bool = False,
+        now: float | None = None,
+    ) -> GitOperationRecord:
+        timestamp = now if now is not None else time.time()
+        target = "outcome_unknown" if outcome_unknown else "failed"
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Git operation {operation_id!r}")
+            if row["status"] == "completed":
+                return self._git_operation_from_row(row)
+            if row["status"] in {"failed", "outcome_unknown"}:
+                if row["status"] == target:
+                    return self._git_operation_from_row(row)
+                raise InvalidRunTransitionError(
+                    f"Git operation {operation_id!r} cannot transition from "
+                    f"{row['status']!r} to {target!r}"
+                )
+            if row["status"] == "prepared" and outcome_unknown:
+                raise InvalidRunTransitionError(
+                    "a Git operation cannot become outcome_unknown before "
+                    "dispatch"
+                )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = ?, error_code = ?, error_message = ?,
+                    updated_at = ?
+                WHERE operation_id = ?
+                """,
+                (
+                    target,
+                    error_code,
+                    error_message,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_operation_from_row(row)
+
+    def get_git_operation(
+        self, operation_id: str
+    ) -> GitOperationRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            return (
+                self._git_operation_from_row(row) if row is not None else None
+            )
+
+    def complete_git_checkpoint(
+        self,
+        *,
+        checkpoint_id: str,
+        operation_id: str,
+        repository_id: str,
+        target_role: str,
+        target_id: str,
+        commit_oid: str,
+        parent_oid: str | None,
+        paths: tuple[str, ...],
+        managed_path_sources: dict[str, str],
+        actor_id: str,
+        trigger: str,
+        message: str,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> GitCheckpointRecord:
+        if not paths or tuple(sorted(set(paths))) != paths:
+            raise ValueError(
+                "checkpoint paths must be non-empty, unique, and sorted"
+            )
+        if set(managed_path_sources) != set(paths):
+            raise ValueError(
+                "managed path sources must match checkpoint paths"
+            )
+        timestamp = now if now is not None else time.time()
+        paths_json = canonical_json(list(paths))
+        result = {
+            "checkpoint_id": checkpoint_id,
+            "commit_oid": commit_oid,
+            "parent_oid": parent_oid,
+            "paths": list(paths),
+        }
+        result_json = canonical_json(result)
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            if (
+                operation is None
+                or operation["repository_id"] != repository_id
+            ):
+                raise ValueError("checkpoint operation/repository mismatch")
+            existing = connection.execute(
+                """
+                SELECT * FROM git_checkpoints
+                WHERE checkpoint_id = ? OR operation_id = ?
+                """,
+                (checkpoint_id, operation_id),
+            ).fetchone()
+            if existing is not None:
+                expected = (
+                    checkpoint_id,
+                    repository_id,
+                    operation_id,
+                    target_role,
+                    target_id,
+                    commit_oid,
+                    parent_oid,
+                    paths_json,
+                    actor_id,
+                    trigger,
+                    message,
+                )
+                actual = tuple(
+                    existing[column]
+                    for column in (
+                        "checkpoint_id",
+                        "repository_id",
+                        "operation_id",
+                        "target_role",
+                        "target_id",
+                        "commit_oid",
+                        "parent_oid",
+                        "paths_json",
+                        "actor_id",
+                        "trigger",
+                        "message",
+                    )
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"checkpoint {checkpoint_id!r} conflicts with its "
+                        "persisted result"
+                    )
+                return self._git_checkpoint_from_row(existing)
+            if operation["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    f"Git operation {operation_id!r} cannot create a "
+                    f"checkpoint from {operation['status']!r}"
+                )
+            connection.execute(
+                """
+                INSERT INTO git_checkpoints(
+                    checkpoint_id, repository_id, operation_id, target_role,
+                    target_id, commit_oid, parent_oid, paths_json, actor_id,
+                    trigger, message, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    checkpoint_id,
+                    repository_id,
+                    operation_id,
+                    target_role,
+                    target_id,
+                    commit_oid,
+                    parent_oid,
+                    paths_json,
+                    actor_id,
+                    trigger,
+                    message,
+                    timestamp,
+                ),
+            )
+            for relative_path, source in managed_path_sources.items():
+                connection.execute(
+                    """
+                    INSERT INTO git_managed_paths(
+                        repository_id, relative_path, source,
+                        first_checkpoint_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(repository_id, relative_path) DO UPDATE SET
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        repository_id,
+                        relative_path,
+                        source,
+                        checkpoint_id,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ?
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_checkpoints WHERE checkpoint_id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_checkpoint_from_row(row)
+
+    def get_git_checkpoint(
+        self, checkpoint_id: str
+    ) -> GitCheckpointRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM git_checkpoints WHERE checkpoint_id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+            return (
+                self._git_checkpoint_from_row(row) if row is not None else None
+            )
+
+    def list_git_checkpoints(
+        self,
+        repository_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[GitCheckpointRecord]:
+        if limit < 1:
+            raise ValueError("checkpoint query limit must be positive")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM git_checkpoints
+                WHERE repository_id = ?
+                ORDER BY created_at DESC, checkpoint_id DESC
+                LIMIT ?
+                """,
+                (repository_id, limit),
+            ).fetchall()
+            return [self._git_checkpoint_from_row(row) for row in rows]
+
+    def list_git_managed_paths(self, repository_id: str) -> tuple[str, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT relative_path FROM git_managed_paths
+                WHERE repository_id = ?
+                ORDER BY relative_path
+                """,
+                (repository_id,),
+            ).fetchall()
+            return tuple(row["relative_path"] for row in rows)
 
     def ensure_run(
         self,
@@ -3825,6 +4538,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V5)
         if version < 6:
             self._connection.executescript(_MIGRATION_V6)
+        if version < 7:
+            self._connection.executescript(_MIGRATION_V7)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -4132,6 +4847,63 @@ class SQLiteRunJournal:
             projection_digest=row["projection_digest"],
             permission_profile_revision=row["permission_profile_revision"],
             provider_capability_revision=row["provider_capability_revision"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _git_repository_from_row(row: sqlite3.Row) -> GitRepositoryRecord:
+        return GitRepositoryRecord(
+            repository_id=row["repository_id"],
+            space_id=row["space_id"],
+            repository_role=row["repository_role"],
+            root_path=row["root_path"],
+            root_path_digest=row["root_path_digest"],
+            ownership=row["ownership"],
+            state=row["state"],
+            version_coverage=row["version_coverage"],
+            hooks_mode=row["hooks_mode"],
+            repo_subdir=row["repo_subdir"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _git_operation_from_row(row: sqlite3.Row) -> GitOperationRecord:
+        return GitOperationRecord(
+            operation_id=row["operation_id"],
+            repository_id=row["repository_id"],
+            request_id=row["request_id"],
+            operation_type=row["operation_type"],
+            payload_digest=row["payload_digest"],
+            status=row["status"],
+            expected_repo_state_digest=row["expected_repo_state_digest"],
+            observed_repo_state_digest=row["observed_repo_state_digest"],
+            result=(
+                json.loads(row["result_json"])
+                if row["result_json"] is not None
+                else None
+            ),
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _git_checkpoint_from_row(row: sqlite3.Row) -> GitCheckpointRecord:
+        return GitCheckpointRecord(
+            checkpoint_id=row["checkpoint_id"],
+            repository_id=row["repository_id"],
+            operation_id=row["operation_id"],
+            target_role=row["target_role"],
+            target_id=row["target_id"],
+            commit_oid=row["commit_oid"],
+            parent_oid=row["parent_oid"],
+            paths=tuple(json.loads(row["paths_json"])),
+            actor_id=row["actor_id"],
+            trigger=row["trigger"],
+            message=row["message"],
             created_at=float(row["created_at"]),
         )
 

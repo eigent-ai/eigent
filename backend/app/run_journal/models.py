@@ -144,6 +144,56 @@ class EffectiveEnvironmentSpecRecord:
 
 
 @dataclass(frozen=True)
+class GitRepositoryRecord:
+    repository_id: str
+    space_id: str
+    repository_role: str
+    root_path: str
+    root_path_digest: str
+    ownership: str
+    state: str
+    version_coverage: str
+    hooks_mode: str
+    repo_subdir: str | None
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class GitOperationRecord:
+    operation_id: str
+    repository_id: str
+    request_id: str
+    operation_type: str
+    payload_digest: str
+    status: str
+    expected_repo_state_digest: str | None
+    observed_repo_state_digest: str | None
+    result: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class GitCheckpointRecord:
+    checkpoint_id: str
+    repository_id: str
+    operation_id: str
+    target_role: str
+    target_id: str
+    commit_oid: str
+    parent_oid: str | None
+    paths: tuple[str, ...]
+    actor_id: str
+    trigger: str
+    message: str
+    created_at: float
+
+
+@dataclass(frozen=True)
 class ToolCallRecord:
     tool_call_id: str
     run_id: str
