@@ -14,11 +14,13 @@
 
 from app.run_journal.models import (
     ApprovalRecord,
+    AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
+    EffectiveEnvironmentSpecRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -27,6 +29,7 @@ from app.run_journal.models import (
     RunRecord,
     StartupReconciliationResult,
     ToolCallRecord,
+    WorkspaceConfigRevisionRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.recorder import EventRecorder
@@ -52,12 +55,14 @@ from app.run_journal.store import (
 __all__ = [
     "SCHEMA_VERSION",
     "ApprovalRecord",
+    "AttemptEnvironmentBinding",
     "CloudRunEventReplica",
     "CloudRunReplica",
     "CommittedRunEvent",
     "CommandResultEvent",
     "CommandResultSyncBatch",
     "EventRecorder",
+    "EffectiveEnvironmentSpecRecord",
     "IdempotencyConflictError",
     "InvalidRunTransitionError",
     "OptimisticConcurrencyError",
@@ -73,6 +78,7 @@ __all__ = [
     "SQLiteRunJournal",
     "StartupReconciliationResult",
     "ToolCallRecord",
+    "WorkspaceConfigRevisionRecord",
     "UnsafeResumeError",
     "UnsupportedSchemaVersionError",
     "close_default_run_journal",

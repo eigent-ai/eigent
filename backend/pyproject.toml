@@ -21,6 +21,7 @@ dependencies = [
     "numpy>=1.23.0,<2.0.0",
     "debugpy>=1.8.17",
     "qdrant-client>=1.16.2",
+    "pyyaml>=6.0.3",
     "opentelemetry-api>=1.34.1",
     "opentelemetry-sdk>=1.34.1",
     "opentelemetry-exporter-otlp-proto-http>=1.34.1",

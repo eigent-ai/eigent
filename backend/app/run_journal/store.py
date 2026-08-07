@@ -35,11 +35,13 @@ from typing import Any
 
 from app.run_journal.models import (
     ApprovalRecord,
+    AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
+    EffectiveEnvironmentSpecRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -48,6 +50,7 @@ from app.run_journal.models import (
     RunRecord,
     StartupReconciliationResult,
     ToolCallRecord,
+    WorkspaceConfigRevisionRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.transitions import (
@@ -65,8 +68,14 @@ from app.run_policy import (
     ToolSafetyClass,
     automatic_tool_replay_allowed,
 )
+from app.workspace_config.models import (
+    EffectiveEnvironmentSpec,
+    ThinkingEffort,
+    canonical_digest,
+    canonical_json,
+)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -330,6 +339,98 @@ PRAGMA user_version = 5;
 COMMIT;
 """
 
+_MIGRATION_V6 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE workspace_config_revisions (
+    revision_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    bundle_id TEXT NOT NULL,
+    revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+    config_placement TEXT NOT NULL CHECK (
+        config_placement IN ('in_repo', 'sidecar')
+    ),
+    status TEXT NOT NULL CHECK (
+        status IN ('draft', 'validated', 'published', 'deprecated')
+    ),
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    manifest_json TEXT NOT NULL,
+    manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64),
+    created_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    UNIQUE(space_id, revision_number)
+);
+
+CREATE INDEX workspace_config_revisions_space_idx
+ON workspace_config_revisions(space_id, revision_number DESC);
+
+CREATE TABLE workspace_config_materializations (
+    materialization_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL REFERENCES workspace_config_revisions(
+        revision_id
+    ) ON DELETE RESTRICT,
+    state TEXT NOT NULL CHECK (
+        state IN ('pending', 'materialized', 'needs_attention', 'degraded')
+    ),
+    local_override_digest TEXT NOT NULL DEFAULT '',
+    materialized_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(space_id, revision_id, local_override_digest)
+);
+
+CREATE TABLE effective_environment_specs (
+    environment_spec_id TEXT PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('run', 'run_attempt')),
+    owner_id TEXT NOT NULL,
+    bundle_revision_id TEXT NOT NULL REFERENCES workspace_config_revisions(
+        revision_id
+    ) ON DELETE RESTRICT,
+    manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64),
+    spec_json TEXT NOT NULL,
+    environment_spec_digest TEXT NOT NULL CHECK (
+        length(environment_spec_digest) = 64
+    ),
+    semantic_spec_digest TEXT NOT NULL CHECK (
+        length(semantic_spec_digest) = 64
+    ),
+    local_materialization_digest TEXT NOT NULL CHECK (
+        length(local_materialization_digest) = 64
+    ),
+    redacted_spec_json TEXT NOT NULL,
+    projection_digest TEXT NOT NULL CHECK (length(projection_digest) = 64),
+    permission_profile_revision TEXT NOT NULL,
+    provider_capability_revision TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+
+CREATE INDEX effective_environment_specs_owner_idx
+ON effective_environment_specs(owner_type, owner_id, created_at DESC);
+
+ALTER TABLE run_attempts ADD COLUMN environment_spec_id TEXT REFERENCES
+    effective_environment_specs(environment_spec_id) ON DELETE RESTRICT;
+ALTER TABLE run_attempts ADD COLUMN environment_spec_digest TEXT;
+ALTER TABLE run_attempts ADD COLUMN bundle_revision_id TEXT REFERENCES
+    workspace_config_revisions(revision_id) ON DELETE RESTRICT;
+ALTER TABLE run_attempts ADD COLUMN permission_profile_revision TEXT;
+ALTER TABLE run_attempts ADD COLUMN thinking_effort_requested TEXT CHECK (
+    thinking_effort_requested IS NULL OR
+    thinking_effort_requested IN ('low', 'medium', 'high', 'xhigh', 'max')
+);
+ALTER TABLE run_attempts ADD COLUMN thinking_effort_effective TEXT CHECK (
+    thinking_effort_effective IS NULL OR
+    thinking_effort_effective IN ('low', 'medium', 'high', 'xhigh', 'max')
+);
+ALTER TABLE run_attempts ADD COLUMN provider_capability_revision TEXT;
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (6, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 6;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -428,6 +529,324 @@ class SQLiteRunJournal:
                     "PRAGMA synchronous"
                 ).fetchone()[0],
             }
+
+    def put_workspace_config_revision(
+        self,
+        *,
+        revision_id: str,
+        space_id: str,
+        bundle_id: str,
+        revision_number: int,
+        config_placement: str,
+        manifest: dict[str, Any],
+        status: str = "validated",
+        created_by: str,
+        now: float | None = None,
+    ) -> WorkspaceConfigRevisionRecord:
+        """Insert one immutable Bundle revision or return its exact replay."""
+
+        required = {
+            "revision_id": revision_id,
+            "space_id": space_id,
+            "bundle_id": bundle_id,
+            "created_by": created_by,
+        }
+        for field_name, value in required.items():
+            if not value.strip():
+                raise ValueError(f"{field_name} is required")
+        if revision_number < 1:
+            raise ValueError("revision_number must be positive")
+        if config_placement not in {"in_repo", "sidecar"}:
+            raise ValueError("invalid config_placement")
+        if status not in {"draft", "validated", "published", "deprecated"}:
+            raise ValueError("invalid workspace config revision status")
+        timestamp = now if now is not None else time.time()
+        manifest_json = canonical_json(manifest)
+        manifest_digest = canonical_digest(manifest)
+        expected = (
+            revision_id,
+            space_id,
+            bundle_id,
+            revision_number,
+            config_placement,
+            status,
+            manifest_json,
+            manifest_digest,
+            created_by,
+        )
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                   OR (space_id = ? AND revision_number = ?)
+                """,
+                (revision_id, space_id, revision_number),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["revision_id"],
+                    row["space_id"],
+                    row["bundle_id"],
+                    int(row["revision_number"]),
+                    row["config_placement"],
+                    row["status"],
+                    row["manifest_json"],
+                    row["manifest_digest"],
+                    row["created_by"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"workspace config revision {revision_id!r} conflicts "
+                        "with an existing revision"
+                    )
+                return self._workspace_config_revision_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO workspace_config_revisions(
+                    revision_id, space_id, bundle_id, revision_number,
+                    config_placement, status, manifest_json, manifest_digest,
+                    created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (*expected, timestamp),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_config_revision_from_row(row)
+
+    def get_workspace_config_revision(
+        self, revision_id: str
+    ) -> WorkspaceConfigRevisionRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            return (
+                self._workspace_config_revision_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def transition_workspace_config_revision(
+        self,
+        revision_id: str,
+        *,
+        expected_version: int,
+        status: str,
+    ) -> WorkspaceConfigRevisionRecord:
+        """CAS the Bundle lifecycle without making its manifest mutable."""
+
+        allowed = {
+            "draft": {"validated"},
+            "validated": {"published"},
+            "published": {"deprecated"},
+            "deprecated": set(),
+        }
+        if status not in allowed:
+            raise ValueError("invalid workspace config revision status")
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(
+                    f"workspace config revision {revision_id!r} does not exist"
+                )
+            if int(row["version"]) != expected_version:
+                raise OptimisticConcurrencyError(
+                    f"workspace config revision {revision_id!r} expected "
+                    f"version {expected_version}, found {row['version']}"
+                )
+            if row["status"] == status:
+                return self._workspace_config_revision_from_row(row)
+            if status not in allowed[row["status"]]:
+                raise InvalidRunTransitionError(
+                    f"workspace config revision {revision_id!r} cannot move "
+                    f"from {row['status']!r} to {status!r}"
+                )
+            updated = connection.execute(
+                """
+                UPDATE workspace_config_revisions
+                SET status = ?, version = version + 1
+                WHERE revision_id = ? AND version = ? AND status = ?
+                """,
+                (
+                    status,
+                    revision_id,
+                    expected_version,
+                    row["status"],
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    f"workspace config revision {revision_id!r} changed "
+                    "during transition"
+                )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_config_revision_from_row(row)
+
+    def put_effective_environment_spec(
+        self,
+        spec: EffectiveEnvironmentSpec,
+        *,
+        now: float | None = None,
+    ) -> EffectiveEnvironmentSpecRecord:
+        """Persist immutable local and redacted forms in one transaction."""
+
+        timestamp = now if now is not None else time.time()
+        local_payload = spec.local_payload()
+        if canonical_digest(spec.semantic_spec) != spec.semantic_spec_digest:
+            raise IdempotencyConflictError(
+                "semantic EnvironmentSpec digest does not match its payload"
+            )
+        local_materialization_payload = spec.local_materialization.model_dump(
+            exclude_none=True,
+            mode="json",
+        )
+        if (
+            canonical_digest(local_materialization_payload)
+            != spec.local_materialization_digest
+        ):
+            raise IdempotencyConflictError(
+                "local materialization digest does not match its payload"
+            )
+        spec_json = canonical_json(local_payload)
+        environment_spec_digest = spec.digest
+        redacted_payload = spec.cloud_projection()
+        projection_digest = str(redacted_payload["projection_digest"])
+        projection_body = {
+            key: value
+            for key, value in redacted_payload.items()
+            if key != "projection_digest"
+        }
+        if canonical_digest(projection_body) != projection_digest:
+            raise IdempotencyConflictError(
+                "Cloud EnvironmentSpec projection digest is invalid"
+            )
+        redacted_spec_json = canonical_json(redacted_payload)
+        with self._write_transaction() as connection:
+            revision = connection.execute(
+                """
+                SELECT manifest_digest FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (spec.bundle_revision_id,),
+            ).fetchone()
+            if revision is None:
+                raise RunNotFoundError(
+                    f"workspace config revision "
+                    f"{spec.bundle_revision_id!r} does not exist"
+                )
+            if revision["manifest_digest"] != spec.manifest_digest:
+                raise IdempotencyConflictError(
+                    "EnvironmentSpec manifest digest does not match its "
+                    "workspace config revision"
+                )
+            expected = (
+                spec.spec_id,
+                spec.owner_type,
+                spec.owner_id,
+                spec.bundle_revision_id,
+                spec.manifest_digest,
+                spec_json,
+                environment_spec_digest,
+                spec.semantic_spec_digest,
+                spec.local_materialization_digest,
+                redacted_spec_json,
+                projection_digest,
+                spec.permission_profile_revision,
+                spec.provider_capability_revision,
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id = ?
+                """,
+                (spec.spec_id,),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["environment_spec_id"],
+                    row["owner_type"],
+                    row["owner_id"],
+                    row["bundle_revision_id"],
+                    row["manifest_digest"],
+                    row["spec_json"],
+                    row["environment_spec_digest"],
+                    row["semantic_spec_digest"],
+                    row["local_materialization_digest"],
+                    row["redacted_spec_json"],
+                    row["projection_digest"],
+                    row["permission_profile_revision"],
+                    row["provider_capability_revision"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"EnvironmentSpec {spec.spec_id!r} conflicts with "
+                        "an existing immutable spec"
+                    )
+                return self._effective_environment_spec_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO effective_environment_specs(
+                    environment_spec_id, owner_type, owner_id,
+                    bundle_revision_id, manifest_digest, spec_json,
+                    environment_spec_digest, semantic_spec_digest,
+                    local_materialization_digest, redacted_spec_json,
+                    projection_digest, permission_profile_revision,
+                    provider_capability_revision, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (*expected, timestamp),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id = ?
+                """,
+                (spec.spec_id,),
+            ).fetchone()
+            assert row is not None
+            return self._effective_environment_spec_from_row(row)
+
+    def get_effective_environment_spec(
+        self, environment_spec_id: str
+    ) -> EffectiveEnvironmentSpecRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id = ?
+                """,
+                (environment_spec_id,),
+            ).fetchone()
+            return (
+                self._effective_environment_spec_from_row(row)
+                if row is not None
+                else None
+            )
 
     def ensure_run(
         self,
@@ -911,11 +1330,14 @@ class SQLiteRunJournal:
         reason: str,
         activate: bool = False,
         attempt_id: str | None = None,
+        environment: AttemptEnvironmentBinding | None = None,
         now: float | None = None,
     ) -> RunAttemptRecord:
         if not request_id.strip() or not reason.strip():
             raise ValueError("attempt request_id and reason are required")
         timestamp = now if now is not None else time.time()
+        identifier = attempt_id or str(uuid.uuid4())
+        environment_values = self._attempt_environment_values(environment)
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
@@ -933,6 +1355,20 @@ class SQLiteRunJournal:
                 if duplicate["resume_reason"] != reason:
                     raise IdempotencyConflictError(
                         f"attempt request_id {request_id!r} was reused with a different reason"
+                    )
+                persisted_environment = (
+                    duplicate["environment_spec_id"],
+                    duplicate["environment_spec_digest"],
+                    duplicate["bundle_revision_id"],
+                    duplicate["permission_profile_revision"],
+                    duplicate["thinking_effort_requested"],
+                    duplicate["thinking_effort_effective"],
+                    duplicate["provider_capability_revision"],
+                )
+                if persisted_environment != environment_values:
+                    raise IdempotencyConflictError(
+                        f"attempt request_id {request_id!r} was reused with "
+                        "a different environment"
                     )
                 return self._attempt_from_row(duplicate)
             if run["origin"] == "cloud_restore":
@@ -979,6 +1415,43 @@ class SQLiteRunJournal:
             blockers = self._unsafe_resume_blockers(connection, run_id)
             if blockers:
                 raise UnsafeResumeError(blockers)
+            if environment is not None:
+                spec = connection.execute(
+                    """
+                    SELECT * FROM effective_environment_specs
+                    WHERE environment_spec_id = ?
+                    """,
+                    (environment.environment_spec_id,),
+                ).fetchone()
+                if spec is None:
+                    raise RunNotFoundError(
+                        f"EnvironmentSpec "
+                        f"{environment.environment_spec_id!r} does not exist"
+                    )
+                expected_owner_id = (
+                    run_id if spec["owner_type"] == "run" else identifier
+                )
+                if spec["owner_id"] != expected_owner_id:
+                    raise IdempotencyConflictError(
+                        "EnvironmentSpec belongs to another Run/Attempt"
+                    )
+                persisted_spec_values = (
+                    spec["environment_spec_digest"],
+                    spec["bundle_revision_id"],
+                    spec["permission_profile_revision"],
+                    spec["provider_capability_revision"],
+                )
+                binding_spec_values = (
+                    environment.environment_spec_digest,
+                    environment.bundle_revision_id,
+                    environment.permission_profile_revision,
+                    environment.provider_capability_revision,
+                )
+                if persisted_spec_values != binding_spec_values:
+                    raise IdempotencyConflictError(
+                        "Attempt environment binding does not match its "
+                        "immutable EnvironmentSpec"
+                    )
             number = int(
                 connection.execute(
                     """
@@ -988,7 +1461,6 @@ class SQLiteRunJournal:
                     (run_id,),
                 ).fetchone()[0]
             )
-            identifier = attempt_id or str(uuid.uuid4())
             status = "running" if activate else "pending"
             connection.execute(
                 """
@@ -996,8 +1468,14 @@ class SQLiteRunJournal:
                     attempt_id, run_id, attempt_number, status, started_at,
                     ended_at, outcome, timeout_reason, resume_request_id,
                     resume_reason, policy_version, elapsed_active_ms,
-                    last_consumer_heartbeat_at
-                ) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?)
+                    last_consumer_heartbeat_at, environment_spec_id,
+                    environment_spec_digest, bundle_revision_id,
+                    permission_profile_revision, thinking_effort_requested,
+                    thinking_effort_effective, provider_capability_revision
+                ) VALUES (
+                    ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
+                    ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     identifier,
@@ -1009,7 +1487,31 @@ class SQLiteRunJournal:
                     reason,
                     run["timeout_policy_version"],
                     timestamp if activate else None,
+                    *environment_values,
                 ),
+            )
+            environment_payload = (
+                {
+                    "environment_spec_id": environment.environment_spec_id,
+                    "environment_spec_digest": (
+                        environment.environment_spec_digest
+                    ),
+                    "bundle_revision_id": environment.bundle_revision_id,
+                    "permission_profile_revision": (
+                        environment.permission_profile_revision
+                    ),
+                    "thinking_effort_requested": (
+                        environment.thinking_effort_requested
+                    ),
+                    "thinking_effort_effective": (
+                        environment.thinking_effort_effective
+                    ),
+                    "provider_capability_revision": (
+                        environment.provider_capability_revision
+                    ),
+                }
+                if environment is not None
+                else {}
             )
             self._append_event_in_transaction(
                 connection,
@@ -1023,6 +1525,7 @@ class SQLiteRunJournal:
                         "reason": reason,
                         "status": status,
                         "policy_version": run["timeout_policy_version"],
+                        **environment_payload,
                     },
                     created_at=timestamp,
                 ),
@@ -3162,6 +3665,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V4)
         if version < 5:
             self._connection.executescript(_MIGRATION_V5)
+        if version < 6:
+            self._connection.executescript(_MIGRATION_V6)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -3371,6 +3876,87 @@ class SQLiteRunJournal:
                 if row["last_consumer_heartbeat_at"] is not None
                 else None
             ),
+            environment_spec_id=row["environment_spec_id"],
+            environment_spec_digest=row["environment_spec_digest"],
+            bundle_revision_id=row["bundle_revision_id"],
+            permission_profile_revision=row["permission_profile_revision"],
+            thinking_effort_requested=row["thinking_effort_requested"],
+            thinking_effort_effective=row["thinking_effort_effective"],
+            provider_capability_revision=row["provider_capability_revision"],
+        )
+
+    @staticmethod
+    def _attempt_environment_values(
+        environment: AttemptEnvironmentBinding | None,
+    ) -> tuple[str | None, ...]:
+        if environment is None:
+            return (None, None, None, None, None, None, None)
+        required = (
+            environment.environment_spec_id,
+            environment.environment_spec_digest,
+            environment.bundle_revision_id,
+            environment.permission_profile_revision,
+            environment.provider_capability_revision,
+        )
+        if any(not value.strip() for value in required):
+            raise ValueError("Attempt environment binding fields are required")
+        for value in (
+            environment.thinking_effort_requested,
+            environment.thinking_effort_effective,
+        ):
+            try:
+                ThinkingEffort(value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid persisted thinking effort {value!r}"
+                ) from exc
+        return (
+            environment.environment_spec_id,
+            environment.environment_spec_digest,
+            environment.bundle_revision_id,
+            environment.permission_profile_revision,
+            environment.thinking_effort_requested,
+            environment.thinking_effort_effective,
+            environment.provider_capability_revision,
+        )
+
+    @staticmethod
+    def _workspace_config_revision_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceConfigRevisionRecord:
+        return WorkspaceConfigRevisionRecord(
+            revision_id=row["revision_id"],
+            space_id=row["space_id"],
+            bundle_id=row["bundle_id"],
+            revision_number=int(row["revision_number"]),
+            config_placement=row["config_placement"],
+            status=row["status"],
+            version=int(row["version"]),
+            manifest=json.loads(row["manifest_json"]),
+            manifest_digest=row["manifest_digest"],
+            created_by=row["created_by"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _effective_environment_spec_from_row(
+        row: sqlite3.Row,
+    ) -> EffectiveEnvironmentSpecRecord:
+        return EffectiveEnvironmentSpecRecord(
+            environment_spec_id=row["environment_spec_id"],
+            owner_type=row["owner_type"],
+            owner_id=row["owner_id"],
+            bundle_revision_id=row["bundle_revision_id"],
+            manifest_digest=row["manifest_digest"],
+            spec=json.loads(row["spec_json"]),
+            environment_spec_digest=row["environment_spec_digest"],
+            semantic_spec_digest=row["semantic_spec_digest"],
+            local_materialization_digest=row["local_materialization_digest"],
+            redacted_spec=json.loads(row["redacted_spec_json"]),
+            projection_digest=row["projection_digest"],
+            permission_profile_revision=row["permission_profile_revision"],
+            provider_capability_revision=row["provider_capability_revision"],
+            created_at=float(row["created_at"]),
         )
 
     @staticmethod

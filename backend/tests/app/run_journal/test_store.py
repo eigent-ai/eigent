@@ -21,6 +21,7 @@ import pytest
 
 from app.run_journal import (
     SCHEMA_VERSION,
+    AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
     EventRecorder,
@@ -31,6 +32,13 @@ from app.run_journal import (
     RunEventDraft,
     RunNotFoundError,
     SQLiteRunJournal,
+)
+from app.workspace_config import (
+    EnvironmentConfigResolver,
+    LocalMaterialization,
+    ProviderModelCapability,
+    ThinkingEffort,
+    parse_workforce_manifest,
 )
 
 
@@ -63,7 +71,188 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "run_event_sync_outbox",
         "tool_calls",
         "approvals",
+        "workspace_config_revisions",
+        "workspace_config_materializations",
+        "effective_environment_specs",
     } <= tables
+
+
+def _persist_environment_spec(journal, *, owner_id: str = "run-1"):
+    manifest = parse_workforce_manifest(
+        """
+apiVersion: eigent.ai/v1alpha1
+kind: WorkforceBundle
+metadata:
+  id: bundle_test
+  name: Test Bundle
+  revision: 1
+spec:
+  agents:
+    - id: coordinator
+      role: coordinator
+      modelProfile: default
+  models:
+    default:
+      modelRef: provider://default
+      thinkingEffort: medium
+"""
+    )
+    revision = journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        space_id="space-1",
+        bundle_id=manifest.metadata.id,
+        revision_number=manifest.metadata.revision,
+        config_placement="sidecar",
+        manifest=manifest.canonical_payload(),
+        created_by="user-1",
+        now=1,
+    )
+    capability = ProviderModelCapability(
+        supported_efforts=tuple(ThinkingEffort),
+        default_effort=ThinkingEffort.MEDIUM,
+        provider_mapping={effort: effort.value for effort in ThinkingEffort},
+        capability_revision="capability-v1",
+    )
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=manifest,
+        owner_type="run",
+        owner_id=owner_id,
+        local_materialization=LocalMaterialization(),
+        provider_capability=capability,
+    )
+    persisted = journal.put_effective_environment_spec(spec, now=2)
+    return revision, spec, persisted
+
+
+def test_workspace_config_and_environment_spec_are_immutable(journal):
+    revision, spec, persisted = _persist_environment_spec(journal)
+
+    assert revision.manifest_digest == spec.manifest_digest
+    assert persisted.environment_spec_id == spec.spec_id
+    assert persisted.environment_spec_digest == spec.digest
+    assert (
+        persisted.redacted_spec["projection_digest"]
+        == persisted.projection_digest
+    )
+    assert journal.put_effective_environment_spec(spec, now=3) == persisted
+
+    with pytest.raises(IdempotencyConflictError, match="config revision"):
+        journal.put_workspace_config_revision(
+            revision_id=revision.revision_id,
+            space_id=revision.space_id,
+            bundle_id=revision.bundle_id,
+            revision_number=revision.revision_number,
+            config_placement=revision.config_placement,
+            manifest={**revision.manifest, "unexpected": True},
+            created_by=revision.created_by,
+        )
+
+
+def test_workspace_config_revision_lifecycle_uses_version_cas(journal):
+    manifest = parse_workforce_manifest(
+        """
+apiVersion: eigent.ai/v1alpha1
+kind: WorkforceBundle
+metadata:
+  id: bundle_lifecycle
+  name: Lifecycle Bundle
+  revision: 1
+spec:
+  models:
+    default:
+      modelRef: provider://default
+      thinkingEffort: medium
+"""
+    )
+    draft = journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        space_id="space-1",
+        bundle_id=manifest.metadata.id,
+        revision_number=manifest.metadata.revision,
+        config_placement="sidecar",
+        manifest=manifest.canonical_payload(),
+        status="draft",
+        created_by="user-1",
+    )
+
+    validated = journal.transition_workspace_config_revision(
+        draft.revision_id,
+        expected_version=0,
+        status="validated",
+    )
+    published = journal.transition_workspace_config_revision(
+        draft.revision_id,
+        expected_version=1,
+        status="published",
+    )
+
+    assert (draft.status, draft.version) == ("draft", 0)
+    assert (validated.status, validated.version) == ("validated", 1)
+    assert (published.status, published.version) == ("published", 2)
+    assert published.manifest == draft.manifest
+    with pytest.raises(OptimisticConcurrencyError):
+        journal.transition_workspace_config_revision(
+            draft.revision_id,
+            expected_version=1,
+            status="deprecated",
+        )
+    with pytest.raises(InvalidRunTransitionError):
+        journal.transition_workspace_config_revision(
+            draft.revision_id,
+            expected_version=2,
+            status="validated",
+        )
+
+
+def test_attempt_binds_environment_once_and_emits_resolved_values(journal):
+    _, spec, _ = _persist_environment_spec(journal)
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    environment = AttemptEnvironmentBinding(
+        environment_spec_id=spec.spec_id,
+        environment_spec_digest=spec.digest,
+        bundle_revision_id=spec.bundle_revision_id,
+        permission_profile_revision=spec.permission_profile_revision,
+        thinking_effort_requested=spec.thinking_effort_requested.value,
+        thinking_effort_effective=spec.thinking_effort_effective.value,
+        provider_capability_revision=spec.provider_capability_revision,
+    )
+
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="request-1",
+        reason="initial_execution",
+        environment=environment,
+        attempt_id="attempt-1",
+    )
+    replay = journal.create_run_attempt(
+        "run-1",
+        request_id="request-1",
+        reason="initial_execution",
+        environment=environment,
+        attempt_id="attempt-1",
+    )
+
+    assert replay == attempt
+    assert attempt.environment_spec_id == spec.spec_id
+    assert attempt.environment_spec_digest == spec.digest
+    assert attempt.thinking_effort_requested == "medium"
+    assert attempt.thinking_effort_effective == "medium"
+    event = journal.list_events("run-1")[0]
+    assert event.event_type == "run.attempt_created"
+    assert event.payload["environment_spec_id"] == spec.spec_id
+    assert event.payload["thinking_effort_effective"] == "medium"
+
+    with pytest.raises(IdempotencyConflictError, match="environment"):
+        journal.create_run_attempt(
+            "run-1",
+            request_id="request-1",
+            reason="initial_execution",
+            environment=None,
+        )
 
 
 def test_ensure_run_rejects_policy_and_deadline_drift(journal):
