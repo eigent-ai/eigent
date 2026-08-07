@@ -79,6 +79,57 @@ class RunAttemptRecord:
     policy_version: str
     elapsed_active_ms: int
     last_consumer_heartbeat_at: float | None
+    environment_spec_id: str | None = None
+    environment_spec_digest: str | None = None
+    bundle_revision_id: str | None = None
+    permission_profile_revision: str | None = None
+    thinking_effort_requested: str | None = None
+    thinking_effort_effective: str | None = None
+    provider_capability_revision: str | None = None
+
+
+@dataclass(frozen=True)
+class AttemptEnvironmentBinding:
+    environment_spec_id: str
+    environment_spec_digest: str
+    bundle_revision_id: str
+    permission_profile_revision: str
+    thinking_effort_requested: str
+    thinking_effort_effective: str
+    provider_capability_revision: str
+
+
+@dataclass(frozen=True)
+class WorkspaceConfigRevisionRecord:
+    revision_id: str
+    space_id: str
+    bundle_id: str
+    revision_number: int
+    config_placement: str
+    status: str
+    version: int
+    manifest: dict[str, Any]
+    manifest_digest: str
+    created_by: str
+    created_at: float
+
+
+@dataclass(frozen=True)
+class EffectiveEnvironmentSpecRecord:
+    environment_spec_id: str
+    owner_type: str
+    owner_id: str
+    bundle_revision_id: str
+    manifest_digest: str
+    spec: dict[str, Any]
+    environment_spec_digest: str
+    semantic_spec_digest: str
+    local_materialization_digest: str
+    redacted_spec: dict[str, Any]
+    projection_digest: str
+    permission_profile_revision: str
+    provider_capability_revision: str
+    created_at: float
 
 
 @dataclass(frozen=True)
