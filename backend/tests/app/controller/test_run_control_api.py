@@ -238,4 +238,6 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
 
     assert [run["run_id"] for run in result["runs"]] == ["older"]
     assert result["runs"][0]["status"] == "interrupted"
-    assert result["runs"][0]["total_attempt_elapsed_ms"] == 1000
+    # Startup recovery must not count the unobserved process-down interval as
+    # active execution time. This attempt never persisted a later heartbeat.
+    assert result["runs"][0]["total_attempt_elapsed_ms"] == 0

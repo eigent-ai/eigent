@@ -53,6 +53,11 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  authorizeLocalFilePath,
+  isExecutableExternalOpenPath,
+  isMainRendererSender,
+} from './localFileSecurity';
 import { filePathFromLocalFileUrl } from './localFileUrl';
 import { setRoundedCorners } from './native/macos-window';
 import {
@@ -104,6 +109,7 @@ let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
 const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
+const activeLocalFileRoots = new Set<string>();
 
 function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
   if (!desktopInstanceId) {
@@ -142,6 +148,39 @@ const isHttpOrHttpsUrl = (url: unknown): url is string => {
     return false;
   }
 };
+
+function assertMainRendererSender(event: Electron.IpcMainInvokeEvent): void {
+  if (
+    !win ||
+    win.isDestroyed() ||
+    !isMainRendererSender(event.sender.id, win.webContents.id) ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error('This operation is restricted to the main renderer');
+  }
+}
+
+function localFileAllowedRoots(): string[] {
+  // Only active Space roots plus the renderer's static application assets are
+  // readable through localfile://. In particular, HOME, userData and the OS
+  // temp directory are not trust boundaries for agent-authored HTML.
+  return [...activeLocalFileRoots, RENDERER_DIST, VITE_PUBLIC];
+}
+
+async function requireAuthorizedPreviewFile(
+  event: Electron.IpcMainInvokeEvent,
+  filePath: string
+): Promise<string> {
+  assertMainRendererSender(event);
+  const authorization = await authorizeLocalFilePath(
+    filePath,
+    localFileAllowedRoots()
+  );
+  if (!authorization.allowed) {
+    throw new Error('Preview file is outside the active workspace');
+  }
+  return authorization.filePath;
+}
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -1109,6 +1148,32 @@ function registerIpcHandlers() {
       typeof legacyRendererId === 'string' ? legacyRendererId : null
     );
   });
+  ipcMain.handle(
+    'set-local-file-preview-roots',
+    async (event, roots: unknown) => {
+      assertMainRendererSender(event);
+      if (!Array.isArray(roots) || roots.length > 4) {
+        throw new Error('Invalid local file preview roots');
+      }
+
+      const nextRoots = new Set<string>();
+      for (const root of roots) {
+        if (typeof root !== 'string' || !path.isAbsolute(root)) {
+          throw new Error('Local file preview roots must be absolute paths');
+        }
+        const realRoot = await fsp.realpath(root);
+        const stats = await fsp.stat(realRoot);
+        if (!stats.isDirectory()) {
+          throw new Error('Local file preview roots must be directories');
+        }
+        nextRoots.add(realRoot);
+      }
+
+      activeLocalFileRoots.clear();
+      nextRoots.forEach((root) => activeLocalFileRoots.add(root));
+      return { success: true, roots: activeLocalFileRoots.size };
+    }
+  );
 
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
@@ -1229,15 +1294,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
-      const stats = await fsp.stat(filePath);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      const stats = await fsp.stat(authorizedPath);
       if (stats.size > FILE_PREVIEW_LIMITS.imageBytes) {
         throw new Error(
           `FILE_PREVIEW_TOO_LARGE:${stats.size}:${FILE_PREVIEW_LIMITS.imageBytes}`
         );
       }
-      const file = fs.readFileSync(filePath);
+      const file = fs.readFileSync(authorizedPath);
       const mimeType =
-        mime.getType(path.extname(filePath)) || 'application/octet-stream';
+        mime.getType(path.extname(authorizedPath)) ||
+        'application/octet-stream';
       return `data:${mimeType};base64,${file.toString('base64')}`;
     } catch (error: any) {
       log.error('Failed to read file as data URL:', filePath, error);
@@ -1759,12 +1829,27 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('open-local-file', async (_event, filePath: string) => {
-    const stats = await fsp.stat(filePath).catch(() => null);
+  ipcMain.handle('open-local-file', async (event, filePath: string) => {
+    assertMainRendererSender(event);
+    const authorization = await authorizeLocalFilePath(
+      filePath,
+      localFileAllowedRoots()
+    );
+    if (!authorization.allowed) {
+      return { success: false, error: 'File is outside the active workspace' };
+    }
+    const stats = await fsp.stat(authorization.filePath).catch(() => null);
     if (!stats?.isFile()) {
       return { success: false, error: 'File does not exist' };
     }
-    const error = await shell.openPath(filePath);
+    if (isExecutableExternalOpenPath(authorization.filePath, stats.mode)) {
+      shell.showItemInFolder(authorization.filePath);
+      return {
+        success: false,
+        error: 'Executable files cannot be opened from an agent result',
+      };
+    }
+    const error = await shell.openPath(authorization.filePath);
     return error
       ? { success: false, error }
       : { success: true, error: undefined };
@@ -2139,27 +2224,48 @@ function registerIpcHandlers() {
   // ==================== FileReader handler ====================
   ipcMain.handle(
     'open-file',
-    async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
+    async (
+      event,
+      type: string,
+      filePath: string,
+      isShowSourceCode: boolean
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.openFile(type, filePath, isShowSourceCode);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.openFile(type, authorizedPath, isShowSourceCode);
     }
   );
 
-  ipcMain.handle('get-file-preview-metadata', async (_, filePath: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.getPreviewMetadata(filePath);
-  });
+  ipcMain.handle(
+    'get-file-preview-metadata',
+    async (event, filePath: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.getPreviewMetadata(authorizedPath);
+    }
+  );
 
-  ipcMain.handle('preview-csv-file', async (_, filePath: string) => {
+  ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
-    return manager.previewCsvFile(filePath);
+    const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
+    return manager.previewCsvFile(authorizedPath);
   });
 
   ipcMain.handle(
     'preview-text-file',
-    async (_, filePath: string, limit?: number) => {
+    async (event, filePath: string, limit?: number) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.previewTextFile(filePath, limit);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.previewTextFile(authorizedPath, limit);
     }
   );
 
@@ -2701,7 +2807,7 @@ async function createWindowInternal() {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
       partition: 'persist:main_window',
-      webSecurity: false,
+      webSecurity: true,
       preload,
       nodeIntegration: true,
       contextIsolation: true,
@@ -3204,6 +3310,16 @@ const setupExternalLinkHandling = () => {
     }
     // For internal URLs (localhost, hash navigation), allow navigation to proceed
   });
+
+  // srcDoc report previews are sandboxed child frames. Never turn a scripted
+  // child-frame navigation into an outbound request: it could encode local
+  // workspace contents in the URL even when connect-src is disabled.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame && isExternalUrl(details.url)) {
+      details.preventDefault();
+      log.warn('[HTML PREVIEW] Blocked external frame navigation');
+    }
+  });
 };
 
 // ==================== check and start backend ====================
@@ -3473,44 +3589,27 @@ app.whenReady().then(async () => {
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
 
-    // Security: Restrict file access to allowed directories only.
-    // Without this check, path traversal (e.g. /../../../etc/passwd)
-    // would allow reading arbitrary files on the filesystem.
-    const allowedBases = [
-      os.homedir(),
-      app.getPath('userData'),
-      app.getPath('temp'),
-    ];
-
-    const isPathAllowed = allowedBases.some((base) => {
-      const resolvedBase = path.resolve(base);
-      return (
-        filePath === resolvedBase ||
-        filePath.startsWith(resolvedBase + path.sep)
-      );
-    });
-
-    if (!isPathAllowed) {
+    const authorization = await authorizeLocalFilePath(
+      filePath,
+      localFileAllowedRoots()
+    );
+    if (!authorization.allowed) {
       log.error(
-        `[PROTOCOL] Security: Blocked access to path outside allowed directories: ${filePath}`
+        `[PROTOCOL] Security: Blocked local file (${authorization.reason}): ${filePath}`
       );
-      return new Response('Forbidden', { status: 403 });
+      return new Response(
+        authorization.reason === 'missing' ? 'File Not Found' : 'Forbidden',
+        { status: authorization.reason === 'missing' ? 404 : 403 }
+      );
     }
+    const authorizedFilePath = authorization.filePath;
 
     try {
       // Check if file exists
-      const fileExists = await fsp
-        .access(filePath)
-        .then(() => true)
-        .catch(() => false);
-      if (!fileExists) {
-        log.error(`[PROTOCOL] File not found: ${filePath}`);
-        return new Response('File Not Found', { status: 404 });
-      }
-
-      const stats = await fsp.stat(filePath);
+      const stats = await fsp.stat(authorizedFilePath);
       if (!stats.isFile()) return new Response('Not Found', { status: 404 });
-      const contentType = mime.getType(filePath) || 'application/octet-stream';
+      const contentType =
+        mime.getType(authorizedFilePath) || 'application/octet-stream';
       const resolvedRange = resolveFileByteRange(
         request.headers.get('range'),
         stats.size
@@ -3536,7 +3635,7 @@ app.whenReady().then(async () => {
         return new Response(null, { status, headers });
       }
 
-      const stream = fs.createReadStream(filePath, { start, end });
+      const stream = fs.createReadStream(authorizedFilePath, { start, end });
       return new Response(Readable.toWeb(stream) as BodyInit, {
         status,
         headers,

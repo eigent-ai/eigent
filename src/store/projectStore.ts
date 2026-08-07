@@ -23,6 +23,7 @@ import {
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
+import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -39,6 +40,7 @@ import {
   createChatStoreInstance,
   hasActiveSSEConnection,
   VanillaChatStore,
+  type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
@@ -68,6 +70,14 @@ import {
  */
 const HISTORY_STATUS_DONE = 2;
 const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
+const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'stopped',
+]);
 const TERMINAL_SUBTASK_STATUSES = new Set<TaskStatusType>([
   TaskStatus.COMPLETED,
   TaskStatus.FAILED,
@@ -86,6 +96,14 @@ const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : fallback;
 };
+
+const durableRunDisplayStatus = (
+  value: unknown
+): DurableRunDisplayStatus | undefined =>
+  typeof value === 'string' &&
+  DURABLE_RUN_DISPLAY_STATUSES.has(value as DurableRunDisplayStatus)
+    ? (value as DurableRunDisplayStatus)
+    : undefined;
 
 const polishCompletedHistoryTask = (
   chatStore: VanillaChatStore,
@@ -1360,7 +1378,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // local Run and intentionally retain the cloud fallback.
       const localRunsById = new Map<
         string,
-        { status?: string; totalAttemptElapsedMs?: number }
+        {
+          status?: DurableRunDisplayStatus;
+          totalAttemptElapsedMs?: number;
+          createdAt?: number;
+          updatedAt?: number;
+        }
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
@@ -1380,12 +1403,22 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               );
             }
             localRunsById.set(String(run.run_id), {
-              status: typeof run.status === 'string' ? run.status : undefined,
+              status: durableRunDisplayStatus(run.status),
               totalAttemptElapsedMs:
                 typeof run.total_attempt_elapsed_ms === 'number' &&
                 Number.isFinite(run.total_attempt_elapsed_ms) &&
                 run.total_attempt_elapsed_ms >= 0
                   ? run.total_attempt_elapsed_ms
+                  : undefined,
+              createdAt:
+                typeof run.created_at === 'number' &&
+                Number.isFinite(run.created_at)
+                  ? run.created_at
+                  : undefined,
+              updatedAt:
+                typeof run.updated_at === 'number' &&
+                Number.isFinite(run.updated_at)
+                  ? run.updated_at
                   : undefined,
             });
           }
@@ -1428,6 +1461,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
           if (!cacheIsStale && cached && cached.taskIds.length > 0) {
             const rehydratedStores = new Map<string, VanillaChatStore>();
+            let repairedCachedTasks: Record<string, CachedTask> | null = null;
             for (const cachedTaskId of cached.taskIds) {
               const cachedTask = cached.tasks[cachedTaskId];
               if (!cachedTask) continue;
@@ -1442,6 +1476,55 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               chatStore
                 .getState()
                 .hydrateTask(cachedTaskId, cachedTask.taskState as any);
+
+              // A matching freshness anchor proves that this snapshot was
+              // built from the current Run rows, but it does not prove that
+              // every derived UI field was projected correctly. Older
+              // renderer code could persist elapsed=0 even though SQLite
+              // already held the terminal attempt duration. Always overlay
+              // canonical Run status/duration on the disposable IDB view so
+              // a bad projection cannot remain trusted forever.
+              const localRun = localRunsById.get(cachedTaskId);
+              if (localRun) {
+                const canonicalElapsed =
+                  localRun.status !== 'running'
+                    ? resolveHistoricalRunElapsedMs({
+                        totalAttemptElapsedMs: localRun.totalAttemptElapsedMs,
+                        createdAt: localRun.createdAt,
+                        updatedAt: localRun.updatedAt,
+                      })
+                    : undefined;
+                const chatState = chatStore.getState();
+                chatState.setDurableRunStatus(cachedTaskId, localRun.status);
+                if (canonicalElapsed !== undefined) {
+                  chatState.setTaskTime(cachedTaskId, 0);
+                  chatState.setElapsed(cachedTaskId, canonicalElapsed);
+                }
+
+                const cachedTaskState =
+                  cachedTask.taskState &&
+                  typeof cachedTask.taskState === 'object' &&
+                  !Array.isArray(cachedTask.taskState)
+                    ? (cachedTask.taskState as Record<string, unknown>)
+                    : {};
+                const needsRepair =
+                  cachedTaskState.durableRunStatus !== localRun.status ||
+                  (canonicalElapsed !== undefined &&
+                    (cachedTaskState.elapsed !== canonicalElapsed ||
+                      cachedTaskState.taskTime !== 0));
+                if (needsRepair) {
+                  repairedCachedTasks ??= { ...cached.tasks };
+                  repairedCachedTasks[cachedTaskId] = {
+                    taskState: {
+                      ...cachedTaskState,
+                      durableRunStatus: localRun.status,
+                      ...(canonicalElapsed !== undefined
+                        ? { elapsed: canonicalElapsed, taskTime: 0 }
+                        : {}),
+                    },
+                  };
+                }
+              }
               rehydratedStores.set(cachedTaskId, chatStore);
             }
 
@@ -1463,6 +1546,22 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               console.log(
                 `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
               );
+
+              if (
+                repairedCachedTasks &&
+                getAuthStore().user_id === cacheScope.userId
+              ) {
+                // Best-effort self-heal. SQLite remains authoritative; this
+                // only prevents the same stale derived value from needing to
+                // be corrected again on every project open.
+                void putCachedProject(cacheScope, {
+                  serverUpdatedAt: cached.serverUpdatedAt,
+                  localCanonicalUpdatedAt,
+                  taskIds: cached.taskIds,
+                  tasks: repairedCachedTasks,
+                  projectName: cached.projectName,
+                }).catch(() => undefined);
+              }
 
               return loadProjectId;
             }
@@ -1507,8 +1606,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 const localRun = localRunsById.get(taskId);
                 const canonicalElapsed =
                   localRun?.status !== 'running'
-                    ? localRun?.totalAttemptElapsedMs
+                    ? resolveHistoricalRunElapsedMs({
+                        totalAttemptElapsedMs: localRun?.totalAttemptElapsedMs,
+                        createdAt: localRun?.createdAt,
+                        updatedAt: localRun?.updatedAt,
+                      })
                     : undefined;
+                chatStore
+                  .getState()
+                  .setDurableRunStatus(taskId, localRun?.status);
                 if (
                   canonicalElapsed !== undefined &&
                   chatStore.getState().tasks[taskId]
@@ -1547,6 +1653,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             { include_tasks: true }
           );
           const doneTaskIds = new Set<string>();
+          const stoppedTaskIds = new Set<string>();
           for (const t of grouped?.tasks ?? []) {
             if (!t?.task_id || t?.status !== HISTORY_STATUS_DONE) continue;
             // Skip the polish for tasks the user explicitly stopped — the
@@ -1557,11 +1664,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               typeof t?.summary === 'string' &&
               t.summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)
             ) {
+              stoppedTaskIds.add(t.task_id);
               continue;
             }
             doneTaskIds.add(t.task_id);
           }
           for (const [taskId, chatStore] of loadedChatStoresByTaskId) {
+            if (stoppedTaskIds.has(taskId)) {
+              chatStore.getState().setDurableRunStatus(taskId, 'stopped');
+            }
             if (doneTaskIds.has(taskId)) {
               polishCompletedHistoryTask(chatStore, taskId);
             }

@@ -63,22 +63,32 @@ function encodePathSegments(filePath: string): string {
 
 export function toLocalFileUrl(filePath: string): string {
   if (
-    filePath.startsWith('localfile://') ||
-    filePath.startsWith('file://') ||
     filePath.startsWith('http://') ||
     filePath.startsWith('https://') ||
     filePath.startsWith('blob:') ||
     filePath.startsWith('data:')
   ) {
-    const normalized =
-      filePath.startsWith('file://') && !filePath.startsWith('localfile://')
-        ? filePath.replace(/^file:\/\//, 'localfile://')
-        : filePath;
-    return normalized.endsWith('/') ? normalized : `${normalized}/`;
+    return filePath.endsWith('/') ? filePath : `${filePath}/`;
   }
 
-  const encodedPath = encodePathSegments(filePath);
-  const localFileUrl = `localfile://${encodedPath}`;
+  let localPath = filePath;
+  if (filePath.startsWith('localfile:') || filePath.startsWith('file:')) {
+    const parsed = new URL(filePath);
+    const queryPath = parsed.searchParams.get('path');
+    if (parsed.hostname === 'preview' && queryPath) {
+      localPath = queryPath;
+    } else if (!parsed.hostname || parsed.hostname === 'preview') {
+      localPath = decodeURIComponent(parsed.pathname);
+    } else {
+      localPath = `/${parsed.hostname}${decodeURIComponent(parsed.pathname)}`;
+    }
+  }
+
+  const encodedPath = encodePathSegments(localPath);
+  const rootedPath = encodedPath.startsWith('/')
+    ? encodedPath
+    : `/${encodedPath}`;
+  const localFileUrl = `localfile://preview${rootedPath}`;
   return localFileUrl.endsWith('/') ? localFileUrl : `${localFileUrl}/`;
 }
 

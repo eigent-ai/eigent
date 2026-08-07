@@ -24,19 +24,27 @@ import {
 describe('toLocalFileUrl', () => {
   it('converts absolute unix paths to localfile base hrefs', () => {
     expect(toLocalFileUrl('/Users/test/canvas_map')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
   });
 
-  it('preserves existing localfile urls and trailing slash', () => {
+  it('upgrades existing localfile urls to the navigable fixed-host format', () => {
     expect(toLocalFileUrl('localfile:///Users/test/canvas_map/')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
+  });
+
+  it('converts query-based preview urls to the navigable fixed-host format', () => {
+    expect(
+      toLocalFileUrl(
+        'localfile://preview/?path=%2FUsers%2FExample%20User%2Fcanvas_map'
+      )
+    ).toBe('localfile://preview/Users/Example%20User/canvas_map/');
   });
 
   it('emits standard localfile urls for Windows drive paths', () => {
     expect(toLocalFileUrl('C:\\Users\\test\\canvas_map')).toBe(
-      'localfile:///C:/Users/test/canvas_map/'
+      'localfile://preview/C:/Users/test/canvas_map/'
     );
   });
 });

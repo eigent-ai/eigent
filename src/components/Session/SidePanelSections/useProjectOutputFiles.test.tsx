@@ -15,7 +15,7 @@
 import { HostProvider } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProjectOutputFiles } from './useProjectOutputFiles';
@@ -32,15 +32,12 @@ vi.mock('@/api/http', () => ({
 }));
 
 describe('useProjectOutputFiles', () => {
+  const host = {
+    electronAPI: null,
+    ipcRenderer: { invoke: invokeMock },
+  };
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <HostProvider
-      host={{
-        electronAPI: null,
-        ipcRenderer: { invoke: invokeMock },
-      }}
-    >
-      {children}
-    </HostProvider>
+    <HostProvider host={host}>{children}</HostProvider>
   );
 
   beforeEach(() => {
@@ -111,5 +108,83 @@ describe('useProjectOutputFiles', () => {
     expect(intervalSpy).not.toHaveBeenCalled();
 
     intervalSpy.mockRestore();
+  });
+
+  it('does not reload files for agent-only live status changes', async () => {
+    const { rerender } = renderHook(
+      ({ agentStatus }) =>
+        useProjectOutputFiles(
+          'project_one',
+          {
+            status: ChatTaskStatus.PAUSE,
+            taskAssigning: [
+              {
+                agent_id: 'agent_one',
+                status: agentStatus,
+                tasks: [],
+              } as Agent,
+            ],
+          },
+          'task_one'
+        ),
+      {
+        wrapper,
+        initialProps: { agentStatus: 'running' },
+      }
+    );
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    rerender({ agentStatus: 'completed' });
+    await act(async () => Promise.resolve());
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(fetchGetMock).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty Electron file list as authoritative', async () => {
+    invokeMock.mockResolvedValue([]);
+
+    const { result } = renderHook(
+      () =>
+        useProjectOutputFiles(
+          'project_one',
+          { status: ChatTaskStatus.FINISHED, taskAssigning: [] },
+          'task_one'
+        ),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    expect(result.current).toEqual([]);
+    expect(fetchGetMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Brain only when the Electron lookup fails', async () => {
+    invokeMock.mockRejectedValue(new Error('IPC unavailable'));
+    fetchGetMock.mockResolvedValue([
+      {
+        filename: 'remote-report.md',
+        url: '/files/remote-report.md',
+      },
+    ]);
+
+    const { result } = renderHook(
+      () =>
+        useProjectOutputFiles(
+          'project_one',
+          { status: ChatTaskStatus.FINISHED, taskAssigning: [] },
+          'task_one'
+        ),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(result.current[0]).toEqual(
+      expect.objectContaining({
+        name: 'remote-report.md',
+        isRemote: true,
+      })
+    );
   });
 });

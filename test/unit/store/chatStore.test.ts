@@ -137,6 +137,7 @@ import {
   getCloudModelPlatform,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
+  resolveRunOutputFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   useChatStore,
@@ -438,6 +439,43 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
+    });
+
+    it('trusts an empty canonical artifact list over paths merely mentioned in the answer', () => {
+      const files = resolveRunOutputFileList({
+        writeEventFiles: [],
+        artifactFiles: [],
+        canonicalArtifactsAvailable: true,
+        finalAnswerFiles: [
+          {
+            name: 'old-report.csv',
+            path: '/Users/test/workspace/old-report.csv',
+            type: 'csv',
+          },
+        ],
+      });
+
+      expect(files).toEqual([]);
+    });
+
+    it('keeps final-answer path extraction as a fallback without a canonical artifact index', () => {
+      const finalAnswerFiles = [
+        {
+          name: 'remote-report.csv',
+          path: 'https://example.test/remote-report.csv',
+          type: 'csv',
+          isRemote: true,
+        },
+      ];
+
+      expect(
+        resolveRunOutputFileList({
+          writeEventFiles: [],
+          artifactFiles: [],
+          canonicalArtifactsAvailable: false,
+          finalAnswerFiles,
+        })
+      ).toEqual(finalAnswerFiles);
     });
   });
 

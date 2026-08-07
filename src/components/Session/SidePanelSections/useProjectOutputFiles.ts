@@ -17,25 +17,13 @@ import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { useAuthStore } from '@/store/authStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getSidePanelOutputFilesRevision } from './collectSidePanelOutputFiles';
 
 type SidePanelTask = {
   status?: string;
   taskAssigning?: Agent[];
 };
-
-function isTaskLive(task: SidePanelTask | undefined): boolean {
-  if (!task) return false;
-  if (
-    task.status === ChatTaskStatus.RUNNING ||
-    task.status === ChatTaskStatus.PENDING
-  ) {
-    return true;
-  }
-  return (task.taskAssigning ?? []).some(
-    (agent) => agent.status === 'running' || agent.status === 'pending'
-  );
-}
 
 function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
   return items.map((item: any) => {
@@ -53,6 +41,20 @@ function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
   });
 }
 
+function sameFileList(left: FileInfo[], right: FileInfo[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((file, index) => {
+    const other = right[index];
+    return (
+      file.path === other?.path &&
+      file.relativePath === other?.relativePath &&
+      file.name === other?.name &&
+      file.type === other?.type &&
+      file.isRemote === other?.isRemote
+    );
+  });
+}
+
 export function useProjectOutputFiles(
   projectId: string | null | undefined,
   activeTask: SidePanelTask | undefined,
@@ -63,7 +65,8 @@ export function useProjectOutputFiles(
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
   const [files, setFiles] = useState<FileInfo[]>([]);
-  const live = useMemo(() => isTaskLive(activeTask), [activeTask]);
+  const outputFilesRevision = getSidePanelOutputFilesRevision(activeTask);
+  const taskFinished = activeTask?.status === ChatTaskStatus.FINISHED;
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +78,7 @@ export function useProjectOutputFiles(
       }
 
       let nextFiles: FileInfo[] = [];
+      let localLookupSucceeded = false;
       const ipcRenderer = host?.ipcRenderer;
 
       if (ipcRenderer?.invoke) {
@@ -86,6 +90,7 @@ export function useProjectOutputFiles(
             userId
           );
           if (Array.isArray(localFiles)) {
+            localLookupSucceeded = true;
             nextFiles = localFiles;
           }
         } catch (error) {
@@ -99,7 +104,7 @@ export function useProjectOutputFiles(
       // Electron already has the authoritative local file list. Local-proxy
       // mode only changes where Brain HTTP points; it must not force a second,
       // identical /files request after IPC succeeded.
-      if (!nextFiles.length || !ipcRenderer?.invoke) {
+      if (!localLookupSucceeded) {
         try {
           const baseURL = await getBaseURL();
           if (baseURL) {
@@ -120,7 +125,12 @@ export function useProjectOutputFiles(
         }
       }
 
-      if (!cancelled) setFiles(filterVisibleAgentFiles(nextFiles));
+      if (!cancelled) {
+        const visibleFiles = filterVisibleAgentFiles(nextFiles);
+        setFiles((current) =>
+          sameFileList(current, visibleFiles) ? current : visibleFiles
+        );
+      }
     };
 
     void loadFiles();
@@ -128,7 +138,15 @@ export function useProjectOutputFiles(
     return () => {
       cancelled = true;
     };
-  }, [email, host?.ipcRenderer, live, projectId, taskId, userId]);
+  }, [
+    email,
+    host?.ipcRenderer,
+    outputFilesRevision,
+    projectId,
+    taskFinished,
+    taskId,
+    userId,
+  ]);
 
   return files;
 }

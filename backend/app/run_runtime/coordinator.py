@@ -52,6 +52,14 @@ class RunExecutionError(RunRuntimeError):
     pass
 
 
+class RunInterruptedError(RunRuntimeError):
+    """Execution stopped for a retryable reason and may be resumed safely."""
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 class SubscriberLaggedError(RunRuntimeError):
     pass
 
@@ -511,6 +519,25 @@ class RunCoordinator:
                 handle.publish(data)
         except asyncio.CancelledError:
             raise
+        except RunInterruptedError as exc:
+            await self._commit_execution_terminal(
+                handle,
+                event_type="runtime.interrupted",
+                payload={
+                    "reason": exc.reason,
+                    "error_type": type(exc).__name__,
+                    "message": str(exc)[:4000],
+                    "retryable": True,
+                },
+            )
+            logger.warning(
+                "Detached Run execution interrupted",
+                extra={
+                    "run_id": handle.run_id,
+                    "reason": exc.reason,
+                    "message": str(exc),
+                },
+            )
         except Exception as exc:
             await self._commit_execution_terminal(
                 handle,

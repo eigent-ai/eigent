@@ -22,6 +22,7 @@ from app.run_policy import (
 from app.run_runtime.coordinator import (
     RunCoordinator,
     RunExecutionError,
+    RunInterruptedError,
     RunRuntimeError,
     RuntimeHandle,
     RuntimeSubscription,
@@ -35,6 +36,7 @@ from app.run_runtime.runtime import (
 __all__ = [
     "RunCoordinator",
     "RunExecutionError",
+    "RunInterruptedError",
     "RunRuntimeError",
     "RunTimeoutPolicy",
     "RuntimeHandle",

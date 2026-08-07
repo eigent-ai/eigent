@@ -7,7 +7,7 @@ import pytest
 
 from app.run_journal import SQLiteRunJournal
 from app.run_policy import RunTimeoutPolicy
-from app.run_runtime import RunCoordinator
+from app.run_runtime import RunCoordinator, RunInterruptedError
 from app.run_runtime.coordinator import RuntimeHandle
 
 
@@ -133,6 +133,44 @@ async def test_execution_backend_failure_is_a_durable_terminal_event(tmp_path):
             await subscription.__anext__()
         assert journal.get_run("run-1").status == "failed"
         assert journal.list_events("run-1")[-1].event_type == "run.failed"
+        await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_retryable_execution_failure_is_durably_interrupted(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        coordinator = RunCoordinator(journal)
+
+        async def source():
+            yield "error-frame"
+            raise RunInterruptedError(
+                "Client Closed Request", reason="model_transport_error"
+            )
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-1",
+            stream_factory=source,
+        )
+        assert await subscription.__anext__() == "error-frame"
+        with pytest.raises(StopAsyncIteration):
+            await subscription.__anext__()
+
+        run = journal.get_run("run-1")
+        attempts = journal.list_run_attempts("run-1")
+        event = journal.list_events("run-1")[-1]
+        assert run is not None and run.status == "interrupted"
+        assert attempts[-1].status == "interrupted"
+        assert attempts[-1].ended_at is not None
+        assert event.event_type == "runtime.interrupted"
+        assert event.payload["reason"] == "model_transport_error"
+        assert event.payload["retryable"] is True
         await coordinator.close()
 
 

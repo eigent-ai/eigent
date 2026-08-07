@@ -13,10 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { HostProvider } from '@/host';
+import {
+  DURABLE_RUN_STATUS_CHANGED_EVENT,
+  notifyDurableRunStatusChanged,
+} from '@/lib/events/durableRunEvents';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  actionableInterruptedRun,
   normalizeInterruptedRunState,
   useInterruptedRunStatus,
 } from './useInterruptedRunStatus';
@@ -63,6 +68,29 @@ describe('useInterruptedRunStatus', () => {
     });
   });
 
+  it('silently suppresses cloud-restored history from Run controls', () => {
+    expect(
+      actionableInterruptedRun({
+        run_id: 'cloud_run',
+        project_id: 'project_one',
+        status: 'interrupted',
+        updated_at: 123,
+        origin: 'cloud_restore',
+      })
+    ).toBeNull();
+  });
+
+  it('keeps a local interrupted Run actionable', () => {
+    const localRun = {
+      run_id: 'local_run',
+      project_id: 'project_one',
+      status: 'interrupted',
+      updated_at: 123,
+      origin: 'local' as const,
+    };
+    expect(actionableInterruptedRun(localRun)).toBe(localRun);
+  });
+
   it('refreshes at lifecycle boundaries without installing a polling timer', async () => {
     const intervalSpy = vi.spyOn(window, 'setInterval');
     const { result } = renderHook(
@@ -87,9 +115,29 @@ describe('useInterruptedRunStatus', () => {
       await Promise.resolve();
     });
     expect(fetchGetMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      notifyDurableRunStatusChanged('project_one');
+      await Promise.resolve();
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(4);
     expect(result.current.run).toBeNull();
 
     intervalSpy.mockRestore();
+  });
+
+  it('ignores durable status notifications for another Project', async () => {
+    renderHook(() => useInterruptedRunStatus('project_one'), { wrapper });
+    await act(async () => {
+      await Promise.resolve();
+      window.dispatchEvent(
+        new CustomEvent(DURABLE_RUN_STATUS_CHANGED_EVENT, {
+          detail: { projectId: 'project_two' },
+        })
+      );
+      await Promise.resolve();
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
   });
 
   it('coalesces overlapping refreshes for the same Project', async () => {

@@ -206,3 +206,36 @@ async def test_stream_subscribes_before_replay_and_deduplicates_by_sequence():
             await stream.__anext__()
 
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_resumes_from_last_event_id_on_transport_reconnect():
+    events = [_event(1, "confirmed"), _event(2, "end")]
+    journal = MagicMock()
+    journal.get_run.return_value = _run_record()
+    journal.list_events.side_effect = lambda run_id, *, after_sequence, limit: [
+        event for event in events if event.sequence > after_sequence
+    ][:limit]
+    coordinator = RunCoordinator()
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ),
+    ):
+        response = await stream_run_events(
+            "run-1", after_sequence=0, last_event_id="1"
+        )
+        stream = response.body_iterator
+        event_id, event_type, payload = _decode_sse(await stream.__anext__())
+
+    assert (event_id, event_type, payload["sequence"]) == (2, "run_event", 2)
+    journal.list_events.assert_called_with(
+        "run-1", after_sequence=1, limit=500
+    )
+    await coordinator.close()

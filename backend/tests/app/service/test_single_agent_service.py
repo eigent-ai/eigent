@@ -33,6 +33,107 @@ def _parse_sse(line: str) -> tuple[str, object]:
     return payload.get("step", ""), payload.get("data")
 
 
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (type("StatusError", (RuntimeError,), {"status_code": 499})("closed"), True),
+        (RuntimeError("Client Closed Request"), True),
+        (RuntimeError("invalid model configuration"), False),
+    ],
+)
+def test_retryable_turn_error_classification(error, expected):
+    from app.service.single_agent_service import _is_retryable_turn_error
+
+    assert _is_retryable_turn_error(error) is expected
+
+
+@pytest.mark.asyncio
+async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
+    from app.model.chat import Chat
+    from app.run_runtime import RunInterruptedError
+    from app.service.single_agent_service import single_agent_solve
+    from app.service.task import ActionImproveData, ImprovePayload
+
+    class ClientClosedRequest(RuntimeError):
+        status_code = 499
+
+    fake_agent = MagicMock()
+    fake_agent.astep = AsyncMock(
+        side_effect=ClientClosedRequest("Client Closed Request")
+    )
+    fake_agent.agent_id = "fake_single_agent"
+    fake_agent._observable_todo_toolkit = None
+
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put(
+        ActionImproveData(
+            data=ImprovePayload(
+                question="finish the response",
+                attaches=[],
+                project_context=None,
+            ),
+            new_task_id="run_retryable",
+        )
+    )
+
+    task_lock = MagicMock()
+    task_lock.id = "project_retryable"
+    task_lock.email = "u@example.com"
+    task_lock.status = "OPEN"
+    task_lock.conversation_history = []
+    task_lock.last_task_result = ""
+    task_lock.agent_memory_history = []
+    task_lock.memory_summary = ""
+    task_lock.summary_generated = False
+    task_lock.run_context = None
+
+    async def get_queue():
+        return await queue.get()
+
+    task_lock.get_queue = get_queue
+    task_lock.add_background_task = MagicMock()
+
+    options = MagicMock(spec=Chat)
+    options.project_id = "project_retryable"
+    options.task_id = "run_retryable"
+    options.project_context = None
+
+    with (
+        patch(
+            "app.service.single_agent_service.single_agent",
+            new=AsyncMock(return_value=fake_agent),
+        ),
+        patch("app.service.single_agent_service.set_current_task_id"),
+        patch("app.service.single_agent_service.record_agent_memory_snapshot"),
+        patch("app.service.single_agent_service._finalize_memory_for_turn"),
+        patch(
+            "app.service.single_agent_service._build_single_agent_context",
+            return_value="",
+        ),
+        patch(
+            "app.service.single_agent_service.delete_task_lock",
+            new=AsyncMock(),
+        ) as delete_task_lock,
+    ):
+        agen = single_agent_solve(options, MagicMock(), task_lock)
+        confirmed = await agen.__anext__()
+        assert _parse_sse(confirmed)[0] == "confirmed"
+
+        error_frame = await agen.__anext__()
+        event, payload = _parse_sse(error_frame)
+        assert event == "error"
+        assert payload == {
+            "message": "Client Closed Request",
+            "retryable": True,
+            "reason": "model_transport_error",
+        }
+
+        with pytest.raises(RunInterruptedError) as error:
+            await agen.__anext__()
+        assert error.value.reason == "model_transport_error"
+        delete_task_lock.assert_awaited_once_with("project_retryable")
+
+
 @pytest.mark.asyncio
 async def test_skip_task_emits_end_without_blocking_on_cancellation():
     """R27-2 regression: pressing Skip while the turn is mid-flight in a

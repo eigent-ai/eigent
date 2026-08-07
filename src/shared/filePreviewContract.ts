@@ -217,9 +217,14 @@ export function decideFilePreview(
     return { mode: 'full', limit };
   }
 
-  const limit = OFFICE_TYPES.has(normalized)
-    ? FILE_PREVIEW_LIMITS.officeBytes
-    : FILE_PREVIEW_LIMITS.defaultBytes;
+  if (!OFFICE_TYPES.has(normalized)) {
+    // Unknown files may be binary and their size says nothing about the cost
+    // of decoding and mounting a giant <pre>. Keep every unrecognised format
+    // on the same bounded reader used by known text files.
+    return { mode: 'bounded-text', limit: FILE_PREVIEW_LIMITS.textBytes };
+  }
+
+  const limit = FILE_PREVIEW_LIMITS.officeBytes;
   if (size === null) {
     return {
       mode: 'blocked',
