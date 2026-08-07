@@ -29,6 +29,28 @@ export interface DurableRunSummary {
   } | null;
 }
 
+type RunsByProject = Record<string, DurableRunSummary | null>;
+type InterruptedRunState =
+  | RunsByProject
+  | DurableRunSummary
+  | null;
+
+/**
+ * Vite Fast Refresh can preserve the pre-map hook state (a single Run or
+ * null) after this hook's state shape changes. Normalize that legacy value so
+ * any subsequent ChatBox render remains safe without requiring an app restart.
+ */
+export function normalizeInterruptedRunState(
+  value: InterruptedRunState
+): RunsByProject {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if ('run_id' in value && 'project_id' in value) {
+    const legacyRun = value as DurableRunSummary;
+    return { [legacyRun.project_id]: legacyRun };
+  }
+  return value as RunsByProject;
+}
+
 function sameRunSummary(
   left: DurableRunSummary | null,
   right: DurableRunSummary | null
@@ -59,9 +81,9 @@ function sameRunSummary(
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
-  const [runsByProject, setRunsByProject] = useState<
-    Record<string, DurableRunSummary | null>
-  >({});
+  const [interruptedRunState, setInterruptedRunState] =
+    useState<InterruptedRunState>({});
+  const runsByProject = normalizeInterruptedRunState(interruptedRunState);
   const inFlightRef = useRef<{
     projectId: string;
     promise: Promise<void>;
@@ -71,11 +93,12 @@ export function useInterruptedRunStatus(projectId: string | null) {
   const setRun = useCallback(
     (next: DurableRunSummary | null) => {
       if (!projectId) return;
-      setRunsByProject((current) =>
-        sameRunSummary(current[projectId] ?? null, next)
-          ? current
-          : { ...current, [projectId]: next }
-      );
+      setInterruptedRunState((current) => {
+        const currentByProject = normalizeInterruptedRunState(current);
+        return sameRunSummary(currentByProject[projectId] ?? null, next)
+          ? currentByProject
+          : { ...currentByProject, [projectId]: next };
+      });
     },
     [projectId]
   );
@@ -98,11 +121,15 @@ export function useInterruptedRunStatus(projectId: string | null) {
         const next = Array.isArray(result?.runs) ? result.runs[0] : null;
         // Store by Project so a late response can never paint another
         // Project's banner or overwrite its newer result.
-        setRunsByProject((current) => {
+        setInterruptedRunState((current) => {
+          const currentByProject = normalizeInterruptedRunState(current);
           const nextRun = next || null;
-          return sameRunSummary(current[projectId] ?? null, nextRun)
-            ? current
-            : { ...current, [projectId]: nextRun };
+          return sameRunSummary(
+            currentByProject[projectId] ?? null,
+            nextRun
+          )
+            ? currentByProject
+            : { ...currentByProject, [projectId]: nextRun };
         });
       } catch (error: any) {
         // Brain can still be booting while the Project shell is visible. Keep

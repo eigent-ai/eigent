@@ -16,7 +16,10 @@ import { HostProvider } from '@/host';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useInterruptedRunStatus } from './useInterruptedRunStatus';
+import {
+  normalizeInterruptedRunState,
+  useInterruptedRunStatus,
+} from './useInterruptedRunStatus';
 
 const { fetchGetMock } = vi.hoisted(() => ({
   fetchGetMock: vi.fn(),
@@ -44,6 +47,20 @@ describe('useInterruptedRunStatus', () => {
     vi.clearAllMocks();
     listeners.clear();
     fetchGetMock.mockResolvedValue({ runs: [] });
+  });
+
+  it('normalizes state retained from the pre-map Fast Refresh shape', () => {
+    expect(normalizeInterruptedRunState(null)).toEqual({});
+
+    const legacyRun = {
+      run_id: 'run_one',
+      project_id: 'project_one',
+      status: 'interrupted',
+      updated_at: 123,
+    };
+    expect(normalizeInterruptedRunState(legacyRun)).toEqual({
+      project_one: legacyRun,
+    });
   });
 
   it('refreshes at lifecycle boundaries without installing a polling timer', async () => {
