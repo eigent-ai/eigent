@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
     LocalMaterialization,
     ProviderModelCapability,
+    ResolvedConnectorBinding,
     ResolvedContextSource,
     ThinkingEffort,
     WorkforceBundleManifest,
@@ -174,14 +175,103 @@ class EnvironmentAdmissionService:
         created_by: str,
         template: EnvironmentAdmissionTemplate,
     ) -> EnvironmentAdmissionResult:
+        installed = self.journal.get_latest_workspace_config_materialization(
+            space_id
+        )
+        effective_template = template
+        local_context_sources: list[ResolvedContextSource] = []
+        connector_bindings: list[ResolvedConnectorBinding] = []
+        if installed is not None:
+            revision = self.journal.get_workspace_config_revision(
+                installed.revision_id
+            )
+            if revision is None:
+                raise ValueError(
+                    "Materialized Workspace Bundle revision is missing"
+                )
+            installed_manifest = WorkforceBundleManifest.model_validate(
+                revision.manifest
+            )
+            proposal = (
+                self.journal.get_materialized_workspace_bundle_proposal(
+                    space_id=space_id,
+                    revision_id=installed.revision_id,
+                )
+            )
+            if proposal is not None:
+                bindings = {
+                    item.slot_id: item
+                    for item in self.journal.list_workspace_bundle_local_bindings(
+                        proposal.proposal_id
+                    )
+                }
+                for source in installed_manifest.spec.context:
+                    if source.kind == "bundle_asset":
+                        local_context_sources.append(
+                            ResolvedContextSource(
+                                id=source.id,
+                                kind=source.kind,
+                                logical_uri=source.path,
+                            )
+                        )
+                    elif source.kind == "local_path_slot" and source.slot:
+                        binding = bindings.get(source.slot)
+                        if binding is None or not binding.local_path:
+                            raise ValueError(
+                                f"Workspace Bundle path slot "
+                                f"{source.slot!r} is not bound"
+                            )
+                        path = Path(binding.local_path).expanduser().resolve()
+                        if not path.is_dir():
+                            raise ValueError(
+                                f"Workspace Bundle path slot "
+                                f"{source.slot!r} is unavailable"
+                            )
+                        local_context_sources.append(
+                            ResolvedContextSource(
+                                id=source.id,
+                                kind=source.kind,
+                                slot_id=source.slot,
+                                absolute_path=str(path),
+                                root_fingerprint_digest=canonical_digest(
+                                    {
+                                        "slot_id": source.slot,
+                                        "local_path": str(path),
+                                    }
+                                ),
+                            )
+                        )
+                connector_bindings.extend(
+                    ResolvedConnectorBinding(
+                        connector_id=item.connector_id or "",
+                        slot_id=item.slot_id,
+                        local_binding_id=item.opaque_connection_id,
+                        required_grants=item.required_grants,
+                    )
+                    for item in bindings.values()
+                    if item.binding_kind == "connector"
+                )
+            effective_template = replace(
+                template,
+                manifest=installed_manifest,
+                runtime_capability_manifest={
+                    **template.runtime_capability_manifest,
+                    "workspace_bundle": {
+                        "revision_id": installed.revision_id,
+                        "config_placement": installed.config_placement,
+                    },
+                },
+            )
+
         current_profile = self.journal.get_space_permission_profile(space_id)
         permission_profile_revision = (
             f"space:{space_id}:{current_profile.revision}"
             if current_profile is not None
             else None
         )
-        local_materialization = LocalMaterialization(
-            context_sources=(
+        if not any(item.id == "workspace_root" for item in local_context_sources):
+            local_context_sources.insert(
+                0,
                 ResolvedContextSource(
                     id="workspace_root",
                     kind="local_path_slot",
@@ -191,18 +281,23 @@ class EnvironmentAdmissionService:
                     ),
                 ),
             )
+        local_materialization = LocalMaterialization(
+            context_sources=tuple(local_context_sources),
+            connector_bindings=tuple(connector_bindings),
         )
         spec = self.resolver.resolve(
-            manifest=template.manifest,
+            manifest=effective_template.manifest,
             owner_type="run",
             owner_id=run_id,
             local_materialization=local_materialization,
-            provider_capability=template.provider_capability,
-            thinking_effort_override=template.thinking_effort_requested,
+            provider_capability=effective_template.provider_capability,
+            thinking_effort_override=(
+                effective_template.thinking_effort_requested
+            ),
             permission_profile_revision_override=(permission_profile_revision),
             allow_dynamic_effort_remap=True,
             runtime_capability_manifest={
-                **template.runtime_capability_manifest,
+                **effective_template.runtime_capability_manifest,
                 "workspace": {
                     "space_id": space_id,
                     "logical_root_slot": "workspace_root",
@@ -210,10 +305,10 @@ class EnvironmentAdmissionService:
             },
         )
         revision = self.journal.put_workspace_config_revision(
-            revision_id=template.manifest.revision_id,
-            bundle_id=template.manifest.metadata.id,
-            revision_number=template.manifest.metadata.revision,
-            manifest=template.manifest.canonical_payload(),
+            revision_id=effective_template.manifest.revision_id,
+            bundle_id=effective_template.manifest.metadata.id,
+            revision_number=effective_template.manifest.metadata.revision,
+            manifest=effective_template.manifest.canonical_payload(),
             status="validated",
             created_by=created_by,
         )
@@ -231,7 +326,7 @@ class EnvironmentAdmissionService:
             provider_capability_revision=spec.provider_capability_revision,
         )
         return EnvironmentAdmissionResult(
-            template=template,
+            template=effective_template,
             spec=spec,
             persisted_spec=persisted_spec,
             revision=revision,

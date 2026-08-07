@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any
 
 import yaml
@@ -96,6 +97,8 @@ class ConfigurationRepositoryService:
         placement: ConfigPlacement,
         created_by: str,
         lock_payload: dict[str, Any] | None = None,
+        assets: dict[str, bytes] | None = None,
+        expected_previous_revision_id: str | None = None,
         allow_content_repository_init: bool = False,
     ) -> ConfigurationRepositoryResult:
         safe_space_id = self._validate_space_id(space_id)
@@ -214,34 +217,131 @@ class ConfigurationRepositoryService:
 
             manifest_path = configuration_root / "workspace.yaml"
             workspace_lock_path = configuration_root / "workspace.lock"
-            desired_files = {
+            desired_files: dict[Path, dict[str, Any] | bytes] = {
                 manifest_path: manifest.canonical_payload(),
                 workspace_lock_path: lock,
             }
+            for logical_path, content in sorted((assets or {}).items()):
+                relative = self._validate_asset_path(logical_path)
+                target = configuration_root / relative
+                try:
+                    target.resolve(strict=False).relative_to(
+                        configuration_root.resolve()
+                    )
+                except ValueError as exc:
+                    raise ConfigurationRepositoryError(
+                        "Bundle asset escapes the configuration repository"
+                    ) from exc
+                if target in desired_files:
+                    raise ConfigurationRepositoryError(
+                        "Bundle asset conflicts with a reserved configuration file"
+                    )
+                desired_files[target] = bytes(content)
+            obsolete_asset_paths: set[Path] = set()
+            upgrade_mode = False
+            if manifest_path.exists() or workspace_lock_path.exists():
+                if not manifest_path.is_file() or not workspace_lock_path.is_file():
+                    raise ConfigurationRepositoryError(
+                        "existing Bundle configuration is incomplete"
+                    )
+                try:
+                    current_manifest_payload = yaml.safe_load(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                    current_lock_payload = yaml.safe_load(
+                        workspace_lock_path.read_text(encoding="utf-8")
+                    )
+                    current_manifest = WorkforceBundleManifest.model_validate(
+                        current_manifest_payload
+                    )
+                    current_lock = WorkspaceLock.model_validate(
+                        current_lock_payload
+                    )
+                except (OSError, yaml.YAMLError, ValidationError) as exc:
+                    raise ConfigurationRepositoryError(
+                        "existing Bundle configuration is invalid"
+                    ) from exc
+                exact_current = (
+                    current_manifest.canonical_payload()
+                    == manifest.canonical_payload()
+                    and current_lock.canonical_payload() == lock
+                )
+                if not exact_current:
+                    if expected_previous_revision_id is None:
+                        raise ConfigurationRepositoryError(
+                            "Bundle revision upgrade requires an expected previous revision"
+                        )
+                    if (
+                        current_manifest.metadata.id != manifest.metadata.id
+                        or current_manifest.revision_id
+                        != expected_previous_revision_id
+                        or current_lock.bundle_revision
+                        != expected_previous_revision_id
+                    ):
+                        raise ConfigurationRepositoryError(
+                            "existing Bundle revision changed before upgrade"
+                        )
+                    upgrade_mode = True
+                    for dependency in current_lock.assets:
+                        relative = self._validate_asset_path(dependency.ref)
+                        old_path = configuration_root / relative
+                        if old_path not in desired_files:
+                            obsolete_asset_paths.add(old_path)
+            managed_paths = tuple(
+                sorted(
+                    (*desired_files, *obsolete_asset_paths),
+                    key=lambda path: path.as_posix(),
+                )
+            )
             path_status = self.git.path_status(
                 repository_root,
-                tuple(desired_files),
+                managed_paths,
             )
-            if path_status and not self._recoverable_untracked_files(
-                repository_root,
-                desired_files,
-                path_status,
-            ):
+            recoverable = (
+                self._recoverable_upgrade_changes(
+                    repository_root,
+                    desired_files,
+                    obsolete_asset_paths,
+                    path_status,
+                )
+                if upgrade_mode
+                else self._recoverable_untracked_files(
+                    repository_root,
+                    desired_files,
+                    path_status,
+                )
+            )
+            if path_status and not recoverable:
                 raise ConfigurationRepositoryError(
                     "configuration repository has uncommitted manifest/lock "
                     "changes; bootstrap will not stage or overwrite them"
                 )
-            self._write_new_or_equal_yaml(
-                manifest_path,
-                manifest.canonical_payload(),
-            )
-            self._write_new_or_equal_yaml(
-                workspace_lock_path,
-                lock,
-            )
+            if upgrade_mode:
+                self._atomic_write_yaml(
+                    manifest_path, manifest.canonical_payload()
+                )
+                self._atomic_write_yaml(workspace_lock_path, lock)
+            else:
+                self._write_new_or_equal_yaml(
+                    manifest_path,
+                    manifest.canonical_payload(),
+                )
+                self._write_new_or_equal_yaml(
+                    workspace_lock_path,
+                    lock,
+                )
+            for path, content in desired_files.items():
+                if isinstance(content, bytes):
+                    if upgrade_mode:
+                        self._atomic_write_bytes(path, content)
+                    else:
+                        self._write_new_or_equal_bytes(path, content)
+            for path in obsolete_asset_paths:
+                if path.exists():
+                    path.unlink()
             commit_oid = self.git.commit_paths(
                 repository_root,
-                (manifest_path, workspace_lock_path),
+                managed_paths,
                 message=(
                     f"chore(eigent): configure {manifest.metadata.name} "
                     f"v{manifest.metadata.revision}"
@@ -323,6 +423,53 @@ class ConfigurationRepositoryService:
             if temporary.exists():
                 temporary.unlink()
 
+    @staticmethod
+    def _atomic_write_bytes(path: Path, content: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temporary.open("wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            try:
+                directory_fd = os.open(path.parent, os.O_RDONLY)
+            except OSError:
+                return
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+    @classmethod
+    def _atomic_write_yaml(cls, path: Path, payload: dict[str, Any]) -> None:
+        cls._atomic_write_text(
+            path,
+            yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+        )
+
+    @staticmethod
+    def _validate_asset_path(value: str) -> Path:
+        logical = value.removeprefix("bundle://")
+        path = PurePosixPath(logical)
+        if (
+            not logical
+            or path.is_absolute()
+            or ".." in path.parts
+            or "\\" in logical
+            or ".git" in path.parts
+            or path.as_posix() in {"workspace.yaml", "workspace.lock"}
+            or any(part in {"", "."} for part in path.parts)
+        ):
+            raise ConfigurationRepositoryError(
+                "Bundle asset path must be a safe logical path"
+            )
+        return Path(*path.parts)
+
     @classmethod
     def _write_new_or_equal_yaml(
         cls,
@@ -350,10 +497,25 @@ class ConfigurationRepositoryService:
             ),
         )
 
+    @classmethod
+    def _write_new_or_equal_bytes(cls, path: Path, content: bytes) -> None:
+        if path.exists():
+            try:
+                if path.is_file() and path.read_bytes() == content:
+                    return
+            except OSError as exc:
+                raise ConfigurationRepositoryError(
+                    f"existing Bundle asset is unreadable: {path}"
+                ) from exc
+            raise ConfigurationRepositoryError(
+                f"refusing to overwrite existing Bundle asset: {path}"
+            )
+        cls._atomic_write_bytes(path, content)
+
     def _recoverable_untracked_files(
         self,
         repository_root: Path,
-        desired_files: dict[Path, dict[str, Any]],
+        desired_files: dict[Path, dict[str, Any] | bytes],
         path_status: dict[str, str],
     ) -> bool:
         root = repository_root.expanduser().resolve()
@@ -364,9 +526,42 @@ class ConfigurationRepositoryService:
                 continue
             if status != "??" or self.git.is_tracked(repository_root, path):
                 return False
-            if not self._yaml_matches(path, payload):
+            if not self._content_matches(path, payload):
                 return False
         return True
+
+    def _recoverable_upgrade_changes(
+        self,
+        repository_root: Path,
+        desired_files: dict[Path, dict[str, Any] | bytes],
+        obsolete_paths: set[Path],
+        path_status: dict[str, str],
+    ) -> bool:
+        """Recognize only writes/deletes from an interrupted prior upgrade."""
+
+        root = repository_root.expanduser().resolve()
+        for relative in path_status:
+            path = root / relative
+            if path in obsolete_paths:
+                if path.exists():
+                    return False
+                continue
+            payload = desired_files.get(path)
+            if payload is None or not self._content_matches(path, payload):
+                return False
+        return True
+
+    @staticmethod
+    def _content_matches(
+        path: Path,
+        payload: dict[str, Any] | bytes,
+    ) -> bool:
+        if isinstance(payload, bytes):
+            try:
+                return path.is_file() and path.read_bytes() == payload
+            except OSError:
+                return False
+        return ConfigurationRepositoryService._yaml_matches(path, payload)
 
     @staticmethod
     def _yaml_matches(path: Path, payload: dict[str, Any]) -> bool:

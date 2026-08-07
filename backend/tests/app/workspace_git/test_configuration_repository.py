@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -120,6 +121,55 @@ def test_sidecar_bootstrap_never_mutates_user_space(
     )
     assert first.materialization.space_id == "space-1"
     assert first.materialization.config_placement == "sidecar"
+
+
+def test_sidecar_bootstrap_commits_verified_bundle_assets(tmp_path, journal):
+    space = tmp_path / "user-space"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+
+    result = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        manifest=parse_workforce_manifest(MANIFEST),
+        placement=ConfigPlacement.SIDECAR,
+        created_by="user-1",
+        assets={
+            "instructions/coordinator.md": b"Coordinate safely.\n",
+            "images/icon.bin": b"\x00\x01\x02",
+        },
+        lock_payload={
+            "apiVersion": "eigent.ai/lock/v1alpha1",
+            "bundleRevision": "bundle_local@1",
+            "manifestDigest": parse_workforce_manifest(MANIFEST).digest,
+            "assets": [
+                {
+                    "ref": "bundle://instructions/coordinator.md",
+                    "digest": hashlib.sha256(
+                        b"Coordinate safely.\n"
+                    ).hexdigest(),
+                },
+                {
+                    "ref": "bundle://images/icon.bin",
+                    "digest": hashlib.sha256(
+                        b"\x00\x01\x02"
+                    ).hexdigest(),
+                },
+            ],
+            "skills": [],
+            "mcpPackages": [],
+        },
+    )
+
+    assert (
+        result.configuration_repository_root / "images/icon.bin"
+    ).read_bytes() == b"\x00\x01\x02"
+    assert set(backend.show_commit_paths(result.configuration_repository_root)) == {
+        "images/icon.bin",
+        "instructions/coordinator.md",
+        "workspace.lock",
+        "workspace.yaml",
+    }
 
 
 def test_same_bundle_revision_materializes_into_multiple_spaces(
@@ -442,6 +492,100 @@ def test_bootstrap_recovers_exact_untracked_files_after_crash(
         )
         == ()
     )
+
+
+def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
+    tmp_path,
+    journal,
+):
+    space = tmp_path / "space"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+    first_manifest = parse_workforce_manifest(MANIFEST)
+    first_assets = {
+        "instructions/coordinator.md": b"version one\n",
+        "assets/obsolete.txt": b"remove on upgrade\n",
+    }
+    first = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        manifest=first_manifest,
+        placement=ConfigPlacement.SIDECAR,
+        created_by="user-1",
+        assets=first_assets,
+        lock_payload={
+            "apiVersion": "eigent.ai/lock/v1alpha1",
+            "bundleRevision": first_manifest.revision_id,
+            "manifestDigest": first_manifest.digest,
+            "assets": [
+                {
+                    "ref": f"bundle://{path}",
+                    "digest": hashlib.sha256(content).hexdigest(),
+                }
+                for path, content in first_assets.items()
+            ],
+            "skills": [],
+            "mcpPackages": [],
+        },
+    )
+    edited_path = first.configuration_repository_root / "instructions/coordinator.md"
+    edited_path.write_text("user edit\n", encoding="utf-8")
+    second_manifest = parse_workforce_manifest(
+        MANIFEST.replace("revision: 1", "revision: 2")
+    )
+    second_assets = {"instructions/coordinator.md": b"version two\n"}
+    second_lock = {
+        "apiVersion": "eigent.ai/lock/v1alpha1",
+        "bundleRevision": second_manifest.revision_id,
+        "manifestDigest": second_manifest.digest,
+        "assets": [
+            {
+                "ref": "bundle://instructions/coordinator.md",
+                "digest": hashlib.sha256(second_assets["instructions/coordinator.md"]).hexdigest(),
+            }
+        ],
+        "skills": [],
+        "mcpPackages": [],
+    }
+
+    with pytest.raises(ConfigurationRepositoryError, match="uncommitted"):
+        service.bootstrap(
+            space_id="space-1",
+            space_root=space,
+            manifest=second_manifest,
+            placement=ConfigPlacement.SIDECAR,
+            created_by="user-1",
+            assets=second_assets,
+            lock_payload=second_lock,
+            expected_previous_revision_id=first_manifest.revision_id,
+        )
+    assert edited_path.read_text(encoding="utf-8") == "user edit\n"
+
+    edited_path.write_bytes(first_assets["instructions/coordinator.md"])
+    upgraded = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        manifest=second_manifest,
+        placement=ConfigPlacement.SIDECAR,
+        created_by="user-1",
+        assets=second_assets,
+        lock_payload=second_lock,
+        expected_previous_revision_id=first_manifest.revision_id,
+    )
+
+    assert edited_path.read_bytes() == b"version two\n"
+    assert not (
+        upgraded.configuration_repository_root / "assets/obsolete.txt"
+    ).exists()
+    assert backend.changed_paths(
+        upgraded.configuration_repository_root,
+        (
+            upgraded.manifest_path,
+            upgraded.lock_path,
+            edited_path,
+        ),
+    ) == ()
+    assert int(_git(upgraded.configuration_repository_root, "rev-list", "--count", "HEAD")) == 2
 
 
 def test_revision_conflict_is_detected_before_git_mutation(
