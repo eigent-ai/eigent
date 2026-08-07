@@ -29,6 +29,11 @@ export function filePathFromLocalFileUrl(url: string): string {
   if (parsed.hostname === 'preview' && queryPath) return queryPath;
 
   const pathname = decodeURIComponent(parsed.pathname);
+  // Navigable local HTML uses a fixed host with the absolute filesystem path
+  // in the pathname. Unlike `localfile:///Users/...`, this keeps Chromium from
+  // treating the first path segment as a lower-cased hostname when resolving a
+  // relative link from an injected <base> element.
+  if (parsed.hostname === 'preview') return pathname;
   if (parsed.hostname) return `/${parsed.hostname}${pathname}`;
   return pathname;
 }

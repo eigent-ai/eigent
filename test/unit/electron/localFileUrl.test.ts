@@ -24,6 +24,17 @@ describe('filePathFromLocalFileUrl', () => {
     ).toBe('/Users/Example User/Report.pdf');
   });
 
+  it('preserves a navigable fixed-host pathname after relative resolution', () => {
+    const linkedUrl = new URL(
+      '../%E7%AC%AC7%E8%AF%BE%E6%97%B6/index.html',
+      'localfile://preview/Users/Example%20User/project/%E7%AC%AC%E4%B8%80%E8%AF%BE%E6%97%B6/'
+    );
+
+    expect(filePathFromLocalFileUrl(linkedUrl.toString())).toBe(
+      '/Users/Example User/project/第7课时/index.html'
+    );
+  });
+
   it('reconstructs legacy macOS URLs whose first segment became a host', () => {
     expect(
       filePathFromLocalFileUrl('localfile://users/4pmtong/report.pdf')
