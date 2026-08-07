@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Full logical width of the session side panel content (clipped by the outer when folded to 40px). */
+/** Full logical width of SidePanel content (clipped by the outer when folded to 40px). */
 export const SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS =
   'w-[min(360px,40vw)] max-w-[400px]';
 

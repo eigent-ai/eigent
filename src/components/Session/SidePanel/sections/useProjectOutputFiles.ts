@@ -53,6 +53,7 @@ function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
   });
 }
 
+/** Loads generated output files for the SidePanel Files section. */
 export function useProjectOutputFiles(
   projectId: string | null | undefined,
   activeTask: SidePanelTask | undefined,

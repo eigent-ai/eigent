@@ -1322,18 +1322,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       return taskId;
     },
     computedProgressValue(taskId: string) {
-      const { tasks, setProgressValue, activeTaskId } = get();
+      const { tasks, setProgressValue } = get();
       const taskRunning = [...tasks[taskId].taskRunning];
       const finishedTask = taskRunning?.filter(
         (task) =>
           task.status === TaskStatus.COMPLETED ||
           task.status === TaskStatus.FAILED
       ).length;
-      const taskProgress = (
-        ((finishedTask || 0) / (taskRunning?.length || 0)) *
-        100
-      ).toFixed(2);
-      setProgressValue(activeTaskId as string, Number(taskProgress));
+      const taskProgress =
+        taskRunning.length > 0
+          ? Number(((finishedTask / taskRunning.length) * 100).toFixed(2))
+          : 0;
+      setProgressValue(taskId, taskProgress);
     },
     removeTask(taskId: string) {
       // Clean up any pending auto-confirm timers when removing a task

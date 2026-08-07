@@ -14,7 +14,7 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
 import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';

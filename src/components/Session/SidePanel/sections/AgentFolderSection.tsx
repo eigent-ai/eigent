@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBox';
-import { SidePanelListRow } from '@/components/Session/SidePanelSections/primitives';
+import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
+import { SidePanelListRow } from '@/components/Session/SidePanel/sections/primitives';
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';

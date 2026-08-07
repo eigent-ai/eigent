@@ -16,7 +16,7 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,

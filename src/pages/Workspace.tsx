@@ -27,7 +27,7 @@ import {
   PROJECT_SIDEBAR_FOLD_SPRING,
   PROJECT_SIDEBAR_RAIL_WIDTH_PX,
 } from '@/components/ProjectPageSidebar/constants';
-import SessionGroup from '@/components/Session/SessionGroup';
+import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -757,7 +757,7 @@ export default function WorkspacePage() {
       <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
         <div
           ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-subtle-default"
+          className="h-full min-h-0 w-full min-w-0 flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
@@ -771,7 +771,7 @@ export default function WorkspacePage() {
               defaultSize={24}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 py-1 pl-1"
+              className="min-h-0 min-w-0"
             >
               <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>
