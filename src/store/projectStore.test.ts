@@ -326,7 +326,18 @@ describe('projectStore runtime shape', () => {
     useAuthStore.setState({ user_id: 10 });
     try {
       fetchGetMock.mockResolvedValue({
-        runs: [{ run_id: 'task_local', status: 'completed' }],
+        runs: [
+          {
+            run_id: 'task_local',
+            status: 'completed',
+            total_attempt_elapsed_ms: 613_328,
+          },
+        ],
+      });
+      replayMock.mockImplementationOnce(async (taskId: string) => {
+        const project = useProjectStore.getState().projects.project_local;
+        const chatStore = project.chatStores[project.activeChatId];
+        chatStore.getState().create(taskId, 'replay');
       });
       getCachedProjectMock.mockResolvedValue({
         schemaVersion: 1,
@@ -372,6 +383,10 @@ describe('projectStore runtime shape', () => {
         'project_local',
         'local_durable'
       );
+      const project = useProjectStore.getState().projects.project_local;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks.task_local;
+      expect(task.elapsed).toBe(613_328);
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }

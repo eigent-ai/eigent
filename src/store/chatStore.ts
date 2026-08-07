@@ -92,6 +92,7 @@ export const canonicalRunEventToLegacyMessage = (
   const event = value as {
     legacy_step?: unknown;
     payload?: unknown;
+    created_at?: unknown;
   };
   if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
     return null;
@@ -99,6 +100,13 @@ export const canonicalRunEventToLegacyMessage = (
   return {
     step: event.legacy_step,
     data: event.payload,
+    // Canonical Run events use epoch seconds. Preserve the durable event time
+    // so history hydration measures the original execution instead of the
+    // few milliseconds taken by local SSE replay.
+    timestamp:
+      typeof event.created_at === 'number' && Number.isFinite(event.created_at)
+        ? event.created_at
+        : undefined,
   } as AgentMessage;
 };
 

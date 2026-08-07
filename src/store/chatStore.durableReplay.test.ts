@@ -22,10 +22,12 @@ describe('canonical Run replay projection', () => {
         event_type: 'legacy.end',
         legacy_step: 'end',
         payload: { message: 'finished' },
+        created_at: 1_786_026_414.75,
       })
     ).toEqual({
       step: 'end',
       data: { message: 'finished' },
+      timestamp: 1_786_026_414.75,
     });
     expect(
       canonicalRunEventToLegacyMessage({
