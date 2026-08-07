@@ -1461,6 +1461,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
           if (!cacheIsStale && cached && cached.taskIds.length > 0) {
             const rehydratedStores = new Map<string, VanillaChatStore>();
+            let repairedCachedTasks: Record<string, CachedTask> | null = null;
             for (const cachedTaskId of cached.taskIds) {
               const cachedTask = cached.tasks[cachedTaskId];
               if (!cachedTask) continue;
@@ -1475,6 +1476,55 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               chatStore
                 .getState()
                 .hydrateTask(cachedTaskId, cachedTask.taskState as any);
+
+              // A matching freshness anchor proves that this snapshot was
+              // built from the current Run rows, but it does not prove that
+              // every derived UI field was projected correctly. Older
+              // renderer code could persist elapsed=0 even though SQLite
+              // already held the terminal attempt duration. Always overlay
+              // canonical Run status/duration on the disposable IDB view so
+              // a bad projection cannot remain trusted forever.
+              const localRun = localRunsById.get(cachedTaskId);
+              if (localRun) {
+                const canonicalElapsed =
+                  localRun.status !== 'running'
+                    ? resolveHistoricalRunElapsedMs({
+                        totalAttemptElapsedMs: localRun.totalAttemptElapsedMs,
+                        createdAt: localRun.createdAt,
+                        updatedAt: localRun.updatedAt,
+                      })
+                    : undefined;
+                const chatState = chatStore.getState();
+                chatState.setDurableRunStatus(cachedTaskId, localRun.status);
+                if (canonicalElapsed !== undefined) {
+                  chatState.setTaskTime(cachedTaskId, 0);
+                  chatState.setElapsed(cachedTaskId, canonicalElapsed);
+                }
+
+                const cachedTaskState =
+                  cachedTask.taskState &&
+                  typeof cachedTask.taskState === 'object' &&
+                  !Array.isArray(cachedTask.taskState)
+                    ? (cachedTask.taskState as Record<string, unknown>)
+                    : {};
+                const needsRepair =
+                  cachedTaskState.durableRunStatus !== localRun.status ||
+                  (canonicalElapsed !== undefined &&
+                    (cachedTaskState.elapsed !== canonicalElapsed ||
+                      cachedTaskState.taskTime !== 0));
+                if (needsRepair) {
+                  repairedCachedTasks ??= { ...cached.tasks };
+                  repairedCachedTasks[cachedTaskId] = {
+                    taskState: {
+                      ...cachedTaskState,
+                      durableRunStatus: localRun.status,
+                      ...(canonicalElapsed !== undefined
+                        ? { elapsed: canonicalElapsed, taskTime: 0 }
+                        : {}),
+                    },
+                  };
+                }
+              }
               rehydratedStores.set(cachedTaskId, chatStore);
             }
 
@@ -1496,6 +1546,22 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               console.log(
                 `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
               );
+
+              if (
+                repairedCachedTasks &&
+                getAuthStore().user_id === cacheScope.userId
+              ) {
+                // Best-effort self-heal. SQLite remains authoritative; this
+                // only prevents the same stale derived value from needing to
+                // be corrected again on every project open.
+                void putCachedProject(cacheScope, {
+                  serverUpdatedAt: cached.serverUpdatedAt,
+                  localCanonicalUpdatedAt,
+                  taskIds: cached.taskIds,
+                  tasks: repairedCachedTasks,
+                  projectName: cached.projectName,
+                }).catch(() => undefined);
+              }
 
               return loadProjectId;
             }

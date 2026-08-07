@@ -21,6 +21,7 @@ from camel.tasks import Task
 from camel.tasks.task import TaskState
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.model.enums import DEFAULT_SUMMARY_PROMPT
 from app.service.chat_service import (
     _activate_improve_admission,
     _extract_stream_chunk_content,
@@ -73,6 +74,13 @@ class _AgentStepResponse:
     def __init__(self, content: str):
         self.msg = None
         self.msgs = [MagicMock(content=content)]
+
+
+def test_default_completion_prompt_requires_concrete_deliverables():
+    assert "entire final report" in DEFAULT_SUMMARY_PROMPT
+    assert "workspace-relative paths" in DEFAULT_SUMMARY_PROMPT
+    assert "Validation performed" in DEFAULT_SUMMARY_PROMPT
+    assert "one-line acknowledgement" in DEFAULT_SUMMARY_PROMPT
 
 
 @pytest.mark.asyncio

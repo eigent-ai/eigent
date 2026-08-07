@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import {
@@ -25,6 +24,7 @@ import {
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
+import { fetchGroupedHistoryProjects } from '@/service/historyApi';
 import type { ServerProject } from '@/service/spaceApi';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
@@ -417,18 +417,15 @@ const projectDisplayNameFromHistory = (project: ProjectGroup) => {
 };
 
 const fetchHistoryProjectSidebarMetaMap = async (spaceId: string) => {
-  const params = new URLSearchParams({
-    include_tasks: 'true',
-    space_id: spaceId,
+  const projects = await fetchGroupedHistoryProjects({
+    includeTasks: true,
+    spaceId,
   });
-  const response = (await proxyFetchGet(
-    `/api/v1/chat/histories/grouped?${params.toString()}`
-  )) as { projects?: ProjectGroup[] } | null;
   const metaByProjectId = new Map<
     string,
     { displayName?: string; navLead: SessionNavLeadPresentation }
   >();
-  for (const project of response?.projects ?? []) {
+  for (const project of projects ?? []) {
     const displayName = projectDisplayNameFromHistory(project) ?? undefined;
     metaByProjectId.set(project.project_id, {
       displayName,
@@ -478,6 +475,7 @@ const rehomeLegacyRuntimeProjects = (
 };
 
 let workspaceReconcileFailureCount = 0;
+const projectSyncInFlight = new Map<string, Promise<void>>();
 
 const wait = (ms: number) =>
   new Promise((resolve) => {
@@ -824,89 +822,113 @@ export const useSpaceStore = create<SpaceStore>()(
       syncProjectsFromServer: async (spaceId) => {
         if (!spaceId) return;
 
-        try {
-          const [
-            { proxyEnsureLegacySpace, proxyFetchSpaceProjects },
-            projectModule,
-          ] = await Promise.all([
-            import('@/service/spaceApi'),
-            import('./projectRuntimeStore'),
-          ]);
-          let targetSpaceId = spaceId;
+        const syncKey = `${getAuthEnvironmentKey()}::${spaceId}`;
+        const existingSync = projectSyncInFlight.get(syncKey);
+        if (existingSync) {
+          await existingSync;
+          return;
+        }
 
-          if (spaceId.startsWith('legacy_')) {
-            const legacySpace = await proxyEnsureLegacySpace();
-            targetSpaceId = legacySpace.id;
-            get().upsertSpaces(
-              [legacySpace],
-              get().activeSpaceId === spaceId ? legacySpace.id : undefined
+        const syncOperation = (async () => {
+          try {
+            const [
+              { proxyEnsureLegacySpace, proxyFetchSpaceProjects },
+              projectModule,
+            ] = await Promise.all([
+              import('@/service/spaceApi'),
+              import('./projectRuntimeStore'),
+            ]);
+            let targetSpaceId = spaceId;
+
+            if (spaceId.startsWith('legacy_')) {
+              const legacySpace = await proxyEnsureLegacySpace();
+              targetSpaceId = legacySpace.id;
+              get().upsertSpaces(
+                [legacySpace],
+                get().activeSpaceId === spaceId ? legacySpace.id : undefined
+              );
+
+              if (legacySpace.id !== spaceId) {
+                const projectStore =
+                  projectModule.useProjectRuntimeStore.getState();
+                rehomeLegacyRuntimeProjects(
+                  projectStore,
+                  spaceId,
+                  legacySpace.id
+                );
+
+                set((state) => {
+                  const nextSpaces = { ...state.spaces };
+                  delete nextSpaces[spaceId];
+                  return {
+                    spaces: nextSpaces,
+                    activeSpaceId:
+                      state.activeSpaceId === spaceId
+                        ? legacySpace.id
+                        : state.activeSpaceId,
+                  };
+                });
+              }
+            }
+
+            const [serverProjects, historyMetaByProjectId] = await Promise.all([
+              proxyFetchSpaceProjects(targetSpaceId),
+              fetchHistoryProjectSidebarMetaMap(targetSpaceId).catch(
+                (error) => {
+                  console.warn(
+                    `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
+                    error
+                  );
+                  return new Map<
+                    string,
+                    {
+                      displayName?: string;
+                      navLead: SessionNavLeadPresentation;
+                    }
+                  >();
+                }
+              ),
+            ]);
+            const namedProjects = withHistoryProjectNames(
+              serverProjects,
+              historyMetaByProjectId
             );
-
-            if (legacySpace.id !== spaceId) {
-              const projectStore =
-                projectModule.useProjectRuntimeStore.getState();
-              rehomeLegacyRuntimeProjects(
-                projectStore,
-                spaceId,
-                legacySpace.id
-              );
-
-              set((state) => {
-                const nextSpaces = { ...state.spaces };
-                delete nextSpaces[spaceId];
-                return {
-                  spaces: nextSpaces,
-                  activeSpaceId:
-                    state.activeSpaceId === spaceId
-                      ? legacySpace.id
-                      : state.activeSpaceId,
-                };
-              });
+            const activeNamedProjects = namedProjects.filter(
+              (project) => project.status !== 'archived'
+            );
+            get().upsertProjectMetas(
+              activeNamedProjects.map(projectMetaFromServer),
+              {
+                syncedSpaceId: targetSpaceId,
+                replaceSpace: true,
+                syncedAt: Date.now(),
+              }
+            );
+            const projectStore =
+              projectModule.useProjectRuntimeStore.getState();
+            projectStore.upsertProjectsFromServer(activeNamedProjects);
+            if (historyMetaByProjectId.size > 0) {
+              const navLeads: Record<string, SessionNavLeadPresentation> = {};
+              for (const [projectId, meta] of historyMetaByProjectId) {
+                navLeads[projectId] = meta.navLead;
+              }
+              projectStore.setProjectNavLeads(navLeads);
             }
+          } catch (error) {
+            console.warn(
+              `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
+              error
+            );
           }
+        })();
 
-          const [serverProjects, historyMetaByProjectId] = await Promise.all([
-            proxyFetchSpaceProjects(targetSpaceId),
-            fetchHistoryProjectSidebarMetaMap(targetSpaceId).catch((error) => {
-              console.warn(
-                `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
-                error
-              );
-              return new Map<
-                string,
-                { displayName?: string; navLead: SessionNavLeadPresentation }
-              >();
-            }),
-          ]);
-          const namedProjects = withHistoryProjectNames(
-            serverProjects,
-            historyMetaByProjectId
-          );
-          const activeNamedProjects = namedProjects.filter(
-            (project) => project.status !== 'archived'
-          );
-          get().upsertProjectMetas(
-            activeNamedProjects.map(projectMetaFromServer),
-            {
-              syncedSpaceId: targetSpaceId,
-              replaceSpace: true,
-              syncedAt: Date.now(),
-            }
-          );
-          const projectStore = projectModule.useProjectRuntimeStore.getState();
-          projectStore.upsertProjectsFromServer(activeNamedProjects);
-          if (historyMetaByProjectId.size > 0) {
-            const navLeads: Record<string, SessionNavLeadPresentation> = {};
-            for (const [projectId, meta] of historyMetaByProjectId) {
-              navLeads[projectId] = meta.navLead;
-            }
-            projectStore.setProjectNavLeads(navLeads);
+        projectSyncInFlight.set(syncKey, syncOperation);
+        try {
+          await syncOperation;
+        } finally {
+          if (projectSyncInFlight.get(syncKey) === syncOperation) {
+            projectSyncInFlight.delete(syncKey);
           }
-        } catch (error) {
-          console.warn(
-            `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
-            error
-          );
         }
       },
 
