@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { isWeb } from '@/client/platform';
+// Inconsolata is the code font (diffs, code blocks); Inter is the UI font.
+import '@fontsource/inconsolata/400.css';
+import '@fontsource/inconsolata/700.css';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';

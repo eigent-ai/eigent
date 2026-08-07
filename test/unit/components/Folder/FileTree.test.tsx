@@ -173,6 +173,46 @@ describe('FileTree', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('shows colored change markers only in the review variant', () => {
+    const reviewTree = buildFileTree([
+      {
+        name: 'added.ts',
+        path: 'review:added',
+        type: 'ts',
+        relativePath: 'src/added.ts',
+        status: 'added',
+      },
+      {
+        name: 'modified.ts',
+        path: 'review:modified',
+        type: 'ts',
+        relativePath: 'src/modified.ts',
+        status: 'modified',
+      },
+    ]);
+
+    render(
+      <FileTree
+        node={reviewTree}
+        selectedFile={null}
+        expandedFolders={new Set(['src'])}
+        onToggleFolder={onToggleFolder}
+        onSelectFile={onSelectFile}
+        isShowSourceCode={false}
+        variant="review"
+      />
+    );
+
+    expect(screen.getByLabelText('added')).toHaveTextContent('A');
+    expect(screen.getByLabelText('added')).toHaveClass(
+      'text-ds-text-success-default-default'
+    );
+    expect(screen.getByLabelText('modified')).toHaveTextContent('M');
+    expect(screen.getByLabelText('modified')).toHaveClass(
+      'text-ds-text-warning-default-default'
+    );
+  });
+
   it('builds task folders when files share the same filename across tasks', () => {
     const tree = buildFileTree([
       {
