@@ -296,4 +296,32 @@ describe('spaceStore user scoping', () => {
     ]);
     expect(state.activeSpaceId).toBe('space_migration_blank');
   });
+
+  it('coalesces concurrent project syncs for the same Space', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const { proxyFetchGet } = await import('@/api/http');
+    let resolveProjects: ((projects: ServerProject[]) => void) | undefined;
+    vi.mocked(spaceApi.proxyFetchSpaceProjects).mockReturnValue(
+      new Promise<ServerProject[]>((resolve) => {
+        resolveProjects = resolve;
+      })
+    );
+
+    const firstSync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_new_blank');
+    const secondSync = useSpaceStore
+      .getState()
+      .syncProjectsFromServer('space_new_blank');
+
+    await vi.waitFor(() => {
+      expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1);
+      expect(proxyFetchGet).toHaveBeenCalledTimes(1);
+    });
+    resolveProjects?.([]);
+    await Promise.all([firstSync, secondSync]);
+
+    expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1);
+    expect(proxyFetchGet).toHaveBeenCalledTimes(1);
+  });
 });

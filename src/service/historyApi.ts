@@ -13,7 +13,40 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import { HistoryTask, ProjectGroup } from '@/types/history';
+
+const groupedHistoryRequests = new Map<
+  string,
+  Promise<ProjectGroup[] | null>
+>();
+
+export const fetchGroupedHistoryProjects = async (options?: {
+  spaceId?: string | null;
+  includeTasks?: boolean;
+}): Promise<ProjectGroup[] | null> => {
+  const params = new URLSearchParams({
+    include_tasks: String(options?.includeTasks ?? true),
+  });
+  if (options?.spaceId) params.set('space_id', options.spaceId);
+  const query = params.toString();
+  const requestKey = `${getAuthEnvironmentKey()}::${query}`;
+  const inFlight = groupedHistoryRequests.get(requestKey);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const res = await proxyFetchGet(`/api/v1/chat/histories/grouped?${query}`);
+    return res?.projects ?? null;
+  })();
+  groupedHistoryRequests.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    if (groupedHistoryRequests.get(requestKey) === request) {
+      groupedHistoryRequests.delete(requestKey);
+    }
+  }
+};
 
 // Group tasks by project_id and add project-level metadata
 const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
@@ -100,16 +133,15 @@ export const fetchGroupedHistoryTasks = async (
   options?: { spaceId?: string | null }
 ) => {
   try {
-    const params = new URLSearchParams({ include_tasks: 'true' });
-    if (options?.spaceId) params.set('space_id', options.spaceId);
-    const res = await proxyFetchGet(
-      `/api/v1/chat/histories/grouped?${params.toString()}`
-    );
+    const projects = await fetchGroupedHistoryProjects({
+      spaceId: options?.spaceId,
+      includeTasks: true,
+    });
     // If the response doesn't have projects field, fall back to legacy grouping
-    if (!res || !res.projects) {
+    if (!projects) {
       await fetchGroupedHistoryTasksLegacy(setProjects, options);
     } else {
-      setProjects(res.projects);
+      setProjects(projects);
     }
   } catch (error) {
     console.error(
@@ -127,16 +159,15 @@ export const fetchGroupedHistorySummaries = async (
   options?: { spaceId?: string | null }
 ) => {
   try {
-    const params = new URLSearchParams({ include_tasks: 'false' });
-    if (options?.spaceId) params.set('space_id', options.spaceId);
-    const res = await proxyFetchGet(
-      `/api/v1/chat/histories/grouped?${params.toString()}`
-    );
+    const projects = await fetchGroupedHistoryProjects({
+      spaceId: options?.spaceId,
+      includeTasks: false,
+    });
     // If the response doesn't have projects field, fall back to legacy grouping
-    if (!res || !res.projects) {
+    if (!projects) {
       await fetchGroupedHistoryTasksLegacy(setProjects, options);
     } else {
-      setProjects(res.projects);
+      setProjects(projects);
     }
   } catch (error) {
     console.error(

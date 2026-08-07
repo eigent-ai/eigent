@@ -520,6 +520,87 @@ describe('projectStore runtime shape', () => {
     }
   });
 
+  it('repairs zero duration in a current cache from the canonical local Run', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_cached_zero_duration',
+            status: 'completed',
+            created_at: 100,
+            updated_at: 300,
+            total_attempt_elapsed_ms: 570_577,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 5,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_cached_zero_duration'],
+        tasks: {
+          task_cached_zero_duration: {
+            taskState: {
+              status: 'finished',
+              elapsed: 0,
+              taskTime: 123,
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cached_zero_duration'],
+          'cached prompt',
+          'project_cached_zero_duration',
+          'history_cached_zero_duration',
+          'Cached zero-duration project',
+          'space_test',
+          { task_cached_zero_duration: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).not.toHaveBeenCalled();
+      const project =
+        useProjectStore.getState().projects.project_cached_zero_duration;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_cached_zero_duration;
+      expect(task.elapsed).toBe(570_577);
+      expect(task.taskTime).toBe(0);
+      expect(task.durableRunStatus).toBe('completed');
+      expect(putCachedProjectMock).toHaveBeenCalledWith(
+        { userId: 10, projectId: 'project_cached_zero_duration' },
+        expect.objectContaining({
+          serverUpdatedAt: 200,
+          localCanonicalUpdatedAt: 300,
+          tasks: expect.objectContaining({
+            task_cached_zero_duration: {
+              taskState: expect.objectContaining({
+                elapsed: 570_577,
+                taskTime: 0,
+                durableRunStatus: 'completed',
+              }),
+            },
+          }),
+        })
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
   it('merges missing history into a background remote Project without stealing focus', async () => {
     const activeProjectId = useProjectStore
       .getState()

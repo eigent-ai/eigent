@@ -4156,6 +4156,59 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
 
+            // Finish the local UI projection before any cloud upload or
+            // history request. Camel-log and generated-file uploads can take
+            // minutes on a large Run; keeping elapsed/artifacts behind those
+            // network operations made a completed task temporarily render as
+            // "Worked for 0s" with no Files changed section.
+            const completedTask = tasks[currentTaskId];
+            let completedElapsed = completedTask.elapsed;
+            const playbackElapsed =
+              type &&
+              playbackFirstStepTimeMs !== null &&
+              playbackLastStepTimeMs !== null
+                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
+                : null;
+            if (playbackElapsed !== null) {
+              completedElapsed = playbackElapsed;
+            } else if (completedTask.taskTime !== 0) {
+              completedElapsed += Date.now() - completedTask.taskTime;
+            }
+            setTaskTime(currentTaskId, 0);
+            setElapsed(currentTaskId, completedElapsed);
+
+            const writeEventFiles = completedTask.taskAssigning.flatMap(
+              (agent) =>
+                agent.tasks.flatMap((assignedTask) =>
+                  assignedTask.fileList ? assignedTask.fileList : []
+                )
+            );
+            const outputProjectId =
+              project_id || projectStore.activeProjectId || undefined;
+            const taskArtifactFileList = await loadTaskArtifactFileList({
+              taskId: currentTaskId,
+              projectId: outputProjectId,
+              email: email || undefined,
+              userId: user_id,
+            });
+            const outputBaseURL = await getBaseURL().catch(() => '');
+            const finalOutputFileList = extractFinalOutputFileList(
+              endMessage,
+              outputProjectId,
+              email || undefined,
+              outputBaseURL || undefined
+            );
+            const mergedFileList = resolveRunOutputFileList({
+              writeEventFiles,
+              artifactFiles: taskArtifactFileList.files,
+              canonicalArtifactsAvailable: taskArtifactFileList.canonical,
+              finalAnswerFiles: finalOutputFileList,
+            });
+            updateMessage(currentTaskId, endMessageId, {
+              ...endUiMessage,
+              fileList: mergedFileList,
+            });
+
             // Analytics: task outcome. Skip replay/share playback so only real
             // runs are measured, and keep stopped runs out of completion metrics.
             if (!type || type === 'normal') {
@@ -4329,62 +4382,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             });
             setTaskAssigning(currentTaskId, [...taskAssigning]);
             setTaskRunning(currentTaskId, [...taskRunning]);
-
-            const task = tasks[currentTaskId];
-            let taskTime = task.taskTime;
-            let elapsed = task.elapsed;
-            const playbackElapsed =
-              type &&
-              playbackFirstStepTimeMs !== null &&
-              playbackLastStepTimeMs !== null
-                ? Math.max(0, playbackLastStepTimeMs - playbackFirstStepTimeMs)
-                : null;
-            if (playbackElapsed !== null) {
-              elapsed = playbackElapsed;
-            } else if (taskTime !== 0) {
-              const currentTime = Date.now();
-              elapsed += currentTime - taskTime;
-            }
-
-            setTaskTime(currentTaskId, 0);
-            setElapsed(currentTaskId, elapsed);
-            const fileList = tasks[currentTaskId].taskAssigning
-              .map((agent) => {
-                return agent.tasks
-                  .map((task) => {
-                    return task.fileList || [];
-                  })
-                  .flat();
-              })
-              .flat();
-
-            const outputProjectId =
-              project_id || projectStore.activeProjectId || undefined;
-            const taskArtifactFileList = await loadTaskArtifactFileList({
-              taskId: currentTaskId,
-              projectId: outputProjectId,
-              email: email || undefined,
-              userId: user_id,
-            });
-            const outputBaseURL = await getBaseURL().catch(() => '');
-            const finalOutputFileList = extractFinalOutputFileList(
-              endMessage,
-              outputProjectId,
-              email || undefined,
-              outputBaseURL || undefined
-            );
-            const mergedFileList = resolveRunOutputFileList({
-              writeEventFiles: fileList,
-              artifactFiles: taskArtifactFileList.files,
-              canonicalArtifactsAvailable: taskArtifactFileList.canonical,
-              finalAnswerFiles: finalOutputFileList,
-            });
-
-            console.log('endMessage', endMessage);
-            updateMessage(currentTaskId, endMessageId, {
-              ...endUiMessage,
-              fileList: mergedFileList,
-            });
 
             console.log(tasks[currentTaskId], 'end');
 

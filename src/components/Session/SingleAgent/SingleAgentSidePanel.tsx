@@ -31,12 +31,19 @@ import { useTranslation } from 'react-i18next';
 
 export function SingleAgentSidePanel() {
   const { t } = useTranslation();
-  const { projectStore } = useChatStoreAdapter();
+  const { chatStore, projectStore } = useChatStoreAdapter();
   const openFilePreview = usePageTabStore((s) => s.openFilePreview);
 
   const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
   const selectedTask = selectedTurn.task;
   const selectedTaskId = selectedTurn.taskId;
+  // The visible turn follows chat scrolling, but the filesystem scan is
+  // project-level. Drive it from the active Run so scrolling across history
+  // never turns into a series of identical /files requests.
+  const activeProjectTaskId = chatStore?.activeTaskId ?? null;
+  const activeProjectTask = activeProjectTaskId
+    ? chatStore?.tasks[activeProjectTaskId]
+    : undefined;
 
   const agents = useMemo(
     () => selectedTask?.taskAssigning ?? [],
@@ -44,8 +51,8 @@ export function SingleAgentSidePanel() {
   );
   const projectFiles = useProjectOutputFiles(
     projectStore.activeProjectId,
-    selectedTask,
-    selectedTaskId
+    activeProjectTask,
+    activeProjectTaskId
   );
   /** Prefer live `taskRunning` status (updated on TASK_STATE), keep plan order/text from agent tasks or taskInfo. */
   const subtasks = useMemo(() => {
@@ -104,11 +111,11 @@ export function SingleAgentSidePanel() {
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 flex w-full flex-1 flex-col overflow-hidden',
+        'flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden',
         'relative'
       )}
     >
-      <div className="min-h-0 min-w-0 gap-2 px-2 pb-2 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
         <ProgressSection
           title={t('layout.workforce-progress', { defaultValue: 'Progress' })}
           subtasks={subtasks}

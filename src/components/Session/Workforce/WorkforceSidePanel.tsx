@@ -56,12 +56,19 @@ export function WorkforceSidePanel({
   onCloseExpandedOverlay,
 }: WorkforceSidePanelProps) {
   const { t } = useTranslation();
-  const { projectStore } = useChatStoreAdapter();
+  const { chatStore, projectStore } = useChatStoreAdapter();
   const openFilePreview = usePageTabStore((s) => s.openFilePreview);
 
   const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
   const selectedTask = selectedTurn.task;
   const selectedTaskId = selectedTurn.taskId;
+  // Viewport scrolling selects a historical turn for display only. Project
+  // file discovery follows the active Run, otherwise every turn boundary
+  // crossed while scrolling causes the same project directory to be scanned.
+  const activeProjectTaskId = chatStore?.activeTaskId ?? null;
+  const activeProjectTask = activeProjectTaskId
+    ? chatStore?.tasks[activeProjectTaskId]
+    : undefined;
 
   const agents = useMemo(
     () => selectedTask?.taskAssigning ?? [],
@@ -69,8 +76,8 @@ export function WorkforceSidePanel({
   );
   const projectFiles = useProjectOutputFiles(
     projectStore.activeProjectId,
-    selectedTask,
-    selectedTaskId
+    activeProjectTask,
+    activeProjectTaskId
   );
   /** Subtask status is updated in `taskRunning` (e.g. TASK_STATE); `taskInfo` keeps plan text/order. */
   const subtasks = useMemo(() => {
@@ -132,7 +139,7 @@ export function WorkforceSidePanel({
   return (
     <>
       <div className={cn(WORKFORCE_MAIN_SURFACE_CLASS, 'relative')}>
-        <div className="min-h-0 min-w-0 gap-2 px-2 pb-2 flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2">
           <AgentPoolSection
             title={t('layout.workforce-agent-pool', {
               defaultValue: 'Agent Pool',
