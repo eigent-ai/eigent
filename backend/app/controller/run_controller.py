@@ -94,6 +94,17 @@ class RunSignalBody(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class InteractionDecisionBody(BaseModel):
+    decision_request_id: str = Field(min_length=1)
+    decision: dict[str, Any]
+    expected_version: int = Field(ge=0)
+    action_digest: str | None = None
+    actor_type: str = "user"
+    actor_id: str | None = None
+    source: str = "desktop"
+    continue_active_attempt: bool = True
+
+
 def _event_payload(event: CommittedRunEvent) -> dict[str, Any]:
     return {
         "event_id": event.event_id,
@@ -297,7 +308,9 @@ async def list_project_runs(
         await bootstrap_default_cloud_history()
     except Exception:
         # Offline Cloud repair never makes locally durable history unavailable.
-        logger.exception("Cloud Run history bootstrap failed before Project read")
+        logger.exception(
+            "Cloud Run history bootstrap failed before Project read"
+        )
     journal = get_default_run_journal()
     runs = await asyncio.to_thread(
         journal.list_runs,
@@ -314,9 +327,7 @@ async def list_project_runs(
         items.append(
             {
                 **asdict(run),
-                "latest_attempt": (
-                    asdict(attempts[-1]) if attempts else None
-                ),
+                "latest_attempt": (asdict(attempts[-1]) if attempts else None),
                 "total_attempt_elapsed_ms": (
                     _total_attempt_elapsed_ms(attempts, now=now)
                     if attempts
@@ -332,15 +343,17 @@ async def get_run(run_id: str):
     run = await _load_run_or_404(run_id)
     handle = await get_default_run_coordinator().get_handle(run_id)
     journal = get_default_run_journal()
-    attempts, approvals, tool_calls = await asyncio.gather(
+    attempts, approvals, interactions, tool_calls = await asyncio.gather(
         asyncio.to_thread(journal.list_run_attempts, run_id),
         asyncio.to_thread(journal.list_approvals, run_id),
+        asyncio.to_thread(journal.list_human_interactions, run_id),
         asyncio.to_thread(journal.list_tool_calls, run_id),
     )
     return {
         **asdict(run),
         "attempts": [asdict(attempt) for attempt in attempts],
         "approvals": [asdict(approval) for approval in approvals],
+        "interactions": [asdict(interaction) for interaction in interactions],
         "tool_calls": [asdict(tool_call) for tool_call in tool_calls],
         "runtime": {
             "consumer_alive": bool(handle and handle.consumer_alive),
@@ -350,6 +363,158 @@ async def get_run(run_id: str):
             ),
         },
     }
+
+
+@router.get("/runs/{run_id}/interactions")
+async def list_run_interactions(
+    run_id: str,
+    status: str = Query(default="pending"),
+):
+    await _load_run_or_404(run_id)
+    if status not in {"pending", "all"}:
+        raise HTTPException(
+            status_code=422, detail="status must be 'pending' or 'all'"
+        )
+    journal = get_default_run_journal()
+    interactions = await asyncio.to_thread(
+        journal.list_human_interactions,
+        run_id,
+        pending_only=status == "pending",
+    )
+    items: list[dict[str, Any]] = []
+    for interaction in interactions:
+        options = await asyncio.to_thread(
+            journal.list_human_interaction_options,
+            interaction.interaction_id,
+        )
+        items.append(
+            {
+                **asdict(interaction),
+                "options": [asdict(option) for option in options],
+            }
+        )
+    return {"run_id": run_id, "interactions": items}
+
+
+@router.post("/runs/{run_id}/interactions/{interaction_id}/decisions")
+async def decide_run_interaction(
+    run_id: str,
+    interaction_id: str,
+    body: InteractionDecisionBody,
+):
+    journal = get_default_run_journal()
+    try:
+        interaction = await asyncio.to_thread(
+            journal.get_human_interaction, interaction_id
+        )
+        if interaction is None:
+            raise RunNotFoundError(
+                f"interaction_id {interaction_id!r} does not exist"
+            )
+        if interaction.run_id != run_id:
+            raise IdempotencyConflictError(
+                f"interaction {interaction_id!r} does not belong to run "
+                f"{run_id!r}"
+            )
+        if interaction.interaction_type == "approval":
+            if not body.action_digest:
+                raise ValueError(
+                    "action_digest is required for approval decisions"
+                )
+            approval_decision = str(body.decision.get("decision") or "")
+            decision_scope = str(body.decision.get("scope") or "once")
+            action = interaction.request.get("action")
+            action = action if isinstance(action, dict) else {}
+            target_resources = action.get("target_resources")
+            target_resources = (
+                target_resources if isinstance(target_resources, list) else []
+            )
+            rule_space_id = interaction.request.get("space_id")
+            details = {
+                key: value
+                for key, value in body.decision.items()
+                if key != "decision"
+            }
+            await asyncio.to_thread(
+                journal.decide_approval,
+                interaction_id,
+                decision=approval_decision,
+                details=details,
+                expected_version=body.expected_version,
+                expected_run_id=run_id,
+                continue_active_attempt=body.continue_active_attempt,
+                decision_request_id=body.decision_request_id,
+                action_digest=body.action_digest,
+                actor_type=body.actor_type,
+                actor_id=body.actor_id,
+                source=body.source,
+                decision_scope=decision_scope,
+                rule_space_id=(
+                    str(rule_space_id) if rule_space_id is not None else None
+                ),
+                rule_id=(
+                    f"approval-rule:{interaction_id}:{decision_scope}"
+                    if approval_decision == "approved"
+                    and decision_scope in {"run", "space"}
+                    else None
+                ),
+                rule_action_pattern=(
+                    str(action.get("operation"))
+                    if action.get("operation") is not None
+                    else None
+                ),
+                rule_resource_pattern=(
+                    str(target_resources[0]) if target_resources else None
+                ),
+            )
+            result = await asyncio.to_thread(
+                journal.get_human_interaction, interaction_id
+            )
+            assert result is not None
+        else:
+            result = await asyncio.to_thread(
+                journal.resolve_human_interaction,
+                interaction_id,
+                decision_request_id=body.decision_request_id,
+                decision=body.decision,
+                expected_version=body.expected_version,
+                expected_run_id=run_id,
+                actor_type=body.actor_type,
+                actor_id=body.actor_id,
+                source=body.source,
+                continue_active_attempt=body.continue_active_attempt,
+            )
+    except Exception as exc:
+        raise _control_error(exc) from exc
+    run = await asyncio.to_thread(journal.get_run, run_id)
+    agent = interaction.request.get("agent")
+    if run is not None and isinstance(agent, str) and agent:
+        from app.service.task import get_task_lock_if_exists
+
+        task_lock = get_task_lock_if_exists(run.project_id)
+        if task_lock is not None:
+            reply_value = body.decision.get("reply")
+            if reply_value is None:
+                reply_value = body.decision.get("decision")
+            if reply_value is None and body.decision:
+                reply_value = json.dumps(
+                    body.decision,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            if reply_value is not None:
+                try:
+                    await task_lock.put_human_input(agent, str(reply_value))
+                except KeyError:
+                    logger.info(
+                        "Interaction decision persisted without a live waiter",
+                        extra={
+                            "run_id": run_id,
+                            "interaction_id": interaction_id,
+                        },
+                    )
+    return asdict(result)
 
 
 @router.get("/runs/{run_id}/events")
@@ -495,6 +660,12 @@ async def signal_run(run_id: str, body: RunSignalBody):
                 expiry_action=str(
                     payload.get("expiry_action") or "keep_pending"
                 ),
+                action_digest=payload.get("action_digest"),
+                policy_revision=str(
+                    payload.get("policy_revision") or "legacy"
+                ),
+                safety_class=str(payload.get("safety_class") or "unknown"),
+                decision_scope=str(payload.get("decision_scope") or "once"),
             )
         elif body.signal_type == "approval.decided":
             result = await asyncio.to_thread(
@@ -504,6 +675,11 @@ async def signal_run(run_id: str, body: RunSignalBody):
                 details=dict(payload.get("details") or {}),
                 expected_version=int(payload["expected_version"]),
                 expected_run_id=run_id,
+                decision_request_id=payload.get("decision_request_id"),
+                action_digest=payload.get("action_digest"),
+                actor_type=str(payload.get("actor_type") or "user"),
+                actor_id=payload.get("actor_id"),
+                source=str(payload.get("source") or "desktop"),
             )
         elif (
             "scope" in payload

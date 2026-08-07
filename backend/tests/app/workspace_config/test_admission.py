@@ -110,3 +110,40 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
         )
         assert event.payload["thinking_effort_requested"] == "max"
         assert event.payload["thinking_effort_effective"] == "medium"
+
+
+def test_admission_pins_current_space_permission_profile(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-1",
+            project_id="project-1",
+            status="pending",
+        )
+        profile = journal.put_space_permission_profile(
+            space_id="space-1",
+            profile_name="read_only",
+            sandbox_mode="read-only",
+            approval_mode="on-request",
+            reviewer_mode="user",
+            updated_by="user-1",
+            now=1,
+        )
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5.5-codex",
+            auth_source="codex_subscription",
+            requested_effort=ThinkingEffort.MEDIUM,
+            allow_local_system=True,
+        )
+
+        result = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-1",
+            space_id="space-1",
+            working_directory=tmp_path,
+            created_by="user-1",
+            template=template,
+        )
+
+        assert result.binding.permission_profile_revision == (
+            f"space:space-1:{profile.revision}"
+        )

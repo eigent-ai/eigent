@@ -69,6 +69,7 @@ def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
     with (
         patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
         patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.dispatch_tool_checkpoint"),
         patch(f"{_LCA}.finish_tool_checkpoint") as finish,
         patch(f"{_LCA}._schedule_async_task"),
     ):

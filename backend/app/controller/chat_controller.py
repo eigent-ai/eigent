@@ -84,7 +84,7 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
-from app.workspace_config import EffectiveEnvironmentSpec
+from app.workspace_config import EffectiveEnvironmentSpec, canonical_digest
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     EnvironmentAdmissionTemplate,
@@ -1310,9 +1310,7 @@ async def _improve_chat(
             ),
             new_task_id=data.task_id,
             request_id=(resolved_request_id if rotation_succeeded else None),
-            run_id=(
-                refreshed_context.run_id if rotation_succeeded else None
-            ),
+            run_id=(refreshed_context.run_id if rotation_succeeded else None),
             attempt_id=(attempt.attempt_id if rotation_succeeded else None),
         )
     )
@@ -1387,9 +1385,7 @@ async def stop(id: str):
     return Response(status_code=204)
 
 
-@router.post(
-    "/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES
-)
+@router.post("/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
@@ -1407,26 +1403,42 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         )
     run_context = getattr(task_lock, "run_context", None)
     if isinstance(run_context, RunContext):
-        pending_approvals = await asyncio.to_thread(
-            get_default_run_journal().list_approvals,
+        journal = get_default_run_journal()
+        pending_interactions = await asyncio.to_thread(
+            journal.list_human_interactions,
             run_context.run_id,
             pending_only=True,
         )
-        approval = next(
+        interaction = next(
             (
                 item
-                for item in reversed(pending_approvals)
-                if item.prompt.get("agent") == data.agent
+                for item in reversed(pending_interactions)
+                if item.interaction_type != "approval"
+                and item.request.get("agent") == data.agent
+                and (
+                    data.interaction_id is None
+                    or item.interaction_id == data.interaction_id
+                )
             ),
             None,
         )
-        if approval is not None:
+        if interaction is not None:
+            reply_decision = {"agent": data.agent, "reply": data.reply}
+            request_id = data.decision_request_id or (
+                "legacy-human-reply:"
+                + canonical_digest(
+                    {
+                        "interaction_id": interaction.interaction_id,
+                        "decision": reply_decision,
+                    }
+                )
+            )
             await asyncio.to_thread(
-                get_default_run_journal().decide_approval,
-                approval.approval_id,
-                decision="approved",
-                details={"agent": data.agent, "reply": data.reply},
-                expected_version=approval.version,
+                journal.resolve_human_interaction,
+                interaction.interaction_id,
+                decision_request_id=request_id,
+                decision=reply_decision,
+                expected_version=interaction.version,
                 expected_run_id=run_context.run_id,
                 continue_active_attempt=True,
             )
@@ -1438,7 +1450,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 notify_default_cloud_sync_worker()
             except Exception:
                 chat_logger.exception(
-                    "Failed to wake cloud sync after Approval decision"
+                    "Failed to wake cloud sync after HumanInteraction decision"
                 )
     try:
         await task_lock.put_human_input(data.agent, data.reply)
@@ -1481,9 +1493,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
     return Response(status_code=201)
 
 
-@router.post(
-    "/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES
-)
+@router.post("/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",

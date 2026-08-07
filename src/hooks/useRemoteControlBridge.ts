@@ -97,6 +97,7 @@ const BRIDGE_CAPABILITIES = {
   commands: [
     'user_message',
     'human_reply',
+    'interaction_decision',
     'stop',
     'skip_task',
     'add_task',
@@ -694,7 +695,10 @@ async function executeRemoteCommand(
   command: RemoteCommand,
   token: string
 ): Promise<BridgeAck> {
-  if (command.type !== 'user_message') {
+  if (
+    command.type !== 'user_message' &&
+    command.type !== 'interaction_decision'
+  ) {
     await assertLocalTaskOnline(command, token);
   }
   const projectId = getCommandProjectId(command);
@@ -744,6 +748,33 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+        }
+      );
+      break;
+    }
+    case 'interaction_decision': {
+      const runId = String(command.payload.run_id || '');
+      const interactionId = String(command.payload.interaction_id || '');
+      if (!runId || !interactionId) {
+        throw new Error(
+          'interaction_decision requires run_id and interaction_id'
+        );
+      }
+      await requestBrain(
+        command,
+        token,
+        'POST',
+        `/api/v1/runs/${encodeURIComponent(runId)}/interactions/${encodeURIComponent(interactionId)}/decisions`,
+        {
+          decision_request_id:
+            command.payload.decision_request_id || command.id,
+          decision: command.payload.decision || {},
+          expected_version: Number(command.payload.expected_version || 0),
+          action_digest: command.payload.action_digest || null,
+          actor_type: 'user',
+          actor_id: String(command.user_id),
+          source: 'remote_control',
+          continue_active_attempt: true,
         }
       );
       break;

@@ -230,6 +230,8 @@ class SupplementChat(BaseModel):
 class HumanReply(BaseModel):
     agent: str
     reply: str
+    interaction_id: str | None = None
+    decision_request_id: str | None = None
 
 
 class TaskContent(BaseModel):

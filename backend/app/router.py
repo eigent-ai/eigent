@@ -29,6 +29,7 @@ from app.controller import (
     mcp_controller,
     message_controller,
     model_controller,
+    permission_controller,
     remote_command_controller,
     remote_sub_agent_controller,
     run_controller,
@@ -90,6 +91,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": run_controller.router,
             "tags": ["Runs"],
             "description": "Durable Run snapshots, event replay, and live streams",
+            "self_authenticated": True,
+        },
+        {
+            "router": permission_controller.router,
+            "tags": ["Permissions"],
+            "description": "Authenticated local Space permission profiles",
             "self_authenticated": True,
         },
         {

@@ -174,6 +174,12 @@ class EnvironmentAdmissionService:
         created_by: str,
         template: EnvironmentAdmissionTemplate,
     ) -> EnvironmentAdmissionResult:
+        current_profile = self.journal.get_space_permission_profile(space_id)
+        permission_profile_revision = (
+            f"space:{space_id}:{current_profile.revision}"
+            if current_profile is not None
+            else None
+        )
         local_materialization = LocalMaterialization(
             context_sources=(
                 ResolvedContextSource(
@@ -193,6 +199,7 @@ class EnvironmentAdmissionService:
             local_materialization=local_materialization,
             provider_capability=template.provider_capability,
             thinking_effort_override=template.thinking_effort_requested,
+            permission_profile_revision_override=(permission_profile_revision),
             allow_dynamic_effort_remap=True,
             runtime_capability_manifest={
                 **template.runtime_capability_manifest,

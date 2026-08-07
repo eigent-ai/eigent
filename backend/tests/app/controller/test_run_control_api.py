@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -8,11 +8,14 @@ from fastapi import HTTPException
 from app.controller.run_controller import (
     CancelRunBody,
     ForkRunBody,
+    InteractionDecisionBody,
     ResumeRunBody,
     RunSignalBody,
     cancel_run,
+    decide_run_interaction,
     fork_run,
     list_project_runs,
+    list_run_interactions,
     resume_run,
     signal_run,
 )
@@ -150,11 +153,70 @@ async def test_signal_api_rejects_cross_run_approval_mutation(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_typed_interaction_api_lists_and_resolves_question(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        task_lock = AsyncMock()
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="choice",
+            request={"question": "Pick one", "agent": "worker"},
+            options=[
+                {"id": "a", "label": "A"},
+                {"id": "b", "label": "B"},
+            ],
+            now=2,
+        )
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            listed = await list_run_interactions("run-1", status="pending")
+            resolved = await decide_run_interaction(
+                "run-1",
+                "question-1",
+                InteractionDecisionBody(
+                    decision_request_id="decision-1",
+                    decision={"option_id": "b"},
+                    expected_version=0,
+                ),
+            )
+
+        assert [item["interaction_id"] for item in listed["interactions"]] == [
+            "question-1"
+        ]
+        assert [
+            option["option_id"]
+            for option in listed["interactions"][0]["options"]
+        ] == [
+            "a",
+            "b",
+        ]
+        assert resolved["status"] == "resolved"
+        task_lock.put_human_input.assert_awaited_once_with(
+            "worker", '{"option_id":"b"}'
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-        journal.ensure_run(
-            run_id="older", project_id="project-1", now=1
-        )
+        journal.ensure_run(run_id="older", project_id="project-1", now=1)
         journal.create_run_attempt(
             "older",
             request_id="initial-older",
@@ -163,9 +225,7 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
             now=1,
         )
         journal.reconcile_startup(now=2)
-        journal.ensure_run(
-            run_id="other", project_id="project-2", now=3
-        )
+        journal.ensure_run(run_id="other", project_id="project-2", now=3)
         with patch(
             "app.controller.run_controller.get_default_run_journal",
             return_value=journal,

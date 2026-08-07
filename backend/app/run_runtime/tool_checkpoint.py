@@ -223,6 +223,7 @@ def prepare_tool_checkpoint(
     tool_name: str,
     arguments: dict[str, Any],
     declared_safety: tuple[ToolSafetyClass, str | None] | None = None,
+    dispatch_immediately: bool = True,
     journal: SQLiteRunJournal | None = None,
 ) -> ToolCheckpointContext | None:
     run_context = get_current_run_context()
@@ -265,13 +266,42 @@ def prepare_tool_checkpoint(
     )
     try:
         store.checkpoint_tool_call(status="prepared", **values)
-        store.checkpoint_tool_call(status="dispatched", **values)
+        if dispatch_immediately:
+            store.checkpoint_tool_call(status="dispatched", **values)
     except Exception as error:
         raise ToolCheckpointPersistenceError(
             f"failed to persist checkpoint before tool {tool_name!r}"
         ) from error
     _notify_cloud_sync()
     return checkpoint
+
+
+def dispatch_tool_checkpoint(
+    checkpoint: ToolCheckpointContext | None,
+    *,
+    journal: SQLiteRunJournal | None = None,
+) -> None:
+    """Persist dispatch only after policy approval is durably resolved."""
+
+    if checkpoint is None:
+        return
+    store = journal or get_default_run_journal()
+    try:
+        store.checkpoint_tool_call(
+            tool_call_id=checkpoint.tool_call_id,
+            run_id=checkpoint.run_id,
+            attempt_id=checkpoint.attempt_id,
+            tool_name=checkpoint.tool_name,
+            safety_class=checkpoint.safety_class,
+            status="dispatched",
+            request=checkpoint.request,
+            idempotency_key=checkpoint.idempotency_key,
+        )
+    except Exception as error:
+        raise ToolCheckpointPersistenceError(
+            f"failed to persist dispatch for tool {checkpoint.tool_name!r}"
+        ) from error
+    _notify_cloud_sync()
 
 
 def finish_tool_checkpoint(

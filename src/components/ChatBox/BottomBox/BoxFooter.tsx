@@ -15,11 +15,13 @@
 import { ProjectModeToggle } from '@/components/Workspace/ProjectModeToggle';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   normalizeThinkingEffort,
   ThinkingEffort,
   type SessionModeType,
 } from '@/types/constants';
+import { ApprovalModeSelect } from './ApprovalModeSelect';
 import { ModelSelect } from './ModelSelect';
 import { ThinkingEffortSelect } from './ThinkingEffortSelect';
 
@@ -68,6 +70,11 @@ export function BoxFooter({
   const thinkingEffort = normalizeThinkingEffort(
     projectEffort ?? ThinkingEffort.MEDIUM
   );
+  const spaceId = useSpaceStore((state) =>
+    projectId
+      ? (state.projectIdIndex[projectId] ?? state.activeSpaceId)
+      : state.activeSpaceId
+  );
 
   return (
     <div
@@ -79,6 +86,12 @@ export function BoxFooter({
           value={sessionMode}
           onValueChange={onSessionModeChange ?? (() => {})}
           readOnly={!interactive}
+          compact={compact}
+          className="shrink-0"
+        />
+        <ApprovalModeSelect
+          spaceId={spaceId}
+          disabled={disabled}
           compact={compact}
           className="shrink-0"
         />

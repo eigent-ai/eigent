@@ -74,6 +74,13 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "workspace_config_revisions",
         "workspace_config_materializations",
         "effective_environment_specs",
+        "human_interactions",
+        "human_interaction_options",
+        "human_interaction_decisions",
+        "space_permission_profiles",
+        "space_permission_profile_revisions",
+        "approval_rules",
+        "security_audit_events",
     } <= tables
 
 

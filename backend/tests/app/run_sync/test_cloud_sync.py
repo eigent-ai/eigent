@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -82,7 +83,9 @@ class FakeTransport:
             "next_cursor": (
                 items[-1]["cloud_cursor"] if items else after_cursor
             ),
-            "has_more": bool(items and items[-1]["cloud_cursor"] < current_cursor),
+            "has_more": bool(
+                items and items[-1]["cloud_cursor"] < current_cursor
+            ),
             "items": items,
         }
 
@@ -138,6 +141,55 @@ async def test_worker_sends_fifo_batch_and_marks_it_sent(journal):
     assert journal.list_pending_outbox(now=100) == []
     await worker.close()
     assert transport.closed is True
+
+
+@pytest.mark.asyncio
+async def test_worker_redacts_approval_arguments_and_local_targets(journal):
+    journal.ensure_run(run_id="run-approval", project_id="project-1", now=1)
+    journal.append_event(
+        "run-approval",
+        RunEventDraft(
+            event_id="approval-requested",
+            event_type="approval.requested",
+            payload={
+                "approval_id": "approval-1",
+                "action_digest": "digest-1",
+                "prompt": {
+                    "question": "Allow write?",
+                    "target_resources": [
+                        "/Users/test/private/report.md",
+                        "https://example.test/private?token=secret",
+                    ],
+                    "action": {
+                        "operation": "filesystem.write",
+                        "normalized_arguments": {
+                            "path": "/Users/test/private/report.md",
+                            "content": "private report contents",
+                        },
+                        "target_resources": ["/Users/test/private/report.md"],
+                    },
+                },
+            },
+            created_at=1,
+        ),
+    )
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+
+    cloud_payload = transport.payloads[0]["events"][0]["payload"]
+    encoded = json.dumps(cloud_payload)
+    assert "normalized_arguments" not in encoded
+    assert "private report contents" not in encoded
+    assert "/Users/test/private" not in encoded
+    assert cloud_payload["prompt"]["target_resources"] == [
+        "[local]/report.md",
+        "https://example.test",
+    ]
+    local_event = journal.list_events("run-approval")[0]
+    assert "normalized_arguments" in local_event.payload["prompt"]["action"]
+    await worker.close()
 
 
 @pytest.mark.asyncio
@@ -387,9 +439,19 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
         limit=100,
     )
 
-    assert len(
-        [request for request in requests if request.url.path.endswith("/devices/register")]
-    ) == 1
-    assert any("/projects/project%2Fone/snapshot" in str(request.url) for request in requests)
+    assert (
+        len(
+            [
+                request
+                for request in requests
+                if request.url.path.endswith("/devices/register")
+            ]
+        )
+        == 1
+    )
+    assert any(
+        "/projects/project%2Fone/snapshot" in str(request.url)
+        for request in requests
+    )
     assert any("event_limit=1" in str(request.url) for request in requests)
     await transport.close()
