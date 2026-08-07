@@ -19,14 +19,15 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth import require_local_control_principal
 from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
-    default_run_journal_path,
+    OptimisticConcurrencyError,
+    configured_run_journal_path,
     get_default_run_journal,
 )
 from app.utils.workspace_resolver import get_workspace_resolver
@@ -38,6 +39,9 @@ from app.workspace_git import (
     NestedRepositoryError,
     NoCheckpointChangesError,
     RepositoryStateChangedError,
+    WorkspaceGitCoordinator,
+    WorkspaceSnapshotError,
+    WorkspaceSnapshotService,
 )
 from app.workspace_git.backend import RepositoryDiagnostics
 
@@ -63,6 +67,8 @@ class GitCheckpointBody(BaseModel):
     actor_id: str = Field(min_length=1, max_length=200)
     trigger: str = Field(min_length=1, max_length=200)
     message: str = Field(min_length=1, max_length=500)
+    workspace_source: Literal["user", "run"] = "user"
+    run_id: str | None = Field(default=None, max_length=256)
 
     @field_validator("paths")
     @classmethod
@@ -96,10 +102,69 @@ class GitRestoreBody(BaseModel):
     expected_repo_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class GitMaterializeRunBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    expected_repo_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_project_version: int = Field(ge=0)
+    expected_project_head: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40,64}$",
+    )
+
+
+class GitPromoteRunBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    expected_run_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_project_version: int = Field(ge=0)
+    expected_project_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    expected_run_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+
+
+class GitRefreshProjectBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    expected_projection_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_project_version: int = Field(ge=0)
+    expected_integration_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    expected_projected_head: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+
+
+class GitSnapshotBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+
+
 def _service() -> ContentRepositoryService:
     return ContentRepositoryService(
         get_default_run_journal(),
-        state_root=default_run_journal_path().parent / "workspace-git",
+        state_root=configured_run_journal_path().parent / "workspace-git",
+    )
+
+
+def _coordinator() -> WorkspaceGitCoordinator:
+    service = _service()
+    return WorkspaceGitCoordinator(
+        service.journal,
+        state_root=service.state_root,
+        git_backend=service.git,
+    )
+
+
+def _snapshot_service() -> WorkspaceSnapshotService:
+    service = _service()
+    return WorkspaceSnapshotService(
+        service.journal,
+        state_root=service.state_root,
+        git_backend=service.git,
     )
 
 
@@ -159,10 +224,22 @@ def _git_error(exc: Exception) -> HTTPException:
                 "message": str(exc),
             },
         )
+    if isinstance(exc, WorkspaceSnapshotError):
+        return HTTPException(
+            status_code=(
+                404 if exc.code == "workspace_path_not_found" else 409
+            ),
+            detail={"code": exc.code, "message": str(exc)},
+        )
     if isinstance(exc, RepositoryStateChangedError):
         return HTTPException(
             status_code=409,
             detail={"code": "repo_state_changed", "message": str(exc)},
+        )
+    if isinstance(exc, OptimisticConcurrencyError):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "project_git_state_changed", "message": str(exc)},
         )
     if isinstance(exc, NoCheckpointChangesError):
         return HTTPException(
@@ -371,18 +448,44 @@ async def git_checkpoint(space_id: str, body: GitCheckpointBody):
     if repository is None:
         raise HTTPException(status_code=404, detail="Git is not enabled")
     _assert_repository_binding(repository, root)
+    worktree_root = None
+    if body.workspace_source == "run":
+        if not body.run_id:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "run_id_required",
+                    "message": "run_id is required for a Run checkpoint.",
+                },
+            )
+        run = service.journal.get_run_git_materialization(body.run_id)
+        if (
+            run is None
+            or run.repository_id != repository.repository_id
+            or run.materialization_state != "materialized"
+            or not run.worktree_path
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "run_workspace_not_materialized",
+                    "message": "The Run workspace is not materialized.",
+                },
+            )
+        worktree_root = Path(run.worktree_path)
     try:
         checkpoint = service.checkpoint(
             repository.repository_id,
             operation_request_id=body.operation_request_id,
             expected_repo_state_digest=body.expected_repo_state_digest,
-            paths=tuple(root / path for path in body.paths),
+            paths=tuple((worktree_root or root) / path for path in body.paths),
             path_sources=body.path_sources,
             target_role=body.target_role,
             target_id=body.target_id,
             actor_id=body.actor_id,
             trigger=body.trigger,
             message=body.message,
+            worktree_root=worktree_root,
         )
     except Exception as exc:
         raise _git_error(exc) from exc
@@ -431,3 +534,365 @@ async def git_restore_candidate(
         "commit_oid": candidate.commit_oid,
         "applied_to_user_worktree": False,
     }
+
+
+def _project_workspace_payload(
+    project,
+    run=None,
+    *,
+    projection_state_digest: str | None = None,
+) -> dict:
+    return {
+        "project_id": project.project_id,
+        "repository_id": project.repository_id,
+        "state": project.state,
+        "version": project.version,
+        "integration_ref": project.integration_ref,
+        "integration_head": project.integration_head,
+        "projected_head": project.projected_head,
+        "freshness": (
+            "current"
+            if project.integration_head == project.projected_head
+            else "stale"
+        ),
+        "pending_apply": project.pending_apply,
+        "materialized": project.integration_ref is not None,
+        "projection_state_digest": projection_state_digest,
+        "run": (
+            None
+            if run is None
+            else {
+                "run_id": run.run_id,
+                "workspace_base_ref": run.workspace_base_ref,
+                "workspace_base_commit": run.workspace_base_commit,
+                "materialization_state": run.materialization_state,
+                "run_ref": run.run_ref,
+                "promoted_commit": run.promoted_commit,
+                "version": run.version,
+            }
+        ),
+    }
+
+
+def _snapshot_payload(snapshot) -> dict:
+    return {
+        "snapshot_id": snapshot.snapshot_id,
+        "run_id": snapshot.run_id,
+        "project_id": snapshot.project_id,
+        "repository_id": snapshot.repository_id,
+        "generation": snapshot.generation,
+        "project_base_commit": snapshot.project_base_commit,
+        "project_state_version": snapshot.project_state_version,
+        "user_head": snapshot.user_head,
+        "user_working_state_digest": snapshot.user_working_state_digest,
+        "overlay_manifest_digest": snapshot.overlay_manifest_digest,
+        "state": snapshot.state,
+        "created_at": snapshot.created_at,
+        "updated_at": snapshot.updated_at,
+    }
+
+
+def _assert_snapshot_owner(
+    *,
+    run_id: str,
+    space_id: str,
+    email: str,
+    user_id: str | int | None,
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    run = service.journal.get_run_git_materialization(run_id)
+    if (
+        repository is None
+        or run is None
+        or run.repository_id != repository.repository_id
+    ):
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    return repository
+
+
+@router.get("/projects/{project_id}/git/workspace")
+async def project_git_workspace(
+    project_id: str,
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    project = service.journal.get_project_git_state(project_id)
+    if (
+        repository is None
+        or project is None
+        or project.repository_id != repository.repository_id
+    ):
+        raise HTTPException(
+            status_code=404, detail="Project Git state not found"
+        )
+    _assert_repository_binding(repository, root)
+    projection_digest = (
+        service.git.repo_state_token(Path(project.worktree_path)).digest
+        if project.worktree_path
+        else None
+    )
+    return _project_workspace_payload(
+        project,
+        projection_state_digest=projection_digest,
+    )
+
+
+@router.get("/runs/{run_id}/git/workspace")
+async def run_git_workspace(
+    run_id: str,
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    run = service.journal.get_run_git_materialization(run_id)
+    project = (
+        service.journal.get_project_git_state(run.project_id)
+        if run is not None
+        else None
+    )
+    if (
+        repository is None
+        or run is None
+        or project is None
+        or run.repository_id != repository.repository_id
+    ):
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    projection_digest = (
+        service.git.repo_state_token(Path(project.worktree_path)).digest
+        if project.worktree_path
+        else None
+    )
+    return _project_workspace_payload(
+        project,
+        run,
+        projection_state_digest=projection_digest,
+    )
+
+
+@router.get("/runs/{run_id}/git/snapshot")
+async def run_git_snapshot(
+    run_id: str,
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    _assert_snapshot_owner(
+        run_id=run_id,
+        space_id=space_id,
+        email=email,
+        user_id=user_id,
+    )
+    snapshot = _snapshot_service().get_snapshot(run_id)
+    return {
+        "run_id": run_id,
+        "materialized": snapshot is not None,
+        "snapshot": (
+            _snapshot_payload(snapshot) if snapshot is not None else None
+        ),
+    }
+
+
+@router.post("/runs/{run_id}/git/snapshot:refresh")
+async def refresh_run_git_snapshot(
+    run_id: str,
+    body: GitSnapshotBody,
+):
+    _assert_snapshot_owner(
+        run_id=run_id,
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    try:
+        snapshot = _snapshot_service().refresh_snapshot(run_id)
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return {"snapshot": _snapshot_payload(snapshot)}
+
+
+@router.get("/runs/{run_id}/git/snapshot/files")
+async def read_run_git_snapshot_file(
+    run_id: str,
+    path: str = Query(..., min_length=1, max_length=4096),
+    start_offset: int = Query(0, ge=0),
+    max_bytes: int = Query(256 * 1024, ge=1, le=4 * 1024 * 1024),
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    _assert_snapshot_owner(
+        run_id=run_id,
+        space_id=space_id,
+        email=email,
+        user_id=user_id,
+    )
+    try:
+        result = _snapshot_service().read_range(
+            run_id=run_id,
+            relative_path=path,
+            start_offset=start_offset,
+            max_bytes=max_bytes,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    headers = {
+        "Accept-Ranges": "bytes",
+        "X-Eigent-Snapshot-Id": result.snapshot.snapshot_id,
+        "X-Eigent-Snapshot-Source": result.source_kind,
+        "X-Content-SHA256": result.content_digest,
+    }
+    if result.end_offset > result.start_offset:
+        headers["Content-Range"] = (
+            f"bytes {result.start_offset}-{result.end_offset - 1}/"
+            f"{result.size_bytes}"
+        )
+    else:
+        headers["Content-Range"] = f"bytes */{result.size_bytes}"
+    return Response(
+        content=result.content,
+        status_code=206,
+        media_type="application/octet-stream",
+        headers=headers,
+    )
+
+
+@router.post("/runs/{run_id}/git/workspace:materialize")
+async def materialize_run_git_workspace(
+    run_id: str,
+    body: GitMaterializeRunBody,
+):
+    root = _binding_root(
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(
+        space_id=body.space_id
+    )
+    run = service.journal.get_run_git_materialization(run_id)
+    if (
+        repository is None
+        or run is None
+        or run.repository_id != repository.repository_id
+    ):
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    try:
+        workspace = _coordinator().ensure_run_materialized(
+            run_id=run_id,
+            operation_request_id=body.operation_request_id,
+            expected_repo_state_digest=body.expected_repo_state_digest,
+            expected_project_version=body.expected_project_version,
+            expected_project_head=body.expected_project_head,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return _project_workspace_payload(
+        workspace.project,
+        workspace.run,
+        projection_state_digest=_coordinator()
+        .git.repo_state_token(workspace.project_worktree)
+        .digest,
+    )
+
+
+@router.post("/runs/{run_id}/git/workspace:promote")
+async def promote_run_git_workspace(
+    run_id: str,
+    body: GitPromoteRunBody,
+):
+    root = _binding_root(
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(
+        space_id=body.space_id
+    )
+    run = service.journal.get_run_git_materialization(run_id)
+    if (
+        repository is None
+        or run is None
+        or run.repository_id != repository.repository_id
+    ):
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    try:
+        workspace = _coordinator().promote_run(
+            run_id=run_id,
+            operation_request_id=body.operation_request_id,
+            expected_run_state_digest=body.expected_run_state_digest,
+            expected_project_version=body.expected_project_version,
+            expected_project_head=body.expected_project_head,
+            expected_run_head=body.expected_run_head,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return _project_workspace_payload(
+        workspace.project,
+        workspace.run,
+        projection_state_digest=_coordinator()
+        .git.repo_state_token(workspace.project_worktree)
+        .digest,
+    )
+
+
+@router.post("/projects/{project_id}/git/workspace:refresh")
+async def refresh_project_git_workspace(
+    project_id: str,
+    body: GitRefreshProjectBody,
+):
+    root = _binding_root(
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(
+        space_id=body.space_id
+    )
+    project = service.journal.get_project_git_state(project_id)
+    if (
+        repository is None
+        or project is None
+        or project.repository_id != repository.repository_id
+    ):
+        raise HTTPException(
+            status_code=404, detail="Project Git state not found"
+        )
+    _assert_repository_binding(repository, root)
+    coordinator = _coordinator()
+    try:
+        project = coordinator.refresh_project_projection(
+            project_id=project_id,
+            operation_request_id=body.operation_request_id,
+            expected_projection_state_digest=(
+                body.expected_projection_state_digest
+            ),
+            expected_project_version=body.expected_project_version,
+            expected_integration_head=body.expected_integration_head,
+            expected_projected_head=body.expected_projected_head,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    if not project.worktree_path:
+        raise HTTPException(status_code=409, detail="Project worktree missing")
+    return _project_workspace_payload(
+        project,
+        projection_state_digest=coordinator.git.repo_state_token(
+            Path(project.worktree_path)
+        ).digest,
+    )

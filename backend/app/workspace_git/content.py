@@ -167,8 +167,8 @@ class ContentRepositoryService:
             raise ContentRepositoryError(
                 f"Space root is not a directory: {space_root}"
             )
-        lock_path = self._lock_path(space_id)
-        with self._repository_lock(lock_path):
+        lock_path = self.repository_lock_path(space_id)
+        with self.repository_lock(lock_path):
             before = self.git.probe(root)
             if before.nested_in_parent:
                 raise NestedRepositoryError(
@@ -260,6 +260,7 @@ class ContentRepositoryService:
         actor_id: str,
         trigger: str,
         message: str,
+        worktree_root: Path | None = None,
     ) -> GitCheckpointRecord:
         self._validate_identifier("operation_request_id", operation_request_id)
         self._validate_text("actor_id", actor_id)
@@ -269,7 +270,7 @@ class ContentRepositoryService:
         if target_role not in _TARGET_ROLES:
             raise ValueError(f"unsupported checkpoint target {target_role!r}")
         repository = self._repository(repository_id)
-        root = Path(repository.root_path)
+        root = self._checkpoint_root(repository, worktree_root)
         self._assert_no_symlink_components(root, paths)
         relative_paths = tuple(sorted(self.git.relative_paths(root, paths)))
         self._validate_checkpoint_paths(paths, relative_paths)
@@ -292,6 +293,7 @@ class ContentRepositoryService:
             "actor_id": actor_id,
             "trigger": trigger,
             "message": message,
+            "worktree_ref": self._worktree_ref(repository, root),
         }
         operation_id = (
             "gitop_"
@@ -304,7 +306,9 @@ class ContentRepositoryService:
         )
         checkpoint_id = "checkpoint_" + operation_id.removeprefix("gitop_")
 
-        with self._repository_lock(self._lock_path(repository.space_id)):
+        with self.repository_lock(
+            self.repository_lock_path(repository.space_id)
+        ):
             diagnostics = self.git.diagnostics(root)
             repository = self._converge_repository_state(
                 repository,
@@ -346,6 +350,7 @@ class ContentRepositoryService:
                         actor_id=actor_id,
                         trigger=trigger,
                         message=message,
+                        root=root,
                     )
                 raise ContentRepositoryError(
                     "checkpoint outcome is unresolved and requires "
@@ -435,6 +440,7 @@ class ContentRepositoryService:
                 actor_id=actor_id,
                 trigger=trigger,
                 message=message,
+                root=root,
             )
 
     def prepare_restore_candidate(
@@ -469,7 +475,9 @@ class ContentRepositoryService:
             "ref_name": ref_name,
             "commit_oid": checkpoint.commit_oid,
         }
-        with self._repository_lock(self._lock_path(repository.space_id)):
+        with self.repository_lock(
+            self.repository_lock_path(repository.space_id)
+        ):
             operation = self.journal.begin_git_operation(
                 operation_id=operation_id,
                 repository_id=repository.repository_id,
@@ -558,8 +566,8 @@ class ContentRepositoryService:
         actor_id: str,
         trigger: str,
         message: str,
+        root: Path,
     ) -> GitCheckpointRecord:
-        root = Path(repository.root_path)
         observed = self.git.repo_state_token(root)
         return self.journal.complete_git_checkpoint(
             checkpoint_id=checkpoint_id,
@@ -588,6 +596,44 @@ class ContentRepositoryService:
                 f"repository {repository_id!r} is not a Content Repository"
             )
         return repository
+
+    def _checkpoint_root(
+        self,
+        repository: GitRepositoryRecord,
+        requested: Path | None,
+    ) -> Path:
+        user_root = Path(repository.root_path).expanduser().resolve()
+        if requested is None:
+            return user_root
+        target = requested.expanduser().resolve()
+        for worktree in self.git.list_worktrees(user_root):
+            if worktree.path != target:
+                continue
+            if target == user_root:
+                return target
+            if worktree.ref_name and worktree.ref_name.startswith(
+                "refs/heads/eigent/"
+            ):
+                return target
+            raise ContentRepositoryError(
+                "checkpoint target is not an Eigent-owned worktree"
+            )
+        raise ContentRepositoryError(
+            "checkpoint target is not registered with the Content Repository"
+        )
+
+    def _worktree_ref(
+        self,
+        repository: GitRepositoryRecord,
+        root: Path,
+    ) -> str:
+        user_root = Path(repository.root_path).expanduser().resolve()
+        if root == user_root:
+            return "USER_WORKTREE"
+        for worktree in self.git.list_worktrees(user_root):
+            if worktree.path == root and worktree.ref_name:
+                return worktree.ref_name
+        raise ContentRepositoryError("checkpoint worktree ref is unavailable")
 
     def _converge_repository_state(
         self,
@@ -657,7 +703,7 @@ class ContentRepositoryService:
                         f"{lexical.as_posix()}"
                     )
 
-    def _lock_path(self, space_id: str) -> Path:
+    def repository_lock_path(self, space_id: str) -> Path:
         return (
             self.state_root
             / "git-operation-locks"
@@ -665,7 +711,7 @@ class ContentRepositoryService:
         )
 
     @contextmanager
-    def _repository_lock(self, lock_path: Path) -> Iterator[None]:
+    def repository_lock(self, lock_path: Path) -> Iterator[None]:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
             descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)

@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 _UNSAFE_INHERITED_GIT_ENV = {
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -105,6 +105,14 @@ class RepositoryDiagnostics:
     state_token: RepoStateToken
     has_submodules: bool
     has_remotes: bool
+
+
+@dataclass(frozen=True)
+class GitWorktreeInfo:
+    path: Path
+    head_oid: str | None
+    ref_name: str | None
+    detached: bool
 
 
 class GitBackend:
@@ -428,10 +436,7 @@ class GitBackend:
         *,
         expected_oid: str | None = None,
     ) -> str:
-        if not ref_name.startswith("refs/eigent/") or not re.fullmatch(
-            r"refs/eigent/[A-Za-z0-9._/-]+", ref_name
-        ):
-            raise ValueError("ref must be inside refs/eigent/")
+        self._validate_eigent_ref(ref_name)
         self._validate_object_name(commit_oid)
         args = ["update-ref", ref_name, commit_oid]
         if expected_oid is not None:
@@ -445,14 +450,279 @@ class GitBackend:
         repository_root: Path,
         ref_name: str,
     ) -> str | None:
-        if not ref_name.startswith("refs/eigent/"):
-            raise ValueError("only Eigent-owned refs may be queried")
+        self._validate_eigent_ref(ref_name)
         result = self._run(
             repository_root,
             ("rev-parse", "--verify", ref_name),
             check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else None
+
+    def blob_oid_at_path(
+        self,
+        repository_root: Path,
+        commit_oid: str,
+        relative_path: str,
+    ) -> str | None:
+        """Resolve one regular Git blob without checking out a worktree."""
+
+        self._validate_object_name(commit_oid)
+        path = self._normalize_relative_git_path(relative_path)
+        result = self._run(
+            repository_root,
+            ("ls-tree", "-z", commit_oid, "--", path),
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        metadata, separator, observed_path = result.stdout.partition("\t")
+        if separator != "\t" or observed_path.rstrip("\0") != path:
+            return None
+        parts = metadata.split()
+        if len(parts) != 3 or parts[1] != "blob":
+            return None
+        oid = parts[2]
+        self._validate_object_name(oid)
+        return oid
+
+    def object_size(self, repository_root: Path, object_oid: str) -> int:
+        self._validate_object_name(object_oid)
+        result = self._run(repository_root, ("cat-file", "-s", object_oid))
+        try:
+            value = int(result.stdout.strip())
+        except ValueError as exc:
+            raise GitBackendError(
+                "Git returned an invalid object size"
+            ) from exc
+        if value < 0:
+            raise GitBackendError("Git returned a negative object size")
+        return value
+
+    def read_blob_range(
+        self,
+        repository_root: Path,
+        object_oid: str,
+        *,
+        start_offset: int,
+        max_bytes: int,
+    ) -> bytes:
+        """Stream a bounded blob range without buffering the whole object."""
+
+        self._validate_object_name(object_oid)
+        if start_offset < 0 or max_bytes < 1:
+            raise ValueError("invalid Git blob byte range")
+        command = self._command(
+            repository_root,
+            ("cat-file", "blob", object_oid),
+        )
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._environment(),
+            )
+        except OSError as exc:
+            raise GitBackendError("failed to stream Git blob") from exc
+        assert process.stdout is not None
+        try:
+            remaining = start_offset
+            while remaining:
+                chunk = process.stdout.read(min(remaining, 64 * 1024))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            data = process.stdout.read(max_bytes)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+            try:
+                _, stderr = process.communicate(timeout=self.timeout_seconds)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                _, stderr = process.communicate()
+        if remaining:
+            return b""
+        if process.returncode not in {0, -15}:
+            raise GitCommandError(
+                args=("cat-file", "blob", object_oid),
+                returncode=process.returncode or -1,
+                stderr=stderr.decode("utf-8", errors="replace").strip(),
+            )
+        return data
+
+    def create_anchor_commit(
+        self,
+        repository_root: Path,
+        *,
+        message: str,
+    ) -> str:
+        if not message.strip():
+            raise ValueError("anchor commit message is required")
+        empty_tree = self._run(
+            repository_root,
+            ("mktree",),
+            input_text="",
+        ).stdout.strip()
+        if not empty_tree:
+            raise GitBackendError("Git did not create an empty tree")
+        commit = self._run(
+            repository_root,
+            ("commit-tree", empty_tree, "-m", message),
+            identity=("Eigent", "noreply@eigent.ai"),
+        ).stdout.strip()
+        self._validate_object_name(commit)
+        return commit
+
+    def list_worktrees(
+        self,
+        repository_root: Path,
+    ) -> tuple[GitWorktreeInfo, ...]:
+        result = self._run(
+            repository_root,
+            ("worktree", "list", "--porcelain", "-z"),
+        )
+        records: list[GitWorktreeInfo] = []
+        fields: dict[str, str] = {}
+        for value in result.stdout.split("\0"):
+            if not value:
+                if "worktree" in fields:
+                    records.append(self._worktree_from_fields(fields))
+                    fields = {}
+                continue
+            key, _, item = value.partition(" ")
+            fields[key] = item
+        if "worktree" in fields:
+            records.append(self._worktree_from_fields(fields))
+        return tuple(records)
+
+    def is_worktree_clean(self, worktree_root: Path) -> bool:
+        result = self._run(
+            worktree_root,
+            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        )
+        return not result.stdout
+
+    def worktree_matches_commit(
+        self,
+        worktree_root: Path,
+        commit_oid: str,
+    ) -> bool:
+        self._validate_object_name(commit_oid)
+        changed = self._run(
+            worktree_root,
+            ("diff", "--quiet", commit_oid, "--"),
+            check=False,
+        )
+        if changed.returncode != 0:
+            return False
+        untracked = self._run(
+            worktree_root,
+            ("ls-files", "--others", "--exclude-standard", "-z"),
+        )
+        return not untracked.stdout
+
+    def refresh_owned_worktree(
+        self,
+        worktree_root: Path,
+        *,
+        expected_projected_head: str,
+        target_head: str,
+    ) -> None:
+        self._validate_object_name(expected_projected_head)
+        self._validate_object_name(target_head)
+        if self.worktree_matches_commit(worktree_root, target_head):
+            return
+        if not self.worktree_matches_commit(
+            worktree_root,
+            expected_projected_head,
+        ):
+            raise GitBackendError(
+                "Project worktree contains external or uncheckpointed changes"
+            )
+        self._run(worktree_root, ("reset", "--hard", target_head))
+        if not self.worktree_matches_commit(worktree_root, target_head):
+            raise GitBackendError("Project worktree refresh did not converge")
+
+    def ensure_worktree(
+        self,
+        repository_root: Path,
+        *,
+        worktree_path: Path,
+        ref_name: str,
+        commit_oid: str,
+    ) -> GitWorktreeInfo:
+        self._validate_eigent_ref(ref_name, branch_only=True)
+        self._validate_object_name(commit_oid)
+        root = repository_root.expanduser().resolve()
+        destination = worktree_path.expanduser().resolve()
+        if destination == root or root in destination.parents:
+            raise GitBackendError(
+                "Eigent worktrees must live outside the User Worktree"
+            )
+        existing_ref = self.ref_oid(root, ref_name)
+        if existing_ref is None:
+            self.update_eigent_ref(root, ref_name, commit_oid)
+        elif existing_ref != commit_oid:
+            raise GitBackendError(
+                f"worktree ref {ref_name!r} points to another commit"
+            )
+        for item in self.list_worktrees(root):
+            if item.path == destination:
+                if item.ref_name != ref_name:
+                    raise GitBackendError(
+                        "worktree path is registered for another ref"
+                    )
+                return item
+            if item.ref_name == ref_name:
+                raise GitBackendError(
+                    "Eigent ref is already checked out in another worktree"
+                )
+        if destination.exists():
+            if not destination.is_dir() or any(destination.iterdir()):
+                raise GitBackendError(
+                    f"worktree destination is not empty: {destination}"
+                )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        self._run(
+            root,
+            (
+                "worktree",
+                "add",
+                str(destination),
+                ref_name.removeprefix("refs/heads/"),
+            ),
+        )
+        for item in self.list_worktrees(root):
+            if item.path == destination and item.ref_name == ref_name:
+                return item
+        raise GitBackendError("Git did not register the requested worktree")
+
+    @staticmethod
+    def _worktree_from_fields(fields: dict[str, str]) -> GitWorktreeInfo:
+        return GitWorktreeInfo(
+            path=Path(fields["worktree"]).expanduser().resolve(),
+            head_oid=fields.get("HEAD") or None,
+            ref_name=fields.get("branch") or None,
+            detached="detached" in fields,
+        )
+
+    @staticmethod
+    def _validate_eigent_ref(
+        ref_name: str,
+        *,
+        branch_only: bool = False,
+    ) -> None:
+        allowed_prefixes = (
+            ("refs/heads/eigent/",)
+            if branch_only
+            else ("refs/eigent/", "refs/heads/eigent/")
+        )
+        if not ref_name.startswith(allowed_prefixes) or not re.fullmatch(
+            r"refs/(?:heads/)?eigent/[A-Za-z0-9._/-]+",
+            ref_name,
+        ):
+            raise ValueError("ref must be inside an Eigent-owned namespace")
 
     def _operation_state(self, repository_root: Path) -> str:
         markers = (
@@ -478,6 +748,22 @@ class GitBackend:
     def _validate_object_name(value: str) -> None:
         if not re.fullmatch(r"[0-9a-fA-F]{4,64}", value):
             raise ValueError("Git object id must be hexadecimal")
+
+    @staticmethod
+    def _normalize_relative_git_path(value: str) -> str:
+        path = PurePosixPath(value)
+        if (
+            not value
+            or path.is_absolute()
+            or ".." in path.parts
+            or value.startswith(("~/", "\\\\"))
+            or (len(value) > 1 and value[1] == ":")
+        ):
+            raise ValueError("Git path must stay inside the repository")
+        normalized = path.as_posix()
+        if normalized in {"", "."}:
+            raise ValueError("Git path must name a file")
+        return normalized
 
     def _relative_pathspecs(
         self,
@@ -562,7 +848,43 @@ class GitBackend:
         *,
         check: bool = True,
         identity: tuple[str, str] | None = None,
+        input_text: str | None = None,
     ) -> GitCommandResult:
+        environment = self._environment(identity=identity)
+        command = self._command(cwd, args)
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                input=input_text,
+                timeout=self.timeout_seconds,
+                env=environment,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise GitBackendError(
+                f"failed to execute typed Git operation: {args[0]}"
+            ) from exc
+        stdout = completed.stdout[: self.max_output_chars]
+        stderr = completed.stderr[: self.max_output_chars]
+        if check and completed.returncode != 0:
+            raise GitCommandError(
+                args=args,
+                returncode=completed.returncode,
+                stderr=stderr.strip(),
+            )
+        return GitCommandResult(
+            stdout=stdout,
+            stderr=stderr,
+            returncode=completed.returncode,
+        )
+
+    def _environment(
+        self,
+        *,
+        identity: tuple[str, str] | None = None,
+    ) -> dict[str, str]:
         environment: dict[str, str] = dict(os.environ)
         for key in tuple(environment):
             if (
@@ -592,7 +914,10 @@ class GitBackend:
                     "GIT_COMMITTER_EMAIL": email,
                 }
             )
-        command = (
+        return environment
+
+    def _command(self, cwd: Path, args: tuple[str, ...]) -> tuple[str, ...]:
+        return (
             self.git_executable,
             "-c",
             f"core.hooksPath={self.hooks_path}",
@@ -603,30 +928,4 @@ class GitBackend:
             "-C",
             str(cwd),
             *args,
-        )
-        try:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                env=environment,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise GitBackendError(
-                f"failed to execute typed Git operation: {args[0]}"
-            ) from exc
-        stdout = completed.stdout[: self.max_output_chars]
-        stderr = completed.stderr[: self.max_output_chars]
-        if check and completed.returncode != 0:
-            raise GitCommandError(
-                args=args,
-                returncode=completed.returncode,
-                stderr=stderr.strip(),
-            )
-        return GitCommandResult(
-            stdout=stdout,
-            stderr=stderr,
-            returncode=completed.returncode,
         )

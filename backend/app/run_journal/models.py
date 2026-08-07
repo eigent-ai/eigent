@@ -194,6 +194,83 @@ class GitCheckpointRecord:
 
 
 @dataclass(frozen=True)
+class ProjectGitStateRecord:
+    project_id: str
+    repository_id: str
+    integration_ref: str | None
+    integration_head: str | None
+    last_synced_user_head: str | None
+    pending_apply: bool
+    worktree_path: str | None
+    projected_head: str | None
+    state: str
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class RunGitMaterializationRecord:
+    run_id: str
+    project_id: str
+    repository_id: str
+    workspace_base_ref: str | None
+    workspace_base_commit: str | None
+    project_state_version: int
+    materialization_state: str
+    run_ref: str | None
+    worktree_path: str | None
+    promoted_commit: str | None
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceReadSnapshotRecord:
+    snapshot_id: str
+    run_id: str
+    project_id: str
+    repository_id: str
+    generation: int
+    project_base_commit: str | None
+    common_base_commit: str | None
+    project_state_version: int
+    snapshot_ref: str | None
+    user_head: str | None
+    user_working_state_digest: str
+    overlay_manifest_digest: str
+    state: str
+    expires_at: float | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceOverlayEntryRecord:
+    snapshot_id: str
+    relative_path: str
+    source_kind: str
+    entry_state: str
+    source_token: dict[str, Any]
+    project_blob_oid: str | None
+    size_bytes: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceSnapshotRangeRecord:
+    snapshot_id: str
+    relative_path: str
+    start_offset: int
+    end_offset: int
+    content_digest: str
+    cache_key: str
+    created_at: float
+
+
+@dataclass(frozen=True)
 class ToolCallRecord:
     tool_call_id: str
     run_id: str

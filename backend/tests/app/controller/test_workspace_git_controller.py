@@ -11,7 +11,11 @@ from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import workspace_git_controller
 from app.router import register_routers
 from app.run_journal import SQLiteRunJournal
-from app.workspace_git import ContentRepositoryService, GitBackend
+from app.workspace_git import (
+    ContentRepositoryService,
+    GitBackend,
+    WorkspaceGitCoordinator,
+)
 
 
 @dataclass
@@ -232,3 +236,181 @@ def test_workspace_git_rejects_escaping_checkpoint_path(git_api):
     )
 
     assert response.status_code == 422
+
+
+def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
+    client, service, _, space = git_api
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    service.git.commit_paths(space, (seed,), message="seed")
+    service.journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    coordinator = WorkspaceGitCoordinator(
+        service.journal,
+        state_root=service.state_root,
+        git_backend=service.git,
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+
+    response = client.get(
+        "/api/v1/runs/run-1/git/snapshot",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["materialized"] is False
+
+    response = client.get(
+        "/api/v1/runs/run-1/git/snapshot/files",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "seed.txt",
+            "max_bytes": 4,
+        },
+        headers=_headers(),
+    )
+    assert response.status_code == 206
+    assert response.content == b"seed"
+    assert response.headers["content-range"] == "bytes 0-3/5"
+    assert response.headers["x-eigent-snapshot-source"] == "project_blob"
+    assert str(space) not in response.text
+
+    response = client.get(
+        "/api/v1/runs/run-1/git/snapshot",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["materialized"] is True
+    assert response.json()["snapshot"]["generation"] == 0
+
+    response = client.get(
+        "/api/v1/runs/run-1/git/workspace",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["materialized"] is False
+    assert response.json()["run"]["materialization_state"] == (
+        "unmaterialized"
+    )
+
+    response = client.post(
+        "/api/v1/runs/run-1/git/workspace:materialize",
+        headers=_headers(),
+        json={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "operation_request_id": "materialize-run-1",
+            "expected_repo_state_digest": service.git.repo_state_token(
+                space
+            ).digest,
+            "expected_project_version": admission.project.version,
+            "expected_project_head": admission.project.integration_head,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["materialized"] is True
+    assert response.json()["freshness"] == "current"
+    assert response.json()["run"]["materialization_state"] == "materialized"
+    assert str(service.state_root) not in response.text
+    assert str(space) not in response.text
+
+    run = service.journal.get_run_git_materialization("run-1")
+    project = service.journal.get_project_git_state("project-1")
+    assert run is not None and run.worktree_path
+    assert project is not None and project.integration_head
+    run_seed = Path(run.worktree_path) / "seed.txt"
+    run_seed.write_text("agent edit\n", encoding="utf-8")
+    response = client.post(
+        "/api/v1/spaces/space-1/git/checkpoints",
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "checkpoint-run-1",
+            "expected_repo_state_digest": service.git.repo_state_token(
+                Path(run.worktree_path)
+            ).digest,
+            "paths": ["seed.txt"],
+            "path_sources": {"seed.txt": "agent_modified"},
+            "target_role": "run",
+            "target_id": "run-1",
+            "actor_id": "agent-1",
+            "trigger": "run_terminal",
+            "message": "Checkpoint Run output",
+            "workspace_source": "run",
+            "run_id": "run-1",
+        },
+    )
+    assert response.status_code == 201
+    run_head = response.json()["commit_oid"]
+
+    response = client.post(
+        "/api/v1/runs/run-1/git/workspace:promote",
+        headers=_headers(),
+        json={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "operation_request_id": "promote-run-1",
+            "expected_run_state_digest": service.git.repo_state_token(
+                Path(run.worktree_path)
+            ).digest,
+            "expected_project_version": project.version,
+            "expected_project_head": project.integration_head,
+            "expected_run_head": run_head,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["pending_apply"] is True
+    assert response.json()["freshness"] == "stale"
+    assert response.json()["run"]["materialization_state"] == "promoted"
+    assert seed.read_text(encoding="utf-8") == "seed\n"
+    promoted_payload = response.json()
+
+    response = client.post(
+        "/api/v1/projects/project-1/git/workspace:refresh",
+        headers=_headers(),
+        json={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "operation_request_id": "refresh-project-1",
+            "expected_projection_state_digest": promoted_payload[
+                "projection_state_digest"
+            ],
+            "expected_project_version": promoted_payload["version"],
+            "expected_integration_head": promoted_payload["integration_head"],
+            "expected_projected_head": promoted_payload["projected_head"],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["freshness"] == "current"
+    projected = service.journal.get_project_git_state("project-1")
+    assert projected is not None and projected.worktree_path
+    assert (Path(projected.worktree_path) / "seed.txt").read_text() == (
+        "agent edit\n"
+    )
+    assert seed.read_text(encoding="utf-8") == "seed\n"
+
+    response = client.get(
+        "/api/v1/projects/project-1/git/workspace",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["integration_head"] == run_head
+    assert response.json()["run"] is None

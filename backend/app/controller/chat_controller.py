@@ -90,6 +90,7 @@ from app.workspace_config.admission import (
     EnvironmentAdmissionTemplate,
     LegacyEnvironmentImporter,
 )
+from app.workspace_git import get_default_workspace_git_coordinator
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
@@ -680,6 +681,26 @@ async def _prepare_chat_run(
                 environment.spec,
                 template=template,
             )
+            try:
+                await asyncio.to_thread(
+                    get_default_workspace_git_coordinator().admit_run,
+                    space_id=run_context.space_id,
+                    project_id=run_context.project_id,
+                    run_id=run_context.run_id,
+                )
+            except Exception:
+                # Git is optional at Run admission. A broken repository blocks
+                # later Git/file mutation, while pure conversation remains
+                # available for recovery and user guidance.
+                chat_logger.warning(
+                    "Failed to pin optional Run Git workspace",
+                    extra={
+                        "space_id": run_context.space_id,
+                        "project_id": run_context.project_id,
+                        "run_id": run_context.run_id,
+                    },
+                    exc_info=True,
+                )
         attempt = await asyncio.to_thread(
             journal.create_run_attempt,
             run_context.run_id,
