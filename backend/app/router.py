@@ -36,6 +36,7 @@ from app.controller import (
     task_controller,
     tool_controller,
     workspace_controller,
+    workspace_git_controller,
 )
 
 logger = logging.getLogger("router")
@@ -121,6 +122,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": workspace_controller.router,
             "tags": ["workspace"],
             "description": "Space-level local workspace binding",
+        },
+        {
+            "router": workspace_git_controller.router,
+            "tags": ["workspace-git"],
+            "description": "Authenticated local Space Git operations",
+            "self_authenticated": True,
         },
     ]
 

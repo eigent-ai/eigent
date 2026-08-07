@@ -18,22 +18,46 @@ from app.workspace_git.backend import (
     GitCommandError,
     GitCommandResult,
     NestedRepositoryError,
+    RepositoryDiagnostics,
     RepositoryProbe,
+    RepoStateToken,
 )
 from app.workspace_git.configuration import (
     ConfigurationRepositoryError,
     ConfigurationRepositoryResult,
     ConfigurationRepositoryService,
 )
+from app.workspace_git.content import (
+    ContentRepositoryConsentRequired,
+    ContentRepositoryError,
+    ContentRepositoryInspection,
+    ContentRepositoryResult,
+    ContentRepositoryService,
+    ContentRepositoryStatus,
+    NoCheckpointChangesError,
+    RepositoryStateChangedError,
+    RestoreCandidate,
+)
 
 __all__ = [
     "ConfigurationRepositoryError",
     "ConfigurationRepositoryResult",
     "ConfigurationRepositoryService",
+    "ContentRepositoryConsentRequired",
+    "ContentRepositoryError",
+    "ContentRepositoryInspection",
+    "ContentRepositoryResult",
+    "ContentRepositoryService",
+    "ContentRepositoryStatus",
     "GitBackend",
     "GitBackendError",
     "GitCommandError",
     "GitCommandResult",
     "NestedRepositoryError",
+    "NoCheckpointChangesError",
+    "RepoStateToken",
+    "RepositoryDiagnostics",
+    "RepositoryStateChangedError",
     "RepositoryProbe",
+    "RestoreCandidate",
 ]
