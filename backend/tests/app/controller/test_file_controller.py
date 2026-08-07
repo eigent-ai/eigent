@@ -151,6 +151,100 @@ def test_task_changes_include_all_outputs_but_only_recent_workspace_edits(
     assert all(item["modifiedAt"] > 0 for item in files)
 
 
+def test_task_changes_exclude_files_written_after_run_attempt(tmp_path):
+    output_root = tmp_path / "outputs"
+    working_root = tmp_path / "shared-space"
+    output_root.mkdir()
+    working_root.mkdir()
+    started_at = time.time() - 120
+    ended_at = started_at + 30
+
+    current_run_file = working_root / "bank-transfer.csv"
+    current_run_file.write_text("current", encoding="utf-8")
+    os.utime(
+        current_run_file,
+        (started_at + 10, started_at + 10),
+    )
+    future_run_file = working_root / "long-horizon" / "report.md"
+    future_run_file.parent.mkdir()
+    future_run_file.write_text("future", encoding="utf-8")
+    os.utime(
+        future_run_file,
+        (ended_at + 60, ended_at + 60),
+    )
+
+    files = file_controller._list_task_changed_files(
+        SimpleNamespace(
+            task_output_root=str(output_root),
+            working_directory=str(working_root),
+            task_start_time=started_at,
+        ),
+        modification_windows=((started_at - 1, ended_at),),
+    )
+
+    assert [item["relativePath"] for item in files] == [
+        "bank-transfer.csv"
+    ]
+
+
+def test_task_changes_endpoint_freezes_completed_run_manifest(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    started_at = time.time() - 120
+    ended_at = started_at + 30
+    changed_file = tmp_path / "report.csv"
+    changed_file.write_text("report", encoding="utf-8")
+    os.utime(changed_file, (started_at + 10, started_at + 10))
+    snapshot = SimpleNamespace(
+        project_id="project-1",
+        task_output_root=str(tmp_path / "outputs"),
+        working_directory=str(tmp_path),
+        task_start_time=started_at,
+        artifact_manifest=None,
+    )
+    resolver = MagicMock()
+    resolver.store.get_snapshot.return_value = snapshot
+    journal = MagicMock()
+    journal.get_run.return_value = SimpleNamespace(
+        project_id="project-1",
+        status="completed",
+        created_at=started_at,
+        updated_at=ended_at,
+    )
+    journal.list_run_attempts.return_value = [
+        SimpleNamespace(started_at=started_at, ended_at=ended_at)
+    ]
+    monkeypatch.setattr(
+        file_controller, "get_workspace_resolver", lambda: resolver
+    )
+    monkeypatch.setattr(
+        file_controller, "get_default_run_journal", lambda: journal
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    response = client.get(
+        "/files/changes",
+        params={
+            "task_id": "task-1",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+        headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+    )
+
+    assert response.status_code == 200
+    assert [item["relativePath"] for item in response.json()] == [
+        "report.csv"
+    ]
+    resolver.store.freeze_artifact_manifest.assert_called_once_with(
+        "user@example.com", snapshot, response.json()
+    )
+
+
 def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -192,8 +286,13 @@ def test_task_changes_endpoint_requires_local_capability(monkeypatch, tmp_path):
     )
     resolver = MagicMock()
     resolver.store.get_snapshot.return_value = snapshot
+    journal = MagicMock()
+    journal.get_run.return_value = None
     monkeypatch.setattr(
         file_controller, "get_workspace_resolver", lambda: resolver
+    )
+    monkeypatch.setattr(
+        file_controller, "get_default_run_journal", lambda: journal
     )
 
     app = FastAPI()
