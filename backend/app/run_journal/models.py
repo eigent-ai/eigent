@@ -102,16 +102,27 @@ class AttemptEnvironmentBinding:
 @dataclass(frozen=True)
 class WorkspaceConfigRevisionRecord:
     revision_id: str
-    space_id: str
     bundle_id: str
     revision_number: int
-    config_placement: str
     status: str
     version: int
     manifest: dict[str, Any]
     manifest_digest: str
     created_by: str
     created_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceConfigMaterializationRecord:
+    materialization_id: str
+    space_id: str
+    revision_id: str
+    config_placement: str
+    state: str
+    local_override_digest: str
+    materialized_at: float | None
+    created_at: float
+    updated_at: float
 
 
 @dataclass(frozen=True)

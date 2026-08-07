@@ -50,6 +50,7 @@ from app.run_journal.models import (
     RunRecord,
     StartupReconciliationResult,
     ToolCallRecord,
+    WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
 )
 from app.run_journal.paths import default_run_journal_path
@@ -344,12 +345,8 @@ BEGIN IMMEDIATE;
 
 CREATE TABLE workspace_config_revisions (
     revision_id TEXT PRIMARY KEY,
-    space_id TEXT NOT NULL,
     bundle_id TEXT NOT NULL,
     revision_number INTEGER NOT NULL CHECK (revision_number > 0),
-    config_placement TEXT NOT NULL CHECK (
-        config_placement IN ('in_repo', 'sidecar')
-    ),
     status TEXT NOT NULL CHECK (
         status IN ('draft', 'validated', 'published', 'deprecated')
     ),
@@ -358,11 +355,11 @@ CREATE TABLE workspace_config_revisions (
     manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64),
     created_by TEXT NOT NULL,
     created_at REAL NOT NULL,
-    UNIQUE(space_id, revision_number)
+    UNIQUE(bundle_id, revision_number)
 );
 
-CREATE INDEX workspace_config_revisions_space_idx
-ON workspace_config_revisions(space_id, revision_number DESC);
+CREATE INDEX workspace_config_revisions_bundle_idx
+ON workspace_config_revisions(bundle_id, revision_number DESC);
 
 CREATE TABLE workspace_config_materializations (
     materialization_id TEXT PRIMARY KEY,
@@ -370,6 +367,9 @@ CREATE TABLE workspace_config_materializations (
     revision_id TEXT NOT NULL REFERENCES workspace_config_revisions(
         revision_id
     ) ON DELETE RESTRICT,
+    config_placement TEXT NOT NULL CHECK (
+        config_placement IN ('in_repo', 'sidecar')
+    ),
     state TEXT NOT NULL CHECK (
         state IN ('pending', 'materialized', 'needs_attention', 'degraded')
     ),
@@ -534,10 +534,8 @@ class SQLiteRunJournal:
         self,
         *,
         revision_id: str,
-        space_id: str,
         bundle_id: str,
         revision_number: int,
-        config_placement: str,
         manifest: dict[str, Any],
         status: str = "validated",
         created_by: str,
@@ -547,7 +545,6 @@ class SQLiteRunJournal:
 
         required = {
             "revision_id": revision_id,
-            "space_id": space_id,
             "bundle_id": bundle_id,
             "created_by": created_by,
         }
@@ -556,8 +553,6 @@ class SQLiteRunJournal:
                 raise ValueError(f"{field_name} is required")
         if revision_number < 1:
             raise ValueError("revision_number must be positive")
-        if config_placement not in {"in_repo", "sidecar"}:
-            raise ValueError("invalid config_placement")
         if status not in {"draft", "validated", "published", "deprecated"}:
             raise ValueError("invalid workspace config revision status")
         timestamp = now if now is not None else time.time()
@@ -565,35 +560,27 @@ class SQLiteRunJournal:
         manifest_digest = canonical_digest(manifest)
         expected = (
             revision_id,
-            space_id,
             bundle_id,
             revision_number,
-            config_placement,
-            status,
             manifest_json,
             manifest_digest,
-            created_by,
         )
         with self._write_transaction() as connection:
             row = connection.execute(
                 """
                 SELECT * FROM workspace_config_revisions
                 WHERE revision_id = ?
-                   OR (space_id = ? AND revision_number = ?)
+                   OR (bundle_id = ? AND revision_number = ?)
                 """,
-                (revision_id, space_id, revision_number),
+                (revision_id, bundle_id, revision_number),
             ).fetchone()
             if row is not None:
                 actual = (
                     row["revision_id"],
-                    row["space_id"],
                     row["bundle_id"],
                     int(row["revision_number"]),
-                    row["config_placement"],
-                    row["status"],
                     row["manifest_json"],
                     row["manifest_digest"],
-                    row["created_by"],
                 )
                 if actual != expected:
                     raise IdempotencyConflictError(
@@ -604,12 +591,21 @@ class SQLiteRunJournal:
             connection.execute(
                 """
                 INSERT INTO workspace_config_revisions(
-                    revision_id, space_id, bundle_id, revision_number,
-                    config_placement, status, manifest_json, manifest_digest,
+                    revision_id, bundle_id, revision_number,
+                    status, manifest_json, manifest_digest,
                     created_by, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (*expected, timestamp),
+                (
+                    revision_id,
+                    bundle_id,
+                    revision_number,
+                    status,
+                    manifest_json,
+                    manifest_digest,
+                    created_by,
+                    timestamp,
+                ),
             )
             row = connection.execute(
                 """
@@ -634,6 +630,131 @@ class SQLiteRunJournal:
             ).fetchone()
             return (
                 self._workspace_config_revision_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def put_workspace_config_materialization(
+        self,
+        *,
+        materialization_id: str,
+        space_id: str,
+        revision_id: str,
+        config_placement: str,
+        state: str = "materialized",
+        local_override_digest: str = "",
+        now: float | None = None,
+    ) -> WorkspaceConfigMaterializationRecord:
+        """Record one Space-specific placement of a shared Bundle revision."""
+
+        required = {
+            "materialization_id": materialization_id,
+            "space_id": space_id,
+            "revision_id": revision_id,
+        }
+        for field_name, value in required.items():
+            if not value.strip():
+                raise ValueError(f"{field_name} is required")
+        if config_placement not in {"in_repo", "sidecar"}:
+            raise ValueError("invalid config_placement")
+        if state not in {
+            "pending",
+            "materialized",
+            "needs_attention",
+            "degraded",
+        }:
+            raise ValueError("invalid workspace config materialization state")
+        timestamp = now if now is not None else time.time()
+        expected = (
+            materialization_id,
+            space_id,
+            revision_id,
+            config_placement,
+            state,
+            local_override_digest,
+        )
+        with self._write_transaction() as connection:
+            revision = connection.execute(
+                """
+                SELECT revision_id FROM workspace_config_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            if revision is None:
+                raise RunNotFoundError(
+                    f"workspace config revision {revision_id!r} does not exist"
+                )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_materializations
+                WHERE materialization_id = ?
+                   OR (
+                       space_id = ? AND revision_id = ?
+                       AND local_override_digest = ?
+                   )
+                """,
+                (
+                    materialization_id,
+                    space_id,
+                    revision_id,
+                    local_override_digest,
+                ),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["materialization_id"],
+                    row["space_id"],
+                    row["revision_id"],
+                    row["config_placement"],
+                    row["state"],
+                    row["local_override_digest"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"workspace config materialization "
+                        f"{materialization_id!r} conflicts with an existing "
+                        "Space installation"
+                    )
+                return self._workspace_config_materialization_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO workspace_config_materializations(
+                    materialization_id, space_id, revision_id,
+                    config_placement, state, local_override_digest,
+                    materialized_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    *expected,
+                    timestamp if state == "materialized" else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_materializations
+                WHERE materialization_id = ?
+                """,
+                (materialization_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_config_materialization_from_row(row)
+
+    def get_workspace_config_materialization(
+        self, materialization_id: str
+    ) -> WorkspaceConfigMaterializationRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_config_materializations
+                WHERE materialization_id = ?
+                """,
+                (materialization_id,),
+            ).fetchone()
+            return (
+                self._workspace_config_materialization_from_row(row)
                 if row is not None
                 else None
             )
@@ -3926,16 +4047,34 @@ class SQLiteRunJournal:
     ) -> WorkspaceConfigRevisionRecord:
         return WorkspaceConfigRevisionRecord(
             revision_id=row["revision_id"],
-            space_id=row["space_id"],
             bundle_id=row["bundle_id"],
             revision_number=int(row["revision_number"]),
-            config_placement=row["config_placement"],
             status=row["status"],
             version=int(row["version"]),
             manifest=json.loads(row["manifest_json"]),
             manifest_digest=row["manifest_digest"],
             created_by=row["created_by"],
             created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _workspace_config_materialization_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceConfigMaterializationRecord:
+        return WorkspaceConfigMaterializationRecord(
+            materialization_id=row["materialization_id"],
+            space_id=row["space_id"],
+            revision_id=row["revision_id"],
+            config_placement=row["config_placement"],
+            state=row["state"],
+            local_override_digest=row["local_override_digest"],
+            materialized_at=(
+                float(row["materialized_at"])
+                if row["materialized_at"] is not None
+                else None
+            ),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
         )
 
     @staticmethod
