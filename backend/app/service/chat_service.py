@@ -85,7 +85,11 @@ from app.utils.agent_memory import (
     record_workforce_memory_snapshot,
 )
 from app.utils.event_loop_utils import set_main_event_loop
-from app.utils.file_utils import get_working_directory, list_files
+from app.utils.file_utils import (
+    get_working_directory,
+    list_files,
+    post_process_gifs_in_directory,
+)
 from app.utils.server.sync_step import sync_step
 from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 from app.utils.workforce import Workforce
@@ -260,6 +264,8 @@ def collect_previous_task_context(
             skip_extensions=(".pyc", ".tmp"),
             skip_prefix=".",
         )
+        # Post-process GIFs to ensure infinite loop
+        post_process_gifs_in_directory(working_directory)
         if generated_files:
             context_parts.append("Generated Files from Previous Task:")
             for file_path in sorted(generated_files):
