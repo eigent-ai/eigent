@@ -126,6 +126,41 @@ class WorkspaceConfigMaterializationRecord:
 
 
 @dataclass(frozen=True)
+class WorkspaceBundleInstallProposalRecord:
+    proposal_id: str
+    request_id: str
+    space_id: str
+    bundle_id: str
+    revision_id: str
+    config_placement: str
+    state: str
+    version: int
+    manifest: dict[str, Any]
+    manifest_digest: str
+    assets: tuple[dict[str, Any], ...]
+    install_plan: dict[str, Any]
+    decided_by: str | None
+    decided_at: float | None
+    error_code: str | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceBundleLocalBindingRecord:
+    binding_id: str
+    proposal_id: str
+    slot_id: str
+    binding_kind: str
+    connector_id: str | None
+    opaque_connection_id: str | None
+    local_path: str | None
+    required_grants: tuple[str, ...]
+    authorized_by: str
+    authorized_at: float
+
+
+@dataclass(frozen=True)
 class EffectiveEnvironmentSpecRecord:
     environment_spec_id: str
     owner_type: str
@@ -482,6 +517,7 @@ class StartupReconciliationResult:
     outcome_unknown_tool_call_ids: tuple[str, ...]
     pending_approval_ids: tuple[str, ...]
     reconcilable_command_ids: tuple[str, ...]
+    reconcilable_bundle_install_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

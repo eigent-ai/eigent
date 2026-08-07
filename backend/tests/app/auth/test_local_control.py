@@ -15,6 +15,7 @@ from app.controller import (
     chat_controller,
     remote_command_controller,
     run_controller,
+    workspace_bundle_controller,
 )
 from app.run_journal import IdempotencyConflictError, RunNotFoundError
 
@@ -236,6 +237,21 @@ def test_every_mutating_chat_route_declares_the_control_principal():
             dependency.call is require_local_control_principal
             for dependency in route.dependant.dependencies
         ), f"{sorted(route.methods)} {route.path} is missing control auth"
+
+
+def test_every_bundle_install_route_requires_local_control_capability():
+    assert workspace_bundle_controller.router.routes
+    for route in workspace_bundle_controller.router.routes:
+        assert any(
+            dependency.call is require_local_control_principal
+            for dependency in route.dependant.dependencies
+        ), f"{sorted(route.methods)} {route.path} is missing control auth"
+    assert "server_url" not in (
+        workspace_bundle_controller.BundleProposalBody.model_fields
+    )
+    assert "server_url" not in (
+        workspace_bundle_controller.BundleMaterializeBody.model_fields
+    )
 
 
 def test_command_result_maps_missing_command_to_not_found(monkeypatch):

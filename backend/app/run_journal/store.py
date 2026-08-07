@@ -68,6 +68,8 @@ from app.run_journal.models import (
     ToolCallRecord,
     WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
+    WorkspaceBundleInstallProposalRecord,
+    WorkspaceBundleLocalBindingRecord,
     WorkspaceOverlayEntryRecord,
     WorkspaceReadSnapshotRecord,
     WorkspaceSnapshotRangeRecord,
@@ -95,7 +97,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1020,6 +1022,68 @@ PRAGMA user_version = 13;
 COMMIT;
 """
 
+_MIGRATION_V14 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE workspace_bundle_install_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE,
+    space_id TEXT NOT NULL,
+    bundle_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    config_placement TEXT NOT NULL CHECK (
+        config_placement IN ('in_repo', 'sidecar')
+    ),
+    state TEXT NOT NULL CHECK (
+        state IN (
+            'proposed', 'approved', 'materializing', 'materialized',
+            'rejected', 'needs_attention'
+        )
+    ),
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    manifest_json TEXT NOT NULL,
+    manifest_digest TEXT NOT NULL CHECK (length(manifest_digest) = 64),
+    assets_json TEXT NOT NULL,
+    install_plan_json TEXT NOT NULL,
+    decided_by TEXT,
+    decided_at REAL,
+    error_code TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    CHECK (
+        (decided_by IS NULL AND decided_at IS NULL)
+        OR (decided_by IS NOT NULL AND decided_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX workspace_bundle_install_proposals_space_idx
+ON workspace_bundle_install_proposals(space_id, updated_at DESC);
+
+CREATE TABLE workspace_bundle_local_bindings (
+    binding_id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL REFERENCES workspace_bundle_install_proposals(
+        proposal_id
+    ) ON DELETE CASCADE,
+    slot_id TEXT NOT NULL,
+    binding_kind TEXT NOT NULL CHECK (
+        binding_kind IN ('connector', 'local_path', 'script_approval')
+    ),
+    connector_id TEXT,
+    opaque_connection_id TEXT,
+    local_path TEXT,
+    required_grants_json TEXT NOT NULL,
+    authorized_by TEXT NOT NULL,
+    authorized_at REAL NOT NULL,
+    UNIQUE(proposal_id, slot_id)
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (14, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 14;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -1350,6 +1414,387 @@ class SQLiteRunJournal:
                 self._workspace_config_materialization_from_row(row)
                 if row is not None
                 else None
+            )
+
+    def get_latest_workspace_config_materialization(
+        self, space_id: str
+    ) -> WorkspaceConfigMaterializationRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_config_materializations
+                WHERE space_id = ? AND state = 'materialized'
+                ORDER BY updated_at DESC, materialization_id DESC
+                LIMIT 1
+                """,
+                (space_id,),
+            ).fetchone()
+            return (
+                self._workspace_config_materialization_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def put_workspace_bundle_install_proposal(
+        self,
+        *,
+        proposal_id: str,
+        request_id: str,
+        space_id: str,
+        bundle_id: str,
+        revision_id: str,
+        config_placement: str,
+        manifest: dict[str, Any],
+        assets: list[dict[str, Any]],
+        install_plan: dict[str, Any],
+        now: float | None = None,
+    ) -> WorkspaceBundleInstallProposalRecord:
+        """Persist a reviewable install proposal without granting anything."""
+
+        if any(
+            not value.strip()
+            for value in (
+                proposal_id,
+                request_id,
+                space_id,
+                bundle_id,
+                revision_id,
+            )
+        ):
+            raise ValueError("Bundle install proposal identity is required")
+        if config_placement not in {"in_repo", "sidecar"}:
+            raise ValueError("invalid config_placement")
+        timestamp = now if now is not None else time.time()
+        manifest_json = canonical_json(manifest)
+        manifest_digest = canonical_digest(manifest)
+        assets_json = canonical_json(assets)
+        plan_json = canonical_json(install_plan)
+        expected = (
+            proposal_id,
+            request_id,
+            space_id,
+            bundle_id,
+            revision_id,
+            config_placement,
+            manifest_json,
+            manifest_digest,
+            assets_json,
+            plan_json,
+        )
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ? OR request_id = ?
+                """,
+                (proposal_id, request_id),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["proposal_id"],
+                    row["request_id"],
+                    row["space_id"],
+                    row["bundle_id"],
+                    row["revision_id"],
+                    row["config_placement"],
+                    row["manifest_json"],
+                    row["manifest_digest"],
+                    row["assets_json"],
+                    row["install_plan_json"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        "Bundle install request was reused with another payload"
+                    )
+                return self._workspace_bundle_install_proposal_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO workspace_bundle_install_proposals(
+                    proposal_id, request_id, space_id, bundle_id,
+                    revision_id, config_placement, state, version,
+                    manifest_json, manifest_digest, assets_json,
+                    install_plan_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', 0, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    proposal_id,
+                    request_id,
+                    space_id,
+                    bundle_id,
+                    revision_id,
+                    config_placement,
+                    manifest_json,
+                    manifest_digest,
+                    assets_json,
+                    plan_json,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_bundle_install_proposal_from_row(row)
+
+    def get_workspace_bundle_install_proposal(
+        self, proposal_id: str
+    ) -> WorkspaceBundleInstallProposalRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            return (
+                self._workspace_bundle_install_proposal_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def get_materialized_workspace_bundle_proposal(
+        self, *, space_id: str, revision_id: str
+    ) -> WorkspaceBundleInstallProposalRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_bundle_install_proposals
+                WHERE space_id = ? AND revision_id = ?
+                  AND state = 'materialized'
+                ORDER BY updated_at DESC, proposal_id DESC
+                LIMIT 1
+                """,
+                (space_id, revision_id),
+            ).fetchone()
+            return (
+                self._workspace_bundle_install_proposal_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def transition_workspace_bundle_install_proposal(
+        self,
+        proposal_id: str,
+        *,
+        expected_version: int,
+        state: str,
+        decided_by: str | None = None,
+        error_code: str | None = None,
+        now: float | None = None,
+    ) -> WorkspaceBundleInstallProposalRecord:
+        allowed = {
+            "proposed": {"approved", "rejected"},
+            "approved": {"materializing", "rejected"},
+            "materializing": {"materialized", "needs_attention"},
+            "needs_attention": {"materializing", "rejected"},
+            "materialized": set(),
+            "rejected": set(),
+        }
+        if state not in allowed:
+            raise ValueError("invalid Bundle install proposal state")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(
+                    f"Bundle install proposal {proposal_id!r} does not exist"
+                )
+            if row["state"] == state:
+                if state in {"approved", "rejected"} and (
+                    not decided_by or row["decided_by"] != decided_by
+                ):
+                    raise IdempotencyConflictError(
+                        "Bundle install decision actor does not match replay"
+                    )
+                return self._workspace_bundle_install_proposal_from_row(row)
+            if int(row["version"]) != expected_version:
+                raise OptimisticConcurrencyError(
+                    f"Bundle install proposal {proposal_id!r} changed"
+                )
+            if state not in allowed[row["state"]]:
+                raise InvalidRunTransitionError(
+                    f"Bundle install proposal cannot move from "
+                    f"{row['state']!r} to {state!r}"
+                )
+            decision_actor = row["decided_by"]
+            decision_at = row["decided_at"]
+            if state in {"approved", "rejected"}:
+                if not decided_by or not decided_by.strip():
+                    raise ValueError("decided_by is required for user decision")
+                decision_actor = decided_by
+                decision_at = timestamp
+            updated = connection.execute(
+                """
+                UPDATE workspace_bundle_install_proposals
+                SET state = ?, version = version + 1,
+                    decided_by = ?, decided_at = ?, error_code = ?,
+                    updated_at = ?
+                WHERE proposal_id = ? AND version = ? AND state = ?
+                """,
+                (
+                    state,
+                    decision_actor,
+                    decision_at,
+                    error_code,
+                    timestamp,
+                    proposal_id,
+                    expected_version,
+                    row["state"],
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    f"Bundle install proposal {proposal_id!r} changed"
+                )
+            row = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_bundle_install_proposal_from_row(row)
+
+    def put_workspace_bundle_local_binding(
+        self,
+        *,
+        proposal_id: str,
+        expected_proposal_version: int,
+        slot_id: str,
+        binding_kind: str,
+        connector_id: str | None,
+        opaque_connection_id: str | None,
+        local_path: str | None,
+        required_grants: list[str],
+        authorized_by: str,
+        now: float | None = None,
+    ) -> tuple[
+        WorkspaceBundleLocalBindingRecord,
+        WorkspaceBundleInstallProposalRecord,
+    ]:
+        if binding_kind not in {"connector", "local_path", "script_approval"}:
+            raise ValueError("invalid Bundle local binding kind")
+        if not slot_id.strip() or not authorized_by.strip():
+            raise ValueError("binding slot and authorizer are required")
+        if binding_kind == "connector" and (
+            not connector_id or not opaque_connection_id
+        ):
+            raise ValueError("connector binding requires connector and connection ids")
+        if binding_kind == "local_path" and not local_path:
+            raise ValueError("local path binding requires a path")
+        if binding_kind == "script_approval" and any(
+            value is not None
+            for value in (connector_id, opaque_connection_id, local_path)
+        ):
+            raise ValueError("script approval cannot carry a resource binding")
+        binding_id = "bundlebind_" + canonical_digest(
+            {"proposal_id": proposal_id, "slot_id": slot_id}
+        )[:32]
+        grants_json = canonical_json(sorted(set(required_grants)))
+        expected = (
+            binding_id,
+            proposal_id,
+            slot_id,
+            binding_kind,
+            connector_id,
+            opaque_connection_id,
+            local_path,
+            grants_json,
+            authorized_by,
+        )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            proposal = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            if proposal is None:
+                raise RunNotFoundError(
+                    f"Bundle install proposal {proposal_id!r} does not exist"
+                )
+            row = connection.execute(
+                """SELECT * FROM workspace_bundle_local_bindings
+                WHERE proposal_id = ? AND slot_id = ?""",
+                (proposal_id, slot_id),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["binding_id"],
+                    row["proposal_id"],
+                    row["slot_id"],
+                    row["binding_kind"],
+                    row["connector_id"],
+                    row["opaque_connection_id"],
+                    row["local_path"],
+                    row["required_grants_json"],
+                    row["authorized_by"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"Bundle slot {slot_id!r} already has another decision"
+                    )
+                return (
+                    self._workspace_bundle_local_binding_from_row(row),
+                    self._workspace_bundle_install_proposal_from_row(proposal),
+                )
+            if int(proposal["version"]) != expected_proposal_version:
+                raise OptimisticConcurrencyError(
+                    f"Bundle install proposal {proposal_id!r} changed"
+                )
+            if proposal["state"] not in {"approved", "needs_attention"}:
+                raise InvalidRunTransitionError(
+                    "Bundle resources can only be bound after approval"
+                )
+            connection.execute(
+                """
+                INSERT INTO workspace_bundle_local_bindings(
+                    binding_id, proposal_id, slot_id, binding_kind,
+                    connector_id, opaque_connection_id, local_path,
+                    required_grants_json, authorized_by, authorized_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (*expected, timestamp),
+            )
+            connection.execute(
+                """UPDATE workspace_bundle_install_proposals
+                SET version = version + 1, updated_at = ?
+                WHERE proposal_id = ? AND version = ?""",
+                (timestamp, proposal_id, expected_proposal_version),
+            )
+            row = connection.execute(
+                """SELECT * FROM workspace_bundle_local_bindings
+                WHERE binding_id = ?""",
+                (binding_id,),
+            ).fetchone()
+            proposal = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            assert row is not None and proposal is not None
+            return (
+                self._workspace_bundle_local_binding_from_row(row),
+                self._workspace_bundle_install_proposal_from_row(proposal),
+            )
+
+    def list_workspace_bundle_local_bindings(
+        self, proposal_id: str
+    ) -> tuple[WorkspaceBundleLocalBindingRecord, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT * FROM workspace_bundle_local_bindings
+                WHERE proposal_id = ? ORDER BY slot_id""",
+                (proposal_id,),
+            ).fetchall()
+            return tuple(
+                self._workspace_bundle_local_binding_from_row(row)
+                for row in rows
             )
 
     def transition_workspace_config_revision(
@@ -7511,6 +7956,23 @@ class SQLiteRunJournal:
                 ORDER BY updated_at
                 """
             ).fetchall()
+            bundle_installs = connection.execute(
+                """
+                SELECT proposal_id FROM workspace_bundle_install_proposals
+                WHERE state = 'materializing'
+                ORDER BY updated_at, proposal_id
+                """
+            ).fetchall()
+            connection.execute(
+                """
+                UPDATE workspace_bundle_install_proposals
+                SET state = 'needs_attention', version = version + 1,
+                    error_code = 'desktop_restarted_during_materialization',
+                    updated_at = ?
+                WHERE state = 'materializing'
+                """,
+                (timestamp,),
+            )
         return StartupReconciliationResult(
             interrupted_run_ids=tuple(interrupted_runs),
             completed_cancel_run_ids=tuple(completed_cancels),
@@ -7522,6 +7984,9 @@ class SQLiteRunJournal:
             ),
             reconcilable_command_ids=tuple(
                 row["command_id"] for row in commands
+            ),
+            reconcilable_bundle_install_ids=tuple(
+                row["proposal_id"] for row in bundle_installs
             ),
         )
 
@@ -8449,6 +8914,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V12)
         if version < 13:
             self._connection.executescript(_MIGRATION_V13)
+        if version < 14:
+            self._connection.executescript(_MIGRATION_V14)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -8736,6 +9203,51 @@ class SQLiteRunJournal:
             ),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_bundle_install_proposal_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceBundleInstallProposalRecord:
+        return WorkspaceBundleInstallProposalRecord(
+            proposal_id=row["proposal_id"],
+            request_id=row["request_id"],
+            space_id=row["space_id"],
+            bundle_id=row["bundle_id"],
+            revision_id=row["revision_id"],
+            config_placement=row["config_placement"],
+            state=row["state"],
+            version=int(row["version"]),
+            manifest=json.loads(row["manifest_json"]),
+            manifest_digest=row["manifest_digest"],
+            assets=tuple(json.loads(row["assets_json"])),
+            install_plan=json.loads(row["install_plan_json"]),
+            decided_by=row["decided_by"],
+            decided_at=(
+                float(row["decided_at"])
+                if row["decided_at"] is not None
+                else None
+            ),
+            error_code=row["error_code"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_bundle_local_binding_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceBundleLocalBindingRecord:
+        return WorkspaceBundleLocalBindingRecord(
+            binding_id=row["binding_id"],
+            proposal_id=row["proposal_id"],
+            slot_id=row["slot_id"],
+            binding_kind=row["binding_kind"],
+            connector_id=row["connector_id"],
+            opaque_connection_id=row["opaque_connection_id"],
+            local_path=row["local_path"],
+            required_grants=tuple(json.loads(row["required_grants_json"])),
+            authorized_by=row["authorized_by"],
+            authorized_at=float(row["authorized_at"]),
         )
 
     @staticmethod
