@@ -130,7 +130,7 @@ class ActionNewTaskStateData(BaseModel):
 
 class ActionAskData(BaseModel):
     action: Literal[Action.ask] = Action.ask
-    data: dict[Literal["question", "agent", "approval_id"], str]
+    data: dict[str, Any]
 
 
 class AgentDataDict(TypedDict):

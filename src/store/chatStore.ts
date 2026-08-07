@@ -4402,6 +4402,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 '',
               step: agentMessages.step,
               isConfirm: false,
+              interaction:
+                agentMessages.data?.interaction_id &&
+                agentMessages.data?.interaction_type
+                  ? ({ ...agentMessages.data } as Message['interaction'])
+                  : undefined,
             };
 
             if (tasks[currentTaskId].activeAsk != '') {

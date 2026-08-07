@@ -420,15 +420,20 @@ export default function ChatBox(): JSX.Element {
   const activeTaskId = chatStore?.activeTaskId;
   const activeAskTask = chatStore?.tasks[activeTaskId as string];
   const activeAsk = activeAskTask?.activeAsk;
-  const activeAskMessageId = activeAskTask?.messages.findLast(
+  const activeAskMessage = activeAskTask?.messages.findLast(
     (item) => item.step === AgentStep.ASK
-  )?.id;
+  );
+  const activeAskMessageId = activeAskMessage?.id;
+  const activeInteraction = activeAskMessage?.interaction;
   const isInteractiveHumanReply =
     activeAskTask?.type !== 'replay' &&
     activeAskTask?.type !== 'share' &&
     activeAskTask?.status !== ChatTaskStatus.FINISHED;
   const activeHumanReplyKey =
-    activeTaskId && activeAsk && isInteractiveHumanReply
+    activeTaskId &&
+    activeAsk &&
+    isInteractiveHumanReply &&
+    activeInteraction?.interaction_type !== 'approval'
       ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
       : null;
 
@@ -717,6 +722,8 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
+    const requiresApprovalDecision =
+      activeInteraction?.interaction_type === 'approval';
     const isTaskBusy =
       (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
       task.status === ChatTaskStatus.PAUSE ||
@@ -760,6 +767,12 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
       if (requiresHumanReply) {
+        if (requiresApprovalDecision) {
+          toast.error(
+            'Use the approval card to approve or reject this action.'
+          );
+          return;
+        }
         if (activeHumanReplyKey) {
           autoReplyAttemptRef.current = activeHumanReplyKey;
         }
@@ -785,6 +798,10 @@ export default function ChatBox(): JSX.Element {
           {
             agent: chatStore.tasks[_taskId].activeAsk,
             reply: tempMessageContent,
+            interaction_id: activeInteraction?.interaction_id,
+            decision_request_id: activeInteraction?.interaction_id
+              ? `desktop-reply:${activeInteraction.interaction_id}`
+              : undefined,
           }
         );
         if (replyResult?.code === 1) {

@@ -38,9 +38,14 @@ from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
 from app.component.environment import env
+from app.permission_policy import (
+    ToolPermissionRejectedError,
+    authorize_tool_checkpoint,
+)
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
     declared_tool_safety,
+    dispatch_tool_checkpoint,
     finish_tool_checkpoint,
     prepare_tool_checkpoint,
     tool_checkpoint_scope,
@@ -722,6 +727,7 @@ class ListenChatAgent(ChatAgent):
         # remove activate/deactivate from @listen_toolkit, only send here
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
         checkpoint = None
+        dispatched = False
 
         try:
             task_lock = get_task_lock(self.api_task_id)
@@ -745,7 +751,19 @@ class ListenChatAgent(ChatAgent):
                     func_name,
                     args,
                 ),
+                dispatch_immediately=False,
             )
+            asyncio.run(
+                authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments=args,
+                    toolkit_name=toolkit_name,
+                    agent_name=self.agent_name,
+                    task_lock=task_lock,
+                )
+            )
+            dispatch_tool_checkpoint(checkpoint)
+            dispatched = True
 
             # Only send activate event if tool is
             # NOT wrapped by @listen_toolkit
@@ -822,10 +840,23 @@ class ListenChatAgent(ChatAgent):
                         )
                     )
                 )
+        except ToolPermissionRejectedError as error:
+            finish_tool_checkpoint(
+                checkpoint,
+                result={"error": str(error), "permission_denied": True},
+                error=error,
+                outcome_known=True,
+            )
+            result = {"error": str(error), "permission_denied": True}
+            mask_flag = False
         except ToolCheckpointError:
             raise
         except Exception as e:
-            finish_tool_checkpoint(checkpoint, error=e)
+            finish_tool_checkpoint(
+                checkpoint,
+                error=e,
+                outcome_known=not dispatched,
+            )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
@@ -951,23 +982,35 @@ class ListenChatAgent(ChatAgent):
                 func_name,
                 args,
             ),
+            dispatch_immediately=False,
         )
 
-        # Only send activate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
-            )
         execution_error: Exception | None = None
+        dispatched = False
         try:
+            await authorize_tool_checkpoint(
+                checkpoint,
+                arguments=args,
+                toolkit_name=toolkit_name,
+                agent_name=self.agent_name,
+                task_lock=task_lock,
+            )
+            await asyncio.to_thread(dispatch_tool_checkpoint, checkpoint)
+            dispatched = True
+            # Activation is an execution projection. Do not publish it before
+            # the durable permission gate authorizes and dispatches the tool.
+            if not has_listen_decorator:
+                await task_lock.put_queue(
+                    ActionActivateToolkitData(
+                        data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": func_name,
+                            "message": json.dumps(args, ensure_ascii=False),
+                        },
+                    )
+                )
             # Set process_task context for all tool executions
             with (
                 set_process_task(self.process_task_id),
@@ -1016,14 +1059,26 @@ class ListenChatAgent(ChatAgent):
                 finish_tool_checkpoint,
                 checkpoint,
                 error=TimeoutError("tool execution cancelled or timed out"),
+                outcome_known=not dispatched,
             )
             raise error
+        except ToolPermissionRejectedError as error:
+            execution_error = error
+            result = {"error": str(error), "permission_denied": True}
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                result=result,
+                error=error,
+                outcome_known=True,
+            )
         except Exception as e:
             execution_error = e
             await asyncio.to_thread(
                 finish_tool_checkpoint,
                 checkpoint,
                 error=e,
+                outcome_known=not dispatched,
             )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"

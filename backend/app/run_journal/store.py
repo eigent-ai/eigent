@@ -35,6 +35,7 @@ from typing import Any
 
 from app.run_journal.models import (
     ApprovalRecord,
+    ApprovalRuleRecord,
     AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
@@ -48,6 +49,9 @@ from app.run_journal.models import (
     GitMutationIntentRecord,
     GitOperationRecord,
     GitRepositoryRecord,
+    HumanInteractionDecisionRecord,
+    HumanInteractionOptionRecord,
+    HumanInteractionRecord,
     ProjectGitStateRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
@@ -56,6 +60,9 @@ from app.run_journal.models import (
     RunEventSyncOutboxRecord,
     RunGitMaterializationRecord,
     RunRecord,
+    SecurityAuditEventRecord,
+    SpacePermissionProfileRecord,
+    SpacePermissionProfileRevisionRecord,
     StartupReconciliationResult,
     ToolCallRecord,
     WorkspaceConfigMaterializationRecord,
@@ -87,7 +94,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -785,6 +792,183 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (10, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 10;
+COMMIT;
+"""
+
+_MIGRATION_V11 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE human_interactions (
+    interaction_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    attempt_id TEXT REFERENCES run_attempts(attempt_id) ON DELETE SET NULL,
+    interaction_type TEXT NOT NULL CHECK (
+        interaction_type IN (
+            'question', 'choice', 'form', 'confirmation', 'approval',
+            'diff_review', 'merge_conflict', 'credential_binding'
+        )
+    ),
+    status TEXT NOT NULL CHECK (
+        status IN ('requested', 'presented', 'resolved', 'expired', 'cancelled')
+    ),
+    request_json TEXT NOT NULL,
+    response_schema_json TEXT NOT NULL DEFAULT '{}',
+    requested_by TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    expires_at REAL,
+    presented_at REAL,
+    resolved_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE INDEX human_interactions_run_status_idx
+ON human_interactions(run_id, status, created_at);
+
+CREATE TABLE human_interaction_options (
+    interaction_id TEXT NOT NULL REFERENCES human_interactions(interaction_id)
+        ON DELETE CASCADE,
+    option_id TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    label TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    description TEXT,
+    PRIMARY KEY(interaction_id, option_id),
+    UNIQUE(interaction_id, position)
+);
+
+CREATE TABLE human_interaction_decisions (
+    decision_id TEXT PRIMARY KEY,
+    interaction_id TEXT NOT NULL REFERENCES human_interactions(interaction_id)
+        ON DELETE CASCADE,
+    decision_request_id TEXT NOT NULL,
+    decision_json TEXT NOT NULL,
+    actor_type TEXT NOT NULL CHECK (
+        actor_type IN ('user', 'auto_reviewer', 'system')
+    ),
+    actor_id TEXT,
+    source TEXT NOT NULL CHECK (
+        source IN ('desktop', 'remote_control', 'recovery', 'expiry')
+    ),
+    action_digest TEXT,
+    created_at REAL NOT NULL,
+    UNIQUE(interaction_id, decision_request_id)
+);
+
+CREATE INDEX human_interaction_decisions_interaction_idx
+ON human_interaction_decisions(interaction_id, created_at);
+
+ALTER TABLE approvals ADD COLUMN action_digest TEXT NOT NULL DEFAULT '';
+ALTER TABLE approvals ADD COLUMN policy_revision TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE approvals ADD COLUMN safety_class TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE approvals ADD COLUMN decision_scope TEXT NOT NULL DEFAULT 'once';
+
+INSERT INTO human_interactions(
+    interaction_id, run_id, attempt_id, interaction_type, status,
+    request_json, response_schema_json, requested_by, version, expires_at,
+    presented_at, resolved_at, created_at, updated_at
+)
+SELECT approval_id, run_id, attempt_id, 'approval',
+       CASE WHEN status = 'pending' THEN 'requested' ELSE 'resolved' END,
+       prompt_json, '{}', 'legacy_approval', version, expires_at, NULL,
+       resolved_at, created_at, COALESCE(resolved_at, created_at)
+FROM approvals;
+
+CREATE TABLE space_permission_profiles (
+    space_id TEXT PRIMARY KEY,
+    profile_name TEXT NOT NULL CHECK (
+        profile_name IN (
+            'read_only', 'request_approval', 'auto_reviewer', 'full_access'
+        )
+    ),
+    sandbox_mode TEXT NOT NULL,
+    approval_mode TEXT NOT NULL,
+    reviewer_mode TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+    updated_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE approval_rules (
+    rule_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    effect TEXT NOT NULL CHECK (effect IN ('allow', 'prompt', 'deny')),
+    action_pattern TEXT NOT NULL,
+    resource_pattern TEXT,
+    scope TEXT NOT NULL CHECK (scope IN ('run', 'space')),
+    run_id TEXT REFERENCES runs(run_id) ON DELETE CASCADE,
+    source_interaction_id TEXT REFERENCES human_interactions(interaction_id)
+        ON DELETE SET NULL,
+    expires_at REAL,
+    created_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    CHECK ((scope = 'run' AND run_id IS NOT NULL) OR scope = 'space')
+);
+
+CREATE INDEX approval_rules_lookup_idx
+ON approval_rules(space_id, action_pattern, effect, expires_at);
+
+CREATE TABLE security_audit_events (
+    audit_event_id TEXT PRIMARY KEY,
+    space_id TEXT,
+    run_id TEXT REFERENCES runs(run_id) ON DELETE SET NULL,
+    interaction_id TEXT REFERENCES human_interactions(interaction_id)
+        ON DELETE SET NULL,
+    event_type TEXT NOT NULL,
+    actor_type TEXT NOT NULL,
+    actor_id TEXT,
+    action_digest TEXT,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL
+);
+
+CREATE INDEX security_audit_events_run_idx
+ON security_audit_events(run_id, created_at);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (11, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 11;
+COMMIT;
+"""
+
+_MIGRATION_V12 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE space_permission_profile_revisions (
+    revision_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    profile_name TEXT NOT NULL CHECK (
+        profile_name IN (
+            'read_only', 'request_approval', 'auto_reviewer', 'full_access'
+        )
+    ),
+    sandbox_mode TEXT NOT NULL,
+    approval_mode TEXT NOT NULL,
+    reviewer_mode TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    created_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    UNIQUE(space_id, revision)
+);
+
+INSERT INTO space_permission_profile_revisions(
+    revision_id, space_id, profile_name, sandbox_mode, approval_mode,
+    reviewer_mode, revision, created_by, created_at
+)
+SELECT 'space:' || space_id || ':' || revision, space_id, profile_name,
+       sandbox_mode, approval_mode, reviewer_mode, revision, updated_by,
+       updated_at
+FROM space_permission_profiles;
+
+CREATE INDEX space_permission_profile_revisions_space_idx
+ON space_permission_profile_revisions(space_id, revision);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (12, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 12;
 COMMIT;
 """
 
@@ -4441,6 +4625,22 @@ class SQLiteRunJournal:
                         row["approval_id"] for row in pending_approvals
                     )
                 )
+            pending_interactions = connection.execute(
+                """
+                SELECT interaction_id FROM human_interactions
+                WHERE run_id = ? AND interaction_type != 'approval'
+                  AND status IN ('requested', 'presented')
+                ORDER BY created_at
+                """,
+                (run_id,),
+            ).fetchall()
+            if pending_interactions:
+                raise InvalidRunTransitionError(
+                    f"run {run_id!r} has pending human interactions: "
+                    + ", ".join(
+                        row["interaction_id"] for row in pending_interactions
+                    )
+                )
             blockers = self._unsafe_resume_blockers(connection, run_id)
             if blockers:
                 raise UnsafeResumeError(blockers)
@@ -5091,6 +5291,839 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._tool_call_from_row(row) for row in rows]
 
+    def create_human_interaction(
+        self,
+        *,
+        interaction_id: str,
+        run_id: str,
+        attempt_id: str | None,
+        interaction_type: str,
+        request: dict[str, Any],
+        response_schema: dict[str, Any] | None = None,
+        options: list[dict[str, Any]] | None = None,
+        requested_by: str = "agent",
+        expires_at: float | None = None,
+        now: float | None = None,
+    ) -> HumanInteractionRecord:
+        if interaction_type not in {
+            "question",
+            "choice",
+            "form",
+            "confirmation",
+            "diff_review",
+            "merge_conflict",
+            "credential_binding",
+        }:
+            if interaction_type == "approval":
+                raise ValueError(
+                    "approval interactions must be created by create_approval"
+                )
+            raise ValueError(
+                f"unsupported interaction type {interaction_type!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        request_json = canonical_json(request)
+        response_schema_json = canonical_json(response_schema or {})
+        normalized_options = list(options or [])
+        option_rows: list[tuple[str, int, str, str, str | None]] = []
+        seen_option_ids: set[str] = set()
+        for position, option in enumerate(normalized_options):
+            option_id = str(option.get("option_id") or option.get("id") or "")
+            label = str(option.get("label") or "")
+            if not option_id or not label or option_id in seen_option_ids:
+                raise ValueError(
+                    "interaction options require unique ids and labels"
+                )
+            seen_option_ids.add(option_id)
+            option_rows.append(
+                (
+                    option_id,
+                    position,
+                    label,
+                    canonical_json(option.get("value", option_id)),
+                    (
+                        str(option["description"])
+                        if option.get("description") is not None
+                        else None
+                    ),
+                )
+            )
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM human_interactions WHERE interaction_id = ?",
+                (interaction_id,),
+            ).fetchone()
+            if existing is not None:
+                existing_options = connection.execute(
+                    """
+                    SELECT option_id, position, label, value_json, description
+                    FROM human_interaction_options
+                    WHERE interaction_id = ? ORDER BY position
+                    """,
+                    (interaction_id,),
+                ).fetchall()
+                if (
+                    existing["run_id"] != run_id
+                    or existing["attempt_id"] != attempt_id
+                    or existing["interaction_type"] != interaction_type
+                    or existing["request_json"] != request_json
+                    or existing["response_schema_json"] != response_schema_json
+                    or existing["requested_by"] != requested_by
+                    or existing["expires_at"] != expires_at
+                    or [tuple(row) for row in existing_options] != option_rows
+                ):
+                    raise IdempotencyConflictError(
+                        f"interaction_id {interaction_id!r} was reused"
+                    )
+                return self._human_interaction_from_row(existing)
+            run = connection.execute(
+                "SELECT status, active_attempt_id FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    f"terminal run {run_id!r} cannot request human interaction"
+                )
+            self._validate_waiting_attempt(
+                connection,
+                run_id=run_id,
+                attempt_id=attempt_id,
+                active_attempt_id=run["active_attempt_id"],
+                interaction_label="human interaction",
+            )
+            connection.execute(
+                """
+                INSERT INTO human_interactions(
+                    interaction_id, run_id, attempt_id, interaction_type,
+                    status, request_json, response_schema_json, requested_by,
+                    version, expires_at, presented_at, resolved_at,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'requested', ?, ?, ?, 0, ?, NULL, NULL, ?, ?)
+                """,
+                (
+                    interaction_id,
+                    run_id,
+                    attempt_id,
+                    interaction_type,
+                    request_json,
+                    response_schema_json,
+                    requested_by,
+                    expires_at,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            connection.executemany(
+                """
+                INSERT INTO human_interaction_options(
+                    interaction_id, option_id, position, label, value_json,
+                    description
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [(interaction_id, *row) for row in option_rows],
+            )
+            if attempt_id is not None:
+                updated_attempt = connection.execute(
+                    """
+                    UPDATE run_attempts SET status = 'waiting_for_user'
+                    WHERE attempt_id = ? AND status = 'running'
+                    """,
+                    (attempt_id,),
+                )
+                if updated_attempt.rowcount != 1:
+                    raise InvalidRunTransitionError(
+                        f"interaction attempt {attempt_id!r} is no longer running"
+                    )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"interaction:{interaction_id}:requested",
+                    event_type="interaction.requested",
+                    payload={
+                        "interaction_id": interaction_id,
+                        "interaction_type": interaction_type,
+                        "attempt_id": attempt_id,
+                        "request": request,
+                        "response_schema": response_schema or {},
+                        "options": normalized_options,
+                        "requested_by": requested_by,
+                        "expires_at": expires_at,
+                    },
+                    created_at=timestamp,
+                ),
+                run_status="waiting_for_user",
+                active_attempt_id=attempt_id,
+            )
+            row = connection.execute(
+                "SELECT * FROM human_interactions WHERE interaction_id = ?",
+                (interaction_id,),
+            ).fetchone()
+            assert row is not None
+            return self._human_interaction_from_row(row)
+
+    def resolve_human_interaction(
+        self,
+        interaction_id: str,
+        *,
+        decision_request_id: str,
+        decision: dict[str, Any],
+        expected_version: int,
+        expected_run_id: str | None = None,
+        actor_type: str = "user",
+        actor_id: str | None = None,
+        source: str = "desktop",
+        continue_active_attempt: bool = False,
+        now: float | None = None,
+    ) -> HumanInteractionRecord:
+        if not decision_request_id:
+            raise ValueError("decision_request_id is required")
+        if actor_type not in {"user", "auto_reviewer", "system"}:
+            raise ValueError("invalid interaction decision actor_type")
+        if source not in {"desktop", "remote_control", "recovery", "expiry"}:
+            raise ValueError("invalid interaction decision source")
+        timestamp = now if now is not None else time.time()
+        decision_json = canonical_json(decision)
+        with self._write_transaction() as connection:
+            interaction = connection.execute(
+                "SELECT * FROM human_interactions WHERE interaction_id = ?",
+                (interaction_id,),
+            ).fetchone()
+            if interaction is None:
+                raise RunNotFoundError(
+                    f"interaction_id {interaction_id!r} does not exist"
+                )
+            if interaction["interaction_type"] == "approval":
+                raise InvalidRunTransitionError(
+                    "approval interactions must be resolved by decide_approval"
+                )
+            if (
+                expected_run_id is not None
+                and interaction["run_id"] != expected_run_id
+            ):
+                raise IdempotencyConflictError(
+                    f"interaction {interaction_id!r} does not belong to run "
+                    f"{expected_run_id!r}"
+                )
+            duplicate = connection.execute(
+                """
+                SELECT * FROM human_interaction_decisions
+                WHERE interaction_id = ? AND decision_request_id = ?
+                """,
+                (interaction_id, decision_request_id),
+            ).fetchone()
+            if duplicate is not None:
+                if (
+                    duplicate["decision_json"] != decision_json
+                    or duplicate["actor_type"] != actor_type
+                    or duplicate["actor_id"] != actor_id
+                    or duplicate["source"] != source
+                ):
+                    raise IdempotencyConflictError(
+                        f"decision_request_id {decision_request_id!r} was reused"
+                    )
+                return self._human_interaction_from_row(interaction)
+            if interaction["status"] not in {"requested", "presented"}:
+                raise InvalidRunTransitionError(
+                    f"interaction {interaction_id!r} is already "
+                    f"{interaction['status']}"
+                )
+            if int(interaction["version"]) != expected_version:
+                raise OptimisticConcurrencyError(
+                    f"interaction {interaction_id!r} expected version "
+                    f"{expected_version}"
+                )
+            can_continue = self._resolve_waiting_attempt(
+                connection,
+                attempt_id=interaction["attempt_id"],
+                continue_active_attempt=continue_active_attempt,
+                timestamp=timestamp,
+                outcome="human_interaction_resolved",
+            )
+            connection.execute(
+                """
+                INSERT INTO human_interaction_decisions(
+                    decision_id, interaction_id, decision_request_id,
+                    decision_json, actor_type, actor_id, source,
+                    action_digest, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    interaction_id,
+                    decision_request_id,
+                    decision_json,
+                    actor_type,
+                    actor_id,
+                    source,
+                    timestamp,
+                ),
+            )
+            updated = connection.execute(
+                """
+                UPDATE human_interactions
+                SET status = 'resolved', resolved_at = ?, updated_at = ?,
+                    version = version + 1
+                WHERE interaction_id = ? AND version = ?
+                  AND status IN ('requested', 'presented')
+                """,
+                (timestamp, timestamp, interaction_id, expected_version),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    f"interaction {interaction_id!r} changed while resolving"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO security_audit_events(
+                    audit_event_id, space_id, run_id, interaction_id,
+                    event_type, actor_type, actor_id, action_digest,
+                    details_json, created_at
+                ) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?)
+                """,
+                (
+                    f"interaction-decision:{interaction_id}:{decision_request_id}",
+                    interaction["run_id"],
+                    interaction_id,
+                    "human_interaction.resolved",
+                    actor_type,
+                    actor_id,
+                    canonical_json(
+                        {
+                            "interaction_type": interaction[
+                                "interaction_type"
+                            ],
+                            "source": source,
+                            "decision_fields": sorted(decision),
+                        }
+                    ),
+                    timestamp,
+                ),
+            )
+            self._append_event_in_transaction(
+                connection,
+                interaction["run_id"],
+                RunEventDraft(
+                    event_id=(
+                        f"interaction:{interaction_id}:decision:"
+                        f"{decision_request_id}"
+                    ),
+                    event_type="interaction.resolved",
+                    payload={
+                        "interaction_id": interaction_id,
+                        "interaction_type": interaction["interaction_type"],
+                        "decision_request_id": decision_request_id,
+                        "decision": decision,
+                        "actor_type": actor_type,
+                        "actor_id": actor_id,
+                        "source": source,
+                        "continued_attempt": can_continue,
+                    },
+                    created_at=timestamp,
+                ),
+                run_status="running" if can_continue else "interrupted",
+                active_attempt_id=(
+                    interaction["attempt_id"] if can_continue else None
+                ),
+                clear_active_attempt=not can_continue,
+            )
+            row = connection.execute(
+                "SELECT * FROM human_interactions WHERE interaction_id = ?",
+                (interaction_id,),
+            ).fetchone()
+            assert row is not None
+            return self._human_interaction_from_row(row)
+
+    def get_human_interaction(
+        self, interaction_id: str
+    ) -> HumanInteractionRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM human_interactions WHERE interaction_id = ?",
+                (interaction_id,),
+            ).fetchone()
+            return self._human_interaction_from_row(row) if row else None
+
+    def list_human_interactions(
+        self, run_id: str, *, pending_only: bool = False
+    ) -> list[HumanInteractionRecord]:
+        query = "SELECT * FROM human_interactions WHERE run_id = ?"
+        if pending_only:
+            query += " AND status IN ('requested', 'presented')"
+        query += " ORDER BY created_at, interaction_id"
+        with self._lock:
+            rows = self._connection.execute(query, (run_id,)).fetchall()
+            return [self._human_interaction_from_row(row) for row in rows]
+
+    def list_human_interaction_options(
+        self, interaction_id: str
+    ) -> list[HumanInteractionOptionRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM human_interaction_options
+                WHERE interaction_id = ? ORDER BY position
+                """,
+                (interaction_id,),
+            ).fetchall()
+            return [
+                self._human_interaction_option_from_row(row) for row in rows
+            ]
+
+    def list_human_interaction_decisions(
+        self, interaction_id: str
+    ) -> list[HumanInteractionDecisionRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM human_interaction_decisions
+                WHERE interaction_id = ? ORDER BY created_at, decision_id
+                """,
+                (interaction_id,),
+            ).fetchall()
+            return [
+                self._human_interaction_decision_from_row(row) for row in rows
+            ]
+
+    def get_space_permission_profile(
+        self, space_id: str
+    ) -> SpacePermissionProfileRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM space_permission_profiles WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            return (
+                self._space_permission_profile_from_row(row) if row else None
+            )
+
+    def get_space_permission_profile_revision(
+        self,
+        revision_id: str,
+    ) -> SpacePermissionProfileRevisionRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM space_permission_profile_revisions
+                WHERE revision_id = ?
+                """,
+                (revision_id,),
+            ).fetchone()
+            return (
+                self._space_permission_profile_revision_from_row(row)
+                if row
+                else None
+            )
+
+    def put_space_permission_profile(
+        self,
+        *,
+        space_id: str,
+        profile_name: str,
+        sandbox_mode: str,
+        approval_mode: str,
+        reviewer_mode: str,
+        updated_by: str,
+        expected_revision: int | None = None,
+        audit_request_id: str | None = None,
+        now: float | None = None,
+    ) -> SpacePermissionProfileRecord:
+        if profile_name not in {
+            "read_only",
+            "request_approval",
+            "auto_reviewer",
+            "full_access",
+        }:
+            raise ValueError("invalid permission profile name")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM space_permission_profiles WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            values = (
+                profile_name,
+                sandbox_mode,
+                approval_mode,
+                reviewer_mode,
+                updated_by,
+            )
+            if existing is None:
+                if expected_revision not in {None, 0}:
+                    raise OptimisticConcurrencyError(
+                        f"space {space_id!r} has no permission profile at "
+                        f"revision {expected_revision}"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO space_permission_profiles(
+                        space_id, profile_name, sandbox_mode, approval_mode,
+                        reviewer_mode, revision, updated_by, created_at,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    """,
+                    (space_id, *values, timestamp, timestamp),
+                )
+                next_revision = 1
+            else:
+                current_values = (
+                    existing["profile_name"],
+                    existing["sandbox_mode"],
+                    existing["approval_mode"],
+                    existing["reviewer_mode"],
+                    existing["updated_by"],
+                )
+                if current_values == values:
+                    next_revision = int(existing["revision"])
+                else:
+                    if (
+                        expected_revision is not None
+                        and int(existing["revision"]) != expected_revision
+                    ):
+                        raise OptimisticConcurrencyError(
+                            f"space {space_id!r} permission profile expected "
+                            f"revision {expected_revision}"
+                        )
+                    connection.execute(
+                        """
+                        UPDATE space_permission_profiles
+                        SET profile_name = ?, sandbox_mode = ?, approval_mode = ?,
+                            reviewer_mode = ?, revision = revision + 1,
+                            updated_by = ?, updated_at = ?
+                        WHERE space_id = ? AND revision = ?
+                        """,
+                        (
+                            profile_name,
+                            sandbox_mode,
+                            approval_mode,
+                            reviewer_mode,
+                            updated_by,
+                            timestamp,
+                            space_id,
+                            int(existing["revision"]),
+                        ),
+                    )
+                    next_revision = int(existing["revision"]) + 1
+            row = connection.execute(
+                "SELECT * FROM space_permission_profiles WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            assert row is not None
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO space_permission_profile_revisions(
+                    revision_id, space_id, profile_name, sandbox_mode,
+                    approval_mode, reviewer_mode, revision, created_by,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"space:{space_id}:{next_revision}",
+                    space_id,
+                    profile_name,
+                    sandbox_mode,
+                    approval_mode,
+                    reviewer_mode,
+                    next_revision,
+                    updated_by,
+                    timestamp,
+                ),
+            )
+            if audit_request_id:
+                audit_event_id = (
+                    f"permission-profile:{space_id}:{audit_request_id}"
+                )
+                details_json = canonical_json(
+                    {
+                        "profile_name": profile_name,
+                        "revision": next_revision,
+                    }
+                )
+                existing_audit = connection.execute(
+                    """
+                    SELECT * FROM security_audit_events
+                    WHERE audit_event_id = ?
+                    """,
+                    (audit_event_id,),
+                ).fetchone()
+                audit_values = (
+                    space_id,
+                    "permission.profile.modified",
+                    "user",
+                    updated_by,
+                    details_json,
+                )
+                if existing_audit is not None:
+                    persisted = (
+                        existing_audit["space_id"],
+                        existing_audit["event_type"],
+                        existing_audit["actor_type"],
+                        existing_audit["actor_id"],
+                        existing_audit["details_json"],
+                    )
+                    if persisted != audit_values:
+                        raise IdempotencyConflictError(
+                            f"audit request {audit_request_id!r} was reused"
+                        )
+                else:
+                    connection.execute(
+                        """
+                        INSERT INTO security_audit_events(
+                            audit_event_id, space_id, run_id, interaction_id,
+                            event_type, actor_type, actor_id, action_digest,
+                            details_json, created_at
+                        ) VALUES (?, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?)
+                        """,
+                        (audit_event_id, *audit_values, timestamp),
+                    )
+            return self._space_permission_profile_from_row(row)
+
+    def create_approval_rule(
+        self,
+        *,
+        rule_id: str,
+        space_id: str,
+        effect: str,
+        action_pattern: str,
+        resource_pattern: str | None,
+        scope: str,
+        run_id: str | None,
+        source_interaction_id: str | None,
+        expires_at: float | None,
+        created_by: str,
+        now: float | None = None,
+    ) -> ApprovalRuleRecord:
+        if effect not in {"allow", "prompt", "deny"}:
+            raise ValueError(
+                "approval rule effect must be allow, prompt, or deny"
+            )
+        if scope not in {"run", "space"}:
+            raise ValueError("approval rule scope must be run or space")
+        if scope == "run" and not run_id:
+            raise ValueError("run-scoped approval rules require run_id")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM approval_rules WHERE rule_id = ?", (rule_id,)
+            ).fetchone()
+            values = (
+                space_id,
+                effect,
+                action_pattern,
+                resource_pattern,
+                scope,
+                run_id,
+                source_interaction_id,
+                expires_at,
+                created_by,
+            )
+            if existing is not None:
+                persisted = tuple(
+                    existing[key]
+                    for key in (
+                        "space_id",
+                        "effect",
+                        "action_pattern",
+                        "resource_pattern",
+                        "scope",
+                        "run_id",
+                        "source_interaction_id",
+                        "expires_at",
+                        "created_by",
+                    )
+                )
+                if persisted != values:
+                    raise IdempotencyConflictError(
+                        f"approval rule {rule_id!r} was reused"
+                    )
+                return self._approval_rule_from_row(existing)
+            connection.execute(
+                """
+                INSERT INTO approval_rules(
+                    rule_id, space_id, effect, action_pattern,
+                    resource_pattern, scope, run_id,
+                    source_interaction_id, expires_at, created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (rule_id, *values, timestamp),
+            )
+            row = connection.execute(
+                "SELECT * FROM approval_rules WHERE rule_id = ?", (rule_id,)
+            ).fetchone()
+            assert row is not None
+            return self._approval_rule_from_row(row)
+
+    def list_approval_rules(
+        self,
+        *,
+        space_id: str,
+        run_id: str | None = None,
+        now: float | None = None,
+    ) -> list[ApprovalRuleRecord]:
+        timestamp = now if now is not None else time.time()
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM approval_rules
+                WHERE space_id = ?
+                  AND (expires_at IS NULL OR expires_at > ?)
+                  AND (scope = 'space' OR (scope = 'run' AND run_id = ?))
+                ORDER BY created_at, rule_id
+                """,
+                (space_id, timestamp, run_id),
+            ).fetchall()
+            return [self._approval_rule_from_row(row) for row in rows]
+
+    def append_security_audit_event(
+        self,
+        *,
+        audit_event_id: str,
+        event_type: str,
+        actor_type: str,
+        details: dict[str, Any] | None = None,
+        space_id: str | None = None,
+        run_id: str | None = None,
+        interaction_id: str | None = None,
+        actor_id: str | None = None,
+        action_digest: str | None = None,
+        now: float | None = None,
+    ) -> SecurityAuditEventRecord:
+        timestamp = now if now is not None else time.time()
+        details_json = canonical_json(details or {})
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM security_audit_events WHERE audit_event_id = ?",
+                (audit_event_id,),
+            ).fetchone()
+            values = (
+                space_id,
+                run_id,
+                interaction_id,
+                event_type,
+                actor_type,
+                actor_id,
+                action_digest,
+                details_json,
+            )
+            if existing is not None:
+                persisted = tuple(
+                    existing[key]
+                    for key in (
+                        "space_id",
+                        "run_id",
+                        "interaction_id",
+                        "event_type",
+                        "actor_type",
+                        "actor_id",
+                        "action_digest",
+                        "details_json",
+                    )
+                )
+                if persisted != values:
+                    raise IdempotencyConflictError(
+                        f"audit_event_id {audit_event_id!r} was reused"
+                    )
+                return self._security_audit_event_from_row(existing)
+            connection.execute(
+                """
+                INSERT INTO security_audit_events(
+                    audit_event_id, space_id, run_id, interaction_id,
+                    event_type, actor_type, actor_id, action_digest,
+                    details_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (audit_event_id, *values, timestamp),
+            )
+            row = connection.execute(
+                "SELECT * FROM security_audit_events WHERE audit_event_id = ?",
+                (audit_event_id,),
+            ).fetchone()
+            assert row is not None
+            return self._security_audit_event_from_row(row)
+
+    @staticmethod
+    def _validate_waiting_attempt(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        attempt_id: str | None,
+        active_attempt_id: str | None,
+        interaction_label: str,
+    ) -> None:
+        if attempt_id is not None:
+            attempt = connection.execute(
+                "SELECT run_id, status FROM run_attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+            if attempt is None or attempt["run_id"] != run_id:
+                raise IdempotencyConflictError(
+                    f"attempt {attempt_id!r} does not belong to run {run_id!r}"
+                )
+            if (
+                not transition_allowed(
+                    ATTEMPT_TRANSITIONS,
+                    str(attempt["status"]),
+                    "waiting_for_user",
+                )
+                or active_attempt_id != attempt_id
+            ):
+                raise InvalidRunTransitionError(
+                    f"{interaction_label} attempt {attempt_id!r} must be the "
+                    "active running attempt"
+                )
+        elif active_attempt_id is not None:
+            raise InvalidRunTransitionError(
+                f"{interaction_label} for a Run with an active attempt must "
+                "bind that attempt"
+            )
+
+    @staticmethod
+    def _resolve_waiting_attempt(
+        connection: sqlite3.Connection,
+        *,
+        attempt_id: str | None,
+        continue_active_attempt: bool,
+        timestamp: float,
+        outcome: str,
+    ) -> bool:
+        if attempt_id is None:
+            return False
+        attempt = connection.execute(
+            "SELECT status FROM run_attempts WHERE attempt_id = ?",
+            (attempt_id,),
+        ).fetchone()
+        status = attempt["status"] if attempt is not None else None
+        if status in ATTEMPT_ACTIVE_STATES and status != "waiting_for_user":
+            raise InvalidRunTransitionError(
+                f"interaction attempt {attempt_id!r} is in active state "
+                f"{status!r}, not waiting_for_user"
+            )
+        can_continue = bool(
+            continue_active_attempt and status == "waiting_for_user"
+        )
+        if can_continue:
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'running', last_consumer_heartbeat_at = ?
+                WHERE attempt_id = ? AND status = 'waiting_for_user'
+                """,
+                (timestamp, attempt_id),
+            )
+        else:
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'interrupted', ended_at = COALESCE(ended_at, ?),
+                    outcome = ?
+                WHERE attempt_id = ? AND status = 'waiting_for_user'
+                """,
+                (timestamp, outcome, attempt_id),
+            )
+        return can_continue
+
     def create_approval(
         self,
         *,
@@ -5098,6 +6131,10 @@ class SQLiteRunJournal:
         run_id: str,
         attempt_id: str | None,
         prompt: dict[str, Any],
+        action_digest: str | None = None,
+        policy_revision: str = "legacy",
+        safety_class: str = "unknown",
+        decision_scope: str = "once",
         expires_at: float | None = None,
         expiry_action: str = "keep_pending",
         now: float | None = None,
@@ -5108,7 +6145,34 @@ class SQLiteRunJournal:
         prompt_json = json.dumps(
             prompt, ensure_ascii=False, separators=(",", ":"), sort_keys=True
         )
+        resolved_action_digest = action_digest or canonical_digest(
+            {
+                "kind": "legacy_approval",
+                "run_id": run_id,
+                "attempt_id": attempt_id,
+                "prompt": prompt,
+            }
+        )
         with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["run_id"] != run_id
+                    or existing["attempt_id"] != attempt_id
+                    or existing["prompt_json"] != prompt_json
+                    or existing["expires_at"] != expires_at
+                    or existing["expiry_action"] != expiry_action
+                    or existing["action_digest"] != resolved_action_digest
+                    or existing["policy_revision"] != policy_revision
+                    or existing["safety_class"] != safety_class
+                    or existing["decision_scope"] != decision_scope
+                ):
+                    raise IdempotencyConflictError(
+                        f"approval_id {approval_id!r} was reused"
+                    )
+                return self._approval_from_row(existing)
             run = connection.execute(
                 "SELECT status, active_attempt_id FROM runs WHERE run_id = ?",
                 (run_id,),
@@ -5119,51 +6183,41 @@ class SQLiteRunJournal:
                 raise InvalidRunTransitionError(
                     f"terminal run {run_id!r} cannot request approval"
                 )
-            if attempt_id is not None:
-                attempt = connection.execute(
-                    "SELECT run_id, status FROM run_attempts WHERE attempt_id = ?",
-                    (attempt_id,),
-                ).fetchone()
-                if attempt is None or attempt["run_id"] != run_id:
-                    raise IdempotencyConflictError(
-                        f"attempt {attempt_id!r} does not belong to run {run_id!r}"
-                    )
-                if (
-                    not transition_allowed(
-                        ATTEMPT_TRANSITIONS,
-                        str(attempt["status"]),
-                        "waiting_for_user",
-                    )
-                    or run["active_attempt_id"] != attempt_id
-                ):
-                    raise InvalidRunTransitionError(
-                        f"approval attempt {attempt_id!r} must be the active running attempt"
-                    )
-            elif run["active_attempt_id"] is not None:
-                raise InvalidRunTransitionError(
-                    "approval for a Run with an active attempt must bind that attempt"
-                )
-            existing = connection.execute(
-                "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
-            ).fetchone()
-            if existing is not None:
-                if (
-                    existing["run_id"] != run_id
-                    or existing["prompt_json"] != prompt_json
-                    or existing["expires_at"] != expires_at
-                    or existing["expiry_action"] != expiry_action
-                ):
-                    raise IdempotencyConflictError(
-                        f"approval_id {approval_id!r} was reused"
-                    )
-                return self._approval_from_row(existing)
+            self._validate_waiting_attempt(
+                connection,
+                run_id=run_id,
+                attempt_id=attempt_id,
+                active_attempt_id=run["active_attempt_id"],
+                interaction_label="approval",
+            )
+            connection.execute(
+                """
+                INSERT INTO human_interactions(
+                    interaction_id, run_id, attempt_id, interaction_type,
+                    status, request_json, response_schema_json, requested_by,
+                    version, expires_at, presented_at, resolved_at,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, 'approval', 'requested', ?, '{}',
+                    'permission_policy', 0, ?, NULL, NULL, ?, ?)
+                """,
+                (
+                    approval_id,
+                    run_id,
+                    attempt_id,
+                    prompt_json,
+                    expires_at,
+                    timestamp,
+                    timestamp,
+                ),
+            )
             connection.execute(
                 """
                 INSERT INTO approvals(
                     approval_id, run_id, attempt_id, status, prompt_json,
                     decision_json, created_at, resolved_at, version,
-                    expires_at, expiry_action
-                ) VALUES (?, ?, ?, 'pending', ?, NULL, ?, NULL, 0, ?, ?)
+                    expires_at, expiry_action, action_digest, policy_revision,
+                    safety_class, decision_scope
+                ) VALUES (?, ?, ?, 'pending', ?, NULL, ?, NULL, 0, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     approval_id,
@@ -5173,6 +6227,10 @@ class SQLiteRunJournal:
                     timestamp,
                     expires_at,
                     expiry_action,
+                    resolved_action_digest,
+                    policy_revision,
+                    safety_class,
+                    decision_scope,
                 ),
             )
             if attempt_id is not None:
@@ -5199,6 +6257,10 @@ class SQLiteRunJournal:
                         "prompt": prompt,
                         "expires_at": expires_at,
                         "expiry_action": expiry_action,
+                        "action_digest": resolved_action_digest,
+                        "policy_revision": policy_revision,
+                        "safety_class": safety_class,
+                        "decision_scope": decision_scope,
                     },
                     created_at=timestamp,
                 ),
@@ -5220,10 +6282,34 @@ class SQLiteRunJournal:
         expected_version: int,
         expected_run_id: str | None = None,
         continue_active_attempt: bool = False,
+        decision_request_id: str | None = None,
+        action_digest: str | None = None,
+        actor_type: str = "user",
+        actor_id: str | None = None,
+        source: str = "desktop",
+        decision_scope: str = "once",
+        rule_space_id: str | None = None,
+        rule_id: str | None = None,
+        rule_action_pattern: str | None = None,
+        rule_resource_pattern: str | None = None,
+        rule_expires_at: float | None = None,
         now: float | None = None,
     ) -> ApprovalRecord:
         if decision not in {"approved", "rejected"}:
             raise ValueError("approval decision must be approved or rejected")
+        if actor_type not in {"user", "auto_reviewer", "system"}:
+            raise ValueError("invalid approval decision actor_type")
+        if source not in {"desktop", "remote_control", "recovery", "expiry"}:
+            raise ValueError("invalid approval decision source")
+        if decision_scope not in {"once", "run", "space"}:
+            raise ValueError(
+                "approval decision scope must be once, run, or space"
+            )
+        if decision == "approved" and decision_scope in {"run", "space"}:
+            if not rule_space_id or not rule_id or not rule_action_pattern:
+                raise ValueError(
+                    "bounded approval scope requires space, rule id, and action"
+                )
         timestamp = now if now is not None else time.time()
         decision_value = {"decision": decision, **(details or {})}
         decision_json = json.dumps(
@@ -5231,6 +6317,9 @@ class SQLiteRunJournal:
             ensure_ascii=False,
             separators=(",", ":"),
             sort_keys=True,
+        )
+        resolved_request_id = decision_request_id or (
+            f"legacy:{approval_id}:{expected_version + 1}"
         )
         with self._write_transaction() as connection:
             approval = connection.execute(
@@ -5247,6 +6336,32 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"approval {approval_id!r} does not belong to run {expected_run_id!r}"
                 )
+            if (
+                action_digest is not None
+                and approval["action_digest"] != action_digest
+            ):
+                raise IdempotencyConflictError(
+                    f"approval {approval_id!r} action digest changed"
+                )
+            duplicate = connection.execute(
+                """
+                SELECT * FROM human_interaction_decisions
+                WHERE interaction_id = ? AND decision_request_id = ?
+                """,
+                (approval_id, resolved_request_id),
+            ).fetchone()
+            if duplicate is not None:
+                if (
+                    duplicate["decision_json"] != decision_json
+                    or duplicate["actor_type"] != actor_type
+                    or duplicate["actor_id"] != actor_id
+                    or duplicate["source"] != source
+                    or duplicate["action_digest"] != approval["action_digest"]
+                ):
+                    raise IdempotencyConflictError(
+                        f"decision_request_id {resolved_request_id!r} was reused"
+                    )
+                return self._approval_from_row(approval)
             if approval["status"] != "pending":
                 if (
                     approval["status"] == decision
@@ -5305,15 +6420,109 @@ class SQLiteRunJournal:
             connection.execute(
                 """
                 UPDATE approvals
-                SET status = ?, decision_json = ?, resolved_at = ?, version = version + 1
+                SET status = ?, decision_json = ?, resolved_at = ?,
+                    decision_scope = ?, version = version + 1
                 WHERE approval_id = ? AND version = ? AND status = 'pending'
                 """,
                 (
                     decision,
                     decision_json,
                     timestamp,
+                    decision_scope,
                     approval_id,
                     expected_version,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO human_interaction_decisions(
+                    decision_id, interaction_id, decision_request_id,
+                    decision_json, actor_type, actor_id, source,
+                    action_digest, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    approval_id,
+                    resolved_request_id,
+                    decision_json,
+                    actor_type,
+                    actor_id,
+                    source,
+                    approval["action_digest"],
+                    timestamp,
+                ),
+            )
+            updated_interaction = connection.execute(
+                """
+                UPDATE human_interactions
+                SET status = 'resolved', resolved_at = ?, updated_at = ?,
+                    version = version + 1
+                WHERE interaction_id = ? AND version = ?
+                  AND status IN ('requested', 'presented')
+                """,
+                (
+                    timestamp,
+                    timestamp,
+                    approval_id,
+                    expected_version,
+                ),
+            )
+            if updated_interaction.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    f"approval interaction {approval_id!r} changed while resolving"
+                )
+            if decision == "approved" and decision_scope in {"run", "space"}:
+                connection.execute(
+                    """
+                    INSERT INTO approval_rules(
+                        rule_id, space_id, effect, action_pattern,
+                        resource_pattern, scope, run_id,
+                        source_interaction_id, expires_at, created_by,
+                        created_at
+                    ) VALUES (?, ?, 'allow', ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(rule_id) DO NOTHING
+                    """,
+                    (
+                        rule_id,
+                        rule_space_id,
+                        rule_action_pattern,
+                        rule_resource_pattern,
+                        decision_scope,
+                        approval["run_id"]
+                        if decision_scope == "run"
+                        else None,
+                        approval_id,
+                        rule_expires_at,
+                        actor_id or actor_type,
+                        timestamp,
+                    ),
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO security_audit_events(
+                    audit_event_id, space_id, run_id, interaction_id,
+                    event_type, actor_type, actor_id, action_digest,
+                    details_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"approval-decision:{approval_id}:{resolved_request_id}",
+                    rule_space_id,
+                    approval["run_id"],
+                    approval_id,
+                    f"approval.{decision}",
+                    actor_type,
+                    actor_id,
+                    approval["action_digest"],
+                    canonical_json(
+                        {
+                            "decision_scope": decision_scope,
+                            "source": source,
+                            "rule_id": rule_id,
+                        }
+                    ),
+                    timestamp,
                 ),
             )
             if can_continue:
@@ -5343,6 +6552,14 @@ class SQLiteRunJournal:
                     event_type="approval.decided",
                     payload={
                         "approval_id": approval_id,
+                        "interaction_id": approval_id,
+                        "decision_request_id": resolved_request_id,
+                        "action_digest": approval["action_digest"],
+                        "decision_scope": approval["decision_scope"],
+                        "resolved_decision_scope": decision_scope,
+                        "actor_type": actor_type,
+                        "actor_id": actor_id,
+                        "source": source,
                         "continued_attempt": can_continue,
                         **decision_value,
                     },
@@ -5475,6 +6692,14 @@ class SQLiteRunJournal:
                     )
                 if approval["expiry_action"] == "reject":
                     event_type = "approval.expired_rejected"
+                    decision_json = json.dumps(
+                        {
+                            "decision": "rejected",
+                            "reason": "approval_expired",
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    )
                     connection.execute(
                         """
                         UPDATE approvals
@@ -5483,16 +6708,40 @@ class SQLiteRunJournal:
                         WHERE approval_id = ? AND status = 'pending'
                         """,
                         (
-                            json.dumps(
-                                {
-                                    "decision": "rejected",
-                                    "reason": "approval_expired",
-                                },
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            ),
+                            decision_json,
                             outcome.ended_at,
                             outcome.approval_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        UPDATE human_interactions
+                        SET status = 'expired', resolved_at = ?, updated_at = ?,
+                            version = version + 1
+                        WHERE interaction_id = ?
+                          AND status IN ('requested', 'presented')
+                        """,
+                        (
+                            outcome.ended_at,
+                            outcome.ended_at,
+                            outcome.approval_id,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO human_interaction_decisions(
+                            decision_id, interaction_id, decision_request_id,
+                            decision_json, actor_type, actor_id, source,
+                            action_digest, created_at
+                        ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            outcome.approval_id,
+                            f"expiry:{outcome.approval_id}",
+                            decision_json,
+                            approval["action_digest"],
+                            outcome.ended_at,
                         ),
                     )
                     run_status = "interrupted"
@@ -5743,6 +6992,38 @@ class SQLiteRunJournal:
                         )
                         connection.execute(
                             """
+                            UPDATE human_interactions
+                            SET status = 'expired', resolved_at = ?,
+                                updated_at = ?, version = version + 1
+                            WHERE interaction_id = ?
+                              AND status IN ('requested', 'presented')
+                            """,
+                            (
+                                timestamp,
+                                timestamp,
+                                approval["approval_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            INSERT OR IGNORE INTO human_interaction_decisions(
+                                decision_id, interaction_id,
+                                decision_request_id, decision_json,
+                                actor_type, actor_id, source, action_digest,
+                                created_at
+                            ) VALUES (?, ?, ?, ?, 'system', NULL, 'expiry', ?, ?)
+                            """,
+                            (
+                                str(uuid.uuid4()),
+                                approval["approval_id"],
+                                f"expiry:{approval['approval_id']}",
+                                decision_json,
+                                approval["action_digest"],
+                                timestamp,
+                            ),
+                        )
+                        connection.execute(
+                            """
                             UPDATE run_attempts
                             SET status = 'interrupted',
                                 ended_at = COALESCE(ended_at, ?),
@@ -5774,6 +7055,83 @@ class SQLiteRunJournal:
                     logger.exception(
                         "Startup reconciliation skipped one Approval",
                         extra={"approval_id": approval["approval_id"]},
+                    )
+            expired_interactions = connection.execute(
+                """
+                SELECT human_interactions.*, runs.status AS run_status
+                FROM human_interactions
+                JOIN runs ON runs.run_id = human_interactions.run_id
+                WHERE human_interactions.interaction_type != 'approval'
+                  AND human_interactions.status IN ('requested', 'presented')
+                  AND human_interactions.expires_at IS NOT NULL
+                  AND human_interactions.expires_at <= ?
+                ORDER BY human_interactions.expires_at,
+                         human_interactions.interaction_id
+                """,
+                (timestamp,),
+            ).fetchall()
+            for interaction in expired_interactions:
+                if interaction["run_status"] in {
+                    "completed",
+                    "failed",
+                    "cancelled",
+                }:
+                    continue
+                try:
+                    with self._savepoint(connection, "startup_interaction"):
+                        connection.execute(
+                            """
+                            UPDATE human_interactions
+                            SET status = 'expired', resolved_at = ?,
+                                updated_at = ?, version = version + 1
+                            WHERE interaction_id = ?
+                              AND status IN ('requested', 'presented')
+                            """,
+                            (
+                                timestamp,
+                                timestamp,
+                                interaction["interaction_id"],
+                            ),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE run_attempts
+                            SET status = 'interrupted',
+                                ended_at = COALESCE(ended_at, ?),
+                                outcome = 'human_interaction_expired'
+                            WHERE attempt_id = ?
+                              AND status = 'waiting_for_user'
+                            """,
+                            (timestamp, interaction["attempt_id"]),
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            interaction["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    "interaction:"
+                                    f"{interaction['interaction_id']}:expired"
+                                ),
+                                event_type="interaction.expired",
+                                payload={
+                                    "interaction_id": interaction[
+                                        "interaction_id"
+                                    ],
+                                    "interaction_type": interaction[
+                                        "interaction_type"
+                                    ],
+                                },
+                                created_at=timestamp,
+                            ),
+                            run_status="interrupted",
+                            clear_active_attempt=True,
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one HumanInteraction",
+                        extra={
+                            "interaction_id": interaction["interaction_id"]
+                        },
                     )
             approvals = connection.execute(
                 "SELECT approval_id FROM approvals WHERE status = 'pending' ORDER BY created_at"
@@ -6717,6 +8075,10 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V9)
         if version < 10:
             self._connection.executescript(_MIGRATION_V10)
+        if version < 11:
+            self._connection.executescript(_MIGRATION_V11)
+        if version < 12:
+            self._connection.executescript(_MIGRATION_V12)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -7299,6 +8661,141 @@ class SQLiteRunJournal:
                 if row["resolved_at"] is not None
                 else None
             ),
+            action_digest=row["action_digest"],
+            policy_revision=row["policy_revision"],
+            safety_class=row["safety_class"],
+            decision_scope=row["decision_scope"],
+        )
+
+    @staticmethod
+    def _human_interaction_from_row(
+        row: sqlite3.Row,
+    ) -> HumanInteractionRecord:
+        return HumanInteractionRecord(
+            interaction_id=row["interaction_id"],
+            run_id=row["run_id"],
+            attempt_id=row["attempt_id"],
+            interaction_type=row["interaction_type"],
+            status=row["status"],
+            request=json.loads(row["request_json"]),
+            response_schema=json.loads(row["response_schema_json"]),
+            requested_by=row["requested_by"],
+            version=int(row["version"]),
+            expires_at=(
+                float(row["expires_at"])
+                if row["expires_at"] is not None
+                else None
+            ),
+            presented_at=(
+                float(row["presented_at"])
+                if row["presented_at"] is not None
+                else None
+            ),
+            resolved_at=(
+                float(row["resolved_at"])
+                if row["resolved_at"] is not None
+                else None
+            ),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _human_interaction_option_from_row(
+        row: sqlite3.Row,
+    ) -> HumanInteractionOptionRecord:
+        return HumanInteractionOptionRecord(
+            interaction_id=row["interaction_id"],
+            option_id=row["option_id"],
+            position=int(row["position"]),
+            label=row["label"],
+            value=json.loads(row["value_json"]),
+            description=row["description"],
+        )
+
+    @staticmethod
+    def _human_interaction_decision_from_row(
+        row: sqlite3.Row,
+    ) -> HumanInteractionDecisionRecord:
+        return HumanInteractionDecisionRecord(
+            decision_id=row["decision_id"],
+            interaction_id=row["interaction_id"],
+            decision_request_id=row["decision_request_id"],
+            decision=json.loads(row["decision_json"]),
+            actor_type=row["actor_type"],
+            actor_id=row["actor_id"],
+            source=row["source"],
+            action_digest=row["action_digest"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _space_permission_profile_from_row(
+        row: sqlite3.Row,
+    ) -> SpacePermissionProfileRecord:
+        return SpacePermissionProfileRecord(
+            space_id=row["space_id"],
+            profile_name=row["profile_name"],
+            sandbox_mode=row["sandbox_mode"],
+            approval_mode=row["approval_mode"],
+            reviewer_mode=row["reviewer_mode"],
+            revision=int(row["revision"]),
+            updated_by=row["updated_by"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _space_permission_profile_revision_from_row(
+        row: sqlite3.Row,
+    ) -> SpacePermissionProfileRevisionRecord:
+        return SpacePermissionProfileRevisionRecord(
+            revision_id=row["revision_id"],
+            space_id=row["space_id"],
+            profile_name=row["profile_name"],
+            sandbox_mode=row["sandbox_mode"],
+            approval_mode=row["approval_mode"],
+            reviewer_mode=row["reviewer_mode"],
+            revision=int(row["revision"]),
+            created_by=row["created_by"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _approval_rule_from_row(row: sqlite3.Row) -> ApprovalRuleRecord:
+        return ApprovalRuleRecord(
+            rule_id=row["rule_id"],
+            space_id=row["space_id"],
+            effect=row["effect"],
+            action_pattern=row["action_pattern"],
+            resource_pattern=row["resource_pattern"],
+            scope=row["scope"],
+            run_id=row["run_id"],
+            source_interaction_id=row["source_interaction_id"],
+            expires_at=(
+                float(row["expires_at"])
+                if row["expires_at"] is not None
+                else None
+            ),
+            created_by=row["created_by"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _security_audit_event_from_row(
+        row: sqlite3.Row,
+    ) -> SecurityAuditEventRecord:
+        return SecurityAuditEventRecord(
+            audit_event_id=row["audit_event_id"],
+            space_id=row["space_id"],
+            run_id=row["run_id"],
+            interaction_id=row["interaction_id"],
+            event_type=row["event_type"],
+            actor_type=row["actor_type"],
+            actor_id=row["actor_id"],
+            action_digest=row["action_digest"],
+            details=json.loads(row["details_json"]),
+            created_at=float(row["created_at"]),
         )
 
     @staticmethod

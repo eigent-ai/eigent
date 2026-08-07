@@ -125,6 +125,7 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
   }
 
   interface AgentMessage {
@@ -169,6 +170,19 @@ declare global {
       current_length?: number;
       max_length?: number;
       text?: string;
+      interaction_id?: string;
+      interaction_type?: import('@/service/humanInteractionApi').HumanInteractionPayload['interaction_type'];
+      run_id?: string;
+      version?: number;
+      approval_id?: string;
+      action_digest?: string;
+      title?: string;
+      operation?: string;
+      safety_class?: string;
+      target_resources?: string[];
+      allowed_scopes?: import('@/service/humanInteractionApi').InteractionDecisionScope[];
+      options?: import('@/service/humanInteractionApi').HumanInteractionPayload['options'];
+      fields?: import('@/service/humanInteractionApi').HumanInteractionPayload['fields'];
     };
     status?: AgentMessageStatusType;
   }

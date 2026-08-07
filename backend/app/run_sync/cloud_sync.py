@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from urllib.parse import quote
+from pathlib import PurePath
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -21,6 +24,49 @@ from app.run_journal import (
 )
 
 logger = logging.getLogger("run_sync")
+
+
+def _cloud_resource_label(value: Any) -> str:
+    resource = str(value)
+    parsed = urlsplit(resource)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    if resource.startswith(("/", "~", "\\\\")) or re.match(
+        r"^[A-Za-z]:[\\\\/]", resource
+    ):
+        normalized_path = resource.replace("\\", "/")
+        return f"[local]/{PurePath(normalized_path).name}"
+    return resource
+
+
+def _cloud_event_payload(
+    event_type: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Project a local canonical event into its Cloud-safe representation."""
+
+    projected = copy.deepcopy(payload)
+    if event_type != "approval.requested":
+        return projected
+    prompt = projected.get("prompt")
+    if not isinstance(prompt, dict):
+        return projected
+    resources = prompt.get("target_resources")
+    if isinstance(resources, list):
+        prompt["target_resources"] = [
+            _cloud_resource_label(item) for item in resources
+        ]
+    action = prompt.get("action")
+    if isinstance(action, dict):
+        # The digest is computed and persisted from the full trusted local
+        # descriptor. Remote display never needs raw tool arguments, file
+        # contents, query strings, or absolute paths.
+        action.pop("normalized_arguments", None)
+        action_resources = action.get("target_resources")
+        if isinstance(action_resources, list):
+            action["target_resources"] = [
+                _cloud_resource_label(item) for item in action_resources
+            ]
+    return projected
 
 
 @dataclass(frozen=True)
@@ -388,9 +434,10 @@ class CloudSyncWorker:
                 "Run sync project list must contain an items array"
             )
         for item in project_items:
-            if not isinstance(item, dict) or not str(
-                item.get("project_id") or ""
-            ).strip():
+            if (
+                not isinstance(item, dict)
+                or not str(item.get("project_id") or "").strip()
+            ):
                 raise RunEventSyncProtocolError(
                     "invalid Run sync project descriptor"
                 )
@@ -570,7 +617,9 @@ class CloudSyncWorker:
                     "run_sequence": event.sequence,
                     "run_version": event.run_version,
                     "event_type": event.event_type,
-                    "payload": event.payload,
+                    "payload": _cloud_event_payload(
+                        event.event_type, event.payload
+                    ),
                     "legacy_step": event.legacy_step,
                     "created_at": datetime.fromtimestamp(
                         event.created_at,

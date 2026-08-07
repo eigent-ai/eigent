@@ -41,6 +41,7 @@ class EnvironmentConfigResolver:
         provider_capability: ProviderModelCapability,
         model_profile: str = "default",
         thinking_effort_override: str | ThinkingEffort | None = None,
+        permission_profile_revision_override: str | None = None,
         allow_dynamic_effort_remap: bool = False,
         runtime_capability_manifest: dict[str, Any] | None = None,
     ) -> EffectiveEnvironmentSpec:
@@ -63,7 +64,10 @@ class EnvironmentConfigResolver:
             by_alias=True,
             mode="json",
         )
-        permission_revision = canonical_digest(permission_payload)
+        permission_revision = (
+            permission_profile_revision_override
+            or canonical_digest(permission_payload)
+        )
         semantic_spec = {
             "bundle": manifest.canonical_payload(),
             "selected_model_profile": model_profile,

@@ -350,6 +350,106 @@ class ApprovalRecord:
     expiry_action: str
     created_at: float
     resolved_at: float | None
+    action_digest: str = ""
+    policy_revision: str = "legacy"
+    safety_class: str = "unknown"
+    decision_scope: str = "once"
+
+
+@dataclass(frozen=True)
+class HumanInteractionRecord:
+    interaction_id: str
+    run_id: str
+    attempt_id: str | None
+    interaction_type: str
+    status: str
+    request: dict[str, Any]
+    response_schema: dict[str, Any]
+    requested_by: str
+    version: int
+    expires_at: float | None
+    presented_at: float | None
+    resolved_at: float | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class HumanInteractionOptionRecord:
+    interaction_id: str
+    option_id: str
+    position: int
+    label: str
+    value: Any
+    description: str | None
+
+
+@dataclass(frozen=True)
+class HumanInteractionDecisionRecord:
+    decision_id: str
+    interaction_id: str
+    decision_request_id: str
+    decision: dict[str, Any]
+    actor_type: str
+    actor_id: str | None
+    source: str
+    action_digest: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
+class SpacePermissionProfileRecord:
+    space_id: str
+    profile_name: str
+    sandbox_mode: str
+    approval_mode: str
+    reviewer_mode: str
+    revision: int
+    updated_by: str
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class SpacePermissionProfileRevisionRecord:
+    revision_id: str
+    space_id: str
+    profile_name: str
+    sandbox_mode: str
+    approval_mode: str
+    reviewer_mode: str
+    revision: int
+    created_by: str
+    created_at: float
+
+
+@dataclass(frozen=True)
+class ApprovalRuleRecord:
+    rule_id: str
+    space_id: str
+    effect: str
+    action_pattern: str
+    resource_pattern: str | None
+    scope: str
+    run_id: str | None
+    source_interaction_id: str | None
+    expires_at: float | None
+    created_by: str
+    created_at: float
+
+
+@dataclass(frozen=True)
+class SecurityAuditEventRecord:
+    audit_event_id: str
+    space_id: str | None
+    run_id: str | None
+    interaction_id: str | None
+    event_type: str
+    actor_type: str
+    actor_id: str | None
+    action_digest: str | None
+    details: dict[str, Any]
+    created_at: float
 
 
 @dataclass(frozen=True)

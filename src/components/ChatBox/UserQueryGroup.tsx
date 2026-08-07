@@ -27,6 +27,7 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import { HumanInteractionCard } from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
 import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
@@ -484,6 +485,34 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
+        if (message.step === AgentStep.ASK && message.interaction) {
+          return (
+            <HumanInteractionCard
+              key={`interaction-${message.id}`}
+              interaction={message.interaction}
+              readOnly={
+                activeTask?.type === 'replay' ||
+                activeTask?.type === 'share' ||
+                activeTask?.status === ChatTaskStatus.FINISHED
+              }
+              onResolved={() => {
+                if (!activeTaskId) return;
+                const current = chatStore.getState().tasks[activeTaskId];
+                const [nextAsk, ...remainingAsks] = current.askList;
+                chatStore
+                  .getState()
+                  .setActiveAskList(activeTaskId, remainingAsks);
+                chatStore
+                  .getState()
+                  .setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
+                chatStore.getState().setIsPending(activeTaskId, false);
+                if (nextAsk) {
+                  chatStore.getState().addMessages(activeTaskId, nextAsk);
+                }
+              }}
+            />
+          );
+        }
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
             return (
