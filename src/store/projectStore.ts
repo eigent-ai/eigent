@@ -371,8 +371,9 @@ interface ProjectStore {
    * Load project from history. Tries an IDB-backed cache first (skip-replay
    * fast path); falls back to SSE replay on miss. Resolves when loading
    * completes. `serverUpdatedAt` is the project's last-activity timestamp
-   * (ms) from the history API — stale cache entries are discarded before
-   * hydration so the same open renders the latest canonical history.
+   * (ms) from the history API. Local RunJournal projects additionally compare
+   * SQLite's max Run.updated_at before hydration, so IDB can accelerate UI
+   * reconstruction without becoming a source of truth.
    */
   loadProjectFromHistory: (
     taskIds: string[],
@@ -1351,6 +1352,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         string,
         { status?: string; totalAttemptElapsedMs?: number }
       >();
+      let localCanonicalUpdatedAt: number | null = null;
       try {
         const localRuns = await fetchGet('/runs', {
           project_id: loadProjectId,
@@ -1358,6 +1360,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         });
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
+            if (
+              typeof run.updated_at === 'number' &&
+              Number.isFinite(run.updated_at)
+            ) {
+              localCanonicalUpdatedAt = Math.max(
+                localCanonicalUpdatedAt ?? run.updated_at,
+                run.updated_at
+              );
+            }
             localRunsById.set(String(run.run_id), {
               status: typeof run.status === 'string' ? run.status : undefined,
               totalAttemptElapsedMs:
@@ -1376,10 +1387,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         );
       }
 
-      const hasCanonicalLocalHistory = taskIds.some((taskId) =>
-        localRunsById.has(taskId)
-      );
-
       // Fast path: rehydrate only a cache snapshot proven current by the
       // server freshness anchor. If the server moved on while the renderer
       // was detached, discard the snapshot and replay during this same open.
@@ -1390,7 +1397,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // Concurrency: the `await getCachedProject` yields control. The user
       // might switch to a different project before it resolves. We bail
       // before mutating state if the active project no longer matches.
-      if (cacheScope && !hasCanonicalLocalHistory) {
+      if (cacheScope) {
         try {
           const cached = await getCachedProject(cacheScope);
           if (get().activeProjectId !== loadProjectId) {
@@ -1399,7 +1406,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const cacheIsStale = Boolean(
             cached &&
             (cached.serverUpdatedAt == null ||
-              (serverUpdatedAt as number) > cached.serverUpdatedAt)
+              (serverUpdatedAt as number) > cached.serverUpdatedAt ||
+              (cached.localCanonicalUpdatedAt ?? null) !==
+                localCanonicalUpdatedAt)
           );
           if (cacheIsStale) {
             await deleteCachedProject(cacheScope);
@@ -1584,7 +1593,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         // Skip the write when:
         // 1. `cacheScope` is null — caller had no userId, no serverUpdatedAt,
         //    or both. We cannot anchor a freshness check, so writing would
-        //    create un-evictable entries.
+        //    create un-evictable entries. Local canonical Projects additionally
+        //    carry SQLite's max Run.updated_at, so IDB remains only a verified,
+        //    disposable UI projection rather than a competing source of truth.
         // 2. The user logged out (or switched accounts) during the replay.
         //    cacheScope.userId was captured at function start; if it no
         //    longer matches the live session, writing would leak this
@@ -1598,7 +1609,6 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         );
         if (
           cacheScope &&
-          !hasCanonicalLocalHistory &&
           liveUserId === cacheScope.userId &&
           allTasksLoaded &&
           loadedChatStoresByTaskId.size > 0
@@ -1637,6 +1647,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (snapshotComplete && cachedTaskIds.length === taskIds.length) {
             void putCachedProject(cacheScope, {
               serverUpdatedAt: serverUpdatedAt as number,
+              localCanonicalUpdatedAt,
               taskIds: cachedTaskIds,
               tasks: tasksSnapshot,
               projectName: displayName,
