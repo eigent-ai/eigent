@@ -41,6 +41,7 @@ import {
   recordTaskStopped,
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
+import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
 import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
@@ -51,6 +52,7 @@ import {
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -393,6 +395,14 @@ async function resolveCdpBrowsersForRequest(
   return { browser_port, cdp_browsers };
 }
 
+export type DurableRunDisplayStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'stopped';
+
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
@@ -413,6 +423,8 @@ interface Task {
   hasMessages: boolean;
   activeAgent: string;
   status: ChatTaskStatusType;
+  /** Canonical Run outcome used when projecting historical/non-happy turns. */
+  durableRunStatus?: DurableRunDisplayStatus;
   taskTime: number;
   elapsed: number;
   tokens: number;
@@ -782,6 +794,10 @@ export interface ChatStore {
   removeTask: (taskId: string) => void;
   stopTask: (taskId: string) => void;
   setStatus: (taskId: string, status: ChatTaskStatusType) => void;
+  setDurableRunStatus: (
+    taskId: string,
+    status: DurableRunDisplayStatus | undefined
+  ) => void;
   setActiveTaskId: (taskId: string) => void;
   setTaskSessionMode: (taskId: string, mode: SessionModeType) => void;
   replay: (
@@ -1097,6 +1113,11 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
   return files;
 }
 
+type TaskArtifactFileListResult = {
+  canonical: boolean;
+  files: FileInfo[];
+};
+
 async function loadTaskArtifactFileList({
   taskId,
   projectId,
@@ -1107,9 +1128,11 @@ async function loadTaskArtifactFileList({
   projectId?: string;
   email?: string;
   userId?: string | number | null;
-}): Promise<FileInfo[]> {
+}): Promise<TaskArtifactFileListResult> {
   // The index contains absolute local paths and is intentionally Desktop-only.
-  if (!getHostIpcRenderer()?.invoke || !projectId || !email) return [];
+  if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
+    return { canonical: false, files: [] };
+  }
 
   try {
     const changes = await fetchGet('/files/changes', {
@@ -1118,12 +1141,15 @@ async function loadTaskArtifactFileList({
       email,
       ...(userId ? { user_id: userId } : {}),
     });
-    return normalizeTaskArtifactFileList(changes);
+    return {
+      canonical: true,
+      files: normalizeTaskArtifactFileList(changes),
+    };
   } catch (error) {
     // Older Brain versions and cloud-only history do not expose the local
     // artifact index. Existing WRITE_FILE/final-answer projections remain.
     console.info(`[Artifacts] No local changes for task ${taskId}`, error);
-    return [];
+    return { canonical: false, files: [] };
   }
 }
 
@@ -1195,6 +1221,33 @@ export function mergeFileInfoLists(
   });
 
   return merged;
+}
+
+/**
+ * Resolve the final card's Run-scoped output list.
+ *
+ * A successful local artifact lookup is authoritative even when it returns an
+ * empty list. In that case paths merely mentioned in the final answer must not
+ * be promoted to "Files changed": they can point at files created by an older
+ * Run in the same direct-write workspace. Final-answer extraction remains a
+ * compatibility fallback for cloud history and older Brain versions that do
+ * not expose the canonical artifact endpoint.
+ */
+export function resolveRunOutputFileList({
+  writeEventFiles,
+  artifactFiles,
+  canonicalArtifactsAvailable,
+  finalAnswerFiles,
+}: {
+  writeEventFiles: FileInfo[];
+  artifactFiles: FileInfo[];
+  canonicalArtifactsAvailable: boolean;
+  finalAnswerFiles: FileInfo[];
+}): FileInfo[] {
+  return mergeFileInfoLists(
+    writeEventFiles,
+    canonicalArtifactsAvailable ? artifactFiles : finalAnswerFiles
+  );
 }
 
 const normalizeToolkitMessage = (value: unknown) => {
@@ -1553,13 +1606,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return state;
           }
 
+          const task = state.tasks[taskId];
+          const elapsed = settleTaskElapsedMs(task, Date.now());
           return {
             ...state,
             tasks: {
               ...state.tasks,
               [taskId]: {
-                ...state.tasks[taskId],
+                ...task,
                 status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'stopped',
+                taskTime: 0,
+                elapsed,
               },
             },
           };
@@ -2610,6 +2668,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             console.log(
               `[TTFT] Task ${ttftTaskId} confirmed at ${new Date().toISOString()}, starting TTFT measurement`
             );
+            const confirmedStore = getCurrentChatStore();
+            const confirmedTask = confirmedStore.tasks[ttftTaskId];
+            if (
+              !type &&
+              sessionModeForRequest === SessionMode.SINGLE_AGENT &&
+              confirmedTask?.taskTime === 0
+            ) {
+              // Single Agent has no manual plan-confirm boundary. Admission
+              // is the start of its durable Attempt, so seed the clock here
+              // instead of waiting for the first todo_state/model response.
+              // This also gives pre-TODO transport errors a non-zero duration.
+              confirmedStore.setTaskTime(ttftTaskId, Date.now());
+            }
             return;
           }
 
@@ -3818,6 +3889,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 'An error occurred while processing your request';
               const isProjectBusyError =
                 errorMessage === 'Single Agent is already processing a task.';
+              const isRetryableRunError =
+                agentMessages.data?.retryable === true;
+
+              // Freeze the live clock before switching to FINISHED. The work
+              // log only advances taskTime while RUNNING; skipping this step
+              // made every error path render "Worked for 0s".
+              const failedTask = tasks[currentTaskId];
+              const settledElapsed = settleTaskElapsedMs(
+                failedTask,
+                Date.now()
+              );
+              setTaskTime(currentTaskId, 0);
+              setElapsed(currentTaskId, settledElapsed);
+              get().setDurableRunStatus(currentTaskId, 'failed');
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -3905,6 +3990,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 } catch (error) {
                   console.log('Task may not exist on backend:', error);
                 }
+              }
+              if (isRetryableRunError && project_id) {
+                notifyDurableRunStatusChanged(project_id);
+                // The error SSE can reach the renderer a few milliseconds
+                // before Coordinator commits runtime.interrupted. One bounded
+                // follow-up closes that race without reinstating polling.
+                window.setTimeout(
+                  () => notifyDurableRunStatusChanged(project_id),
+                  300
+                );
               }
             } catch (error) {
               console.error('Failed to handle model error:', error);
@@ -4033,6 +4128,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // that as a successful completion for analytics metrics.
             const wasStoppedByUser = endMessageText.startsWith(
               '<summary>Task stopped</summary>'
+            );
+            get().setDurableRunStatus(
+              currentTaskId,
+              wasStoppedByUser ? 'stopped' : 'completed'
             );
 
             const endMessage = resolveEndMessageText(
@@ -4274,10 +4373,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               email || undefined,
               outputBaseURL || undefined
             );
-            const mergedFileList = mergeFileInfoLists(
-              mergeFileInfoLists(fileList, taskArtifactFileList),
-              finalOutputFileList
-            );
+            const mergedFileList = resolveRunOutputFileList({
+              writeEventFiles: fileList,
+              artifactFiles: taskArtifactFileList.files,
+              canonicalArtifactsAvailable: taskArtifactFileList.canonical,
+              finalAnswerFiles: finalOutputFileList,
+            });
 
             console.log('endMessage', endMessage);
             updateMessage(currentTaskId, endMessageId, {
@@ -4901,6 +5002,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           },
         },
       }));
+    },
+    setDurableRunStatus(
+      taskId: string,
+      durableRunStatus: DurableRunDisplayStatus | undefined
+    ) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task) return state;
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              durableRunStatus,
+            },
+          },
+        };
+      });
     },
     handleConfirmTask: async (
       project_id: string,

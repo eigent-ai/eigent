@@ -26,10 +26,14 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
-import { TaskWorkLogAccordion } from './MessageItem/TaskWorkLogAccordion';
+import {
+  getTaskRunDisplayStatus,
+  TaskWorkLogAccordion,
+} from './MessageItem/TaskWorkLogAccordion';
 import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
@@ -204,6 +208,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   index,
   taskId: scopedTaskId,
 }) => {
+  const { t } = useTranslation();
   const groupRef = useRef<HTMLDivElement>(null);
   const chatState = chatStore.getState();
 
@@ -319,6 +324,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
+  const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
+  const hasVisibleAgentOutput = queryGroup.otherMessages.some(
+    (message) =>
+      typeof message?.content === 'string' && message.content.trim().length > 0
+  );
+  const showMissingFinalResponse = Boolean(
+    task?.status === ChatTaskStatus.FINISHED &&
+    runDisplayStatus &&
+    !hasVisibleAgentOutput
+  );
 
   // Set up intersection observer for this query group
   useEffect(() => {
@@ -594,6 +609,16 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
 
         return null;
       })}
+
+      {showMissingFinalResponse ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-ds-bg-neutral-secondary-default mx-6 my-3 rounded-xl border border-ds-border-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default"
+        >
+          {t('chat.run-no-final-response')}
+        </motion.div>
+      ) : null}
 
       {/* PlanTaskBox now owns streaming + skeleton splitting UI for the active task. */}
       {isSkeletonPhase && activeTaskId && (

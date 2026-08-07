@@ -334,6 +334,7 @@ describe('projectStore runtime shape', () => {
           {
             run_id: 'task_local',
             status: 'completed',
+            created_at: 100,
             updated_at: 300,
             total_attempt_elapsed_ms: 613_328,
           },
@@ -399,6 +400,7 @@ describe('projectStore runtime shape', () => {
       const task =
         project.chatStores[project.activeChatId].getState().tasks.task_local;
       expect(task.elapsed).toBe(613_328);
+      expect(task.durableRunStatus).toBe('completed');
       expect(putCachedProjectMock).toHaveBeenCalledWith(
         { userId: 10, projectId: 'project_local' },
         expect.objectContaining({
@@ -410,6 +412,47 @@ describe('projectStore runtime shape', () => {
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }
+  });
+
+  it('projects cloud-restored duration and interrupted status without attempt rows', async () => {
+    fetchGetMock.mockResolvedValue({
+      runs: [
+        {
+          run_id: 'task_cloud_interrupted',
+          status: 'interrupted',
+          origin: 'cloud_restore',
+          created_at: 1_786_101_992.187,
+          updated_at: 1_786_102_022.109,
+          total_attempt_elapsed_ms: null,
+        },
+      ],
+    });
+    replayMock.mockImplementationOnce(async (taskId: string) => {
+      const project = useProjectStore.getState().projects.project_cloud;
+      const chatStore = project.chatStores[project.activeChatId];
+      chatStore.getState().create(taskId, 'replay');
+      chatStore.getState().setStatus(taskId, 'finished');
+    });
+
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_cloud_interrupted'],
+        'cloud prompt',
+        'project_cloud',
+        'history_cloud',
+        'Cloud history',
+        'space_test',
+        { task_cloud_interrupted: 'cloud prompt' },
+        200
+      );
+
+    const project = useProjectStore.getState().projects.project_cloud;
+    const task =
+      project.chatStores[project.activeChatId].getState().tasks
+        .task_cloud_interrupted;
+    expect(task.elapsed).toBeCloseTo(29_922, 0);
+    expect(task.durableRunStatus).toBe('interrupted');
   });
 
   it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {

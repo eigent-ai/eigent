@@ -148,6 +148,8 @@ declare global {
       method_name?: string;
       state?: string;
       message?: string;
+      retryable?: boolean;
+      reason?: string | null;
       question?: string;
       reply?: string;
       agent?: string;
