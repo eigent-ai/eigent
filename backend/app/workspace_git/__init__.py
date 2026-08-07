@@ -38,6 +38,21 @@ from app.workspace_git.content import (
     RepositoryStateChangedError,
     RestoreCandidate,
 )
+from app.workspace_git.coordinator import (
+    GitRunAdmission,
+    GitRunWorkspace,
+    WorkspaceGitCoordinator,
+    get_default_workspace_git_coordinator,
+)
+from app.workspace_git.snapshot import (
+    WorkspaceOverlayConflictError,
+    WorkspacePathNotFoundError,
+    WorkspaceSnapshotError,
+    WorkspaceSnapshotRead,
+    WorkspaceSnapshotService,
+    WorkspaceSnapshotUnavailableError,
+    WorkspaceSourceChangedError,
+)
 
 __all__ = [
     "ConfigurationRepositoryError",
@@ -53,6 +68,8 @@ __all__ = [
     "GitBackendError",
     "GitCommandError",
     "GitCommandResult",
+    "GitRunAdmission",
+    "GitRunWorkspace",
     "NestedRepositoryError",
     "NoCheckpointChangesError",
     "RepoStateToken",
@@ -60,4 +77,13 @@ __all__ = [
     "RepositoryStateChangedError",
     "RepositoryProbe",
     "RestoreCandidate",
+    "WorkspaceGitCoordinator",
+    "WorkspaceOverlayConflictError",
+    "WorkspacePathNotFoundError",
+    "WorkspaceSnapshotError",
+    "WorkspaceSnapshotRead",
+    "WorkspaceSnapshotService",
+    "WorkspaceSnapshotUnavailableError",
+    "WorkspaceSourceChangedError",
+    "get_default_workspace_git_coordinator",
 ]

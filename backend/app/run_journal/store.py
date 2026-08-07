@@ -45,16 +45,21 @@ from app.run_journal.models import (
     GitCheckpointRecord,
     GitOperationRecord,
     GitRepositoryRecord,
+    ProjectGitStateRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
     RunEventSyncBatch,
     RunEventSyncOutboxRecord,
+    RunGitMaterializationRecord,
     RunRecord,
     StartupReconciliationResult,
     ToolCallRecord,
     WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
+    WorkspaceOverlayEntryRecord,
+    WorkspaceReadSnapshotRecord,
+    WorkspaceSnapshotRangeRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.transitions import (
@@ -79,7 +84,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 9
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -541,6 +546,151 @@ PRAGMA user_version = 7;
 COMMIT;
 """
 
+_MIGRATION_V8 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE git_project_integrations (
+    project_id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    integration_ref TEXT,
+    integration_head TEXT,
+    last_synced_user_head TEXT,
+    pending_apply INTEGER NOT NULL DEFAULT 0 CHECK (
+        pending_apply IN (0, 1)
+    ),
+    worktree_path TEXT,
+    projected_head TEXT,
+    state TEXT NOT NULL DEFAULT 'unmaterialized' CHECK (
+        state IN (
+            'unmaterialized', 'ready', 'needs_attention', 'conflicted',
+            'archived'
+        )
+    ),
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE INDEX git_project_integrations_repository_idx
+ON git_project_integrations(repository_id, updated_at DESC);
+
+CREATE TABLE git_run_materializations (
+    run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    workspace_base_ref TEXT,
+    workspace_base_commit TEXT,
+    project_state_version INTEGER NOT NULL CHECK (
+        project_state_version >= 0
+    ),
+    materialization_state TEXT NOT NULL DEFAULT 'unmaterialized' CHECK (
+        materialization_state IN (
+            'unmaterialized', 'materializing', 'materialized', 'promoted',
+            'conflicted', 'needs_attention', 'archived'
+        )
+    ),
+    run_ref TEXT,
+    worktree_path TEXT,
+    promoted_commit TEXT,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    FOREIGN KEY(project_id) REFERENCES git_project_integrations(project_id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX git_run_materializations_project_idx
+ON git_run_materializations(project_id, created_at DESC);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (8, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 8;
+COMMIT;
+"""
+
+_MIGRATION_V9 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE workspace_read_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    project_base_commit TEXT,
+    common_base_commit TEXT,
+    project_state_version INTEGER NOT NULL CHECK (
+        project_state_version >= 0
+    ),
+    snapshot_ref TEXT,
+    user_head TEXT,
+    user_working_state_digest TEXT NOT NULL CHECK (
+        length(user_working_state_digest) = 64
+    ),
+    overlay_manifest_digest TEXT NOT NULL CHECK (
+        length(overlay_manifest_digest) = 64
+    ),
+    state TEXT NOT NULL DEFAULT 'active' CHECK (
+        state IN ('active', 'stale', 'unavailable', 'released')
+    ),
+    expires_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(run_id, generation)
+);
+
+CREATE INDEX workspace_read_snapshots_run_idx
+ON workspace_read_snapshots(run_id, generation DESC);
+
+CREATE TABLE workspace_overlay_entries (
+    snapshot_id TEXT NOT NULL REFERENCES workspace_read_snapshots(
+        snapshot_id
+    ) ON DELETE CASCADE,
+    relative_path TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (
+        source_kind IN ('project_blob', 'user_overlay', 'missing')
+    ),
+    entry_state TEXT NOT NULL CHECK (
+        entry_state IN (
+            'read_only', 'imported_preimage', 'agent_modified', 'conflicted'
+        )
+    ),
+    source_token_json TEXT NOT NULL,
+    project_blob_oid TEXT,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(snapshot_id, relative_path)
+);
+
+CREATE TABLE workspace_snapshot_ranges (
+    snapshot_id TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
+    end_offset INTEGER NOT NULL CHECK (end_offset >= start_offset),
+    content_digest TEXT NOT NULL CHECK (length(content_digest) = 64),
+    cache_key TEXT NOT NULL CHECK (length(cache_key) = 64),
+    created_at REAL NOT NULL,
+    PRIMARY KEY(snapshot_id, relative_path, start_offset, end_offset),
+    FOREIGN KEY(snapshot_id, relative_path) REFERENCES workspace_overlay_entries(
+        snapshot_id, relative_path
+    ) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (9, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 9;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -622,6 +772,10 @@ class SQLiteRunJournal:
         with self._lock:
             row = self._connection.execute("PRAGMA user_version").fetchone()
             return int(row[0])
+
+    @staticmethod
+    def _is_sha256(value: str) -> bool:
+        return len(value) == 64 and not (set(value) - set("0123456789abcdef"))
 
     def database_settings(self) -> dict[str, Any]:
         with self._lock:
@@ -1718,6 +1872,1023 @@ class SQLiteRunJournal:
                 (repository_id,),
             ).fetchall()
             return tuple(row["relative_path"] for row in rows)
+
+    def admit_git_run_workspace(
+        self,
+        *,
+        run_id: str,
+        project_id: str,
+        repository_id: str,
+        user_head: str | None,
+        user_ref: str | None,
+        now: float | None = None,
+    ) -> tuple[ProjectGitStateRecord, RunGitMaterializationRecord]:
+        """Pin a Run base without creating refs, branches, or worktrees."""
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT project_id FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise ValueError(f"unknown Run {run_id!r}")
+            if run["project_id"] != project_id:
+                raise IdempotencyConflictError(
+                    f"Run {run_id!r} belongs to another Project"
+                )
+            repository = connection.execute(
+                """
+                SELECT repository_role FROM git_repositories
+                WHERE repository_id = ?
+                """,
+                (repository_id,),
+            ).fetchone()
+            if repository is None or repository["repository_role"] != "content":
+                raise ValueError(
+                    f"unknown Content Repository {repository_id!r}"
+                )
+
+            existing_run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if existing_run is not None:
+                if (
+                    existing_run["project_id"] != project_id
+                    or existing_run["repository_id"] != repository_id
+                ):
+                    raise IdempotencyConflictError(
+                        f"Run {run_id!r} has another Git workspace owner"
+                    )
+                project = connection.execute(
+                    """
+                    SELECT * FROM git_project_integrations
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchone()
+                if project is None:
+                    raise RunJournalError(
+                        "Run Git admission has no Project Git state"
+                    )
+                return (
+                    self._project_git_state_from_row(project),
+                    self._run_git_materialization_from_row(existing_run),
+                )
+
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                connection.execute(
+                    """
+                    INSERT INTO git_project_integrations(
+                        project_id, repository_id, integration_ref,
+                        integration_head, last_synced_user_head,
+                        pending_apply, worktree_path, projected_head,
+                        state, version, created_at, updated_at
+                    ) VALUES (?, ?, NULL, NULL, ?, 0, NULL, NULL,
+                              'unmaterialized', 0, ?, ?)
+                    """,
+                    (project_id, repository_id, user_head, timestamp, timestamp),
+                )
+                project = connection.execute(
+                    """
+                    SELECT * FROM git_project_integrations
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchone()
+            else:
+                if project["repository_id"] != repository_id:
+                    raise IdempotencyConflictError(
+                        f"Project {project_id!r} belongs to another repository"
+                    )
+                if (
+                    project["integration_head"] is None
+                    and project["last_synced_user_head"] != user_head
+                ):
+                    connection.execute(
+                        """
+                        UPDATE git_project_integrations
+                        SET last_synced_user_head = ?, version = version + 1,
+                            updated_at = ?
+                        WHERE project_id = ? AND version = ?
+                        """,
+                        (
+                            user_head,
+                            timestamp,
+                            project_id,
+                            int(project["version"]),
+                        ),
+                    )
+                    project = connection.execute(
+                        """
+                        SELECT * FROM git_project_integrations
+                        WHERE project_id = ?
+                        """,
+                        (project_id,),
+                    ).fetchone()
+            assert project is not None
+            base_commit = project["integration_head"] or user_head
+            base_ref = project["integration_ref"] or user_ref
+            connection.execute(
+                """
+                INSERT INTO git_run_materializations(
+                    run_id, project_id, repository_id, workspace_base_ref,
+                    workspace_base_commit, project_state_version,
+                    materialization_state, run_ref, worktree_path,
+                    promoted_commit, version, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'unmaterialized', NULL, NULL,
+                          NULL, 0, ?, ?)
+                """,
+                (
+                    run_id,
+                    project_id,
+                    repository_id,
+                    base_ref,
+                    base_commit,
+                    int(project["version"]),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            admitted = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert admitted is not None
+            return (
+                self._project_git_state_from_row(project),
+                self._run_git_materialization_from_row(admitted),
+            )
+
+    def get_project_git_state(
+        self,
+        project_id: str,
+    ) -> ProjectGitStateRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            return (
+                self._project_git_state_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def get_run_git_materialization(
+        self,
+        run_id: str,
+    ) -> RunGitMaterializationRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            return (
+                self._run_git_materialization_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def dispatch_git_run_materialization(
+        self,
+        *,
+        operation_id: str,
+        run_id: str,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if operation is None or run is None:
+                raise ValueError("unknown Git materialization operation")
+            if operation["repository_id"] != run["repository_id"]:
+                raise ValueError("Git materialization repository mismatch")
+            if operation["operation_type"] != "run.materialize":
+                raise ValueError("Git operation is not a Run materialization")
+            if operation["status"] == "completed":
+                return self._run_git_materialization_from_row(run)
+            if operation["status"] == "dispatched":
+                if run["materialization_state"] != "materializing":
+                    raise RunJournalError(
+                        "dispatched materialization has inconsistent Run state"
+                    )
+                return self._run_git_materialization_from_row(run)
+            if operation["status"] != "prepared":
+                raise InvalidRunTransitionError(
+                    f"materialization cannot dispatch from "
+                    f"{operation['status']!r}"
+                )
+            if run["materialization_state"] != "unmaterialized":
+                raise InvalidRunTransitionError(
+                    f"Run workspace cannot materialize from "
+                    f"{run['materialization_state']!r}"
+                )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'dispatched', observed_repo_state_digest = ?,
+                    updated_at = ?
+                WHERE operation_id = ? AND status = 'prepared'
+                """,
+                (observed_repo_state_digest, timestamp, operation_id),
+            )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET materialization_state = 'materializing',
+                    version = version + 1, updated_at = ?
+                WHERE run_id = ? AND materialization_state = 'unmaterialized'
+                """,
+                (timestamp, run_id),
+            )
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert run is not None
+            return self._run_git_materialization_from_row(run)
+
+    def complete_git_run_materialization(
+        self,
+        *,
+        operation_id: str,
+        run_id: str,
+        expected_project_version: int,
+        expected_project_head: str | None,
+        project_ref: str,
+        project_head: str,
+        project_worktree_path: str,
+        run_base_ref: str | None,
+        run_base_commit: str,
+        run_ref: str,
+        run_worktree_path: str,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> tuple[ProjectGitStateRecord, RunGitMaterializationRecord]:
+        timestamp = now if now is not None else time.time()
+        result = {
+            "project_ref": project_ref,
+            "project_head": project_head,
+            "project_worktree_path": project_worktree_path,
+            "run_base_ref": run_base_ref,
+            "run_base_commit": run_base_commit,
+            "run_ref": run_ref,
+            "run_worktree_path": run_worktree_path,
+        }
+        result_json = canonical_json(result)
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if operation is None or run is None:
+                raise ValueError("unknown Git materialization operation")
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            if project is None:
+                raise RunJournalError("Run has no Project Git state")
+            if operation["repository_id"] != run["repository_id"]:
+                raise ValueError("Git materialization repository mismatch")
+            if operation["status"] == "completed":
+                if operation["result_json"] != result_json:
+                    raise IdempotencyConflictError(
+                        "completed Run materialization has another result"
+                    )
+                return (
+                    self._project_git_state_from_row(project),
+                    self._run_git_materialization_from_row(run),
+                )
+            if operation["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    f"materialization cannot complete from "
+                    f"{operation['status']!r}"
+                )
+            if run["materialization_state"] != "materializing":
+                raise InvalidRunTransitionError(
+                    f"Run workspace cannot complete from "
+                    f"{run['materialization_state']!r}"
+                )
+            if (
+                int(project["version"]) != expected_project_version
+                or project["integration_head"] != expected_project_head
+            ):
+                raise OptimisticConcurrencyError(
+                    "Project Integration changed during Run materialization"
+                )
+            if project["integration_ref"] not in {None, project_ref}:
+                raise IdempotencyConflictError(
+                    "Project Integration ref conflicts with persisted state"
+                )
+            if project["worktree_path"] not in {
+                None,
+                project_worktree_path,
+            }:
+                raise IdempotencyConflictError(
+                    "Project Integration worktree conflicts with persisted state"
+                )
+            if project["integration_ref"] is None:
+                connection.execute(
+                    """
+                    UPDATE git_project_integrations
+                    SET integration_ref = ?, integration_head = ?,
+                        worktree_path = ?, projected_head = ?, state = 'ready',
+                        version = version + 1, updated_at = ?
+                    WHERE project_id = ? AND version = ?
+                    """,
+                    (
+                        project_ref,
+                        project_head,
+                        project_worktree_path,
+                        project_head,
+                        timestamp,
+                        run["project_id"],
+                        expected_project_version,
+                    ),
+                )
+            elif project["integration_head"] != project_head:
+                raise IdempotencyConflictError(
+                    "Project Integration head conflicts with Git state"
+                )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET workspace_base_ref = ?, workspace_base_commit = ?,
+                    materialization_state = 'materialized', run_ref = ?,
+                    worktree_path = ?, version = version + 1, updated_at = ?
+                WHERE run_id = ? AND materialization_state = 'materializing'
+                """,
+                (
+                    run_base_ref,
+                    run_base_commit,
+                    run_ref,
+                    run_worktree_path,
+                    timestamp,
+                    run_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ? AND status = 'dispatched'
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert project is not None and run is not None
+            return (
+                self._project_git_state_from_row(project),
+                self._run_git_materialization_from_row(run),
+            )
+
+    def complete_git_run_promotion(
+        self,
+        *,
+        operation_id: str,
+        run_id: str,
+        expected_project_version: int,
+        expected_project_head: str,
+        promoted_commit: str,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> tuple[ProjectGitStateRecord, RunGitMaterializationRecord]:
+        timestamp = now if now is not None else time.time()
+        result = {
+            "run_id": run_id,
+            "expected_project_head": expected_project_head,
+            "promoted_commit": promoted_commit,
+        }
+        result_json = canonical_json(result)
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if operation is None or run is None:
+                raise ValueError("unknown Git promotion operation")
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            if project is None:
+                raise RunJournalError("Run has no Project Git state")
+            if operation["repository_id"] != run["repository_id"]:
+                raise ValueError("Git promotion repository mismatch")
+            if operation["operation_type"] != "run.promote":
+                raise ValueError("Git operation is not a Run promotion")
+            if operation["status"] == "completed":
+                if operation["result_json"] != result_json:
+                    raise IdempotencyConflictError(
+                        "completed Run promotion has another result"
+                    )
+                return (
+                    self._project_git_state_from_row(project),
+                    self._run_git_materialization_from_row(run),
+                )
+            if operation["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    f"promotion cannot complete from {operation['status']!r}"
+                )
+            if run["materialization_state"] != "materialized":
+                raise InvalidRunTransitionError(
+                    f"Run workspace cannot promote from "
+                    f"{run['materialization_state']!r}"
+                )
+            if (
+                int(project["version"]) != expected_project_version
+                or project["integration_head"] != expected_project_head
+            ):
+                raise OptimisticConcurrencyError(
+                    "Project Integration changed during Run promotion"
+                )
+            if run["workspace_base_commit"] != expected_project_head:
+                raise OptimisticConcurrencyError(
+                    "Run base is stale and requires merge simulation"
+                )
+            if promoted_commit != expected_project_head:
+                connection.execute(
+                    """
+                    UPDATE git_project_integrations
+                    SET integration_head = ?, pending_apply = 1,
+                        version = version + 1, updated_at = ?
+                    WHERE project_id = ? AND version = ?
+                    """,
+                    (
+                        promoted_commit,
+                        timestamp,
+                        run["project_id"],
+                        expected_project_version,
+                    ),
+                )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET materialization_state = 'promoted', promoted_commit = ?,
+                    version = version + 1, updated_at = ?
+                WHERE run_id = ? AND materialization_state = 'materialized'
+                """,
+                (promoted_commit, timestamp, run_id),
+            )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ? AND status = 'dispatched'
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert project is not None and run is not None
+            return (
+                self._project_git_state_from_row(project),
+                self._run_git_materialization_from_row(run),
+            )
+
+    def update_project_git_projection(
+        self,
+        *,
+        project_id: str,
+        expected_version: int,
+        expected_integration_head: str,
+        expected_projected_head: str,
+        projected_head: str,
+        now: float | None = None,
+    ) -> ProjectGitStateRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Project Git state {project_id!r}")
+            if (
+                row["integration_head"] == projected_head
+                and row["projected_head"] == projected_head
+            ):
+                return self._project_git_state_from_row(row)
+            if (
+                int(row["version"]) != expected_version
+                or row["integration_head"] != expected_integration_head
+                or row["projected_head"] != expected_projected_head
+                or projected_head != expected_integration_head
+            ):
+                raise OptimisticConcurrencyError(
+                    "Project projection state changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_project_integrations
+                SET projected_head = ?, state = 'ready',
+                    version = version + 1, updated_at = ?
+                WHERE project_id = ? AND version = ?
+                """,
+                (projected_head, timestamp, project_id, expected_version),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            assert row is not None
+            return self._project_git_state_from_row(row)
+
+    def mark_project_git_attention(
+        self,
+        *,
+        project_id: str,
+        expected_version: int,
+        now: float | None = None,
+    ) -> ProjectGitStateRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Project Git state {project_id!r}")
+            if row["state"] == "needs_attention":
+                return self._project_git_state_from_row(row)
+            if int(row["version"]) != expected_version:
+                raise OptimisticConcurrencyError(
+                    "Project Git state changed before attention marker"
+                )
+            connection.execute(
+                """
+                UPDATE git_project_integrations
+                SET state = 'needs_attention', version = version + 1,
+                    updated_at = ?
+                WHERE project_id = ? AND version = ?
+                """,
+                (timestamp, project_id, expected_version),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            assert row is not None
+            return self._project_git_state_from_row(row)
+
+    def create_workspace_read_snapshot(
+        self,
+        *,
+        snapshot_id: str,
+        run_id: str,
+        project_id: str,
+        repository_id: str,
+        project_base_commit: str | None,
+        common_base_commit: str | None,
+        project_state_version: int,
+        snapshot_ref: str | None,
+        user_head: str | None,
+        user_working_state_digest: str,
+        expires_at: float | None = None,
+        now: float | None = None,
+    ) -> WorkspaceReadSnapshotRecord:
+        """Create the first lazy read snapshot, or return the active one.
+
+        The transaction is intentionally metadata-only. File bytes and Git
+        objects stay outside SQLite and are addressed by digest/ref.
+        """
+
+        if not self._is_sha256(user_working_state_digest):
+            raise ValueError("working-state digest must be SHA-256")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            active = connection.execute(
+                """
+                SELECT * FROM workspace_read_snapshots
+                WHERE run_id = ? AND state = 'active'
+                ORDER BY generation DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if active is not None:
+                return self._workspace_read_snapshot_from_row(active)
+            run = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise ValueError(f"Run {run_id!r} has no Git admission")
+            if (
+                run["project_id"] != project_id
+                or run["repository_id"] != repository_id
+            ):
+                raise IdempotencyConflictError(
+                    f"Run {run_id!r} has another snapshot owner"
+                )
+            generation_row = connection.execute(
+                """
+                SELECT COALESCE(MAX(generation), -1) + 1 AS generation
+                FROM workspace_read_snapshots WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert generation_row is not None
+            generation = int(generation_row["generation"])
+            empty_manifest_digest = canonical_digest([])
+            connection.execute(
+                """
+                INSERT INTO workspace_read_snapshots(
+                    snapshot_id, run_id, project_id, repository_id,
+                    generation, project_base_commit, common_base_commit,
+                    project_state_version, snapshot_ref, user_head,
+                    user_working_state_digest, overlay_manifest_digest,
+                    state, expires_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active',
+                          ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    run_id,
+                    project_id,
+                    repository_id,
+                    generation,
+                    project_base_commit,
+                    common_base_commit,
+                    project_state_version,
+                    snapshot_ref,
+                    user_head,
+                    user_working_state_digest,
+                    empty_manifest_digest,
+                    expires_at,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_read_snapshots
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id,),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_read_snapshot_from_row(row)
+
+    def get_active_workspace_read_snapshot(
+        self,
+        run_id: str,
+    ) -> WorkspaceReadSnapshotRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_read_snapshots
+                WHERE run_id = ? AND state = 'active'
+                ORDER BY generation DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            return (
+                self._workspace_read_snapshot_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def get_workspace_read_snapshot(
+        self,
+        snapshot_id: str,
+    ) -> WorkspaceReadSnapshotRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_read_snapshots
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id,),
+            ).fetchone()
+            return (
+                self._workspace_read_snapshot_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def replace_active_workspace_read_snapshot(
+        self,
+        run_id: str,
+        *,
+        now: float | None = None,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                UPDATE workspace_read_snapshots
+                SET state = 'stale', updated_at = ?
+                WHERE run_id = ? AND state = 'active'
+                """,
+                (timestamp, run_id),
+            )
+
+    def get_workspace_overlay_entry(
+        self,
+        snapshot_id: str,
+        relative_path: str,
+    ) -> WorkspaceOverlayEntryRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            return (
+                self._workspace_overlay_entry_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def put_workspace_overlay_entry(
+        self,
+        *,
+        snapshot_id: str,
+        relative_path: str,
+        source_kind: str,
+        entry_state: str,
+        source_token: dict[str, Any],
+        project_blob_oid: str | None,
+        size_bytes: int,
+        now: float | None = None,
+    ) -> WorkspaceOverlayEntryRecord:
+        timestamp = now if now is not None else time.time()
+        source_token_json = canonical_json(source_token)
+        expected = (
+            source_kind,
+            entry_state,
+            source_token_json,
+            project_blob_oid,
+            size_bytes,
+        )
+        with self._write_transaction() as connection:
+            snapshot = connection.execute(
+                """
+                SELECT state FROM workspace_read_snapshots
+                WHERE snapshot_id = ?
+                """,
+                (snapshot_id,),
+            ).fetchone()
+            if snapshot is None:
+                raise ValueError(f"unknown snapshot {snapshot_id!r}")
+            if snapshot["state"] != "active":
+                raise InvalidRunTransitionError(
+                    f"snapshot {snapshot_id!r} is not active"
+                )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["source_kind"],
+                    row["entry_state"],
+                    row["source_token_json"],
+                    row["project_blob_oid"],
+                    int(row["size_bytes"]),
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"snapshot path {relative_path!r} changed after pin"
+                    )
+                return self._workspace_overlay_entry_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO workspace_overlay_entries(
+                    snapshot_id, relative_path, source_kind, entry_state,
+                    source_token_json, project_blob_oid, size_bytes,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    relative_path,
+                    *expected,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            manifest_rows = connection.execute(
+                """
+                SELECT relative_path, source_kind, entry_state,
+                       source_token_json, project_blob_oid, size_bytes
+                FROM workspace_overlay_entries
+                WHERE snapshot_id = ?
+                ORDER BY relative_path
+                """,
+                (snapshot_id,),
+            ).fetchall()
+            manifest = [
+                {
+                    "relative_path": item["relative_path"],
+                    "source_kind": item["source_kind"],
+                    "entry_state": item["entry_state"],
+                    "source_token": json.loads(item["source_token_json"]),
+                    "project_blob_oid": item["project_blob_oid"],
+                    "size_bytes": int(item["size_bytes"]),
+                }
+                for item in manifest_rows
+            ]
+            connection.execute(
+                """
+                UPDATE workspace_read_snapshots
+                SET overlay_manifest_digest = ?, updated_at = ?
+                WHERE snapshot_id = ? AND state = 'active'
+                """,
+                (canonical_digest(manifest), timestamp, snapshot_id),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_overlay_entry_from_row(row)
+
+    def record_workspace_snapshot_range(
+        self,
+        *,
+        snapshot_id: str,
+        relative_path: str,
+        start_offset: int,
+        end_offset: int,
+        content_digest: str,
+        cache_key: str,
+        now: float | None = None,
+    ) -> WorkspaceSnapshotRangeRecord:
+        if start_offset < 0 or end_offset < start_offset:
+            raise ValueError("invalid snapshot byte range")
+        if not self._is_sha256(content_digest) or not self._is_sha256(
+            cache_key
+        ):
+            raise ValueError("snapshot range digests must be SHA-256")
+        timestamp = now if now is not None else time.time()
+        expected = (content_digest, cache_key)
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_snapshot_ranges
+                WHERE snapshot_id = ? AND relative_path = ?
+                  AND start_offset = ? AND end_offset = ?
+                """,
+                (snapshot_id, relative_path, start_offset, end_offset),
+            ).fetchone()
+            if row is not None:
+                actual = (row["content_digest"], row["cache_key"])
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        "snapshot range content changed after pin"
+                    )
+                return self._workspace_snapshot_range_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO workspace_snapshot_ranges(
+                    snapshot_id, relative_path, start_offset, end_offset,
+                    content_digest, cache_key, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    relative_path,
+                    start_offset,
+                    end_offset,
+                    content_digest,
+                    cache_key,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_snapshot_ranges
+                WHERE snapshot_id = ? AND relative_path = ?
+                  AND start_offset = ? AND end_offset = ?
+                """,
+                (snapshot_id, relative_path, start_offset, end_offset),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_snapshot_range_from_row(row)
+
+    def get_workspace_snapshot_range(
+        self,
+        *,
+        snapshot_id: str,
+        relative_path: str,
+        start_offset: int,
+        end_offset: int,
+    ) -> WorkspaceSnapshotRangeRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_snapshot_ranges
+                WHERE snapshot_id = ? AND relative_path = ?
+                  AND start_offset = ? AND end_offset = ?
+                """,
+                (snapshot_id, relative_path, start_offset, end_offset),
+            ).fetchone()
+            return (
+                self._workspace_snapshot_range_from_row(row)
+                if row is not None
+                else None
+            )
 
     def ensure_run(
         self,
@@ -4540,6 +5711,10 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V6)
         if version < 7:
             self._connection.executescript(_MIGRATION_V7)
+        if version < 8:
+            self._connection.executescript(_MIGRATION_V8)
+        if version < 9:
+            self._connection.executescript(_MIGRATION_V9)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -4904,6 +6079,102 @@ class SQLiteRunJournal:
             actor_id=row["actor_id"],
             trigger=row["trigger"],
             message=row["message"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _project_git_state_from_row(
+        row: sqlite3.Row,
+    ) -> ProjectGitStateRecord:
+        return ProjectGitStateRecord(
+            project_id=row["project_id"],
+            repository_id=row["repository_id"],
+            integration_ref=row["integration_ref"],
+            integration_head=row["integration_head"],
+            last_synced_user_head=row["last_synced_user_head"],
+            pending_apply=bool(row["pending_apply"]),
+            worktree_path=row["worktree_path"],
+            projected_head=row["projected_head"],
+            state=row["state"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _run_git_materialization_from_row(
+        row: sqlite3.Row,
+    ) -> RunGitMaterializationRecord:
+        return RunGitMaterializationRecord(
+            run_id=row["run_id"],
+            project_id=row["project_id"],
+            repository_id=row["repository_id"],
+            workspace_base_ref=row["workspace_base_ref"],
+            workspace_base_commit=row["workspace_base_commit"],
+            project_state_version=int(row["project_state_version"]),
+            materialization_state=row["materialization_state"],
+            run_ref=row["run_ref"],
+            worktree_path=row["worktree_path"],
+            promoted_commit=row["promoted_commit"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_read_snapshot_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceReadSnapshotRecord:
+        return WorkspaceReadSnapshotRecord(
+            snapshot_id=row["snapshot_id"],
+            run_id=row["run_id"],
+            project_id=row["project_id"],
+            repository_id=row["repository_id"],
+            generation=int(row["generation"]),
+            project_base_commit=row["project_base_commit"],
+            common_base_commit=row["common_base_commit"],
+            project_state_version=int(row["project_state_version"]),
+            snapshot_ref=row["snapshot_ref"],
+            user_head=row["user_head"],
+            user_working_state_digest=row["user_working_state_digest"],
+            overlay_manifest_digest=row["overlay_manifest_digest"],
+            state=row["state"],
+            expires_at=(
+                float(row["expires_at"])
+                if row["expires_at"] is not None
+                else None
+            ),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_overlay_entry_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceOverlayEntryRecord:
+        return WorkspaceOverlayEntryRecord(
+            snapshot_id=row["snapshot_id"],
+            relative_path=row["relative_path"],
+            source_kind=row["source_kind"],
+            entry_state=row["entry_state"],
+            source_token=json.loads(row["source_token_json"]),
+            project_blob_oid=row["project_blob_oid"],
+            size_bytes=int(row["size_bytes"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_snapshot_range_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceSnapshotRangeRecord:
+        return WorkspaceSnapshotRangeRecord(
+            snapshot_id=row["snapshot_id"],
+            relative_path=row["relative_path"],
+            start_offset=int(row["start_offset"]),
+            end_offset=int(row["end_offset"]),
+            content_digest=row["content_digest"],
+            cache_key=row["cache_key"],
             created_at=float(row["created_at"]),
         )
 
