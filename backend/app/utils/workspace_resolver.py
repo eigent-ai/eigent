@@ -364,23 +364,63 @@ class WorkspaceStore:
                     )
         return list(bindings_by_space.values())
 
+    @staticmethod
+    def _read_snapshot(path: Path) -> TaskSnapshot | None:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if "space_id" not in data:
+                data["space_id"] = data.get("project_id", "")
+            data.setdefault("user_id", None)
+            data.setdefault("workdir_mode", None)
+            data.setdefault("base_snapshot_id", None)
+            return TaskSnapshot(**data)
+        except Exception:
+            logger.warning("Failed to read task snapshot: %s", path)
+            return None
+
     def get_snapshot(
         self, email: str, task_id: str, user_id: str | int | None = None
     ) -> TaskSnapshot | None:
         for path in self._task_paths(email, task_id, user_id):
             if not path.exists():
                 continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                if "space_id" not in data:
-                    data["space_id"] = data.get("project_id", "")
-                data.setdefault("user_id", None)
-                data.setdefault("workdir_mode", None)
-                data.setdefault("base_snapshot_id", None)
-                return TaskSnapshot(**data)
-            except Exception:
-                logger.warning("Failed to read task snapshot: %s", path)
+            snapshot = self._read_snapshot(path)
+            if snapshot is not None:
+                return snapshot
         return None
+
+    def get_latest_project_snapshot(
+        self,
+        email: str,
+        project_id: str,
+        space_id: str,
+        user_id: str | int | None = None,
+    ) -> TaskSnapshot | None:
+        """Return the newest persisted Run directory for one Project."""
+        latest: TaskSnapshot | None = None
+        for root in self._state_roots(email, user_id):
+            tasks_dir = root / "tasks"
+            if not tasks_dir.exists():
+                continue
+            for path in tasks_dir.glob("*.json"):
+                snapshot = self._read_snapshot(path)
+                if (
+                    snapshot is None
+                    or snapshot.project_id != project_id
+                    or snapshot.space_id != space_id
+                    or (
+                        user_id is not None
+                        and snapshot.user_id is not None
+                        and str(snapshot.user_id) != str(user_id)
+                    )
+                ):
+                    continue
+                if (
+                    latest is None
+                    or snapshot.task_start_time > latest.task_start_time
+                ):
+                    latest = snapshot
+        return latest
 
     def save_snapshot(self, email: str, snapshot: TaskSnapshot) -> None:
         self._atomic_write(

@@ -50,7 +50,12 @@ describe('projectStore runtime shape', () => {
     });
     globalThis.electronAPI = {
       ...globalThis.electronAPI,
+      terminalCreate: vi.fn().mockResolvedValue({ success: true }),
+      terminalInput: vi.fn(),
+      terminalResize: vi.fn(),
       terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+      onTerminalData: vi.fn(() => () => {}),
+      onTerminalExit: vi.fn(() => () => {}),
     };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
@@ -219,9 +224,34 @@ describe('projectStore runtime shape', () => {
       false
     );
     expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[projectId]
+    ).toBeUndefined();
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
+  });
+
+  it('keeps preview state when replacing only the project runtime', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Reloaded Project', undefined, 'project_reload');
+    const pageTabs = usePageTabStore.getState();
+    pageTabs.setSessionPreviewProject(projectId);
+    pageTabs.toggleSessionPreview();
+    pageTabs.choosePreviewTabType(
+      getSessionPreviewSlice(usePageTabStore.getState()).activeTabId!,
+      'terminal'
+    );
+
+    useProjectStore.getState()._evictProjectRuntime(projectId);
+
+    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject[projectId]
+    ).toBeDefined();
+    expect(globalThis.electronAPI.terminalDispose).not.toHaveBeenCalled();
   });
 
   it('merges missing history into a background remote Project without stealing focus', async () => {

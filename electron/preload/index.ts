@@ -203,6 +203,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cwd?: string;
     cols?: number;
     rows?: number;
+    allowHomeFallback?: boolean;
   }) => ipcRenderer.invoke('terminal-create', options),
   terminalInput: (id: string, data: string) =>
     ipcRenderer.send('terminal-input', { id, data }),

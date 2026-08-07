@@ -240,10 +240,13 @@ interface ElectronAPI {
     cwd?: string;
     cols?: number;
     rows?: number;
+    allowHomeFallback?: boolean;
   }) => Promise<{ success: boolean; existing?: boolean; error?: string }>;
   terminalInput: (id: string, data: string) => void;
   terminalResize: (id: string, cols: number, rows: number) => void;
-  terminalDispose: (id: string) => Promise<{ success: boolean }>;
+  terminalDispose: (
+    id: string
+  ) => Promise<{ success: boolean; error?: string }>;
   onTerminalData: (
     callback: (payload: { id: string; data: string }) => void
   ) => () => void;

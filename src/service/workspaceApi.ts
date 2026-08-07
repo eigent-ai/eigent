@@ -79,6 +79,15 @@ export interface WorkspaceProjectRefreshPayload {
   serverRefreshConfirmed: true;
 }
 
+export interface WorkspaceEffectiveDirectory {
+  space_id: string;
+  project_id: string;
+  task_id?: string | null;
+  working_directory: string;
+  source: 'task_snapshot' | 'active_run' | 'binding';
+  workdir_mode?: string | null;
+}
+
 export const fetchWorkspaceCapabilities =
   async (): Promise<WorkspaceCapabilities> =>
     fetchGet('/workspace/capabilities');
@@ -92,6 +101,23 @@ export const fetchWorkspaceCurrent = async (
     space_id: spaceId,
     email,
     ...(userId === undefined || userId === null ? {} : { user_id: userId }),
+  });
+
+export const fetchWorkspaceEffectiveDirectory = async (
+  spaceId: string,
+  projectId: string,
+  email: string,
+  userId?: string | number | null,
+  taskId?: string | null,
+  workdirMode?: string | null
+): Promise<WorkspaceEffectiveDirectory> =>
+  fetchGet('/workspace/effective-directory', {
+    space_id: spaceId,
+    project_id: projectId,
+    email,
+    ...(userId === undefined || userId === null ? {} : { user_id: userId }),
+    ...(taskId ? { task_id: taskId } : {}),
+    ...(workdirMode ? { workdir_mode: workdirMode } : {}),
   });
 
 export const bindWorkspaceToSpace = async (

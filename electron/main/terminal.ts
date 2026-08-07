@@ -31,10 +31,7 @@ interface TerminalCreateResult {
 }
 
 interface TerminalSession {
-  /**
-   * The renderer currently attached to this shell. This must remain mutable:
-   * restored tabs reuse their persisted shell id from a new WebContents.
-   */
+  /** Live renderer that owns this shell; a destroyed owner may be replaced. */
   sender: WebContents;
   /** Set after node-pty loads and the synchronous spawn completes. */
   pty: IPty | null;
@@ -42,9 +39,15 @@ interface TerminalSession {
   disposed: boolean;
   /** Shared by concurrent creates so only one PTY can be spawned per id. */
   creation: Promise<TerminalCreateResult>;
+  /** Short batching window prevents high-volume commands flooding IPC. */
+  outputChunks: string[];
+  outputCodeUnits: number;
+  outputTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const sessions = new Map<string, TerminalSession>();
+const OUTPUT_BATCH_DELAY_MS = 16;
+const OUTPUT_BATCH_MAX_CODE_UNITS = 64 * 1024;
 
 /**
  * node-pty is a native module; load it lazily so a missing/broken binary
@@ -70,13 +73,71 @@ function defaultShell(): { file: string; args: string[] } {
 }
 
 /**
- * Do not leak credentials held by the Electron main process into an
- * interactive shell where a plain `env` would print them. Keep ordinary
- * desktop environment variables so the shell still inherits PATH, locale,
- * proxy configuration, and toolchain settings.
+ * Explicit environment contract for the local convenience shell.
+ *
+ * Proxy variables are intentionally excluded: proxy URLs commonly embed
+ * credentials, so inheriting them would recreate the secret-leak problem this
+ * allowlist prevents. The login shell may still load user-configured proxy
+ * values from its own profile, where they are owned by the user rather than
+ * the Electron main-process environment.
  */
-const SENSITIVE_ENV_NAME =
-  /(?:^|_)(?:API_KEY|TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE_KEY)(?:$|_)/i;
+const SAFE_ENV_NAMES = new Set(
+  [
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'PATH',
+    'LANG',
+    'TERM',
+    'COLORTERM',
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'SSH_AUTH_SOCK',
+    'TERM_PROGRAM',
+    'TERM_PROGRAM_VERSION',
+    'NO_COLOR',
+    'CLICOLOR',
+    'CLICOLOR_FORCE',
+    // Windows process/shell discovery.
+    'SYSTEMROOT',
+    'WINDIR',
+    'COMSPEC',
+    'PATHEXT',
+    'USERPROFILE',
+    'HOMEDRIVE',
+    'HOMEPATH',
+    'APPDATA',
+    'LOCALAPPDATA',
+    'PROGRAMDATA',
+    'PROGRAMFILES',
+    'PROGRAMFILES(X86)',
+    'PROGRAMW6432',
+    // Non-secret toolchain locations that a GUI-launched shell may need.
+    'NVM_DIR',
+    'VOLTA_HOME',
+    'PNPM_HOME',
+    'BUN_INSTALL',
+    'CARGO_HOME',
+    'RUSTUP_HOME',
+    'GOPATH',
+    'GOROOT',
+    'JAVA_HOME',
+    'PYENV_ROOT',
+    'CONDA_PREFIX',
+    'VIRTUAL_ENV',
+  ].map((name) => name.toUpperCase())
+);
+
+function isSafeTerminalEnvironmentName(name: string): boolean {
+  const upper = name.toUpperCase();
+  return (
+    SAFE_ENV_NAMES.has(upper) ||
+    upper.startsWith('LC_') ||
+    upper.startsWith('XDG_')
+  );
+}
 
 export function terminalEnvironment(
   environment: NodeJS.ProcessEnv = process.env
@@ -84,9 +145,69 @@ export function terminalEnvironment(
   return Object.fromEntries(
     Object.entries(environment).filter(
       (entry): entry is [string, string] =>
-        entry[1] !== undefined && !SENSITIVE_ENV_NAME.test(entry[0])
+        entry[1] !== undefined && isSafeTerminalEnvironmentName(entry[0])
     )
   );
+}
+
+function flushTerminalOutput(id: string, session: TerminalSession) {
+  if (session.outputTimer) {
+    clearTimeout(session.outputTimer);
+    session.outputTimer = null;
+  }
+  if (sessions.get(id) !== session || session.outputChunks.length === 0) {
+    session.outputChunks = [];
+    session.outputCodeUnits = 0;
+    return;
+  }
+  const data = session.outputChunks.join('');
+  session.outputChunks = [];
+  session.outputCodeUnits = 0;
+  const sender = session.sender;
+  if (!sender.isDestroyed()) {
+    sender.send('terminal-data', { id, data });
+  }
+}
+
+function queueTerminalOutput(
+  id: string,
+  session: TerminalSession,
+  data: string
+) {
+  session.outputChunks.push(data);
+  session.outputCodeUnits += data.length;
+  if (session.outputCodeUnits >= OUTPUT_BATCH_MAX_CODE_UNITS) {
+    flushTerminalOutput(id, session);
+    return;
+  }
+  if (!session.outputTimer) {
+    session.outputTimer = setTimeout(
+      () => flushTerminalOutput(id, session),
+      OUTPUT_BATCH_DELAY_MS
+    );
+  }
+}
+
+function terminalOwnedBy(
+  session: TerminalSession,
+  sender: WebContents
+): boolean {
+  if (session.sender === sender) return true;
+  // macOS keeps the app and its PTYs alive after the last window closes. A
+  // Dock reopen creates a new WebContents, so a restored tab must be able to
+  // adopt an orphaned session. A second live renderer is still rejected.
+  if (session.sender.isDestroyed()) {
+    session.sender = sender;
+    return true;
+  }
+  return false;
+}
+
+function dropQueuedOutput(session: TerminalSession) {
+  if (session.outputTimer) clearTimeout(session.outputTimer);
+  session.outputTimer = null;
+  session.outputChunks = [];
+  session.outputCodeUnits = 0;
 }
 
 export interface TerminalCreateOptions {
@@ -94,13 +215,14 @@ export interface TerminalCreateOptions {
   cwd?: string;
   cols?: number;
   rows?: number;
+  allowHomeFallback?: boolean;
 }
 
 async function createTerminalSession(
   session: TerminalSession,
   options: TerminalCreateOptions
 ): Promise<TerminalCreateResult> {
-  const { id, cwd, cols, rows } = options;
+  const { id, cwd, cols, rows, allowHomeFallback = true } = options;
   const pty = await loadNodePty();
   if (!pty) {
     if (sessions.get(id) === session) sessions.delete(id);
@@ -113,7 +235,26 @@ async function createTerminalSession(
   }
 
   const { file, args } = defaultShell();
-  const workingDir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
+  let workingDir: string;
+  try {
+    if (cwd && fs.statSync(cwd).isDirectory()) {
+      workingDir = cwd;
+    } else if (allowHomeFallback) {
+      workingDir = os.homedir();
+    } else {
+      throw new Error('Project working directory is unavailable');
+    }
+  } catch {
+    if (allowHomeFallback) {
+      workingDir = os.homedir();
+    } else {
+      if (sessions.get(id) === session) sessions.delete(id);
+      return {
+        success: false,
+        error: 'Project working directory is unavailable',
+      };
+    }
+  }
   try {
     const terminal = pty.spawn(file, args, {
       name: 'xterm-256color',
@@ -125,15 +266,13 @@ async function createTerminalSession(
     session.pty = terminal;
     terminal.onData((data) => {
       if (sessions.get(id) !== session) return;
-      const sender = session.sender;
-      if (!sender.isDestroyed()) {
-        sender.send('terminal-data', { id, data });
-      }
+      queueTerminalOutput(id, session, data);
     });
     terminal.onExit(({ exitCode }) => {
       // A disposed/restarted PTY can report its exit after a replacement with
       // the same id is already live. Do not mark that replacement as exited.
       if (sessions.get(id) !== session) return;
+      flushTerminalOutput(id, session);
       sessions.delete(id);
       const sender = session.sender;
       if (!sender.isDestroyed()) {
@@ -156,13 +295,17 @@ export function registerTerminalIpcHandlers() {
   ipcMain.handle(
     'terminal-create',
     async (event, options: TerminalCreateOptions) => {
-      const { id, cwd, cols, rows } = options ?? {};
+      const { id, cwd, cols, rows, allowHomeFallback } = options ?? {};
       if (!id) return { success: false, error: 'Missing terminal id' };
 
       const existing = sessions.get(id);
       if (existing) {
-        // A restored renderer becomes the owner of all subsequent output.
-        existing.sender = event.sender;
+        if (!terminalOwnedBy(existing, event.sender)) {
+          return {
+            success: false,
+            error: 'Terminal session is owned by another renderer',
+          };
+        }
         const result = await existing.creation;
         return result.success ? { ...result, existing: true } : result;
       }
@@ -173,6 +316,9 @@ export function registerTerminalIpcHandlers() {
         sender: event.sender,
         pty: null,
         disposed: false,
+        outputChunks: [],
+        outputCodeUnits: 0,
+        outputTimer: null,
         creation: Promise.resolve({
           success: false,
           error: 'Terminal creation has not started',
@@ -184,6 +330,7 @@ export function registerTerminalIpcHandlers() {
         cwd,
         cols,
         rows,
+        allowHomeFallback,
       });
       return session.creation;
     }
@@ -191,15 +338,19 @@ export function registerTerminalIpcHandlers() {
 
   ipcMain.on(
     'terminal-input',
-    (_event, payload: { id: string; data: string }) => {
-      sessions.get(payload?.id)?.pty?.write(payload.data);
+    (event, payload: { id: string; data: string }) => {
+      const session = sessions.get(payload?.id);
+      if (!session || !terminalOwnedBy(session, event.sender)) return;
+      session.pty?.write(payload.data);
     }
   );
 
   ipcMain.on(
     'terminal-resize',
-    (_event, payload: { id: string; cols: number; rows: number }) => {
-      const terminal = sessions.get(payload?.id)?.pty;
+    (event, payload: { id: string; cols: number; rows: number }) => {
+      const session = sessions.get(payload?.id);
+      if (!session || !terminalOwnedBy(session, event.sender)) return;
+      const terminal = session.pty;
       if (!terminal) return;
       const cols = Math.max(2, Math.floor(payload.cols || 0));
       const rows = Math.max(1, Math.floor(payload.rows || 0));
@@ -211,11 +362,18 @@ export function registerTerminalIpcHandlers() {
     }
   );
 
-  ipcMain.handle('terminal-dispose', (_event, id: string) => {
+  ipcMain.handle('terminal-dispose', (event, id: string) => {
     const session = sessions.get(id);
     if (!session) return { success: true };
+    if (!terminalOwnedBy(session, event.sender)) {
+      return {
+        success: false,
+        error: 'Terminal session is owned by another renderer',
+      };
+    }
     sessions.delete(id);
     session.disposed = true;
+    dropQueuedOutput(session);
     try {
       session.pty?.kill();
     } catch (error) {
@@ -229,6 +387,7 @@ export function registerTerminalIpcHandlers() {
 export function disposeAllTerminals() {
   for (const [id, session] of sessions) {
     session.disposed = true;
+    dropQueuedOutput(session);
     try {
       session.pty?.kill();
     } catch (error) {

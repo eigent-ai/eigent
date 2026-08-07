@@ -12,8 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import type { PreviewTabKind } from '@/store/pageTabStore';
+import type { PreviewTabDestinationKind } from '@/store/pageTabStore';
 import { ChevronRight, SquareTerminal } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +24,7 @@ import { useSessionTerminalSources } from './terminal/useSessionTerminalSources'
 
 export interface ChooserTabProps {
   /** Open the given content kind (replaces this chooser tab in place). */
-  onChoose: (kind: PreviewTabKind) => void;
+  onChoose: (kind: PreviewTabDestinationKind) => void;
   /** Open one of the project's agent terminal streams (servers / scripts). */
   onChooseAgentStream?: (source: TerminalSource) => void;
 }
@@ -36,6 +37,7 @@ export interface ChooserTabProps {
  */
 export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
   const { t } = useTranslation();
+  const host = useHost();
   const sources = useSessionTerminalSources({ trackOutput: false });
   // Newest first, with still-running streams (servers, watchers) on top.
   const projectStreams = useMemo(() => {
@@ -55,7 +57,9 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
           })}
         </p>
         <div className="flex flex-col gap-1.5">
-          {PREVIEW_TAB_KINDS.map(
+          {PREVIEW_TAB_KINDS.filter(
+            ({ kind }) => kind !== 'local-terminal' || host?.electronAPI
+          ).map(
             ({
               kind,
               icon: Icon,

@@ -35,11 +35,23 @@ vi.mock('@/components/Session/PreviewPanel/tabs/terminal/XtermViewer', () => ({
 vi.mock(
   '@/components/Session/PreviewPanel/tabs/terminal/ShellTerminal',
   () => ({
-    ShellTerminal: ({ shellId, cwd }: { shellId: string; cwd?: string }) => (
+    ShellTerminal: ({
+      shellId,
+      cwd,
+      allowHomeFallback,
+      transport,
+    }: {
+      shellId: string;
+      cwd?: string;
+      allowHomeFallback?: boolean;
+      transport: { kind: string };
+    }) => (
       <div
         data-testid="shell-terminal"
         data-shell-id={shellId}
         data-cwd={cwd}
+        data-home-fallback={String(Boolean(allowHomeFallback))}
+        data-transport={transport.kind}
       />
     ),
   })
@@ -64,38 +76,78 @@ vi.mock('@/store/authStore', () => ({
   },
 }));
 
-// The real space store drags the API client into the module graph; the tab
-// only resolves the active Space's local root folder from it.
-let mockSpaceRootPath: string | null = null;
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (selector: (state: unknown) => unknown) =>
     selector({
-      activeSpaceId: 'space-1',
-      spaces: { 'space-1': { rootPath: mockSpaceRootPath } },
-      getProjectMeta: () => null,
+      projectIdIndex: { 'project-1': 'space-1' },
+      projectsBySpaceId: {
+        'space-1': {
+          'project-1': { workdirMode: 'direct-write' },
+        },
+      },
     }),
+}));
+
+vi.mock('@/store/projectRuntimeStore', () => ({
+  useProjectRuntimeStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      projects: {
+        'project-1': {
+          spaceId: 'space-1',
+          activeChatId: null,
+          chatStores: {},
+        },
+      },
+    }),
+}));
+
+const { fetchWorkspaceCapabilitiesMock, fetchWorkspaceEffectiveDirectoryMock } =
+  vi.hoisted(() => ({
+    fetchWorkspaceCapabilitiesMock: vi.fn(),
+    fetchWorkspaceEffectiveDirectoryMock: vi.fn(),
+  }));
+vi.mock('@/service/workspaceApi', () => ({
+  fetchWorkspaceCapabilities: fetchWorkspaceCapabilitiesMock,
+  fetchWorkspaceEffectiveDirectory: fetchWorkspaceEffectiveDirectoryMock,
 }));
 
 beforeEach(() => {
   mockSources = [];
-  mockSpaceRootPath = null;
-  desktopHost.electronAPI.getProjectFolderPath.mockClear();
+  fetchWorkspaceCapabilitiesMock.mockReset();
+  fetchWorkspaceCapabilitiesMock.mockResolvedValue({
+    terminal: true,
+    deployment: 'local',
+  });
+  fetchWorkspaceEffectiveDirectoryMock.mockReset();
+  fetchWorkspaceEffectiveDirectoryMock.mockResolvedValue({
+    space_id: 'space-1',
+    project_id: 'project-1',
+    working_directory: '/brain/project-workdir',
+    source: 'active_run',
+  });
 });
 
 const desktopHost = {
   ipcRenderer: null,
   electronAPI: {
     terminalCreate: vi.fn(),
-    getProjectFolderPath: vi.fn().mockResolvedValue('/tmp/project'),
+    terminalInput: vi.fn(),
+    terminalResize: vi.fn(),
+    terminalDispose: vi.fn(),
+    onTerminalData: vi.fn(),
+    onTerminalExit: vi.fn(),
   },
 };
 
-function shellTab(): SessionTerminalTab {
+function shellTab(
+  surface: 'project' | 'local' = 'project'
+): SessionTerminalTab {
   return {
     id: 'tab-1',
     type: 'terminal',
-    title: 'Terminal',
+    title: surface === 'project' ? 'Project terminal' : 'Local shell',
     shellId: 'session-shell:project-1:tab-1',
+    surface,
   };
 }
 
@@ -126,42 +178,82 @@ function renderTab(tab: SessionTerminalTab, host: unknown = desktopHost) {
 }
 
 describe('TerminalTab', () => {
-  it('renders an interactive local shell for a plain terminal tab', async () => {
+  it('renders a Project shell through the selected transport', async () => {
+    usePageTabStore.setState({ sessionPreviewProjectId: 'project-1' });
     renderTab(shellTab());
     expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
       'data-shell-id',
       'session-shell:project-1:tab-1'
     );
-  });
-
-  it('opens the shell in the Space root folder when the Space is folder-backed', async () => {
-    mockSpaceRootPath = '/Users/me/my-local-folder';
-    renderTab(shellTab());
-    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
-      'data-cwd',
-      '/Users/me/my-local-folder'
+    expect(screen.getByTestId('shell-terminal')).toHaveAttribute(
+      'data-transport',
+      'electron-local'
     );
-    expect(desktopHost.electronAPI.getProjectFolderPath).not.toHaveBeenCalled();
   });
 
-  it('falls back to the generated project folder for non-folder Spaces', async () => {
+  it('opens the Project shell only in the Brain-resolved effective directory', async () => {
     usePageTabStore.setState({ sessionPreviewProjectId: 'project-1' });
     renderTab(shellTab());
     expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
       'data-cwd',
-      '/tmp/project'
+      '/brain/project-workdir'
     );
-    expect(desktopHost.electronAPI.getProjectFolderPath).toHaveBeenCalledWith(
-      'test@example.com',
+    expect(screen.getByTestId('shell-terminal')).toHaveAttribute(
+      'data-home-fallback',
+      'false'
+    );
+    expect(fetchWorkspaceEffectiveDirectoryMock).toHaveBeenCalledWith(
+      'space-1',
       'project-1',
-      7
+      'test@example.com',
+      7,
+      null,
+      'direct-write'
     );
   });
 
-  it('tells web users the shell needs the desktop app', () => {
+  it('keeps the explicit local shell independent from Project cwd resolution', async () => {
+    renderTab(shellTab('local'));
+    expect(await screen.findByTestId('shell-terminal')).toHaveAttribute(
+      'data-home-fallback',
+      'true'
+    );
+    expect(screen.getByTestId('shell-terminal')).not.toHaveAttribute(
+      'data-cwd'
+    );
+    expect(fetchWorkspaceEffectiveDirectoryMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing compatible transport without claiming terminal is desktop-only', async () => {
     renderTab(shellTab(), { ipcRenderer: null, electronAPI: null });
     expect(
-      screen.getByText('layout.terminal-desktop-only')
+      await screen.findByText('layout.terminal-brain-transport-unavailable')
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
+  });
+
+  it('does not use the Electron PTY for a Project on a remote Brain', async () => {
+    fetchWorkspaceCapabilitiesMock.mockResolvedValue({
+      terminal: true,
+      deployment: 'remote_cluster',
+    });
+    renderTab(shellTab());
+
+    expect(
+      await screen.findByText('layout.terminal-brain-transport-unavailable')
+    ).toBeInTheDocument();
+    expect(fetchWorkspaceEffectiveDirectoryMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
+  });
+
+  it('shows the Brain workspace error instead of falling back to a local path', async () => {
+    usePageTabStore.setState({ sessionPreviewProjectId: 'project-1' });
+    fetchWorkspaceEffectiveDirectoryMock.mockRejectedValue(
+      new Error('effective workspace unavailable')
+    );
+    renderTab(shellTab());
+    expect(
+      await screen.findByText('effective workspace unavailable')
     ).toBeInTheDocument();
     expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
   });
