@@ -188,6 +188,75 @@ def test_workspace_git_checkpoint_and_restore_candidate_flow(git_api):
     assert report.read_text(encoding="utf-8") == "second version\n"
 
 
+def test_save_point_commits_only_pending_managed_paths(git_api):
+    client, _, _, space = git_api
+    managed = space / "managed.md"
+    unrelated = space / "private.txt"
+    managed.write_text("v1\n", encoding="utf-8")
+    unrelated.write_text("do not add\n", encoding="utf-8")
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+    status = _status(client)
+    response = client.post(
+        "/api/v1/spaces/space-1/git/checkpoints",
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "seed-managed",
+            "expected_repo_state_digest": status["diagnostics"]["repo_state"][
+                "digest"
+            ],
+            "paths": ["managed.md"],
+            "path_sources": {"managed.md": "agent_created"},
+            "target_role": "user",
+            "target_id": "space-1",
+            "actor_id": "agent-1",
+            "trigger": "filesystem.write",
+            "message": "Register managed file",
+        },
+    )
+    assert response.status_code == 201
+
+    managed.write_text("v2\n", encoding="utf-8")
+    unrelated.write_text("still private\n", encoding="utf-8")
+    status = _status(client)
+    assert status["pending_managed_paths"] == ["managed.md"]
+    assert status["pending_managed_paths_truncated"] is False
+    response = client.post(
+        "/api/v1/spaces/space-1/git/save-point",
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "user-save-1",
+            "expected_repo_state_digest": status["diagnostics"]["repo_state"][
+                "digest"
+            ],
+            "actor_id": "user-1",
+            "message": "Save progress",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["paths"] == ["managed.md"]
+    assert _status(client)["pending_managed_paths"] == []
+    assert unrelated.read_text(encoding="utf-8") == "still private\n"
+    assert (
+        client.get(
+            "/api/v1/spaces/space-1/git/diff",
+            params={
+                "email": "user@example.com",
+                "paths": "private.txt",
+            },
+            headers=_headers(),
+        ).json()["diff"]
+        == ""
+    )
+
+
 def test_workspace_git_status_fails_closed_after_space_rebind(git_api):
     client, _, resolver, _ = git_api
     response = client.post(

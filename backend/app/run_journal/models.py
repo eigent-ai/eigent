@@ -254,6 +254,8 @@ class WorkspaceOverlayEntryRecord:
     entry_state: str
     source_token: dict[str, Any]
     project_blob_oid: str | None
+    materialized_content_digest: str | None
+    preimage_cache_key: str | None
     size_bytes: int
     created_at: float
     updated_at: float
@@ -268,6 +270,51 @@ class WorkspaceSnapshotRangeRecord:
     content_digest: str
     cache_key: str
     created_at: float
+
+
+@dataclass(frozen=True)
+class GitChangeSetRecord:
+    change_set_id: str
+    run_id: str
+    repository_id: str
+    worktree_ref: str
+    base_commit: str | None
+    state: str
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class GitChangeSetItemRecord:
+    change_set_id: str
+    relative_path: str
+    operation_request_id: str
+    actor_id: str
+    trigger: str
+    change_kind: str
+    source: str
+    preimage_digest: str | None
+    result_digest: str | None
+    size_bytes: int | None
+    item_state: str
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class GitMutationIntentRecord:
+    intent_id: str
+    change_set_id: str
+    operation_request_id: str
+    mutation_scope: str
+    relative_path: str | None
+    preimage_digest: str | None
+    actor_id: str
+    trigger: str
+    status: str
+    created_at: float
+    updated_at: float
 
 
 @dataclass(frozen=True)

@@ -445,6 +445,37 @@ class GitBackend:
         self._run(repository_root, tuple(args))
         return commit_oid
 
+    def archive_eigent_branch_ref(
+        self,
+        repository_root: Path,
+        *,
+        active_ref: str,
+        archive_ref: str,
+        expected_oid: str,
+    ) -> str:
+        self._validate_eigent_ref(active_ref, branch_only=True)
+        self._validate_eigent_ref(archive_ref)
+        if not archive_ref.startswith("refs/eigent/archive/"):
+            raise ValueError(
+                "archive ref must use the Eigent archive namespace"
+            )
+        self._validate_object_name(expected_oid)
+        root = repository_root.expanduser().resolve()
+        active_oid = self.ref_oid(root, active_ref)
+        if active_oid not in {None, expected_oid}:
+            raise GitBackendError("active Eigent ref changed before archive")
+        archived_oid = self.ref_oid(root, archive_ref)
+        if archived_oid is None:
+            self.update_eigent_ref(root, archive_ref, expected_oid)
+        elif archived_oid != expected_oid:
+            raise GitBackendError("archive ref already points elsewhere")
+        if active_oid == expected_oid:
+            self._run(
+                root,
+                ("update-ref", "-d", active_ref, expected_oid),
+            )
+        return archive_ref
+
     def ref_oid(
         self,
         repository_root: Path,
@@ -603,6 +634,88 @@ class GitBackend:
         )
         return not result.stdout
 
+    def worktree_status(
+        self,
+        worktree_root: Path,
+        *,
+        limit: int = 500,
+    ) -> dict[str, str]:
+        if limit < 1:
+            raise ValueError("status limit must be positive")
+        result = self._run(
+            worktree_root,
+            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        )
+        values = result.stdout.split("\0")
+        records: dict[str, str] = {}
+        index = 0
+        while index < len(values):
+            record = values[index]
+            index += 1
+            if not record or len(record) < 4:
+                continue
+            state = record[:2]
+            relative_path = record[3:]
+            records[relative_path] = state
+            if "R" in state or "C" in state:
+                index += 1
+            if len(records) > limit:
+                raise GitBackendError(
+                    f"worktree delta exceeds the {limit}-path limit"
+                )
+        return records
+
+    def restore_owned_worktree_path(
+        self,
+        worktree_root: Path,
+        *,
+        relative_path: str,
+        source_commit: str | None,
+    ) -> None:
+        """Restore one private worktree path; never targets User Worktree."""
+
+        path = self._normalize_relative_git_path(relative_path)
+        root = worktree_root.expanduser().resolve()
+        owned = next(
+            (
+                item
+                for item in self.list_worktrees(root)
+                if item.path == root
+                and item.ref_name is not None
+                and item.ref_name.startswith("refs/heads/eigent/")
+            ),
+            None,
+        )
+        if owned is None:
+            raise GitBackendError(
+                "owned path restore requires an attached private worktree"
+            )
+        if source_commit is not None:
+            self._validate_object_name(source_commit)
+        source_blob = (
+            self.blob_oid_at_path(root, source_commit, path)
+            if source_commit is not None
+            else None
+        )
+        if source_blob is not None:
+            self._run(
+                root,
+                (
+                    "restore",
+                    f"--source={source_commit}",
+                    "--worktree",
+                    "--",
+                    path,
+                ),
+            )
+            return
+        target = root / path
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise GitBackendError(
+                "refusing to remove non-regular private projection path"
+            )
+        target.unlink(missing_ok=True)
+
     def worktree_matches_commit(
         self,
         worktree_root: Path,
@@ -697,6 +810,40 @@ class GitBackend:
             if item.path == destination and item.ref_name == ref_name:
                 return item
         raise GitBackendError("Git did not register the requested worktree")
+
+    def remove_owned_worktree(
+        self,
+        repository_root: Path,
+        *,
+        worktree_path: Path,
+        expected_ref: str,
+    ) -> None:
+        self._validate_eigent_ref(expected_ref, branch_only=True)
+        root = repository_root.expanduser().resolve()
+        target = worktree_path.expanduser().resolve()
+        if target == root or root in target.parents:
+            raise GitBackendError("refusing to remove the User Worktree")
+        registered = next(
+            (
+                item
+                for item in self.list_worktrees(root)
+                if item.path == target
+            ),
+            None,
+        )
+        if registered is None:
+            if target.exists():
+                raise GitBackendError(
+                    "unregistered worktree path requires manual attention"
+                )
+            return
+        if registered.ref_name != expected_ref:
+            raise GitBackendError("worktree is registered for another ref")
+        if not self.is_worktree_clean(target):
+            raise GitBackendError("refusing to remove a dirty worktree")
+        self._run(root, ("worktree", "remove", str(target)))
+        if any(item.path == target for item in self.list_worktrees(root)):
+            raise GitBackendError("Git did not remove the owned worktree")
 
     @staticmethod
     def _worktree_from_fields(fields: dict[str, str]) -> GitWorktreeInfo:

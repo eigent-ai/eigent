@@ -36,10 +36,15 @@ from app.workspace_git.content import ContentRepositoryError
 
 DEFAULT_READ_BYTES = 256 * 1024
 MAX_READ_BYTES = 4 * 1024 * 1024
+MAX_OVERLAY_MATERIALIZE_BYTES = 256 * 1024 * 1024
+MAX_SOURCE_CHANGE_RETRIES = 2
 
 
 class WorkspaceSnapshotError(ContentRepositoryError):
     code = "workspace_snapshot_error"
+    retryable = False
+    refresh_available = False
+    automatic_retry_limit = 0
 
 
 class WorkspaceSnapshotUnavailableError(WorkspaceSnapshotError):
@@ -48,6 +53,9 @@ class WorkspaceSnapshotUnavailableError(WorkspaceSnapshotError):
 
 class WorkspaceSourceChangedError(WorkspaceSnapshotError):
     code = "workspace_source_changed"
+    retryable = True
+    refresh_available = True
+    automatic_retry_limit = MAX_SOURCE_CHANGE_RETRIES
 
 
 class WorkspaceOverlayConflictError(WorkspaceSnapshotError):
@@ -68,6 +76,17 @@ class WorkspaceSnapshotRead:
     size_bytes: int
     content_digest: str
     content: bytes
+
+
+@dataclass(frozen=True)
+class MaterializedOverlay:
+    snapshot: WorkspaceReadSnapshotRecord
+    entry: WorkspaceOverlayEntryRecord
+    relative_path: str
+    content_digest: str
+    size_bytes: int
+    preimage_path: Path
+    destination_path: Path
 
 
 class WorkspaceSnapshotService:
@@ -97,9 +116,217 @@ class WorkspaceSnapshotService:
     def get_snapshot(self, run_id: str) -> WorkspaceReadSnapshotRecord | None:
         return self.journal.get_active_workspace_read_snapshot(run_id)
 
-    def refresh_snapshot(self, run_id: str) -> WorkspaceReadSnapshotRecord:
+    def pin_path(
+        self,
+        *,
+        run_id: str,
+        relative_path: str,
+    ) -> WorkspaceOverlayEntryRecord:
+        """Pin one path without reading its bytes into memory."""
+
+        path = self._normalize_path(relative_path)
+        snapshot = self._ensure_snapshot(run_id)
+        entry = self.journal.get_workspace_overlay_entry(
+            snapshot.snapshot_id,
+            path,
+        )
+        return entry or self._expand_path(snapshot, path)
+
+    def materialize_user_overlay(
+        self,
+        *,
+        run_id: str,
+        relative_path: str,
+        destination_root: Path,
+        max_bytes: int = MAX_OVERLAY_MATERIALIZE_BYTES,
+    ) -> MaterializedOverlay:
+        """Copy one pinned User overlay into an Eigent-owned worktree.
+
+        The copy is streaming and stable-token checked. The content-addressed
+        preimage stays local so a later Agent modification can checkpoint the
+        exact User preimage without rereading a mutable User Worktree source.
+        """
+
+        if max_bytes < 1:
+            raise ValueError("max_bytes must be positive")
+        path = self._normalize_path(relative_path)
+        snapshot = self._ensure_snapshot(run_id)
+        entry = self.journal.get_workspace_overlay_entry(
+            snapshot.snapshot_id,
+            path,
+        )
+        if entry is None:
+            entry = self._expand_path(snapshot, path)
+        if entry.source_kind != "user_overlay":
+            raise WorkspaceSnapshotError(
+                f"Workspace path {path!r} is not a User overlay"
+            )
+        if entry.entry_state in {"imported_preimage", "agent_modified"}:
+            if (
+                entry.materialized_content_digest is None
+                or entry.preimage_cache_key is None
+            ):
+                raise WorkspaceSnapshotUnavailableError(
+                    f"User overlay {path!r} is missing its pinned preimage"
+                )
+            preimage = (
+                self.cache_root
+                / "preimages"
+                / entry.preimage_cache_key[:2]
+                / entry.preimage_cache_key
+            )
+            if (
+                not preimage.is_file()
+                or self._digest_file(preimage)
+                != entry.materialized_content_digest
+            ):
+                raise WorkspaceSnapshotUnavailableError(
+                    f"User overlay {path!r} preimage cache is unavailable"
+                )
+            destination_root = destination_root.expanduser().resolve()
+            destination = self._safe_destination(destination_root, path)
+            if entry.entry_state == "imported_preimage":
+                self._copy_file(preimage, destination)
+            return MaterializedOverlay(
+                snapshot=snapshot,
+                entry=entry,
+                relative_path=path,
+                content_digest=entry.materialized_content_digest,
+                size_bytes=entry.size_bytes,
+                preimage_path=preimage,
+                destination_path=destination,
+            )
+        if entry.size_bytes > max_bytes:
+            raise WorkspaceSnapshotUnavailableError(
+                f"User overlay {path!r} exceeds the materialization limit"
+            )
+        repository = self.journal.get_git_repository(snapshot.repository_id)
+        if repository is None:
+            raise WorkspaceSnapshotUnavailableError(
+                "Snapshot Content Repository is unavailable"
+            )
+        user_root = Path(repository.root_path).expanduser().resolve()
+        source = self._safe_user_path(user_root, path)
+        if source is None:
+            raise WorkspaceSourceChangedError(
+                f"User source {path!r} is no longer available"
+            )
+        if (
+            self._path_token(
+                source,
+                head_oid=entry.source_token.get("head_oid"),
+            )
+            != entry.source_token
+        ):
+            raise WorkspaceSourceChangedError(
+                f"User source {path!r} changed after pin"
+            )
+        destination_root = destination_root.expanduser().resolve()
+        destination = self._safe_destination(destination_root, path)
+        temporary = (
+            self.cache_root
+            / "imports"
+            / (f".{snapshot.snapshot_id}.{uuid.uuid4().hex}.tmp")
+        )
+        temporary.parent.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with (
+                source.open("rb", buffering=0) as reader,
+                temporary.open("wb", buffering=0) as writer,
+            ):
+                opened_before = self._stat_token(
+                    os.fstat(reader.fileno()),
+                    head_oid=entry.source_token.get("head_oid"),
+                )
+                if opened_before != entry.source_token:
+                    raise WorkspaceSourceChangedError(
+                        f"User source {path!r} changed before import"
+                    )
+                while True:
+                    chunk = reader.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise WorkspaceSnapshotUnavailableError(
+                            f"User overlay {path!r} grew past the limit"
+                        )
+                    digest.update(chunk)
+                    writer.write(chunk)
+                opened_after = self._stat_token(
+                    os.fstat(reader.fileno()),
+                    head_oid=entry.source_token.get("head_oid"),
+                )
+            if opened_after != opened_before or size != entry.size_bytes:
+                raise WorkspaceSourceChangedError(
+                    f"User source {path!r} changed during import"
+                )
+            content_digest = digest.hexdigest()
+            preimage = (
+                self.cache_root
+                / "preimages"
+                / content_digest[:2]
+                / (content_digest)
+            )
+            preimage.parent.mkdir(parents=True, exist_ok=True)
+            if preimage.exists():
+                if self._digest_file(preimage) != content_digest:
+                    raise WorkspaceSnapshotUnavailableError(
+                        "Overlay preimage cache digest collision"
+                    )
+                temporary.unlink(missing_ok=True)
+            else:
+                temporary.chmod(0o600)
+                os.replace(temporary, preimage)
+            self._copy_file(preimage, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        self.journal.complete_workspace_overlay_materialization(
+            snapshot_id=snapshot.snapshot_id,
+            relative_path=path,
+            content_digest=content_digest,
+            preimage_cache_key=content_digest,
+        )
+        persisted = self.journal.get_workspace_overlay_entry(
+            snapshot.snapshot_id,
+            path,
+        )
+        assert persisted is not None
+        return MaterializedOverlay(
+            snapshot=snapshot,
+            entry=persisted,
+            relative_path=path,
+            content_digest=content_digest,
+            size_bytes=size,
+            preimage_path=preimage,
+            destination_path=destination,
+        )
+
+    def refresh_snapshot(
+        self,
+        run_id: str,
+        *,
+        expected_user_working_state_digest: str,
+    ) -> WorkspaceReadSnapshotRecord:
         """Explicitly discard the active logical view and pin a new one."""
 
+        run = self.journal.get_run_git_materialization(run_id)
+        if run is None:
+            raise WorkspaceSnapshotUnavailableError(
+                f"Run {run_id!r} has no admitted Content Repository"
+            )
+        repository = self.journal.get_git_repository(run.repository_id)
+        if repository is None:
+            raise WorkspaceSnapshotUnavailableError(
+                "Snapshot Content Repository is unavailable"
+            )
+        current = self.git.repo_state_token(Path(repository.root_path))
+        if current.digest != expected_user_working_state_digest:
+            raise WorkspaceSourceChangedError(
+                "User working state changed before snapshot refresh"
+            )
         self.journal.replace_active_workspace_read_snapshot(run_id)
         return self._ensure_snapshot(run_id)
 
@@ -436,6 +663,31 @@ class WorkspaceSnapshotService:
             temporary.unlink(missing_ok=True)
         return content_digest
 
+    @staticmethod
+    def _digest_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb", buffering=0) as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _copy_file(source: Path, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(
+            f".{destination.name}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            with (
+                source.open("rb", buffering=0) as reader,
+                temporary.open("wb", buffering=0) as writer,
+            ):
+                while chunk := reader.read(1024 * 1024):
+                    writer.write(chunk)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def _blob_at(
         self,
         root: Path,
@@ -463,6 +715,28 @@ class WorkspaceSnapshotService:
         except (FileNotFoundError, OSError, ValueError):
             return None
         return resolved if stat.S_ISREG(mode) else None
+
+    @staticmethod
+    def _safe_destination(root: Path, relative_path: str) -> Path:
+        destination = root / relative_path
+        current = root
+        for part in PurePosixPath(relative_path).parts[:-1]:
+            current = current / part
+            if current.is_symlink():
+                raise WorkspaceSnapshotUnavailableError(
+                    "Overlay destination contains a symlink"
+                )
+        if destination.is_symlink():
+            raise WorkspaceSnapshotUnavailableError(
+                "Overlay destination is a symlink"
+            )
+        try:
+            destination.parent.resolve().relative_to(root)
+        except ValueError as exc:
+            raise WorkspaceSnapshotUnavailableError(
+                "Overlay destination escapes the Run worktree"
+            ) from exc
+        return destination
 
     @classmethod
     def _path_token(

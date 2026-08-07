@@ -43,6 +43,7 @@ from app.run_runtime.tool_checkpoint import (
     declared_tool_safety,
     finish_tool_checkpoint,
     prepare_tool_checkpoint,
+    tool_checkpoint_scope,
 )
 from app.service.task import (
     Action,
@@ -219,7 +220,9 @@ class ListenChatAgent(ChatAgent):
 
         self._reset_tool_checkpoint_error()
         try:
-            async for item in super()._execute_tools_async_with_status_accumulator(
+            async for (
+                item
+            ) in super()._execute_tools_async_with_status_accumulator(
                 *args, **kwargs
             ):
                 yield item
@@ -763,7 +766,10 @@ class ListenChatAgent(ChatAgent):
                     )
                 )
             # Set process_task context for all tool executions
-            with set_process_task(self.process_task_id):
+            with (
+                set_process_task(self.process_task_id),
+                tool_checkpoint_scope(checkpoint),
+            ):
                 raw_result = tool(**args)
             reported_error = _reported_tool_error(raw_result)
             if reported_error is None:
@@ -963,7 +969,10 @@ class ListenChatAgent(ChatAgent):
         execution_error: Exception | None = None
         try:
             # Set process_task context for all tool executions
-            with set_process_task(self.process_task_id):
+            with (
+                set_process_task(self.process_task_id),
+                tool_checkpoint_scope(checkpoint),
+            ):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # MCP FunctionTool: always use async_call (sync wrapper can timeout)

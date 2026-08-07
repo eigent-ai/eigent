@@ -1,0 +1,585 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from app.run_context import RunContext
+from app.run_journal import SQLiteRunJournal
+from app.workspace_git import (
+    ContentRepositoryService,
+    GitBackend,
+    WorkspaceGitCoordinator,
+    WorkspaceMutationService,
+    WorkspaceSnapshotService,
+)
+
+
+@pytest.fixture
+def journal(tmp_path):
+    with SQLiteRunJournal(tmp_path / "run-journal.sqlite3") as value:
+        yield value
+
+
+def _services(tmp_path: Path, journal: SQLiteRunJournal):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir(exist_ok=True)
+    backend = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=backend,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=backend,
+    )
+    snapshots = WorkspaceSnapshotService(
+        journal,
+        state_root=state_root,
+        git_backend=backend,
+    )
+    mutations = WorkspaceMutationService(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+        snapshots=snapshots,
+    )
+    return content, coordinator, mutations, backend
+
+
+def _context(space: Path, *, run_id: str = "run-1") -> RunContext:
+    return RunContext(
+        space_id="space-1",
+        project_id="project-1",
+        run_id=run_id,
+        task_id="task-1",
+        email="user@example.com",
+        user_id="user-1",
+        working_directory=space,
+        task_output_root=space,
+        camel_log_dir=space / ".logs",
+        binding_source="test",
+        workdir_mode="direct-write",
+        browser_port=9222,
+    )
+
+
+def _admit(
+    journal: SQLiteRunJournal,
+    coordinator: WorkspaceGitCoordinator,
+    *,
+    run_id: str = "run-1",
+):
+    journal.ensure_run(
+        run_id=run_id,
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id=run_id,
+    )
+    assert admission is not None
+    return admission
+
+
+def _git(repository: Path, *args: str) -> str:
+    return subprocess.run(
+        ("git", "-C", str(repository), *args),
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+    ).stdout
+
+
+def test_file_write_materializes_before_target_is_available(tmp_path, journal):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="generated.txt",
+        operation_request_id="tool-call-1",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+
+    assert prepared is not None
+    assert prepared.workspace.run.materialization_state == "materialized"
+    assert prepared.target_path.parent == prepared.workspace.run_worktree
+    assert not (space / "generated.txt").exists()
+    prepared.target_path.write_text("agent output", encoding="utf-8")
+    commit = mutations.complete_file_write(
+        prepared,
+        operation_request_id="tool-call-1",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert commit == backend.current_head(prepared.workspace.run_worktree)
+    assert backend.is_worktree_clean(prepared.workspace.run_worktree)
+    assert not (space / "generated.txt").exists()
+    items = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )
+    assert len(items) == 1
+    assert items[0].relative_path == "generated.txt"
+    assert items[0].change_kind == "added"
+    assert items[0].item_state == "checkpointed"
+
+
+def test_overlay_modified_by_agent_commits_exact_user_preimage_first(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    user_file = space / "draft.txt"
+    user_file.write_text("user preimage", encoding="utf-8")
+    _admit(journal, coordinator)
+
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="draft.txt",
+        operation_request_id="tool-call-overlay",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    assert prepared.overlay is not None
+    assert prepared.target_path.read_text() == "user preimage"
+    prepared.target_path.write_text("agent result", encoding="utf-8")
+
+    commit = mutations.complete_file_write(
+        prepared,
+        operation_request_id="tool-call-overlay",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+
+    assert commit is not None
+    assert (
+        _git(
+            prepared.workspace.run_worktree,
+            "show",
+            f"{commit}^:draft.txt",
+        )
+        == "user preimage"
+    )
+    assert (
+        _git(
+            prepared.workspace.run_worktree,
+            "show",
+            f"{commit}:draft.txt",
+        )
+        == "agent result"
+    )
+    assert user_file.read_text() == "user preimage"
+    items = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )
+    assert items[0].preimage_digest == prepared.overlay.content_digest
+    assert items[0].item_state == "checkpointed"
+    entry = journal.get_workspace_overlay_entry(
+        prepared.overlay.snapshot.snapshot_id,
+        "draft.txt",
+    )
+    assert entry is not None
+    assert entry.entry_state == "agent_modified"
+
+
+def test_startup_reconciles_crash_after_overlay_preimage_commit(
+    tmp_path,
+    journal,
+    monkeypatch,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    user_file = space / "draft.txt"
+    user_file.write_text("user preimage", encoding="utf-8")
+    _admit(journal, coordinator)
+
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="draft.txt",
+        operation_request_id="tool-call-crash",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    assert prepared.overlay is not None
+    prepared.target_path.write_text("agent result", encoding="utf-8")
+    original_update = journal.update_git_change_set_item_state
+
+    def crash_before_state_commit(**kwargs):
+        if (
+            kwargs["expected_state"] == "pending"
+            and kwargs["state"] == "preimage_checkpointed"
+        ):
+            raise RuntimeError("simulated crash before state commit")
+        return original_update(**kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            journal,
+            "update_git_change_set_item_state",
+            crash_before_state_commit,
+        )
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            mutations.complete_file_write(
+                prepared,
+                operation_request_id="tool-call-crash",
+                actor_id="agent-1",
+                trigger="filesystem.write",
+            )
+
+    assert prepared.target_path.read_text() == "user preimage"
+    before = _git(
+        prepared.workspace.run_worktree, "rev-list", "--count", "HEAD"
+    )
+    reconciliation = mutations.reconcile_startup()
+    after = _git(
+        prepared.workspace.run_worktree, "rev-list", "--count", "HEAD"
+    )
+
+    assert reconciliation.recovered_change_set_ids == (
+        prepared.change_set.change_set_id,
+    )
+    assert reconciliation.needs_attention_change_set_ids == ()
+    assert int(after) == int(before) + 1
+    assert prepared.target_path.read_text() == "agent result"
+    assert user_file.read_text() == "user preimage"
+    item = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )[0]
+    assert item.item_state == "checkpointed"
+    assert item.operation_request_id == "tool-call-crash"
+
+
+def test_startup_reconciles_exact_write_before_change_set_item_exists(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="generated.txt",
+        operation_request_id="tool-call-before-complete",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    prepared.target_path.write_text("durable result", encoding="utf-8")
+    assert (
+        journal.list_git_change_set_items(prepared.change_set.change_set_id)
+        == []
+    )
+
+    reconciliation = mutations.reconcile_startup()
+
+    assert reconciliation.recovered_change_set_ids == (
+        prepared.change_set.change_set_id,
+    )
+    assert backend.is_worktree_clean(prepared.workspace.run_worktree)
+    assert (
+        _git(
+            prepared.workspace.run_worktree,
+            "show",
+            "HEAD:generated.txt",
+        )
+        == "durable result"
+    )
+    intents = journal.list_git_mutation_intents()
+    assert len(intents) == 1
+    assert intents[0].status == "completed"
+
+
+def test_startup_reconciles_broad_process_before_delta_scan(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = mutations.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-before-scan",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared is not None
+    (prepared.workspace.run_worktree / "generated.csv").write_text(
+        "a,b\n1,2",
+        encoding="utf-8",
+    )
+
+    reconciliation = mutations.reconcile_startup()
+
+    assert reconciliation.recovered_change_set_ids == (
+        prepared.change_set.change_set_id,
+    )
+    assert backend.is_worktree_clean(prepared.workspace.run_worktree)
+    assert (
+        _git(
+            prepared.workspace.run_worktree,
+            "show",
+            "HEAD:generated.csv",
+        )
+        == "a,b\n1,2"
+    )
+    assert journal.list_git_mutation_intents()[0].status == "completed"
+
+
+def test_same_path_can_be_checkpointed_again_without_reimporting_user_source(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    user_file = space / "draft.txt"
+    user_file.write_text("user preimage", encoding="utf-8")
+    _admit(journal, coordinator)
+
+    first = mutations.prepare_file_write(
+        context=_context(space),
+        filename="draft.txt",
+        operation_request_id="tool-call-first",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert first is not None and first.overlay is not None
+    first.target_path.write_text("agent first", encoding="utf-8")
+    mutations.complete_file_write(
+        first,
+        operation_request_id="tool-call-first",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+
+    second = mutations.prepare_file_write(
+        context=_context(space),
+        filename="draft.txt",
+        operation_request_id="tool-call-second",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert second is not None
+    assert second.overlay is None
+    assert second.target_path.read_text() == "agent first"
+    second.target_path.write_text("agent second", encoding="utf-8")
+    commit = mutations.complete_file_write(
+        second,
+        operation_request_id="tool-call-second",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+
+    assert commit is not None
+    assert _git(second.workspace.run_worktree, "show", "HEAD^:draft.txt") == (
+        "agent first"
+    )
+    assert _git(second.workspace.run_worktree, "show", "HEAD:draft.txt") == (
+        "agent second"
+    )
+    assert user_file.read_text() == "user preimage"
+    item = journal.list_git_change_set_items(second.change_set.change_set_id)[
+        0
+    ]
+    assert item.operation_request_id == "tool-call-second"
+    assert item.item_state == "checkpointed"
+
+
+def test_space_without_git_keeps_legacy_write_target(tmp_path, journal):
+    _, _, mutations, _ = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="legacy.txt",
+        operation_request_id="tool-call-legacy",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+
+    assert prepared is None
+
+
+def test_broad_write_imports_only_overlay_paths_already_pinned_by_run(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    visible = space / "visible.txt"
+    hidden = space / "not-read.txt"
+    visible.write_text("visible user data", encoding="utf-8")
+    hidden.write_text("not admitted", encoding="utf-8")
+    _admit(journal, coordinator)
+    mutations.snapshots.pin_path(
+        run_id="run-1",
+        relative_path="visible.txt",
+    )
+
+    prepared = mutations.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-call-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+
+    assert prepared is not None
+    assert (prepared.workspace.run_worktree / "visible.txt").read_text() == (
+        "visible user data"
+    )
+    assert not (prepared.workspace.run_worktree / "not-read.txt").exists()
+    assert [item.relative_path for item in prepared.imported_overlays] == [
+        "visible.txt"
+    ]
+
+    commits = mutations.complete_broad_write(
+        prepared,
+        operation_request_id="terminal-call-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert commits == ()
+    assert backend.is_worktree_clean(prepared.workspace.run_worktree)
+    assert visible.read_text() == "visible user data"
+
+    prepared_again = mutations.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-call-retry",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared_again is not None
+    assert (
+        prepared_again.workspace.run_worktree / "visible.txt"
+    ).read_text() == "visible user data"
+
+
+def test_broad_write_checkpoints_only_actual_process_delta(tmp_path, journal):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = mutations.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-call-2",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared is not None
+    (prepared.workspace.run_worktree / "seed.txt").write_text("updated")
+    (prepared.workspace.run_worktree / "generated.csv").write_text("a,b\n1,2")
+
+    commits = mutations.complete_broad_write(
+        prepared,
+        operation_request_id="terminal-call-2",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+
+    assert len(commits) == 1
+    assert backend.is_worktree_clean(prepared.workspace.run_worktree)
+    items = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )
+    assert [
+        (item.relative_path, item.change_kind, item.item_state)
+        for item in items
+    ] == [
+        ("generated.csv", "added", "checkpointed"),
+        ("seed.txt", "modified", "checkpointed"),
+    ]
+    assert seed.read_text() == "seed"

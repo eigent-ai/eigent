@@ -141,6 +141,21 @@ async def startup_event():
     reconciliation = await asyncio.to_thread(
         get_default_run_journal().reconcile_startup
     )
+    from app.workspace_git import (
+        WorkspaceGitObserver,
+        get_default_workspace_git_lifecycle,
+        get_default_workspace_mutation_service,
+    )
+
+    workspace_reconciliation = await asyncio.to_thread(
+        get_default_workspace_mutation_service().reconcile_startup
+    )
+    git_terminal_reconciliation = await asyncio.to_thread(
+        get_default_workspace_git_lifecycle().finalize_terminal_runs
+    )
+    git_observation = await asyncio.to_thread(
+        WorkspaceGitObserver(get_default_run_journal()).inspect_all
+    )
     # LocalMemory is a compatibility/context projection, never an execution
     # status authority. Repair its status files from the canonical journal so
     # a hard process exit cannot leave UI/context consumers seeing "running"
@@ -189,6 +204,22 @@ async def startup_event():
             "pending_approvals": len(reconciliation.pending_approval_ids),
             "reconcilable_commands": len(
                 reconciliation.reconcilable_command_ids
+            ),
+            "recovered_git_change_sets": len(
+                workspace_reconciliation.recovered_change_set_ids
+            ),
+            "git_change_sets_needing_attention": len(
+                workspace_reconciliation.needs_attention_change_set_ids
+            ),
+            "finalized_terminal_git_runs": len(
+                git_terminal_reconciliation.finalizations
+            ),
+            "terminal_git_finalization_failures": len(
+                git_terminal_reconciliation.failed_run_ids
+            ),
+            "external_git_changes": len(git_observation.changes),
+            "git_observation_failures": len(
+                git_observation.failed_repository_ids
             ),
         },
     )
