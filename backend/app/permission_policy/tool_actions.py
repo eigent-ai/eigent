@@ -29,6 +29,12 @@ def operation_for_tool(
 ) -> str:
     name = tool_name.strip().lower()
     toolkit = (toolkit_name or "").strip().lower()
+    if "workspace git" in toolkit or "workspacegit" in toolkit:
+        return (
+            "git.read"
+            if safety_class is ToolSafetyClass.SAFE_READ
+            else "git.local_write"
+        )
     if name in _BROWSER_READ_NAMES:
         return "browser.read"
     if "browser" in toolkit or name.startswith("browser_"):

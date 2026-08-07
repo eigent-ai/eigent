@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,6 +104,7 @@ export function WorkspaceProjectPicker({
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   const activeProjectId = projectStore.activeProjectId;
   const activeProject = activeProjectId
@@ -574,6 +576,14 @@ export function WorkspaceProjectPicker({
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
       />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
       <AlertDialog
         isOpen={discardConfirmOpen}
         onClose={() => setDiscardConfirmOpen(false)}
@@ -700,6 +710,7 @@ export function WorkspaceProjectPicker({
                   true,
                 onEnable: versionHistory.requestEnable,
                 onSave: versionHistory.save,
+                onOpenHistory: () => setVersionHistoryOpen(true),
               }
             : undefined
         }

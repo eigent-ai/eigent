@@ -32,6 +32,11 @@ from app.run_journal import (
 )
 from app.utils.workspace_resolver import get_workspace_resolver
 from app.workspace_git import (
+    AdvancedGitApprovalRequired,
+    AdvancedGitCommandRejected,
+    AdvancedGitError,
+    AdvancedGitOutcomeUnknown,
+    AdvancedGitService,
     ContentRepositoryConsentRequired,
     ContentRepositoryError,
     ContentRepositoryService,
@@ -169,6 +174,25 @@ class GitRunWorkspaceEditBody(BaseModel):
     actor_id: str = Field(min_length=1, max_length=200)
 
 
+class AdvancedGitPreviewBody(BaseModel):
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    argv: list[str] = Field(min_length=1, max_length=128)
+
+
+class AdvancedGitExecuteBody(AdvancedGitPreviewBody):
+    expected_repo_state_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    confirmed_action_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    actor_id: str = Field(min_length=1, max_length=200)
+
+
 def _service() -> ContentRepositoryService:
     return ContentRepositoryService(
         get_default_run_journal(),
@@ -200,6 +224,15 @@ def _run_edit_service() -> RunWorkspaceEditService:
         service.journal,
         state_root=service.state_root,
         coordinator=_coordinator(),
+    )
+
+
+def _advanced_service() -> AdvancedGitService:
+    service = _service()
+    return AdvancedGitService(
+        service.journal,
+        content=service,
+        git_backend=service.git,
     )
 
 
@@ -273,6 +306,37 @@ def _git_error(exc: Exception) -> HTTPException:
             ),
             detail=detail,
         )
+    if isinstance(exc, AdvancedGitApprovalRequired):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "action_digest": exc.action_digest,
+            },
+        )
+    if isinstance(exc, AdvancedGitCommandRejected):
+        return HTTPException(
+            status_code=422,
+            detail={"code": exc.code, "message": str(exc)},
+        )
+    if isinstance(exc, AdvancedGitOutcomeUnknown):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": exc.code,
+                "message": str(exc),
+                "retryable": False,
+            },
+        )
+    if isinstance(exc, AdvancedGitError):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": getattr(exc, "code", "advanced_git_error"),
+                "message": str(exc),
+            },
+        )
     if isinstance(exc, RepositoryStateChangedError):
         return HTTPException(
             status_code=409,
@@ -335,6 +399,21 @@ def _diagnostics_payload(value: RepositoryDiagnostics) -> dict:
             "operation_state": value.state_token.operation_state,
             "digest": value.state_token.digest,
         },
+    }
+
+
+def _advanced_preview_payload(preview) -> dict:
+    return {
+        "classification": preview.classification.operation,
+        "subcommand": preview.classification.subcommand,
+        "safety_class": preview.classification.safety_class.value,
+        "external_side_effect": preview.classification.external_side_effect,
+        "risk_tags": list(preview.classification.risk_tags),
+        "action_digest": preview.action_digest,
+        "effect": preview.effect.value,
+        "reason": preview.reason,
+        "requires_confirmation": preview.requires_confirmation,
+        "display_argv": list(preview.display_argv),
     }
 
 
@@ -409,6 +488,84 @@ async def git_bootstrap(space_id: str, body: GitBootstrapBody):
         "version_coverage": result.repository.version_coverage,
         "diagnostics": _diagnostics_payload(result.diagnostics),
     }
+
+
+@router.get("/spaces/{space_id}/git/history")
+async def git_history(
+    space_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Git is not enabled")
+    _assert_repository_binding(repository, root)
+    try:
+        return _advanced_service().history(
+            repository_id=repository.repository_id,
+            limit=limit,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.post("/spaces/{space_id}/git/operations:preview")
+async def git_advanced_preview(
+    space_id: str,
+    body: AdvancedGitPreviewBody,
+):
+    root = _binding_root(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Git is not enabled")
+    _assert_repository_binding(repository, root)
+    try:
+        preview = _advanced_service().preview(
+            space_id=space_id,
+            repository_id=repository.repository_id,
+            argv=tuple(body.argv),
+            operation_request_id=body.operation_request_id,
+        )
+        return _advanced_preview_payload(preview)
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.post("/spaces/{space_id}/git/operations")
+async def git_advanced_execute(
+    space_id: str,
+    body: AdvancedGitExecuteBody,
+):
+    root = _binding_root(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Git is not enabled")
+    _assert_repository_binding(repository, root)
+    try:
+        return _advanced_service().execute(
+            space_id=space_id,
+            repository_id=repository.repository_id,
+            argv=tuple(body.argv),
+            operation_request_id=body.operation_request_id,
+            expected_repo_state_digest=body.expected_repo_state_digest,
+            confirmed_action_digest=body.confirmed_action_digest,
+            actor_id=body.actor_id,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
 
 
 @router.get("/spaces/{space_id}/git/diff")

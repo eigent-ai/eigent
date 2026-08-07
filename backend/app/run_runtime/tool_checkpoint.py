@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Iterator
@@ -102,6 +103,14 @@ def _redact(value: Any) -> Any:
             str(key): (
                 "[REDACTED]"
                 if str(key).lower() in _REDACTED_KEYS
+                else {
+                    "argument_count": len(item),
+                    "sha256": hashlib.sha256(
+                        json.dumps(item, ensure_ascii=False).encode("utf-8")
+                    ).hexdigest(),
+                }
+                if str(key).lower() == "argv"
+                and isinstance(item, (list, tuple))
                 else _redact(item)
             )
             for key, item in value.items()

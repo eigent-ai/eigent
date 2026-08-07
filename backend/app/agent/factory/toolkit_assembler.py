@@ -41,6 +41,7 @@ from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
+from app.agent.toolkit.workspace_git_toolkit import WorkspaceGitToolkit
 from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
@@ -63,6 +64,7 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     "searchtoolkit": None,
     "webfetchtoolkit": None,
     "screenshottoolkit": frozenset({"read_image"}),
+    "workspacegittoolkit": None,
     "humantoolkit": frozenset({"ask_human_via_gui"}),
     # HybridBrowserToolkit intentionally publishes itself as "Browser Toolkit".
     "browsertoolkit": frozenset(
@@ -91,6 +93,7 @@ DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "search": {"enabled": True},
     "browser": {"enabled": True},
     "terminal": {"enabled": True},
+    "workspace_git": {"enabled": True},
     "web_fetch": {"enabled": True},
     "planning_worktree": {"enabled": True},
     "mcp": {"enabled": True},
@@ -440,6 +443,16 @@ async def assemble_single_agent_toolkits(
         )
         toolkit = message_integration.register_toolkits(toolkit)
         assembly.add_tools(toolkit.get_tools(), TerminalToolkit.toolkit_name())
+
+    if _enabled(config, "workspace_git"):
+        toolkit = WorkspaceGitToolkit(
+            options.project_id,
+            Agents.single_agent,
+            **_options(config, "workspace_git"),
+        )
+        assembly.add_tools(
+            toolkit.get_tools(), WorkspaceGitToolkit.toolkit_name()
+        )
 
     if _enabled(config, "web_fetch"):
         toolkit = WebFetchToolkit(**_options(config, "web_fetch"))

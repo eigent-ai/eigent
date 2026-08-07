@@ -21,19 +21,30 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 _UNSAFE_INHERITED_GIT_ENV = {
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_ASKPASS",
     "GIT_COMMON_DIR",
     "GIT_CONFIG_COUNT",
     "GIT_CONFIG_PARAMETERS",
     "GIT_DIR",
     "GIT_INDEX_FILE",
     "GIT_OBJECT_DIRECTORY",
+    "GIT_PAGER",
+    "GIT_PROXY_COMMAND",
+    "GIT_SEQUENCE_EDITOR",
+    "GIT_SSH",
+    "GIT_SSH_COMMAND",
     "GIT_WORK_TREE",
+    "GIT_EDITOR",
+    "GIT_EXTERNAL_DIFF",
+    "SSH_ASKPASS",
 }
+_ADVANCED_COMMAND_SLOTS = threading.BoundedSemaphore(4)
 
 
 class GitBackendError(RuntimeError):
@@ -56,6 +67,17 @@ class GitCommandError(GitBackendError):
         )
 
 
+class GitCommandTimeoutError(GitBackendError):
+    """Raised when a bounded Git command exceeds its execution budget."""
+
+    def __init__(self, *, args: tuple[str, ...], timeout_seconds: float) -> None:
+        self.args_safe = args
+        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            f"git command timed out after {timeout_seconds:g}s: {args[0]}"
+        )
+
+
 class NestedRepositoryError(GitBackendError):
     """Raised when init would silently create a nested repository."""
 
@@ -65,6 +87,8 @@ class GitCommandResult:
     stdout: str
     stderr: str
     returncode: int
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -122,6 +146,13 @@ class GitMergeResult:
     conflict_paths: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class GitObjectMetadata:
+    oid: str
+    object_type: str
+    size_bytes: int
+
+
 class GitBackend:
     """Small typed backend; arbitrary command execution is intentionally absent."""
 
@@ -149,6 +180,108 @@ class GitBackend:
         self.timeout_seconds = timeout_seconds
         self.max_output_chars = max_output_chars
         self.hooks_path = hooks_path or Path(os.devnull)
+
+    def run_advanced_argv(
+        self,
+        repository_root: Path,
+        args: tuple[str, ...],
+        *,
+        identity: tuple[str, str] | None = None,
+    ) -> GitCommandResult:
+        """Execute classifier-approved argv with bounded streaming output.
+
+        Classification and policy evaluation intentionally live above this
+        transport primitive. This method never invokes a shell, never reads
+        stdin, and drains output without retaining more than the configured
+        per-stream limit in memory.
+        """
+
+        if not args or any(not value or "\x00" in value for value in args):
+            raise GitBackendError("advanced Git argv is invalid")
+        root = repository_root.expanduser().resolve()
+        command = self._command(root, args)
+        if not _ADVANCED_COMMAND_SLOTS.acquire(timeout=self.timeout_seconds):
+            raise GitBackendError("advanced Git concurrency limit reached")
+        try:
+            return self._run_advanced_argv_acquired(
+                command=command,
+                args=args,
+                identity=identity,
+            )
+        finally:
+            _ADVANCED_COMMAND_SLOTS.release()
+
+    def _run_advanced_argv_acquired(
+        self,
+        *,
+        command: tuple[str, ...],
+        args: tuple[str, ...],
+        identity: tuple[str, str] | None,
+    ) -> GitCommandResult:
+        try:
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._environment(identity=identity),
+            )
+        except OSError as exc:
+            raise GitBackendError(
+                f"failed to execute advanced Git operation: {args[0]}"
+            ) from exc
+
+        stdout = bytearray()
+        stderr = bytearray()
+        truncated = {"stdout": False, "stderr": False}
+
+        def drain(name: str, pipe, destination: bytearray) -> None:
+            while True:
+                chunk = pipe.read(16 * 1024)
+                if not chunk:
+                    return
+                remaining = self.max_output_chars - len(destination)
+                if remaining > 0:
+                    destination.extend(chunk[:remaining])
+                if len(chunk) > remaining:
+                    truncated[name] = True
+
+        assert process.stdout is not None
+        assert process.stderr is not None
+        threads = (
+            threading.Thread(
+                target=drain,
+                args=("stdout", process.stdout, stdout),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain,
+                args=("stderr", process.stderr, stderr),
+                daemon=True,
+            ),
+        )
+        for thread in threads:
+            thread.start()
+        try:
+            returncode = process.wait(timeout=self.timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            process.wait()
+            for thread in threads:
+                thread.join(timeout=1)
+            raise GitCommandTimeoutError(
+                args=args,
+                timeout_seconds=self.timeout_seconds,
+            ) from exc
+        for thread in threads:
+            thread.join(timeout=1)
+        return GitCommandResult(
+            stdout=stdout.decode("utf-8", errors="replace"),
+            stderr=stderr.decode("utf-8", errors="replace"),
+            returncode=returncode,
+            stdout_truncated=truncated["stdout"],
+            stderr_truncated=truncated["stderr"],
+        )
 
     def probe(self, root: Path) -> RepositoryProbe:
         requested = root.expanduser().resolve()
@@ -225,6 +358,46 @@ class GitBackend:
             check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else None
+
+    def object_metadata(
+        self,
+        repository_root: Path,
+        object_ids: tuple[str, ...],
+    ) -> tuple[GitObjectMetadata, ...]:
+        """Return bounded object type/size metadata without reading blobs."""
+
+        if not object_ids:
+            return ()
+        for oid in object_ids:
+            self._validate_object_name(oid)
+        result = self._run(
+            repository_root,
+            (
+                "cat-file",
+                "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+            ),
+            input_text="\n".join(object_ids) + "\n",
+        )
+        records: list[GitObjectMetadata] = []
+        for line in result.stdout.splitlines():
+            oid, separator, remainder = line.partition(" ")
+            object_type, separator_two, raw_size = remainder.partition(" ")
+            if (
+                not separator
+                or not separator_two
+                or not raw_size.isdigit()
+            ):
+                raise GitBackendError("Git returned invalid object metadata")
+            records.append(
+                GitObjectMetadata(
+                    oid=oid,
+                    object_type=object_type,
+                    size_bytes=int(raw_size),
+                )
+            )
+        if len(records) != len(object_ids):
+            raise GitBackendError("Git object metadata response was truncated")
+        return tuple(records)
 
     def is_ancestor(
         self,
@@ -424,7 +597,7 @@ class GitBackend:
         if not message.strip():
             raise ValueError("Git commit message is required")
         pathspecs = self._relative_pathspecs(repository_root, paths)
-        self._assert_no_clean_filters(repository_root, pathspecs)
+        self.assert_no_clean_filters(repository_root, pathspecs)
         self._run(repository_root, ("add", "--", *pathspecs))
         staged = self._run(
             repository_root,
@@ -1118,7 +1291,7 @@ class GitBackend:
             metadata.append(value)
         return "\0".join(sorted(metadata))
 
-    def _assert_no_clean_filters(
+    def assert_no_clean_filters(
         self,
         repository_root: Path,
         pathspecs: tuple[str, ...],
@@ -1194,11 +1367,16 @@ class GitBackend:
                 environment.pop(key)
         environment.update(
             {
+                "GIT_EDITOR": "true",
                 "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_CONFIG_GLOBAL": os.devnull,
                 "GIT_LITERAL_PATHSPECS": "1",
+                "GIT_MERGE_AUTOEDIT": "no",
+                "GIT_PAGER": "cat",
+                "GIT_SEQUENCE_EDITOR": "true",
                 "GIT_TERMINAL_PROMPT": "0",
                 "LC_ALL": "C",
+                "PAGER": "cat",
             }
         )
         if identity is not None:
@@ -1222,6 +1400,10 @@ class GitBackend:
             "core.fsmonitor=false",
             "-c",
             "core.untrackedCache=false",
+            "-c",
+            "protocol.ext.allow=never",
+            "-c",
+            "protocol.file.allow=never",
             "-C",
             str(cwd),
             *args,

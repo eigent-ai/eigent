@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from app.run_journal import SQLiteRunJournal
@@ -8,6 +9,7 @@ from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
 )
+from app.workspace_git.backend import GitBackend
 
 
 def test_legacy_admission_persists_redacted_spec_before_attempt(tmp_path):
@@ -110,6 +112,79 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
         )
         assert event.payload["thinking_effort_requested"] == "max"
         assert event.payload["thinking_effort_effective"] == "medium"
+
+
+def test_admission_pins_secret_free_git_capability(tmp_path):
+    workspace = tmp_path / "private-workspace"
+    workspace.mkdir()
+    backend = GitBackend()
+    backend.init_repository(workspace)
+    readme = workspace / "README.md"
+    readme.write_text("workspace", encoding="utf-8")
+    base_commit = backend.commit_paths(
+        workspace,
+        (readme,),
+        message="Initial workspace state",
+        author_name="Test User",
+        author_email="test@example.com",
+    )
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="run-git",
+            project_id="project-1",
+            status="pending",
+        )
+        journal.put_git_repository(
+            repository_id="repo-local-1",
+            space_id="space-1",
+            repository_role="content",
+            root_path=str(workspace),
+            root_path_digest=hashlib.sha256(
+                str(workspace).encode("utf-8")
+            ).hexdigest(),
+            ownership="eigent_owned",
+            state="ready",
+            version_coverage="managed_files_only",
+        )
+        template = LegacyEnvironmentImporter().build_template(
+            model_platform="openai",
+            model_type="gpt-5.5-codex",
+            auth_source="codex_subscription",
+            requested_effort=ThinkingEffort.HIGH,
+            allow_local_system=True,
+        )
+
+        result = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-git",
+            space_id="space-1",
+            working_directory=workspace,
+            created_by="user-1",
+            template=template,
+        )
+
+        capability = result.spec.semantic_spec[
+            "runtime_capability_manifest"
+        ]["git"]
+        assert capability == {
+            "available": True,
+            "repository_id": "repo-local-1",
+            "logical_root": ".",
+            "current_branch": "main",
+            "base_commit": base_commit,
+            "version_coverage": "managed_files_only",
+            "allowed_actions": [
+                "status",
+                "diff",
+                "log",
+                "checkpoint",
+                "branch_list",
+                "merge_request",
+                "advanced_preview",
+            ],
+        }
+        assert str(workspace) not in json.dumps(
+            result.spec.cloud_projection(), sort_keys=True
+        )
 
 
 def test_admission_pins_current_space_permission_profile(tmp_path):

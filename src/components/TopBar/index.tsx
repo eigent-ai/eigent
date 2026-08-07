@@ -26,6 +26,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
@@ -150,6 +151,7 @@ function HeaderWin() {
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
@@ -500,6 +502,14 @@ function HeaderWin() {
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
       />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
       <AlertDialog
         isOpen={renameSpaceDialogOpen}
         onClose={() => setRenameSpaceDialogOpen(false)}
@@ -661,6 +671,7 @@ function HeaderWin() {
                           ?.pending_managed_paths_truncated === true,
                       onEnable: versionHistory.requestEnable,
                       onSave: versionHistory.save,
+                      onOpenHistory: () => setVersionHistoryOpen(true),
                     }
                   : undefined
               }

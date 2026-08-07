@@ -17,10 +17,21 @@ from app.workspace_git.backend import (
     GitBackendError,
     GitCommandError,
     GitCommandResult,
+    GitCommandTimeoutError,
     NestedRepositoryError,
     RepositoryDiagnostics,
     RepositoryProbe,
     RepoStateToken,
+)
+from app.workspace_git.advanced import (
+    AdvancedGitApprovalRequired,
+    AdvancedGitCommandClassifier,
+    AdvancedGitCommandRejected,
+    AdvancedGitError,
+    AdvancedGitOutcomeUnknown,
+    AdvancedGitPreview,
+    AdvancedGitService,
+    get_default_advanced_git_service,
 )
 from app.workspace_git.configuration import (
     ConfigurationRepositoryError,
@@ -84,8 +95,20 @@ from app.workspace_git.workforce import (
     WorkforceGitService,
     get_default_workforce_git_service,
 )
+from app.workspace_git.retention import (
+    DEFAULT_GIT_RETENTION_POLICY,
+    GitRetentionPolicy,
+)
 
 __all__ = [
+    "AdvancedGitApprovalRequired",
+    "AdvancedGitCommandClassifier",
+    "AdvancedGitCommandRejected",
+    "AdvancedGitError",
+    "AdvancedGitOutcomeUnknown",
+    "AdvancedGitPreview",
+    "AdvancedGitService",
+    "get_default_advanced_git_service",
     "ConfigurationRepositoryError",
     "ConfigurationRepositoryResult",
     "ConfigurationRepositoryService",
@@ -101,9 +124,11 @@ __all__ = [
     "GitBackendError",
     "GitCommandError",
     "GitCommandResult",
+    "GitCommandTimeoutError",
     "GitRunAdmission",
     "GitRunFinalization",
     "GitRunWorkspace",
+    "GitRetentionPolicy",
     "GitTerminalReconciliation",
     "MaterializedOverlay",
     "NestedRepositoryError",
@@ -138,4 +163,5 @@ __all__ = [
     "get_default_workspace_git_coordinator",
     "get_default_workspace_git_lifecycle",
     "get_default_workspace_mutation_service",
+    "DEFAULT_GIT_RETENTION_POLICY",
 ]
