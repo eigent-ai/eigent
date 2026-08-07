@@ -1347,7 +1347,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // Query once per Project, then replay matching tasks through Brain's
       // canonical SQLite stream. Projects created on another device have no
       // local Run and intentionally retain the cloud fallback.
-      const localRunsById = new Map<string, { status?: string }>();
+      const localRunsById = new Map<
+        string,
+        { status?: string; totalAttemptElapsedMs?: number }
+      >();
       try {
         const localRuns = await fetchGet('/runs', {
           project_id: loadProjectId,
@@ -1357,6 +1360,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (run?.run_id) {
             localRunsById.set(String(run.run_id), {
               status: typeof run.status === 'string' ? run.status : undefined,
+              totalAttemptElapsedMs:
+                typeof run.total_attempt_elapsed_ms === 'number' &&
+                Number.isFinite(run.total_attempt_elapsed_ms) &&
+                run.total_attempt_elapsed_ms >= 0
+                  ? run.total_attempt_elapsed_ms
+                  : undefined,
             });
           }
         }
@@ -1476,6 +1485,20 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                   loadProjectId,
                   'local_durable'
                 );
+                const localRun = localRunsById.get(taskId);
+                const canonicalElapsed =
+                  localRun?.status !== 'running'
+                    ? localRun?.totalAttemptElapsedMs
+                    : undefined;
+                if (
+                  canonicalElapsed !== undefined &&
+                  chatStore.getState().tasks[taskId]
+                ) {
+                  // The reducer also derives a timestamp-based fallback from
+                  // the replayed events. Prefer SQLite's attempt aggregate:
+                  // it excludes the offline gap before an explicit Resume.
+                  chatStore.getState().setElapsed(taskId, canonicalElapsed);
+                }
               } else {
                 await replay(
                   taskId,

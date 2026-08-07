@@ -100,6 +100,13 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
         journal.ensure_run(
             run_id="older", project_id="project-1", now=1
         )
+        journal.create_run_attempt(
+            "older",
+            request_id="initial-older",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
         journal.reconcile_startup(now=2)
         journal.ensure_run(
             run_id="other", project_id="project-2", now=3
@@ -116,3 +123,4 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
 
     assert [run["run_id"] for run in result["runs"]] == ["older"]
     assert result["runs"][0]["status"] == "interrupted"
+    assert result["runs"][0]["total_attempt_elapsed_ms"] == 1000

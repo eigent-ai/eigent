@@ -257,6 +257,28 @@ async def _load_run_or_404(run_id: str):
     return run
 
 
+def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
+    """Return Run execution wall time without counting gaps between attempts.
+
+    Older/legacy attempts did not emit periodic heartbeat accounting, so their
+    ``elapsed_active_ms`` remains zero. For those rows the durable started/end
+    timestamps are the best available source. Summing each attempt separately
+    deliberately excludes the offline interval between an interruption and a
+    later Resume.
+    """
+
+    total = 0
+    for attempt in attempts:
+        ended_at = attempt.ended_at
+        if ended_at is not None:
+            total += max(0, round((ended_at - attempt.started_at) * 1000))
+        elif attempt.status == "running":
+            total += max(0, round((now - attempt.started_at) * 1000))
+        else:
+            total += max(0, int(attempt.elapsed_active_ms))
+    return total
+
+
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
@@ -284,6 +306,7 @@ async def list_project_runs(
         limit=limit,
     )
     items: list[dict[str, Any]] = []
+    now = time.time()
     for run in runs:
         attempts = await asyncio.to_thread(
             journal.list_run_attempts, run.run_id
@@ -293,6 +316,11 @@ async def list_project_runs(
                 **asdict(run),
                 "latest_attempt": (
                     asdict(attempts[-1]) if attempts else None
+                ),
+                "total_attempt_elapsed_ms": (
+                    _total_attempt_elapsed_ms(attempts, now=now)
+                    if attempts
+                    else None
                 ),
             }
         )
