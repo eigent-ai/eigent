@@ -17,7 +17,6 @@
  */
 export const AgentStep = {
   CONFIRMED: 'confirmed',
-  NEW_TASK_STATE: 'new_task_state',
   END: 'end',
   WAIT_CONFIRM: 'wait_confirm',
   DECOMPOSE_TEXT: 'decompose_text',
@@ -36,7 +35,6 @@ export const AgentStep = {
   BUDGET_NOT_ENOUGH: 'budget_not_enough',
   CONTEXT_TOO_LONG: 'context_too_long',
   ERROR: 'error',
-  ADD_TASK: 'add_task',
   REMOVE_TASK: 'remove_task',
   NOTICE: 'notice',
   ASK: 'ask',

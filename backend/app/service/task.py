@@ -44,7 +44,6 @@ class Action(str, Enum):
     improve = "improve"  # user -> backend
     update_task = "update_task"  # user -> backend
     task_state = "task_state"  # backend -> user
-    new_task_state = "new_task_state"  # backend -> user
     # backend -> user (streaming decomposition)
     decompose_progress = "decompose_progress"
     decompose_text = "decompose_text"  # backend -> user (raw streaming text)
@@ -70,7 +69,6 @@ class Action(str, Enum):
     resume = "resume"  # user -> backend  user take control
     new_agent = "new_agent"  # user -> backend
     budget_not_enough = "budget_not_enough"  # backend -> user
-    add_task = "add_task"  # user -> backend
     remove_task = "remove_task"  # user -> backend
     skip_task = "skip_task"  # user -> backend
     timeout = "timeout"  # backend -> user (task timeout error)
@@ -115,14 +113,6 @@ class ActionDecomposeProgressData(BaseModel):
 class ActionDecomposeTextData(BaseModel):
     action: Literal[Action.decompose_text] = Action.decompose_text
     data: dict
-
-
-class ActionNewTaskStateData(BaseModel):
-    action: Literal[Action.new_task_state] = Action.new_task_state
-    data: dict[
-        Literal["task_id", "content", "state", "result", "failure_count"],
-        str | int,
-    ]
 
 
 class ActionAskData(BaseModel):
@@ -285,15 +275,6 @@ class ActionBudgetNotEnough(BaseModel):
     action: Literal[Action.budget_not_enough] = Action.budget_not_enough
 
 
-class ActionAddTaskData(BaseModel):
-    action: Literal[Action.add_task] = Action.add_task
-    content: str
-    project_id: str | None = None
-    task_id: str | None = None
-    additional_info: dict | None = None
-    insert_position: int = -1
-
-
 class ActionRemoveTaskData(BaseModel):
     action: Literal[Action.remove_task] = Action.remove_task
     task_id: str
@@ -331,7 +312,6 @@ ActionData = (
     | ActionTakeControl
     | ActionNewAgent
     | ActionBudgetNotEnough
-    | ActionAddTaskData
     | ActionRemoveTaskData
     | ActionSkipTaskData
     | ActionDecomposeTextData
