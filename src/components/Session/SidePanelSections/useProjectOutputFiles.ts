@@ -96,11 +96,10 @@ export function useProjectOutputFiles(
         }
       }
 
-      if (
-        !nextFiles.length ||
-        !ipcRenderer?.invoke ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
-      ) {
+      // Electron already has the authoritative local file list. Local-proxy
+      // mode only changes where Brain HTTP points; it must not force a second,
+      // identical /files request after IPC succeeded.
+      if (!nextFiles.length || !ipcRenderer?.invoke) {
         try {
           const baseURL = await getBaseURL();
           if (baseURL) {
@@ -126,23 +125,8 @@ export function useProjectOutputFiles(
 
     void loadFiles();
 
-    if (!live) {
-      // One deferred fetch 5 s after the task finishes to catch async writes
-      // (summaries, JSON outputs) that flush after the FINISHED status event.
-      const deferred = setTimeout(() => void loadFiles(), 5000);
-      return () => {
-        cancelled = true;
-        clearTimeout(deferred);
-      };
-    }
-
-    const timer = setInterval(() => {
-      void loadFiles();
-    }, 5000);
-
     return () => {
       cancelled = true;
-      clearInterval(timer);
     };
   }, [email, host?.ipcRenderer, live, projectId, taskId, userId]);
 

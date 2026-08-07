@@ -14,7 +14,6 @@
 
 import {
   fetchDelete,
-  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -22,6 +21,7 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
@@ -81,19 +81,6 @@ interface UsageLimitBannerState {
   message: string;
   actionLabel: string;
   severity: 'warning' | 'danger';
-}
-
-interface DurableRunSummary {
-  run_id: string;
-  project_id: string;
-  status: string;
-  updated_at: number;
-  origin?: 'local' | 'cloud_restore';
-  resume_blocked_reason?: string | null;
-  latest_attempt?: {
-    attempt_number: number;
-    status: string;
-  } | null;
 }
 
 const runActionRequestId = (action: 'resume' | 'cancel', runId: string) => {
@@ -251,8 +238,6 @@ export default function ChatBox(): JSX.Element {
     (s) => s.workspaceChatFocusRequestId
   );
   const activeProjectId = projectStore.activeProjectId;
-  const activeProjectIdRef = useRef(activeProjectId);
-  activeProjectIdRef.current = activeProjectId;
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -296,45 +281,14 @@ export default function ChatBox(): JSX.Element {
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
-  const [interruptedRun, setInterruptedRun] =
-    useState<DurableRunSummary | null>(null);
+  const {
+    run: interruptedRun,
+    setRun: setInterruptedRun,
+    refresh: refreshInterruptedRun,
+  } = useInterruptedRunStatus(activeProjectId);
   const [durableRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
-
-  const refreshInterruptedRun = useCallback(async () => {
-    if (!activeProjectId) {
-      setInterruptedRun(null);
-      return;
-    }
-    try {
-      const result = await fetchGet('/runs', {
-        project_id: activeProjectId,
-        status: 'interrupted',
-        limit: 1,
-      });
-      if (activeProjectIdRef.current !== activeProjectId) return;
-      const next = Array.isArray(result?.runs) ? result.runs[0] : null;
-      setInterruptedRun(next || null);
-    } catch (error: any) {
-      // Brain can still be booting while the Project shell is visible. Keep a
-      // previously known interrupted card instead of replacing canonical
-      // state with an optimistic local guess.
-      if (error?.name !== 'AbortError') {
-        console.debug('[RunControl] Run status refresh deferred', error);
-      }
-    }
-  }, [activeProjectId]);
-
-  useEffect(() => {
-    void refreshInterruptedRun();
-    const intervalId = window.setInterval(refreshInterruptedRun, 5000);
-    window.addEventListener('focus', refreshInterruptedRun);
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', refreshInterruptedRun);
-    };
-  }, [refreshInterruptedRun]);
 
   const refreshUsageLimits = useCallback(async () => {
     if (modelType !== 'cloud' || !token) {
@@ -412,11 +366,9 @@ export default function ChatBox(): JSX.Element {
 
     if (modelType !== 'cloud' || !token) return;
 
-    const intervalId = window.setInterval(refreshUsageLimits, 60000);
     window.addEventListener('focus', refreshUsageLimits);
 
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshUsageLimits);
     };
   }, [modelType, token, refreshUsageLimits]);
@@ -462,12 +414,6 @@ export default function ChatBox(): JSX.Element {
     navigate('/history?tab=agents');
   }, [navigate]);
 
-  // Task time tracking
-  const [, setTaskTime] = useState(
-    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
-      '00:00'
-  );
-
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
@@ -485,16 +431,6 @@ export default function ChatBox(): JSX.Element {
     activeTaskId && activeAsk && isInteractiveHumanReply
       ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
       : null;
-
-  useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
 
   useEffect(() => {
     if (!activeHumanReplyKey || !activeTaskId) {
