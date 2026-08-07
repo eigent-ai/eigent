@@ -99,10 +99,8 @@ spec:
     )
     revision = journal.put_workspace_config_revision(
         revision_id=manifest.revision_id,
-        space_id="space-1",
         bundle_id=manifest.metadata.id,
         revision_number=manifest.metadata.revision,
-        config_placement="sidecar",
         manifest=manifest.canonical_payload(),
         created_by="user-1",
         now=1,
@@ -139,10 +137,8 @@ def test_workspace_config_and_environment_spec_are_immutable(journal):
     with pytest.raises(IdempotencyConflictError, match="config revision"):
         journal.put_workspace_config_revision(
             revision_id=revision.revision_id,
-            space_id=revision.space_id,
             bundle_id=revision.bundle_id,
             revision_number=revision.revision_number,
-            config_placement=revision.config_placement,
             manifest={**revision.manifest, "unexpected": True},
             created_by=revision.created_by,
         )
@@ -166,10 +162,8 @@ spec:
     )
     draft = journal.put_workspace_config_revision(
         revision_id=manifest.revision_id,
-        space_id="space-1",
         bundle_id=manifest.metadata.id,
         revision_number=manifest.metadata.revision,
-        config_placement="sidecar",
         manifest=manifest.canonical_payload(),
         status="draft",
         created_by="user-1",

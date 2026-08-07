@@ -29,6 +29,7 @@ from app.run_journal.models import (
     RunRecord,
     StartupReconciliationResult,
     ToolCallRecord,
+    WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
 )
 from app.run_journal.paths import default_run_journal_path
@@ -78,6 +79,7 @@ __all__ = [
     "SQLiteRunJournal",
     "StartupReconciliationResult",
     "ToolCallRecord",
+    "WorkspaceConfigMaterializationRecord",
     "WorkspaceConfigRevisionRecord",
     "UnsafeResumeError",
     "UnsupportedSchemaVersionError",

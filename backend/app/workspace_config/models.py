@@ -453,6 +453,37 @@ class WorkforceBundleManifest(_StrictFrozenModel):
         return f"{self.metadata.id}@{self.metadata.revision}"
 
 
+class LockedDependency(_StrictFrozenModel):
+    ref: str = Field(min_length=1)
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    version: str | None = None
+
+
+class WorkspaceLock(_StrictFrozenModel):
+    api_version: Literal["eigent.ai/lock/v1alpha1"] = Field(alias="apiVersion")
+    bundle_revision: str = Field(min_length=1, alias="bundleRevision")
+    manifest_digest: str = Field(
+        pattern=r"^[0-9a-f]{64}$",
+        alias="manifestDigest",
+    )
+    assets: tuple[LockedDependency, ...] = Field(default_factory=tuple)
+    skills: tuple[LockedDependency, ...] = Field(default_factory=tuple)
+    mcp_packages: tuple[LockedDependency, ...] = Field(
+        default_factory=tuple,
+        alias="mcpPackages",
+    )
+
+    @model_validator(mode="after")
+    def reject_local_or_secret_values(self) -> WorkspaceLock:
+        payload = self.canonical_payload()
+        assert_manifest_secret_free(payload)
+        assert_cloud_projection_safe(payload)
+        return self
+
+    def canonical_payload(self) -> dict[str, Any]:
+        return self.model_dump(by_alias=True, exclude_none=True, mode="json")
+
+
 @dataclass(frozen=True)
 class EffortResolution:
     requested: ThinkingEffort
