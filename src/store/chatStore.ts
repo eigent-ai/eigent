@@ -88,6 +88,9 @@ const clampHistorySummary = (
   typeof value === 'string'
     ? value.slice(0, MAX_CHAT_HISTORY_SUMMARY_LENGTH)
     : undefined;
+const CLOUD_KEY_PENDING_RETRY_DELAYS_MS = [1000, 1500, 2500, 5000];
+const BILLING_BUDGET_SYNC_PENDING_PATTERN =
+  /billing budget sync is still pending|budget sync.*pending/i;
 
 type ConfirmedUserPromptSources = {
   lastMessageContent?: unknown;
@@ -122,6 +125,78 @@ const hasApiCode = (value: unknown, code: string) =>
   typeof value === 'object' &&
   value !== null &&
   String((value as { code?: unknown }).code) === code;
+
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function getErrorText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(getErrorText).filter(Boolean).join(' ');
+  }
+  if (typeof value !== 'object' || value === null) {
+    return '';
+  }
+
+  const record = value as Record<string, any>;
+  return [
+    record.text,
+    record.message,
+    record.error,
+    record.detail,
+    record.response?.data?.text,
+    record.response?.data?.message,
+    record.response?.data?.detail,
+  ]
+    .map(getErrorText)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isBillingBudgetSyncPending(value: unknown): boolean {
+  return BILLING_BUDGET_SYNC_PENDING_PATTERN.test(getErrorText(value));
+}
+
+async function fetchCloudUserKeyWithRetry(): Promise<any> {
+  let lastPendingResponse: any = null;
+
+  for (
+    let attempt = 0;
+    attempt <= CLOUD_KEY_PENDING_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    try {
+      const res = await proxyFetchGet('/api/v1/user/key');
+      if (res?.value || !isBillingBudgetSyncPending(res)) {
+        return res;
+      }
+      lastPendingResponse = res;
+    } catch (error: any) {
+      if (!isBillingBudgetSyncPending(error)) {
+        throw error;
+      }
+      lastPendingResponse = error;
+      if (attempt >= CLOUD_KEY_PENDING_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+    }
+
+    if (attempt >= CLOUD_KEY_PENDING_RETRY_DELAYS_MS.length) {
+      return lastPendingResponse;
+    }
+
+    const delayMs = CLOUD_KEY_PENDING_RETRY_DELAYS_MS[attempt];
+    console.info('[startTask] Cloud user key pending billing sync; retrying', {
+      attempt: attempt + 1,
+      delayMs,
+    });
+    await delay(delayMs);
+  }
+
+  return lastPendingResponse;
+}
 
 let _host: AppHost | null = null;
 
@@ -1769,7 +1844,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         let res: any;
         try {
-          res = await proxyFetchGet('/api/v1/user/key');
+          res = await fetchCloudUserKeyWithRetry();
         } catch (error: any) {
           finishStartupFailure();
           const responseData = error?.response?.data;
