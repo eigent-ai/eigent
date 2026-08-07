@@ -284,6 +284,80 @@ def test_workspace_git_status_fails_closed_after_space_rebind(git_api):
     )
 
 
+def test_advanced_git_api_previews_confirms_and_lists_history(git_api):
+    client, _, _, _ = git_api
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+    status = _status(client)
+    request = {
+        "email": "user@example.com",
+        "operation_request_id": "advanced-api-1",
+        "argv": ["commit", "--allow-empty", "-m", "API checkpoint"],
+    }
+    preview = client.post(
+        "/api/v1/spaces/space-1/git/operations:preview",
+        headers=_headers(),
+        json=request,
+    )
+    assert preview.status_code == 200
+    assert preview.json()["classification"] == "git.local_write"
+    assert preview.json()["requires_confirmation"] is True
+
+    rejected = client.post(
+        "/api/v1/spaces/space-1/git/operations",
+        headers=_headers(),
+        json={
+            **request,
+            "expected_repo_state_digest": status["diagnostics"]["repo_state"][
+                "digest"
+            ],
+            "actor_id": "user-1",
+        },
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["code"] == "advanced_git_approval_required"
+
+    executed = client.post(
+        "/api/v1/spaces/space-1/git/operations",
+        headers=_headers(),
+        json={
+            **request,
+            "expected_repo_state_digest": status["diagnostics"]["repo_state"][
+                "digest"
+            ],
+            "confirmed_action_digest": preview.json()["action_digest"],
+            "actor_id": "user-1",
+        },
+    )
+    assert executed.status_code == 200
+    assert executed.json()["returncode"] == 0
+
+    history = client.get(
+        "/api/v1/spaces/space-1/git/history",
+        headers=_headers(),
+        params={"email": "user@example.com"},
+    )
+    assert history.status_code == 200
+    assert history.json()["commits"][0]["subject"] == "API checkpoint"
+    assert history.json()["backup"]["configured"] is False
+
+    force = client.post(
+        "/api/v1/spaces/space-1/git/operations:preview",
+        headers=_headers(),
+        json={
+            "email": "user@example.com",
+            "operation_request_id": "force-1",
+            "argv": ["push", "--force", "origin", "HEAD"],
+        },
+    )
+    assert force.status_code == 422
+    assert force.json()["detail"]["code"] == "advanced_git_command_rejected"
+
+
 def test_workspace_git_rejects_escaping_checkpoint_path(git_api):
     client, _, _, _ = git_api
 

@@ -33,6 +33,7 @@ import {
   Check,
   CheckCircle2,
   FolderOpen,
+  GitBranch,
   Loader2,
   Pencil,
   Plus,
@@ -94,6 +95,7 @@ export interface SpaceSwitchDropdownSavePointMenu {
   pendingTruncated: boolean;
   onEnable: () => void | Promise<void>;
   onSave: () => void | Promise<void>;
+  onOpenHistory?: () => void;
 }
 
 export interface SpaceSwitchDropdownProps {
@@ -442,55 +444,71 @@ export function SpaceSwitchDropdown({
           ) : null}
 
           {savePointMenu ? (
-            <DropdownMenuItem
-              className="cursor-pointer gap-2"
-              disabled={
-                savePointMenu.loading ||
-                savePointMenu.saving ||
-                savePointMenu.needsAttention ||
-                (savePointMenu.enabled && savePointMenu.pendingCount === 0)
-              }
-              onSelect={(event) => {
-                event.preventDefault();
-                if (savePointMenu.enabled) {
-                  void savePointMenu.onSave();
-                } else {
-                  void savePointMenu.onEnable();
+            <>
+              <DropdownMenuItem
+                className="cursor-pointer gap-2"
+                disabled={
+                  savePointMenu.loading ||
+                  savePointMenu.saving ||
+                  savePointMenu.needsAttention ||
+                  (savePointMenu.enabled && savePointMenu.pendingCount === 0)
                 }
-              }}
-            >
-              {savePointMenu.loading || savePointMenu.saving ? (
-                <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin"
-                  aria-hidden
-                />
-              ) : savePointMenu.needsAttention ? (
-                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-              ) : (
-                <Save className="h-4 w-4 shrink-0" aria-hidden />
-              )}
-              <span className="min-w-0 flex-1 truncate">
-                {savePointMenu.loading
-                  ? t('layout.workspace-version-loading')
-                  : savePointMenu.saving
-                    ? t('layout.workspace-save-point-saving')
-                    : savePointMenu.needsAttention
-                      ? t('layout.workspace-version-needs-attention')
-                      : savePointMenu.enabled
-                        ? t('layout.workspace-save-point', {
-                            count: savePointMenu.pendingCount,
-                            suffix: savePointMenu.pendingTruncated ? '+' : '',
-                          })
-                        : t('layout.workspace-enable-version-history')}
-              </span>
-              {savePointMenu.enabled ? (
-                <span className="text-body-xs text-ds-text-neutral-muted-default">
-                  {navigator.platform.toLowerCase().includes('mac')
-                    ? '⌘S'
-                    : 'Ctrl+S'}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  if (savePointMenu.enabled) {
+                    void savePointMenu.onSave();
+                  } else {
+                    void savePointMenu.onEnable();
+                  }
+                }}
+              >
+                {savePointMenu.loading || savePointMenu.saving ? (
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                ) : savePointMenu.needsAttention ? (
+                  <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                ) : (
+                  <Save className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                <span className="min-w-0 flex-1 truncate">
+                  {savePointMenu.loading
+                    ? t('layout.workspace-version-loading')
+                    : savePointMenu.saving
+                      ? t('layout.workspace-save-point-saving')
+                      : savePointMenu.needsAttention
+                        ? t('layout.workspace-version-needs-attention')
+                        : savePointMenu.enabled
+                          ? t('layout.workspace-save-point', {
+                              count: savePointMenu.pendingCount,
+                              suffix: savePointMenu.pendingTruncated ? '+' : '',
+                            })
+                          : t('layout.workspace-enable-version-history')}
                 </span>
+                {savePointMenu.enabled ? (
+                  <span className="text-body-xs text-ds-text-neutral-muted-default">
+                    {navigator.platform.toLowerCase().includes('mac')
+                      ? '⌘S'
+                      : 'Ctrl+S'}
+                  </span>
+                ) : null}
+              </DropdownMenuItem>
+              {savePointMenu.enabled && savePointMenu.onOpenHistory ? (
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  onSelect={() => {
+                    setOpen(false);
+                    savePointMenu.onOpenHistory?.();
+                  }}
+                >
+                  <GitBranch className="h-4 w-4 shrink-0" aria-hidden />
+                  {t('layout.workspace-version-history', {
+                    defaultValue: 'Version history',
+                  })}
+                </DropdownMenuItem>
               ) : null}
-            </DropdownMenuItem>
+            </>
           ) : null}
 
           <DropdownMenuItem

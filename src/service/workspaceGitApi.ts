@@ -57,6 +57,78 @@ export interface WorkspaceSavePointResult {
   created_at: number;
 }
 
+export interface WorkspaceGitBranch {
+  ref: string;
+  oid: string;
+  committed_at: number;
+  subject: string;
+  archived: boolean;
+}
+
+export interface WorkspaceGitCommit {
+  oid: string;
+  parent_oids: string[];
+  author: string;
+  committed_at: number;
+  subject: string;
+}
+
+export interface WorkspaceGitHistory {
+  repository_id: string;
+  repo_state_digest: string;
+  branches: WorkspaceGitBranch[];
+  commits: WorkspaceGitCommit[];
+  remotes: string[];
+  large_repository: {
+    estimated_object_bytes: number;
+    warning: boolean;
+    lfs_recommended_for_blob_bytes: number;
+    object_stats: Record<string, number>;
+  };
+  retention_policy: {
+    undo_window_ms: number;
+    archive_ref_retention_ms: number;
+    project_archive_ref_retention_ms: number;
+    automatic_archive_ref_deletion: boolean;
+    automatic_object_gc: boolean;
+  };
+  backup: { configured: boolean; message: string };
+}
+
+export interface AdvancedGitPreview {
+  classification: string;
+  subcommand: string;
+  safety_class: string;
+  external_side_effect: boolean;
+  risk_tags: string[];
+  action_digest: string;
+  effect: 'allow' | 'prompt' | 'deny';
+  reason: string;
+  requires_confirmation: boolean;
+  display_argv: string[];
+}
+
+export interface AdvancedGitResult {
+  classification: string;
+  subcommand: string;
+  action_digest: string;
+  stdout: string;
+  stderr: string;
+  returncode: number;
+  stdout_truncated: boolean;
+  stderr_truncated: boolean;
+  repo_state_digest: string;
+  replayed: boolean;
+  publish_scan?: {
+    head_oid: string;
+    remote_name: string;
+    outgoing_object_count: number;
+    outgoing_blob_count: number;
+    largest_blob_bytes: number;
+    scan_digest: string;
+  };
+}
+
 const identityParams = (identity: WorkspaceGitIdentity) => ({
   email: identity.email,
   ...(identity.userId === undefined || identity.userId === null
@@ -100,4 +172,48 @@ export const createWorkspaceSavePoint = async (
     expected_repo_state_digest: input.expectedRepoStateDigest,
     actor_id: input.actorId,
     message: input.message || 'Save progress',
+  });
+
+export const fetchWorkspaceGitHistory = async (
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  limit = 50
+): Promise<WorkspaceGitHistory> =>
+  fetchGet(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/history`, {
+    ...identityParams(identity),
+    limit,
+  });
+
+export const previewAdvancedGit = async (
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: { operationRequestId: string; argv: string[] }
+): Promise<AdvancedGitPreview> =>
+  fetchPost(
+    `/api/v1/spaces/${encodeURIComponent(spaceId)}/git/operations:preview`,
+    {
+      ...identityParams(identity),
+      operation_request_id: input.operationRequestId,
+      argv: input.argv,
+    }
+  );
+
+export const executeAdvancedGit = async (
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: {
+    operationRequestId: string;
+    argv: string[];
+    expectedRepoStateDigest?: string | null;
+    confirmedActionDigest?: string | null;
+    actorId: string;
+  }
+): Promise<AdvancedGitResult> =>
+  fetchPost(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/operations`, {
+    ...identityParams(identity),
+    operation_request_id: input.operationRequestId,
+    argv: input.argv,
+    expected_repo_state_digest: input.expectedRepoStateDigest || null,
+    confirmed_action_digest: input.confirmedActionDigest || null,
+    actor_id: input.actorId,
   });

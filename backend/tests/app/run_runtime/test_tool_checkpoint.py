@@ -53,7 +53,14 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
             checkpoint = prepare_tool_checkpoint(
                 raw_tool_call_id="call-1",
                 tool_name="read_file",
-                arguments={"path": "notes.md", "api_key": "secret"},
+                arguments={
+                    "path": "notes.md",
+                    "api_key": "secret",
+                    "argv": [
+                        "push",
+                        "https://user:password@example.com/repo.git",
+                    ],
+                },
                 journal=journal,
             )
             assert checkpoint is not None
@@ -62,6 +69,10 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
                 journal.list_tool_calls("run-1")[0].request["api_key"]
                 == "[REDACTED]"
             )
+            argv = journal.list_tool_calls("run-1")[0].request["argv"]
+            assert argv["argument_count"] == 2
+            assert len(argv["sha256"]) == 64
+            assert "password" not in str(argv)
             finish_tool_checkpoint(
                 checkpoint,
                 result={"content": "hello"},

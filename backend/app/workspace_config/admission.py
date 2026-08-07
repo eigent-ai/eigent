@@ -285,6 +285,52 @@ class EnvironmentAdmissionService:
             context_sources=tuple(local_context_sources),
             connector_bindings=tuple(connector_bindings),
         )
+        git_repository = self.journal.get_space_git_repository(
+            space_id=space_id
+        )
+        git_branch: str | None = None
+        git_base_commit: str | None = None
+        if git_repository is not None:
+            try:
+                # Local import avoids a workspace_config <-> workspace_git
+                # package initialization cycle.
+                from app.workspace_git.backend import (
+                    GitBackend,
+                    GitBackendError,
+                )
+
+                probe = GitBackend().probe(Path(git_repository.root_path))
+                if probe.is_repository and probe.owns_requested_root:
+                    git_branch = probe.branch
+                    git_base_commit = probe.head_oid
+            except GitBackendError:
+                # Admission remains available in degraded mode. Repository
+                # reconciliation owns the durable state transition and UI.
+                pass
+        git_capability = (
+            {
+                "available": False,
+                "reason": "content_repository_disabled",
+            }
+            if git_repository is None
+            else {
+                "available": True,
+                "repository_id": git_repository.repository_id,
+                "logical_root": ".",
+                "current_branch": git_branch,
+                "base_commit": git_base_commit,
+                "version_coverage": git_repository.version_coverage,
+                "allowed_actions": [
+                    "status",
+                    "diff",
+                    "log",
+                    "checkpoint",
+                    "branch_list",
+                    "merge_request",
+                    "advanced_preview",
+                ],
+            }
+        )
         spec = self.resolver.resolve(
             manifest=effective_template.manifest,
             owner_type="run",
@@ -302,6 +348,7 @@ class EnvironmentAdmissionService:
                     "space_id": space_id,
                     "logical_root_slot": "workspace_root",
                 },
+                "git": git_capability,
             },
         )
         revision = self.journal.put_workspace_config_revision(
