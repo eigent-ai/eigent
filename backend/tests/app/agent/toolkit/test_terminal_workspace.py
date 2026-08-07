@@ -45,6 +45,7 @@ def test_terminal_materializes_run_workspace_before_process_spawn(
     toolkit.working_dir = str(user_root)
     prepared = SimpleNamespace(
         workspace=SimpleNamespace(run_worktree=run_root),
+        agent_workspace=SimpleNamespace(agent_worktree=run_root),
         context=SimpleNamespace(run_id="run-1"),
     )
     calls: list[str] = []
@@ -105,6 +106,7 @@ def test_background_terminal_checkpoints_after_session_stops(
     toolkit.shell_sessions = {"terminal-bg": {"running": False}}
     prepared = SimpleNamespace(
         workspace=SimpleNamespace(run_worktree=run_root),
+        agent_workspace=SimpleNamespace(agent_worktree=run_root),
         context=SimpleNamespace(run_id="run-1"),
     )
     checkpointed = threading.Event()

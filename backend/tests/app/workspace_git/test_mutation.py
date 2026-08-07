@@ -127,7 +127,9 @@ def test_file_write_materializes_before_target_is_available(tmp_path, journal):
 
     assert prepared is not None
     assert prepared.workspace.run.materialization_state == "materialized"
-    assert prepared.target_path.parent == prepared.workspace.run_worktree
+    assert (
+        prepared.target_path.parent == prepared.agent_workspace.agent_worktree
+    )
     assert not (space / "generated.txt").exists()
     prepared.target_path.write_text("agent output", encoding="utf-8")
     commit = mutations.complete_file_write(
@@ -191,7 +193,7 @@ def test_overlay_modified_by_agent_commits_exact_user_preimage_first(
         _git(
             prepared.workspace.run_worktree,
             "show",
-            f"{commit}^:draft.txt",
+            f"{commit}^2^:draft.txt",
         )
         == "user preimage"
     )
@@ -199,7 +201,7 @@ def test_overlay_modified_by_agent_commits_exact_user_preimage_first(
         _git(
             prepared.workspace.run_worktree,
             "show",
-            f"{commit}:draft.txt",
+            f"{commit}^2:draft.txt",
         )
         == "agent result"
     )
@@ -284,7 +286,9 @@ def test_startup_reconciles_crash_after_overlay_preimage_commit(
         prepared.change_set.change_set_id,
     )
     assert reconciliation.needs_attention_change_set_ids == ()
-    assert int(after) == int(before) + 1
+    # The recovered history contains the User preimage checkpoint, Agent
+    # result checkpoint, and one serialized merge into Run integration.
+    assert int(after) == int(before) + 3
     assert prepared.target_path.read_text() == "agent result"
     assert user_file.read_text() == "user preimage"
     item = journal.list_git_change_set_items(
@@ -366,7 +370,7 @@ def test_startup_reconciles_broad_process_before_delta_scan(
         trigger="terminal.execute",
     )
     assert prepared is not None
-    (prepared.workspace.run_worktree / "generated.csv").write_text(
+    (prepared.agent_workspace.agent_worktree / "generated.csv").write_text(
         "a,b\n1,2",
         encoding="utf-8",
     )
@@ -386,6 +390,59 @@ def test_startup_reconciles_broad_process_before_delta_scan(
         == "a,b\n1,2"
     )
     assert journal.list_git_mutation_intents()[0].status == "completed"
+
+
+def test_checkpointed_agent_result_recovers_pending_merge_on_startup(
+    tmp_path,
+    journal,
+    monkeypatch,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="result.txt",
+        operation_request_id="checkpoint-before-merge",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    prepared.target_path.write_text("durable", encoding="utf-8")
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            mutations.workforce,
+            "merge_agent_workspace",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("simulated crash before merge")
+            ),
+        )
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            mutations.complete_file_write(
+                prepared,
+                operation_request_id="checkpoint-before-merge",
+                actor_id="agent-1",
+                trigger="filesystem.write",
+            )
+
+    reconciliation = mutations.reconcile_startup()
+
+    assert prepared.change_set.change_set_id in (
+        reconciliation.recovered_change_set_ids
+    )
+    assert (
+        _git(prepared.workspace.run_worktree, "show", "HEAD:result.txt")
+        == "durable"
+    )
 
 
 def test_same_path_can_be_checkpointed_again_without_reimporting_user_source(
@@ -510,10 +567,12 @@ def test_broad_write_imports_only_overlay_paths_already_pinned_by_run(
     )
 
     assert prepared is not None
-    assert (prepared.workspace.run_worktree / "visible.txt").read_text() == (
-        "visible user data"
-    )
-    assert not (prepared.workspace.run_worktree / "not-read.txt").exists()
+    assert (
+        prepared.agent_workspace.agent_worktree / "visible.txt"
+    ).read_text() == ("visible user data")
+    assert not (
+        prepared.agent_workspace.agent_worktree / "not-read.txt"
+    ).exists()
     assert [item.relative_path for item in prepared.imported_overlays] == [
         "visible.txt"
     ]
@@ -536,7 +595,7 @@ def test_broad_write_imports_only_overlay_paths_already_pinned_by_run(
     )
     assert prepared_again is not None
     assert (
-        prepared_again.workspace.run_worktree / "visible.txt"
+        prepared_again.agent_workspace.agent_worktree / "visible.txt"
     ).read_text() == "visible user data"
 
 
@@ -560,8 +619,12 @@ def test_broad_write_checkpoints_only_actual_process_delta(tmp_path, journal):
         trigger="terminal.execute",
     )
     assert prepared is not None
-    (prepared.workspace.run_worktree / "seed.txt").write_text("updated")
-    (prepared.workspace.run_worktree / "generated.csv").write_text("a,b\n1,2")
+    (prepared.agent_workspace.agent_worktree / "seed.txt").write_text(
+        "updated"
+    )
+    (prepared.agent_workspace.agent_worktree / "generated.csv").write_text(
+        "a,b\n1,2"
+    )
 
     commits = mutations.complete_broad_write(
         prepared,

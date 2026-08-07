@@ -143,10 +143,14 @@ async def startup_event():
     )
     from app.workspace_git import (
         WorkspaceGitObserver,
+        get_default_workforce_git_service,
         get_default_workspace_git_lifecycle,
         get_default_workspace_mutation_service,
     )
 
+    workforce_reconciliation = await asyncio.to_thread(
+        get_default_workforce_git_service().reconcile_startup
+    )
     workspace_reconciliation = await asyncio.to_thread(
         get_default_workspace_mutation_service().reconcile_startup
     )
@@ -202,6 +206,12 @@ async def startup_event():
                 reconciliation.outcome_unknown_tool_call_ids
             ),
             "pending_approvals": len(reconciliation.pending_approval_ids),
+            "recovered_agent_workspaces": len(
+                workforce_reconciliation.recovered_workspace_ids
+            ),
+            "agent_workspaces_needing_attention": len(
+                workforce_reconciliation.needs_attention_workspace_ids
+            ),
             "reconcilable_commands": len(
                 reconciliation.reconcilable_command_ids
             ),

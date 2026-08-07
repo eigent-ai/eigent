@@ -55,6 +55,7 @@ from app.run_runtime import (
     SubscriberLaggedError,
     get_default_run_coordinator,
 )
+from app.workspace_git.content import ContentRepositoryError
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 logger = logging.getLogger("run_controller")
@@ -484,6 +485,15 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
+            if interaction.interaction_type == "merge_conflict":
+                from app.workspace_git import (
+                    get_default_workforce_git_service,
+                )
+
+                await asyncio.to_thread(
+                    get_default_workforce_git_service().resolve_merge_conflict,
+                    interaction_id,
+                )
     except Exception as exc:
         raise _control_error(exc) from exc
     run = await asyncio.to_thread(journal.get_run, run_id)
@@ -562,6 +572,11 @@ def _control_error(exc: Exception) -> HTTPException:
                 "code": "unsafe_resume_blocked",
                 "tool_call_ids": list(exc.tool_call_ids),
             },
+        )
+    if isinstance(exc, ContentRepositoryError):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "git_needs_attention", "message": str(exc)},
         )
     if isinstance(
         exc,

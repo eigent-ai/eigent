@@ -227,6 +227,27 @@ class RunGitMaterializationRecord:
 
 
 @dataclass(frozen=True)
+class GitAgentWorkspaceRecord:
+    workspace_id: str
+    run_id: str
+    repository_id: str
+    agent_id: str
+    agent_ref: str
+    worktree_path: str
+    base_commit: str
+    head_commit: str
+    state: str
+    lease_owner: str | None
+    lease_token: str | None
+    lease_until: float | None
+    last_operation_id: str | None
+    conflict_interaction_id: str | None
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
 class WorkspaceReadSnapshotRecord:
     snapshot_id: str
     run_id: str

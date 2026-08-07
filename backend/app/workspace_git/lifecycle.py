@@ -17,10 +17,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.run_journal import (
+    GitAgentWorkspaceRecord,
     SQLiteRunJournal,
     configured_run_journal_path,
     get_default_run_journal,
@@ -28,6 +30,7 @@ from app.run_journal import (
 from app.workspace_config import canonical_digest
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_git.coordinator import WorkspaceGitCoordinator
+from app.workspace_git.workforce import WorkforceGitService
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ class WorkspaceGitLifecycle:
         *,
         state_root: Path,
         coordinator: WorkspaceGitCoordinator | None = None,
+        workforce: WorkforceGitService | None = None,
     ) -> None:
         self.journal = journal
         self.state_root = state_root.expanduser().resolve()
@@ -64,6 +68,11 @@ class WorkspaceGitLifecycle:
         )
         self.git = self.coordinator.git
         self.content = self.coordinator.content
+        self.workforce = workforce or WorkforceGitService(
+            journal,
+            state_root=self.state_root,
+            coordinator=self.coordinator,
+        )
 
     def finalize_terminal_runs(self) -> GitTerminalReconciliation:
         values: list[GitRunFinalization] = []
@@ -102,13 +111,36 @@ class WorkspaceGitLifecycle:
                 run.promoted_commit,
                 run.run_ref,
             )
-        change_set = self.journal.get_git_change_set_for_run(run_id)
-        if change_set is not None:
+        agent_workspaces = self.journal.list_git_agent_workspaces(
+            run_id=run_id
+        )
+        run_head = (
+            self.git.current_head(Path(run.worktree_path))
+            if run.worktree_path
+            else None
+        )
+        if any(
+            self._agent_workspace_requires_deferral(item, run_head)
+            for item in agent_workspaces
+        ):
+            return GitRunFinalization(
+                run_id,
+                "deferred_agent_workspace",
+                run.promoted_commit,
+                None,
+            )
+        change_sets = [
+            item
+            for item in self.journal.list_git_change_sets()
+            if item.run_id == run_id
+        ]
+        pending_mutation_intents = self.journal.list_git_mutation_intents(
+            statuses=("prepared", "needs_attention")
+        )
+        for change_set in change_sets:
             pending_intents = [
                 item
-                for item in self.journal.list_git_mutation_intents(
-                    statuses=("prepared", "needs_attention")
-                )
+                for item in pending_mutation_intents
                 if item.change_set_id == change_set.change_set_id
             ]
             pending_items = self.journal.list_git_change_set_items(
@@ -141,6 +173,7 @@ class WorkspaceGitLifecycle:
                 run.promoted_commit,
                 None,
             )
+        self._archive_agent_workspaces(run_id)
         self._refresh_project_projection(run.project_id)
         archived = self._archive(run_id)
         return GitRunFinalization(
@@ -148,6 +181,164 @@ class WorkspaceGitLifecycle:
             "archived",
             archived.promoted_commit,
             archived.run_ref,
+        )
+
+    def _archive_agent_workspaces(self, run_id: str) -> None:
+        for record in self.journal.list_git_agent_workspaces(run_id=run_id):
+            if record.state == "archived":
+                continue
+            if (
+                record.state not in {"ready", "merged"}
+                or record.head_commit is None
+            ):
+                raise ContentRepositoryError(
+                    f"Agent workspace {record.workspace_id!r} is not converged"
+                )
+            repository = self.journal.get_git_repository(record.repository_id)
+            if repository is None:
+                raise ContentRepositoryError(
+                    "Agent workspace repository is unavailable"
+                )
+            timestamp = time.time()
+            request_id = f"terminal-agent-archive:{record.workspace_id}"
+            lease_token = canonical_digest(
+                {"workspace_id": record.workspace_id, "request": request_id}
+            )
+            claimed = self.journal.claim_git_agent_workspace(
+                workspace_id=record.workspace_id,
+                run_id=record.run_id,
+                repository_id=record.repository_id,
+                agent_id=record.agent_id,
+                agent_ref=record.agent_ref,
+                worktree_path=record.worktree_path,
+                base_commit=record.base_commit,
+                lease_owner=request_id,
+                lease_token=lease_token,
+                lease_until=timestamp + self.workforce.lease_seconds,
+                now=timestamp,
+            )
+            operation_id = self._agent_archive_operation_id(record)
+            archive_ref = self._agent_archive_ref(record)
+            root = Path(repository.root_path)
+            worktree = Path(record.worktree_path)
+            with self.content.repository_lock(
+                self.content.repository_lock_path(repository.space_id)
+            ):
+                current_state = self.git.repo_state_token(root)
+                existing = self.journal.get_git_operation(operation_id)
+                operation = self.journal.begin_git_operation(
+                    operation_id=operation_id,
+                    repository_id=record.repository_id,
+                    request_id=request_id,
+                    operation_type="agent.archive",
+                    payload_digest=canonical_digest(
+                        {
+                            "workspace_id": record.workspace_id,
+                            "active_ref": record.agent_ref,
+                            "archive_ref": archive_ref,
+                            "head_commit": record.head_commit,
+                        }
+                    ),
+                    expected_repo_state_digest=(
+                        existing.expected_repo_state_digest
+                        if existing is not None
+                        else current_state.digest
+                    ),
+                )
+                if operation.status == "prepared":
+                    self.journal.mark_git_operation_dispatched(
+                        operation_id,
+                        observed_repo_state_digest=current_state.digest,
+                    )
+                self.git.remove_owned_worktree(
+                    root,
+                    worktree_path=worktree,
+                    expected_ref=record.agent_ref,
+                )
+                self.git.archive_eigent_branch_ref(
+                    root,
+                    active_ref=record.agent_ref,
+                    archive_ref=archive_ref,
+                    expected_oid=record.head_commit,
+                )
+                observed = self.git.repo_state_token(root)
+                self.journal.complete_git_operation(
+                    operation_id,
+                    result={
+                        "workspace_id": record.workspace_id,
+                        "archive_ref": archive_ref,
+                        "commit_oid": record.head_commit,
+                    },
+                    observed_repo_state_digest=observed.digest,
+                )
+                self.journal.transition_git_agent_workspace(
+                    claimed.workspace_id,
+                    lease_token=lease_token,
+                    expected_state=claimed.state,
+                    state="archived",
+                    head_commit=record.head_commit,
+                    last_operation_id=operation_id,
+                    release_lease=True,
+                )
+
+    def _agent_workspace_requires_deferral(
+        self,
+        record: GitAgentWorkspaceRecord,
+        run_head: str | None,
+    ) -> bool:
+        if record.state in {
+            "admitted",
+            "materializing",
+            "merging",
+            "conflicted",
+            "needs_attention",
+        }:
+            return True
+        if record.state != "ready":
+            return False
+        if record.head_commit != run_head:
+            return True
+        worktree = Path(record.worktree_path)
+        if worktree.exists():
+            return not self.git.is_worktree_clean(worktree)
+        # Terminal archival updates Git before SQLite. A missing no-op Agent
+        # worktree is therefore converged only when the deterministic archive
+        # ref already holds the exact durable Agent head; finalization can
+        # safely replay the remaining operation/state writes.
+        repository = self.journal.get_git_repository(record.repository_id)
+        return (
+            repository is None
+            or record.head_commit is None
+            or self.git.ref_oid(
+                Path(repository.root_path),
+                self._agent_archive_ref(record),
+            )
+            != record.head_commit
+        )
+
+    @staticmethod
+    def _agent_archive_operation_id(record: GitAgentWorkspaceRecord) -> str:
+        return "gitop_" + canonical_digest(
+            {
+                "repository_id": record.repository_id,
+                "request_id": (
+                    f"terminal-agent-archive:{record.workspace_id}"
+                ),
+            }
+        )[:32]
+
+    @staticmethod
+    def _agent_archive_ref(record: GitAgentWorkspaceRecord) -> str:
+        return (
+            "refs/eigent/archive/runs/"
+            + canonical_digest(
+                {
+                    "repository_id": record.repository_id,
+                    "run_id": record.run_id,
+                }
+            )[:32]
+            + "/agents/"
+            + canonical_digest({"agent_id": record.agent_id})[:24]
         )
 
     def _promote(self, run_id: str):

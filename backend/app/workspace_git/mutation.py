@@ -42,12 +42,17 @@ from app.workspace_git.snapshot import (
     WorkspacePathNotFoundError,
     WorkspaceSnapshotService,
 )
+from app.workspace_git.workforce import (
+    GitAgentWorkspace,
+    WorkforceGitService,
+)
 
 
 @dataclass(frozen=True)
 class PreparedWorkspaceWrite:
     context: RunContext
     workspace: GitRunWorkspace
+    agent_workspace: GitAgentWorkspace
     change_set: GitChangeSetRecord
     intent: GitMutationIntentRecord
     relative_path: str
@@ -60,6 +65,7 @@ class PreparedWorkspaceWrite:
 class PreparedWorkspaceExecution:
     context: RunContext
     workspace: GitRunWorkspace
+    agent_workspace: GitAgentWorkspace
     change_set: GitChangeSetRecord
     intent: GitMutationIntentRecord
     imported_overlays: tuple[MaterializedOverlay, ...]
@@ -84,6 +90,7 @@ class WorkspaceMutationService:
         state_root: Path,
         coordinator: WorkspaceGitCoordinator | None = None,
         snapshots: WorkspaceSnapshotService | None = None,
+        workforce: WorkforceGitService | None = None,
     ) -> None:
         self.journal = journal
         self.state_root = state_root.expanduser().resolve()
@@ -98,6 +105,11 @@ class WorkspaceMutationService:
         )
         self.content = self.coordinator.content
         self.git = self.coordinator.git
+        self.workforce = workforce or WorkforceGitService(
+            journal,
+            state_root=self.state_root,
+            coordinator=self.coordinator,
+        )
 
     def prepare_file_write(
         self,
@@ -141,7 +153,12 @@ class WorkspaceMutationService:
             expected_project_version=project.version,
             expected_project_head=project.integration_head,
         )
-        target = workspace.run_worktree / relative_path
+        agent_workspace = self.workforce.ensure_agent_workspace(
+            run_workspace=workspace,
+            agent_id=actor_id,
+            operation_request_id=operation_request_id,
+        )
+        target = agent_workspace.agent_worktree / relative_path
         overlay = None
         if (
             pinned_entry is not None
@@ -151,29 +168,43 @@ class WorkspaceMutationService:
             overlay = self.snapshots.materialize_user_overlay(
                 run_id=context.run_id,
                 relative_path=relative_path,
-                destination_root=workspace.run_worktree,
+                destination_root=agent_workspace.agent_worktree,
             )
         preimage_digest = (
             overlay.content_digest
             if overlay is not None
             else self._digest_file(target)
         )
-        assert workspace.run.run_ref is not None
         change_set = self.journal.ensure_git_change_set(
             change_set_id=(
                 "changeset_"
                 + canonical_digest(
                     {
                         "run_id": context.run_id,
-                        "run_ref": workspace.run.run_ref,
+                        "worktree_ref": agent_workspace.record.agent_ref,
                     }
                 )[:32]
             ),
             run_id=context.run_id,
             repository_id=run.repository_id,
-            worktree_ref=workspace.run.run_ref,
-            base_commit=workspace.run.workspace_base_commit,
+            worktree_ref=agent_workspace.record.agent_ref,
+            base_commit=agent_workspace.record.base_commit,
         )
+        existing_intent = next(
+            (
+                item
+                for item in self.journal.list_git_mutation_intents()
+                if item.change_set_id == change_set.change_set_id
+                and item.operation_request_id == operation_request_id
+            ),
+            None,
+        )
+        if existing_intent is not None:
+            # A retry after checkpoint-but-before-merge observes the Agent
+            # result as current content. Its durable intent must retain the
+            # original preimage so idempotency and ChangeSet identity do not
+            # drift with the worktree projection.
+            preimage_digest = existing_intent.preimage_digest
         intent = self.journal.ensure_git_mutation_intent(
             intent_id=self._intent_id(
                 change_set.change_set_id,
@@ -190,6 +221,7 @@ class WorkspaceMutationService:
         return PreparedWorkspaceWrite(
             context=context,
             workspace=workspace,
+            agent_workspace=agent_workspace,
             change_set=change_set,
             intent=intent,
             relative_path=relative_path,
@@ -231,21 +263,25 @@ class WorkspaceMutationService:
             expected_project_version=project.version,
             expected_project_head=project.integration_head,
         )
-        assert workspace.run.run_ref is not None
+        agent_workspace = self.workforce.ensure_agent_workspace(
+            run_workspace=workspace,
+            agent_id=actor_id,
+            operation_request_id=operation_request_id,
+        )
         change_set = self.journal.ensure_git_change_set(
             change_set_id=(
                 "changeset_"
                 + canonical_digest(
                     {
                         "run_id": context.run_id,
-                        "run_ref": workspace.run.run_ref,
+                        "worktree_ref": agent_workspace.record.agent_ref,
                     }
                 )[:32]
             ),
             run_id=context.run_id,
             repository_id=run.repository_id,
-            worktree_ref=workspace.run.run_ref,
-            base_commit=workspace.run.workspace_base_commit,
+            worktree_ref=agent_workspace.record.agent_ref,
+            base_commit=agent_workspace.record.base_commit,
         )
         intent = self.journal.ensure_git_mutation_intent(
             intent_id=self._intent_id(
@@ -273,12 +309,13 @@ class WorkspaceMutationService:
                         self.snapshots.materialize_user_overlay(
                             run_id=context.run_id,
                             relative_path=entry.relative_path,
-                            destination_root=workspace.run_worktree,
+                            destination_root=agent_workspace.agent_worktree,
                         )
                     )
         return PreparedWorkspaceExecution(
             context=context,
             workspace=workspace,
+            agent_workspace=agent_workspace,
             change_set=change_set,
             intent=intent,
             imported_overlays=tuple(imported),
@@ -298,29 +335,28 @@ class WorkspaceMutationService:
         overlay_paths = {
             item.relative_path: item for item in prepared.imported_overlays
         }
-        status = self.git.worktree_status(prepared.workspace.run_worktree)
+        mutation_root = prepared.agent_workspace.agent_worktree
+        status = self.git.worktree_status(mutation_root)
         for relative_path, overlay in overlay_paths.items():
             if relative_path not in status:
                 continue
-            current_digest = self._digest_file(
-                prepared.workspace.run_worktree / relative_path
-            )
+            current_digest = self._digest_file(mutation_root / relative_path)
             if current_digest == overlay.content_digest:
                 self.git.restore_owned_worktree_path(
-                    prepared.workspace.run_worktree,
+                    mutation_root,
                     relative_path=relative_path,
-                    source_commit=prepared.workspace.run.workspace_base_commit,
+                    source_commit=prepared.agent_workspace.record.base_commit,
                 )
                 continue
             commit = self.complete_file_write(
                 PreparedWorkspaceWrite(
                     context=prepared.context,
                     workspace=prepared.workspace,
+                    agent_workspace=prepared.agent_workspace,
                     change_set=prepared.change_set,
                     intent=prepared.intent,
                     relative_path=relative_path,
-                    target_path=prepared.workspace.run_worktree
-                    / relative_path,
+                    target_path=mutation_root / relative_path,
                     preimage_digest=overlay.content_digest,
                     overlay=overlay,
                 ),
@@ -330,11 +366,12 @@ class WorkspaceMutationService:
                 ),
                 actor_id=actor_id,
                 trigger=trigger,
+                merge_after_checkpoint=False,
             )
             if commit is not None:
                 commits.append(commit)
 
-        status = self.git.worktree_status(prepared.workspace.run_worktree)
+        status = self.git.worktree_status(mutation_root)
         remaining = {
             path: state
             for path, state in status.items()
@@ -342,14 +379,26 @@ class WorkspaceMutationService:
         }
         if not remaining:
             self._complete_intent(prepared.intent)
+            if commits:
+                outcome = self.workforce.merge_agent_workspace(
+                    prepared.agent_workspace,
+                    operation_request_id=self._request_id(
+                        operation_request_id,
+                        "merge-agent",
+                    ),
+                )
+                if outcome.merged_commit is not None:
+                    commits = [outcome.merged_commit]
+            else:
+                self.workforce.release_workspace(prepared.agent_workspace)
             return tuple(commits)
         paths: list[Path] = []
         sources: dict[str, str] = {}
         pending_items: list[str] = []
         for relative_path in sorted(remaining):
-            target = prepared.workspace.run_worktree / relative_path
+            target = mutation_root / relative_path
             tracked = self.git.is_tracked(
-                prepared.workspace.run_worktree,
+                mutation_root,
                 target,
             )
             result_digest = self._digest_file(target)
@@ -382,16 +431,16 @@ class WorkspaceMutationService:
                 "terminal-delta",
             ),
             expected_repo_state_digest=self.git.repo_state_token(
-                prepared.workspace.run_worktree
+                mutation_root
             ).digest,
             paths=tuple(paths),
             path_sources=sources,
-            target_role="run",
-            target_id=prepared.context.run_id,
+            target_role="agent",
+            target_id=prepared.agent_workspace.record.workspace_id,
             actor_id=actor_id,
             trigger=trigger,
             message="Checkpoint bounded workspace process delta",
-            worktree_root=prepared.workspace.run_worktree,
+            worktree_root=mutation_root,
         )
         for relative_path in pending_items:
             self.journal.update_git_change_set_item_state(
@@ -402,6 +451,15 @@ class WorkspaceMutationService:
             )
         commits.append(checkpoint.commit_oid)
         self._complete_intent(prepared.intent)
+        outcome = self.workforce.merge_agent_workspace(
+            prepared.agent_workspace,
+            operation_request_id=self._request_id(
+                operation_request_id,
+                "merge-agent",
+            ),
+        )
+        if outcome.merged_commit is not None:
+            commits = [outcome.merged_commit]
         return tuple(commits)
 
     def complete_file_write(
@@ -411,21 +469,26 @@ class WorkspaceMutationService:
         operation_request_id: str,
         actor_id: str,
         trigger: str,
+        merge_after_checkpoint: bool = True,
     ) -> str | None:
         """Checkpoint one successful exact-path write and return its commit."""
 
         result_digest = self._digest_file(prepared.target_path)
         if result_digest is None and prepared.preimage_digest is None:
             self._complete_intent(prepared.intent)
+            if merge_after_checkpoint:
+                self.workforce.release_workspace(prepared.agent_workspace)
             return None
         if result_digest == prepared.preimage_digest:
             if prepared.overlay is not None:
                 self.git.restore_owned_worktree_path(
-                    prepared.workspace.run_worktree,
+                    prepared.agent_workspace.agent_worktree,
                     relative_path=prepared.relative_path,
-                    source_commit=prepared.workspace.run.workspace_base_commit,
+                    source_commit=prepared.agent_workspace.record.base_commit,
                 )
             self._complete_intent(prepared.intent)
+            if merge_after_checkpoint:
+                self.workforce.release_workspace(prepared.agent_workspace)
             return None
         size = (
             prepared.target_path.stat().st_size
@@ -454,7 +517,20 @@ class WorkspaceMutationService:
         )
         if item.item_state == "checkpointed":
             self._complete_intent(prepared.intent)
-            return self.git.current_head(prepared.workspace.run_worktree)
+            if merge_after_checkpoint:
+                outcome = self.workforce.merge_agent_workspace(
+                    prepared.agent_workspace,
+                    operation_request_id=self._request_id(
+                        operation_request_id,
+                        "merge-agent",
+                    ),
+                )
+                return outcome.merged_commit or self.git.current_head(
+                    prepared.agent_workspace.agent_worktree
+                )
+            return self.git.current_head(
+                prepared.agent_workspace.agent_worktree
+            )
 
         if prepared.overlay is not None and item.item_state == "pending":
             result_cache = (
@@ -476,18 +552,18 @@ class WorkspaceMutationService:
                     "overlay-preimage",
                 ),
                 expected_repo_state_digest=self.git.repo_state_token(
-                    prepared.workspace.run_worktree
+                    prepared.agent_workspace.agent_worktree
                 ).digest,
                 paths=(prepared.target_path,),
                 path_sources={prepared.relative_path: "overlay_preimage"},
-                target_role="run",
-                target_id=prepared.context.run_id,
+                target_role="agent",
+                target_id=prepared.agent_workspace.record.workspace_id,
                 actor_id="user",
                 trigger="overlay_preimage",
                 message=(
                     f"Preserve User preimage for {prepared.relative_path}"
                 ),
-                worktree_root=prepared.workspace.run_worktree,
+                worktree_root=prepared.agent_workspace.agent_worktree,
             )
             del preimage_checkpoint
             self.journal.update_git_change_set_item_state(
@@ -515,16 +591,16 @@ class WorkspaceMutationService:
                 "agent-delta",
             ),
             expected_repo_state_digest=self.git.repo_state_token(
-                prepared.workspace.run_worktree
+                prepared.agent_workspace.agent_worktree
             ).digest,
             paths=(prepared.target_path,),
             path_sources={prepared.relative_path: source},
-            target_role="run",
-            target_id=prepared.context.run_id,
+            target_role="agent",
+            target_id=prepared.agent_workspace.record.workspace_id,
             actor_id=actor_id,
             trigger=trigger,
             message=f"Checkpoint {prepared.relative_path}",
-            worktree_root=prepared.workspace.run_worktree,
+            worktree_root=prepared.agent_workspace.agent_worktree,
         )
         expected_state = item.item_state
         self.journal.update_git_change_set_item_state(
@@ -541,7 +617,16 @@ class WorkspaceMutationService:
                 state="agent_modified",
             )
         self._complete_intent(prepared.intent)
-        return checkpoint.commit_oid
+        if not merge_after_checkpoint:
+            return checkpoint.commit_oid
+        outcome = self.workforce.merge_agent_workspace(
+            prepared.agent_workspace,
+            operation_request_id=self._request_id(
+                operation_request_id,
+                "merge-agent",
+            ),
+        )
+        return outcome.merged_commit or checkpoint.commit_oid
 
     def _complete_intent(self, intent: GitMutationIntentRecord) -> None:
         self.journal.update_git_mutation_intent_status(
@@ -558,6 +643,7 @@ class WorkspaceMutationService:
         ChangeSet is quarantined without blocking reconciliation of others.
         """
 
+        self.journal.reset_git_agent_workspace_leases_after_restart()
         recovered: list[str] = []
         needs_attention: list[str] = []
         change_sets = {
@@ -614,6 +700,66 @@ class WorkspaceMutationService:
                 continue
             if change_set.change_set_id not in recovered:
                 recovered.append(change_set.change_set_id)
+        for change_set in self.journal.list_git_change_sets(states=("open",)):
+            checkpointed = self.journal.list_git_change_set_items(
+                change_set.change_set_id,
+                states=("checkpointed",),
+            )
+            if not checkpointed:
+                continue
+            agent_record = next(
+                (
+                    item
+                    for item in self.journal.list_git_agent_workspaces(
+                        run_id=change_set.run_id,
+                        states=("ready",),
+                    )
+                    if item.agent_ref == change_set.worktree_ref
+                ),
+                None,
+            )
+            if agent_record is None:
+                continue
+            workspace = self._workspace_for_change_set(change_set)
+            agent_head = self.git.current_head(
+                Path(agent_record.worktree_path)
+            )
+            run_head = self.git.current_head(workspace.run_worktree)
+            if (
+                agent_head is None
+                or run_head is None
+                or agent_head == run_head
+            ):
+                continue
+            try:
+                agent_workspace = self.workforce.ensure_agent_workspace(
+                    run_workspace=workspace,
+                    agent_id=agent_record.agent_id,
+                    operation_request_id=(
+                        f"startup-checkpointed-merge:{change_set.change_set_id}"
+                    ),
+                )
+                self.workforce.merge_agent_workspace(
+                    agent_workspace,
+                    operation_request_id=self._request_id(
+                        change_set.change_set_id,
+                        "merge-agent-recovery",
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "Checkpointed Agent result merge needs attention",
+                    extra={"change_set_id": change_set.change_set_id},
+                )
+                self.journal.update_git_change_set_state(
+                    change_set_id=change_set.change_set_id,
+                    expected_state="open",
+                    state="needs_attention",
+                )
+                needs_attention.append(change_set.change_set_id)
+                continue
+            if change_set.change_set_id not in recovered:
+                recovered.append(change_set.change_set_id)
         return WorkspaceMutationReconciliation(
             recovered_change_set_ids=tuple(recovered),
             needs_attention_change_set_ids=tuple(needs_attention),
@@ -621,21 +767,55 @@ class WorkspaceMutationService:
 
     def _reconcile_intent(self, change_set, intent) -> None:
         workspace = self._workspace_for_change_set(change_set)
+        agent_workspace = self.workforce.ensure_agent_workspace(
+            run_workspace=workspace,
+            agent_id=intent.actor_id,
+            operation_request_id=intent.operation_request_id,
+        )
         if intent.mutation_scope == "exact_path":
             if intent.relative_path is None:
                 raise ContentRepositoryError(
                     "Exact-path mutation intent has no path"
                 )
-            target = workspace.run_worktree / intent.relative_path
+            target = agent_workspace.agent_worktree / intent.relative_path
             overlay = self._materialized_overlay_for_path(
                 change_set.run_id,
                 intent.relative_path,
                 target,
             )
+            persisted_item = next(
+                (
+                    item
+                    for item in self.journal.list_git_change_set_items(
+                        change_set.change_set_id,
+                        states=("pending", "preimage_checkpointed"),
+                    )
+                    if item.relative_path == intent.relative_path
+                ),
+                None,
+            )
+            if persisted_item is not None:
+                self._reconcile_exact_item(
+                    change_set,
+                    workspace,
+                    agent_workspace,
+                    persisted_item,
+                    overlay,
+                )
+                self._complete_intent(intent)
+                self.workforce.merge_agent_workspace(
+                    agent_workspace,
+                    operation_request_id=self._request_id(
+                        intent.operation_request_id,
+                        "merge-agent-recovery",
+                    ),
+                )
+                return
             self.complete_file_write(
                 PreparedWorkspaceWrite(
                     context=self._reconciliation_context(change_set),
                     workspace=workspace,
+                    agent_workspace=agent_workspace,
                     change_set=change_set,
                     intent=intent,
                     relative_path=intent.relative_path,
@@ -654,12 +834,13 @@ class WorkspaceMutationService:
             )
         imported = self._materialized_overlays(
             change_set.run_id,
-            workspace.run_worktree,
+            agent_workspace.agent_worktree,
         )
         self.complete_broad_write(
             PreparedWorkspaceExecution(
                 context=self._reconciliation_context(change_set),
                 workspace=workspace,
+                agent_workspace=agent_workspace,
                 change_set=change_set,
                 intent=intent,
                 imported_overlays=imported,
@@ -778,6 +959,11 @@ class WorkspaceMutationService:
 
     def _reconcile_change_set(self, change_set, items) -> None:
         workspace = self._workspace_for_change_set(change_set)
+        agent_workspace = self.workforce.ensure_agent_workspace(
+            run_workspace=workspace,
+            agent_id=items[0].actor_id,
+            operation_request_id=items[0].operation_request_id,
+        )
         snapshot = self.snapshots.get_snapshot(change_set.run_id)
         overlay_by_path = {}
         if snapshot is not None:
@@ -792,7 +978,12 @@ class WorkspaceMutationService:
         broad = [item for item in items if item.source == "worktree_delta"]
         exact = [item for item in items if item.source != "worktree_delta"]
         if broad:
-            self._reconcile_broad_items(change_set, workspace, broad)
+            self._reconcile_broad_items(
+                change_set,
+                workspace,
+                agent_workspace,
+                broad,
+            )
         for item in exact:
             overlay_entry = overlay_by_path.get(item.relative_path)
             overlay = None
@@ -817,17 +1008,31 @@ class WorkspaceMutationService:
                         / overlay_entry.preimage_cache_key[:2]
                         / overlay_entry.preimage_cache_key
                     ),
-                    destination_path=workspace.run_worktree
+                    destination_path=agent_workspace.agent_worktree
                     / item.relative_path,
                 )
             self._reconcile_exact_item(
                 change_set,
                 workspace,
+                agent_workspace,
                 item,
                 overlay,
             )
+        self.workforce.merge_agent_workspace(
+            agent_workspace,
+            operation_request_id=self._request_id(
+                items[0].operation_request_id,
+                "merge-agent-recovery",
+            ),
+        )
 
-    def _reconcile_broad_items(self, change_set, workspace, items) -> None:
+    def _reconcile_broad_items(
+        self,
+        change_set,
+        workspace,
+        agent_workspace,
+        items,
+    ) -> None:
         request_ids = {item.operation_request_id for item in items}
         if len(request_ids) != 1:
             raise ContentRepositoryError(
@@ -836,7 +1041,7 @@ class WorkspaceMutationService:
         paths: list[Path] = []
         sources: dict[str, str] = {}
         for item in items:
-            target = workspace.run_worktree / item.relative_path
+            target = agent_workspace.agent_worktree / item.relative_path
             if self._digest_file(target) != item.result_digest:
                 raise ContentRepositoryError(
                     f"Run result for {item.relative_path!r} changed before recovery"
@@ -857,16 +1062,16 @@ class WorkspaceMutationService:
             expected_repo_state_digest=self._checkpoint_expected_digest(
                 repository_id=change_set.repository_id,
                 operation_request_id=checkpoint_request_id,
-                worktree_root=workspace.run_worktree,
+                worktree_root=agent_workspace.agent_worktree,
             ),
             paths=tuple(paths),
             path_sources=sources,
-            target_role="run",
-            target_id=change_set.run_id,
+            target_role="agent",
+            target_id=agent_workspace.record.workspace_id,
             actor_id=items[0].actor_id,
             trigger=items[0].trigger,
             message="Checkpoint bounded workspace process delta",
-            worktree_root=workspace.run_worktree,
+            worktree_root=agent_workspace.agent_worktree,
         )
         for item in items:
             self.journal.update_git_change_set_item_state(
@@ -880,10 +1085,11 @@ class WorkspaceMutationService:
         self,
         change_set,
         workspace,
+        agent_workspace,
         item,
         overlay: MaterializedOverlay | None,
     ) -> None:
-        target = workspace.run_worktree / item.relative_path
+        target = agent_workspace.agent_worktree / item.relative_path
         if overlay is not None:
             result_cache = self._result_cache_path(item.result_digest)
             current_digest = self._digest_file(target)
@@ -912,16 +1118,16 @@ class WorkspaceMutationService:
                     expected_repo_state_digest=self._checkpoint_expected_digest(
                         repository_id=change_set.repository_id,
                         operation_request_id=checkpoint_request_id,
-                        worktree_root=workspace.run_worktree,
+                        worktree_root=agent_workspace.agent_worktree,
                     ),
                     paths=(target,),
                     path_sources={item.relative_path: "overlay_preimage"},
-                    target_role="run",
-                    target_id=change_set.run_id,
+                    target_role="agent",
+                    target_id=agent_workspace.record.workspace_id,
                     actor_id="user",
                     trigger="overlay_preimage",
                     message=f"Preserve User preimage for {item.relative_path}",
-                    worktree_root=workspace.run_worktree,
+                    worktree_root=agent_workspace.agent_worktree,
                 )
                 self.journal.update_git_change_set_item_state(
                     change_set_id=change_set.change_set_id,
@@ -953,16 +1159,16 @@ class WorkspaceMutationService:
             expected_repo_state_digest=self._checkpoint_expected_digest(
                 repository_id=change_set.repository_id,
                 operation_request_id=checkpoint_request_id,
-                worktree_root=workspace.run_worktree,
+                worktree_root=agent_workspace.agent_worktree,
             ),
             paths=(target,),
             path_sources={item.relative_path: source},
-            target_role="run",
-            target_id=change_set.run_id,
+            target_role="agent",
+            target_id=agent_workspace.record.workspace_id,
             actor_id=item.actor_id,
             trigger=item.trigger,
             message=f"Checkpoint {item.relative_path}",
-            worktree_root=workspace.run_worktree,
+            worktree_root=agent_workspace.agent_worktree,
         )
         self.journal.update_git_change_set_item_state(
             change_set_id=change_set.change_set_id,

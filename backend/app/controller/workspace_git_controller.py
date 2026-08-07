@@ -39,6 +39,7 @@ from app.workspace_git import (
     NestedRepositoryError,
     NoCheckpointChangesError,
     RepositoryStateChangedError,
+    RunWorkspaceEditService,
     WorkspaceGitCoordinator,
     WorkspaceSnapshotError,
     WorkspaceSnapshotService,
@@ -153,6 +154,21 @@ class GitSnapshotBody(BaseModel):
     expected_user_working_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class GitRunWorkspaceEditBody(BaseModel):
+    space_id: str = Field(min_length=1, max_length=256)
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    editor_session_id: str = Field(min_length=1, max_length=128)
+    relative_path: str = Field(min_length=1, max_length=4096)
+    content: str = Field(max_length=4 * 1024 * 1024)
+    expected_content_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    actor_id: str = Field(min_length=1, max_length=200)
+
+
 def _service() -> ContentRepositoryService:
     return ContentRepositoryService(
         get_default_run_journal(),
@@ -175,6 +191,15 @@ def _snapshot_service() -> WorkspaceSnapshotService:
         service.journal,
         state_root=service.state_root,
         git_backend=service.git,
+    )
+
+
+def _run_edit_service() -> RunWorkspaceEditService:
+    service = _service()
+    return RunWorkspaceEditService(
+        service.journal,
+        state_root=service.state_root,
+        coordinator=_coordinator(),
     )
 
 
@@ -745,6 +770,39 @@ async def run_git_workspace(
         run,
         projection_state_digest=projection_digest,
     )
+
+
+@router.post("/runs/{run_id}/git/workspace/files:save", status_code=201)
+async def save_run_git_workspace_file(
+    run_id: str,
+    body: GitRunWorkspaceEditBody,
+):
+    _assert_snapshot_owner(
+        run_id=run_id,
+        space_id=body.space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    try:
+        result = _run_edit_service().save_text(
+            run_id=run_id,
+            relative_path=body.relative_path,
+            content=body.content,
+            operation_request_id=body.operation_request_id,
+            editor_session_id=body.editor_session_id,
+            actor_id=body.actor_id,
+            expected_content_digest=body.expected_content_digest,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return {
+        "run_id": result.run_id,
+        "relative_path": result.relative_path,
+        "content_digest": result.content_digest,
+        "checkpoint_id": result.checkpoint.checkpoint_id,
+        "commit_oid": result.checkpoint.commit_oid,
+        "created_at": result.checkpoint.created_at,
+    }
 
 
 @router.get("/runs/{run_id}/git/snapshot")

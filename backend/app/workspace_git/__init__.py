@@ -44,6 +44,11 @@ from app.workspace_git.coordinator import (
     WorkspaceGitCoordinator,
     get_default_workspace_git_coordinator,
 )
+from app.workspace_git.edit import (
+    RunWorkspaceEditResult,
+    RunWorkspaceEditService,
+    get_default_run_workspace_edit_service,
+)
 from app.workspace_git.lifecycle import (
     GitRunFinalization,
     GitTerminalReconciliation,
@@ -71,6 +76,13 @@ from app.workspace_git.snapshot import (
     WorkspaceSnapshotService,
     WorkspaceSnapshotUnavailableError,
     WorkspaceSourceChangedError,
+)
+from app.workspace_git.workforce import (
+    GitAgentMergeOutcome,
+    GitAgentReconciliation,
+    GitAgentWorkspace,
+    WorkforceGitService,
+    get_default_workforce_git_service,
 )
 
 __all__ = [
@@ -103,6 +115,8 @@ __all__ = [
     "RepositoryStateChangedError",
     "RepositoryProbe",
     "RestoreCandidate",
+    "RunWorkspaceEditResult",
+    "RunWorkspaceEditService",
     "WorkspaceGitCoordinator",
     "WorkspaceGitLifecycle",
     "WorkspaceGitObserver",
@@ -113,6 +127,12 @@ __all__ = [
     "WorkspaceSnapshotError",
     "WorkspaceSnapshotRead",
     "WorkspaceSnapshotService",
+    "GitAgentMergeOutcome",
+    "GitAgentReconciliation",
+    "GitAgentWorkspace",
+    "WorkforceGitService",
+    "get_default_workforce_git_service",
+    "get_default_run_workspace_edit_service",
     "WorkspaceSnapshotUnavailableError",
     "WorkspaceSourceChangedError",
     "get_default_workspace_git_coordinator",

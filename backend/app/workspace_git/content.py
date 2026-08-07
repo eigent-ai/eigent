@@ -20,7 +20,7 @@ import os
 import re
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -301,6 +301,7 @@ class ContentRepositoryService:
         trigger: str,
         message: str,
         worktree_root: Path | None = None,
+        repository_lock_held: bool = False,
     ) -> GitCheckpointRecord:
         self._validate_identifier("operation_request_id", operation_request_id)
         self._validate_text("actor_id", actor_id)
@@ -346,9 +347,14 @@ class ContentRepositoryService:
         )
         checkpoint_id = "checkpoint_" + operation_id.removeprefix("gitop_")
 
-        with self.repository_lock(
-            self.repository_lock_path(repository.space_id)
-        ):
+        lock = (
+            nullcontext()
+            if repository_lock_held
+            else self.repository_lock(
+                self.repository_lock_path(repository.space_id)
+            )
+        )
+        with lock:
             diagnostics = self.git.diagnostics(root)
             repository = self._converge_repository_state(
                 repository,
