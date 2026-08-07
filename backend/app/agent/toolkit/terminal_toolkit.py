@@ -403,7 +403,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # CAMEL reads this field immediately before process spawn.
                 # Existing sessions keep their original cwd; a new command is
                 # never started in the User Worktree once Git is enabled.
-                self.working_dir = str(prepared.workspace.run_worktree)
+                self.working_dir = str(prepared.agent_workspace.agent_worktree)
 
         result = super().shell_exec(
             id=id, command=command, block=block, timeout=timeout

@@ -43,6 +43,7 @@ from app.run_journal.models import (
     CommandResultSyncBatch,
     CommittedRunEvent,
     EffectiveEnvironmentSpecRecord,
+    GitAgentWorkspaceRecord,
     GitChangeSetItemRecord,
     GitChangeSetRecord,
     GitCheckpointRecord,
@@ -94,7 +95,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -969,6 +970,53 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (12, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 12;
+COMMIT;
+"""
+
+_MIGRATION_V13 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE git_agent_workspaces (
+    workspace_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES git_run_materializations(run_id)
+        ON DELETE CASCADE,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(repository_id)
+        ON DELETE RESTRICT,
+    agent_id TEXT NOT NULL,
+    agent_ref TEXT NOT NULL UNIQUE,
+    worktree_path TEXT NOT NULL UNIQUE,
+    base_commit TEXT NOT NULL,
+    head_commit TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (
+        state IN (
+            'admitted', 'materializing', 'ready', 'merging', 'merged',
+            'conflicted', 'needs_attention', 'archived'
+        )
+    ),
+    lease_owner TEXT,
+    lease_token TEXT,
+    lease_until REAL,
+    last_operation_id TEXT,
+    conflict_interaction_id TEXT REFERENCES human_interactions(interaction_id)
+        ON DELETE SET NULL,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(run_id, agent_id),
+    CHECK (
+        (lease_owner IS NULL AND lease_token IS NULL AND lease_until IS NULL)
+        OR (lease_owner IS NOT NULL AND lease_token IS NOT NULL
+            AND lease_until IS NOT NULL)
+    )
+);
+
+CREATE INDEX git_agent_workspaces_reconcile_idx
+ON git_agent_workspaces(state, lease_until, updated_at);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (13, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 13;
 COMMIT;
 """
 
@@ -2424,6 +2472,318 @@ class SQLiteRunJournal:
                 self._run_git_materialization_from_row(row) for row in rows
             ]
 
+    def claim_git_agent_workspace(
+        self,
+        *,
+        workspace_id: str,
+        run_id: str,
+        repository_id: str,
+        agent_id: str,
+        agent_ref: str,
+        worktree_path: str,
+        base_commit: str,
+        lease_owner: str,
+        lease_token: str,
+        lease_until: float,
+        now: float | None = None,
+    ) -> GitAgentWorkspaceRecord:
+        timestamp = now if now is not None else time.time()
+        if lease_until <= timestamp:
+            raise ValueError("Agent workspace lease must expire in the future")
+        identity = (
+            run_id,
+            repository_id,
+            agent_id,
+            agent_ref,
+            worktree_path,
+            base_commit,
+        )
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                """
+                SELECT repository_id, materialization_state
+                FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if (
+                run is None
+                or run["repository_id"] != repository_id
+                or run["materialization_state"]
+                not in {
+                    "materialized",
+                    "promoted",
+                }
+            ):
+                raise ValueError("Agent workspace Run is not materialized")
+            row = connection.execute(
+                """
+                SELECT * FROM git_agent_workspaces
+                WHERE workspace_id = ? OR (run_id = ? AND agent_id = ?)
+                """,
+                (workspace_id, run_id, agent_id),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    """
+                    INSERT INTO git_agent_workspaces(
+                        workspace_id, run_id, repository_id, agent_id,
+                        agent_ref, worktree_path, base_commit, head_commit,
+                        state, lease_owner, lease_token, lease_until,
+                        last_operation_id, conflict_interaction_id,
+                        version, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admitted', ?, ?, ?,
+                              NULL, NULL, 0, ?, ?)
+                    """,
+                    (
+                        workspace_id,
+                        *identity,
+                        base_commit,
+                        lease_owner,
+                        lease_token,
+                        lease_until,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                actual = (
+                    row["run_id"],
+                    row["repository_id"],
+                    row["agent_id"],
+                    row["agent_ref"],
+                    row["worktree_path"],
+                    row["base_commit"],
+                )
+                if actual != identity:
+                    raise IdempotencyConflictError(
+                        f"Agent workspace {workspace_id!r} has another owner"
+                    )
+                if row["state"] == "archived":
+                    raise InvalidRunTransitionError(
+                        f"Agent workspace is {row['state']!r}"
+                    )
+                if (
+                    row["lease_until"] is not None
+                    and float(row["lease_until"]) > timestamp
+                    and row["lease_owner"] != lease_owner
+                ):
+                    raise OutboxLeaseLostError(
+                        f"Agent workspace {workspace_id!r} is leased"
+                    )
+                connection.execute(
+                    """
+                    UPDATE git_agent_workspaces
+                    SET lease_owner = ?, lease_token = ?, lease_until = ?,
+                        version = version + 1, updated_at = ?
+                    WHERE workspace_id = ? AND version = ?
+                    """,
+                    (
+                        lease_owner,
+                        lease_token,
+                        lease_until,
+                        timestamp,
+                        workspace_id,
+                        int(row["version"]),
+                    ),
+                )
+            claimed = connection.execute(
+                "SELECT * FROM git_agent_workspaces WHERE workspace_id = ?",
+                (workspace_id,),
+            ).fetchone()
+            assert claimed is not None
+            return self._git_agent_workspace_from_row(claimed)
+
+    def transition_git_agent_workspace(
+        self,
+        workspace_id: str,
+        *,
+        lease_token: str,
+        expected_state: str,
+        state: str,
+        head_commit: str | None = None,
+        last_operation_id: str | None = None,
+        conflict_interaction_id: str | None = None,
+        release_lease: bool = False,
+        run_event: RunEventDraft | None = None,
+        now: float | None = None,
+    ) -> GitAgentWorkspaceRecord:
+        transitions = {
+            "admitted": {"materializing", "needs_attention"},
+            "materializing": {"ready", "needs_attention"},
+            "ready": {"merging", "needs_attention", "archived"},
+            "merging": {"ready", "merged", "conflicted", "needs_attention"},
+            "merged": {"ready", "merging", "needs_attention", "archived"},
+            "conflicted": {
+                "ready",
+                "merged",
+                "needs_attention",
+                "archived",
+            },
+            "needs_attention": {"ready", "archived"},
+            "archived": set(),
+        }
+        if state != expected_state and state not in transitions.get(
+            expected_state, set()
+        ):
+            raise InvalidRunTransitionError(
+                f"Agent workspace cannot transition from {expected_state!r} "
+                f"to {state!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_agent_workspaces WHERE workspace_id = ?",
+                (workspace_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(
+                    f"Agent workspace {workspace_id!r} does not exist"
+                )
+            if row["lease_token"] != lease_token:
+                raise OutboxLeaseLostError(
+                    f"Agent workspace {workspace_id!r} lease changed"
+                )
+            if row["state"] != expected_state:
+                raise OptimisticConcurrencyError(
+                    f"Agent workspace expected {expected_state!r}, "
+                    f"found {row['state']!r}"
+                )
+            updated = connection.execute(
+                """
+                UPDATE git_agent_workspaces
+                SET state = ?, head_commit = COALESCE(?, head_commit),
+                    last_operation_id = COALESCE(?, last_operation_id),
+                    conflict_interaction_id = ?,
+                    lease_owner = CASE WHEN ? THEN NULL ELSE lease_owner END,
+                    lease_token = CASE WHEN ? THEN NULL ELSE lease_token END,
+                    lease_until = CASE WHEN ? THEN NULL ELSE lease_until END,
+                    version = version + 1, updated_at = ?
+                WHERE workspace_id = ? AND version = ? AND state = ?
+                  AND lease_token = ?
+                """,
+                (
+                    state,
+                    head_commit,
+                    last_operation_id,
+                    conflict_interaction_id,
+                    release_lease,
+                    release_lease,
+                    release_lease,
+                    timestamp,
+                    workspace_id,
+                    int(row["version"]),
+                    expected_state,
+                    lease_token,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    f"Agent workspace {workspace_id!r} changed"
+                )
+            if run_event is not None:
+                self._append_event_in_transaction(
+                    connection,
+                    row["run_id"],
+                    run_event,
+                )
+            current = connection.execute(
+                "SELECT * FROM git_agent_workspaces WHERE workspace_id = ?",
+                (workspace_id,),
+            ).fetchone()
+            assert current is not None
+            return self._git_agent_workspace_from_row(current)
+
+    def release_git_agent_workspace_lease(
+        self,
+        workspace_id: str,
+        *,
+        lease_token: str,
+        now: float | None = None,
+    ) -> GitAgentWorkspaceRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE git_agent_workspaces
+                SET lease_owner = NULL, lease_token = NULL,
+                    lease_until = NULL, version = version + 1, updated_at = ?
+                WHERE workspace_id = ? AND lease_token = ?
+                """,
+                (timestamp, workspace_id, lease_token),
+            )
+            if updated.rowcount != 1:
+                raise OutboxLeaseLostError(
+                    f"Agent workspace {workspace_id!r} lease changed"
+                )
+            row = connection.execute(
+                "SELECT * FROM git_agent_workspaces WHERE workspace_id = ?",
+                (workspace_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_agent_workspace_from_row(row)
+
+    def get_git_agent_workspace(
+        self, run_id: str, agent_id: str
+    ) -> GitAgentWorkspaceRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_agent_workspaces
+                WHERE run_id = ? AND agent_id = ?
+                """,
+                (run_id, agent_id),
+            ).fetchone()
+            return self._git_agent_workspace_from_row(row) if row else None
+
+    def list_git_agent_workspaces(
+        self,
+        *,
+        run_id: str | None = None,
+        states: tuple[str, ...] | None = None,
+    ) -> list[GitAgentWorkspaceRecord]:
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            parameters.append(run_id)
+        if states:
+            placeholders = ", ".join("?" for _ in states)
+            clauses.append(f"state IN ({placeholders})")
+            parameters.extend(states)
+        query = "SELECT * FROM git_agent_workspaces"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at, workspace_id"
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._git_agent_workspace_from_row(row) for row in rows]
+
+    def reset_git_agent_workspace_leases_after_restart(
+        self,
+        *,
+        now: float | None = None,
+    ) -> int:
+        """Release process-local leases before startup reconciliation.
+
+        Agent workspace leases protect concurrent operations in one Brain
+        process. A restarted Brain cannot have a surviving local owner, so
+        preserving those leases would only delay durable recovery.
+        """
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE git_agent_workspaces
+                SET lease_owner = NULL, lease_token = NULL,
+                    lease_until = NULL, version = version + 1, updated_at = ?
+                WHERE state != 'archived' AND lease_token IS NOT NULL
+                """,
+                (timestamp,),
+            )
+            return int(updated.rowcount)
+
     def mark_run_git_attention(
         self,
         *,
@@ -3560,9 +3920,17 @@ class SQLiteRunJournal:
             if run is None or run["repository_id"] != repository_id:
                 raise ValueError("ChangeSet Run/repository mismatch")
             if run["run_ref"] not in {None, worktree_ref}:
-                raise IdempotencyConflictError(
-                    "ChangeSet worktree ref does not belong to the Run"
-                )
+                agent_owner = connection.execute(
+                    """
+                    SELECT 1 FROM git_agent_workspaces
+                    WHERE run_id = ? AND agent_ref = ?
+                    """,
+                    (run_id, worktree_ref),
+                ).fetchone()
+                if agent_owner is None:
+                    raise IdempotencyConflictError(
+                        "ChangeSet worktree ref does not belong to the Run"
+                    )
             row = connection.execute(
                 """
                 SELECT * FROM git_change_sets
@@ -8079,6 +8447,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V11)
         if version < 12:
             self._connection.executescript(_MIGRATION_V12)
+        if version < 13:
+            self._connection.executescript(_MIGRATION_V13)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -8480,6 +8850,34 @@ class SQLiteRunJournal:
             run_ref=row["run_ref"],
             worktree_path=row["worktree_path"],
             promoted_commit=row["promoted_commit"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _git_agent_workspace_from_row(
+        row: sqlite3.Row,
+    ) -> GitAgentWorkspaceRecord:
+        return GitAgentWorkspaceRecord(
+            workspace_id=row["workspace_id"],
+            run_id=row["run_id"],
+            repository_id=row["repository_id"],
+            agent_id=row["agent_id"],
+            agent_ref=row["agent_ref"],
+            worktree_path=row["worktree_path"],
+            base_commit=row["base_commit"],
+            head_commit=row["head_commit"],
+            state=row["state"],
+            lease_owner=row["lease_owner"],
+            lease_token=row["lease_token"],
+            lease_until=(
+                float(row["lease_until"])
+                if row["lease_until"] is not None
+                else None
+            ),
+            last_operation_id=row["last_operation_id"],
+            conflict_interaction_id=row["conflict_interaction_id"],
             version=int(row["version"]),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),

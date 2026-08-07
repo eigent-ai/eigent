@@ -404,6 +404,33 @@ def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
     project = service.journal.get_project_git_state("project-1")
     assert run is not None and run.worktree_path
     assert project is not None and project.integration_head
+    save_payload = {
+        "space_id": "space-1",
+        "email": "user@example.com",
+        "operation_request_id": "save-run-note-1",
+        "editor_session_id": "editor-1",
+        "relative_path": "notes/progress.md",
+        "content": "saved from Run workspace",
+        "expected_content_digest": None,
+        "actor_id": "user-1",
+    }
+    response = client.post(
+        "/api/v1/runs/run-1/git/workspace/files:save",
+        headers=_headers(),
+        json=save_payload,
+    )
+    assert response.status_code == 201
+    saved_checkpoint = response.json()["checkpoint_id"]
+    replay = client.post(
+        "/api/v1/runs/run-1/git/workspace/files:save",
+        headers=_headers(),
+        json=save_payload,
+    )
+    assert replay.status_code == 201
+    assert replay.json()["checkpoint_id"] == saved_checkpoint
+    assert (
+        Path(run.worktree_path) / "notes/progress.md"
+    ).read_text() == "saved from Run workspace"
     run_seed = Path(run.worktree_path) / "seed.txt"
     run_seed.write_text("agent edit\n", encoding="utf-8")
     response = client.post(

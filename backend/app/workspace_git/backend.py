@@ -115,6 +115,13 @@ class GitWorktreeInfo:
     detached: bool
 
 
+@dataclass(frozen=True)
+class GitMergeResult:
+    commit_oid: str | None
+    source_oid: str
+    conflict_paths: tuple[str, ...]
+
+
 class GitBackend:
     """Small typed backend; arbitrary command execution is intentionally absent."""
 
@@ -218,6 +225,110 @@ class GitBackend:
             check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else None
+
+    def is_ancestor(
+        self,
+        repository_root: Path,
+        ancestor_oid: str,
+        descendant_oid: str,
+    ) -> bool:
+        self._validate_object_name(ancestor_oid)
+        self._validate_object_name(descendant_oid)
+        result = self._run(
+            repository_root,
+            ("merge-base", "--is-ancestor", ancestor_oid, descendant_oid),
+            check=False,
+        )
+        if result.returncode not in {0, 1}:
+            raise GitCommandError(
+                args=("merge-base", "--is-ancestor"),
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+        return result.returncode == 0
+
+    def merge_owned_ref(
+        self,
+        worktree_root: Path,
+        *,
+        source_ref: str,
+        operation_id: str,
+        message: str,
+    ) -> GitMergeResult:
+        """Merge one Eigent branch and abort cleanly on conflicts."""
+
+        self._validate_eigent_ref(source_ref, branch_only=True)
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", operation_id):
+            raise ValueError("invalid Git operation id")
+        if not message.strip():
+            raise ValueError("merge message is required")
+        root = worktree_root.expanduser().resolve()
+        owned = next(
+            (
+                item
+                for item in self.list_worktrees(root)
+                if item.path == root
+                and item.ref_name is not None
+                and item.ref_name.startswith("refs/heads/eigent/")
+            ),
+            None,
+        )
+        if owned is None:
+            raise GitBackendError("merge requires an Eigent-owned worktree")
+        if not self.is_worktree_clean(root):
+            raise GitBackendError("merge target worktree is not clean")
+        source_oid = self.ref_oid(root, source_ref)
+        current_oid = self.current_head(root)
+        if source_oid is None or current_oid is None:
+            raise GitBackendError("merge source or target HEAD is missing")
+        if self.is_ancestor(root, source_oid, current_oid):
+            return GitMergeResult(
+                commit_oid=current_oid,
+                source_oid=source_oid,
+                conflict_paths=(),
+            )
+        result = self._run(
+            root,
+            (
+                "merge",
+                "--no-ff",
+                "--no-edit",
+                "-m",
+                f"{message}\n\nEigent-Operation: {operation_id}",
+                source_ref,
+            ),
+            check=False,
+            identity=("Eigent", "noreply@eigent.ai"),
+        )
+        if result.returncode != 0:
+            conflicts = self._run(
+                root,
+                ("diff", "--name-only", "--diff-filter=U", "-z"),
+                check=False,
+            )
+            conflict_paths = tuple(
+                sorted(path for path in conflicts.stdout.split("\0") if path)
+            )
+            self._run(root, ("merge", "--abort"), check=False)
+            if conflict_paths:
+                return GitMergeResult(
+                    commit_oid=None,
+                    source_oid=source_oid,
+                    conflict_paths=conflict_paths,
+                )
+            raise GitCommandError(
+                args=("merge", source_ref),
+                returncode=result.returncode,
+                stderr=result.stderr,
+            )
+        merged_oid = self.current_head(root)
+        if merged_oid is None:
+            raise GitBackendError("merge completed without a target HEAD")
+        return GitMergeResult(
+            commit_oid=merged_oid,
+            source_oid=source_oid,
+            conflict_paths=(),
+        )
 
     def repo_state_token(self, repository_root: Path) -> RepoStateToken:
         root = repository_root.expanduser().resolve()
@@ -716,6 +827,42 @@ class GitBackend:
             )
         target.unlink(missing_ok=True)
 
+    def restore_owned_paths_from_ref(
+        self,
+        worktree_root: Path,
+        *,
+        source_ref: str,
+        relative_paths: tuple[str, ...],
+    ) -> None:
+        """Project selected paths from an Eigent ref into a clean worktree."""
+
+        self._validate_eigent_ref(source_ref, branch_only=True)
+        if not relative_paths:
+            raise ValueError("at least one conflict path is required")
+        normalized: list[str] = []
+        for value in relative_paths:
+            path = PurePosixPath(value)
+            if not value or path.is_absolute() or ".." in path.parts:
+                raise GitBackendError("conflict paths must be relative")
+            normalized.append(path.as_posix())
+        if len(set(normalized)) != len(normalized):
+            raise GitBackendError("conflict paths must be unique")
+        if not self.is_worktree_clean(worktree_root):
+            raise GitBackendError(
+                "Run integration changed before conflict resolution"
+            )
+        self._run(
+            worktree_root,
+            (
+                "restore",
+                "--source",
+                source_ref,
+                "--worktree",
+                "--",
+                *normalized,
+            ),
+        )
+
     def worktree_matches_commit(
         self,
         worktree_root: Path,
@@ -744,7 +891,10 @@ class GitBackend:
     ) -> None:
         self._validate_object_name(expected_projected_head)
         self._validate_object_name(target_head)
-        if self.worktree_matches_commit(worktree_root, target_head):
+        current_head = self.current_head(worktree_root)
+        if current_head == target_head and self.worktree_matches_commit(
+            worktree_root, target_head
+        ):
             return
         if not self.worktree_matches_commit(
             worktree_root,

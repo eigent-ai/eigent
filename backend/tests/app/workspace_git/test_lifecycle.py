@@ -9,6 +9,7 @@ from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
+    WorkforceGitService,
     WorkspaceGitCoordinator,
     WorkspaceGitLifecycle,
     WorkspaceMutationService,
@@ -97,6 +98,11 @@ def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
         actor_id="agent-1",
         trigger="filesystem.write",
     )
+    agent_before = journal.get_git_agent_workspace("run-1", "agent-1")
+    assert agent_before is not None
+    agent_worktree = Path(agent_before.worktree_path)
+    agent_ref = agent_before.agent_ref
+    agent_head = agent_before.head_commit
     journal.append_event(
         "run-1",
         RunEventDraft(
@@ -127,6 +133,21 @@ def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
     assert git.ref_oid(space, active_ref) is None
     assert result.archive_ref is not None
     assert git.ref_oid(space, result.archive_ref) == run.promoted_commit
+    agent_after = journal.get_git_agent_workspace("run-1", "agent-1")
+    assert agent_after is not None
+    assert agent_after.state == "archived"
+    assert agent_after.lease_token is None
+    assert not agent_worktree.exists()
+    assert git.ref_oid(space, agent_ref) is None
+    assert agent_head is not None
+    archive_operation = journal.get_git_operation(
+        agent_after.last_operation_id or ""
+    )
+    assert archive_operation is not None
+    assert archive_operation.status == "completed"
+    assert archive_operation.result is not None
+    agent_archive_ref = archive_operation.result["archive_ref"]
+    assert git.ref_oid(space, agent_archive_ref) == agent_head
     change_set = journal.get_git_change_set_for_run("run-1")
     assert change_set is not None
     assert change_set.state == "checkpointed"
@@ -215,3 +236,102 @@ def test_terminal_unmaterialized_run_creates_no_archive_ref(tmp_path, journal):
 
     assert result.outcome == "not_materialized"
     assert result.archive_ref is None
+
+
+def test_noop_agent_archive_recovers_after_git_before_sqlite_crash(
+    tmp_path,
+    journal,
+    monkeypatch,
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    git = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    workforce = WorkforceGitService(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+        workforce=workforce,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    git.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-run",
+        expected_repo_state_digest=git.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=admission.project.integration_head,
+    )
+    agent = workforce.ensure_agent_workspace(
+        run_workspace=workspace,
+        agent_id="reader",
+        operation_request_id="materialize-agent",
+    )
+    agent_worktree = agent.agent_worktree
+    workforce.release_workspace(agent)
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-completed",
+            event_type="run.completed",
+            payload={},
+        ),
+    )
+    original_transition = journal.transition_git_agent_workspace
+    crashed = False
+
+    def crash_before_archive_state(*args, **kwargs):
+        nonlocal crashed
+        if kwargs.get("state") == "archived" and not crashed:
+            crashed = True
+            raise RuntimeError("simulated crash after Agent Git archive")
+        return original_transition(*args, **kwargs)
+
+    monkeypatch.setattr(
+        journal,
+        "transition_git_agent_workspace",
+        crash_before_archive_state,
+    )
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        lifecycle.finalize_run("run-1")
+    monkeypatch.setattr(
+        journal,
+        "transition_git_agent_workspace",
+        original_transition,
+    )
+
+    partial = journal.get_git_agent_workspace("run-1", "reader")
+    assert partial is not None and partial.state == "ready"
+    assert not agent_worktree.exists()
+
+    recovered = lifecycle.finalize_run("run-1")
+
+    assert recovered.outcome == "archived"
+    final_agent = journal.get_git_agent_workspace("run-1", "reader")
+    assert final_agent is not None and final_agent.state == "archived"
