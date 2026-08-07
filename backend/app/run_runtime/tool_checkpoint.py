@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,6 +61,27 @@ class ToolCheckpointContext:
     safety_class: ToolSafetyClass
     idempotency_key: str | None
     request: dict[str, Any]
+
+
+current_tool_checkpoint: ContextVar[ToolCheckpointContext | None] = ContextVar(
+    "current_tool_checkpoint",
+    default=None,
+)
+
+
+@contextmanager
+def tool_checkpoint_scope(
+    checkpoint: ToolCheckpointContext | None,
+) -> Iterator[None]:
+    token = current_tool_checkpoint.set(checkpoint)
+    try:
+        yield
+    finally:
+        current_tool_checkpoint.reset(token)
+
+
+def get_current_tool_checkpoint() -> ToolCheckpointContext | None:
+    return current_tool_checkpoint.get()
 
 
 class ToolCheckpointError(RuntimeError):

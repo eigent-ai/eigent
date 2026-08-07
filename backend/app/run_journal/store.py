@@ -42,7 +42,10 @@ from app.run_journal.models import (
     CommandResultSyncBatch,
     CommittedRunEvent,
     EffectiveEnvironmentSpecRecord,
+    GitChangeSetItemRecord,
+    GitChangeSetRecord,
     GitCheckpointRecord,
+    GitMutationIntentRecord,
     GitOperationRecord,
     GitRepositoryRecord,
     ProjectGitStateRecord,
@@ -84,7 +87,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -688,6 +691,100 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (9, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 9;
+COMMIT;
+"""
+
+_MIGRATION_V10 = """
+BEGIN IMMEDIATE;
+
+ALTER TABLE workspace_overlay_entries
+ADD COLUMN materialized_content_digest TEXT;
+
+ALTER TABLE workspace_overlay_entries
+ADD COLUMN preimage_cache_key TEXT;
+
+CREATE TABLE git_change_sets (
+    change_set_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(
+        repository_id
+    ) ON DELETE RESTRICT,
+    worktree_ref TEXT NOT NULL,
+    base_commit TEXT,
+    state TEXT NOT NULL DEFAULT 'open' CHECK (
+        state IN ('open', 'checkpointed', 'discarded', 'needs_attention')
+    ),
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(run_id, worktree_ref)
+);
+
+CREATE INDEX git_change_sets_run_idx
+ON git_change_sets(run_id, created_at DESC);
+
+CREATE TABLE git_change_set_items (
+    change_set_id TEXT NOT NULL REFERENCES git_change_sets(
+        change_set_id
+    ) ON DELETE CASCADE,
+    relative_path TEXT NOT NULL,
+    operation_request_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    change_kind TEXT NOT NULL CHECK (
+        change_kind IN ('added', 'modified', 'deleted', 'renamed')
+    ),
+    source TEXT NOT NULL CHECK (
+        source IN (
+            'agent_created', 'agent_modified', 'user_selected',
+            'overlay_preimage', 'artifact_event', 'worktree_delta'
+        )
+    ),
+    preimage_digest TEXT,
+    result_digest TEXT,
+    size_bytes INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+    item_state TEXT NOT NULL DEFAULT 'pending' CHECK (
+        item_state IN (
+            'pending', 'preimage_checkpointed', 'checkpointed', 'ignored'
+        )
+    ),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(change_set_id, relative_path)
+);
+
+CREATE TABLE git_mutation_intents (
+    intent_id TEXT PRIMARY KEY,
+    change_set_id TEXT NOT NULL REFERENCES git_change_sets(
+        change_set_id
+    ) ON DELETE CASCADE,
+    operation_request_id TEXT NOT NULL,
+    mutation_scope TEXT NOT NULL CHECK (
+        mutation_scope IN ('exact_path', 'broad_process')
+    ),
+    relative_path TEXT,
+    preimage_digest TEXT,
+    actor_id TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'prepared' CHECK (
+        status IN ('prepared', 'completed', 'needs_attention')
+    ),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(change_set_id, operation_request_id),
+    CHECK (
+        (mutation_scope = 'exact_path' AND relative_path IS NOT NULL)
+        OR (mutation_scope = 'broad_process' AND relative_path IS NULL)
+    )
+);
+
+CREATE INDEX git_mutation_intents_reconcile_idx
+ON git_mutation_intents(status, updated_at, change_set_id);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (10, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 10;
 COMMIT;
 """
 
@@ -1442,6 +1539,16 @@ class SQLiteRunJournal:
                 self._git_repository_from_row(row) if row is not None else None
             )
 
+    def list_git_repositories(self) -> list[GitRepositoryRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM git_repositories
+                ORDER BY created_at, repository_id
+                """
+            ).fetchall()
+            return [self._git_repository_from_row(row) for row in rows]
+
     def begin_git_operation(
         self,
         *,
@@ -1672,6 +1779,22 @@ class SQLiteRunJournal:
                 self._git_operation_from_row(row) if row is not None else None
             )
 
+    def list_git_operations(
+        self,
+        *,
+        statuses: tuple[str, ...] | None = None,
+    ) -> list[GitOperationRecord]:
+        with self._lock:
+            query = "SELECT * FROM git_operations"
+            parameters: list[Any] = []
+            if statuses:
+                placeholders = ", ".join("?" for _ in statuses)
+                query += f" WHERE status IN ({placeholders})"
+                parameters.extend(statuses)
+            query += " ORDER BY created_at, operation_id"
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._git_operation_from_row(row) for row in rows]
+
     def complete_git_checkpoint(
         self,
         *,
@@ -1861,6 +1984,25 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._git_checkpoint_from_row(row) for row in rows]
 
+    def get_latest_git_checkpoint_for_target(
+        self,
+        *,
+        repository_id: str,
+        target_role: str,
+        target_id: str,
+    ) -> GitCheckpointRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_checkpoints
+                WHERE repository_id = ? AND target_role = ? AND target_id = ?
+                ORDER BY created_at DESC, checkpoint_id DESC
+                LIMIT 1
+                """,
+                (repository_id, target_role, target_id),
+            ).fetchone()
+            return self._git_checkpoint_from_row(row) if row else None
+
     def list_git_managed_paths(self, repository_id: str) -> tuple[str, ...]:
         with self._lock:
             rows = self._connection.execute(
@@ -1904,7 +2046,10 @@ class SQLiteRunJournal:
                 """,
                 (repository_id,),
             ).fetchone()
-            if repository is None or repository["repository_role"] != "content":
+            if (
+                repository is None
+                or repository["repository_role"] != "content"
+            ):
                 raise ValueError(
                     f"unknown Content Repository {repository_id!r}"
                 )
@@ -1956,7 +2101,13 @@ class SQLiteRunJournal:
                     ) VALUES (?, ?, NULL, NULL, ?, 0, NULL, NULL,
                               'unmaterialized', 0, ?, ?)
                     """,
-                    (project_id, repository_id, user_head, timestamp, timestamp),
+                    (
+                        project_id,
+                        repository_id,
+                        user_head,
+                        timestamp,
+                        timestamp,
+                    ),
                 )
                 project = connection.execute(
                     """
@@ -2048,6 +2199,16 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def list_project_git_states(self) -> list[ProjectGitStateRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM git_project_integrations
+                ORDER BY created_at, project_id
+                """
+            ).fetchall()
+            return [self._project_git_state_from_row(row) for row in rows]
+
     def get_run_git_materialization(
         self,
         run_id: str,
@@ -2064,6 +2225,162 @@ class SQLiteRunJournal:
                 if row is not None
                 else None
             )
+
+    def list_run_git_materializations(
+        self,
+    ) -> list[RunGitMaterializationRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM git_run_materializations
+                ORDER BY created_at, run_id
+                """
+            ).fetchall()
+            return [
+                self._run_git_materialization_from_row(row) for row in rows
+            ]
+
+    def mark_run_git_attention(
+        self,
+        *,
+        run_id: str,
+        expected_version: int,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown Run Git state {run_id!r}")
+            if row["materialization_state"] == "needs_attention":
+                return self._run_git_materialization_from_row(row)
+            if int(row["version"]) != expected_version:
+                raise OptimisticConcurrencyError(
+                    "Run Git state changed before attention marker"
+                )
+            if row["materialization_state"] not in {
+                "materializing",
+                "materialized",
+                "promoted",
+            }:
+                raise InvalidRunTransitionError(
+                    "Run Git state cannot enter needs_attention from "
+                    f"{row['materialization_state']!r}"
+                )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET materialization_state = 'needs_attention',
+                    version = version + 1, updated_at = ?
+                WHERE run_id = ? AND version = ?
+                """,
+                (timestamp, run_id, expected_version),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            assert row is not None
+            return self._run_git_materialization_from_row(row)
+
+    def archive_run_git_materialization(
+        self,
+        *,
+        operation_id: str,
+        run_id: str,
+        expected_version: int,
+        expected_run_ref: str,
+        archive_ref: str,
+        expected_head: str,
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        timestamp = now if now is not None else time.time()
+        result_json = canonical_json(
+            {
+                "run_id": run_id,
+                "archive_ref": archive_ref,
+                "commit_oid": expected_head,
+            }
+        )
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            row = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if operation is None or row is None:
+                raise ValueError(f"unknown Run Git state {run_id!r}")
+            if (
+                operation["repository_id"] != row["repository_id"]
+                or operation["operation_type"] != "run.archive"
+            ):
+                raise ValueError("Git archive operation does not own the Run")
+            if row["materialization_state"] == "archived":
+                if (
+                    row["run_ref"] != archive_ref
+                    or operation["status"] != "completed"
+                    or operation["result_json"] != result_json
+                ):
+                    raise IdempotencyConflictError(
+                        "Run was archived under another ref"
+                    )
+                return self._run_git_materialization_from_row(row)
+            if operation["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    "Run archive operation is not dispatched"
+                )
+            if (
+                int(row["version"]) != expected_version
+                or row["run_ref"] != expected_run_ref
+                or row["promoted_commit"] != expected_head
+                or row["materialization_state"] != "promoted"
+            ):
+                raise OptimisticConcurrencyError(
+                    "Run Git state changed before archive"
+                )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET materialization_state = 'archived', run_ref = ?,
+                    worktree_path = NULL, version = version + 1,
+                    updated_at = ?
+                WHERE run_id = ? AND version = ?
+                  AND materialization_state = 'promoted'
+                """,
+                (archive_ref, timestamp, run_id, expected_version),
+            )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ? AND status = 'dispatched'
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            assert row is not None
+            return self._run_git_materialization_from_row(row)
 
     def dispatch_git_run_materialization(
         self,
@@ -2694,6 +3011,23 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def list_workspace_overlay_entries(
+        self,
+        snapshot_id: str,
+    ) -> list[WorkspaceOverlayEntryRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ?
+                ORDER BY relative_path
+                """,
+                (snapshot_id,),
+            ).fetchall()
+            return [
+                self._workspace_overlay_entry_from_row(row) for row in rows
+            ]
+
     def put_workspace_overlay_entry(
         self,
         *,
@@ -2890,6 +3224,655 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def update_workspace_overlay_entry_state(
+        self,
+        *,
+        snapshot_id: str,
+        relative_path: str,
+        expected_state: str,
+        state: str,
+        now: float | None = None,
+    ) -> WorkspaceOverlayEntryRecord:
+        allowed = {
+            "read_only": {"imported_preimage", "conflicted"},
+            "imported_preimage": {"agent_modified", "conflicted"},
+            "agent_modified": set(),
+            "conflicted": set(),
+        }
+        if state != expected_state and state not in allowed.get(
+            expected_state, set()
+        ):
+            raise InvalidRunTransitionError(
+                f"overlay entry cannot transition from {expected_state!r} "
+                f"to {state!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown overlay path {relative_path!r}")
+            if row["entry_state"] == state:
+                return self._workspace_overlay_entry_from_row(row)
+            if row["entry_state"] != expected_state:
+                raise OptimisticConcurrencyError(
+                    f"overlay path {relative_path!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE workspace_overlay_entries
+                SET entry_state = ?, updated_at = ?
+                WHERE snapshot_id = ? AND relative_path = ?
+                  AND entry_state = ?
+                """,
+                (
+                    state,
+                    timestamp,
+                    snapshot_id,
+                    relative_path,
+                    expected_state,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_overlay_entry_from_row(row)
+
+    def complete_workspace_overlay_materialization(
+        self,
+        *,
+        snapshot_id: str,
+        relative_path: str,
+        content_digest: str,
+        preimage_cache_key: str,
+        now: float | None = None,
+    ) -> WorkspaceOverlayEntryRecord:
+        if not self._is_sha256(content_digest) or not self._is_sha256(
+            preimage_cache_key
+        ):
+            raise ValueError("overlay materialization digests must be SHA-256")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            if row is None or row["source_kind"] != "user_overlay":
+                raise ValueError("unknown User overlay entry")
+            if row["entry_state"] == "imported_preimage":
+                if (
+                    row["materialized_content_digest"] != content_digest
+                    or row["preimage_cache_key"] != preimage_cache_key
+                ):
+                    raise IdempotencyConflictError(
+                        f"overlay path {relative_path!r} has another preimage"
+                    )
+                return self._workspace_overlay_entry_from_row(row)
+            if row["entry_state"] != "read_only":
+                raise InvalidRunTransitionError(
+                    f"overlay path {relative_path!r} cannot materialize from "
+                    f"{row['entry_state']!r}"
+                )
+            connection.execute(
+                """
+                UPDATE workspace_overlay_entries
+                SET entry_state = 'imported_preimage',
+                    materialized_content_digest = ?, preimage_cache_key = ?,
+                    updated_at = ?
+                WHERE snapshot_id = ? AND relative_path = ?
+                  AND entry_state = 'read_only'
+                """,
+                (
+                    content_digest,
+                    preimage_cache_key,
+                    timestamp,
+                    snapshot_id,
+                    relative_path,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_overlay_entries
+                WHERE snapshot_id = ? AND relative_path = ?
+                """,
+                (snapshot_id, relative_path),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_overlay_entry_from_row(row)
+
+    def ensure_git_change_set(
+        self,
+        *,
+        change_set_id: str,
+        run_id: str,
+        repository_id: str,
+        worktree_ref: str,
+        base_commit: str | None,
+        now: float | None = None,
+    ) -> GitChangeSetRecord:
+        timestamp = now if now is not None else time.time()
+        expected = (run_id, repository_id, worktree_ref, base_commit)
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                """
+                SELECT repository_id, run_ref, workspace_base_commit
+                FROM git_run_materializations WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if run is None or run["repository_id"] != repository_id:
+                raise ValueError("ChangeSet Run/repository mismatch")
+            if run["run_ref"] not in {None, worktree_ref}:
+                raise IdempotencyConflictError(
+                    "ChangeSet worktree ref does not belong to the Run"
+                )
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_sets
+                WHERE change_set_id = ? OR (
+                    run_id = ? AND worktree_ref = ?
+                )
+                """,
+                (change_set_id, run_id, worktree_ref),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["run_id"],
+                    row["repository_id"],
+                    row["worktree_ref"],
+                    row["base_commit"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"ChangeSet {change_set_id!r} has another owner"
+                    )
+                return self._git_change_set_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO git_change_sets(
+                    change_set_id, run_id, repository_id, worktree_ref,
+                    base_commit, state, version, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'open', 0, ?, ?)
+                """,
+                (change_set_id, *expected, timestamp, timestamp),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_sets WHERE change_set_id = ?
+                """,
+                (change_set_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_change_set_from_row(row)
+
+    def get_git_change_set_for_run(
+        self,
+        run_id: str,
+    ) -> GitChangeSetRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM git_change_sets
+                WHERE run_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            return self._git_change_set_from_row(row) if row else None
+
+    def list_git_change_sets(
+        self,
+        *,
+        states: tuple[str, ...] | None = None,
+    ) -> list[GitChangeSetRecord]:
+        with self._lock:
+            query = "SELECT * FROM git_change_sets"
+            parameters: list[Any] = []
+            if states:
+                placeholders = ", ".join("?" for _ in states)
+                query += f" WHERE state IN ({placeholders})"
+                parameters.extend(states)
+            query += " ORDER BY created_at, change_set_id"
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._git_change_set_from_row(row) for row in rows]
+
+    def update_git_change_set_state(
+        self,
+        *,
+        change_set_id: str,
+        expected_state: str,
+        state: str,
+        now: float | None = None,
+    ) -> GitChangeSetRecord:
+        transitions = {
+            "open": {"checkpointed", "discarded", "needs_attention"},
+            "checkpointed": set(),
+            "discarded": set(),
+            "needs_attention": {"open", "discarded"},
+        }
+        if state != expected_state and state not in transitions.get(
+            expected_state, set()
+        ):
+            raise InvalidRunTransitionError(
+                f"ChangeSet cannot transition from {expected_state!r} "
+                f"to {state!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_change_sets WHERE change_set_id = ?",
+                (change_set_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown ChangeSet {change_set_id!r}")
+            if row["state"] == state:
+                return self._git_change_set_from_row(row)
+            if row["state"] != expected_state:
+                raise OptimisticConcurrencyError(
+                    f"ChangeSet {change_set_id!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_change_sets
+                SET state = ?, version = version + 1, updated_at = ?
+                WHERE change_set_id = ? AND state = ?
+                """,
+                (state, timestamp, change_set_id, expected_state),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_change_sets WHERE change_set_id = ?",
+                (change_set_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_change_set_from_row(row)
+
+    def put_git_change_set_item(
+        self,
+        *,
+        change_set_id: str,
+        relative_path: str,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+        change_kind: str,
+        source: str,
+        preimage_digest: str | None,
+        result_digest: str | None,
+        size_bytes: int | None,
+        now: float | None = None,
+    ) -> GitChangeSetItemRecord:
+        if not operation_request_id or not actor_id or not trigger:
+            raise ValueError(
+                "operation_request_id, actor_id, and trigger must not be empty"
+            )
+        if change_kind not in {"added", "modified", "deleted", "renamed"}:
+            raise ValueError(f"unsupported change kind {change_kind!r}")
+        if source not in {
+            "agent_created",
+            "agent_modified",
+            "user_selected",
+            "overlay_preimage",
+            "artifact_event",
+            "worktree_delta",
+        }:
+            raise ValueError(f"unsupported ChangeSet source {source!r}")
+        for digest in (preimage_digest, result_digest):
+            if digest is not None and not self._is_sha256(digest):
+                raise ValueError("ChangeSet digests must be SHA-256")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            change_set = connection.execute(
+                """
+                SELECT state FROM git_change_sets WHERE change_set_id = ?
+                """,
+                (change_set_id,),
+            ).fetchone()
+            if change_set is None:
+                raise ValueError(f"unknown ChangeSet {change_set_id!r}")
+            if change_set["state"] != "open":
+                raise InvalidRunTransitionError(
+                    f"ChangeSet {change_set_id!r} is not open"
+                )
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_set_items
+                WHERE change_set_id = ? AND relative_path = ?
+                """,
+                (change_set_id, relative_path),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    """
+                    INSERT INTO git_change_set_items(
+                        change_set_id, relative_path, operation_request_id,
+                        actor_id, trigger, change_kind, source,
+                        preimage_digest, result_digest, size_bytes,
+                        item_state, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                    """,
+                    (
+                        change_set_id,
+                        relative_path,
+                        operation_request_id,
+                        actor_id,
+                        trigger,
+                        change_kind,
+                        source,
+                        preimage_digest,
+                        result_digest,
+                        size_bytes,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                canonical = (
+                    row["change_kind"] == change_kind
+                    and row["operation_request_id"] == operation_request_id
+                    and row["actor_id"] == actor_id
+                    and row["trigger"] == trigger
+                    and row["source"] == source
+                    and row["preimage_digest"] == preimage_digest
+                    and row["result_digest"] == result_digest
+                    and row["size_bytes"] == size_bytes
+                )
+                if canonical:
+                    return self._git_change_set_item_from_row(row)
+                if row["item_state"] in {
+                    "pending",
+                    "preimage_checkpointed",
+                }:
+                    raise InvalidRunTransitionError(
+                        f"ChangeSet path {relative_path!r} has an unfinished "
+                        "operation"
+                    )
+                connection.execute(
+                    """
+                    UPDATE git_change_set_items
+                    SET operation_request_id = ?, actor_id = ?, trigger = ?,
+                        change_kind = ?, source = ?, preimage_digest = ?,
+                        result_digest = ?, size_bytes = ?,
+                        item_state = 'pending', updated_at = ?
+                    WHERE change_set_id = ? AND relative_path = ?
+                      AND item_state IN ('checkpointed', 'ignored')
+                    """,
+                    (
+                        operation_request_id,
+                        actor_id,
+                        trigger,
+                        change_kind,
+                        source,
+                        preimage_digest,
+                        result_digest,
+                        size_bytes,
+                        timestamp,
+                        change_set_id,
+                        relative_path,
+                    ),
+                )
+            connection.execute(
+                """
+                UPDATE git_change_sets
+                SET version = version + 1, updated_at = ?
+                WHERE change_set_id = ?
+                """,
+                (timestamp, change_set_id),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_set_items
+                WHERE change_set_id = ? AND relative_path = ?
+                """,
+                (change_set_id, relative_path),
+            ).fetchone()
+            assert row is not None
+            return self._git_change_set_item_from_row(row)
+
+    def ensure_git_mutation_intent(
+        self,
+        *,
+        intent_id: str,
+        change_set_id: str,
+        operation_request_id: str,
+        mutation_scope: str,
+        relative_path: str | None,
+        preimage_digest: str | None,
+        actor_id: str,
+        trigger: str,
+        now: float | None = None,
+    ) -> GitMutationIntentRecord:
+        if mutation_scope not in {"exact_path", "broad_process"}:
+            raise ValueError(f"unsupported mutation scope {mutation_scope!r}")
+        if (mutation_scope == "exact_path") != (relative_path is not None):
+            raise ValueError("exact-path mutation intents must name one path")
+        if preimage_digest is not None and not self._is_sha256(
+            preimage_digest
+        ):
+            raise ValueError("mutation preimage digest must be SHA-256")
+        if not operation_request_id or not actor_id or not trigger:
+            raise ValueError("mutation intent identity must not be empty")
+        timestamp = now if now is not None else time.time()
+        expected = (
+            change_set_id,
+            operation_request_id,
+            mutation_scope,
+            relative_path,
+            preimage_digest,
+            actor_id,
+            trigger,
+        )
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM git_mutation_intents
+                WHERE intent_id = ? OR (
+                    change_set_id = ? AND operation_request_id = ?
+                )
+                """,
+                (intent_id, change_set_id, operation_request_id),
+            ).fetchone()
+            if row is not None:
+                actual = (
+                    row["change_set_id"],
+                    row["operation_request_id"],
+                    row["mutation_scope"],
+                    row["relative_path"],
+                    row["preimage_digest"],
+                    row["actor_id"],
+                    row["trigger"],
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"mutation intent {intent_id!r} was reused"
+                    )
+                return self._git_mutation_intent_from_row(row)
+            connection.execute(
+                """
+                INSERT INTO git_mutation_intents(
+                    intent_id, change_set_id, operation_request_id,
+                    mutation_scope, relative_path, preimage_digest,
+                    actor_id, trigger, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)
+                """,
+                (intent_id, *expected, timestamp, timestamp),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_mutation_intent_from_row(row)
+
+    def list_git_mutation_intents(
+        self,
+        *,
+        statuses: tuple[str, ...] | None = None,
+    ) -> list[GitMutationIntentRecord]:
+        with self._lock:
+            query = "SELECT * FROM git_mutation_intents"
+            parameters: list[Any] = []
+            if statuses:
+                placeholders = ", ".join("?" for _ in statuses)
+                query += f" WHERE status IN ({placeholders})"
+                parameters.extend(statuses)
+            query += " ORDER BY created_at, intent_id"
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._git_mutation_intent_from_row(row) for row in rows]
+
+    def update_git_mutation_intent_status(
+        self,
+        *,
+        intent_id: str,
+        expected_status: str,
+        status: str,
+        now: float | None = None,
+    ) -> GitMutationIntentRecord:
+        transitions = {
+            "prepared": {"completed", "needs_attention"},
+            "completed": set(),
+            "needs_attention": {"prepared"},
+        }
+        if status != expected_status and status not in transitions.get(
+            expected_status, set()
+        ):
+            raise InvalidRunTransitionError(
+                f"mutation intent cannot transition from {expected_status!r} "
+                f"to {status!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown mutation intent {intent_id!r}")
+            if row["status"] == status:
+                return self._git_mutation_intent_from_row(row)
+            if row["status"] != expected_status:
+                raise OptimisticConcurrencyError(
+                    f"mutation intent {intent_id!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_mutation_intents
+                SET status = ?, updated_at = ?
+                WHERE intent_id = ? AND status = ?
+                """,
+                (status, timestamp, intent_id, expected_status),
+            )
+            row = connection.execute(
+                "SELECT * FROM git_mutation_intents WHERE intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_mutation_intent_from_row(row)
+
+    def list_git_change_set_items(
+        self,
+        change_set_id: str,
+        *,
+        states: tuple[str, ...] | None = None,
+    ) -> list[GitChangeSetItemRecord]:
+        with self._lock:
+            query = (
+                "SELECT * FROM git_change_set_items WHERE change_set_id = ?"
+            )
+            parameters: list[Any] = [change_set_id]
+            if states:
+                placeholders = ", ".join("?" for _ in states)
+                query += f" AND item_state IN ({placeholders})"
+                parameters.extend(states)
+            query += " ORDER BY relative_path"
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._git_change_set_item_from_row(row) for row in rows]
+
+    def update_git_change_set_item_state(
+        self,
+        *,
+        change_set_id: str,
+        relative_path: str,
+        expected_state: str,
+        state: str,
+        now: float | None = None,
+    ) -> GitChangeSetItemRecord:
+        transitions = {
+            "pending": {"preimage_checkpointed", "checkpointed", "ignored"},
+            "preimage_checkpointed": {"checkpointed"},
+            "checkpointed": set(),
+            "ignored": set(),
+        }
+        if state != expected_state and state not in transitions.get(
+            expected_state, set()
+        ):
+            raise InvalidRunTransitionError(
+                f"ChangeSet item cannot transition from {expected_state!r} "
+                f"to {state!r}"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_set_items
+                WHERE change_set_id = ? AND relative_path = ?
+                """,
+                (change_set_id, relative_path),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"unknown ChangeSet path {relative_path!r}")
+            if row["item_state"] == state:
+                return self._git_change_set_item_from_row(row)
+            if row["item_state"] != expected_state:
+                raise OptimisticConcurrencyError(
+                    f"ChangeSet path {relative_path!r} changed concurrently"
+                )
+            connection.execute(
+                """
+                UPDATE git_change_set_items
+                SET item_state = ?, updated_at = ?
+                WHERE change_set_id = ? AND relative_path = ?
+                  AND item_state = ?
+                """,
+                (
+                    state,
+                    timestamp,
+                    change_set_id,
+                    relative_path,
+                    expected_state,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE git_change_sets
+                SET version = version + 1, updated_at = ?
+                WHERE change_set_id = ?
+                """,
+                (timestamp, change_set_id),
+            )
+            row = connection.execute(
+                """
+                SELECT * FROM git_change_set_items
+                WHERE change_set_id = ? AND relative_path = ?
+                """,
+                (change_set_id, relative_path),
+            ).fetchone()
+            assert row is not None
+            return self._git_change_set_item_from_row(row)
+
     def ensure_run(
         self,
         *,
@@ -3035,7 +4018,9 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"project {project_id!r} cloud event page is not contiguous"
                 )
-            if (events[-1].cloud_cursor if events else after_cursor) != next_cursor:
+            if (
+                events[-1].cloud_cursor if events else after_cursor
+            ) != next_cursor:
                 raise IdempotencyConflictError(
                     f"project {project_id!r} next_cursor does not match its event page"
                 )
@@ -3046,7 +4031,9 @@ class SQLiteRunJournal:
                         f"event {event.event_id!r} belongs to another project"
                     )
                 if event.run_sequence < 1 or event.run_version < 1:
-                    raise ValueError("cloud Run sequence and version must be positive")
+                    raise ValueError(
+                        "cloud Run sequence and version must be positive"
+                    )
                 payload_json = json.dumps(
                     event.payload,
                     ensure_ascii=False,
@@ -4141,11 +5128,14 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                     )
-                if not transition_allowed(
-                    ATTEMPT_TRANSITIONS,
-                    str(attempt["status"]),
-                    "waiting_for_user",
-                ) or run["active_attempt_id"] != attempt_id:
+                if (
+                    not transition_allowed(
+                        ATTEMPT_TRANSITIONS,
+                        str(attempt["status"]),
+                        "waiting_for_user",
+                    )
+                    or run["active_attempt_id"] != attempt_id
+                ):
                     raise InvalidRunTransitionError(
                         f"approval attempt {attempt_id!r} must be the active running attempt"
                     )
@@ -4293,13 +5283,17 @@ class SQLiteRunJournal:
                     attempt is not None
                     and attempt["status"] == "waiting_for_user"
                 )
-                attempt_status = attempt["status"] if attempt is not None else None
+                attempt_status = (
+                    attempt["status"] if attempt is not None else None
+                )
             elif approval["attempt_id"] is not None:
                 attempt = connection.execute(
                     "SELECT status FROM run_attempts WHERE attempt_id = ?",
                     (approval["attempt_id"],),
                 ).fetchone()
-                attempt_status = attempt["status"] if attempt is not None else None
+                attempt_status = (
+                    attempt["status"] if attempt is not None else None
+                )
             if (
                 attempt_status in ATTEMPT_ACTIVE_STATES
                 and attempt_status != "waiting_for_user"
@@ -4604,7 +5598,8 @@ class SQLiteRunJournal:
                             event_type = "runtime.interrupted"
                             run_interrupted = True
                         run_attempt_ids = [
-                            attempt["attempt_id"] for attempt in active_attempts
+                            attempt["attempt_id"]
+                            for attempt in active_attempts
                         ]
                         connection.execute(
                             """
@@ -4943,7 +5938,9 @@ class SQLiteRunJournal:
                 """,
                 (command_id,),
             ).fetchone()
-            return self._command_event_from_row(row) if row is not None else None
+            return (
+                self._command_event_from_row(row) if row is not None else None
+            )
 
     def list_reconcilable_commands(
         self, *, limit: int = 100
@@ -5085,7 +6082,10 @@ class SQLiteRunJournal:
                     f"command {command_id!r} cannot move from "
                     f"{inbox['state']!r} to {next_state!r}"
                 )
-            if event_type == "execution.started" and inbox["state"] != "accepted":
+            if (
+                event_type == "execution.started"
+                and inbox["state"] != "accepted"
+            ):
                 raise InvalidRunTransitionError(
                     f"command {command_id!r} cannot start execution from "
                     f"{inbox['state']!r}"
@@ -5715,6 +6715,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V8)
         if version < 9:
             self._connection.executescript(_MIGRATION_V9)
+        if version < 10:
+            self._connection.executescript(_MIGRATION_V10)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -6159,6 +7161,8 @@ class SQLiteRunJournal:
             entry_state=row["entry_state"],
             source_token=json.loads(row["source_token_json"]),
             project_blob_oid=row["project_blob_oid"],
+            materialized_content_digest=row["materialized_content_digest"],
+            preimage_cache_key=row["preimage_cache_key"],
             size_bytes=int(row["size_bytes"]),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
@@ -6176,6 +7180,62 @@ class SQLiteRunJournal:
             content_digest=row["content_digest"],
             cache_key=row["cache_key"],
             created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _git_change_set_from_row(row: sqlite3.Row) -> GitChangeSetRecord:
+        return GitChangeSetRecord(
+            change_set_id=row["change_set_id"],
+            run_id=row["run_id"],
+            repository_id=row["repository_id"],
+            worktree_ref=row["worktree_ref"],
+            base_commit=row["base_commit"],
+            state=row["state"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _git_change_set_item_from_row(
+        row: sqlite3.Row,
+    ) -> GitChangeSetItemRecord:
+        return GitChangeSetItemRecord(
+            change_set_id=row["change_set_id"],
+            relative_path=row["relative_path"],
+            operation_request_id=row["operation_request_id"],
+            actor_id=row["actor_id"],
+            trigger=row["trigger"],
+            change_kind=row["change_kind"],
+            source=row["source"],
+            preimage_digest=row["preimage_digest"],
+            result_digest=row["result_digest"],
+            size_bytes=(
+                int(row["size_bytes"])
+                if row["size_bytes"] is not None
+                else None
+            ),
+            item_state=row["item_state"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _git_mutation_intent_from_row(
+        row: sqlite3.Row,
+    ) -> GitMutationIntentRecord:
+        return GitMutationIntentRecord(
+            intent_id=row["intent_id"],
+            change_set_id=row["change_set_id"],
+            operation_request_id=row["operation_request_id"],
+            mutation_scope=row["mutation_scope"],
+            relative_path=row["relative_path"],
+            preimage_digest=row["preimage_digest"],
+            actor_id=row["actor_id"],
+            trigger=row["trigger"],
+            status=row["status"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
         )
 
     @staticmethod

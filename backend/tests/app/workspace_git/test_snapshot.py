@@ -188,7 +188,12 @@ def test_refresh_creates_a_new_generation_for_changed_user_source(
     )
 
     target.write_text("two-two", encoding="utf-8")
-    refreshed = snapshots.refresh_snapshot("run-1")
+    refreshed = snapshots.refresh_snapshot(
+        "run-1",
+        expected_user_working_state_digest=snapshots.git.repo_state_token(
+            space
+        ).digest,
+    )
     second = snapshots.read_range(
         run_id="run-1",
         relative_path="draft.txt",
@@ -197,6 +202,33 @@ def test_refresh_creates_a_new_generation_for_changed_user_source(
     assert refreshed.generation == first.snapshot.generation + 1
     assert second.snapshot.snapshot_id == refreshed.snapshot_id
     assert second.content == b"two-two"
+
+
+def test_refresh_rejects_stale_user_working_state_token(tmp_path, journal):
+    content, coordinator, snapshots, _ = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "draft.txt"
+    target.write_text("one", encoding="utf-8")
+    _admit(journal=journal, coordinator=coordinator, run_id="run-1")
+    snapshots.read_range(run_id="run-1", relative_path="draft.txt")
+    stale = snapshots.git.repo_state_token(space).digest
+    target.write_text("two", encoding="utf-8")
+
+    with pytest.raises(WorkspaceSourceChangedError) as caught:
+        snapshots.refresh_snapshot(
+            "run-1",
+            expected_user_working_state_digest=stale,
+        )
+
+    assert caught.value.retryable is True
+    assert caught.value.refresh_available is True
+    assert caught.value.automatic_retry_limit == 2
 
 
 def test_project_and_user_changes_from_common_base_require_interaction(

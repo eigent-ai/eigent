@@ -82,6 +82,8 @@ class ContentRepositoryStatus:
     repository: GitRepositoryRecord
     diagnostics: RepositoryDiagnostics
     managed_paths: tuple[str, ...]
+    pending_managed_paths: tuple[str, ...]
+    pending_managed_paths_truncated: bool
 
 
 @dataclass(frozen=True)
@@ -222,16 +224,54 @@ class ContentRepositoryService:
 
     def status(self, repository_id: str) -> ContentRepositoryStatus:
         repository = self._repository(repository_id)
-        diagnostics = self.git.diagnostics(Path(repository.root_path))
+        root = Path(repository.root_path)
+        diagnostics = self.git.diagnostics(root)
         repository = self._converge_repository_state(
             repository,
             diagnostics,
         )
+        managed_paths = self.journal.list_git_managed_paths(repository_id)
+        pending_managed_paths, pending_truncated = (
+            self._pending_managed_paths(
+                root,
+                managed_paths,
+                limit=500,
+            )
+        )
         return ContentRepositoryStatus(
             repository=repository,
             diagnostics=diagnostics,
-            managed_paths=self.journal.list_git_managed_paths(repository_id),
+            managed_paths=managed_paths,
+            pending_managed_paths=pending_managed_paths,
+            pending_managed_paths_truncated=pending_truncated,
         )
+
+    def _pending_managed_paths(
+        self,
+        root: Path,
+        managed_paths: tuple[str, ...],
+        *,
+        limit: int,
+    ) -> tuple[tuple[str, ...], bool]:
+        """Return only managed deltas without scanning unrelated files."""
+
+        if limit < 1:
+            raise ValueError("pending managed path limit must be positive")
+        pending: list[str] = []
+        chunk_size = 500
+        for offset in range(0, len(managed_paths), chunk_size):
+            chunk = managed_paths[offset : offset + chunk_size]
+            changed = self.git.path_status(
+                root,
+                tuple(root / value for value in chunk),
+            )
+            for relative_path in chunk:
+                if relative_path not in changed:
+                    continue
+                pending.append(relative_path)
+                if len(pending) > limit:
+                    return tuple(pending[:limit]), True
+        return tuple(pending), False
 
     def diff(
         self,

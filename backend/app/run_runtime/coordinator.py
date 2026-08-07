@@ -99,7 +99,9 @@ class RuntimeHandle:
     run_id: str
     command_queue: asyncio.Queue[Any] | None = None
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
-    deadline_changed_event: asyncio.Event = field(default_factory=asyncio.Event)
+    deadline_changed_event: asyncio.Event = field(
+        default_factory=asyncio.Event
+    )
     execution_task: asyncio.Task[None] | None = None
     deadline_task: asyncio.Task[None] | None = None
     started_at: float = field(default_factory=time.time)
@@ -470,11 +472,26 @@ class RunCoordinator:
                 reason=reason,
             )
             await self.cancel(run_id)
-            return await asyncio.to_thread(
+            cancelled = await asyncio.to_thread(
                 journal.complete_cancel,
                 run_id,
                 request_id=request_id,
             )
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
+
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run,
+                    run_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Cancelled Run Git finalization needs attention",
+                    extra={"run_id": run_id},
+                )
+            return cancelled
 
     async def close(self) -> None:
         async with self._lock:
@@ -550,6 +567,20 @@ class RunCoordinator:
                     payload=payload,
                 ),
             )
+            try:
+                from app.workspace_git import (
+                    get_default_workspace_git_lifecycle,
+                )
+
+                await asyncio.to_thread(
+                    get_default_workspace_git_lifecycle().finalize_run,
+                    handle.run_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Terminal Run Git finalization needs attention",
+                    extra={"run_id": handle.run_id},
+                )
             from app.run_sync.runtime import notify_default_cloud_sync_worker
 
             notify_default_cloud_sync_worker()

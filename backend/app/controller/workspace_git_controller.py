@@ -90,6 +90,15 @@ class GitCheckpointBody(BaseModel):
         return normalized
 
 
+class GitSavePointBody(BaseModel):
+    email: str = Field(min_length=1)
+    user_id: str | int | None = None
+    operation_request_id: str = Field(min_length=1, max_length=128)
+    expected_repo_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    actor_id: str = Field(min_length=1, max_length=200)
+    message: str = Field(default="Save progress", min_length=1, max_length=500)
+
+
 class GitRestoreBody(BaseModel):
     email: str = Field(min_length=1)
     user_id: str | int | None = None
@@ -141,6 +150,7 @@ class GitSnapshotBody(BaseModel):
     space_id: str = Field(min_length=1, max_length=256)
     email: str = Field(min_length=1)
     user_id: str | int | None = None
+    expected_user_working_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 def _service() -> ContentRepositoryService:
@@ -225,11 +235,18 @@ def _git_error(exc: Exception) -> HTTPException:
             },
         )
     if isinstance(exc, WorkspaceSnapshotError):
+        detail = {
+            "code": exc.code,
+            "message": str(exc),
+            "retryable": exc.retryable,
+            "refresh_available": exc.refresh_available,
+            "automatic_retry_limit": exc.automatic_retry_limit,
+        }
         return HTTPException(
             status_code=(
                 404 if exc.code == "workspace_path_not_found" else 409
             ),
-            detail={"code": exc.code, "message": str(exc)},
+            detail=detail,
         )
     if isinstance(exc, RepositoryStateChangedError):
         return HTTPException(
@@ -332,6 +349,10 @@ async def git_status(
             "version_coverage": repository.version_coverage,
             "hooks_mode": repository.hooks_mode,
             "managed_paths": list(status.managed_paths),
+            "pending_managed_paths": list(status.pending_managed_paths),
+            "pending_managed_paths_truncated": (
+                status.pending_managed_paths_truncated
+            ),
             "diagnostics": _diagnostics_payload(status.diagnostics),
         }
     except Exception as exc:
@@ -495,6 +516,52 @@ async def git_checkpoint(space_id: str, body: GitCheckpointBody):
         "commit_oid": checkpoint.commit_oid,
         "parent_oid": checkpoint.parent_oid,
         "paths": list(checkpoint.paths),
+        "created_at": checkpoint.created_at,
+    }
+
+
+@router.post("/spaces/{space_id}/git/save-point", status_code=201)
+async def git_save_point(space_id: str, body: GitSavePointBody):
+    """Checkpoint the current managed delta and nothing else."""
+
+    root = _binding_root(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="Git is not enabled")
+    _assert_repository_binding(repository, root)
+    try:
+        status = service.status(repository.repository_id)
+        if not status.pending_managed_paths:
+            raise NoCheckpointChangesError(
+                "No managed path has a pending change"
+            )
+        paths = status.pending_managed_paths
+        checkpoint = service.checkpoint(
+            repository.repository_id,
+            operation_request_id=body.operation_request_id,
+            expected_repo_state_digest=body.expected_repo_state_digest,
+            paths=tuple(root / path for path in paths),
+            path_sources={path: "user_selected" for path in paths},
+            target_role="user",
+            target_id=space_id,
+            actor_id=body.actor_id,
+            trigger="user.save_point",
+            message=body.message,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+    return {
+        "checkpoint_id": checkpoint.checkpoint_id,
+        "repository_id": checkpoint.repository_id,
+        "commit_oid": checkpoint.commit_oid,
+        "parent_oid": checkpoint.parent_oid,
+        "paths": list(checkpoint.paths),
+        "remaining_managed_changes": status.pending_managed_paths_truncated,
         "created_at": checkpoint.created_at,
     }
 
@@ -715,7 +782,12 @@ async def refresh_run_git_snapshot(
         user_id=body.user_id,
     )
     try:
-        snapshot = _snapshot_service().refresh_snapshot(run_id)
+        snapshot = _snapshot_service().refresh_snapshot(
+            run_id,
+            expected_user_working_state_digest=(
+                body.expected_user_working_state_digest
+            ),
+        )
     except Exception as exc:
         raise _git_error(exc) from exc
     return {"snapshot": _snapshot_payload(snapshot)}
