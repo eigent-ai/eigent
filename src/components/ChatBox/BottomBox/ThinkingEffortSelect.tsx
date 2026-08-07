@@ -39,11 +39,11 @@ export interface ThinkingEffortSelectProps {
 }
 
 const EFFORT_OPTIONS: ThinkingEffortType[] = [
-  ThinkingEffort.LIGHT,
+  ThinkingEffort.LOW,
   ThinkingEffort.MEDIUM,
   ThinkingEffort.HIGH,
-  ThinkingEffort.EXTRA_HIGH,
-  ThinkingEffort.ULTRA,
+  ThinkingEffort.XHIGH,
+  ThinkingEffort.MAX,
 ];
 
 // Keep in sync with `DropdownMenuContent`'s `w-[160px]` below.

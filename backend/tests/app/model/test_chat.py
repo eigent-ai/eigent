@@ -18,6 +18,7 @@ from pathlib import Path
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.service import skill_config_service
+from app.workspace_config import ThinkingEffort
 
 
 class TestAgentModelConfig:
@@ -87,6 +88,22 @@ class TestAgentModelConfig:
 
 
 class TestChatModelConfig:
+    def test_chat_normalizes_legacy_thinking_effort_values(
+        self, sample_chat_data
+    ):
+        assert (
+            Chat(
+                **{**sample_chat_data, "thinking_effort": "light"}
+            ).thinking_effort
+            is ThinkingEffort.LOW
+        )
+        assert (
+            Chat(
+                **{**sample_chat_data, "thinking_effort": "ultra"}
+            ).thinking_effort
+            is ThinkingEffort.MAX
+        )
+
     def test_chat_accepts_and_serializes_model_config_dict(
         self, sample_chat_data
     ):

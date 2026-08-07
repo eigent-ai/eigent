@@ -832,6 +832,7 @@ class SQLiteRunJournal:
         self,
         spec: EffectiveEnvironmentSpec,
         *,
+        emit_run_event: bool = False,
         now: float | None = None,
     ) -> EffectiveEnvironmentSpecRecord:
         """Persist immutable local and redacted forms in one transaction."""
@@ -928,6 +929,13 @@ class SQLiteRunJournal:
                         f"EnvironmentSpec {spec.spec_id!r} conflicts with "
                         "an existing immutable spec"
                     )
+                if emit_run_event:
+                    self._append_environment_resolved_event(
+                        connection,
+                        spec,
+                        redacted_payload,
+                        timestamp,
+                    )
                 return self._effective_environment_spec_from_row(row)
             connection.execute(
                 """
@@ -942,6 +950,13 @@ class SQLiteRunJournal:
                 """,
                 (*expected, timestamp),
             )
+            if emit_run_event:
+                self._append_environment_resolved_event(
+                    connection,
+                    spec,
+                    redacted_payload,
+                    timestamp,
+                )
             row = connection.execute(
                 """
                 SELECT * FROM effective_environment_specs
@@ -951,6 +966,28 @@ class SQLiteRunJournal:
             ).fetchone()
             assert row is not None
             return self._effective_environment_spec_from_row(row)
+
+    def _append_environment_resolved_event(
+        self,
+        connection: sqlite3.Connection,
+        spec: EffectiveEnvironmentSpec,
+        redacted_payload: dict[str, Any],
+        timestamp: float,
+    ) -> None:
+        if spec.owner_type != "run":
+            raise ValueError(
+                "run.environment_resolved requires a Run-owned spec"
+            )
+        self._append_event_in_transaction(
+            connection,
+            spec.owner_id,
+            RunEventDraft(
+                event_id=f"environment:{spec.spec_id}:resolved",
+                event_type="run.environment_resolved",
+                payload=redacted_payload,
+                created_at=timestamp,
+            ),
+        )
 
     def get_effective_environment_spec(
         self, environment_spec_id: str

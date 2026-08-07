@@ -525,9 +525,9 @@
   "onboarding-setup-bg-dashed": "Dashed",
   "onboarding-setup-get-started": "Get Started",
   "thinking-effort-label": "Thinking effort",
-  "thinking-effort-light": "Light",
+  "thinking-effort-low": "Low",
   "thinking-effort-medium": "Medium",
   "thinking-effort-high": "High",
-  "thinking-effort-extra_high": "Extra High",
-  "thinking-effort-ultra": "Ultra"
+  "thinking-effort-xhigh": "Extra High",
+  "thinking-effort-max": "Max"
 }

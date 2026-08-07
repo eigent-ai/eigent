@@ -236,6 +236,26 @@ def agent_model(
             )
 
         # Runtime-owned values are applied after user configuration.
+        if not (
+            custom_model_config and custom_model_config.has_custom_config()
+        ):
+            effort_parameter = getattr(
+                task_lock,
+                "provider_effort_parameter_name",
+                None,
+            )
+            effort_value = getattr(
+                task_lock,
+                "provider_effort_parameter_value",
+                None,
+            )
+            if (
+                isinstance(effort_parameter, str)
+                and effort_parameter
+                and isinstance(effort_value, str)
+                and effort_value != "provider_default"
+            ):
+                model_config[effort_parameter] = effort_value
         if is_effective_cloud:
             model_config["user"] = str(options.project_id)
         if use_subscription_runtime:

@@ -47,8 +47,9 @@ from app.run_context import (
     stream_with_run_context,
 )
 from app.run_journal import (
-    RunEventDraft,
+    AttemptEnvironmentBinding,
     RunAttemptRecord,
+    RunEventDraft,
     SQLiteRunJournal,
     get_default_run_journal,
 )
@@ -83,6 +84,12 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
+from app.workspace_config import EffectiveEnvironmentSpec
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    EnvironmentAdmissionTemplate,
+    LegacyEnvironmentImporter,
+)
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
@@ -114,6 +121,103 @@ durable context is insufficient, ask the user instead of guessing.
 """.strip()
 _RESUME_TOOL_LEDGER_MAX_CALLS = 50
 _RESUME_TOOL_RESULT_MAX_CHARS = 1000
+
+
+def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
+    return LegacyEnvironmentImporter().build_template(
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        auth_source=data.auth_source,
+        requested_effort=data.thinking_effort,
+        allow_local_system=data.allow_local_system,
+        mcp_server_names=tuple(
+            (data.installed_mcp.get("mcpServers") or {}).keys()
+        ),
+        session_mode=data.session_mode,
+    )
+
+
+def _attempt_environment_binding(
+    attempt: RunAttemptRecord | None,
+) -> AttemptEnvironmentBinding | None:
+    if attempt is None or attempt.environment_spec_id is None:
+        return None
+    values = {
+        "environment_spec_digest": attempt.environment_spec_digest,
+        "bundle_revision_id": attempt.bundle_revision_id,
+        "permission_profile_revision": attempt.permission_profile_revision,
+        "thinking_effort_requested": attempt.thinking_effort_requested,
+        "thinking_effort_effective": attempt.thinking_effort_effective,
+        "provider_capability_revision": (attempt.provider_capability_revision),
+    }
+    if any(value is None for value in values.values()):
+        raise UserException(
+            code.error,
+            "The Run has an incomplete persisted EnvironmentSpec binding.",
+        )
+    return AttemptEnvironmentBinding(
+        environment_spec_id=attempt.environment_spec_id,
+        **values,
+    )
+
+
+def _apply_environment_to_task_lock(
+    task_lock: TaskLock,
+    spec: EffectiveEnvironmentSpec,
+    *,
+    template: EnvironmentAdmissionTemplate | None,
+) -> None:
+    task_lock.environment_admission_template = template
+    task_lock.environment_spec_id = spec.spec_id
+    task_lock.thinking_effort_requested = spec.thinking_effort_requested.value
+    task_lock.thinking_effort_effective = spec.thinking_effort_effective.value
+    task_lock.provider_effort_parameter_name = spec.provider_parameter_name
+    task_lock.provider_effort_parameter_value = spec.provider_value
+    task_lock.provider_capability_revision = spec.provider_capability_revision
+
+
+def _load_attempt_environment_spec(
+    journal: SQLiteRunJournal,
+    attempt: RunAttemptRecord,
+) -> EffectiveEnvironmentSpec | None:
+    if attempt.environment_spec_id is None:
+        return None
+    record = journal.get_effective_environment_spec(
+        attempt.environment_spec_id
+    )
+    if record is None:
+        raise UserException(
+            code.error,
+            "The Run's persisted EnvironmentSpec is unavailable.",
+        )
+    return EffectiveEnvironmentSpec.model_validate(record.spec)
+
+
+def _validate_resume_model_capability(
+    data: Chat,
+    spec: EffectiveEnvironmentSpec,
+) -> EnvironmentAdmissionTemplate:
+    template = _legacy_environment_template(data)
+    current = template.provider_capability
+    if current.capability_revision != spec.provider_capability_revision:
+        raise UserException(
+            code.error,
+            "The model capability changed since this Attempt. Start a new "
+            "Attempt with an explicit environment upgrade.",
+        )
+    persisted_model = spec.semantic_spec.get(
+        "runtime_capability_manifest", {}
+    ).get("model", {})
+    if (
+        persisted_model.get("platform") != data.model_platform.lower()
+        or persisted_model.get("type") != data.model_type
+    ):
+        raise UserException(
+            code.error,
+            "Resume requires the original model, or an explicit environment "
+            "upgrade into a new Attempt.",
+        )
+    return template
 
 
 def _admission_request_id(
@@ -526,13 +630,30 @@ async def _prepare_chat_run(
     )
     camel_log.mkdir(parents=True, exist_ok=True)
     run_context = _build_run_context(data, frozen_dirs, request, camel_log)
+    journal = get_default_run_journal()
     is_resume = resume_attempt is not None
     if is_resume:
         request_id = str(data.resume_request_id)
         attempt = resume_attempt
+        if isinstance(journal, SQLiteRunJournal):
+            persisted_spec = await asyncio.to_thread(
+                _load_attempt_environment_spec,
+                journal,
+                attempt,
+            )
+            if persisted_spec is not None:
+                template = _validate_resume_model_capability(
+                    data,
+                    persisted_spec,
+                )
+                _apply_environment_to_task_lock(
+                    task_lock,
+                    persisted_spec,
+                    template=template,
+                )
     else:
         await asyncio.to_thread(
-            get_default_run_journal().ensure_run,
+            journal.ensure_run,
             run_id=run_context.run_id,
             project_id=run_context.project_id,
             status="pending",
@@ -543,12 +664,29 @@ async def _prepare_chat_run(
             attaches=data.attaches or [],
             project_context=data.project_context,
         )
+        environment = None
+        if isinstance(journal, SQLiteRunJournal):
+            template = _legacy_environment_template(data)
+            environment = await asyncio.to_thread(
+                EnvironmentAdmissionService(journal).persist_for_run,
+                run_id=run_context.run_id,
+                space_id=run_context.space_id,
+                working_directory=run_context.working_directory,
+                created_by=(run_context.user_id or "local-user"),
+                template=template,
+            )
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+            )
         attempt = await asyncio.to_thread(
-            get_default_run_journal().create_run_attempt,
+            journal.create_run_attempt,
             run_context.run_id,
             request_id=request_id,
             reason="initial_execution",
             activate=False,
+            environment=(environment.binding if environment else None),
         )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
@@ -694,12 +832,22 @@ async def start_chat_stream(data: Chat, request: Request):
                     code.error,
                     f"Run cannot be resumed from state {run.status!r}.",
                 )
+            binding_source = existing_attempt or next(
+                (
+                    previous
+                    for previous in reversed(attempts)
+                    if previous.environment_spec_id is not None
+                ),
+                None,
+            )
+            resume_environment = _attempt_environment_binding(binding_source)
             attempt = await asyncio.to_thread(
                 journal.create_run_attempt,
                 run_id,
                 request_id=data.resume_request_id,
                 reason="explicit_resume",
                 activate=False,
+                environment=resume_environment,
             )
             if attempt.status not in {"pending", "running"}:
                 raise UserException(
@@ -1070,18 +1218,43 @@ async def _improve_chat(
             attaches=data.attaches or [],
             project_context=data.project_context,
         )
+        journal = get_default_run_journal()
         await asyncio.to_thread(
-            get_default_run_journal().ensure_run,
+            journal.ensure_run,
             run_id=refreshed_context.run_id,
             project_id=refreshed_context.project_id,
             status="pending",
         )
+        environment = None
+        template = getattr(
+            task_lock,
+            "environment_admission_template",
+            None,
+        )
+        if isinstance(journal, SQLiteRunJournal) and isinstance(
+            template,
+            EnvironmentAdmissionTemplate,
+        ):
+            environment = await asyncio.to_thread(
+                EnvironmentAdmissionService(journal).persist_for_run,
+                run_id=refreshed_context.run_id,
+                space_id=refreshed_context.space_id,
+                working_directory=refreshed_context.working_directory,
+                created_by=(refreshed_context.user_id or "local-user"),
+                template=template,
+            )
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+            )
         attempt = await asyncio.to_thread(
-            get_default_run_journal().create_run_attempt,
+            journal.create_run_attempt,
             refreshed_context.run_id,
             request_id=resolved_request_id,
             reason="follow_up_execution",
             activate=False,
+            environment=(environment.binding if environment else None),
         )
         await asyncio.to_thread(
             get_memory_service().on_run_start,

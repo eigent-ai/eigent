@@ -488,6 +488,7 @@ class WorkspaceLock(_StrictFrozenModel):
 class EffortResolution:
     requested: ThinkingEffort
     effective: ThinkingEffort
+    provider_parameter_name: str | None
     provider_value: str
     capability_revision: str
     remapped: bool
@@ -500,6 +501,7 @@ class ProviderModelCapability:
     provider_mapping: dict[ThinkingEffort, str]
     capability_revision: str
     dynamic_model: bool = False
+    provider_parameter_name: str | None = None
 
     def __post_init__(self) -> None:
         supported = tuple(dict.fromkeys(self.supported_efforts))
@@ -557,6 +559,7 @@ class ProviderModelCapability:
         return EffortResolution(
             requested=normalized,
             effective=effective,
+            provider_parameter_name=self.provider_parameter_name,
             provider_value=self.provider_mapping[effective],
             capability_revision=self.capability_revision,
             remapped=effective is not normalized,
@@ -653,6 +656,7 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
     permission_profile_revision: str
     thinking_effort_requested: ThinkingEffort
     thinking_effort_effective: ThinkingEffort
+    provider_parameter_name: str | None = None
     provider_value: str
     provider_capability_revision: str
     redaction_schema_version: int = 1
@@ -701,6 +705,7 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
             permission_profile_revision=permission_profile_revision,
             thinking_effort_requested=effort.requested,
             thinking_effort_effective=effort.effective,
+            provider_parameter_name=effort.provider_parameter_name,
             provider_value=effort.provider_value,
             provider_capability_revision=effort.capability_revision,
         )
@@ -725,6 +730,8 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
             "permission_profile_revision": self.permission_profile_revision,
             "thinking_effort_requested": self.thinking_effort_requested.value,
             "thinking_effort_effective": self.thinking_effort_effective.value,
+            "provider_parameter_name": self.provider_parameter_name,
+            "provider_parameter_value": self.provider_value,
             "provider_capability_revision": (
                 self.provider_capability_revision
             ),
