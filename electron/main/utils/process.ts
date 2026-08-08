@@ -362,8 +362,6 @@ function fixVenvScriptShebangs(venvPath: string): boolean {
   }
 }
 
-const PREBUILT_FIXED_MARKER = '.prebuilt_fixed';
-
 /**
  * Ensure venv/bin/python exists - create symlink if missing or broken.
  */
@@ -435,6 +433,8 @@ function ensureVenvPythonSymlink(venvPath: string): boolean {
 /**
  * Get path to prebuilt venv (if available in packaged app)
  * All platforms use prebuilt/venv directory.
+ * NOTE: Does NOT run fixups on prebuilt venv (it's read-only in AppImage).
+ * Fixups run on the copied user venv in ensureBackendVenvAtUserPath().
  */
 export function getPrebuiltVenvPath(): string | null {
   if (!app.isPackaged) {
@@ -444,21 +444,8 @@ export function getPrebuiltVenvPath(): string | null {
   const prebuiltDir = path.join(process.resourcesPath, 'prebuilt');
   const prebuiltVenvPath = path.join(prebuiltDir, 'venv');
   const pyvenvCfgPath = path.join(prebuiltVenvPath, 'pyvenv.cfg');
-  const fixedMarkerPath = path.join(prebuiltDir, PREBUILT_FIXED_MARKER);
-  const currentVersion = app.getVersion();
 
   if (fs.existsSync(prebuiltVenvPath) && fs.existsSync(pyvenvCfgPath)) {
-    const needsFix =
-      !fs.existsSync(fixedMarkerPath) ||
-      fs.readFileSync(fixedMarkerPath, 'utf-8').trim() !== currentVersion;
-
-    if (needsFix) {
-      fixPyvenvCfgPlaceholder(pyvenvCfgPath);
-      ensureVenvPythonSymlink(prebuiltVenvPath);
-      fixVenvScriptShebangs(prebuiltVenvPath);
-      fs.writeFileSync(fixedMarkerPath, currentVersion, 'utf-8');
-    }
-
     const pythonExePath = getVenvPythonPath(prebuiltVenvPath);
     if (fs.existsSync(pythonExePath)) {
       return prebuiltVenvPath;
@@ -766,6 +753,8 @@ export function ensureTerminalVenvAtUserPath(version: string): void {
 
 /**
  * Get path to prebuilt terminal venv (if available in packaged app)
+ * NOTE: Does NOT run fixups on prebuilt venv (it's read-only in AppImage).
+ * Fixups run on the copied user venv in ensureTerminalVenvAtUserPath().
  */
 export function getPrebuiltTerminalVenvPath(): string | null {
   if (!app.isPackaged) {
@@ -788,24 +777,6 @@ export function getPrebuiltTerminalVenvPath(): string | null {
   );
   if (!fs.existsSync(pyvenvCfgPath) || !fs.existsSync(installedMarker)) {
     return null;
-  }
-
-  // Check if already fixed for this version (avoid repeated fixes)
-  const fixedMarkerPath = path.join(
-    process.resourcesPath,
-    'prebuilt',
-    '.terminal_venv_fixed'
-  );
-  const currentVersion = app.getVersion();
-  const needsFix =
-    !fs.existsSync(fixedMarkerPath) ||
-    fs.readFileSync(fixedMarkerPath, 'utf-8').trim() !== currentVersion;
-
-  if (needsFix) {
-    fixPyvenvCfgPlaceholder(pyvenvCfgPath);
-    ensureVenvPythonSymlink(prebuiltTerminalVenvPath);
-    fixVenvScriptShebangs(prebuiltTerminalVenvPath);
-    fs.writeFileSync(fixedMarkerPath, currentVersion, 'utf-8');
   }
 
   const pythonExePath = getVenvPythonPath(prebuiltTerminalVenvPath);

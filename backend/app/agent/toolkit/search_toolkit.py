@@ -47,6 +47,9 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
         self._user_search_engine_id = None
         self._config_loaded = False
 
+    # Class-level cache for get_can_use_tools results
+    _tools_cache: dict[tuple[str, str], list[FunctionTool]] = {}
+
     def _load_user_search_config(self):
         """
         Load user-specific Google Search configuration from user's .env file.
@@ -449,6 +452,10 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
     def get_can_use_tools(
         cls, api_task_id: str, agent_name: str | None = None
     ) -> list[FunctionTool]:
+        cache_key = (api_task_id, agent_name or "default")
+        if cache_key in cls._tools_cache:
+            return cls._tools_cache[cache_key]
+
         search_toolkit = SearchToolkit(api_task_id, agent_name=agent_name)
         tools = [
             # FunctionTool(search_toolkit.search_wiki),
@@ -478,6 +485,8 @@ class SearchToolkit(BaseSearchToolkit, AbstractToolkit):
 
         # if env("TONGXIAO_API_KEY"):
         #     tools.append(FunctionTool(search_toolkit.search_alibaba_tongxiao))
+
+        cls._tools_cache[cache_key] = tools
         return tools
 
     # def get_tools(self) -> List[FunctionTool]:
