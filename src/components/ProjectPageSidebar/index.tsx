@@ -45,13 +45,22 @@ import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { openSettingsDialog } from '@/store/settingsDialogStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Cast, Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
+import {
+  Cast,
+  Inbox,
+  LayoutGrid,
+  Plus,
+  ToolCase,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -694,7 +703,7 @@ export default function ProjectPageSidebar({
           setAchieveProjectId(null);
         }}
         onConfirm={() => void confirmAchieveProject()}
-        title={t('layout.end-project')}
+        title={t('layout.achieve-project')}
         message={t('layout.ending-this-project-will-stop')}
         confirmText={t('layout.yes-end-project')}
         cancelText={t('layout.cancel')}
@@ -857,6 +866,18 @@ export default function ProjectPageSidebar({
                   folded={projectSidebarFolded}
                   ariaLabel={t('layout.dispatch-tab')}
                   ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
+                />
+                <NavTab
+                  active={false}
+                  onClick={() => openSettingsDialog('connectors')}
+                  leading={
+                    <ToolCase className="h-4 w-4 shrink-0" aria-hidden />
+                  }
+                  label={t('layout.customise-tab')}
+                  tooltip={t('layout.customise-tab')}
+                  tooltipEnabledWhenCollapsed={!projectSidebarFolded}
+                  folded={projectSidebarFolded}
+                  ariaLabel={t('layout.customise-tab')}
                 />
               </div>
             </div>

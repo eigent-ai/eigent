@@ -13,10 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { cn } from '@/lib/utils';
-import { Archive, Pin, Zap } from 'lucide-react';
+import { Archive, MoreHorizontal, Pin, Trash2, Zap } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
 import { workspaceTabButtonClass } from './NavTab';
@@ -37,7 +45,6 @@ export interface ProjectNavListRowsProps {
   projects: ProjectNavItem[];
   activeProjectId?: string | null;
   onProjectClick?: (projectId: string) => void;
-  /** Kept for backward compat (parent still wires up the delete dialog). */
   onDeleteProject?: (projectId: string) => void;
   onAchieveProject?: (projectId: string) => void;
   onPinProject?: (projectId: string) => void;
@@ -59,11 +66,204 @@ export interface ProjectNavListRowsProps {
  */
 export const NAV_LIST_PROJECTS_RECENT_MAX = 5;
 
+function ProjectNavRowMenu({
+  projectId,
+  pinned,
+  achieved,
+  open,
+  onOpenChange,
+  onPinProject,
+  onAchieveProject,
+  onDeleteProject,
+}: {
+  projectId: string;
+  pinned?: boolean;
+  achieved?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPinProject?: (projectId: string) => void;
+  onAchieveProject?: (projectId: string) => void;
+  onDeleteProject?: (projectId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const pinLabel = pinned
+    ? t('layout.unpin', { defaultValue: 'Unpin' })
+    : t('layout.pin', { defaultValue: 'Pin' });
+  const achieveLabel = t('layout.achieve-project', {
+    defaultValue: 'Achieve Project',
+  });
+  const deleteLabel = t('layout.delete-project');
+  const moreLabel = t('layout.more-actions');
+
+  return (
+    <div
+      className={cn(
+        'shrink-0 items-center',
+        open ? 'flex' : 'hidden group-hover/session-item:flex'
+      )}
+    >
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            buttonRadius="full"
+            buttonContent="icon-only"
+            className={cn(
+              'no-drag shrink-0',
+              'data-[state=open]:bg-ds-bg-neutral-subtle-selected data-[state=open]:hover:bg-ds-bg-neutral-subtle-selected'
+            )}
+            aria-label={moreLabel}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal
+              className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default"
+              aria-hidden
+            />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={6}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DropdownMenuItem
+            className="gap-2"
+            disabled={!onPinProject}
+            onSelect={() => onPinProject?.(projectId)}
+          >
+            <Pin
+              className={cn(
+                'h-4 w-4',
+                pinned && 'fill-current text-ds-icon-brand-default-default'
+              )}
+              aria-hidden
+            />
+            {pinLabel}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2"
+            disabled={!onAchieveProject || achieved}
+            onSelect={() => onAchieveProject?.(projectId)}
+          >
+            <Archive className="h-4 w-4" aria-hidden />
+            {achieveLabel}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
+            disabled={!onDeleteProject}
+            onSelect={() => onDeleteProject?.(projectId)}
+          >
+            <Trash2
+              className="h-4 w-4 text-ds-icon-error-default-default"
+              aria-hidden
+            />
+            {deleteLabel}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function ProjectNavRow({
+  project,
+  active,
+  panelListHover,
+  showRowMenu,
+  triggerSourceLabel,
+  onProjectClick,
+  onPinProject,
+  onAchieveProject,
+  onDeleteProject,
+}: {
+  project: ProjectNavItem;
+  active: boolean;
+  panelListHover: boolean;
+  showRowMenu: boolean;
+  triggerSourceLabel: string;
+  onProjectClick?: (projectId: string) => void;
+  onPinProject?: (projectId: string) => void;
+  onAchieveProject?: (projectId: string) => void;
+  onDeleteProject?: (projectId: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const LeadIcon = project.sessionLead.Icon;
+  const leadClassName = cn(
+    'h-4 w-4 shrink-0',
+    project.sessionLead.iconClassName,
+    project.sessionLead.spin && 'animate-spin'
+  );
+  const selected = active || menuOpen;
+
+  return (
+    <div className="min-w-0">
+      <div
+        className={cn(
+          'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
+          'transition-colors duration-150',
+          selected
+            ? panelListHover
+              ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
+              : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+            : !panelListHover
+              ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
+              : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
+        )}
+      >
+        {/* Main click area — always full width */}
+        <button
+          type="button"
+          onClick={() => onProjectClick?.(project.id)}
+          className={cn(
+            'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
+          )}
+        >
+          <LeadIcon className={leadClassName} aria-hidden />
+          <span
+            className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
+            title={project.title}
+          >
+            {project.title}
+          </span>
+          {project.source === 'trigger' ? (
+            <Zap
+              className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
+              aria-label={triggerSourceLabel}
+            />
+          ) : null}
+          {!showRowMenu && project.trailing ? (
+            <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
+              {project.trailing}
+            </span>
+          ) : null}
+        </button>
+
+        {showRowMenu ? (
+          <ProjectNavRowMenu
+            projectId={project.id}
+            pinned={project.pinned}
+            achieved={project.achieved}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            onPinProject={onPinProject}
+            onAchieveProject={onAchieveProject}
+            onDeleteProject={onDeleteProject}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectNavListRows({
   projects,
   activeProjectId,
   onProjectClick,
-  onDeleteProject: _onDeleteProject,
+  onDeleteProject,
   onAchieveProject,
   onPinProject,
   folded,
@@ -72,10 +272,6 @@ export function ProjectNavListRows({
   showRowMenu = true,
 }: ProjectNavListRowsProps) {
   const { t } = useTranslation();
-  const achieveLabel = t('layout.achieve', { defaultValue: 'Achieve' });
-  const achievedLabel = t('layout.achieved', { defaultValue: 'Achieved' });
-  const pinLabel = t('layout.pin', { defaultValue: 'Pin' });
-  const unpinLabel = t('layout.unpin', { defaultValue: 'Unpin' });
   const triggerSourceLabel = t('layout.task-source-trigger');
   const list = maxItems != null ? projects.slice(0, maxItems) : projects;
 
@@ -119,112 +315,18 @@ export function ProjectNavListRows({
         }
 
         return (
-          <div key={project.id} className="min-w-0">
-            <div
-              className={cn(
-                'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
-                'transition-colors duration-150',
-                active
-                  ? panelListHover
-                    ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
-                    : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
-                  : !panelListHover
-                    ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
-                    : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
-              )}
-            >
-              {/* Main click area — always full width */}
-              <button
-                type="button"
-                onClick={() => onProjectClick?.(project.id)}
-                className={cn(
-                  'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
-                )}
-              >
-                <LeadIcon className={leadClassName} aria-hidden />
-                <span
-                  className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
-                  title={project.title}
-                >
-                  {project.title}
-                </span>
-                {project.source === 'trigger' ? (
-                  <Zap
-                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
-                    aria-label={triggerSourceLabel}
-                  />
-                ) : null}
-                {!showRowMenu && project.trailing ? (
-                  <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
-                    {project.trailing}
-                  </span>
-                ) : null}
-              </button>
-
-              {/* Pin + archive buttons — in-flow so title truncates; snap visible on hover, no animation */}
-              {showRowMenu && (
-                <div className="hidden shrink-0 items-center group-hover/session-item:flex">
-                  <TooltipSimple
-                    content={project.pinned ? unpinLabel : pinLabel}
-                    side="top"
-                    sideOffset={6}
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      buttonRadius="full"
-                      buttonContent="icon-only"
-                      className="no-drag shrink-0"
-                      aria-label={project.pinned ? unpinLabel : pinLabel}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPinProject?.(project.id);
-                      }}
-                    >
-                      <Pin
-                        className={cn(
-                          'h-3.5 w-3.5 transition-colors',
-                          project.pinned
-                            ? 'fill-current text-ds-icon-brand-default-default'
-                            : 'text-ds-icon-neutral-muted-default'
-                        )}
-                        aria-hidden
-                      />
-                    </Button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={project.achieved ? achievedLabel : achieveLabel}
-                    side="top"
-                    sideOffset={6}
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      buttonRadius="full"
-                      className="no-drag shrink-0"
-                      aria-label={
-                        project.achieved ? achievedLabel : achieveLabel
-                      }
-                      disabled={!onAchieveProject || project.achieved}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAchieveProject?.(project.id);
-                      }}
-                    >
-                      <Archive
-                        className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default"
-                        aria-hidden
-                      />
-                    </Button>
-                  </TooltipSimple>
-                </div>
-              )}
-            </div>
-          </div>
+          <ProjectNavRow
+            key={project.id}
+            project={project}
+            active={active}
+            panelListHover={panelListHover}
+            showRowMenu={showRowMenu}
+            triggerSourceLabel={triggerSourceLabel}
+            onProjectClick={onProjectClick}
+            onPinProject={onPinProject}
+            onAchieveProject={onAchieveProject}
+            onDeleteProject={onDeleteProject}
+          />
         );
       })}
     </>
