@@ -757,7 +757,7 @@ export default function WorkspacePage() {
       <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
         <div
           ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-subtle-default"
+          className="h-full min-h-0 w-full min-w-0 flex-1"
         >
           <ResizablePanelGroup
             ref={shellPanelGroupImperativeRef}
@@ -771,7 +771,7 @@ export default function WorkspacePage() {
               defaultSize={24}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 py-1 pl-1"
+              className="min-h-0 min-w-0 pl-1"
             >
               <ProjectPageSidebar chatStore={chatStore} />
             </ResizablePanel>

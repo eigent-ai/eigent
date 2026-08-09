@@ -99,7 +99,15 @@ export function HeaderBox({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={toggleSessionPreview}
+            onClick={(event) => {
+              const wasOpen = sessionPreviewOpen;
+              toggleSessionPreview();
+              // Closing leaves :focus on the ghost button, which keeps the
+              // hover/selected fill until the next click elsewhere.
+              if (wasOpen) {
+                event.currentTarget.blur();
+              }
+            }}
             className={cn(
               'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
               sessionPreviewOpen &&

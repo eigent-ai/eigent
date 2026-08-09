@@ -1,0 +1,257 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { LocaleEnum, switchLanguage } from '@/i18n';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
+import { useInstallationStore } from '@/store/installationStore';
+import { openSettingsDialog } from '@/store/settingsDialogStore';
+import {
+  Check,
+  Languages,
+  LogOut,
+  Monitor,
+  Moon,
+  Settings,
+  Sun,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+
+const LANGUAGE_OPTIONS: { key: string; label: string }[] = [
+  { key: 'system', label: '' },
+  { key: LocaleEnum.English, label: 'English' },
+  { key: LocaleEnum.SimplifiedChinese, label: '简体中文' },
+  { key: LocaleEnum.TraditionalChinese, label: '繁體中文' },
+  { key: LocaleEnum.Japanese, label: '日本語' },
+  { key: LocaleEnum.Arabic, label: 'العربية' },
+  { key: LocaleEnum.French, label: 'Français' },
+  { key: LocaleEnum.German, label: 'Deutsch' },
+  { key: LocaleEnum.Russian, label: 'Русский' },
+  { key: LocaleEnum.Spanish, label: 'Español' },
+  { key: LocaleEnum.Korean, label: '한국어' },
+  { key: LocaleEnum.Italian, label: 'Italiano' },
+];
+
+function applyLanguage(key: string) {
+  if (key === 'system') {
+    const systemLang = navigator.language.toLowerCase();
+    const available = Object.values(LocaleEnum);
+    const matched = available.find((lang) => systemLang.startsWith(lang));
+    switchLanguage(matched ?? LocaleEnum.English);
+    useAuthStore.getState().setLanguage('system');
+    return;
+  }
+  switchLanguage(key as LocaleEnum);
+}
+
+export function UserMenu() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [languageSubOpen, setLanguageSubOpen] = useState(false);
+  const { chatStore } = useChatStoreAdapter();
+  const email = useAuthStore((s) => s.email);
+  const username = useAuthStore((s) => s.username);
+  const language = useAuthStore((s) => s.language);
+  const appearanceMode = useAuthStore((s) => s.appearanceMode);
+  const setAppearanceMode = useAuthStore((s) => s.setAppearanceMode);
+  const logout = useAuthStore((s) => s.logout);
+  const resetInstallation = useInstallationStore((s) => s.reset);
+  const setNeedsBackendRestart = useInstallationStore(
+    (s) => s.setNeedsBackendRestart
+  );
+
+  const profileDisplayName = username?.trim() || email?.trim() || '';
+  const profileInitial = (profileDisplayName || '?').charAt(0).toUpperCase();
+
+  const colorModeOptions = useMemo(
+    () =>
+      [
+        {
+          value: 'system' as const,
+          label: t('setting.system-default'),
+          icon: Monitor,
+        },
+        {
+          value: 'light' as const,
+          label: t('setting.light'),
+          icon: Sun,
+        },
+        {
+          value: 'dark' as const,
+          label: t('setting.dark'),
+          icon: Moon,
+        },
+      ] as const,
+    [t]
+  );
+
+  const closeLanguageSub = () => setLanguageSubOpen(false);
+
+  const handleMenuOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setLanguageSubOpen(false);
+  };
+
+  const handleLogout = () => {
+    chatStore?.clearTasks?.();
+    resetInstallation();
+    setNeedsBackendRestart(true);
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <DropdownMenu dir="rtl" open={open} onOpenChange={handleMenuOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          buttonContent="text"
+          size="sm"
+          buttonRadius="full"
+          className={cn(
+            'no-drag max-w-[180px] gap-1.5 px-1.5',
+            open &&
+              '!bg-ds-bg-neutral-default-hover hover:!bg-ds-bg-neutral-default-hover focus:!bg-ds-bg-neutral-default-hover active:!bg-ds-bg-neutral-default-hover'
+          )}
+          aria-label={t('setting.profile')}
+          aria-expanded={open}
+        >
+          <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-bg-brand-default-default text-[10px] font-semibold leading-none text-ds-text-brand-inverse-default"
+            aria-hidden
+          >
+            {profileInitial}
+          </span>
+          <span className="min-w-0 truncate text-label-sm font-medium">
+            {profileDisplayName || t('setting.profile')}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        sideOffset={8}
+        className="min-w-56"
+        style={{ direction: 'ltr' }}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <DropdownMenuLabel
+          className="truncate px-2 py-1.5 text-label-sm font-normal text-ds-text-neutral-muted-default"
+          onPointerEnter={closeLanguageSub}
+        >
+          {email?.trim() || profileDisplayName || t('setting.profile')}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem
+          className="gap-2"
+          onPointerEnter={closeLanguageSub}
+          onSelect={() => openSettingsDialog('general')}
+        >
+          <Settings className="h-4 w-4" aria-hidden />
+          {t('setting.settings')}
+        </DropdownMenuItem>
+
+        <DropdownMenuSub
+          open={languageSubOpen}
+          onOpenChange={setLanguageSubOpen}
+        >
+          <DropdownMenuSubTrigger className="gap-2">
+            <Languages className="h-4 w-4" aria-hidden />
+            {t('setting.language')}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent
+            className="min-w-44"
+            sideOffset={6}
+            alignOffset={-4}
+            style={{ direction: 'ltr' }}
+          >
+            {LANGUAGE_OPTIONS.map((option) => {
+              const selected = language === option.key;
+              return (
+                <DropdownMenuItem
+                  key={option.key}
+                  className="gap-2"
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    applyLanguage(option.key);
+                  }}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {option.key === 'system'
+                      ? t('setting.system-default')
+                      : option.label}
+                  </span>
+                  {selected ? (
+                    <Check
+                      className="h-4 w-4 shrink-0 text-ds-icon-brand-default-default"
+                      aria-hidden
+                    />
+                  ) : null}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <div
+          className="flex flex-col gap-1.5 px-2 py-1.5"
+          onPointerEnter={closeLanguageSub}
+          onPointerDown={(event) => event.preventDefault()}
+        >
+          <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+            {t('setting.appearance')}
+          </span>
+          <IconPillToggle
+            className="w-full"
+            layoutId="user-menu-color-mode"
+            aria-label={t('setting.appearance')}
+            value={appearanceMode}
+            options={colorModeOptions}
+            onValueChange={setAppearanceMode}
+          />
+        </div>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
+          onPointerEnter={closeLanguageSub}
+          onSelect={handleLogout}
+        >
+          <LogOut
+            className="h-4 w-4 text-ds-icon-error-default-default"
+            aria-hidden
+          />
+          {t('setting.log-out')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

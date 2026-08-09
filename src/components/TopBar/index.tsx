@@ -21,6 +21,7 @@ import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import UpdateButton from '@/components/TopBar/UpdateButton';
+import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,7 +59,6 @@ import {
   Minus,
   PanelLeft,
   PanelLeftClose,
-  Settings,
   Square,
   X,
 } from 'lucide-react';
@@ -100,10 +100,7 @@ function HeaderWin() {
   const closeSettings = useSettingsDialogStore((state) => state.closeSettings);
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
-  const username = useAuthStore((s) => s.username);
   const userId = useAuthStore((s) => s.user_id);
-  const profileDisplayName = username?.trim() || email?.trim() || '';
-  const profileInitial = (profileDisplayName || '?').charAt(0).toUpperCase();
   const { isInstalling, installationState } = useInstallationUI();
   const _isInstallationActive =
     isInstalling || installationState === 'waiting-backend';
@@ -563,42 +560,7 @@ function HeaderWin() {
           </TooltipSimple>
 
           <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
-            <Button
-              onClick={() => openSettings('general')}
-              variant="ghost"
-              buttonContent="text"
-              size="sm"
-              buttonRadius="full"
-              className="no-drag max-w-[180px] gap-1.5 px-1.5"
-              aria-label={t('setting.profile')}
-            >
-              <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-bg-brand-default-default text-[10px] font-semibold leading-none text-ds-text-brand-inverse-default"
-                aria-hidden
-              >
-                {profileInitial}
-              </span>
-              <span className="min-w-0 truncate text-label-sm font-medium">
-                {profileDisplayName || t('setting.profile')}
-              </span>
-            </Button>
-            <TooltipSimple
-              content={t('layout.settings')}
-              side="bottom"
-              align="center"
-              variant="instant"
-            >
-              <Button
-                onClick={() => openSettings('models')}
-                variant="ghost"
-                buttonContent="icon-only"
-                size="sm"
-                className="no-drag rounded-full"
-                aria-label={t('layout.settings')}
-              >
-                <Settings aria-hidden />
-              </Button>
-            </TooltipSimple>
+            <UserMenu />
           </div>
         </div>
       </div>
