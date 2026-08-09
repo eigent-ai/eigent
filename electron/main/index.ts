@@ -55,6 +55,7 @@ import {
   getCodexResolverEnv,
   registerCodexSubscriptionAuthIpcHandlers,
 } from './subscriptionAuth';
+import { disposeAllTerminals, registerTerminalIpcHandlers } from './terminal';
 import { registerUpdateIpcHandlers, update } from './update';
 import {
   getEmailFolderPath,
@@ -785,6 +786,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
+  registerTerminalIpcHandlers();
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -3520,6 +3522,8 @@ app.on('before-quit', async (event) => {
     // No need to sync between different profile directories
 
     // Clean up resources
+    disposeAllTerminals();
+
     if (webViewManager) {
       webViewManager.destroy();
       webViewManager = null;

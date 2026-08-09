@@ -1049,7 +1049,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
         ) : null}
 
         {useSingleAgentLiveHeader ? (
-          <span className="min-w-0 block max-w-full">
+          <span className="block min-w-0 max-w-full">
             {/* Cross-fade/slide whenever the in-progress step changes so the
                 header animates from one `active_form` to the next. Wraps onto
                 multiple lines instead of truncating. */}
@@ -1060,16 +1060,16 @@ const AgentGroupRow = memo(function AgentGroupRow({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
                 transition={{ duration: 0.24, ease: CONTENT_EASE }}
-                className="min-w-0 block break-words whitespace-normal"
+                className="block min-w-0 whitespace-normal break-words"
               >
                 {headerRunning ? (
                   <ShinyText
                     text={singleAgentLabel}
                     speed={2.5}
-                    className="!text-label-sm font-normal !block break-words whitespace-normal"
+                    className="!block whitespace-normal break-words !text-label-sm font-normal"
                   />
                 ) : (
-                  <span className="text-label-sm font-normal text-ds-text-neutral-muted-default block break-words whitespace-normal">
+                  <span className="block whitespace-normal break-words text-label-sm font-normal text-ds-text-neutral-muted-default">
                     {singleAgentLabel}
                   </span>
                 )}

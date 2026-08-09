@@ -106,6 +106,7 @@ export function BrowserTab({
     [isDesktop, tab.id, tab.webviewId, updateBrowserPreviewTab]
   );
 
+  const electronAPI = host?.electronAPI;
   const openExternal = useCallback(
     async (rawUrl: string) => {
       const normalized = normalizeBrowserUrl(rawUrl);
@@ -115,8 +116,8 @@ export function BrowserTab({
       }
       setAddressError(null);
 
-      if (isDesktop && host?.electronAPI?.openExternal) {
-        const result = await host.electronAPI.openExternal(normalized.url);
+      if (isDesktop && electronAPI?.openExternal) {
+        const result = await electronAPI.openExternal(normalized.url);
         if (result && result.success === false) {
           setAddressError(result.error || 'Unable to open this URL');
         }
@@ -125,7 +126,7 @@ export function BrowserTab({
 
       window.open(normalized.url, '_blank', 'noopener,noreferrer');
     },
-    [host?.electronAPI, isDesktop]
+    [electronAPI, isDesktop]
   );
 
   // Publish this container's rect so the layer can position the guest over it.

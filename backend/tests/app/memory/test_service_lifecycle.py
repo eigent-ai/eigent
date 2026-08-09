@@ -203,6 +203,29 @@ class TestRunStart:
         assert space.source_type == "legacy"
 
 
+class TestPerTurnWrites:
+    def test_human_reply_is_persisted_as_user_turn(self, service, run_context):
+        service.on_run_start(
+            run_context=run_context,
+            space_name="W",
+            project_name="P",
+            mode="single_agent",
+            user_prompt="create a script",
+        )
+
+        event_id = service.on_human_reply(
+            run_context=run_context,
+            content="a simple script is enough",
+        )
+
+        assert event_id is not None
+        tail = service.store.read_conversation_tail(
+            "user_42", run_context.space_id, run_context.project_id, limit=10
+        )
+        assert [event.role for event in tail] == ["user", "user"]
+        assert tail[-1].content == "a simple script is enough"
+
+
 class TestRunEnd:
     def test_on_run_end_done_appends_assistant_and_status(
         self, service, run_context

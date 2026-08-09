@@ -70,6 +70,7 @@ from app.utils.cdp_browser_state import (
     get_connected_cdp_endpoint_for_request,
 )
 from app.utils.event_loop_utils import schedule_async_task_from_worker
+from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
 
@@ -785,7 +786,7 @@ async def stop(id: str):
 
 
 @router.post("/chat/{id}/human-reply")
-async def human_reply(id: str, data: HumanReply):
+async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
         extra={"task_id": id, "reply_length": len(data.reply)},
@@ -811,6 +812,27 @@ async def human_reply(id: str, data: HumanReply):
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
         ) from exc
+
+    task_lock.add_conversation(
+        "human_reply",
+        {"agent": data.agent, "reply": data.reply},
+    )
+    memory_service = getattr(task_lock, "memory_service", None)
+    run_context = getattr(task_lock, "run_context", None)
+    if memory_service is not None and run_context is not None:
+        memory_service.on_human_reply(
+            run_context=run_context,
+            content=data.reply,
+        )
+
+    cloud_task_id = getattr(task_lock, "current_task_id", None) or id
+    sync_step_event(
+        task_id=cloud_task_id,
+        run_id=cloud_task_id,
+        step="human_reply",
+        data={"agent": data.agent, "reply": data.reply},
+        authorization=request.headers.get("authorization"),
+    )
     chat_logger.debug("Human reply processed", extra={"task_id": id})
     return Response(status_code=201)
 

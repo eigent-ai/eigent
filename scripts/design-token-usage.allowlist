@@ -8,6 +8,9 @@ src/components/ui/WordCarousel/WordCarousel.tsx
 # Terminal — @xterm/xterm ITheme requires hex strings for theme colors.
 src/components/Terminal/index.tsx
 #
+# Preview panel terminal — xterm ITheme hex palette (shared via terminalTheme.ts).
+src/components/Session/PreviewPanel/tabs/terminal/terminalTheme.ts
+#
 # ColorPicker — HSV UI requires fixed gradients / hex placeholder.
 src/components/ui/colorPicker.tsx
 #

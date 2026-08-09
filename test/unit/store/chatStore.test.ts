@@ -191,6 +191,35 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
+  describe('Cached task hydration', () => {
+    it('does not resurrect a stale human-reply wait', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      const cachedTask = {
+        ...result.current.getState().tasks[taskId],
+        activeAsk: 'Agents.single_agent',
+        askList: [
+          {
+            id: 'queued-ask',
+            role: 'agent',
+            content: 'Old question',
+            step: 'ask',
+          },
+        ],
+        isPending: true,
+      } as any;
+
+      act(() => {
+        result.current.getState().hydrateTask(taskId, cachedTask);
+      });
+
+      const hydrated = result.current.getState().tasks[taskId];
+      expect(hydrated.activeAsk).toBe('');
+      expect(hydrated.askList).toEqual([]);
+      expect(hydrated.isPending).toBe(false);
+    });
+  });
+
   describe('END message resolution', () => {
     it('keeps non-empty END payload ahead of prior agent summaries', () => {
       expect(
@@ -1169,6 +1198,10 @@ describe('ChatStore - Core Functionality', () => {
     const replayProjectState = () => ({
       activeProjectId: 'proj-replay',
       getHistoryId: () => null,
+      getProjectById: () => ({
+        id: 'proj-replay',
+        mode: 'single',
+      }),
     });
 
     beforeEach(() => {
@@ -1198,6 +1231,93 @@ describe('ChatStore - Core Functionality', () => {
       expect(result.current.getState().tasks['replay-1']).toBeDefined();
       expect(result.current.getState().activeTaskId).toBe('replay-1');
       expect(fetchEventSource).toHaveBeenCalled();
+    });
+
+    it('replays a recorded human reply without leaving an active wait', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const event of [
+          {
+            step: 'ask',
+            data: {
+              agent: 'Agents.single_agent',
+              question: 'What kind of script?',
+            },
+          },
+          {
+            step: 'human_reply',
+            data: {
+              agent: 'Agents.single_agent',
+              reply: 'A simple script is enough',
+            },
+          },
+          { step: 'end', data: 'Created the script' },
+        ]) {
+          opts.onmessage?.({ data: JSON.stringify(event) } as any);
+        }
+        return Promise.resolve();
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      result.current.getState().addMessages(taskId, {
+        id: generateUniqueId(),
+        role: 'user',
+        content: 'Create a script',
+      });
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0);
+      });
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'agent',
+            step: 'ask',
+            content: 'What kind of script?',
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: 'A simple script is enough',
+          }),
+        ])
+      );
+      expect(task.activeAsk).toBe('');
+      expect(task.askList).toEqual([]);
+      expect(task.status).toBe(ChatTaskStatus.FINISHED);
+    });
+
+    it('clears legacy replay ASK state when the task ends', async () => {
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        opts.onmessage?.({
+          data: JSON.stringify({
+            step: 'ask',
+            data: {
+              agent: 'Agents.single_agent',
+              question: 'Historical question',
+            },
+          }),
+        } as any);
+        opts.onmessage?.({
+          data: JSON.stringify({ step: 'end', data: 'Finished' }),
+        } as any);
+        return Promise.resolve();
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(taskId, 'replay', undefined, 0);
+      });
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task.activeAsk).toBe('');
+      expect(task.askList).toEqual([]);
+      expect(task.status).toBe(ChatTaskStatus.FINISHED);
     });
 
     it('replay SSE: AbortError does not throw', async () => {

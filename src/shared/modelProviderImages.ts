@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import antLingImage from '@/assets/model/ant-ling.svg';
 import anthropicImage from '@/assets/model/anthropic.svg';
 import azureImage from '@/assets/model/azure.svg';
 import bedrockImage from '@/assets/model/bedrock.svg';
@@ -42,6 +43,7 @@ const MODEL_PROVIDER_IMAGE_MAP: Record<string, string> = {
   cloud: eigentImage,
   openai: openaiImage,
   'codex-subscription': openaiImage,
+  'ant-ling': antLingImage,
   anthropic: anthropicImage,
   gemini: geminiImage,
   nebius: PROVIDER_AVATAR_URLS.nebius,
