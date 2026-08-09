@@ -45,14 +45,12 @@ export function HeaderBox({
   );
   const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
-  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
-    defaultValue: 'Back to workspace',
+  const backTooltip = t('layout.back-tooltip', {
+    defaultValue: 'Back',
   });
-  // Own key (not the old file-preview one): the control's meaning changed, so
-  // stale translations must not carry over.
-  const windowPreviewTooltip = t('layout.toggle-window-preview-tooltip', {
-    defaultValue: 'Toggle window preview',
-  });
+  const windowPreviewTooltip = sessionPreviewOpen
+    ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
+    : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
 
   if (empty) {
     return (
@@ -69,7 +67,7 @@ export function HeaderBox({
     >
       {/* Left: return to project workspace */}
       <div className="flex items-center gap-2">
-        <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
+        <TooltipSimple content={backTooltip} variant="instant" side="bottom">
           <Button
             type="button"
             variant="ghost"
@@ -77,7 +75,7 @@ export function HeaderBox({
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
             className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
-            aria-label={backToWorkspaceTooltip}
+            aria-label={backTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
@@ -93,7 +91,11 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        <TooltipSimple content={windowPreviewTooltip} variant="instant">
+        <TooltipSimple
+          content={windowPreviewTooltip}
+          variant="instant"
+          side="bottom"
+        >
           <Button
             type="button"
             variant="ghost"
