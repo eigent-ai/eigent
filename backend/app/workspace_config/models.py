@@ -133,7 +133,12 @@ _CLOUD_FORBIDDEN_FIELD_NAMES = {
     "worktree_root",
 }
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
+_DEVICE_HOME_PATH = re.compile(
+    r"(?i)(?:~[/\\]|/Users/[^/\s]+/|/home/[^/\s]+/|"
+    r"[A-Z]:\\+Users\\+[^\\\s]+\\+)"
+)
 _SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bsk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
     re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
@@ -178,6 +183,10 @@ def _is_secret_field_name(value: str) -> bool:
 
 def _contains_secret_value(value: str) -> bool:
     return any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)
+
+
+def _contains_device_home_path(value: str) -> bool:
+    return bool(_DEVICE_HOME_PATH.search(value))
 
 
 def assert_manifest_secret_free(value: Any, path: str = "$") -> None:
@@ -265,6 +274,11 @@ def assert_cloud_projection_safe(value: Any, path: str = "$") -> None:
     if isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
             assert_cloud_projection_safe(child, f"{path}[{index}]")
+        return
+    if isinstance(value, str) and _contains_device_home_path(value):
+        raise UnsafeCloudProjectionError(
+            f"device-local home path is forbidden in Cloud projection: {path}"
+        )
 
 
 class _StrictFrozenModel(BaseModel):
@@ -312,8 +326,14 @@ class ContextSource(_StrictFrozenModel):
                 )
         if self.kind == "inline" and self.content is None:
             raise ValueError("inline context requires content")
-        # Inline context is prose. Path-like text such as “never touch
-        # /etc/hosts” is not a local binding and must remain shareable.
+        # System paths in prose (for example /etc/hosts) remain shareable,
+        # but a concrete user's home path would disclose device identity.
+        if (
+            self.kind == "inline"
+            and self.content is not None
+            and _contains_device_home_path(self.content)
+        ):
+            raise ValueError("inline context cannot contain a device home path")
         if self.kind == "connection_query" and self.query is None:
             raise ValueError("connection_query requires query")
         return self

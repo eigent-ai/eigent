@@ -127,7 +127,9 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         assert_manifest_secret_free(
             {
                 "note": (
-                    "use sk-abcdefghijklmnopqrstuvwxyzABCDEF12345678 "
+                    "use "
+                    + "sk-"
+                    + "abcdefghijklmnopqrstuvwxyzABCDEF12345678 "
                     "for the demo"
                 )
             }
@@ -135,7 +137,7 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
     with pytest.raises(SecretValueInManifestError, match="asset"):
         assert_bundle_asset_safe(
             "skills/importer.py",
-            b"TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz123456'",
+            b"TOKEN = '" + b"ghp_" + b"abcdefghijklmnopqrstuvwxyz123456'",
         )
     with pytest.raises(SecretValueInManifestError, match="API_KEY"):
         assert_manifest_secret_free({"API_KEY": "not-a-slot"})
@@ -143,6 +145,13 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         "styles/spinkit.css",
         b".sk-fading-circle{display:block}.sk-circle-loader-x{}",
     )
+    for secret in (
+        "sk-" + "ant-api03-" + ("a" * 24),
+        "sk-" + "live-" + ("b" * 24),
+        "sk-" + "test-" + ("c" * 24),
+    ):
+        with pytest.raises(SecretValueInManifestError, match="secret-like"):
+            assert_manifest_secret_free({"note": secret})
 
 
 def test_manifest_allows_path_like_prose_and_requires_default_model():
@@ -159,6 +168,28 @@ def test_manifest_allows_path_like_prose_and_requires_default_model():
     with pytest.raises(ValidationError, match="default profile"):
         parse_workforce_manifest(
             MANIFEST_YAML.replace("    default:\n", "    custom:\n")
+        )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/Users/alice/private/report.pdf",
+        "/home/alice/private/report.pdf",
+        "~/private/report.pdf",
+        r"C:\Users\alice\private\report.pdf",
+    ],
+)
+def test_manifest_rejects_device_home_paths_inside_inline_prose(path):
+    with pytest.raises(ValidationError, match="device home path"):
+        parse_workforce_manifest(
+            MANIFEST_YAML.replace(
+                "  context:\n",
+                "  context:\n"
+                "    - id: local_hint\n"
+                "      kind: inline\n"
+                f"      content: 'Read {path}'\n",
+            )
         )
 
 

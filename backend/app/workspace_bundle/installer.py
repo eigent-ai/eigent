@@ -39,6 +39,12 @@ class WorkspaceBundleBindingsIncomplete(WorkspaceBundleInstallError):
 
 class WorkspaceBundleInstaller:
     MAX_TOTAL_ASSET_BYTES = 128 * 1024 * 1024
+    REQUIRED_CLOUD_CAPABILITIES = frozenset(
+        {
+            "bundle.asset.integrity.v1",
+            "bundle.install.review.v1",
+        }
+    )
 
     def __init__(
         self,
@@ -359,6 +365,18 @@ class WorkspaceBundleInstaller:
     ) -> tuple[dict[str, Any], str | None]:
         assert self.cloud is not None
         environment = await self.cloud.get_environment(proposal.space_id)
+        capabilities = environment.get("protocol_capabilities")
+        available = (
+            {str(item) for item in capabilities}
+            if isinstance(capabilities, list)
+            else set()
+        )
+        missing = sorted(self.REQUIRED_CLOUD_CAPABILITIES - available)
+        if missing:
+            raise WorkspaceBundleInstallError(
+                "Cloud must be upgraded before installing this Bundle; "
+                "missing protocol capabilities: " + ", ".join(missing)
+            )
         installation = environment.get("installation")
         if installation is None:
             installation = await self.cloud.install(
@@ -409,7 +427,10 @@ class WorkspaceBundleInstaller:
             expected_installed_revision_id=installed_revision_id,
             expected_version=installed_version,
         )
-        return upgraded, installed_revision_id
+        return (
+            await self._confirm_cloud_installation(proposal, upgraded),
+            installed_revision_id,
+        )
 
     async def _confirm_cloud_installation(
         self,
