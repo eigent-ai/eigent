@@ -46,7 +46,8 @@ export function useShellBackTarget(fallbackTo = '/'): ShellBackTarget {
 
   const state = location.state as Record<string, unknown> | null;
   const from = state?.[SHELL_BACK_STATE_KEY];
-  const to = typeof from === 'string' && from ? from : fallbackTo;
+  const hasRecordedOrigin = typeof from === 'string' && Boolean(from);
+  const to = hasRecordedOrigin ? from : fallbackTo;
 
   const label = useMemo(() => {
     const target = to.startsWith('/home')
@@ -58,8 +59,13 @@ export function useShellBackTarget(fallbackTo = '/'): ShellBackTarget {
   }, [t, to]);
 
   const goBack = useCallback(() => {
-    navigate(to);
-  }, [navigate, to]);
+    if (hasRecordedOrigin) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(fallbackTo, { replace: true });
+  }, [fallbackTo, hasRecordedOrigin, navigate]);
 
   return { to, label, goBack };
 }

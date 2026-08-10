@@ -80,7 +80,11 @@ export default function Sessions({
     >
       <ContentHeader
         leading={
-          <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
+          <TooltipSimple
+            content={backToWorkspaceTooltip}
+            variant="instant"
+            side="bottom"
+          >
             <Button
               type="button"
               variant="ghost"

@@ -195,7 +195,10 @@ export default function HomeHeader() {
             placeholder={t(SEARCH_PLACEHOLDER_KEYS[activeSection])}
           />
 
-          <TooltipSimple content={t('layout.home-filter-disabled-tooltip')}>
+          <TooltipSimple
+            content={t('layout.home-filter-disabled-tooltip')}
+            side="bottom"
+          >
             <span className="inline-flex">
               <Button
                 type="button"
@@ -212,7 +215,7 @@ export default function HomeHeader() {
           </TooltipSimple>
 
           <DropdownMenu>
-            <TooltipSimple content={sortLabel} variant="instant">
+            <TooltipSimple content={sortLabel} variant="instant" side="bottom">
               <span className="inline-flex">
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -249,21 +252,33 @@ export default function HomeHeader() {
           >
             <TabsList appearance="default">
               <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
-                <TooltipSimple content={t('dashboard.grid')} variant="instant">
+                <TooltipSimple
+                  content={t('dashboard.grid')}
+                  variant="instant"
+                  side="bottom"
+                >
                   <div className="inline-flex h-5 w-5 items-center justify-center">
                     <LayoutGrid size={16} />
                   </div>
                 </TooltipSimple>
               </TabsTrigger>
               <TabsTrigger value="list" aria-label={t('dashboard.list')}>
-                <TooltipSimple content={t('dashboard.list')} variant="instant">
+                <TooltipSimple
+                  content={t('dashboard.list')}
+                  variant="instant"
+                  side="bottom"
+                >
                   <div className="inline-flex h-5 w-5 items-center justify-center">
                     <List size={16} />
                   </div>
                 </TooltipSimple>
               </TabsTrigger>
               <TabsTrigger value="board" aria-label={t('dashboard.board')}>
-                <TooltipSimple content={t('dashboard.board')} variant="instant">
+                <TooltipSimple
+                  content={t('dashboard.board')}
+                  variant="instant"
+                  side="bottom"
+                >
                   <div className="inline-flex h-5 w-5 items-center justify-center">
                     <Columns2 size={16} />
                   </div>

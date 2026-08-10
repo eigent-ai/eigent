@@ -18,6 +18,7 @@ import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import {
+  TOP_BAR_CONTROL_SELECTED_CLASS,
   TOP_BAR_CONTROL_STATE_CLASS,
   TOP_BAR_PILL_CLASS,
 } from '@/components/TopBar/controlStyles';
@@ -27,7 +28,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { shellBackState } from '@/hooks/useShellBackTarget';
+import { shellBackState, useShellBackTarget } from '@/hooks/useShellBackTarget';
 import { useHost } from '@/host';
 import {
   createSpaceFromFolderPicker,
@@ -39,6 +40,7 @@ import {
 } from '@/lib/replay';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import { isSettingsRoutePath } from '@/lib/shellRoutes';
 import {
   getActiveSpaceTriggerLabel,
   getDefaultNewSpaceName,
@@ -118,18 +120,20 @@ function HeaderWin() {
   }, [host]);
 
   /**
-   * Home and Settings are project-independent management surfaces reached from
-   * somewhere else, so their title bar drops the Home tab and the Space
-   * switcher (neither means anything there) for a single way back.
+   * Home and Settings drop the workspace chrome (sidebar toggle, Home pill)
+   * for a single way back. The center slot stays: page title here, Space
+   * switcher on the workspace.
    */
-  const isShellSubPage =
-    location.pathname === '/home' || location.pathname === '/settings';
-  const shellSubPageTitle =
-    location.pathname === '/settings'
-      ? t('setting.settings')
-      : location.pathname === '/home'
-        ? t('layout.home')
-        : null;
+  const isSettingsPage = isSettingsRoutePath(location.pathname);
+  const isShellSubPage = location.pathname === '/home' || isSettingsPage;
+  const shellSubPageTitle = isSettingsPage
+    ? t('setting.settings')
+    : location.pathname === '/home'
+      ? t('layout.home')
+      : null;
+  // Same origin as Settings' own back control — used when the gear toggles off.
+  const { goBack: leaveSettings, label: leaveSettingsLabel } =
+    useShellBackTarget();
 
   const sidebarToggleLabel = workspaceSidebarHidden
     ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
@@ -192,6 +196,15 @@ function HeaderWin() {
     navigate,
     projectStore,
   ]);
+
+  /** Gear is a toggle: open Settings, press again to return to the origin. */
+  const toggleSettings = useCallback(() => {
+    if (isSettingsPage) {
+      leaveSettings();
+      return;
+    }
+    openSettings('models');
+  }, [isSettingsPage, leaveSettings]);
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
@@ -436,160 +449,177 @@ function HeaderWin() {
           }}
         />
       </AlertDialog>
-      {isShellSubPage ? (
-        /* Leading on Home / Settings: only the way back to where they came from. */
-        <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
-          <ShellBackButton />
-        </div>
-      ) : (
-        /* Leading: sidebar toggle, Home management, and active Space context */
-        <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
-          <TooltipSimple
-            content={sidebarToggleLabel}
-            side="bottom"
-            align="center"
-            variant="instant"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              className={cn(
-                'no-drag rounded-full',
-                TOP_BAR_CONTROL_STATE_CLASS,
-                'aria-pressed:!bg-transparent'
-              )}
-              onClick={toggleWorkspaceSidebar}
-              aria-pressed={!workspaceSidebarHidden}
-              aria-label={sidebarToggleLabel}
-            >
-              {workspaceSidebarHidden ? (
-                <PanelLeftOpen className="h-4 w-4" aria-hidden />
-              ) : (
-                <PanelLeft className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-          </TooltipSimple>
-
-          <button
-            type="button"
-            onClick={openHome}
-            aria-label={t('layout.home')}
-            className={TOP_BAR_PILL_CLASS}
-          >
-            <img
-              src={
-                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
-              }
-              alt=""
-              className="h-5 w-5 select-none"
-              width={16}
-              height={16}
-              draggable={false}
-            />
-            {t('layout.home')}
-          </button>
-
-          <SpaceSwitchDropdown
-            contentSideOffset={6}
-            trigger={
-              <button
-                id="active-space-title-btn"
-                type="button"
-                className={TOP_BAR_PILL_CLASS}
-                aria-haspopup="menu"
-                aria-label={activeSpaceTitle}
+      {/*
+        Unified title bar: left controls | center display | right controls.
+        Equal flex-1 wings keep the center true-center; interactive chrome
+        uses `no-drag` so the surrounding drag region can still move the window.
+      */}
+      <div className="flex min-h-0 min-w-0 flex-1 items-center">
+        {/* Left */}
+        <div className="flex min-w-0 flex-1 items-center justify-start">
+          {isShellSubPage ? (
+            <div className="no-drag relative z-50 flex shrink-0 items-center gap-0.5">
+              <ShellBackButton />
+            </div>
+          ) : (
+            <div className="no-drag relative z-50 flex shrink-0 items-center gap-0.5">
+              <TooltipSimple
+                content={sidebarToggleLabel}
+                side="bottom"
+                align="center"
+                variant="instant"
               >
-                <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
-                  {activeSpaceTitle}
-                </span>
-                <ChevronsUpDown
-                  className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
-                  aria-hidden
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
+                >
+                  {workspaceSidebarHidden ? (
+                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <PanelLeft className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+
+              <button
+                type="button"
+                onClick={openHome}
+                aria-label={t('layout.home')}
+                className={TOP_BAR_PILL_CLASS}
+              >
+                <img
+                  src={
+                    appearance === 'dark'
+                      ? eigentAppIconWhite
+                      : eigentAppIconBlack
+                  }
+                  alt=""
+                  className="h-5 w-5 select-none"
+                  width={16}
+                  height={16}
+                  draggable={false}
                 />
+                {t('layout.home')}
               </button>
-            }
-            spaces={activeSpaces}
-            activeSpaceId={activeSpaceId}
-            switchingSpaceId={switchingSpaceId}
-            canRenameActiveSpace={canRenameActiveSpace}
-            createSpaceMenu={{
-              onStartFromScratch: handleCreateBlankSpace,
-              onSelectFolder: handleCreateSpaceFromFolder,
-            }}
-            onRenameSpace={openRenameSpaceDialog}
-            onSpaceSelect={handleTopBarSpaceSelect}
-            contentAlign="start"
-          />
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Middle: page title (Home / Settings) or draggable spacer */}
-      {shellSubPageTitle ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex h-10 items-center justify-center">
-          <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
-            {shellSubPageTitle}
-          </span>
+        {/* Center: page title (Home / Settings) or Space switch (workspace) */}
+        <div className="no-drag flex shrink-0 items-center justify-center px-2">
+          {isShellSubPage ? (
+            <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+              {shellSubPageTitle}
+            </span>
+          ) : (
+            <SpaceSwitchDropdown
+              contentSideOffset={6}
+              trigger={
+                <button
+                  id="active-space-title-btn"
+                  type="button"
+                  className={TOP_BAR_PILL_CLASS}
+                  aria-haspopup="menu"
+                  aria-label={activeSpaceTitle}
+                >
+                  <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                    {activeSpaceTitle}
+                  </span>
+                  <ChevronsUpDown
+                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                    aria-hidden
+                  />
+                </button>
+              }
+              spaces={activeSpaces}
+              activeSpaceId={activeSpaceId}
+              switchingSpaceId={switchingSpaceId}
+              canRenameActiveSpace={canRenameActiveSpace}
+              createSpaceMenu={{
+                onStartFromScratch: handleCreateBlankSpace,
+                onSelectFolder: handleCreateSpaceFromFolder,
+              }}
+              onRenameSpace={openRenameSpaceDialog}
+              onSpaceSelect={handleTopBarSpaceSelect}
+              contentAlign="center"
+            />
+          )}
         </div>
-      ) : null}
-      <div className="drag h-7 min-h-0 min-w-0 flex-1" aria-hidden />
 
-      {/* Trailing: update, support, settings, and user menu */}
-      <div
-        className={`${
-          platform === 'darwin' && 'px-1.5'
-        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
-      >
-        <div className="flex h-full shrink-0 items-center gap-0.5">
-          {/* Update slot: hidden → background download progress → launch new version */}
-          <UpdateButton />
-          <TooltipSimple
-            content={t('layout.support')}
-            side="bottom"
-            align="center"
-            variant="instant"
+        {/* Right */}
+        <div className="flex min-w-0 flex-1 items-center justify-end">
+          <div
+            className={`${
+              platform === 'darwin' && 'px-1.5'
+            } no-drag relative z-50 flex h-7 shrink-0 items-center`}
           >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'no-drag rounded-full',
-                TOP_BAR_CONTROL_STATE_CLASS
-              )}
-              aria-label={t('layout.support')}
-              onClick={() => setReportBugOpen(true)}
-              buttonContent="icon-only"
-            >
-              <CircleHelp aria-hidden />
-            </Button>
-          </TooltipSimple>
-          <TooltipSimple
-            content={t('setting.settings')}
-            side="bottom"
-            align="center"
-            variant="instant"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'no-drag rounded-full',
-                TOP_BAR_CONTROL_STATE_CLASS
-              )}
-              buttonContent="icon-only"
-              aria-label={t('setting.settings')}
-              onClick={() => openSettings('models')}
-            >
-              <Settings className="h-4 w-4" aria-hidden />
-            </Button>
-          </TooltipSimple>
+            <div className="flex h-full shrink-0 items-center gap-0.5">
+              {/* Update slot: hidden → background download progress → launch new version */}
+              <UpdateButton />
+              <TooltipSimple
+                content={t('layout.support')}
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS
+                  )}
+                  aria-label={t('layout.support')}
+                  onClick={() => setReportBugOpen(true)}
+                  buttonContent="icon-only"
+                >
+                  <CircleHelp aria-hidden />
+                </Button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={
+                  isSettingsPage ? leaveSettingsLabel : t('setting.settings')
+                }
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    isSettingsPage && TOP_BAR_CONTROL_SELECTED_CLASS
+                  )}
+                  buttonContent="icon-only"
+                  aria-label={
+                    isSettingsPage ? leaveSettingsLabel : t('setting.settings')
+                  }
+                  aria-pressed={isSettingsPage}
+                  onClick={toggleSettings}
+                >
+                  <Settings className="h-4 w-4" aria-hidden />
+                </Button>
+              </TooltipSimple>
 
-          <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
-            <UserMenu />
+              <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
+                <UserMenu />
+              </div>
+            </div>
           </div>
         </div>
       </div>

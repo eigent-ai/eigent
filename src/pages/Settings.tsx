@@ -19,7 +19,6 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
-import { useShellBackTarget } from '@/hooks/useShellBackTarget';
 import { useSettingsStore } from '@/store/settingsStore';
 
 /**
@@ -29,8 +28,6 @@ import { useSettingsStore } from '@/store/settingsStore';
 export default function SettingsPageRoute() {
   const activeSection = useSettingsStore((state) => state.activeSection);
   const setActiveSection = useSettingsStore((state) => state.setActiveSection);
-  // Same destination as the title-bar back button.
-  const { goBack } = useShellBackTarget();
 
   return (
     <AppShellLayout
@@ -41,10 +38,12 @@ export default function SettingsPageRoute() {
         />
       }
     >
-      <SettingsHeaderProvider activeSection={activeSection}>
-        <SettingsHeader activeSection={activeSection} onClose={goBack} />
-        <SettingsSectionContent activeSection={activeSection} />
-      </SettingsHeaderProvider>
+      <main className="flex h-full min-h-0 min-w-0 flex-col">
+        <SettingsHeaderProvider activeSection={activeSection}>
+          <SettingsHeader activeSection={activeSection} />
+          <SettingsSectionContent activeSection={activeSection} />
+        </SettingsHeaderProvider>
+      </main>
     </AppShellLayout>
   );
 }

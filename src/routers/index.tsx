@@ -19,6 +19,7 @@ import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
@@ -163,9 +164,13 @@ const AppRoutes = () => (
     ) : null}
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Workspace />} />
+        <Route
+          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+        >
+          <Route index element={null} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
         <Route path="/home" element={<Home />} />
-        <Route path="/settings" element={<Settings />} />
       </Route>
     </Route>
     <Route path="*" element={<NotFound />} />

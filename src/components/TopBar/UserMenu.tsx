@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import {
+  ArrowUpRight,
   Check,
   Gem,
   Gift,
@@ -120,35 +121,40 @@ export function UserMenu() {
   const profileInitial = (profileDisplayName || '?').charAt(0).toUpperCase();
 
   useEffect(() => {
-    if (IS_LOCAL_PROXY) return;
+    if (IS_LOCAL_PROXY || !open) return;
 
     let cancelled = false;
     const loadPlanAndCredits = async () => {
       setPlanLoading(true);
-      try {
-        const [subscriptionRes, creditsRes] = await Promise.all([
-          proxyFetchGet('/api/v1/subscription'),
-          proxyFetchGet('/api/v1/user/current_credits'),
-        ]);
-        if (cancelled) return;
-        setPlanName(formatPlanName(subscriptionRes?.plan_key));
-        setCredits(Number(creditsRes?.credits) || 0);
-      } catch (error) {
-        console.error('Failed to load subscription:', error);
-        if (!cancelled) {
-          setPlanName('Free');
-          setCredits(0);
-        }
-      } finally {
-        if (!cancelled) setPlanLoading(false);
+      const [subscriptionResult, creditsResult] = await Promise.allSettled([
+        proxyFetchGet('/api/v1/subscription'),
+        proxyFetchGet('/api/v1/user/current_credits'),
+      ]);
+      if (cancelled) return;
+
+      if (subscriptionResult.status === 'fulfilled') {
+        setPlanName(formatPlanName(subscriptionResult.value?.plan_key));
+      } else {
+        console.error(
+          'Failed to load subscription:',
+          subscriptionResult.reason
+        );
       }
+
+      if (creditsResult.status === 'fulfilled') {
+        setCredits(Number(creditsResult.value?.credits) || 0);
+      } else {
+        console.error('Failed to load credits:', creditsResult.reason);
+      }
+
+      setPlanLoading(false);
     };
 
     void loadPlanAndCredits();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [open]);
 
   const colorModeOptions = useMemo(
     () =>
@@ -197,11 +203,11 @@ export function UserMenu() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            buttonContent="text"
+            buttonContent="icon-only"
             size="sm"
             buttonRadius="full"
             className={cn(
-              'no-drag max-w-[180px] gap-1.5 px-1.5',
+              'no-drag',
               TOP_BAR_CONTROL_STATE_CLASS,
               open && TOP_BAR_CONTROL_SELECTED_CLASS
             )}
@@ -213,9 +219,6 @@ export function UserMenu() {
               aria-hidden
             >
               {profileInitial}
-            </span>
-            <span className="min-w-0 truncate text-label-sm font-medium">
-              {profileDisplayName || t('setting.profile')}
             </span>
           </Button>
         </DropdownMenuTrigger>
@@ -249,9 +252,11 @@ export function UserMenu() {
                 <Gem className="h-4 w-4" aria-hidden />
               )}
               {planLoading ? (
-                t('setting.loading', { defaultValue: 'Loading' })
+                <span className="min-w-0 flex-1 truncate">
+                  {t('setting.loading', { defaultValue: 'Loading' })}
+                </span>
               ) : (
-                <span className="min-w-0 truncate">
+                <span className="min-w-0 flex-1 truncate">
                   <span className="font-bold">{planName}</span>
                   <span className="font-normal">
                     {' · '}
@@ -259,6 +264,10 @@ export function UserMenu() {
                   </span>
                 </span>
               )}
+              <ArrowUpRight
+                className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                aria-hidden
+              />
             </DropdownMenuItem>
           ) : null}
 

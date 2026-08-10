@@ -64,6 +64,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -113,7 +114,7 @@ const HIDDEN_BUILT_INS = new Set([
   'Github',
 ]);
 
-/** Shared surface for recommended cards and "Your connectors" rows. */
+/** Shared surface for recommended and installed connector cards. */
 const CONNECTOR_ITEM_SURFACE_CLASS =
   'rounded-2xl border border-solid border-transparent !bg-ds-bg-neutral-subtle-default transition-colors hover:border-ds-border-neutral-default-default hover:!bg-ds-bg-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus';
 
@@ -335,6 +336,7 @@ async function resolveOpenProviderByName(
 
 export default function ConnectorGateway() {
   const { t } = useTranslation();
+  const connectorCardListId = useId();
   const connectorHeaderTitle = t('layout.connectors');
   const { setHeaderOverride } = useSettingsHeader();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1256,15 +1258,14 @@ export default function ConnectorGateway() {
     );
   };
 
-  const renderConnectorTable = () => {
+  const renderConnectorCards = () => {
     if (pageLoading && connectorItems.length === 0) {
       return (
         <div className="flex w-full flex-col gap-2">
-          <div className="h-10 px-4" />
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-14 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default"
+              className="h-16 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default"
             />
           ))}
         </div>
@@ -1281,41 +1282,48 @@ export default function ConnectorGateway() {
 
     return (
       <div className="flex w-full flex-col gap-2">
-        <div className="flex w-full items-center px-4 py-2 text-body-sm font-medium text-ds-text-neutral-muted-default">
-          <span className="w-1/2 truncate">{t('connectors.title')}</span>
-          <span className="w-1/4 truncate">{t('connectors.type')}</span>
-          <span className="w-1/4 truncate">{t('connectors.status')}</span>
-        </div>
-        {visibleItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setSelectedId(item.id)}
-            className={`group flex h-14 w-full min-w-0 items-center px-4 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
-          >
-            <span className="flex w-1/2 min-w-0 items-center gap-3">
+        {visibleItems.map((item, index) => {
+          const cardId = `${connectorCardListId}-connector-${index}`;
+          const statusLabel = item.active
+            ? t('connectors.connected')
+            : t('connectors.not-connected');
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSelectedId(item.id)}
+              aria-labelledby={`${cardId}-name`}
+              aria-describedby={`${cardId}-source ${cardId}-status`}
+              className={`group flex min-h-16 w-full min-w-0 items-center gap-3 px-4 py-3 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
+            >
               {renderListIcon(item)}
-              <span className="truncate text-body-sm font-medium text-ds-text-neutral-default-default">
-                {item.name}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span
+                  id={`${cardId}-name`}
+                  className="truncate text-body-sm font-medium text-ds-text-neutral-default-default"
+                >
+                  {item.name}
+                </span>
+                <span
+                  id={`${cardId}-source`}
+                  className="truncate text-body-sm text-ds-text-neutral-muted-default"
+                >
+                  {sourceLabel(item, t)}
+                </span>
               </span>
-            </span>
-            <span className="w-1/4 truncate text-body-sm text-ds-text-neutral-muted-default">
-              {sourceLabel(item, t)}
-            </span>
-            <span className="w-1/4">
               <Badge
+                id={`${cardId}-status`}
                 size="sm"
                 variant="secondary"
                 tone={item.active ? 'success' : 'neutral'}
-                className="whitespace-nowrap"
+                className="shrink-0 whitespace-nowrap"
               >
-                {item.active
-                  ? t('connectors.connected')
-                  : t('connectors.not-connected')}
+                {statusLabel}
               </Badge>
-            </span>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -1418,9 +1426,9 @@ export default function ConnectorGateway() {
           className="min-h-0 flex-1"
           boxClassName="min-h-[54vh] flex-1 overflow-hidden p-0"
         >
-          <main className="flex min-h-0 w-full min-w-0 flex-1">
+          <div className="flex min-h-0 w-full min-w-0 flex-1">
             {renderDetailPanel(selected)}
-          </main>
+          </div>
         </SettingsSection>
       ) : (
         <>
@@ -1440,7 +1448,7 @@ export default function ConnectorGateway() {
             }
             boxClassName="p-3"
           >
-            {renderConnectorTable()}
+            {renderConnectorCards()}
           </SettingsSection>
         </>
       )}

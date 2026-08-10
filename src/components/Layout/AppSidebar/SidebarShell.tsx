@@ -36,7 +36,7 @@ export function SidebarShell({
     <aside
       aria-label={ariaLabel}
       className={cn(
-        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden',
+        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default p-1',
         className
       )}
     >

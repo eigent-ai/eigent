@@ -26,17 +26,25 @@ import {
 export function sidebarTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
-    'text-ds-text-neutral-muted-default',
     'hover:bg-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
-    active && 'bg-ds-bg-neutral-subtle-default'
+    active
+      ? [
+          'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default',
+          // Beat global `button .lucide` color so icon matches label emphasis.
+          '[&_.lucide]:!text-ds-icon-neutral-muted-default',
+        ]
+      : [
+          'text-ds-text-neutral-subtle-default',
+          '[&_.lucide]:!text-ds-icon-neutral-subtle-default',
+        ]
   );
 }
 
 export const SIDEBAR_TAB_LABEL_CLASS =
-  'min-w-0 flex-1 truncate text-ds-text-neutral-muted-default text-body-sm font-medium';
+  'min-w-0 flex-1 truncate !text-body-sm font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
-  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none text-ds-text-neutral-muted-default focus-visible:ring-ds-ring-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
+  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none focus-visible:ring-ds-ring-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
@@ -72,6 +80,8 @@ export interface NavTabProps {
   /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
   tooltipEnabledWhenCollapsed?: boolean;
   ariaLabel?: string;
+  /** Id of supporting text that describes this control. */
+  ariaDescribedBy?: string;
   ariaCurrentPage?: boolean;
   /** Merged onto the outer control (`button` when simple, shell `div` when split). */
   className?: string;
@@ -86,6 +96,7 @@ export interface NavTabProps {
 }
 
 function tabMainInner({
+  active,
   leading,
   label,
   trailing,
@@ -95,6 +106,7 @@ function tabMainInner({
   folded = false,
 }: Pick<
   NavTabProps,
+  | 'active'
   | 'leading'
   | 'label'
   | 'trailing'
@@ -117,7 +129,16 @@ function tabMainInner({
         aria-hidden={folded}
         style={{ pointerEvents: folded ? 'none' : undefined }}
       >
-        <span className={SIDEBAR_TAB_LABEL_CLASS}>{label}</span>
+        <span
+          className={cn(
+            SIDEBAR_TAB_LABEL_CLASS,
+            active
+              ? 'text-ds-text-neutral-muted-default'
+              : 'text-ds-text-neutral-subtle-default'
+          )}
+        >
+          {label}
+        </span>
         {trailing}
         {showNotificationDot && (
           <span
@@ -154,6 +175,7 @@ export function NavTab({
   tooltip,
   tooltipEnabledWhenCollapsed = false,
   ariaLabel,
+  ariaDescribedBy,
   ariaCurrentPage,
   className,
   mainButtonClassName,
@@ -165,6 +187,7 @@ export function NavTab({
   onFocus,
 }: NavTabProps) {
   const inner = tabMainInner({
+    active,
     leading,
     label,
     trailing,
@@ -209,6 +232,7 @@ export function NavTab({
             onPointerEnter={onPointerEnter}
             onFocus={onFocus}
             aria-label={ariaLabel}
+            aria-describedby={ariaDescribedBy}
             aria-current={ariaCurrentPage ? 'page' : undefined}
             aria-disabled={disabled || undefined}
           >
@@ -272,6 +296,7 @@ export function NavTab({
         onPointerEnter={onPointerEnter}
         onFocus={onFocus}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
         aria-current={ariaCurrentPage ? 'page' : undefined}
         aria-disabled={disabled || undefined}
       >

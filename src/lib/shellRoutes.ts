@@ -12,22 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import Projects from './Projects';
-import Spaces from './Spaces';
-import Tasks from './Tasks';
-import Triggers from './Triggers';
-import { useHomeSection } from './hooks/useHomeSection';
+import { matchPath } from 'react-router-dom';
 
-/** Table / grid / board body for the section selected in the sidebar rail. */
-export default function HomeSections() {
-  const { section } = useHomeSection();
-
-  return (
-    <div className="w-full min-w-0 flex-1 pb-12 pl-3 pr-2">
-      {section === 'spaces' && <Spaces />}
-      {section === 'projects' && <Projects />}
-      {section === 'tasks' && <Tasks />}
-      {section === 'triggers' && <Triggers />}
-    </div>
-  );
+/** Match Settings with the same case-insensitive, trailing-slash rules as Router. */
+export function isSettingsRoutePath(pathname: string): boolean {
+  return Boolean(matchPath({ path: '/settings', end: true }, pathname));
 }

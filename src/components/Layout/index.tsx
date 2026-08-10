@@ -18,6 +18,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { shellBackState } from '@/hooks/useShellBackTarget';
 import { useHost } from '@/host';
+import { isSettingsRoutePath } from '@/lib/shellRoutes';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -42,7 +43,7 @@ function SettingsRouteBridge() {
   useEffect(() => {
     if (!isOpen) return;
     closeSettings();
-    if (location.pathname === '/settings') return;
+    if (isSettingsRoutePath(location.pathname)) return;
     // Record where the user came from so the title-bar back button returns there.
     navigate('/settings', {
       state: shellBackState(`${location.pathname}${location.search}`),
@@ -70,7 +71,6 @@ const Layout = () => {
     latestLog,
     error,
     backendError,
-    isInstalling,
     isBackendReady,
     shouldShowInstallScreen,
     retryInstallation,
@@ -119,7 +119,7 @@ const Layout = () => {
   const shouldShowMainContent = !actualShouldShowInstallScreen;
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-muted-default">
+    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
       <div
         className={
           actualShouldShowInstallScreen

@@ -14,7 +14,7 @@
 
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
 
@@ -25,7 +25,7 @@ const SIDEBAR_CONTENT_GAP_PX = 2;
 
 /** Content pane surface — the rounded card every page renders its body into. */
 export const APP_SHELL_CONTENT_SURFACE_CLASS =
-  'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
+  'rounded-l-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
 /** Inner column inside the surface (header + body). */
 export const APP_SHELL_CONTENT_CLASS =
   'min-h-0 min-w-0 flex h-full w-full flex-col';
@@ -65,49 +65,68 @@ export default function AppShellLayout({
   className,
   contentClassName,
 }: AppShellLayoutProps) {
+  const sidebarRailRef = useRef<HTMLDivElement>(null);
+
+  // React 18 does not support the boolean `inert` JSX prop. Set the native
+  // attribute before paint so a folded rail and all of its descendants leave
+  // the focus order and accessibility tree while its width animates closed.
+  useLayoutEffect(() => {
+    const sidebarRail = sidebarRailRef.current;
+    if (!sidebarRail) return;
+
+    if (sidebarHidden) {
+      sidebarRail.setAttribute('inert', '');
+    } else {
+      sidebarRail.removeAttribute('inert');
+    }
+  }, [sidebarHidden]);
+
   return (
     <div
       className={cn(
-        'flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10',
+        'flex h-full min-h-0 flex-row overflow-hidden pt-10',
         className
       )}
     >
-      <motion.div
-        className="h-full min-h-0 shrink-0 overflow-hidden"
-        initial={false}
-        animate={{
-          width: sidebarHidden
-            ? 0
-            : APP_SHELL_SIDEBAR_WIDTH_PX + SIDEBAR_CONTENT_GAP_PX,
-        }}
-        transition={SIDEBAR_FOLD_SPRING}
-        aria-hidden={sidebarHidden}
-        style={{ pointerEvents: sidebarHidden ? 'none' : undefined }}
-      >
-        {/* Fixed inner width so rail content doesn't reflow mid-animation. */}
-        <div
-          className="h-full min-h-0 pr-px"
-          style={{ width: APP_SHELL_SIDEBAR_WIDTH_PX }}
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default">
+        <motion.div
+          ref={sidebarRailRef}
+          className="h-full min-h-0 shrink-0 overflow-hidden"
+          initial={false}
+          animate={{
+            width: sidebarHidden
+              ? 0
+              : APP_SHELL_SIDEBAR_WIDTH_PX + SIDEBAR_CONTENT_GAP_PX,
+          }}
+          transition={SIDEBAR_FOLD_SPRING}
+          aria-hidden={sidebarHidden}
+          style={{ pointerEvents: sidebarHidden ? 'none' : undefined }}
         >
-          {sidebar}
-        </div>
-      </motion.div>
-
-      <motion.div
-        layout
-        transition={{ layout: SIDEBAR_FOLD_SPRING }}
-        className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      >
-        {contentSurface ? (
+          {/* Fixed inner width so rail content doesn't reflow mid-animation. */}
           <div
-            className={cn(APP_SHELL_CONTENT_SURFACE_CLASS, contentClassName)}
+            className="h-full min-h-0"
+            style={{ width: APP_SHELL_SIDEBAR_WIDTH_PX }}
           >
-            {children}
+            {sidebar}
           </div>
-        ) : (
-          children
-        )}
-      </motion.div>
+        </motion.div>
+
+        <motion.div
+          layout
+          transition={{ layout: SIDEBAR_FOLD_SPRING }}
+          className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        >
+          {contentSurface ? (
+            <div
+              className={cn(APP_SHELL_CONTENT_SURFACE_CLASS, contentClassName)}
+            >
+              {children}
+            </div>
+          ) : (
+            children
+          )}
+        </motion.div>
+      </div>
       {overlay}
     </div>
   );

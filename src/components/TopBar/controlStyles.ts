@@ -34,8 +34,8 @@ export const TOP_BAR_CONTROL_SELECTED_CLASS =
   '!bg-ds-bg-neutral-subtle-default';
 
 /**
- * The labelled pill in the title bar's leading slot — Home, the Space
- * switcher, and the Home/Settings back button all render identically.
+ * The labelled pill in the title bar — Home, the centered Space switcher,
+ * and the Home/Settings back button all render identically.
  *
  * The type scale is forced (`!text-label-sm`): these are bare `<button>`
  * elements and Tailwind's preflight is disabled, so the browser's own control

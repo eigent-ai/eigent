@@ -58,6 +58,7 @@ describe('SettingsPage', () => {
     renderSettingsPage();
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const main = screen.getByRole('main');
     const sidebar = screen.getByRole('complementary', {
       name: 'layout.settings',
     });
@@ -75,6 +76,12 @@ describe('SettingsPage', () => {
     });
     const defaultTab = screen.getByRole('button', { name: 'setting.models' });
     const header = getSettingsHeader();
+    const heading = within(header).getByRole('heading', {
+      name: 'layout.workspace-profile',
+      level: 1,
+    });
+    expect(main).toContainElement(header);
+    expect(heading).toHaveFocus();
     expect(header).toHaveClass('h-[44px]');
     expect(within(header).getByText('layout.workspace-profile')).toHaveClass(
       'text-body-md',
@@ -139,6 +146,11 @@ describe('SettingsPage', () => {
       name: 'agents.your-skills',
     });
     const header = getSettingsHeader();
+    const heading = await within(header).findByRole('heading', {
+      name: 'agents.your-skills',
+      level: 1,
+    });
+    expect(heading).toHaveClass('sr-only');
     expect(header).toContainElement(exampleSkillsTab);
     expect(within(header).getByRole('tablist')).toHaveClass(
       'rounded-xl',

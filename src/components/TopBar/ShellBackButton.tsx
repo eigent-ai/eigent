@@ -23,8 +23,8 @@ export interface ShellBackButtonProps {
 
 /**
  * Title-bar leading control on full-page shell surfaces (Home, Settings):
- * returns to the page the user opened them from. Chrome matches the Home tab
- * it replaces, so the leading slot keeps the same shape across routes.
+ * returns to the page the user opened them from. Chrome matches the Home
+ * pill it replaces, so the leading slot keeps the same shape across routes.
  */
 export default function ShellBackButton({
   fallbackTo = '/',

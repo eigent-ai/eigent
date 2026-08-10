@@ -17,32 +17,32 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { ArrowLeft } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsHeader } from './SettingsHeaderContext';
 import { getSettingsNavigationItem } from './settingsNavigation';
 
 interface SettingsHeaderProps {
   activeSection: SettingsSectionId;
-  /** Leave settings and return to the workspace. */
-  onClose: () => void;
 }
 
 /**
  * Settings content-pane header. Same 44px row as the other pages; sections
  * still push their own title/back/actions through `SettingsHeaderContext`.
  */
-export default function SettingsHeader({
-  activeSection,
-  onClose,
-}: SettingsHeaderProps) {
+export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
   const { t } = useTranslation();
   const { headerOverride, setHeaderActionsElement } = useSettingsHeader();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const item = getSettingsNavigationItem(activeSection);
   const title =
     headerOverride?.title ??
     t(item.labelKey, { defaultValue: item.defaultLabel });
-  const closeLabel = t('layout.close', { defaultValue: 'Close settings' });
   const backLabel = t('layout.back', { defaultValue: 'Back' });
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   return (
     <ContentHeader>
@@ -60,14 +60,26 @@ export default function SettingsHeader({
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
             </Button>
-            <span className="max-w-52 shrink-0 truncate text-body-md font-bold text-ds-text-neutral-default-default">
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="max-w-52 shrink-0 truncate text-body-md font-bold text-ds-text-neutral-default-default outline-none"
+            >
               {title}
-            </span>
+            </h1>
           </>
-        ) : headerOverride?.hideTitle ? null : (
-          <span className="min-w-0 shrink-0 truncate px-1 text-body-md font-bold text-ds-text-neutral-default-default">
+        ) : (
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className={
+              headerOverride?.hideTitle
+                ? 'sr-only outline-none'
+                : 'min-w-0 shrink-0 truncate px-1 text-body-md font-bold text-ds-text-neutral-default-default outline-none'
+            }
+          >
             {title}
-          </span>
+          </h1>
         )}
 
         <div

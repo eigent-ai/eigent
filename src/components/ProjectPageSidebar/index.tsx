@@ -28,7 +28,6 @@ import {
 } from '@/components/Layout/AppSidebar';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
 import {
   isProjectAchieved,
@@ -68,7 +67,7 @@ import {
   Zap,
   ZapOff,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { ProjectNavList } from './ProjectNavList';
@@ -88,6 +87,7 @@ export default function ProjectPageSidebar({
   chatStore: _chatStore,
   className,
 }: ProjectPageSidebarProps) {
+  const contextTabDescriptionId = useId();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const requestWorkspaceChatFocus = usePageTabStore(
@@ -745,38 +745,29 @@ export default function ProjectPageSidebar({
                   </span>
                 }
                 label={t('layout.context-tab')}
+                tooltip={contextTabBinding?.tooltip}
                 trailing={
                   contextTabBinding ? (
-                    <div
-                      className={cn(
-                        'flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5',
-                        contextTabBinding.tooltip && 'pointer-events-auto'
-                      )}
-                      onClick={
-                        contextTabBinding.tooltip
-                          ? (e) => e.stopPropagation()
-                          : undefined
-                      }
-                    >
-                      {contextTabBinding.tooltip ? (
-                        <TooltipSimple
-                          content={contextTabBinding.tooltip}
-                          side="top"
-                          sideOffset={8}
-                        >
-                          <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-                            {contextTabBinding.label}
-                          </span>
-                        </TooltipSimple>
-                      ) : (
+                    <>
+                      <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5">
                         <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
                           {contextTabBinding.label}
                         </span>
-                      )}
-                    </div>
+                      </div>
+                      {contextTabBinding.tooltip ? (
+                        <span id={contextTabDescriptionId} className="sr-only">
+                          {contextTabBinding.tooltip}
+                        </span>
+                      ) : null}
+                    </>
                   ) : undefined
                 }
                 ariaLabel={t('layout.context-tab')}
+                ariaDescribedBy={
+                  contextTabBinding?.tooltip
+                    ? contextTabDescriptionId
+                    : undefined
+                }
                 ariaCurrentPage={activeWorkspaceTab === 'inbox'}
               />
               <NavTab

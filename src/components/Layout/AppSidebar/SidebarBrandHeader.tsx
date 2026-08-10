@@ -53,7 +53,14 @@ export function SidebarBrandHeader({ className }: SidebarBrandHeaderProps) {
             draggable={false}
           />
         </span>
-        <span className={cn(SIDEBAR_TAB_LABEL_CLASS, 'font-bold')}>Eigent</span>
+        <span
+          className={cn(
+            SIDEBAR_TAB_LABEL_CLASS,
+            'font-bold text-ds-text-neutral-muted-default'
+          )}
+        >
+          Eigent
+        </span>
       </div>
     </div>
   );
