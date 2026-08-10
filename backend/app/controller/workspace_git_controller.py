@@ -318,7 +318,13 @@ def _git_error(exc: Exception) -> HTTPException:
     if isinstance(exc, AdvancedGitCommandRejected):
         return HTTPException(
             status_code=422,
-            detail={"code": exc.code, "message": str(exc)},
+            detail={
+                "code": exc.code,
+                "reason_code": exc.reason_code,
+                "message": str(exc),
+                "remediation": exc.remediation,
+                "human_interaction_required": (exc.human_interaction_required),
+            },
         )
     if isinstance(exc, AdvancedGitOutcomeUnknown):
         return HTTPException(

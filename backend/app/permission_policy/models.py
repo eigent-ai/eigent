@@ -34,13 +34,16 @@ _REDACTED_ARGUMENT_KEYS = frozenset(
     }
 )
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
-    re.compile(r"(?<![.\w])sk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
     re.compile(r"(?<![.\w])sk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
+)
+_BEARER_CANDIDATE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{12,})")
+_DASHED_SK_CANDIDATE = re.compile(
+    r"(?<![.\w])sk-(live|test|ant)-([A-Za-z0-9_-]{20,})\b",
+    re.IGNORECASE,
 )
 _URL_USERINFO = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^\s/:@]+):([^\s/@]+)@"
@@ -81,7 +84,9 @@ _HEADER_ARGV_FLAGS_BY_EXECUTABLE = {
     "curl": frozenset({"-H", "--header"}),
     "wget": frozenset({"--header"}),
 }
-_ARGV_WRAPPERS = frozenset({"command", "env", "nohup", "sudo"})
+_ARGV_WRAPPERS = frozenset(
+    {"command", "doas", "env", "nice", "nohup", "sudo", "timeout", "xargs"}
+)
 _SHELL_EXECUTABLES = frozenset({"bash", "dash", "ksh", "sh", "zsh"})
 
 
@@ -107,10 +112,54 @@ def _is_redacted_argument_key(value: object) -> bool:
 
 def _redacted_string(value: str) -> str:
     redacted = _URL_USERINFO.sub(r"\1\2:[REDACTED]@", value)
-    redacted = _SECRET_HEADER.sub(r"\1\2\3[REDACTED]", redacted)
+    redacted = _SECRET_HEADER.sub(_redact_secret_header, redacted)
+    redacted = _BEARER_CANDIDATE.sub(_redact_bearer, redacted)
+    redacted = _DASHED_SK_CANDIDATE.sub(_redact_dashed_sk, redacted)
     for pattern in _SECRET_VALUE_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
+
+
+def _redact_bearer(match: re.Match[str]) -> str:
+    normalized = match.group(1).lower().replace("-", "_")
+    if any(
+        marker in normalized
+        for marker in ("example", "placeholder", "your_token", "token_here")
+    ):
+        return match.group(0)
+    return "Bearer [REDACTED]"
+
+
+def _redact_secret_header(match: re.Match[str]) -> str:
+    """Keep explicit documentation placeholders readable, redact real values."""
+
+    raw_value = match.group(4)
+    normalized = raw_value.lower().replace("-", "_")
+    if any(
+        marker in normalized
+        for marker in ("example", "placeholder", "your_token", "token_here")
+    ):
+        return match.group(0)
+    return f"{match.group(1)}{match.group(2)}{match.group(3) or ''}[REDACTED]"
+
+
+def _redact_dashed_sk(match: re.Match[str]) -> str:
+    """Redact credential-shaped sk-* values without matching CSS words."""
+
+    prefix = match.group(1).lower()
+    body = match.group(2)
+    if prefix in {"live", "test"}:
+        # A random token may contain only letters. Hyphenated prose/CSS needs
+        # stronger distribution evidence than a single trailing digit.
+        credential_shaped = (
+            "-" not in body or sum(c.isdigit() for c in body) >= 4
+        )
+    else:
+        # Anthropic keys include structured api03-* prefixes.
+        credential_shaped = any(c.isdigit() for c in body) and any(
+            c.isalpha() for c in body
+        )
+    return "[REDACTED]" if credential_shaped else match.group(0)
 
 
 def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
@@ -149,6 +198,62 @@ def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
                     option in {"-u", "--user", "-g", "--group", "-h", "--host"}
                     and "=" not in token
                 ):
+                    index += 1
+        elif executable == "doas":
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if option == "-u" and "=" not in token:
+                    index += 1
+        elif executable == "nice":
+            if index < len(value) and str(value[index]).lstrip("+-").isdigit():
+                index += 1
+            elif index < len(value) and value[index] in {"-n", "--adjustment"}:
+                index += 2
+        elif executable == "timeout":
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if (
+                    option in {"-k", "--kill-after", "-s", "--signal"}
+                    and "=" not in token
+                ):
+                    index += 1
+            if index < len(value):
+                index += 1  # duration precedes the wrapped command
+        elif executable == "xargs":
+            value_options = {
+                "-a",
+                "--arg-file",
+                "-E",
+                "--eof",
+                "-I",
+                "--replace",
+                "-L",
+                "--max-lines",
+                "-n",
+                "--max-args",
+                "-P",
+                "--max-procs",
+                "-s",
+                "--max-chars",
+            }
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if token == "--":
+                    index += 1
+                    break
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if option in value_options and "=" not in token:
                     index += 1
         else:
             while (
@@ -191,10 +296,7 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
     executable = ""
     if command_index is not None and isinstance(value[command_index], str):
         executable = (
-            value[command_index]
-            .replace("\\", "/")
-            .rsplit("/", 1)[-1]
-            .lower()
+            value[command_index].replace("\\", "/").rsplit("/", 1)[-1].lower()
         )
     executable_secret_flags = _SECRET_ARGV_FLAGS_BY_EXECUTABLE.get(
         executable,
@@ -217,7 +319,9 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 nested = shlex.split(canonical)
             except ValueError:
                 nested = canonical.split()
-            result.append(shlex.join(str(item) for item in _redacted_argv(nested)))
+            result.append(
+                shlex.join(str(item) for item in _redacted_argv(nested))
+            )
             continue
         if redact_next is not None:
             # A missing option value must not make the following option vanish

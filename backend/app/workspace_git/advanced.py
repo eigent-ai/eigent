@@ -209,6 +209,7 @@ _READ_EXECUTION_OPTIONS = (
     "--textconv",
 )
 _EXECUTABLE_OPERATION_OPTIONS = (
+    "--exe",
     "--exec",
     "--strategy",
     "--strategy-option",
@@ -338,6 +339,23 @@ class AdvancedGitError(RuntimeError):
 class AdvancedGitCommandRejected(AdvancedGitError):
     code = "advanced_git_command_rejected"
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "advanced_git_policy_rejected",
+        remediation: str = (
+            "Revise the argv to remove the rejected behavior, preview it "
+            "again, and request a HumanInteraction before dangerous or "
+            "destructive Git work."
+        ),
+        human_interaction_required: bool = False,
+    ) -> None:
+        self.reason_code = reason_code
+        self.remediation = remediation
+        self.human_interaction_required = human_interaction_required
+        super().__init__(message)
+
 
 class AdvancedGitApprovalRequired(AdvancedGitError):
     code = "advanced_git_approval_required"
@@ -415,12 +433,9 @@ class AdvancedGitCommandClassifier:
                 return self._classification("git.local_write", command)
             return self._classification("git.read", command)
         if command == "commit":
-            self._validate_exact_options(
-                argv,
-                command="commit",
-                flags=_COMMIT_FLAG_OPTIONS,
-                value_options=_COMMIT_VALUE_OPTIONS,
-            )
+            # Git's option surface evolves faster than Desktop. We do not use
+            # a per-subcommand allowlist; known program-execution/signing
+            # forms remain explicit denials and every mutation is reviewed.
             self._reject_signing(argv, tag_mode=False)
             if "--amend" in lowered:
                 return self._classification(
@@ -454,12 +469,10 @@ class AdvancedGitCommandClassifier:
                 )
             return self._classification("git.local_write", command)
         if command in _INTEGRATE_COMMANDS:
-            self._validate_mutating_options(argv, command)
             self._reject_signing(argv, tag_mode=False)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS)
             return self._classification("git.integrate", command)
         if command in _HISTORY_REWRITE_COMMANDS:
-            self._validate_mutating_options(argv, command)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS + ("-x",))
             return self._classification(
                 "git.history_rewrite",
@@ -471,12 +484,6 @@ class AdvancedGitCommandClassifier:
                 "git.destructive", command, always_confirm=True
             )
         if command in _REMOTE_READ_COMMANDS:
-            self._validate_exact_options(
-                argv,
-                command=command,
-                flags=_REMOTE_READ_FLAG_OPTIONS[command],
-                value_options=_REMOTE_READ_VALUE_OPTIONS[command],
-            )
             self._validate_remote_target(argv)
             return self._classification(
                 "git.remote_read", command, external=True
@@ -615,7 +622,7 @@ class AdvancedGitCommandClassifier:
                 raise AdvancedGitCommandRejected(
                     "Git remote helpers are disabled"
                 )
-            if lowered.startswith(("--upload-p", "--receive-p")):
+            if lowered.startswith(("--upload", "--receive-p")):
                 raise AdvancedGitCommandRejected(
                     "custom remote executables are disabled"
                 )
@@ -810,7 +817,7 @@ class AdvancedGitCommandClassifier:
             if (
                 value == "-S"
                 or value.startswith("-S")
-                or value.startswith("--gpg-s")
+                or value.startswith("--gpg")
                 or (
                     tag_mode
                     and value in {"-s", "-u", "--sign", "--local-user"}
@@ -844,7 +851,38 @@ class AdvancedGitService:
         argv: tuple[str, ...],
         operation_request_id: str,
     ) -> AdvancedGitPreview:
-        classification = self.classifier.classify(argv)
+        try:
+            classification = self.classifier.classify(argv)
+        except AdvancedGitCommandRejected as exc:
+            rejection_digest = canonical_digest(
+                {
+                    "space_id": space_id,
+                    "repository_id": repository_id,
+                    "argv": list(argv),
+                    "operation_request_id": operation_request_id,
+                }
+            )
+            self.journal.append_security_audit_event(
+                audit_event_id=(
+                    f"advanced-git-preview:{operation_request_id}:"
+                    f"{rejection_digest[:16]}"
+                ),
+                space_id=space_id,
+                event_type="git.advanced.rejected",
+                actor_type="model",
+                actor_id="workspace-git-toolkit",
+                action_digest=rejection_digest,
+                details={
+                    "reason_code": exc.reason_code,
+                    "remediation": exc.remediation,
+                    "human_interaction_required": (
+                        exc.human_interaction_required
+                    ),
+                    "subcommand": argv[0] if argv else None,
+                    "argument_count": len(argv),
+                },
+            )
+            raise
         descriptor = self._descriptor(
             space_id=space_id,
             repository_id=repository_id,

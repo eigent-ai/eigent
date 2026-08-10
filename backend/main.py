@@ -173,6 +173,20 @@ async def startup_event():
     from app.memory import get_memory_service
 
     journal = get_default_run_journal()
+    from app.workspace_config.legacy_migration import (
+        migrate_legacy_workspace_bundle_on_startup,
+    )
+
+    legacy_bundle_migration = await asyncio.to_thread(
+        migrate_legacy_workspace_bundle_on_startup,
+        journal,
+    )
+    if legacy_bundle_migration.status == "degraded":
+        app_logger.warning(
+            "Legacy Workforce Bundle migration degraded without blocking "
+            "startup: %s",
+            legacy_bundle_migration.error,
+        )
     canonical_runs = await asyncio.to_thread(journal.list_all_runs)
     memory_states = {
         run.run_id: (

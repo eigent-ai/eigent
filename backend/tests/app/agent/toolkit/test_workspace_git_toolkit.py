@@ -4,13 +4,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from app.agent.toolkit import workspace_git_toolkit as toolkit_module
 from app.agent.toolkit.workspace_git_toolkit import WorkspaceGitToolkit
 from app.run_journal import SQLiteRunJournal
 from app.workspace_git import (
-    AdvancedGitCommandRejected,
     AdvancedGitService,
     ContentRepositoryService,
     GitBackend,
@@ -73,8 +70,15 @@ def test_workspace_git_toolkit_exposes_structured_scoped_capability(
         assert status["available"] is True
         assert preview["classification"] == "git.read"
         assert preview["requires_user_confirmation"] is False
-        with pytest.raises(AdvancedGitCommandRejected):
+        rejection = json.loads(
             toolkit.advanced_git_preview(
                 ["push", "--force", "origin", "HEAD"],
                 "force-1",
             )
+        )
+        assert rejection["accepted"] is False
+        assert rejection["rejection"]["code"] == (
+            "advanced_git_policy_rejected"
+        )
+        assert "preview" in rejection["rejection"]["remediation"].lower()
+        assert "HumanInteraction" in capabilities["model_guidance"]
