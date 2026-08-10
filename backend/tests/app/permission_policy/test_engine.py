@@ -798,3 +798,139 @@ def test_non_finite_model_argument_is_bound_without_crashing():
     assert action.canonical_payload()["normalized_arguments"]["score"] == {
         "__eigent_non_finite_float__": "nan"
     }
+
+
+def test_non_bearer_auth_headers_are_redacted_without_hiding_documentation_heading():
+    content = (
+        "Authorization: Basic dXNlcjpwYXNz\n"
+        "Authorization: Token short-token\n"
+        "Authorization: Digest username=alice,response=secret\n"
+        "x-api-key: six66\n"
+        "## Authorization: who may approve\n"
+    )
+
+    display = _action(arguments={"content": content}).persistence_payload()[
+        "normalized_arguments"
+    ]["content"]
+
+    assert "dXNlcjpwYXNz" not in display
+    assert "short-token" not in display
+    assert "response=secret" not in display
+    assert "six66" not in display
+    assert "## Authorization: who may approve" in display
+    assert display.count("[REDACTED]") == 4
+
+
+@pytest.mark.parametrize(
+    ("argv", "secret"),
+    [
+        (["stdbuf", "-oL", "curl", "-u", "alice:pw"], "pw"),
+        (["time", "-f", "%E", "curl", "-u", "alice:pw"], "pw"),
+        (["setsid", "curl", "-u", "alice:pw"], "pw"),
+        (["su", "-c", "curl -u alice:pw", "root"], "pw"),
+        (["runuser", "-u", "root", "--", "curl", "-u", "alice:pw"], "pw"),
+        (["flock", "/tmp/eigent.lock", "curl", "-u", "alice:pw"], "pw"),
+        (["sudo", "-U", "root", "curl", "-u", "alice:pw"], "pw"),
+    ],
+)
+def test_additional_command_wrappers_cannot_hide_argv_credentials(argv, secret):
+    display = _action(arguments={"argv": argv}).persistence_payload()[
+        "normalized_arguments"
+    ]["argv"]
+
+    assert secret not in str(display)
+    assert "[REDACTED]" in str(display)
+
+
+def test_shell_segments_only_mark_real_eigent_control_plane_targets(tmp_path):
+    benign = (
+        "git commit -m 'update policy for sqlite migration'",
+        "cat POLICY.md && sqlite3 analytics.db",
+        "npm run journal:build && sqlite3 --version",
+    )
+    for index, command in enumerate(benign):
+        descriptor = build_tool_action_descriptor(
+            action_id=f"benign-control-plane-{index}",
+            tool_name="shell_exec",
+            toolkit_name="Terminal Toolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"command": command},
+            run_id="run-1",
+            attempt_id="attempt-1",
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+            workspace_root=tmp_path,
+        )
+        assert "policy_control_plane" not in descriptor.risk_tags
+
+    attack = build_tool_action_descriptor(
+        action_id="split-quote-control-plane",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "command": "sqlite3 ~/.eigent/run-journal.sqlite'3' 'UPDATE approvals'"
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    assert "policy_control_plane" in attack.risk_tags
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "printf x > .envrc",
+        "printf x > package.json",
+        "printf x > pyproject.toml",
+        "make test",
+        "pytest -q",
+    ),
+)
+def test_terminal_writes_and_executes_auto_loaded_workspace_files(tmp_path, command):
+    descriptor = build_tool_action_descriptor(
+        action_id="terminal-auto-loaded-script",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"command": command},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "untrusted_script" in descriptor.risk_tags
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "grep -r policy . | sqlite3 out.db",
+        "python -m pytest tests/test_policy_sqlite_helpers.py",
+        "ls ~/Documents/policy-sqlite-guide",
+        "sqlite3 build/run_journal_fixtures.sqlite3",
+        "sqlite3 reports/run-journal-export.sqlite3",
+    ),
+)
+def test_non_eigent_policy_and_journal_words_never_hit_control_plane_deny(
+    tmp_path, command
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="non-eigent-policy-doc",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"command": command},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" not in descriptor.risk_tags

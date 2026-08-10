@@ -7605,6 +7605,12 @@ class SQLiteRunJournal:
                     raise RunNotFoundError(
                         f"approval_id {outcome.approval_id!r} does not exist"
                     )
+                approval_run_id = approval["run_id"]
+                if approval_run_id != outcome.run_id:
+                    raise InvalidRunTransitionError(
+                        f"approval {outcome.approval_id!r} belongs to run "
+                        f"{approval_run_id!r}, not {outcome.run_id!r}"
+                    )
                 if approval["status"] != "pending":
                     raise InvalidRunTransitionError(
                         f"approval {outcome.approval_id!r} is already resolved"

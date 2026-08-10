@@ -49,9 +49,11 @@ _URL_USERINFO = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^\s/:@]+):([^\s/@]+)@"
 )
 _SECRET_HEADER = re.compile(
-    r"(?i)\b(authorization|proxy-authorization|x-api-key|api-key|"
-    r"x-auth-token|x-access-token)(\s*:\s*)(bearer\s+)?"
-    r"([A-Za-z0-9._~+/=-]{8,})"
+    r"(?im)(^|[\r\n])([ \t]*)"
+    r"(authorization|proxy-authorization|x-api-key|api-key|"
+    r"x-auth-token|x-access-token)([ \t]*:[ \t]*)"
+    r"(?:(bearer|basic|token|digest)[ \t]+)?"
+    r"([^\s\r\n]{3,})"
 )
 _SECRET_ARGV_FLAGS = frozenset(
     {
@@ -85,7 +87,22 @@ _HEADER_ARGV_FLAGS_BY_EXECUTABLE = {
     "wget": frozenset({"--header"}),
 }
 _ARGV_WRAPPERS = frozenset(
-    {"command", "doas", "env", "nice", "nohup", "sudo", "timeout", "xargs"}
+    {
+        "command",
+        "doas",
+        "env",
+        "flock",
+        "nice",
+        "nohup",
+        "runuser",
+        "setsid",
+        "stdbuf",
+        "su",
+        "sudo",
+        "time",
+        "timeout",
+        "xargs",
+    }
 )
 _SHELL_EXECUTABLES = frozenset({"bash", "dash", "ksh", "sh", "zsh"})
 
@@ -133,14 +150,27 @@ def _redact_bearer(match: re.Match[str]) -> str:
 def _redact_secret_header(match: re.Match[str]) -> str:
     """Keep explicit documentation placeholders readable, redact real values."""
 
-    raw_value = match.group(4)
+    header_name = match.group(3)
+    scheme = match.group(5)
+    raw_value = match.group(6).strip()
+    # Authorization prose is not a credential unless it uses a credential
+    # scheme. Key-specific headers have no scheme and remain protected.
+    if (
+        header_name.lower() in {"authorization", "proxy-authorization"}
+        and not scheme
+    ):
+        return match.group(0)
     normalized = raw_value.lower().replace("-", "_")
     if any(
         marker in normalized
         for marker in ("example", "placeholder", "your_token", "token_here")
     ):
         return match.group(0)
-    return f"{match.group(1)}{match.group(2)}{match.group(3) or ''}[REDACTED]"
+    scheme_prefix = f"{scheme} " if scheme else ""
+    return (
+        f"{match.group(1)}{match.group(2)}{header_name}{match.group(4)}"
+        f"{scheme_prefix}[REDACTED]"
+    )
 
 
 def _redact_dashed_sk(match: re.Match[str]) -> str:
@@ -172,7 +202,9 @@ def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
         if executable not in _ARGV_WRAPPERS:
             return index
         index += 1
+        value_options: set[str] = set()
         if executable == "env":
+            value_options = {"-u", "--unset", "-C", "--chdir"}
             while index < len(value) and isinstance(value[index], str):
                 token = value[index]
                 if "=" in token and not token.startswith("-"):
@@ -182,31 +214,46 @@ def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
                     break
                 option = token.split("=", 1)[0]
                 index += 1
-                if (
-                    option in {"-u", "--unset", "-C", "--chdir"}
-                    and "=" not in token
-                ):
+                if option in value_options and "=" not in token:
                     index += 1
-        elif executable == "sudo":
+        elif executable in {"sudo", "runuser"}:
+            value_options = {
+                "-u",
+                "--user",
+                "-U",
+                "--other-user",
+                "-g",
+                "--group",
+                "-h",
+                "--host",
+                "-C",
+                "--close-from",
+                "-T",
+                "--command-timeout",
+            }
             while index < len(value) and isinstance(value[index], str):
                 token = value[index]
+                if token == "--":
+                    index += 1
+                    break
                 if not token.startswith("-"):
                     break
                 option = token.split("=", 1)[0]
                 index += 1
-                if (
-                    option in {"-u", "--user", "-g", "--group", "-h", "--host"}
-                    and "=" not in token
-                ):
+                if option in value_options and "=" not in token:
                     index += 1
-        elif executable == "doas":
+        elif executable in {"doas", "su"}:
+            value_options = {"-u", "-c", "--command", "-s", "--shell"}
             while index < len(value) and isinstance(value[index], str):
                 token = value[index]
+                if token == "--":
+                    index += 1
+                    break
                 if not token.startswith("-"):
                     break
                 option = token.split("=", 1)[0]
                 index += 1
-                if option == "-u" and "=" not in token:
+                if option in value_options and "=" not in token:
                     index += 1
         elif executable == "nice":
             if index < len(value) and str(value[index]).lstrip("+-").isdigit():
@@ -214,19 +261,65 @@ def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
             elif index < len(value) and value[index] in {"-n", "--adjustment"}:
                 index += 2
         elif executable == "timeout":
+            value_options = {"-k", "--kill-after", "-s", "--signal"}
             while index < len(value) and isinstance(value[index], str):
                 token = value[index]
                 if not token.startswith("-"):
                     break
                 option = token.split("=", 1)[0]
                 index += 1
-                if (
-                    option in {"-k", "--kill-after", "-s", "--signal"}
-                    and "=" not in token
-                ):
+                if option in value_options and "=" not in token:
                     index += 1
             if index < len(value):
-                index += 1  # duration precedes the wrapped command
+                index += 1
+        elif executable == "stdbuf":
+            value_options = {"-i", "--input", "-o", "--output", "-e", "--error"}
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if not token.startswith("-"):
+                    break
+                option = (
+                    token[:2]
+                    if token[:2] in {"-i", "-o", "-e"}
+                    else token.split("=", 1)[0]
+                )
+                index += 1
+                if option in value_options and len(token) == len(option):
+                    index += 1
+        elif executable == "time":
+            value_options = {"-f", "--format", "-o", "--output"}
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if token == "--":
+                    index += 1
+                    break
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if option in value_options and "=" not in token:
+                    index += 1
+        elif executable == "flock":
+            value_options = {
+                "-E",
+                "--conflict-exit-code",
+                "-w",
+                "--wait",
+                "--timeout",
+            }
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if token == "--":
+                    index += 1
+                    break
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if option in value_options and "=" not in token:
+                    index += 1
+            if index < len(value):
+                index += 1
         elif executable == "xargs":
             value_options = {
                 "-a",
@@ -269,6 +362,20 @@ def _shell_payload_index(
     value: list[Any] | tuple[Any, ...],
     command_index: int | None,
 ) -> int | None:
+    # su/runuser carry a shell program in an option even when the positional
+    # account name means there is no conventional executable index.
+    for index, item in enumerate(value[:-1]):
+        if not isinstance(item, str):
+            continue
+        executable = item.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if executable not in {"su", "runuser"}:
+            continue
+        for option_index in range(index + 1, len(value) - 1):
+            option = value[option_index]
+            if option in {"-c", "--command"} and isinstance(
+                value[option_index + 1], str
+            ):
+                return option_index + 1
     if command_index is None or not isinstance(value[command_index], str):
         return None
     executable = (

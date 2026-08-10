@@ -270,7 +270,9 @@ def _nested_command_sequences(
     sequences = [words]
     index = 0
     while index < len(words):
-        executable = words[index].replace("\\", "/").rsplit("/", 1)[-1].lower()
+        executable = (
+            words[index].replace(chr(92), "/").rsplit("/", 1)[-1].lower()
+        )
         if executable not in _COMMAND_WRAPPERS:
             break
         index += 1
@@ -295,7 +297,8 @@ def _nested_command_sequences(
                 option = token.split("=", 1)[0]
                 index += 1
                 if (
-                    option in {"-u", "--user", "-g", "--group", "-h", "--host"}
+                    option
+                    in {"-u", "--user", "-g", "--group", "-h", "--host"}
                     and "=" not in token
                 ):
                     index += 1
@@ -304,7 +307,9 @@ def _nested_command_sequences(
                 index += 1
     if index >= len(words):
         return tuple(sequences)
-    executable = words[index].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    executable = (
+        words[index].replace(chr(92), "/").rsplit("/", 1)[-1].lower()
+    )
     if executable in _SHELL_EXECUTABLES:
         for option_index in range(index + 1, len(words) - 1):
             option = words[option_index]
@@ -319,33 +324,87 @@ def _nested_command_sequences(
     return tuple(sequences)
 
 
-def _is_control_plane_word(word: str) -> bool:
-    if any(character.isspace() for character in word):
-        return False
-    compact = re.sub(r"[^a-z0-9_]+", "", word.lower())
-    return bool(
-        re.search(r"run.*journal.*sqlite", compact)
-        or re.search(r"policy.*sqlite", compact)
-        or re.search(r"eigent.*local.*control.*capability", compact)
-    )
+_SHELL_OPERATOR_TOKEN = re.compile(r"(&&|[|][|]|[;|&])")
+
+
+def _shell_segments(words: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for word in words:
+        pieces = _SHELL_OPERATOR_TOKEN.split(word)
+        for piece in pieces:
+            if not piece:
+                continue
+            if _SHELL_OPERATOR_TOKEN.fullmatch(piece):
+                if current:
+                    segments.append(tuple(current))
+                    current = []
+                continue
+            current.append(piece)
+    if current:
+        segments.append(tuple(current))
+    return tuple(segments)
+
+
+def _expanded_shell_words(words: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    assignments: dict[str, str] = {}
+    expanded_segments: list[tuple[str, ...]] = []
+    for segment in _shell_segments(words):
+        expanded: list[str] = []
+        for word in segment:
+            name, separator, value = word.partition("=")
+            if separator and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                assignments[name] = value
+            resolved = word
+            for variable, replacement in assignments.items():
+                resolved = resolved.replace(f"${{{variable}}}", replacement)
+                resolved = resolved.replace(f"${variable}", replacement)
+            expanded.append(resolved)
+        expanded_segments.append(tuple(expanded))
+    return tuple(expanded_segments)
 
 
 def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
-    if any(_is_control_plane_word(word) for word in words):
+    for segment in _expanded_shell_words(words):
+        raw = " ".join(segment).lower()
+        compact = re.sub(r"[^a-z0-9_]+", "", raw)
+        if "eigentlocalcontrolcapability" in compact:
+            return True
+        if ".eigent" not in raw.replace(chr(92), "/"):
+            continue
+        if re.search(r"run.*journal.*sqlite", compact) or re.search(
+            r"policy.*sqlite", compact
+        ):
+            return True
+    return False
+
+
+def _auto_executed_path(value: str) -> bool:
+    normalized = value.strip("\"\x27").replace(chr(92), "/").lower()
+    if normalized.rsplit("/", 1)[-1] in _AUTO_EXECUTED_WORKSPACE_FILENAMES:
         return True
-    normalized = [
-        re.sub(r"[^a-z0-9_]+", "", word.lower()) for word in words
-    ]
-    invokes_sqlite = any(
-        token == "sqlite3" or token.endswith("sqlite3")
-        for token in normalized
-    )
-    combined = "".join(normalized)
-    return invokes_sqlite and (
-        "runjournal" in combined
-        or "policysqlite" in combined
-        or "eigentlocalcontrolcapability" in combined
-    )
+    return any(marker in normalized for marker in _AUTO_EXECUTED_WORKSPACE_PATHS)
+
+
+def _terminal_executes_untrusted_workspace_code(words: tuple[str, ...]) -> bool:
+    for segment in _shell_segments(words):
+        if not segment:
+            continue
+        executable = (
+            segment[0].replace(chr(92), "/").rsplit("/", 1)[-1].lower()
+        )
+        if executable in {"make", "gmake", "pytest", "tox", "nox"}:
+            return True
+        if executable in {"python", "python3"} and len(segment) >= 3:
+            if segment[1:3] == ("-m", "pytest"):
+                return True
+        for index, token in enumerate(segment):
+            if token in {">", ">>", "1>", "1>>"} and index + 1 < len(segment):
+                if _auto_executed_path(segment[index + 1]):
+                    return True
+            if token.startswith(">") and _auto_executed_path(token.lstrip(">")):
+                return True
+    return False
 
 
 def _risk_tags(
@@ -425,8 +484,8 @@ def _risk_tags(
         ):
             tags.add("untrusted_hook")
         if any(
-            marker in command_text
-            for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
+            _terminal_executes_untrusted_workspace_code(words)
+            for words in command_sequences
         ):
             tags.add("untrusted_script")
         if any(

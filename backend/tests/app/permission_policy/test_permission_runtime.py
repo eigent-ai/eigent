@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from app.permission_policy import (
     ToolPermissionRejectedError,
     authorize_tool_checkpoint,
 )
+from app.permission_policy.service import PermissionPolicyService
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import SQLiteRunJournal
 from app.run_runtime.tool_checkpoint import (
@@ -235,3 +237,55 @@ async def test_direct_sqlite_approval_edit_has_no_live_dispatch_authority(
 
             with pytest.raises(ToolPermissionRejectedError):
                 await waiter
+
+
+@pytest.mark.asyncio
+async def test_missing_approval_expiry_fails_closed_and_cleans_listener(
+    tmp_path, monkeypatch
+):
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    original = PermissionPolicyService.evaluate_and_request_approval
+
+    def without_expiry(self, *args, **kwargs):
+        result = original(self, *args, **kwargs)
+        assert result.approval is not None
+        return replace(
+            result,
+            approval=replace(result.approval, expires_at=None),
+        )
+
+    monkeypatch.setattr(
+        PermissionPolicyService,
+        "evaluate_and_request_approval",
+        without_expiry,
+    )
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-no-expiry",
+                tool_name="write_file",
+                arguments={"path": "report.md"},
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            with pytest.raises(
+                ToolPermissionRejectedError, match="no persisted expiry"
+            ):
+                await authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments={"path": "report.md"},
+                    toolkit_name="File Toolkit",
+                    agent_name="worker",
+                    task_lock=task_lock,
+                    journal=journal,
+                )
+
+    assert task_lock.human_input_waiters["worker"] == []

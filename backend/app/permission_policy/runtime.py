@@ -131,57 +131,65 @@ async def authorize_tool_checkpoint(
         human_input_task.cancel()
         raise
     approval_expires_at = result.approval.expires_at
-    assert approval_expires_at is not None
     try:
-        reply = await asyncio.wait_for(
-            human_input_task,
-            timeout=max(0.0, approval_expires_at - time.time()),
-        )
-    except TimeoutError:
-        run = store.get_run(checkpoint.run_id)
-        try:
-            store.record_timeout_outcome(
-                TimeoutOutcome(
-                    scope=TimeoutScope.APPROVAL_EXPIRY,
-                    policy_version=(
-                        run.timeout_policy_version if run is not None else "v1"
-                    ),
-                    reason="tool_approval_expired",
-                    started_at=result.approval.created_at,
-                    ended_at=approval_expires_at,
-                    run_id=checkpoint.run_id,
-                    attempt_id=checkpoint.attempt_id,
-                    approval_id=result.approval.approval_id,
-                )
+        if approval_expires_at is None:
+            raise ToolPermissionRejectedError(
+                "approval has no persisted expiry; refusing tool dispatch"
             )
-        except InvalidRunTransitionError:
-            # A concurrent decision won the durable CAS. The dispatch check
-            # below still requires a live-process approval attestation.
-            pass
-        reply = None
-    if reply == TASK_LOCK_CLEANUP_SENTINEL:
-        raise ToolPermissionRejectedError(
-            "approval wait was interrupted before tool dispatch"
+        try:
+            reply = await asyncio.wait_for(
+                human_input_task,
+                timeout=max(0.0, approval_expires_at - time.time()),
+            )
+        except TimeoutError:
+            run = store.get_run(checkpoint.run_id)
+            try:
+                store.record_timeout_outcome(
+                    TimeoutOutcome(
+                        scope=TimeoutScope.APPROVAL_EXPIRY,
+                        policy_version=(
+                            run.timeout_policy_version if run is not None else "v1"
+                        ),
+                        reason="tool_approval_expired",
+                        started_at=result.approval.created_at,
+                        ended_at=approval_expires_at,
+                        run_id=checkpoint.run_id,
+                        attempt_id=checkpoint.attempt_id,
+                        approval_id=result.approval.approval_id,
+                    )
+                )
+            except InvalidRunTransitionError:
+                # A concurrent decision won the durable CAS. The dispatch check
+                # below still requires a live-process approval attestation.
+                pass
+            reply = None
+        if reply == TASK_LOCK_CLEANUP_SENTINEL:
+            raise ToolPermissionRejectedError(
+                "approval wait was interrupted before tool dispatch"
+            )
+        approval = next(
+            (
+                item
+                for item in store.list_approvals(checkpoint.run_id)
+                if item.approval_id == result.approval.approval_id
+            ),
+            None,
         )
-    approval = next(
-        (
-            item
-            for item in store.list_approvals(checkpoint.run_id)
-            if item.approval_id == result.approval.approval_id
-        ),
-        None,
-    )
-    if (
-        approval is None
-        or approval.action_digest != descriptor.action_digest
-        or approval.status != "approved"
-        or not store.approval_decision_is_trusted(
-            approval.approval_id,
-            version=approval.version,
-            action_digest=descriptor.action_digest,
-        )
-    ):
-        raise ToolPermissionRejectedError(
-            "tool action was not approved for the current action digest"
-        )
-    return result.decision
+        if (
+            approval is None
+            or approval.action_digest != descriptor.action_digest
+            or approval.status != "approved"
+            or not store.approval_decision_is_trusted(
+                approval.approval_id,
+                version=approval.version,
+                action_digest=descriptor.action_digest,
+            )
+        ):
+            raise ToolPermissionRejectedError(
+                "tool action was not approved for the current action digest"
+            )
+        return result.decision
+    finally:
+        if not human_input_task.done():
+            human_input_task.cancel()
+            await asyncio.gather(human_input_task, return_exceptions=True)

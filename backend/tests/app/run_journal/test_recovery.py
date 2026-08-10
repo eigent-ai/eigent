@@ -734,3 +734,43 @@ def test_unsafe_write_cannot_enter_replayable_timed_out_state(tmp_path):
             InvalidRunTransitionError, match="unsafe write.*outcome_unknown"
         ):
             journal.checkpoint_tool_call(status="timed_out", now=4, **values)
+
+
+def test_approval_timeout_cannot_mutate_approval_owned_by_another_run(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.ensure_run(run_id="run-2", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-owned-by-run-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Continue?"},
+            expires_at=3,
+            expiry_action="reject",
+            now=2,
+        )
+
+        with pytest.raises(
+            InvalidRunTransitionError, match="belongs to run 'run-1'"
+        ):
+            journal.record_timeout_outcome(
+                TimeoutOutcome(
+                    scope=TimeoutScope.APPROVAL_EXPIRY,
+                    policy_version="v1",
+                    reason="cross_run_timer",
+                    started_at=2,
+                    ended_at=4,
+                    run_id="run-2",
+                    approval_id="approval-owned-by-run-1",
+                )
+            )
+
+        approval = journal.list_approvals("run-1")[0]
+        assert approval.status == "pending"
