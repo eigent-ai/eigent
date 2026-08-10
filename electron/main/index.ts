@@ -83,6 +83,12 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import {
+  closeWorkspaceSecretBroker,
+  ensureWorkspaceSecretBroker,
+  getDefaultWorkspaceSecretVault,
+  registerWorkspaceSecretIpcHandlers,
+} from './workspaceSecrets';
 
 const userData = app.getPath('userData');
 
@@ -860,6 +866,11 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
   registerTerminalIpcHandlers();
+  registerWorkspaceSecretIpcHandlers(
+    ipcMain,
+    getDefaultWorkspaceSecretVault(),
+    assertMainRendererSender
+  );
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -3377,6 +3388,7 @@ const checkAndStartBackend = async (
       if (isToolInstalled.success) {
         log.info('Tool installed, starting backend service...');
         const codexResolverEnv = await getCodexResolverEnv();
+        const workspaceSecretBroker = await ensureWorkspaceSecretBroker();
         const exampleSkillsDir = getExampleSkillsSourceDir();
 
         // Start backend and wait for health check to pass
@@ -3390,6 +3402,10 @@ const checkAndStartBackend = async (
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
             EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
             EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
+            EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
+              workspaceSecretBroker.endpoint,
+            EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY:
+              workspaceSecretBroker.capability,
           }
         );
 
@@ -3735,6 +3751,7 @@ app.on('before-quit', async (event) => {
 
     // Wait for Python process cleanup
     await cleanupPythonProcess();
+    await closeWorkspaceSecretBroker();
 
     // Clean up file reader if exists
     if (fileReader) {

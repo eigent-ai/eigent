@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import require_local_control_principal
 from app.component.environment import env
+from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
@@ -19,14 +20,16 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
-from app.router_layer.hands_resolver import get_environment_hands
 from app.utils.workspace_resolver import get_workspace_resolver
 from app.workspace_bundle import (
     HttpWorkspaceBundleCloudTransport,
     WorkspaceBundleBindingsIncomplete,
     WorkspaceBundleCloudError,
-    WorkspaceBundleInstallError,
     WorkspaceBundleInstaller,
+    WorkspaceBundleInstallError,
+    WorkspaceSecretBroker,
+    WorkspaceSecretBrokerError,
+    WorkspaceSecretIdentity,
 )
 from app.workspace_config import ConfigPlacement
 from app.workspace_git import ConfigurationRepositoryService
@@ -78,6 +81,28 @@ class BundleMaterializeBody(BaseModel):
     allow_content_repository_init: bool = False
 
 
+class BundleLocalValueBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_key: str = Field(min_length=1, max_length=1024)
+    requirement_kind: Literal["environment", "mcp_secret"]
+    secret_ref: str = Field(pattern=r"^wsvault_[A-Za-z0-9_-]{32}$")
+    account_scope_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_binding_version: int | None = Field(default=None, ge=1)
+
+
+class BundleLocalValuesBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_request_id: str = Field(min_length=1, max_length=200)
+    expected_version: int = Field(ge=0)
+    actor_id: str = Field(min_length=1, max_length=200)
+    bindings: list[BundleLocalValueBinding] = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+
 def _configuration_repository() -> ConfigurationRepositoryService:
     journal = get_default_run_journal()
     return ConfigurationRepositoryService(
@@ -87,10 +112,15 @@ def _configuration_repository() -> ConfigurationRepositoryService:
 
 
 def _installer(cloud=None) -> WorkspaceBundleInstaller:
+    try:
+        secret_broker = WorkspaceSecretBroker.from_environment()
+    except WorkspaceSecretBrokerError:
+        secret_broker = None
     return WorkspaceBundleInstaller(
         get_default_run_journal(),
         _configuration_repository(),
         cloud,
+        secret_broker,
     )
 
 
@@ -103,9 +133,7 @@ def _cloud(authorization: str) -> HttpWorkspaceBundleCloudTransport:
     return HttpWorkspaceBundleCloudTransport(
         server_url=server_url,
         authorization=authorization,
-        desktop_instance_id=os.environ.get(
-            "EIGENT_DESKTOP_INSTANCE_ID", ""
-        ),
+        desktop_instance_id=os.environ.get("EIGENT_DESKTOP_INSTANCE_ID", ""),
     )
 
 
@@ -117,14 +145,89 @@ def _payload(proposal_id: str) -> dict:
             status_code=404,
             detail={"code": "bundle_install_proposal_not_found"},
         )
+    local_bindings = journal.list_workspace_bundle_local_bindings(proposal_id)
+    secret_bindings = journal.list_workspace_bundle_secret_bindings(
+        proposal_id
+    )
+    configured_values = {item.requirement_key for item in secret_bindings}
+    available_values: set[str] = set()
+    try:
+        broker = WorkspaceSecretBroker.from_environment()
+    except WorkspaceSecretBrokerError:
+        broker = None
+    if broker is not None and secret_bindings:
+        identities = tuple(
+            WorkspaceSecretIdentity(
+                secret_ref=item.secret_ref,
+                account_scope_digest=item.account_scope_digest,
+                space_id=proposal.space_id,
+                revision_id=proposal.revision_id,
+                slot_id=item.requirement_key,
+            )
+            for item in secret_bindings
+        )
+        try:
+            available_values.update(
+                verification.identity.slot_id
+                for verification in broker.verify_many(identities)
+                if verification.state == "available"
+            )
+        except WorkspaceSecretBrokerError:
+            # Availability is advisory in this payload, but must fail closed.
+            available_values.clear()
+    binding_versions = {
+        item.requirement_key: item.binding_version for item in secret_bindings
+    }
+    install_plan = proposal.install_plan
+    environment_requirements = install_plan.get("environment_requirements", [])
+    mcp_secret_requirements = install_plan.get("mcp_secret_requirements", [])
+    value_requirements = [
+        {
+            **item,
+            "requirement_kind": "environment",
+            "configured": item["requirement_key"] in configured_values,
+            "available": item["requirement_key"] in available_values,
+            "binding_version": binding_versions.get(item["requirement_key"]),
+        }
+        for item in environment_requirements
+    ] + [
+        {
+            **item,
+            "requirement_kind": "mcp_secret",
+            "configured": item["requirement_key"] in configured_values,
+            "available": item["requirement_key"] in available_values,
+            "binding_version": binding_versions.get(item["requirement_key"]),
+        }
+        for item in mcp_secret_requirements
+    ]
+    required = {
+        item["slot_id"] for item in install_plan.get("connector_slots", [])
+    }
+    required.update(install_plan.get("local_path_slots", []))
+    required.update(install_plan.get("script_actions", []))
+    required.update(
+        item["requirement_key"]
+        for item in environment_requirements
+        if item.get("required")
+    )
+    required.update(
+        item["requirement_key"] for item in mcp_secret_requirements
+    )
+    # Materialization verifies every binding, including optional values that
+    # the user chose to configure. Do not show Ready while such a binding is
+    # unreadable and would fail one step later.
+    required.update(configured_values)
+    configured = {item.slot_id for item in local_bindings}
+    configured.update(available_values)
+    missing = sorted(required - configured)
     return {
         "proposal": asdict(proposal),
-        "bindings": [
-            asdict(item)
-            for item in journal.list_workspace_bundle_local_bindings(
-                proposal_id
-            )
-        ],
+        "bindings": [asdict(item) for item in local_bindings],
+        "value_requirements": value_requirements,
+        "readiness": {
+            "ready": not missing,
+            "missing_requirements": missing,
+        },
     }
 
 
@@ -214,6 +317,21 @@ async def get_bundle_install_proposal(proposal_id: str) -> dict:
     return _payload(proposal_id)
 
 
+@router.get("/spaces/{space_id}/workspace-bundle-installation")
+async def get_space_bundle_installation(space_id: str) -> dict:
+    proposal = (
+        get_default_run_journal().get_latest_workspace_bundle_install_proposal(
+            space_id=space_id
+        )
+    )
+    if proposal is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "bundle_install_proposal_not_found"},
+        )
+    return _payload(proposal.proposal_id)
+
+
 @router.post("/workspace-bundles/install-proposals/{proposal_id}/decision")
 async def decide_bundle_install(
     proposal_id: str, body: BundleDecisionBody
@@ -287,9 +405,7 @@ async def approve_bundle_script(
         raise _error(exc) from exc
 
 
-@router.post(
-    "/workspace-bundles/install-proposals/{proposal_id}/materialize"
-)
+@router.post("/workspace-bundles/install-proposals/{proposal_id}/materialize")
 async def materialize_bundle(
     proposal_id: str,
     body: BundleMaterializeBody,
@@ -324,9 +440,7 @@ async def materialize_bundle(
             expected_version=body.expected_version,
             space_root=space_root,
             actor_id=body.actor_id,
-            allow_content_repository_init=(
-                body.allow_content_repository_init
-            ),
+            allow_content_repository_init=(body.allow_content_repository_init),
         )
         return _payload(proposal_id)
     except Exception as exc:
@@ -334,3 +448,37 @@ async def materialize_bundle(
     finally:
         if cloud is not None:
             await cloud.close()
+
+
+@router.put("/workspace-bundles/install-proposals/{proposal_id}/local-values")
+async def bind_bundle_local_values(
+    proposal_id: str,
+    body: BundleLocalValuesBody,
+) -> dict:
+    try:
+        journal = get_default_run_journal()
+        previous_refs = {
+            item.requirement_key: item.secret_ref
+            for item in journal.list_workspace_bundle_secret_bindings(
+                proposal_id
+            )
+        }
+        updated, _ = _installer().bind_local_values(
+            proposal_id,
+            client_request_id=body.client_request_id,
+            expected_version=body.expected_version,
+            bindings=[item.model_dump() for item in body.bindings],
+            authorized_by=body.actor_id,
+        )
+        payload = _payload(proposal_id)
+        payload["cleanup_secret_refs"] = sorted(
+            {
+                previous_refs[item.requirement_key]
+                for item in updated
+                if item.requirement_key in previous_refs
+                and previous_refs[item.requirement_key] != item.secret_ref
+            }
+        )
+        return payload
+    except Exception as exc:
+        raise _error(exc) from exc

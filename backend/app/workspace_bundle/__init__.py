@@ -1,3 +1,4 @@
+from app.workspace_bundle.authoring import WorkspaceBundleAuthoringService
 from app.workspace_bundle.cloud import (
     HttpWorkspaceBundleCloudTransport,
     WorkspaceBundleCloudError,
@@ -5,10 +6,15 @@ from app.workspace_bundle.cloud import (
 )
 from app.workspace_bundle.installer import (
     WorkspaceBundleBindingsIncomplete,
-    WorkspaceBundleInstallError,
     WorkspaceBundleInstaller,
+    WorkspaceBundleInstallError,
 )
-from app.workspace_bundle.authoring import WorkspaceBundleAuthoringService
+from app.workspace_bundle.secrets import (
+    WorkspaceSecretBroker,
+    WorkspaceSecretBrokerError,
+    WorkspaceSecretIdentity,
+    WorkspaceSecretVerification,
+)
 
 __all__ = [
     "HttpWorkspaceBundleCloudTransport",
@@ -18,4 +24,8 @@ __all__ = [
     "WorkspaceBundleInstallError",
     "WorkspaceBundleInstaller",
     "WorkspaceBundleAuthoringService",
+    "WorkspaceSecretBroker",
+    "WorkspaceSecretBrokerError",
+    "WorkspaceSecretIdentity",
+    "WorkspaceSecretVerification",
 ]

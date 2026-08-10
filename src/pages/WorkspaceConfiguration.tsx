@@ -13,6 +13,10 @@ import { EnvironmentRequirementsEditor } from '@/components/WorkspaceConfigurati
 import { WorkspaceBundleSaveDialog } from '@/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 import {
+  fetchWorkspaceBundleInstallForSpace,
+  type WorkspaceBundleInstallProposal,
+} from '@/service/workspaceBundleInstallApi';
+import {
   workspaceEnvironmentVariables,
   type ThinkingEffort,
   type WorkspaceConfigurationDocument,
@@ -27,11 +31,13 @@ import {
   KeyRound,
   Plus,
   RefreshCw,
+  Settings2,
   Share2,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const csv = (value: string): string[] =>
   value
@@ -116,7 +122,10 @@ const selectClassName =
   'h-10 w-full rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 text-body-sm text-ds-text-neutral-default-default outline-none focus:ring-1 focus:ring-ds-ring-brand-default-focus';
 
 export default function WorkspaceConfiguration() {
+  const navigate = useNavigate();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [installedBundle, setInstalledBundle] =
+    useState<WorkspaceBundleInstallProposal | null>(null);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const activeSpace = useSpaceStore((state) =>
     state.activeSpaceId ? state.spaces[state.activeSpaceId] : null
@@ -133,6 +142,23 @@ export default function WorkspaceConfiguration() {
       spaceName: activeSpace?.name,
       identity,
     });
+
+  useEffect(() => {
+    let active = true;
+    setInstalledBundle(null);
+    if (!activeSpaceId) return () => undefined;
+    void fetchWorkspaceBundleInstallForSpace(activeSpaceId)
+      .then((snapshot) => {
+        if (active) setInstalledBundle(snapshot.proposal);
+      })
+      .catch(() => {
+        // A 404 means this is a locally authored Workspace. The configuration
+        // editor remains fully usable without an installation proposal.
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeSpaceId]);
 
   const update = useCallback(
     (mutate: (current: WorkspaceConfigurationDocument) => void) => {
@@ -212,6 +238,21 @@ export default function WorkspaceConfiguration() {
                 onClick={retrySave}
               >
                 Retry
+              </Button>
+            ) : null}
+            {installedBundle ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  navigate(
+                    `/workspace-bundles/install?proposal=${encodeURIComponent(installedBundle.proposal_id)}`
+                  )
+                }
+              >
+                <Settings2 className="h-4 w-4" aria-hidden />
+                Local setup
               </Button>
             ) : null}
             <Button

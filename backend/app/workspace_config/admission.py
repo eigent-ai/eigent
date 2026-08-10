@@ -36,6 +36,7 @@ from app.workspace_config.models import (
     ResolvedContextSource,
     ThinkingEffort,
     WorkforceBundleManifest,
+    WorkspaceBundleReconfigurationPendingError,
     canonical_digest,
     normalize_thinking_effort,
 )
@@ -300,10 +301,15 @@ class EnvironmentAdmissionService:
             installed_manifest = WorkforceBundleManifest.model_validate(
                 revision.manifest
             )
-            proposal = self.journal.get_materialized_workspace_bundle_proposal(
+            proposal = self.journal.get_active_workspace_bundle_proposal(
                 space_id=space_id,
                 revision_id=installed.revision_id,
             )
+            if proposal is not None and proposal.state != "materialized":
+                raise WorkspaceBundleReconfigurationPendingError(
+                    proposal_id=proposal.proposal_id,
+                    state=proposal.state,
+                )
             if proposal is not None:
                 bindings = {
                     item.slot_id: item

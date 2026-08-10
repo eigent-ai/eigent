@@ -12,8 +12,14 @@ from app.run_journal import (
     SQLiteRunJournal,
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
+    WorkspaceBundleSecretBindingRecord,
 )
 from app.workspace_bundle.cloud import WorkspaceBundleCloudTransport
+from app.workspace_bundle.secrets import (
+    WorkspaceSecretBroker,
+    WorkspaceSecretBrokerError,
+    WorkspaceSecretIdentity,
+)
 from app.workspace_config import (
     ConfigPlacement,
     SecretValueInManifestError,
@@ -51,10 +57,12 @@ class WorkspaceBundleInstaller:
         journal: SQLiteRunJournal,
         configuration_repository: ConfigurationRepositoryService,
         cloud: WorkspaceBundleCloudTransport | None,
+        secret_broker: WorkspaceSecretBroker | None = None,
     ) -> None:
         self.journal = journal
         self.configuration_repository = configuration_repository
         self.cloud = cloud
+        self.secret_broker = secret_broker
 
     async def propose(
         self,
@@ -229,6 +237,91 @@ class WorkspaceBundleInstaller:
             authorized_by=authorized_by,
         )
 
+    def bind_local_values(
+        self,
+        proposal_id: str,
+        *,
+        client_request_id: str,
+        expected_version: int,
+        bindings: list[dict[str, Any]],
+        authorized_by: str,
+    ) -> tuple[
+        tuple[WorkspaceBundleSecretBindingRecord, ...],
+        WorkspaceBundleInstallProposalRecord,
+    ]:
+        proposal = self._proposal(proposal_id)
+        requirements = {
+            item["requirement_key"]: ("environment", item)
+            for item in proposal.install_plan.get(
+                "environment_requirements", []
+            )
+        }
+        requirements.update(
+            {
+                item["requirement_key"]: ("mcp_secret", item)
+                for item in proposal.install_plan.get(
+                    "mcp_secret_requirements", []
+                )
+            }
+        )
+        if self.secret_broker is None:
+            raise WorkspaceBundleInstallError(
+                "Local secret storage is unavailable"
+            )
+        normalized: list[dict[str, Any]] = []
+        identities: list[WorkspaceSecretIdentity] = []
+        for binding in bindings:
+            requirement_key = str(binding.get("requirement_key") or "")
+            requirement_kind = str(binding.get("requirement_kind") or "")
+            requirement = requirements.get(requirement_key)
+            if requirement is None or requirement[0] != requirement_kind:
+                raise WorkspaceBundleInstallError(
+                    "Local value does not match a declared Bundle requirement"
+                )
+            identity = WorkspaceSecretIdentity(
+                secret_ref=str(binding.get("secret_ref") or ""),
+                account_scope_digest=str(
+                    binding.get("account_scope_digest") or ""
+                ),
+                space_id=proposal.space_id,
+                revision_id=proposal.revision_id,
+                slot_id=requirement_key,
+            )
+            identities.append(identity)
+            normalized.append(
+                {
+                    "requirement_key": requirement_key,
+                    "requirement_kind": requirement_kind,
+                    "secret_ref": identity.secret_ref,
+                    "account_scope_digest": identity.account_scope_digest,
+                    "expected_binding_version": binding.get(
+                        "expected_binding_version"
+                    ),
+                }
+            )
+        try:
+            verifications = self.secret_broker.verify_many(identities)
+        except WorkspaceSecretBrokerError as exc:
+            raise WorkspaceBundleInstallError(
+                "Local values must be rebound"
+            ) from exc
+        unavailable = [
+            verification.identity.slot_id
+            for verification in verifications
+            if verification.state != "available"
+        ]
+        if unavailable:
+            raise WorkspaceBundleInstallError(
+                f"Local value {unavailable[0]!r} must be rebound"
+            )
+        return self.journal.put_workspace_bundle_secret_bindings(
+            proposal_id=proposal_id,
+            client_request_id=client_request_id,
+            expected_proposal_version=expected_version,
+            bindings=normalized,
+            authorized_by=authorized_by,
+        )
+
     async def materialize(
         self,
         proposal_id: str,
@@ -250,7 +343,11 @@ class WorkspaceBundleInstaller:
         bindings = self.journal.list_workspace_bundle_local_bindings(
             proposal_id
         )
-        self._require_complete_bindings(proposal, bindings)
+        secret_bindings = self.journal.list_workspace_bundle_secret_bindings(
+            proposal_id
+        )
+        self._require_complete_bindings(proposal, bindings, secret_bindings)
+        self._verify_secret_bindings(proposal, secret_bindings)
         materializing = (
             self.journal.transition_workspace_bundle_install_proposal(
                 proposal_id,
@@ -565,6 +662,36 @@ class WorkspaceBundleInstaller:
                 }
             ),
             "script_actions": sorted(script_actions),
+            "environment_requirements": [
+                {
+                    "requirement_key": f"environment:{item.name}",
+                    "name": item.name,
+                    "required": item.required,
+                    "sensitive": item.sensitive,
+                    "description": item.description,
+                    "example": item.example,
+                }
+                for item in (
+                    manifest.spec.environment.variables
+                    if manifest.spec.environment
+                    else ()
+                )
+            ],
+            "mcp_secret_requirements": sorted(
+                (
+                    {
+                        "requirement_key": (
+                            f"mcp_secret:{server.id}:{slot_id}"
+                        ),
+                        "mcp_id": server.id,
+                        "slot_id": slot_id,
+                        "required": True,
+                    }
+                    for server in manifest.spec.mcp_servers
+                    for slot_id in server.secret_slots
+                ),
+                key=lambda item: item["requirement_key"],
+            ),
             "permission_profile": manifest.spec.permissions.profile,
             "git_policy": manifest.spec.git.model_dump(
                 by_alias=True, mode="json"
@@ -578,6 +705,7 @@ class WorkspaceBundleInstaller:
     def _require_complete_bindings(
         proposal: WorkspaceBundleInstallProposalRecord,
         bindings: tuple[WorkspaceBundleLocalBindingRecord, ...],
+        secret_bindings: tuple[WorkspaceBundleSecretBindingRecord, ...],
     ) -> None:
         present = {binding.slot_id for binding in bindings}
         required = {
@@ -586,7 +714,58 @@ class WorkspaceBundleInstaller:
         }
         required.update(proposal.install_plan["local_path_slots"])
         required.update(proposal.install_plan["script_actions"])
-        missing = sorted(required - present)
+        secret_present = {
+            binding.requirement_key for binding in secret_bindings
+        }
+        secret_required = {
+            item["requirement_key"]
+            for item in proposal.install_plan.get(
+                "environment_requirements", []
+            )
+            if item["required"]
+        }
+        secret_required.update(
+            item["requirement_key"]
+            for item in proposal.install_plan.get(
+                "mcp_secret_requirements", []
+            )
+        )
+        missing = sorted(
+            (required - present) | (secret_required - secret_present)
+        )
+        if missing:
+            raise WorkspaceBundleBindingsIncomplete(missing)
+
+    def _verify_secret_bindings(
+        self,
+        proposal: WorkspaceBundleInstallProposalRecord,
+        bindings: tuple[WorkspaceBundleSecretBindingRecord, ...],
+    ) -> None:
+        if not bindings:
+            return
+        if self.secret_broker is None:
+            raise WorkspaceBundleBindingsIncomplete(
+                [binding.requirement_key for binding in bindings]
+            )
+        identities = tuple(
+            WorkspaceSecretIdentity(
+                secret_ref=binding.secret_ref,
+                account_scope_digest=binding.account_scope_digest,
+                space_id=proposal.space_id,
+                revision_id=proposal.revision_id,
+                slot_id=binding.requirement_key,
+            )
+            for binding in bindings
+        )
+        try:
+            verifications = self.secret_broker.verify_many(identities)
+            missing = [
+                verification.identity.slot_id
+                for verification in verifications
+                if verification.state != "available"
+            ]
+        except WorkspaceSecretBrokerError:
+            missing = [identity.slot_id for identity in identities]
         if missing:
             raise WorkspaceBundleBindingsIncomplete(missing)
 

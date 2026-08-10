@@ -68,6 +68,7 @@ from app.run_journal.models import (
     ToolCallRecord,
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
+    WorkspaceBundleSecretBindingRecord,
     WorkspaceConfigDraftRecord,
     WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
@@ -98,7 +99,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1142,6 +1143,48 @@ PRAGMA user_version = 16;
 COMMIT;
 """
 
+_MIGRATION_V17 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE IF NOT EXISTS workspace_bundle_secret_bindings (
+    binding_id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL REFERENCES workspace_bundle_install_proposals(
+        proposal_id
+    ) ON DELETE CASCADE,
+    requirement_key TEXT NOT NULL,
+    requirement_kind TEXT NOT NULL CHECK (
+        requirement_kind IN ('environment', 'mcp_secret')
+    ),
+    binding_version INTEGER NOT NULL DEFAULT 1 CHECK (binding_version >= 1),
+    secret_ref TEXT NOT NULL,
+    account_scope_digest TEXT NOT NULL CHECK (
+        length(account_scope_digest) = 64
+    ),
+    authorized_by TEXT NOT NULL,
+    authorized_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(proposal_id, requirement_key)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_bundle_secret_binding_requests (
+    client_request_id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL REFERENCES workspace_bundle_install_proposals(
+        proposal_id
+    ) ON DELETE CASCADE,
+    request_digest TEXT NOT NULL CHECK (length(request_digest) = 64),
+    created_at REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS workspace_bundle_secret_bindings_proposal_idx
+ON workspace_bundle_secret_bindings(proposal_id, requirement_kind);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (17, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 17;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -1759,9 +1802,7 @@ class SQLiteRunJournal:
                 # working content and move it to the next revision. The Cloud
                 # fact remains immutable at N while local edits continue at
                 # N+1 instead of being stranded behind a permanent conflict.
-                document["metadata"]["revision"] = (
-                    receipt_revision_number + 1
-                )
+                document["metadata"]["revision"] = receipt_revision_number + 1
                 next_json = canonical_json(document)
                 updated = connection.execute(
                     """
@@ -1941,6 +1982,59 @@ class SQLiteRunJournal:
                 else None
             )
 
+    def get_active_workspace_bundle_proposal(
+        self, *, space_id: str, revision_id: str
+    ) -> WorkspaceBundleInstallProposalRecord | None:
+        """Return the proposal that currently controls an installed revision.
+
+        Review-only proposals are deliberately excluded: creating a second
+        proposal must not disable a currently usable installation. Once an
+        approved proposal begins materialization, its state becomes an
+        admission gate until materialization completes.
+        """
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_bundle_install_proposals
+                WHERE space_id = ? AND revision_id = ?
+                  AND state IN (
+                      'materializing', 'materialized', 'needs_attention'
+                  )
+                ORDER BY updated_at DESC, proposal_id DESC
+                LIMIT 1
+                """,
+                (space_id, revision_id),
+            ).fetchone()
+            return (
+                self._workspace_bundle_install_proposal_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def get_latest_workspace_bundle_install_proposal(
+        self,
+        *,
+        space_id: str,
+    ) -> WorkspaceBundleInstallProposalRecord | None:
+        """Return the durable install/setup flow currently owned by a Space."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_bundle_install_proposals
+                WHERE space_id = ? AND state != 'rejected'
+                ORDER BY updated_at DESC, proposal_id DESC
+                LIMIT 1
+                """,
+                (space_id,),
+            ).fetchone()
+            return (
+                self._workspace_bundle_install_proposal_from_row(row)
+                if row is not None
+                else None
+            )
+
     def transition_workspace_bundle_install_proposal(
         self,
         proposal_id: str,
@@ -2098,21 +2192,80 @@ class SQLiteRunJournal:
                 (proposal_id, slot_id),
             ).fetchone()
             if row is not None:
-                actual = (
-                    row["binding_id"],
-                    row["proposal_id"],
-                    row["slot_id"],
+                actual_resource = (
                     row["binding_kind"],
                     row["connector_id"],
                     row["opaque_connection_id"],
                     row["local_path"],
                     row["required_grants_json"],
-                    row["authorized_by"],
                 )
-                if actual != expected:
-                    raise IdempotencyConflictError(
-                        f"Bundle slot {slot_id!r} already has another decision"
+                desired_resource = (
+                    binding_kind,
+                    connector_id,
+                    opaque_connection_id,
+                    local_path,
+                    grants_json,
+                )
+                if actual_resource == desired_resource:
+                    return (
+                        self._workspace_bundle_local_binding_from_row(row),
+                        self._workspace_bundle_install_proposal_from_row(
+                            proposal
+                        ),
                     )
+                if int(proposal["version"]) != expected_proposal_version:
+                    raise OptimisticConcurrencyError(
+                        f"Bundle install proposal {proposal_id!r} changed"
+                    )
+                if proposal["state"] not in {
+                    "approved",
+                    "needs_attention",
+                    "materialized",
+                }:
+                    raise InvalidRunTransitionError(
+                        "Bundle resources can only be rebound after approval"
+                    )
+                connection.execute(
+                    """UPDATE workspace_bundle_local_bindings
+                    SET binding_kind = ?, connector_id = ?,
+                        opaque_connection_id = ?, local_path = ?,
+                        required_grants_json = ?, authorized_by = ?,
+                        authorized_at = ?
+                    WHERE binding_id = ?""",
+                    (
+                        binding_kind,
+                        connector_id,
+                        opaque_connection_id,
+                        local_path,
+                        grants_json,
+                        authorized_by,
+                        timestamp,
+                        binding_id,
+                    ),
+                )
+                connection.execute(
+                    """UPDATE workspace_bundle_install_proposals
+                    SET version = version + 1,
+                        state = CASE WHEN state = 'materialized'
+                            THEN 'needs_attention' ELSE state END,
+                        error_code = CASE WHEN state = 'materialized'
+                            THEN 'bundle_reconfiguration_pending'
+                            ELSE error_code END,
+                        updated_at = ?
+                    WHERE proposal_id = ? AND version = ?""",
+                    (timestamp, proposal_id, expected_proposal_version),
+                )
+                row = connection.execute(
+                    """SELECT * FROM workspace_bundle_local_bindings
+                    WHERE binding_id = ?""",
+                    (binding_id,),
+                ).fetchone()
+                proposal = connection.execute(
+                    """SELECT * FROM workspace_bundle_install_proposals
+                    WHERE proposal_id = ?""",
+                    (proposal_id,),
+                ).fetchone()
+                assert row is not None and proposal is not None
                 return (
                     self._workspace_bundle_local_binding_from_row(row),
                     self._workspace_bundle_install_proposal_from_row(proposal),
@@ -2121,7 +2274,11 @@ class SQLiteRunJournal:
                 raise OptimisticConcurrencyError(
                     f"Bundle install proposal {proposal_id!r} changed"
                 )
-            if proposal["state"] not in {"approved", "needs_attention"}:
+            if proposal["state"] not in {
+                "approved",
+                "needs_attention",
+                "materialized",
+            }:
                 raise InvalidRunTransitionError(
                     "Bundle resources can only be bound after approval"
                 )
@@ -2137,7 +2294,13 @@ class SQLiteRunJournal:
             )
             connection.execute(
                 """UPDATE workspace_bundle_install_proposals
-                SET version = version + 1, updated_at = ?
+                SET version = version + 1,
+                    state = CASE WHEN state = 'materialized'
+                        THEN 'needs_attention' ELSE state END,
+                    error_code = CASE WHEN state = 'materialized'
+                        THEN 'bundle_reconfiguration_pending'
+                        ELSE error_code END,
+                    updated_at = ?
                 WHERE proposal_id = ? AND version = ?""",
                 (timestamp, proposal_id, expected_proposal_version),
             )
@@ -2168,6 +2331,277 @@ class SQLiteRunJournal:
             ).fetchall()
             return tuple(
                 self._workspace_bundle_local_binding_from_row(row)
+                for row in rows
+            )
+
+    def put_workspace_bundle_secret_bindings(
+        self,
+        *,
+        proposal_id: str,
+        client_request_id: str,
+        expected_proposal_version: int,
+        bindings: list[dict[str, Any]],
+        authorized_by: str,
+        now: float | None = None,
+    ) -> tuple[
+        tuple[WorkspaceBundleSecretBindingRecord, ...],
+        WorkspaceBundleInstallProposalRecord,
+    ]:
+        """CAS opaque vault references without ever accepting secret values."""
+
+        if not client_request_id.strip() or not authorized_by.strip():
+            raise ValueError("binding request and authorizer are required")
+        if not bindings:
+            raise ValueError("at least one secret binding is required")
+        normalized: list[dict[str, Any]] = []
+        keys: set[str] = set()
+        allowed_ref_characters = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz"
+            "0123456789_-"
+        )
+        for item in bindings:
+            requirement_key = str(item.get("requirement_key") or "")
+            requirement_kind = str(item.get("requirement_kind") or "")
+            secret_ref = str(item.get("secret_ref") or "")
+            account_scope_digest = str(item.get("account_scope_digest") or "")
+            expected_binding_version = item.get("expected_binding_version")
+            if expected_binding_version is not None:
+                expected_binding_version = int(expected_binding_version)
+                if expected_binding_version < 1:
+                    raise ValueError("invalid Bundle secret binding version")
+            if requirement_kind not in {"environment", "mcp_secret"}:
+                raise ValueError("invalid Bundle secret binding kind")
+            if (
+                not requirement_key.strip()
+                or len(secret_ref) != 40
+                or not secret_ref.startswith("wsvault_")
+                or any(
+                    character not in allowed_ref_characters
+                    for character in secret_ref[8:]
+                )
+                or not self._is_sha256(account_scope_digest)
+            ):
+                raise ValueError("invalid Bundle secret binding reference")
+            if requirement_key in keys:
+                raise ValueError("duplicate Bundle secret binding requirement")
+            keys.add(requirement_key)
+            normalized.append(
+                {
+                    "requirement_key": requirement_key,
+                    "requirement_kind": requirement_kind,
+                    "secret_ref": secret_ref,
+                    "account_scope_digest": account_scope_digest,
+                    "expected_binding_version": expected_binding_version,
+                }
+            )
+        normalized.sort(key=lambda item: str(item["requirement_key"]))
+        request_digest = canonical_digest(
+            {
+                "proposal_id": proposal_id,
+                "bindings": normalized,
+                "authorized_by": authorized_by,
+            }
+        )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            receipt = connection.execute(
+                """SELECT request_digest
+                FROM workspace_bundle_secret_binding_requests
+                WHERE client_request_id = ?""",
+                (client_request_id,),
+            ).fetchone()
+            if receipt is not None:
+                if receipt["request_digest"] != request_digest:
+                    raise IdempotencyConflictError(
+                        "Bundle secret binding request id was reused"
+                    )
+                rows = connection.execute(
+                    f"""SELECT * FROM workspace_bundle_secret_bindings
+                    WHERE proposal_id = ? AND requirement_key IN (
+                        {",".join("?" for _ in normalized)}
+                    ) ORDER BY requirement_key""",
+                    (
+                        proposal_id,
+                        *(item["requirement_key"] for item in normalized),
+                    ),
+                ).fetchall()
+                proposal = connection.execute(
+                    """SELECT * FROM workspace_bundle_install_proposals
+                    WHERE proposal_id = ?""",
+                    (proposal_id,),
+                ).fetchone()
+                if proposal is None:
+                    raise RunNotFoundError(
+                        f"Bundle install proposal {proposal_id!r} does not exist"
+                    )
+                return (
+                    tuple(
+                        self._workspace_bundle_secret_binding_from_row(row)
+                        for row in rows
+                    ),
+                    self._workspace_bundle_install_proposal_from_row(proposal),
+                )
+            proposal = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            if proposal is None:
+                raise RunNotFoundError(
+                    f"Bundle install proposal {proposal_id!r} does not exist"
+                )
+            if int(proposal["version"]) != expected_proposal_version:
+                raise OptimisticConcurrencyError(
+                    f"Bundle install proposal {proposal_id!r} changed"
+                )
+            if proposal["state"] not in {
+                "approved",
+                "needs_attention",
+                "materialized",
+            }:
+                raise InvalidRunTransitionError(
+                    "Bundle values can only be bound after approval"
+                )
+            changed = False
+            for item in normalized:
+                requirement_key = str(item["requirement_key"])
+                existing = connection.execute(
+                    """SELECT * FROM workspace_bundle_secret_bindings
+                    WHERE proposal_id = ? AND requirement_key = ?""",
+                    (proposal_id, requirement_key),
+                ).fetchone()
+                expected_binding_version = item["expected_binding_version"]
+                if existing is None:
+                    if expected_binding_version is not None:
+                        raise OptimisticConcurrencyError(
+                            f"Bundle value {requirement_key!r} changed"
+                        )
+                    binding_id = (
+                        "bundlesecret_"
+                        + canonical_digest(
+                            {
+                                "proposal_id": proposal_id,
+                                "requirement_key": requirement_key,
+                            }
+                        )[:32]
+                    )
+                    connection.execute(
+                        """INSERT INTO workspace_bundle_secret_bindings(
+                            binding_id, proposal_id, requirement_key,
+                            requirement_kind, binding_version, secret_ref,
+                            account_scope_digest, authorized_by,
+                            authorized_at, updated_at
+                        ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
+                        (
+                            binding_id,
+                            proposal_id,
+                            requirement_key,
+                            item["requirement_kind"],
+                            item["secret_ref"],
+                            item["account_scope_digest"],
+                            authorized_by,
+                            timestamp,
+                            timestamp,
+                        ),
+                    )
+                    changed = True
+                    continue
+                if (
+                    expected_binding_version is not None
+                    and int(existing["binding_version"])
+                    != expected_binding_version
+                ):
+                    raise OptimisticConcurrencyError(
+                        f"Bundle value {requirement_key!r} changed"
+                    )
+                desired = (
+                    item["requirement_kind"],
+                    item["secret_ref"],
+                    item["account_scope_digest"],
+                )
+                actual = (
+                    existing["requirement_kind"],
+                    existing["secret_ref"],
+                    existing["account_scope_digest"],
+                )
+                if desired == actual:
+                    continue
+                if expected_binding_version is None:
+                    raise IdempotencyConflictError(
+                        f"Bundle value {requirement_key!r} already exists"
+                    )
+                connection.execute(
+                    """UPDATE workspace_bundle_secret_bindings
+                    SET requirement_kind = ?, binding_version = binding_version + 1,
+                        secret_ref = ?,
+                        account_scope_digest = ?, authorized_by = ?,
+                        authorized_at = ?, updated_at = ?
+                    WHERE binding_id = ?""",
+                    (
+                        item["requirement_kind"],
+                        item["secret_ref"],
+                        item["account_scope_digest"],
+                        authorized_by,
+                        timestamp,
+                        timestamp,
+                        existing["binding_id"],
+                    ),
+                )
+                changed = True
+            connection.execute(
+                """INSERT INTO workspace_bundle_secret_binding_requests(
+                    client_request_id, proposal_id, request_digest, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (
+                    client_request_id,
+                    proposal_id,
+                    request_digest,
+                    timestamp,
+                ),
+            )
+            if changed:
+                connection.execute(
+                    """UPDATE workspace_bundle_install_proposals
+                    SET version = version + 1, updated_at = ?
+                    WHERE proposal_id = ? AND version = ?""",
+                    (timestamp, proposal_id, expected_proposal_version),
+                )
+            rows = connection.execute(
+                f"""SELECT * FROM workspace_bundle_secret_bindings
+                WHERE proposal_id = ? AND requirement_key IN (
+                    {",".join("?" for _ in normalized)}
+                ) ORDER BY requirement_key""",
+                (
+                    proposal_id,
+                    *(item["requirement_key"] for item in normalized),
+                ),
+            ).fetchall()
+            proposal = connection.execute(
+                """SELECT * FROM workspace_bundle_install_proposals
+                WHERE proposal_id = ?""",
+                (proposal_id,),
+            ).fetchone()
+            assert proposal is not None
+            return (
+                tuple(
+                    self._workspace_bundle_secret_binding_from_row(row)
+                    for row in rows
+                ),
+                self._workspace_bundle_install_proposal_from_row(proposal),
+            )
+
+    def list_workspace_bundle_secret_bindings(
+        self, proposal_id: str
+    ) -> tuple[WorkspaceBundleSecretBindingRecord, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT * FROM workspace_bundle_secret_bindings
+                WHERE proposal_id = ? ORDER BY requirement_key""",
+                (proposal_id,),
+            ).fetchall()
+            return tuple(
+                self._workspace_bundle_secret_binding_from_row(row)
                 for row in rows
             )
 
@@ -9362,6 +9796,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V15)
         if version < 16:
             self._connection.executescript(_MIGRATION_V16)
+        if version < 17:
+            self._connection.executescript(_MIGRATION_V17)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -9709,6 +10145,23 @@ class SQLiteRunJournal:
             required_grants=tuple(json.loads(row["required_grants_json"])),
             authorized_by=row["authorized_by"],
             authorized_at=float(row["authorized_at"]),
+        )
+
+    @staticmethod
+    def _workspace_bundle_secret_binding_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceBundleSecretBindingRecord:
+        return WorkspaceBundleSecretBindingRecord(
+            binding_id=row["binding_id"],
+            proposal_id=row["proposal_id"],
+            requirement_key=row["requirement_key"],
+            requirement_kind=row["requirement_kind"],
+            binding_version=int(row["binding_version"]),
+            secret_ref=row["secret_ref"],
+            account_scope_digest=row["account_scope_digest"],
+            authorized_by=row["authorized_by"],
+            authorized_at=float(row["authorized_at"]),
+            updated_at=float(row["updated_at"]),
         )
 
     @staticmethod
