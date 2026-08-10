@@ -293,18 +293,18 @@ async def list_project_runs(
     """Return canonical Run state for the main Desktop Project UI."""
 
     # Middleware has already handed the authenticated Cloud credentials to the
-    # worker. Waiting here closes the first-open race after local SQLite was
-    # deleted: the Project query sees restored canonical history immediately,
-    # rather than only after the next navigation.
+    # worker. Kick the Cloud history repair off in the background instead of
+    # awaiting it: a fresh install (deleted local SQLite) would otherwise block
+    # the first Project read on downloading the full account history. The
+    # single-flight kickoff returns immediately; restored runs surface on the
+    # next Project read, and locally durable history is always available now.
     try:
-        from app.run_sync.runtime import bootstrap_default_cloud_history
+        from app.run_sync.runtime import kickoff_default_cloud_bootstrap
 
-        await bootstrap_default_cloud_history()
+        kickoff_default_cloud_bootstrap()
     except Exception:
         # Offline Cloud repair never makes locally durable history unavailable.
-        logger.exception(
-            "Cloud Run history bootstrap failed before Project read"
-        )
+        logger.exception("Cloud Run history bootstrap kickoff failed")
     journal = get_default_run_journal()
     runs = await asyncio.to_thread(
         journal.list_runs,

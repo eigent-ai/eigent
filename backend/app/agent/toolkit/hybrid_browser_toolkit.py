@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import uuid
+import weakref
 from typing import Any
 from urllib.parse import urlparse
 
@@ -48,6 +49,20 @@ _browser_bringup_locks_guard = asyncio.Lock()
 # unrelated browser instances from consuming each other's tab budget.
 _global_tab_registry: dict[tuple[str, str], str] = {}
 _global_tab_registry_lock = asyncio.Lock()
+# Session ids whose wrapper is still alive, tracked by weak reference so a
+# wrapper that dies WITHOUT calling cleanup_tab_tracking (a crashed session)
+# drops out on garbage collection with no explicit signal. Tabs owned by a
+# session no longer in here are orphaned: they still count against the endpoint
+# budget but their owner will never recycle them, so without reclaiming them
+# the budget could never converge. Orphans are recyclable by any session at the
+# same endpoint. cleanup_tab_tracking also discards eagerly for prompt reuse.
+_alive_wrappers: "weakref.WeakValueDictionary[str, object]" = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _is_session_alive(session_id: str) -> bool:
+    return session_id in _alive_wrappers
 
 _DEFAULT_MAX_SESSION_TABS = 4
 _DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT = 8
@@ -135,6 +150,7 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         # background page without ever closing a user's unrelated Chrome tab.
         self._session_tab_order: list[str] = []
         self._wrapper_session_id: str = str(uuid.uuid4())
+        _alive_wrappers[self._wrapper_session_id] = self
 
     def _fail_all_pending(self, exc: Exception) -> None:
         for future in self._pending_responses.values():
@@ -262,6 +278,18 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             managed_count = sum(
                 1 for key in _global_tab_registry if key[0] == endpoint
             )
+            # Live tabs owned by a session whose wrapper is gone. They inflate
+            # managed_count but their owner will never recycle them, so any
+            # session at this endpoint may reclaim them to make the budget
+            # converge. User tabs are never in the registry, so never here.
+            orphan_ids = [
+                key[1]
+                for key, owner in _global_tab_registry.items()
+                if key[0] == endpoint
+                and not _is_session_alive(owner)
+                and key[1] in live_tab_ids
+                and key[1] != current_tab_id
+            ]
 
         session_limit = self._max_session_tabs()
         endpoint_limit = self._max_managed_tabs_per_endpoint()
@@ -273,11 +301,19 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         if recycle_count == 0:
             return all_tabs
 
-        victim_ids = [
+        # Prefer abandoned orphan tabs over this session's own live pages, then
+        # fall back to our own least-recently-used background tabs.
+        own_victims = [
             tab_id
             for tab_id in self._session_tab_order
             if tab_id in live_tab_ids and tab_id != current_tab_id
         ]
+        seen: set[str] = set()
+        victim_ids: list[str] = []
+        for tab_id in [*orphan_ids, *own_victims]:
+            if tab_id not in seen:
+                seen.add(tab_id)
+                victim_ids.append(tab_id)
         if len(victim_ids) < recycle_count:
             raise RuntimeError(
                 "Browser tab limit reached and this session has no inactive "
@@ -287,17 +323,26 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             )
 
         recycled_ids = victim_ids[:recycle_count]
+        orphan_recycled = set(orphan_ids)
         for victim_id in recycled_ids:
             logger.warning(
-                "[Browser Tab Limit] Recycling least-recently-used tab %s "
-                "before opening another page (session=%s, session_limit=%s, "
+                "[Browser Tab Limit] Recycling %s tab %s before opening "
+                "another page (session=%s, session_limit=%s, "
                 "endpoint_limit=%s)",
+                "orphaned" if victim_id in orphan_recycled else "LRU",
                 victim_id,
                 session_id,
                 session_limit,
                 endpoint_limit,
             )
             await self.close_tab(victim_id)
+            if victim_id in orphan_recycled:
+                # close_tab only drops registry entries this session owns, so
+                # an orphan's stale ownership must be cleared explicitly.
+                async with _global_tab_registry_lock:
+                    _global_tab_registry.pop(
+                        self._tab_registry_key(victim_id), None
+                    )
         return [
             tab
             for tab in all_tabs
@@ -578,6 +623,11 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
         memory leaks and stale entries in the global registry.
         """
         global _global_tab_registry, _global_tab_registry_lock
+
+        # Retiring the session first means that even a wrapper with no tracked
+        # tabs stops being counted as alive, so its tabs (if any survived a
+        # crash) become recyclable orphans instead of pinning the budget.
+        _alive_wrappers.pop(self._wrapper_session_id, None)
 
         if not self._session_tab_ids:
             return

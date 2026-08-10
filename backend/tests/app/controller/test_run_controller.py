@@ -24,6 +24,7 @@ from app.controller.run_controller import (
     _is_terminal,
     get_run,
     get_run_events,
+    list_project_runs,
     stream_run_events,
 )
 from app.run_journal import CommittedRunEvent, RunRecord
@@ -285,3 +286,37 @@ async def test_stream_does_not_expose_runtime_exception_text():
     assert payload["message"] == "An internal runtime error occurred."
     assert "secret backend credential" not in json.dumps(payload)
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_list_project_runs_does_not_block_on_cloud_bootstrap():
+    """The first Project read fires bootstrap in the background, never awaits it.
+
+    A fresh install would otherwise block the Project view on downloading the
+    full account history before returning any local runs.
+    """
+    journal = MagicMock()
+    journal.list_runs.return_value = [_run_record()]
+    journal.list_run_attempts.return_value = []
+
+    kicked_off = MagicMock()
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.run_sync.runtime.kickoff_default_cloud_bootstrap",
+            kicked_off,
+        ),
+    ):
+        # If the controller awaited a slow bootstrap, this would deadlock on
+        # the hung history download; the timeout guards against a regression.
+        result = await asyncio.wait_for(
+            list_project_runs(project_id="project-1", status=None, limit=20),
+            timeout=1.0,
+        )
+
+    kicked_off.assert_called_once()
+    assert [item["run_id"] for item in result["runs"]] == ["run-1"]

@@ -741,3 +741,86 @@ def test_unsafe_write_cannot_enter_replayable_timed_out_state(tmp_path):
             InvalidRunTransitionError, match="unsafe write.*outcome_unknown"
         ):
             journal.checkpoint_tool_call(status="timed_out", now=4, **values)
+
+
+def test_approval_expiry_cannot_mutate_an_approval_owned_by_another_run(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.ensure_run(run_id="run-2", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval(
+            approval_id="approval-owned-by-run-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Continue?"},
+            expires_at=5,
+            expiry_action="reject",
+            now=2,
+        )
+
+        with pytest.raises(
+            InvalidRunTransitionError, match="belongs to run 'run-1'"
+        ):
+            journal.record_timeout_outcome(
+                TimeoutOutcome(
+                    scope=TimeoutScope.APPROVAL_EXPIRY,
+                    policy_version="v1",
+                    reason="cross_run_timer",
+                    started_at=2,
+                    ended_at=6,
+                    run_id="run-2",
+                    approval_id="approval-owned-by-run-1",
+                )
+            )
+
+        approval = journal.list_approvals("run-1")[0]
+        assert approval.status == "pending"
+
+
+def test_startup_keeps_waiting_run_status_without_a_status_bearing_event(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        # A pending approval moves the Run into waiting_for_user.
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Continue?"},
+            now=2,
+        )
+        assert journal.get_run("run-1").status == "waiting_for_user"
+
+        result = journal.reconcile_startup(now=4)
+
+        run = journal.get_run("run-1")
+        assert run.status == "waiting_for_user"
+        # The Run must NOT be reported as an interrupted Run...
+        assert "run-1" not in result.interrupted_run_ids
+        # ...but its live attempt is still detached.
+        assert journal.get_run_attempt(attempt.attempt_id).status == (
+            "interrupted"
+        )
+        # No status-bearing runtime.interrupted event was emitted for the Run;
+        # the detach event does not carry run status.
+        event_types = {
+            event.event_type for event in journal.list_events("run-1")
+        }
+        assert "runtime.interrupted" not in event_types
+        assert "runtime.attempt_detached" in event_types

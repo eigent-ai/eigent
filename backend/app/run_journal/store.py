@@ -1961,6 +1961,11 @@ class SQLiteRunJournal:
                     raise RunNotFoundError(
                         f"approval_id {outcome.approval_id!r} does not exist"
                     )
+                if approval["run_id"] != outcome.run_id:
+                    raise InvalidRunTransitionError(
+                        f"approval {outcome.approval_id!r} belongs to run "
+                        f"{approval['run_id']!r}, not {outcome.run_id!r}"
+                    )
                 if approval["status"] != "pending":
                     raise InvalidRunTransitionError(
                         f"approval {outcome.approval_id!r} is already resolved"
@@ -2081,12 +2086,18 @@ class SQLiteRunJournal:
                             and not active_attempts
                         ):
                             continue
+                        elif run["status"] == "waiting_for_user":
+                            # The Run keeps waiting for the user; only its
+                            # attempt detaches. runtime.interrupted is
+                            # status-bearing in the cloud projection, so it
+                            # would flip the canonical replica to interrupted
+                            # while local truth stays waiting_for_user. The
+                            # attempt is still reported via detached_attempts,
+                            # but the Run is NOT an interrupted Run.
+                            target_status = None
+                            event_type = "runtime.attempt_detached"
                         else:
-                            target_status = (
-                                "waiting_for_user"
-                                if run["status"] == "waiting_for_user"
-                                else "interrupted"
-                            )
+                            target_status = "interrupted"
                             event_type = "runtime.interrupted"
                             run_interrupted = True
                         run_attempt_ids = [

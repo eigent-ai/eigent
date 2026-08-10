@@ -22,6 +22,7 @@ logger = logging.getLogger("run_sync.runtime")
 _default_worker: CloudSyncWorker | None = None
 _default_command_worker: CommandControlWorker | None = None
 _worker_loop: asyncio.AbstractEventLoop | None = None
+_bootstrap_kickoff_task: asyncio.Task[None] | None = None
 
 
 def _sync_endpoint(server_url: str | None) -> str:
@@ -105,6 +106,34 @@ async def bootstrap_default_cloud_history() -> None:
     if worker is None:
         return
     await worker.bootstrap_once()
+
+
+def kickoff_default_cloud_bootstrap() -> asyncio.Task[None] | None:
+    """Start the one-shot history repair in the background.
+
+    Single-flight: while a kickoff task is still running, further calls are
+    no-ops, so bursts of Project reads never stack bootstrap attempts. The
+    module keeps a strong reference so the task cannot be garbage collected
+    mid-flight.
+    """
+
+    global _bootstrap_kickoff_task
+    task = _bootstrap_kickoff_task
+    if task is not None and not task.done():
+        return task
+
+    async def _bootstrap() -> None:
+        try:
+            await bootstrap_default_cloud_history()
+        except Exception:
+            # Offline Cloud repair never makes locally durable history
+            # unavailable; the sync worker retries on its own schedule.
+            logger.exception("Cloud Run history bootstrap failed")
+
+    _bootstrap_kickoff_task = asyncio.create_task(
+        _bootstrap(), name="cloud-history-bootstrap"
+    )
+    return _bootstrap_kickoff_task
 
 
 async def persist_and_confirm_remote_command(

@@ -405,3 +405,70 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
     )
     assert any("event_limit=1" in str(request.url) for request in requests)
     await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_isolates_one_poisoned_project(journal):
+    """A project that fails to restore must not block the others."""
+
+    class PoisonOneProjectTransport(FakeTransport):
+        async def project_snapshot(self, configuration, project_id):
+            if project_id == "project-bad":
+                raise RunEventSyncHttpError(500, "snapshot exploded")
+            return self.snapshots[project_id]
+
+    transport = PoisonOneProjectTransport()
+    transport.projects = [
+        {
+            "project_id": "project-bad",
+            "current_cursor": 1,
+            "updated_at": "2026-08-06T00:00:03+00:00",
+        },
+        {
+            "project_id": "project-good",
+            "current_cursor": 1,
+            "updated_at": "2026-08-06T00:00:02+00:00",
+        },
+    ]
+    transport.snapshots["project-good"] = {
+        "project_id": "project-good",
+        "current_cursor": 1,
+        "runs": [
+            {
+                "run_id": "run-good",
+                "status": "completed",
+                "expected_next_run_sequence": 2,
+                "updated_at": "2026-08-06T00:00:02+00:00",
+            }
+        ],
+        "recent_events": [],
+        "events_truncated": False,
+    }
+    transport.project_events["project-good"] = [
+        {
+            "event_id": "good-event-1",
+            "project_id": "project-good",
+            "run_id": "run-good",
+            "run_sequence": 1,
+            "run_version": 1,
+            "cloud_cursor": 1,
+            "event_type": "run.completed",
+            "payload": {"message": "done"},
+            "legacy_step": "end",
+            "created_at": "2026-08-06T00:00:01+00:00",
+            "ingested_at": "2026-08-06T00:00:02+00:00",
+        }
+    ]
+    worker = _worker(journal, transport)
+
+    failed = await worker.bootstrap_once()
+
+    # The poisoned project is reported and stays pending for the next cycle...
+    assert failed == ("project-bad",)
+    assert worker._bootstrap_pending is True
+    # ...while the healthy project after it was restored regardless.
+    restored = journal.get_run("run-good")
+    assert restored is not None
+    assert restored.status == "completed"
+    assert restored.origin == "cloud_restore"
+    await worker.close()

@@ -139,3 +139,49 @@ def test_invalid_tab_limit_environment_uses_safe_defaults(
 
     assert wrapper._max_session_tabs() == 4
     assert wrapper._max_managed_tabs_per_endpoint() == 8
+
+
+@pytest.mark.asyncio
+async def test_dead_session_tabs_are_recyclable_so_the_budget_converges(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EIGENT_BROWSER_MAX_MANAGED_TABS", "2")
+    tabs = [_tab("tab-a"), _tab("tab-b", current=True)]
+    closed, visited = _install_fake_browser(monkeypatch, tabs)
+    wrapper_a = WebSocketBrowserWrapper({"cdpUrl": "http://localhost:9222"})
+    wrapper_b = WebSocketBrowserWrapper({"cdpUrl": "http://localhost:9222"})
+
+    await _track_current(wrapper_a, tabs, "tab-a")
+    await _track_current(wrapper_b, tabs, "tab-b")
+
+    # Session A dies without cleanup: its wrapper is gone, so it drops out of
+    # the weakref liveness map. Its still-open tab-a is now an orphan.
+    browser_module._alive_wrappers.pop(wrapper_a._wrapper_session_id, None)
+
+    # B is at the endpoint budget and owns no inactive tab of its own, but it
+    # may now reclaim the orphaned tab-a instead of failing closed forever.
+    await wrapper_b.visit_page("https://allowed.example")
+
+    assert closed == ["tab-a"]
+    assert visited == ["https://allowed.example"]
+    # The orphan's stale ownership was cleared from the registry.
+    assert (
+        "http://localhost:9222",
+        "tab-a",
+    ) not in browser_module._global_tab_registry
+
+
+@pytest.mark.asyncio
+async def test_cleanup_retires_session_liveness_for_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    tabs = [_tab("tab-a", current=True)]
+    _install_fake_browser(monkeypatch, tabs)
+    wrapper = WebSocketBrowserWrapper({"cdpUrl": "http://localhost:9222"})
+    session_id = wrapper._wrapper_session_id
+
+    await _track_current(wrapper, tabs, "tab-a")
+    assert browser_module._is_session_alive(session_id) is True
+
+    await wrapper.cleanup_tab_tracking()
+    assert browser_module._is_session_alive(session_id) is False

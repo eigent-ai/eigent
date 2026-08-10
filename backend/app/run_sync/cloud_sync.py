@@ -335,8 +335,12 @@ class CloudSyncWorker:
         self.notify()
         return sum(results)
 
-    async def bootstrap_once(self) -> None:
-        """Synchronously repair the local read replica once per credential set."""
+    async def bootstrap_once(self) -> tuple[str, ...]:
+        """Synchronously repair the local read replica once per credential set.
+
+        Returns the project ids whose restore failed this cycle; they stay
+        pending and are retried on the next bootstrap attempt.
+        """
 
         configuration = self._configuration
         if (
@@ -344,7 +348,7 @@ class CloudSyncWorker:
             or not self._bootstrap_pending
             or time.monotonic() < self._bootstrap_next_attempt_at
         ):
-            return
+            return ()
         async with self._bootstrap_lock:
             configuration = self._configuration
             if (
@@ -352,9 +356,11 @@ class CloudSyncWorker:
                 or not self._bootstrap_pending
                 or time.monotonic() < self._bootstrap_next_attempt_at
             ):
-                return
+                return ()
             try:
-                await self._bootstrap_history(configuration)
+                failed_project_ids = await self._bootstrap_history(
+                    configuration
+                )
             except Exception:
                 self._bootstrap_attempt_count += 1
                 self._bootstrap_next_attempt_at = time.monotonic() + min(
@@ -362,11 +368,20 @@ class CloudSyncWorker:
                     self._max_retry_seconds,
                 )
                 raise
+            if failed_project_ids:
+                # Partial success: healthy projects were restored, poisoned
+                # ones retry with backoff instead of blocking the whole set.
+                self._bootstrap_attempt_count += 1
+                self._bootstrap_next_attempt_at = time.monotonic() + min(
+                    2 ** min(self._bootstrap_attempt_count, 8),
+                    self._max_retry_seconds,
+                )
+            return failed_project_ids
 
     async def _bootstrap_history(
         self,
         configuration: CloudSyncConfiguration,
-    ) -> None:
+    ) -> tuple[str, ...]:
         list_projects = getattr(self._transport, "list_projects", None)
         project_snapshot = getattr(self._transport, "project_snapshot", None)
         list_events = getattr(self._transport, "list_project_events", None)
@@ -380,13 +395,14 @@ class CloudSyncWorker:
             self._bootstrap_pending = False
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
-            return
+            return ()
         projects_response = await list_projects(configuration)
         project_items = projects_response.get("items")
         if not isinstance(project_items, list):
             raise RunEventSyncProtocolError(
                 "Run sync project list must contain an items array"
             )
+        failed_project_ids: list[str] = []
         for item in project_items:
             if (
                 not isinstance(item, dict)
@@ -396,86 +412,113 @@ class CloudSyncWorker:
                     "invalid Run sync project descriptor"
                 )
             project_id = str(item["project_id"])
-            # Snapshot and event paging may race a new ingest. Repeat until the
-            # snapshot watermark matches the locally imported cursor.
-            for _ in range(3):
-                snapshot = await project_snapshot(configuration, project_id)
-                if snapshot.get("project_id") != project_id:
-                    raise RunEventSyncProtocolError(
-                        "Run sync snapshot scope does not match request"
-                    )
-                target_cursor = int(snapshot.get("current_cursor", 0))
-                cursor = await asyncio.to_thread(
-                    self._journal.get_cloud_project_cursor, project_id
+            try:
+                await self._bootstrap_project(
+                    configuration,
+                    project_id,
+                    project_snapshot=project_snapshot,
+                    list_events=list_events,
                 )
-                if cursor > target_cursor:
-                    # The local replica may have observed a newer page watermark
-                    # than this concurrently generated snapshot; refresh it.
-                    continue
-                while cursor < target_cursor:
-                    page = await list_events(
-                        configuration,
-                        project_id,
-                        after_cursor=cursor,
-                        limit=self._batch_size,
-                    )
-                    if page.get("project_id") != project_id:
-                        raise RunEventSyncProtocolError(
-                            "Run sync event page scope does not match request"
-                        )
-                    raw_items = page.get("items")
-                    if not isinstance(raw_items, list):
-                        raise RunEventSyncProtocolError(
-                            "Run sync event page must contain an items array"
-                        )
-                    replicas = [
-                        self._cloud_event_from_payload(project_id, raw)
-                        for raw in raw_items
-                    ]
-                    next_cursor = int(page.get("next_cursor", cursor))
-                    if next_cursor <= cursor:
-                        raise RunEventSyncProtocolError(
-                            "Run sync event page did not advance its cursor"
-                        )
-                    await asyncio.to_thread(
-                        self._journal.import_cloud_project_page,
-                        project_id=project_id,
-                        after_cursor=cursor,
-                        next_cursor=next_cursor,
-                        events=replicas,
-                    )
-                    cursor = next_cursor
-                    target_cursor = max(
-                        target_cursor, int(page.get("current_cursor", cursor))
-                    )
-                if target_cursor != int(snapshot.get("current_cursor", 0)):
-                    continue
-                raw_runs = snapshot.get("runs")
-                if not isinstance(raw_runs, list):
-                    raise RunEventSyncProtocolError(
-                        "Run sync snapshot must contain a runs array"
-                    )
-                runs = [self._cloud_run_from_payload(raw) for raw in raw_runs]
-                try:
-                    await asyncio.to_thread(
-                        self._journal.reconcile_cloud_project_runs,
-                        project_id=project_id,
-                        current_cursor=target_cursor,
-                        runs=runs,
-                    )
-                except Exception:
-                    if target_cursor != int(snapshot.get("current_cursor", 0)):
-                        continue
-                    raise
-                break
-            else:
-                raise RunEventSyncProtocolError(
-                    f"Run sync snapshot for {project_id!r} did not stabilize"
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # One poisoned project must not block restoring the others.
+                # It stays pending and retries on the next bootstrap cycle.
+                logger.exception(
+                    "Cloud Run history bootstrap failed for project %s",
+                    project_id,
                 )
-        if self._configuration == configuration:
+                failed_project_ids.append(project_id)
+        if not failed_project_ids and self._configuration == configuration:
             self._bootstrap_pending = False
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
+        return tuple(failed_project_ids)
+
+    async def _bootstrap_project(
+        self,
+        configuration: CloudSyncConfiguration,
+        project_id: str,
+        *,
+        project_snapshot: Any,
+        list_events: Any,
+    ) -> None:
+        # Snapshot and event paging may race a new ingest. Repeat until the
+        # snapshot watermark matches the locally imported cursor.
+        for _ in range(3):
+            snapshot = await project_snapshot(configuration, project_id)
+            if snapshot.get("project_id") != project_id:
+                raise RunEventSyncProtocolError(
+                    "Run sync snapshot scope does not match request"
+                )
+            target_cursor = int(snapshot.get("current_cursor", 0))
+            cursor = await asyncio.to_thread(
+                self._journal.get_cloud_project_cursor, project_id
+            )
+            if cursor > target_cursor:
+                # The local replica may have observed a newer page watermark
+                # than this concurrently generated snapshot; refresh it.
+                continue
+            while cursor < target_cursor:
+                page = await list_events(
+                    configuration,
+                    project_id,
+                    after_cursor=cursor,
+                    limit=self._batch_size,
+                )
+                if page.get("project_id") != project_id:
+                    raise RunEventSyncProtocolError(
+                        "Run sync event page scope does not match request"
+                    )
+                raw_items = page.get("items")
+                if not isinstance(raw_items, list):
+                    raise RunEventSyncProtocolError(
+                        "Run sync event page must contain an items array"
+                    )
+                replicas = [
+                    self._cloud_event_from_payload(project_id, raw)
+                    for raw in raw_items
+                ]
+                next_cursor = int(page.get("next_cursor", cursor))
+                if next_cursor <= cursor:
+                    raise RunEventSyncProtocolError(
+                        "Run sync event page did not advance its cursor"
+                    )
+                await asyncio.to_thread(
+                    self._journal.import_cloud_project_page,
+                    project_id=project_id,
+                    after_cursor=cursor,
+                    next_cursor=next_cursor,
+                    events=replicas,
+                )
+                cursor = next_cursor
+                target_cursor = max(
+                    target_cursor, int(page.get("current_cursor", cursor))
+                )
+            if target_cursor != int(snapshot.get("current_cursor", 0)):
+                continue
+            raw_runs = snapshot.get("runs")
+            if not isinstance(raw_runs, list):
+                raise RunEventSyncProtocolError(
+                    "Run sync snapshot must contain a runs array"
+                )
+            runs = [self._cloud_run_from_payload(raw) for raw in raw_runs]
+            try:
+                await asyncio.to_thread(
+                    self._journal.reconcile_cloud_project_runs,
+                    project_id=project_id,
+                    current_cursor=target_cursor,
+                    runs=runs,
+                )
+            except Exception:
+                if target_cursor != int(snapshot.get("current_cursor", 0)):
+                    continue
+                raise
+            break
+        else:
+            raise RunEventSyncProtocolError(
+                f"Run sync snapshot for {project_id!r} did not stabilize"
+            )
 
     @staticmethod
     def _timestamp(value: Any) -> float:
