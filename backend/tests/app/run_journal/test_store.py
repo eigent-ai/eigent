@@ -73,6 +73,7 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "approvals",
         "workspace_config_revisions",
         "workspace_config_materializations",
+        "workspace_config_drafts",
         "effective_environment_specs",
         "human_interactions",
         "human_interaction_options",
@@ -202,6 +203,78 @@ spec:
             draft.revision_id,
             expected_version=2,
             status="validated",
+        )
+
+
+def test_workspace_config_draft_autosave_uses_version_cas(journal):
+    document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_working_copy",
+            "name": "Working copy",
+            "revision": 1,
+        },
+        "spec": {
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "medium",
+                }
+            }
+        },
+    }
+
+    created = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=document,
+        updated_by="user-1",
+        now=10,
+    )
+    updated_document = {
+        **document,
+        "metadata": {**document["metadata"], "name": "Renamed"},
+    }
+    updated = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=1,
+        document=updated_document,
+        updated_by="user-1",
+        now=11,
+    )
+
+    assert created.version == 1
+    assert updated.version == 2
+    assert updated.document["metadata"]["name"] == "Renamed"
+    assert journal.get_workspace_config_draft("space-1") == updated
+    with pytest.raises(OptimisticConcurrencyError):
+        journal.put_workspace_config_draft(
+            space_id="space-1",
+            expected_version=1,
+            document=document,
+            updated_by="user-1",
+        )
+
+
+def test_workspace_config_draft_cannot_change_its_base_revision(journal):
+    revision, _, _ = _persist_environment_spec(journal)
+    document = revision.manifest
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        base_revision_id=revision.revision_id,
+        document=document,
+        updated_by="user-1",
+    )
+
+    with pytest.raises(IdempotencyConflictError, match="base revision"):
+        journal.put_workspace_config_draft(
+            space_id="space-1",
+            expected_version=1,
+            base_revision_id=None,
+            document=document,
+            updated_by="user-1",
         )
 
 

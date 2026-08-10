@@ -68,6 +68,7 @@ from app.run_journal.models import (
     ToolCallRecord,
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
+    WorkspaceConfigDraftRecord,
     WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
     WorkspaceOverlayEntryRecord,
@@ -97,7 +98,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1118,6 +1119,29 @@ PRAGMA user_version = 15;
 COMMIT;
 """
 
+_MIGRATION_V16 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE IF NOT EXISTS workspace_config_drafts (
+    space_id TEXT PRIMARY KEY,
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    base_revision_id TEXT REFERENCES workspace_config_revisions(
+        revision_id
+    ) ON DELETE RESTRICT,
+    document_json TEXT NOT NULL,
+    document_digest TEXT NOT NULL CHECK (length(document_digest) = 64),
+    updated_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (16, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 16;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -1476,6 +1500,133 @@ class SQLiteRunJournal:
                 if row is not None
                 else None
             )
+
+    def get_workspace_config_draft(
+        self, space_id: str
+    ) -> WorkspaceConfigDraftRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_config_drafts
+                WHERE space_id = ?
+                """,
+                (space_id,),
+            ).fetchone()
+            return (
+                self._workspace_config_draft_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def put_workspace_config_draft(
+        self,
+        *,
+        space_id: str,
+        expected_version: int,
+        document: dict[str, Any],
+        updated_by: str,
+        base_revision_id: str | None = None,
+        now: float | None = None,
+    ) -> WorkspaceConfigDraftRecord:
+        """Create or CAS-update the mutable Space configuration working copy."""
+
+        if not space_id.strip():
+            raise ValueError("space_id is required")
+        if expected_version < 0:
+            raise ValueError("expected_version cannot be negative")
+        if not updated_by.strip():
+            raise ValueError("updated_by is required")
+        timestamp = now if now is not None else time.time()
+        encoded = canonical_json(document)
+        digest = canonical_digest(document)
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workspace_config_drafts
+                WHERE space_id = ?
+                """,
+                (space_id,),
+            ).fetchone()
+            if row is None:
+                if expected_version != 0:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} "
+                        "does not exist at the expected version"
+                    )
+                if base_revision_id is not None:
+                    revision = connection.execute(
+                        """
+                        SELECT revision_id FROM workspace_config_revisions
+                        WHERE revision_id = ?
+                        """,
+                        (base_revision_id,),
+                    ).fetchone()
+                    if revision is None:
+                        raise RunNotFoundError(
+                            f"base workspace config revision "
+                            f"{base_revision_id!r} does not exist"
+                        )
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_drafts(
+                        space_id, version, base_revision_id,
+                        document_json, document_digest, updated_by,
+                        created_at, updated_at
+                    ) VALUES (?, 1, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        space_id,
+                        base_revision_id,
+                        encoded,
+                        digest,
+                        updated_by,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                current_version = int(row["version"])
+                if current_version != expected_version:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+                if row["base_revision_id"] != base_revision_id:
+                    raise IdempotencyConflictError(
+                        "workspace configuration base revision cannot change "
+                        "during autosave"
+                    )
+                updated = connection.execute(
+                    """
+                    UPDATE workspace_config_drafts
+                    SET version = version + 1,
+                        document_json = ?,
+                        document_digest = ?,
+                        updated_by = ?,
+                        updated_at = ?
+                    WHERE space_id = ? AND version = ?
+                    """,
+                    (
+                        encoded,
+                        digest,
+                        updated_by,
+                        timestamp,
+                        space_id,
+                        expected_version,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+            persisted = connection.execute(
+                """
+                SELECT * FROM workspace_config_drafts
+                WHERE space_id = ?
+                """,
+                (space_id,),
+            ).fetchone()
+            assert persisted is not None
+            return self._workspace_config_draft_from_row(persisted)
 
     def put_workspace_bundle_install_proposal(
         self,
@@ -9035,6 +9186,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V14)
         if version < 15:
             self._connection.executescript(_MIGRATION_V15)
+        if version < 16:
+            self._connection.executescript(_MIGRATION_V16)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -9320,6 +9473,21 @@ class SQLiteRunJournal:
                 if row["materialized_at"] is not None
                 else None
             ),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_config_draft_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceConfigDraftRecord:
+        return WorkspaceConfigDraftRecord(
+            space_id=row["space_id"],
+            version=int(row["version"]),
+            base_revision_id=row["base_revision_id"],
+            document=json.loads(row["document_json"]),
+            document_digest=row["document_digest"],
+            updated_by=row["updated_by"],
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
         )

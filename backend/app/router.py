@@ -36,8 +36,9 @@ from app.controller import (
     skill_controller,
     task_controller,
     tool_controller,
-    workspace_controller,
     workspace_bundle_controller,
+    workspace_config_controller,
+    workspace_controller,
     workspace_git_controller,
 )
 
@@ -135,6 +136,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": workspace_bundle_controller.router,
             "tags": ["Workforce Bundles"],
             "description": "Review-first local Bundle installation",
+            "self_authenticated": True,
+        },
+        {
+            "router": workspace_config_controller.router,
+            "tags": ["Workspace Configuration"],
+            "description": "Mutable local Workspace Configuration working copy",
             "self_authenticated": True,
         },
         {
