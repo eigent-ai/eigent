@@ -365,18 +365,19 @@ class WorkspaceBundleInstaller:
     ) -> tuple[dict[str, Any], str | None]:
         assert self.cloud is not None
         environment = await self.cloud.get_environment(proposal.space_id)
-        capabilities = environment.get("protocol_capabilities")
-        available = (
-            {str(item) for item in capabilities}
-            if isinstance(capabilities, list)
-            else set()
-        )
-        missing = sorted(self.REQUIRED_CLOUD_CAPABILITIES - available)
-        if missing:
-            raise WorkspaceBundleInstallError(
-                "Cloud must be upgraded before installing this Bundle; "
-                "missing protocol capabilities: " + ", ".join(missing)
-            )
+        if "protocol_capabilities" in environment:
+            capabilities = environment["protocol_capabilities"]
+            if not isinstance(capabilities, list):
+                raise WorkspaceBundleInstallError(
+                    "Cloud returned invalid Bundle protocol capabilities"
+                )
+            available = {str(item) for item in capabilities}
+            missing = sorted(self.REQUIRED_CLOUD_CAPABILITIES - available)
+            if missing:
+                raise WorkspaceBundleInstallError(
+                    "Cloud must be upgraded before installing this Bundle; "
+                    "missing protocol capabilities: " + ", ".join(missing)
+                )
         installation = environment.get("installation")
         if installation is None:
             installation = await self.cloud.install(

@@ -45,11 +45,6 @@ _CONTROL_PLANE_FILENAMES = frozenset(
         "run-journal.sqlite3-wal",
     }
 )
-_CONTROL_PLANE_COMMAND_MARKERS = (
-    "eigent_local_control_capability",
-    "policy.sqlite3",
-    "run-journal.sqlite3",
-)
 _GIT_EXECUTION_COMMAND_MARKERS = (
     ".git/config",
     ".git\\config",
@@ -70,9 +65,14 @@ _AUTO_EXECUTED_WORKSPACE_FILENAMES = frozenset(
         "package.json",
         "pyproject.toml",
         "pytest.ini",
+        "rakefile",
         "setup.cfg",
         "setup.py",
         "tox.ini",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        ".pre-commit-config.yaml",
+        ".pre-commit-config.yml",
     }
 )
 _AUTO_EXECUTED_WORKSPACE_PATHS = (
@@ -80,6 +80,7 @@ _AUTO_EXECUTED_WORKSPACE_PATHS = (
     ".github/workflows/",
     ".vscode/launch.json",
     ".vscode/tasks.json",
+    "node_modules/.bin/",
 )
 _BROWSER_READ_NAMES = frozenset(
     {
@@ -275,23 +276,34 @@ def _risk_tags(
             _CONTROL_PLANE_FILENAMES
         ):
             tags.add("policy_control_plane")
-    command_text = "\n".join(_command_texts(arguments)).lower()
-    # Shell quoting may split a sensitive filename without changing the path
-    # interpreted by the shell (for example ``run-journal.sqlite'3'``).
-    policy_text = re.sub(r"['\"`]", "", command_text)
+    command_text = (
+        "\n".join(_command_texts(arguments)).lower()
+        if operation in {"terminal.execute", "skill.script.execute"}
+        else ""
+    )
+    # Shell quoting, globbing, arithmetic expansion, and variable fragments
+    # can split a sensitive filename without changing the target selected by
+    # the shell. Compact matching intentionally errs on the deny side for the
+    # local policy databases and capability name.
+    policy_text = re.sub(r"[^a-z0-9_]+", "", command_text)
+    policy_control_plane = bool(
+        re.search(r"run.*journal.*sqlite", policy_text)
+        or re.search(r"policy.*sqlite", policy_text)
+        or re.search(
+            r"eigent.*local.*control.*capability",
+            policy_text,
+        )
+    )
     if command_text:
-        if any(
-            marker in policy_text
-            for marker in _CONTROL_PLANE_COMMAND_MARKERS
-        ):
+        if policy_control_plane:
             tags.add("policy_control_plane")
         if any(
-            marker in policy_text
+            re.sub(r"[^a-z0-9]+", "", marker) in policy_text
             for marker in _GIT_EXECUTION_COMMAND_MARKERS
         ):
             tags.add("untrusted_hook")
         if any(
-            marker in policy_text
+            marker in command_text
             for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
         ):
             tags.add("untrusted_script")
@@ -322,6 +334,12 @@ def _risk_tags(
                 "makefile",
                 "gnumakefile",
                 "justfile",
+                "rakefile",
+                "docker-compose.yml",
+                "docker-compose.yaml",
+                ".pre-commit-config.yaml",
+                ".pre-commit-config.yml",
+                "node_modules/.bin/",
                 ".eigent/skills/",
                 ".eigent\\skills\\",
             )

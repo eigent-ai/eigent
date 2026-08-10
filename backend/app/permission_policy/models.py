@@ -34,10 +34,16 @@ _REDACTED_ARGUMENT_KEYS = frozenset(
 )
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
-    re.compile(r"\bsk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(
+        r"\bsk-(?:live|test|ant)-(?=[A-Za-z0-9_-]{20,}\b)"
+        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}\b"
+    ),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
-    re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
+    re.compile(
+        r"\bsk_(?:live|test)_(?=[A-Za-z0-9_-]{12,}\b)"
+        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{12,}\b"
+    ),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
 )
@@ -63,7 +69,13 @@ _SECRET_ARGV_FLAGS = frozenset(
         "--token",
     }
 )
-_SECRET_ARGV_SHORT_FLAGS = frozenset({"-p", "-u"})
+_SECRET_ARGV_SHORT_FLAGS_BY_EXECUTABLE = {
+    "curl": frozenset({"-u"}),
+    "wget": frozenset({"-u"}),
+    "mysql": frozenset({"-p"}),
+    "mariadb": frozenset({"-p"}),
+    "mysqldump": frozenset({"-p"}),
+}
 _HEADER_ARGV_FLAGS = frozenset({"-h", "--header"})
 
 
@@ -99,6 +111,13 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
     """Keep approvals readable while removing credential-bearing argv values."""
 
     result: list[Any] = []
+    executable = ""
+    if value and isinstance(value[0], str):
+        executable = value[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    secret_short_flags = _SECRET_ARGV_SHORT_FLAGS_BY_EXECUTABLE.get(
+        executable,
+        frozenset(),
+    )
     redact_next: str | None = None
     for item in value:
         canonical = _canonical_action_value(item)
@@ -124,10 +143,20 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 redact_next = None
                 continue
         lowered = canonical.strip().lower()
-        if lowered.startswith("-p") and not lowered.startswith("--") and len(canonical) > 2:
+        if (
+            "-p" in secret_short_flags
+            and lowered.startswith("-p")
+            and not lowered.startswith("--")
+            and len(canonical) > 2
+        ):
             result.append(f"{canonical[:2]}[REDACTED]")
             continue
-        if lowered.startswith("-u") and not lowered.startswith("--") and len(canonical) > 2:
+        if (
+            "-u" in secret_short_flags
+            and lowered.startswith("-u")
+            and not lowered.startswith("--")
+            and len(canonical) > 2
+        ):
             username, separator, _ = canonical[2:].partition(":")
             result.append(
                 f"{canonical[:2]}{username}:[REDACTED]"
@@ -144,7 +173,7 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 result.append(flag)
                 redact_next = "secret"
             continue
-        if normalized_flag in _SECRET_ARGV_SHORT_FLAGS:
+        if normalized_flag in secret_short_flags:
             result.append(flag)
             redact_next = "user" if normalized_flag == "-u" else "secret"
             continue

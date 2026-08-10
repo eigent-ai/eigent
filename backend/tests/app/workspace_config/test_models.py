@@ -22,6 +22,7 @@ from app.workspace_config import (
     canonical_digest,
     parse_workforce_manifest,
 )
+from app.workspace_config.models import assert_cloud_projection_safe
 
 MANIFEST_YAML = """
 apiVersion: eigent.ai/v1alpha1
@@ -146,12 +147,25 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         b".sk-fading-circle{display:block}.sk-circle-loader-x{}",
     )
     for secret in (
-        "sk-" + "ant-api03-" + ("a" * 24),
-        "sk-" + "live-" + ("b" * 24),
-        "sk-" + "test-" + ("c" * 24),
+        "sk-" + "ant-api03-" + ("a" * 23) + "1",
+        "sk-" + "live-" + ("b" * 23) + "2",
+        "sk-" + "test-" + ("c" * 23) + "3",
+        "sk_" + "test_" + ("d" * 23) + "4",
     ):
         with pytest.raises(SecretValueInManifestError, match="secret-like"):
             assert_manifest_secret_free({"note": secret})
+    assert_bundle_asset_safe(
+        "styles/components.css",
+        (
+            b".sk-test-spinner-container-large{display:block}"
+            b".sk-live-status-indicator-large{display:block}"
+            b".sk-ant-design-component-container{display:block}"
+        ),
+    )
+    assert_bundle_asset_safe(
+        "styles/stripe.css",
+        b".sk_test_spinner_container_large{display:block}",
+    )
 
 
 def test_manifest_allows_path_like_prose_and_requires_default_model():
@@ -161,7 +175,7 @@ def test_manifest_allows_path_like_prose_and_requires_default_model():
             "  context:\n"
             "    - id: local_hint\n"
             "      kind: inline\n"
-            "      content: 'Never touch /etc/hosts; logs live under /var/log/'\n",
+            "      content: 'Never touch /etc/hosts; use ~/workspace'\n",
         )
     )
     assert manifest.spec.context[0].content is not None
@@ -180,17 +194,34 @@ def test_manifest_allows_path_like_prose_and_requires_default_model():
         r"C:\Users\alice\private\report.pdf",
     ],
 )
-def test_manifest_rejects_device_home_paths_inside_inline_prose(path):
-    with pytest.raises(ValidationError, match="device home path"):
-        parse_workforce_manifest(
-            MANIFEST_YAML.replace(
-                "  context:\n",
-                "  context:\n"
-                "    - id: local_hint\n"
-                "      kind: inline\n"
-                f"      content: 'Read {path}'\n",
-            )
+def test_manifest_allows_device_paths_inside_local_inline_prose(path):
+    parse_workforce_manifest(
+        MANIFEST_YAML.replace(
+            "  context:\n",
+            "  context:\n"
+            "    - id: local_hint\n"
+            "      kind: inline\n"
+            f"      content: 'Read {path}'\n",
         )
+    )
+
+
+def test_cloud_projection_only_rejects_identifying_home_paths():
+    for path in (
+        "/Users/alice/private/report.pdf",
+        "/home/alice/private/report.pdf",
+        r"C:\Users\alice\private\report.pdf",
+    ):
+        with pytest.raises(UnsafeCloudProjectionError, match="device-local"):
+            assert_cloud_projection_safe({"content": f"Read {path}"})
+
+    for path in (
+        "/Users/Shared/report.pdf",
+        "/Users/Public/report.pdf",
+        "/home/node/app/report.pdf",
+        "~/private/report.pdf",
+    ):
+        assert_cloud_projection_safe({"content": f"Read {path}"})
 
 
 def test_manifest_rejects_physical_path_for_local_slot():
