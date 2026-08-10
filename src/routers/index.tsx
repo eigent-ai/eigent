@@ -26,6 +26,9 @@ const Workspace = lazy(() => import('@/pages/Workspace'));
 const History = lazy(() => import('@/pages/History'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
+const WorkspaceConfiguration = lazy(
+  () => import('@/pages/WorkspaceConfiguration')
+);
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
@@ -164,6 +167,10 @@ const AppRoutes = () => (
       <Route element={<Layout />}>
         <Route path="/" element={<Workspace />} />
         <Route path="/history" element={<History />} />
+        <Route
+          path="/workspace-configuration"
+          element={<WorkspaceConfiguration />}
+        />
         <Route
           path="/setting"
           element={<Navigate to="/history?tab=settings" replace />}

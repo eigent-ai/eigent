@@ -126,6 +126,18 @@ class WorkspaceConfigMaterializationRecord:
 
 
 @dataclass(frozen=True)
+class WorkspaceConfigDraftRecord:
+    space_id: str
+    version: int
+    base_revision_id: str | None
+    document: dict[str, Any]
+    document_digest: str
+    updated_by: str
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
 class WorkspaceBundleInstallProposalRecord:
     proposal_id: str
     request_id: str

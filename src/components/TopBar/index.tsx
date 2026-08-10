@@ -63,6 +63,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   Settings,
+  SlidersHorizontal,
   Square,
   X,
 } from 'lucide-react';
@@ -745,6 +746,23 @@ function HeaderWin() {
                   transition={topBarCrossfade}
                   className="flex"
                 >
+                  <TooltipSimple
+                    content="Workspace Configuration"
+                    side="bottom"
+                    align="end"
+                    variant="instant"
+                  >
+                    <Button
+                      onClick={() => navigate('/workspace-configuration')}
+                      variant="ghost"
+                      buttonContent="icon-only"
+                      size="sm"
+                      className="no-drag rounded-full"
+                      aria-label="Workspace Configuration"
+                    >
+                      <SlidersHorizontal aria-hidden />
+                    </Button>
+                  </TooltipSimple>
                   <TooltipSimple
                     content={t('layout.settings')}
                     side="bottom"
