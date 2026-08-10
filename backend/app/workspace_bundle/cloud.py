@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -22,6 +23,10 @@ class WorkspaceBundleCloudTransport(Protocol):
 
     async def install(
         self, space_id: str, bundle_id: str, revision_id: str
+    ) -> dict[str, Any]: ...
+
+    async def confirm_install(
+        self, space_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]: ...
 
     async def get_environment(self, space_id: str) -> dict[str, Any]: ...
@@ -130,6 +135,15 @@ class HttpWorkspaceBundleCloudTransport:
             {"bundle_id": bundle_id, "revision_id": revision_id},
         )
 
+    async def confirm_install(
+        self, space_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._json(
+            "POST",
+            f"/spaces/{space_id}/bundle:confirm-install",
+            payload,
+        )
+
     async def get_environment(self, space_id: str) -> dict[str, Any]:
         return await self._json("GET", f"/spaces/{space_id}/environment")
 
@@ -171,7 +185,22 @@ class HttpWorkspaceBundleCloudTransport:
         url = descriptor.get("download_url")
         if not isinstance(url, str) or not url:
             raise WorkspaceBundleCloudError(502, "Asset URL is missing")
+        expected_digest = descriptor.get("content_digest")
+        expected_size = descriptor.get("size_bytes")
+        if (
+            not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+            or set(expected_digest) - set("0123456789abcdef")
+            or not isinstance(expected_size, int)
+            or isinstance(expected_size, bool)
+            or expected_size < 0
+            or expected_size > self.MAX_ASSET_BYTES
+        ):
+            raise WorkspaceBundleCloudError(
+                502, "Asset integrity metadata is invalid"
+            )
         total = 0
+        digest = hashlib.sha256()
         chunks: list[bytes] = []
         async with self.client.stream("GET", url) as response:
             if response.is_error:
@@ -184,7 +213,12 @@ class HttpWorkspaceBundleCloudTransport:
                     raise WorkspaceBundleCloudError(
                         413, "Bundle asset exceeds Desktop limit"
                     )
+                digest.update(chunk)
                 chunks.append(chunk)
+        if total != expected_size or digest.hexdigest() != expected_digest:
+            raise WorkspaceBundleCloudError(
+                502, "Bundle asset failed integrity verification"
+            )
         return b"".join(chunks)
 
     async def put_environment_projection(

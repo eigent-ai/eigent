@@ -93,6 +93,18 @@ export function HumanInteractionCard({
             </div>
           ) : null}
 
+          {interaction.display_arguments &&
+          Object.keys(interaction.display_arguments).length > 0 ? (
+            <details className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
+              <summary className="cursor-pointer font-medium">
+                Review arguments (secrets redacted)
+              </summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
+                {JSON.stringify(interaction.display_arguments, null, 2)}
+              </pre>
+            </details>
+          ) : null}
+
           {interaction.rule_matcher?.resource_pattern ? (
             <div className="rounded-xl border border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
               <div className="font-medium">Persistent approval matcher</div>

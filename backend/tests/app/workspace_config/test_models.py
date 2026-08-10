@@ -125,26 +125,37 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         assert_manifest_secret_free({"api_keys": ["not-a-slot"]})
     with pytest.raises(SecretValueInManifestError, match="secret-like"):
         assert_manifest_secret_free(
-            {"note": "use sk-live-abcdefghijklmnop for the demo"}
+            {
+                "note": (
+                    "use sk-abcdefghijklmnopqrstuvwxyzABCDEF12345678 "
+                    "for the demo"
+                )
+            }
         )
     with pytest.raises(SecretValueInManifestError, match="asset"):
         assert_bundle_asset_safe(
             "skills/importer.py",
             b"TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz123456'",
         )
+    with pytest.raises(SecretValueInManifestError, match="API_KEY"):
+        assert_manifest_secret_free({"API_KEY": "not-a-slot"})
+    assert_bundle_asset_safe(
+        "styles/spinkit.css",
+        b".sk-fading-circle{display:block}.sk-circle-loader-x{}",
+    )
 
 
-def test_manifest_rejects_inline_absolute_path_and_missing_default_model():
-    with pytest.raises(ValidationError, match="absolute path"):
-        parse_workforce_manifest(
-            MANIFEST_YAML.replace(
-                "  context:\n",
-                "  context:\n"
-                "    - id: local_hint\n"
-                "      kind: inline\n"
-                "      content: 'Read /Users/alice/private/report.md'\n",
-            )
+def test_manifest_allows_path_like_prose_and_requires_default_model():
+    manifest = parse_workforce_manifest(
+        MANIFEST_YAML.replace(
+            "  context:\n",
+            "  context:\n"
+            "    - id: local_hint\n"
+            "      kind: inline\n"
+            "      content: 'Never touch /etc/hosts; logs live under /var/log/'\n",
         )
+    )
+    assert manifest.spec.context[0].content is not None
     with pytest.raises(ValidationError, match="default profile"):
         parse_workforce_manifest(
             MANIFEST_YAML.replace("    default:\n", "    custom:\n")

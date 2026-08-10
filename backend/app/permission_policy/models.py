@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import re
 from dataclasses import dataclass
@@ -35,15 +34,87 @@ _REDACTED_ARGUMENT_KEYS = frozenset(
 )
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
-    re.compile(r"\bsk-(?:live-|test-)?[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
+    re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
+)
+_URL_USERINFO = re.compile(
+    r"(?i)\b([a-z][a-z0-9+.-]*://)([^\s/:@]+):([^\s/@]+)@"
+)
+_SECRET_ARGV_FLAGS = frozenset(
+    {
+        "--access-token",
+        "--api-key",
+        "--authorization",
+        "--client-secret",
+        "--cookie",
+        "--password",
+        "--private-key",
+        "--refresh-token",
+        "--secret",
+        "--token",
+    }
 )
 
 
 def _normalized_key(value: object) -> str:
-    text = re.sub(r"(?<!^)(?=[A-Z])", "_", str(value))
-    return text.replace("-", "_").lower()
+    # Preserve acronym runs: API_KEY -> api_key, DBPassword -> db_password.
+    # Splitting before every capital produced a_p_i__k_e_y and let common
+    # environment-style credential names bypass durable redaction.
+    text = str(value).replace("-", "_")
+    text = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", text)
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", text)
+    return re.sub(r"_+", "_", text).strip("_").lower()
+
+
+def _is_redacted_argument_key(value: object) -> bool:
+    normalized = _normalized_key(value)
+    return any(
+        normalized == secret_key
+        or normalized.endswith(f"_{secret_key}")
+        or (normalized.endswith("s") and normalized[:-1] == secret_key)
+        for secret_key in _REDACTED_ARGUMENT_KEYS
+    )
+
+
+def _redacted_string(value: str) -> str:
+    redacted = _URL_USERINFO.sub(r"\1\2:[REDACTED]@", value)
+    for pattern in _SECRET_VALUE_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
+    """Keep approvals readable while removing credential-bearing argv values."""
+
+    result: list[Any] = []
+    redact_next = False
+    for item in value:
+        canonical = _canonical_action_value(item)
+        if not isinstance(canonical, str):
+            result.append(_redacted_action_value(canonical))
+            redact_next = False
+            continue
+        if redact_next:
+            result.append("[REDACTED]")
+            redact_next = False
+            continue
+        flag, separator, _ = canonical.partition("=")
+        normalized_flag = flag.strip().lower().replace("_", "-")
+        if normalized_flag in _SECRET_ARGV_FLAGS:
+            if separator:
+                result.append(f"{flag}=[REDACTED]")
+            else:
+                result.append(flag)
+                redact_next = True
+            continue
+        assignment_key, assignment_separator, _ = canonical.partition("=")
+        if assignment_separator and _is_redacted_argument_key(assignment_key):
+            result.append(f"{assignment_key}=[REDACTED]")
+            continue
+        result.append(_redacted_string(canonical))
+    return result
 
 
 def _canonical_action_value(value: Any) -> Any:
@@ -68,32 +139,17 @@ def _redacted_action_value(value: Any) -> Any:
         redacted: dict[str, Any] = {}
         for key, child in value.items():
             normalized = _normalized_key(key)
-            if normalized in _REDACTED_ARGUMENT_KEYS or (
-                normalized.endswith("s")
-                and normalized[:-1] in _REDACTED_ARGUMENT_KEYS
-            ):
+            if _is_redacted_argument_key(key):
                 redacted[str(key)] = "[REDACTED]"
             elif normalized == "argv" and isinstance(child, (list, tuple)):
-                encoded = json.dumps(
-                    _canonical_action_value(child),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ).encode("utf-8")
-                redacted[str(key)] = {
-                    "argument_count": len(child),
-                    "sha256": hashlib.sha256(encoded).hexdigest(),
-                }
+                redacted[str(key)] = _redacted_argv(child)
             else:
                 redacted[str(key)] = _redacted_action_value(child)
         return redacted
     if isinstance(value, (list, tuple)):
         return [_redacted_action_value(child) for child in value]
     if isinstance(value, str):
-        redacted = value
-        for pattern in _SECRET_VALUE_PATTERNS:
-            redacted = pattern.sub("[REDACTED]", redacted)
-        return redacted
+        return _redacted_string(value)
     return _canonical_action_value(value)
 
 

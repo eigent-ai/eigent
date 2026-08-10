@@ -268,9 +268,7 @@ class WorkspaceBundleInstaller:
                         "slot_id": binding.slot_id,
                         "connector_id": binding.connector_id,
                         "connection_id": binding.opaque_connection_id,
-                        "acknowledged_grants": list(
-                            binding.required_grants
-                        ),
+                        "acknowledged_grants": list(binding.required_grants),
                         "expected_installation_version": cloud_version,
                     },
                 )
@@ -318,26 +316,22 @@ class WorkspaceBundleInstaller:
                 status="published",
             )
             projection = self._space_projection(proposal, bindings)
+            semantic_spec_digest = canonical_digest(proposal.manifest["spec"])
+            projection_id = self._environment_projection_id(
+                space_id=proposal.space_id,
+                owner_type="space",
+                owner_id=proposal.space_id,
+                semantic_spec_digest=semantic_spec_digest,
+                projection_digest=projection["projection_digest"],
+                redaction_schema_version=1,
+            )
             await self.cloud.put_environment_projection(
                 {
-                    "projection_id": (
-                        "envspace_"
-                        + canonical_digest(
-                            {
-                                "space_id": proposal.space_id,
-                                "revision_id": proposal.revision_id,
-                                "projection_digest": projection[
-                                    "projection_digest"
-                                ],
-                            }
-                        )[:40]
-                    ),
+                    "projection_id": projection_id,
                     "space_id": proposal.space_id,
                     "owner_type": "space",
                     "owner_id": proposal.space_id,
-                    "semantic_spec_digest": canonical_digest(
-                        proposal.manifest["spec"]
-                    ),
+                    "semantic_spec_digest": semantic_spec_digest,
                     "redacted_spec": projection["redacted_spec"],
                     "redaction_schema_version": 1,
                     "projection_digest": projection["projection_digest"],
@@ -367,14 +361,14 @@ class WorkspaceBundleInstaller:
         environment = await self.cloud.get_environment(proposal.space_id)
         installation = environment.get("installation")
         if installation is None:
-            return (
-                await self.cloud.install(
-                    proposal.space_id,
-                    proposal.bundle_id,
-                    proposal.revision_id,
-                ),
-                None,
+            installation = await self.cloud.install(
+                proposal.space_id,
+                proposal.bundle_id,
+                proposal.revision_id,
             )
+            return await self._confirm_cloud_installation(
+                proposal, installation
+            ), None
         if not isinstance(installation, dict):
             raise WorkspaceBundleInstallError(
                 "Cloud returned an invalid Bundle installation"
@@ -399,7 +393,10 @@ class WorkspaceBundleInstaller:
                 and local_materialization.revision_id != proposal.revision_id
                 else None
             )
-            return installation, previous_revision_id
+            return (
+                await self._confirm_cloud_installation(proposal, installation),
+                previous_revision_id,
+            )
         try:
             installed_version = int(installation["version"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -413,6 +410,65 @@ class WorkspaceBundleInstaller:
             expected_version=installed_version,
         )
         return upgraded, installed_revision_id
+
+    async def _confirm_cloud_installation(
+        self,
+        proposal: WorkspaceBundleInstallProposalRecord,
+        installation: dict[str, Any],
+    ) -> dict[str, Any]:
+        assert self.cloud is not None
+        if installation.get("state") != "proposed":
+            return installation
+        try:
+            expected_version = int(installation["version"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise WorkspaceBundleInstallError(
+                "Cloud Bundle install proposal version is invalid"
+            ) from exc
+        reviewed_slots = [
+            {
+                "slot_id": item["slot_id"],
+                "connector_id": item["connector_id"],
+                "required_grants": sorted(
+                    set(item.get("required_grants", []))
+                ),
+            }
+            for item in proposal.install_plan["connector_slots"]
+        ]
+        return await self.cloud.confirm_install(
+            proposal.space_id,
+            {
+                "bundle_id": proposal.bundle_id,
+                "revision_id": proposal.revision_id,
+                "expected_version": expected_version,
+                "reviewed_manifest_digest": proposal.manifest_digest,
+                "reviewed_slots": reviewed_slots,
+            },
+        )
+
+    @staticmethod
+    def _environment_projection_id(
+        *,
+        space_id: str,
+        owner_type: str,
+        owner_id: str,
+        semantic_spec_digest: str,
+        projection_digest: str,
+        redaction_schema_version: int,
+    ) -> str:
+        return (
+            "envproj_"
+            + canonical_digest(
+                {
+                    "space_id": space_id,
+                    "owner_type": owner_type,
+                    "owner_id": owner_id,
+                    "semantic_spec_digest": semantic_spec_digest,
+                    "projection_digest": projection_digest,
+                    "redaction_schema_version": redaction_schema_version,
+                }
+            )[:40]
+        )
 
     def _proposal(
         self, proposal_id: str
