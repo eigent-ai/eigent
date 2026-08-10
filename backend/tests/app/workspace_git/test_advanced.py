@@ -83,10 +83,54 @@ def test_advanced_git_grammar_classifies_known_commands(argv, operation):
         (("commit", "--verbose", "-m", "checkpoint"), "git.local_write"),
     ],
 )
-def test_advanced_git_does_not_freeze_git_options_in_per_command_allowlists(
+def test_advanced_git_allowlists_cover_supported_complete_option_spellings(
     argv, operation
 ):
     assert AdvancedGitCommandClassifier().classify(argv).operation == operation
+
+
+@pytest.mark.parametrize("command", ("fetch", "ls-remote"))
+@pytest.mark.parametrize(
+    "option",
+    (
+        "--exec=/tmp/evil.sh",
+        "--exe=/tmp/evil.sh",
+        "--upload-pack=/tmp/evil.sh",
+        "--receive-pack=/tmp/evil.sh",
+    ),
+)
+def test_remote_read_rejects_every_external_program_option(command, option):
+    with pytest.raises(AdvancedGitCommandRejected) as rejected:
+        AdvancedGitCommandClassifier().classify((command, "origin", option))
+
+    assert rejected.value.reason_code == "git_external_program_option"
+    assert rejected.value.human_interaction_required is True
+
+
+@pytest.mark.parametrize(
+    "argv",
+    (
+        ("commit", "--am", "-m", "checkpoint"),
+        ("commit", "--ver", "-m", "checkpoint"),
+        ("fetch", "--no-write", "origin"),
+        ("merge", "--no-ver", "topic"),
+        ("rebase", "--no-up", "main"),
+        ("reset", "--har", "HEAD~1"),
+        ("cherry-pick", "--no-com", "HEAD"),
+        ("revert", "--no-com", "HEAD"),
+    ),
+)
+def test_advanced_git_rejects_abbreviated_options(argv):
+    with pytest.raises(AdvancedGitCommandRejected):
+        AdvancedGitCommandClassifier().classify(argv)
+
+
+def test_non_signing_gpg_format_option_is_not_treated_as_a_signer():
+    classification = AdvancedGitCommandClassifier().classify(
+        ("tag", "--gpg-format=openpgp", "v1.0.0")
+    )
+
+    assert classification.operation == "git.local_write"
 
 
 def test_rejected_advanced_git_preview_is_durable_structured_audit(

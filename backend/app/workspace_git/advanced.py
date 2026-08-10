@@ -76,17 +76,25 @@ _REMOTE_READ_FLAG_OPTIONS: dict[str, frozenset[str]] = {
             "--keep",
             "--multiple",
             "--no-auto-gc",
+            "--no-auto-maintenance",
+            "--no-progress",
             "--no-recurse-submodules",
+            "--no-show-forced-updates",
             "--no-tags",
+            "--no-write-fetch-head",
             "--porcelain",
+            "--prefetch",
+            "--progress",
             "--prune",
             "--prune-tags",
             "--quiet",
+            "--refetch",
             "--recurse-submodules",
             "--show-forced-updates",
             "--tags",
             "--update-head-ok",
             "--verbose",
+            "--write-fetch-head",
             "-a",
             "-f",
             "-j",
@@ -127,6 +135,7 @@ _REMOTE_READ_VALUE_OPTIONS: dict[str, frozenset[str]] = {
             "--shallow-exclude",
             "--shallow-since",
             "--submodule-prefix",
+            "-j",
         }
     ),
     "ls-remote": frozenset({"--server-option", "--sort"}),
@@ -135,15 +144,26 @@ _COMMIT_FLAG_OPTIONS = frozenset(
     {
         "--allow-empty",
         "--allow-empty-message",
+        "--all",
+        "--amend",
         "--dry-run",
+        "--include",
+        "--no-gpg-sign",
         "--no-post-rewrite",
+        "--no-status",
         "--no-verify",
+        "--only",
         "--quiet",
         "--reset-author",
         "--short",
         "--status",
+        "--verbose",
+        "-a",
+        "-i",
         "-n",
+        "-o",
         "-q",
+        "-v",
     }
 )
 _COMMIT_VALUE_OPTIONS = frozenset(
@@ -157,6 +177,8 @@ _COMMIT_VALUE_OPTIONS = frozenset(
         "--pathspec-from-file",
         "--reuse-message",
         "--squash",
+        "--trailer",
+        "--untracked-files",
         "-C",
         "-F",
         "-c",
@@ -235,9 +257,14 @@ _MUTATING_FLAG_OPTIONS: dict[str, frozenset[str]] = {
             "--no-stat",
             "--no-verify",
             "--no-verify-signatures",
+            "--no-progress",
+            "--overwrite-ignore",
+            "--no-overwrite-ignore",
+            "--progress",
             "--quit",
             "--squash",
             "--stat",
+            "--allow-unrelated-histories",
             "--verify",
             "--verify-signatures",
         }
@@ -320,7 +347,7 @@ _MUTATING_FLAG_OPTIONS: dict[str, frozenset[str]] = {
     ),
 }
 _MUTATING_VALUE_OPTIONS: dict[str, frozenset[str]] = {
-    "merge": frozenset({"-m", "--message"}),
+    "merge": frozenset({"-m", "--message", "--log", "--into-name"}),
     "cherry-pick": frozenset({"-m", "--mainline", "--cleanup", "--empty"}),
     "revert": frozenset({"-m", "--mainline", "--cleanup"}),
     "rebase": frozenset({"--empty", "--onto"}),
@@ -433,9 +460,12 @@ class AdvancedGitCommandClassifier:
                 return self._classification("git.local_write", command)
             return self._classification("git.read", command)
         if command == "commit":
-            # Git's option surface evolves faster than Desktop. We do not use
-            # a per-subcommand allowlist; known program-execution/signing
-            # forms remain explicit denials and every mutation is reviewed.
+            self._validate_exact_options(
+                argv,
+                command="commit",
+                flags=_COMMIT_FLAG_OPTIONS,
+                value_options=_COMMIT_VALUE_OPTIONS,
+            )
             self._reject_signing(argv, tag_mode=False)
             if "--amend" in lowered:
                 return self._classification(
@@ -469,10 +499,12 @@ class AdvancedGitCommandClassifier:
                 )
             return self._classification("git.local_write", command)
         if command in _INTEGRATE_COMMANDS:
+            self._validate_mutating_options(argv, command)
             self._reject_signing(argv, tag_mode=False)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS)
             return self._classification("git.integrate", command)
         if command in _HISTORY_REWRITE_COMMANDS:
+            self._validate_mutating_options(argv, command)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS + ("-x",))
             return self._classification(
                 "git.history_rewrite",
@@ -484,6 +516,13 @@ class AdvancedGitCommandClassifier:
                 "git.destructive", command, always_confirm=True
             )
         if command in _REMOTE_READ_COMMANDS:
+            self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS)
+            self._validate_exact_options(
+                argv,
+                command=command,
+                flags=_REMOTE_READ_FLAG_OPTIONS[command],
+                value_options=_REMOTE_READ_VALUE_OPTIONS[command],
+            )
             self._validate_remote_target(argv)
             return self._classification(
                 "git.remote_read", command, external=True
@@ -624,7 +663,14 @@ class AdvancedGitCommandClassifier:
                 )
             if lowered.startswith(("--upload", "--receive-p")):
                 raise AdvancedGitCommandRejected(
-                    "custom remote executables are disabled"
+                    "custom remote executables are disabled",
+                    reason_code="git_external_program_option",
+                    remediation=(
+                        "Remove the option that launches an external program. "
+                        "Use a typed Git operation, or request a "
+                        "HumanInteraction for the intended high-risk action."
+                    ),
+                    human_interaction_required=True,
                 )
             if "://" in value:
                 parsed = urlsplit(value)
@@ -731,7 +777,14 @@ class AdvancedGitCommandClassifier:
             ):
                 raise AdvancedGitCommandRejected(
                     f"Git option {value!r} can execute code or write outside "
-                    "the typed operation boundary"
+                    "the typed operation boundary",
+                    reason_code="git_external_program_option",
+                    remediation=(
+                        "Remove the option that launches an external program. "
+                        "Use a typed Git operation, or request a "
+                        "HumanInteraction for the intended high-risk action."
+                    ),
+                    human_interaction_required=True,
                 )
 
     @staticmethod
@@ -817,7 +870,8 @@ class AdvancedGitCommandClassifier:
             if (
                 value == "-S"
                 or value.startswith("-S")
-                or value.startswith("--gpg")
+                or value == "--gpg-sign"
+                or value.startswith("--gpg-sign=")
                 or (
                     tag_mode
                     and value in {"-s", "-u", "--sign", "--local-user"}
