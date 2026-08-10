@@ -59,6 +59,7 @@ _AUTO_EXECUTED_WORKSPACE_FILENAMES = frozenset(
         "deno.json",
         "deno.jsonc",
         "gnumakefile",
+        "gemfile",
         "justfile",
         "makefile",
         "noxfile.py",
@@ -66,6 +67,10 @@ _AUTO_EXECUTED_WORKSPACE_FILENAMES = frozenset(
         "pyproject.toml",
         "pytest.ini",
         "rakefile",
+        "vagrantfile",
+        "procfile",
+        "tasks.py",
+        "dodo.py",
         "setup.cfg",
         "setup.py",
         "tox.ini",
@@ -206,13 +211,30 @@ def _target_resources(
 ) -> tuple[str, ...]:
     resources = list(_argument_values(arguments, (*_PATH_KEYS, *_URL_KEYS)))
     if operation == "terminal.execute":
-        commands = _command_texts(arguments)
+        commands = _canonical_command_resource_texts(arguments)
         resources.extend(
             "terminal-command:sha256:"
             + hashlib.sha256(command.encode("utf-8")).hexdigest()
             for command in commands
         )
     return tuple(dict.fromkeys(resources))
+
+
+def _canonical_command_resource_texts(
+    arguments: dict[str, Any],
+) -> tuple[str, ...]:
+    """Normalize equivalent string/argv shapes for policy matching only."""
+
+    normalized: list[str] = []
+    for command in _argument_values(arguments, _COMMAND_KEYS):
+        try:
+            normalized.append(shlex.join(shlex.split(command)))
+        except ValueError:
+            normalized.append(command)
+    argv = arguments.get("argv")
+    if isinstance(argv, (list, tuple)) and argv:
+        normalized.append(shlex.join(str(item) for item in argv))
+    return tuple(dict.fromkeys(normalized))
 
 
 def _command_texts(arguments: dict[str, Any]) -> tuple[str, ...]:
@@ -308,6 +330,24 @@ def _is_control_plane_word(word: str) -> bool:
     )
 
 
+def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
+    if any(_is_control_plane_word(word) for word in words):
+        return True
+    normalized = [
+        re.sub(r"[^a-z0-9_]+", "", word.lower()) for word in words
+    ]
+    invokes_sqlite = any(
+        token == "sqlite3" or token.endswith("sqlite3")
+        for token in normalized
+    )
+    combined = "".join(normalized)
+    return invokes_sqlite and (
+        "runjournal" in combined
+        or "policysqlite" in combined
+        or "eigentlocalcontrolcapability" in combined
+    )
+
+
 def _risk_tags(
     *,
     operation: str,
@@ -373,9 +413,7 @@ def _risk_tags(
     )
     if command_text:
         if any(
-            _is_control_plane_word(word)
-            for words in command_sequences
-            for word in words
+            _is_control_plane_sequence(words) for words in command_sequences
         ):
             tags.add("policy_control_plane")
         if any(
@@ -396,37 +434,4 @@ def _risk_tags(
             for part in _CREDENTIAL_PATH_PARTS
         ):
             tags.add("credential_export")
-        if re.search(
-            r"(?:^|[\s;&|])(?:pytest|py\.test|make|gmake|just|nox|tox|"
-            r"npm\s+(?:run|test)|pnpm\s+(?:run|test)|yarn\s+(?:run|test))"
-            r"(?:\s|$)",
-            command_text,
-        ):
-            tags.add("untrusted_script")
-        if any(
-            marker in command_text
-            for marker in (
-                ".envrc",
-                "conftest.py",
-                "package.json",
-                "pyproject.toml",
-                "pytest.ini",
-                "setup.cfg",
-                "setup.py",
-                "tox.ini",
-                "noxfile.py",
-                "makefile",
-                "gnumakefile",
-                "justfile",
-                "rakefile",
-                "docker-compose.yml",
-                "docker-compose.yaml",
-                ".pre-commit-config.yaml",
-                ".pre-commit-config.yml",
-                "node_modules/.bin/",
-                ".eigent/skills/",
-                ".eigent\\skills\\",
-            )
-        ):
-            tags.add("untrusted_script")
     return tuple(sorted(tags))

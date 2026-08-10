@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from app.permission_policy.models import PolicyDecision, PolicyEffect
 from app.permission_policy.service import PermissionPolicyService
 from app.permission_policy.tool_actions import build_tool_action_descriptor
 from app.run_context import get_current_run_context
-from app.run_journal import SQLiteRunJournal, get_default_run_journal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    SQLiteRunJournal,
+    get_default_run_journal,
+)
+from app.run_policy import TimeoutOutcome, TimeoutScope
 from app.run_runtime.tool_checkpoint import ToolCheckpointContext
 from app.service.task import TASK_LOCK_CLEANUP_SENTINEL, Action, ActionAskData
 
@@ -82,36 +89,76 @@ async def authorize_tool_checkpoint(
         return result.decision
 
     task_lock.add_human_input_listen(agent_name)
-    await task_lock.put_queue(
-        ActionAskData(
-            action=Action.ask,
-            data={
-                "interaction_id": result.approval.approval_id,
-                "interaction_type": "approval",
-                "run_id": checkpoint.run_id,
-                "version": result.approval.version,
-                "approval_id": result.approval.approval_id,
-                "question": result.approval.prompt.get("question", ""),
-                "title": result.approval.prompt.get(
-                    "title", "Approval required"
-                ),
-                "agent": agent_name,
-                "action_digest": result.approval.action_digest,
-                "safety_class": result.approval.safety_class,
-                "decision_scope": result.approval.decision_scope,
-                "allowed_scopes": result.approval.prompt.get(
-                    "allowed_scopes", ["once"]
-                ),
-                "rule_matcher": result.approval.prompt.get("rule_matcher"),
-                "operation": descriptor.operation,
-                "target_resources": list(descriptor.target_resources),
-                "display_arguments": result.approval.prompt.get(
-                    "action", {}
-                ).get("normalized_arguments", {}),
-            },
-        )
+    human_input_task = asyncio.create_task(
+        task_lock.get_human_input(agent_name)
     )
-    reply = await task_lock.get_human_input(agent_name)
+    # Register the waiter before publishing the card. A fast local renderer
+    # can otherwise decide before get_human_input has appended its Future.
+    await asyncio.sleep(0)
+    try:
+        await task_lock.put_queue(
+            ActionAskData(
+                action=Action.ask,
+                data={
+                    "interaction_id": result.approval.approval_id,
+                    "interaction_type": "approval",
+                    "run_id": checkpoint.run_id,
+                    "version": result.approval.version,
+                    "approval_id": result.approval.approval_id,
+                    "question": result.approval.prompt.get("question", ""),
+                    "title": result.approval.prompt.get(
+                        "title", "Approval required"
+                    ),
+                    "agent": agent_name,
+                    "action_digest": result.approval.action_digest,
+                    "safety_class": result.approval.safety_class,
+                    "decision_scope": result.approval.decision_scope,
+                    "allowed_scopes": result.approval.prompt.get(
+                        "allowed_scopes", ["once"]
+                    ),
+                    "rule_matcher": result.approval.prompt.get(
+                        "rule_matcher"
+                    ),
+                    "operation": descriptor.operation,
+                    "target_resources": list(descriptor.target_resources),
+                    "display_arguments": result.approval.prompt.get(
+                        "action", {}
+                    ).get("normalized_arguments", {}),
+                },
+            )
+        )
+    except BaseException:
+        human_input_task.cancel()
+        raise
+    approval_expires_at = result.approval.expires_at
+    assert approval_expires_at is not None
+    try:
+        reply = await asyncio.wait_for(
+            human_input_task,
+            timeout=max(0.0, approval_expires_at - time.time()),
+        )
+    except TimeoutError:
+        run = store.get_run(checkpoint.run_id)
+        try:
+            store.record_timeout_outcome(
+                TimeoutOutcome(
+                    scope=TimeoutScope.APPROVAL_EXPIRY,
+                    policy_version=(
+                        run.timeout_policy_version if run is not None else "v1"
+                    ),
+                    reason="tool_approval_expired",
+                    started_at=result.approval.created_at,
+                    ended_at=approval_expires_at,
+                    run_id=checkpoint.run_id,
+                    attempt_id=checkpoint.attempt_id,
+                    approval_id=result.approval.approval_id,
+                )
+            )
+        except InvalidRunTransitionError:
+            # A concurrent decision won the durable CAS. The dispatch check
+            # below still requires a live-process approval attestation.
+            pass
+        reply = None
     if reply == TASK_LOCK_CLEANUP_SENTINEL:
         raise ToolPermissionRejectedError(
             "approval wait was interrupted before tool dispatch"

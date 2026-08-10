@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -40,7 +41,12 @@ from app.workspace_config.models import (
 )
 from app.workspace_config.resolver import EnvironmentConfigResolver
 
-_LEGACY_IMPORTER_VERSION = 1
+_LEGACY_IMPORTER_VERSION = 2
+_SECRET_NAME = re.compile(
+    r"(?:api[_-]?key|access[_-]?token|auth(?:orization)?|credential|"
+    r"password|private[_-]?key|secret|token)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,8 @@ class LegacyEnvironmentImporter:
         requested_effort: str | ThinkingEffort | None,
         allow_local_system: bool,
         mcp_server_names: tuple[str, ...] = (),
+        mcp_server_configs: dict[str, dict[str, Any]] | None = None,
+        skill_config: dict[str, Any] | None = None,
         session_mode: str = "workforce",
     ) -> EnvironmentAdmissionTemplate:
         capability = self.capability_registry.resolve(
@@ -94,7 +102,36 @@ class LegacyEnvironmentImporter:
             else None
         )
         manifest_effort = explicit_effort or capability.default_effort
-        unique_mcp_names = tuple(sorted(set(mcp_server_names)))
+        configs = mcp_server_configs or {}
+        unique_mcp_names = tuple(
+            sorted(set(mcp_server_names) | set(configs))
+        )
+        secret_slots = {
+            name: self._mcp_secret_slots(name, configs.get(name, {}))
+            for name in unique_mcp_names
+        }
+        enabled_skills = tuple(
+            sorted(
+                name
+                for name, value in (skill_config or {}).get(
+                    "skills", {}
+                ).items()
+                if isinstance(value, dict) and value.get("enabled", True)
+            )
+        )
+        source_checksum = canonical_digest(
+            {
+                "importer_version": _LEGACY_IMPORTER_VERSION,
+                # Checksum only the declaration shape that is imported. Raw
+                # legacy values may contain low-entropy secrets and must not
+                # become even a dictionary-attackable Cloud-visible digest.
+                "mcp": {
+                    name: list(secret_slots[name])
+                    for name in unique_mcp_names
+                },
+                "skills": list(enabled_skills),
+            }
+        )
         spec = {
             "models": {
                 "default": {
@@ -114,10 +151,17 @@ class LegacyEnvironmentImporter:
                 {
                     "id": name,
                     "definition": "registry://mcp/legacy@1",
-                    "secretSlots": [],
+                    "secretSlots": list(secret_slots[name]),
                     "assignTo": [],
                 }
                 for name in unique_mcp_names
+            ],
+            "skills": [
+                {
+                    "ref": f"registry://skills/{self._logical_name(name)}@legacy",
+                    "assignTo": [],
+                }
+                for name in enabled_skills
             ],
         }
         identity = canonical_digest(
@@ -126,6 +170,7 @@ class LegacyEnvironmentImporter:
                 "spec": spec,
                 "model_platform": model_platform.strip().lower(),
                 "model_type": model_type.strip().lower(),
+                "legacy_source_checksum": source_checksum,
             }
         )
         manifest = WorkforceBundleManifest.model_validate(
@@ -134,7 +179,7 @@ class LegacyEnvironmentImporter:
                 "kind": "WorkforceBundle",
                 "metadata": {
                     "id": f"bundle_legacy_{identity[:24]}",
-                    "name": "Legacy Workspace Compatibility Bundle",
+                    "name": "Personal Default Bundle",
                     "revision": 1,
                 },
                 "spec": spec,
@@ -149,6 +194,8 @@ class LegacyEnvironmentImporter:
                 "auth_source": auth_source or "request_api_key",
             },
             "mcp_server_ids": list(unique_mcp_names),
+            "skill_refs": list(enabled_skills),
+            "legacy_source_checksum": source_checksum,
             "session_mode": session_mode,
         }
         return EnvironmentAdmissionTemplate(
@@ -157,6 +204,42 @@ class LegacyEnvironmentImporter:
             runtime_capability_manifest=runtime_capability_manifest,
             thinking_effort_requested=explicit_effort,
         )
+
+    @staticmethod
+    def _logical_name(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip(
+            "-."
+        )
+        return normalized or "legacy"
+
+    @classmethod
+    def _mcp_secret_slots(
+        cls, server_name: str, config: dict[str, Any]
+    ) -> tuple[str, ...]:
+        slots: set[str] = set()
+
+        def visit(value: Any, path: tuple[str, ...]) -> None:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    key_text = str(key)
+                    if _SECRET_NAME.search(key_text):
+                        slots.add(
+                            "mcp."
+                            + cls._logical_name(server_name)
+                            + "."
+                            + ".".join(
+                                cls._logical_name(item)
+                                for item in (*path, key_text)
+                            )
+                        )
+                    else:
+                        visit(child, (*path, key_text))
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child, path)
+
+        visit(config, ())
+        return tuple(sorted(slots))
 
 
 class EnvironmentAdmissionService:

@@ -65,6 +65,104 @@ _INTEGRATE_COMMANDS = frozenset({"cherry-pick", "merge", "revert"})
 _HISTORY_REWRITE_COMMANDS = frozenset({"rebase", "reset"})
 _DESTRUCTIVE_COMMANDS = frozenset({"clean", "gc", "prune"})
 _REMOTE_READ_COMMANDS = frozenset({"fetch", "ls-remote"})
+_REMOTE_READ_FLAG_OPTIONS: dict[str, frozenset[str]] = {
+    "fetch": frozenset(
+        {
+            "--all",
+            "--append",
+            "--atomic",
+            "--dry-run",
+            "--force",
+            "--keep",
+            "--multiple",
+            "--no-auto-gc",
+            "--no-recurse-submodules",
+            "--no-tags",
+            "--porcelain",
+            "--prune",
+            "--prune-tags",
+            "--quiet",
+            "--recurse-submodules",
+            "--show-forced-updates",
+            "--tags",
+            "--update-head-ok",
+            "--verbose",
+            "-a",
+            "-f",
+            "-j",
+            "-k",
+            "-m",
+            "-n",
+            "-p",
+            "-q",
+            "-t",
+            "-v",
+        }
+    ),
+    "ls-remote": frozenset(
+        {
+            "--exit-code",
+            "--get-url",
+            "--heads",
+            "--quiet",
+            "--refs",
+            "--symref",
+            "--tags",
+            "-h",
+            "-q",
+            "-t",
+        }
+    ),
+}
+_REMOTE_READ_VALUE_OPTIONS: dict[str, frozenset[str]] = {
+    "fetch": frozenset(
+        {
+            "--depth",
+            "--deepen",
+            "--jobs",
+            "--negotiation-tip",
+            "--recurse-submodules",
+            "--refmap",
+            "--server-option",
+            "--shallow-exclude",
+            "--shallow-since",
+            "--submodule-prefix",
+        }
+    ),
+    "ls-remote": frozenset({"--server-option", "--sort"}),
+}
+_COMMIT_FLAG_OPTIONS = frozenset(
+    {
+        "--allow-empty",
+        "--allow-empty-message",
+        "--dry-run",
+        "--no-post-rewrite",
+        "--no-verify",
+        "--quiet",
+        "--reset-author",
+        "--short",
+        "--status",
+        "-n",
+        "-q",
+    }
+)
+_COMMIT_VALUE_OPTIONS = frozenset(
+    {
+        "--author",
+        "--cleanup",
+        "--date",
+        "--file",
+        "--fixup",
+        "--message",
+        "--pathspec-from-file",
+        "--reuse-message",
+        "--squash",
+        "-C",
+        "-F",
+        "-c",
+        "-m",
+    }
+)
 _PROHIBITED_GLOBAL_PREFIXES = (
     "-c",
     "--config-env",
@@ -317,6 +415,12 @@ class AdvancedGitCommandClassifier:
                 return self._classification("git.local_write", command)
             return self._classification("git.read", command)
         if command == "commit":
+            self._validate_exact_options(
+                argv,
+                command="commit",
+                flags=_COMMIT_FLAG_OPTIONS,
+                value_options=_COMMIT_VALUE_OPTIONS,
+            )
             self._reject_signing(argv, tag_mode=False)
             if "--amend" in lowered:
                 return self._classification(
@@ -367,6 +471,12 @@ class AdvancedGitCommandClassifier:
                 "git.destructive", command, always_confirm=True
             )
         if command in _REMOTE_READ_COMMANDS:
+            self._validate_exact_options(
+                argv,
+                command=command,
+                flags=_REMOTE_READ_FLAG_OPTIONS[command],
+                value_options=_REMOTE_READ_VALUE_OPTIONS[command],
+            )
             self._validate_remote_target(argv)
             return self._classification(
                 "git.remote_read", command, external=True
@@ -626,6 +736,43 @@ class AdvancedGitCommandClassifier:
 
         flags = _MUTATING_FLAG_OPTIONS[command]
         value_options = _MUTATING_VALUE_OPTIONS[command]
+        consume_value = False
+        after_separator = False
+        for value in argv[1:]:
+            if consume_value:
+                consume_value = False
+                continue
+            if value == "--":
+                after_separator = True
+                continue
+            if after_separator or not value.startswith("-"):
+                continue
+            if value in flags:
+                continue
+            if value in value_options:
+                consume_value = True
+                continue
+            option_name, separator, _ = value.partition("=")
+            if separator and option_name in value_options:
+                continue
+            raise AdvancedGitCommandRejected(
+                f"Git {command} option {value!r} is outside the safe grammar"
+            )
+        if consume_value:
+            raise AdvancedGitCommandRejected(
+                f"Git {command} option is missing its value"
+            )
+
+    @staticmethod
+    def _validate_exact_options(
+        argv: tuple[str, ...],
+        *,
+        command: str,
+        flags: frozenset[str],
+        value_options: frozenset[str],
+    ) -> None:
+        """Accept only complete option spellings; Git abbreviations are unsafe."""
+
         consume_value = False
         after_separator = False
         for value in argv[1:]:

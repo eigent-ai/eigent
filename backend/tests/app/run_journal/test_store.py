@@ -559,6 +559,43 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
         assert reopened.get_run("run-1") is not None
 
 
+def test_v14_database_backfills_finite_expiry_for_pending_approval(tmp_path):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as current:
+        current.ensure_run(run_id="run-1", project_id="project-1", now=10)
+        current.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=None,
+            prompt={"question": "Allow this action?"},
+            now=20,
+        )
+
+    with sqlite3.connect(path, isolation_level=None) as connection:
+        connection.execute(
+            "UPDATE approvals SET expires_at = NULL, "
+            "expiry_action = 'keep_pending' WHERE approval_id = 'approval-1'"
+        )
+        connection.execute(
+            "UPDATE human_interactions SET expires_at = NULL "
+            "WHERE interaction_id = 'approval-1'"
+        )
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 15"
+        )
+        connection.execute("PRAGMA user_version = 14")
+
+    with SQLiteRunJournal(path) as upgraded:
+        approval = upgraded.list_approvals("run-1")[0]
+        interaction = upgraded.get_human_interaction("approval-1")
+
+        assert upgraded.schema_version == SCHEMA_VERSION
+        assert approval.expires_at == 86420
+        assert approval.expiry_action == "reject"
+        assert interaction is not None
+        assert interaction.expires_at == approval.expires_at
+
+
 def test_v1_database_upgrades_outbox_leases_without_losing_rows(tmp_path):
     from app.run_journal.store import _MIGRATION_V1
 

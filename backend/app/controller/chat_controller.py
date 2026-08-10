@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Request, Response
@@ -125,15 +126,28 @@ _RESUME_TOOL_RESULT_MAX_CHARS = 1000
 
 
 def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
+    skill_config: dict[str, Any] = {}
+    skill_owner = data.skill_config_user_id()
+    if skill_owner:
+        try:
+            from app.service.skill_config_service import skill_config_load
+
+            skill_config = skill_config_load(skill_owner)
+        except Exception:
+            chat_logger.warning(
+                "Failed to import legacy skills into Personal Default Bundle",
+                exc_info=True,
+            )
+    mcp_configs = data.installed_mcp.get("mcpServers") or {}
     return LegacyEnvironmentImporter().build_template(
         model_platform=data.model_platform,
         model_type=data.model_type,
         auth_source=data.auth_source,
         requested_effort=data.thinking_effort,
         allow_local_system=data.allow_local_system,
-        mcp_server_names=tuple(
-            (data.installed_mcp.get("mcpServers") or {}).keys()
-        ),
+        mcp_server_names=tuple(mcp_configs.keys()),
+        mcp_server_configs=mcp_configs,
+        skill_config=skill_config,
         session_mode=data.session_mode,
     )
 

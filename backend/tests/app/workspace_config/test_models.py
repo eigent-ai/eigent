@@ -159,9 +159,16 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         (
             b".sk-test-spinner-container-large{display:block}"
             b".sk-live-status-indicator-large{display:block}"
+            b".sk-live-status-indicator-large-2{display:block}"
             b".sk-ant-design-component-container{display:block}"
         ),
     )
+    for secret in (
+        "sk-live-" + ("AbCdEfGhIjKlMnOpQrStUvWxYz"),
+        "sk-test-" + ("abcdefghijklmnopqrstuvwxyz"),
+    ):
+        with pytest.raises(SecretValueInManifestError, match="secret-like"):
+            assert_manifest_secret_free({"note": secret})
     assert_bundle_asset_safe(
         "styles/stripe.css",
         b".sk_test_spinner_container_large{display:block}",
@@ -362,6 +369,35 @@ def test_cloud_projection_redacts_local_paths_and_binding_ids():
         if key != "projection_digest"
     }
     assert cloud["projection_digest"] == canonical_digest(projection_body)
+
+
+def test_cloud_projection_does_not_repeat_inline_bundle_path_instructions():
+    manifest = parse_workforce_manifest(
+        MANIFEST_YAML.replace(
+            "  context:\n",
+            "  context:\n"
+            "    - id: download_instruction\n"
+            "      kind: inline\n"
+            "      content: Save generated reports under ~/Downloads.\n",
+            1,
+        )
+    )
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=manifest,
+        owner_type="run",
+        owner_id="run-1",
+        local_materialization=LocalMaterialization(),
+        provider_capability=_capability(),
+    )
+
+    cloud = spec.cloud_projection()
+
+    assert "~/Downloads" in json.dumps(spec.local_payload())
+    assert "~/Downloads" not in json.dumps(cloud)
+    assert cloud["semantic_spec"]["bundle"] == {
+        "revision_id": manifest.revision_id,
+        "manifest_digest": manifest.digest,
+    }
 
 
 def test_cloud_projection_rejects_local_fields_in_semantic_capabilities():
