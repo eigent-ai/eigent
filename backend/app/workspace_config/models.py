@@ -134,14 +134,21 @@ _CLOUD_FORBIDDEN_FIELD_NAMES = {
 }
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 _DEVICE_HOME_PATH = re.compile(
-    r"(?i)(?:~[/\\]|/Users/[^/\s]+/|/home/[^/\s]+/|"
-    r"[A-Z]:\\+Users\\+[^\\\s]+\\+)"
+    r"(?i)(?:/(?:Users|home)/(?!shared(?:/|$)|public(?:/|$)|node(?:/|$))"
+    r"[^/\s]+/|[A-Z]:\\+Users\\+(?!shared(?:\\|$)|public(?:\\|$)|"
+    r"node(?:\\|$))[^\\\s]+\\+)"
 )
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"\bsk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(
+        r"\bsk-(?:live|test|ant)-(?=[A-Za-z0-9_-]{20,}\b)"
+        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}\b"
+    ),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
-    re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
+    re.compile(
+        r"\bsk_(?:live|test)_(?=[A-Za-z0-9_-]{12,}\b)"
+        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{12,}\b"
+    ),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
     re.compile(
@@ -326,14 +333,9 @@ class ContextSource(_StrictFrozenModel):
                 )
         if self.kind == "inline" and self.content is None:
             raise ValueError("inline context requires content")
-        # System paths in prose (for example /etc/hosts) remain shareable,
-        # but a concrete user's home path would disclose device identity.
-        if (
-            self.kind == "inline"
-            and self.content is not None
-            and _contains_device_home_path(self.content)
-        ):
-            raise ValueError("inline context cannot contain a device home path")
+        # Inline context is a local Bundle declaration and may intentionally
+        # document paths. Only its redacted Cloud projection is subject to the
+        # device-identity path guard.
         if self.kind == "connection_query" and self.query is None:
             raise ValueError("connection_query requires query")
         return self

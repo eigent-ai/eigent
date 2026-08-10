@@ -469,6 +469,31 @@ async def test_materialize_requires_cloud_protocol_before_mutation(installer):
 
 
 @pytest.mark.asyncio
+async def test_materialize_treats_missing_protocol_field_as_legacy_cloud(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    get_environment = cloud.get_environment
+
+    async def legacy_environment(space_id):
+        environment = await get_environment(space_id)
+        environment.pop("protocol_capabilities", None)
+        return environment
+
+    cloud.get_environment = legacy_environment
+    materialized = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert materialized.state == "materialized"
+    assert cloud.projection is not None
+
+
+@pytest.mark.asyncio
 async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
     service, journal, cloud, tmp_path = installer
     cloud.contents["asset-skill"] = (
