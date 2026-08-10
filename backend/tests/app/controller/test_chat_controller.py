@@ -24,9 +24,9 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.controller.chat_controller import (
-    _PreparedChatRun,
     _admission_request_id,
     _classify_persisted_admission,
+    _PreparedChatRun,
     human_reply,
     improve,
     install_mcp,
@@ -362,9 +362,9 @@ class TestChatController:
                 assert attempts[1].resume_reason == "explicit_resume"
                 assert attempts[1].resume_request_id == "resume-request-1"
                 prepare.assert_awaited_once()
-                assert prepare.await_args.kwargs["resume_attempt"].attempt_id == (
-                    attempts[1].attempt_id
-                )
+                assert prepare.await_args.kwargs[
+                    "resume_attempt"
+                ].attempt_id == (attempts[1].attempt_id)
 
                 release.set()
                 assert await stream.__anext__() == "data: resumed\n\n"
@@ -418,7 +418,9 @@ class TestChatController:
             run = journal.get_run(run_id)
             assert run is not None
             assert run.status == "interrupted"
-            assert journal.list_run_attempts(run_id)[-1].status == "interrupted"
+            assert (
+                journal.list_run_attempts(run_id)[-1].status == "interrupted"
+            )
             assert journal.list_events(run_id)[-1].payload["reason"] == (
                 "resume_admission_failed"
             )

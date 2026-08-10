@@ -204,4 +204,6 @@ def test_command_inbox_terminal_state_cannot_move_backwards(tmp_path):
                 occurred_at=4,
             )
 
-        assert journal.get_remote_command(record.command_id).state == "completed"
+        assert (
+            journal.get_remote_command(record.command_id).state == "completed"
+        )

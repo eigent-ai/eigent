@@ -28,7 +28,7 @@ import time
 import uuid
 from contextlib import suppress
 from dataclasses import asdict
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -282,7 +282,7 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
-    status: list[str] | None = Query(default=None),
+    status: Annotated[list[str] | None, Query()] = None,
     limit: int = Query(default=20, ge=1, le=100),
 ):
     """Return canonical Run state for the main Desktop Project UI."""
@@ -297,7 +297,9 @@ async def list_project_runs(
         await bootstrap_default_cloud_history()
     except Exception:
         # Offline Cloud repair never makes locally durable history unavailable.
-        logger.exception("Cloud Run history bootstrap failed before Project read")
+        logger.exception(
+            "Cloud Run history bootstrap failed before Project read"
+        )
     journal = get_default_run_journal()
     runs = await asyncio.to_thread(
         journal.list_runs,
@@ -314,9 +316,7 @@ async def list_project_runs(
         items.append(
             {
                 **asdict(run),
-                "latest_attempt": (
-                    asdict(attempts[-1]) if attempts else None
-                ),
+                "latest_attempt": (asdict(attempts[-1]) if attempts else None),
                 "total_attempt_elapsed_ms": (
                     _total_attempt_elapsed_ms(attempts, now=now)
                     if attempts
@@ -398,7 +398,10 @@ async def stream_run_events(
 
 def _control_error(exc: Exception) -> HTTPException:
     if isinstance(exc, RunNotFoundError):
-        return HTTPException(status_code=404, detail=str(exc))
+        return HTTPException(
+            status_code=404,
+            detail={"code": "run_not_found"},
+        )
     if isinstance(exc, UnsafeResumeError):
         return HTTPException(
             status_code=409,
@@ -415,10 +418,19 @@ def _control_error(exc: Exception) -> HTTPException:
             IdempotencyConflictError,
         ),
     ):
-        return HTTPException(status_code=409, detail=str(exc))
+        return HTTPException(
+            status_code=409,
+            detail={"code": "run_state_conflict"},
+        )
     if isinstance(exc, (ValueError, KeyError, TypeError)):
-        return HTTPException(status_code=422, detail=str(exc))
-    return HTTPException(status_code=500, detail="Run control failed")
+        return HTTPException(
+            status_code=422,
+            detail={"code": "invalid_run_request"},
+        )
+    return HTTPException(
+        status_code=500,
+        detail={"code": "run_control_failed"},
+    )
 
 
 @router.post("/runs/{run_id}/resume", status_code=202)

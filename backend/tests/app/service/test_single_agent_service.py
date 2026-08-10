@@ -36,7 +36,12 @@ def _parse_sse(line: str) -> tuple[str, object]:
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (type("StatusError", (RuntimeError,), {"status_code": 499})("closed"), True),
+        (
+            type("StatusError", (RuntimeError,), {"status_code": 499})(
+                "closed"
+            ),
+            True,
+        ),
         (RuntimeError("Client Closed Request"), True),
         (RuntimeError("invalid model configuration"), False),
     ],

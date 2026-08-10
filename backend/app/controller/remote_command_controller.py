@@ -44,9 +44,7 @@ def _raise_journal_http_error(exc: RunJournalError) -> None:
             status_code=404,
             detail={"code": "REMOTE_COMMAND_NOT_FOUND", "message": str(exc)},
         ) from exc
-    if isinstance(
-        exc, (IdempotencyConflictError, InvalidRunTransitionError)
-    ):
+    if isinstance(exc, (IdempotencyConflictError, InvalidRunTransitionError)):
         raise HTTPException(
             status_code=409,
             detail={"code": "REMOTE_COMMAND_CONFLICT", "message": str(exc)},
@@ -132,7 +130,9 @@ async def persist_command_inbox(body: RemoteCommandInboxIn):
     return {
         "command": asdict(record),
         "may_execute": may_execute,
-        "execution_event": asdict(execution_event) if execution_event else None,
+        "execution_event": asdict(execution_event)
+        if execution_event
+        else None,
     }
 
 

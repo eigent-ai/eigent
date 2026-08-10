@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +48,7 @@ _IDEMPOTENT_WRITE_TOOL_KEYS: dict[str, str] = {}
 _TOOL_SAFETY_ATTRIBUTE = "_eigent_tool_safety"
 _TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE = "_eigent_idempotency_argument"
 _MAX_CHECKPOINT_JSON_BYTES = 16_000
+logger = logging.getLogger("run_runtime.tool_checkpoint")
 
 
 @dataclass(frozen=True)
@@ -151,8 +153,13 @@ def declare_tool_safety(
                 )
             setattr(target, _TOOL_SAFETY_ATTRIBUTE, safety_class.value)
         except Exception:
-            continue
-        break
+            logger.debug(
+                "Could not attach tool safety declaration to %r",
+                target,
+                exc_info=True,
+            )
+        else:
+            break
     return tool
 
 

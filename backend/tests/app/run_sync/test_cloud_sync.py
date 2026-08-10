@@ -82,7 +82,9 @@ class FakeTransport:
             "next_cursor": (
                 items[-1]["cloud_cursor"] if items else after_cursor
             ),
-            "has_more": bool(items and items[-1]["cloud_cursor"] < current_cursor),
+            "has_more": bool(
+                items and items[-1]["cloud_cursor"] < current_cursor
+            ),
             "items": items,
         }
 
@@ -387,9 +389,19 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
         limit=100,
     )
 
-    assert len(
-        [request for request in requests if request.url.path.endswith("/devices/register")]
-    ) == 1
-    assert any("/projects/project%2Fone/snapshot" in str(request.url) for request in requests)
+    assert (
+        len(
+            [
+                request
+                for request in requests
+                if request.url.path.endswith("/devices/register")
+            ]
+        )
+        == 1
+    )
+    assert any(
+        "/projects/project%2Fone/snapshot" in str(request.url)
+        for request in requests
+    )
     assert any("event_limit=1" in str(request.url) for request in requests)
     await transport.close()

@@ -183,9 +183,7 @@ def test_task_changes_exclude_files_written_after_run_attempt(tmp_path):
         modification_windows=((started_at - 1, ended_at),),
     )
 
-    assert [item["relativePath"] for item in files] == [
-        "bank-transfer.csv"
-    ]
+    assert [item["relativePath"] for item in files] == ["bank-transfer.csv"]
 
 
 def test_task_changes_skip_file_deleted_between_walk_and_stat(
@@ -275,9 +273,7 @@ def test_task_changes_endpoint_freezes_completed_run_manifest(
     )
 
     assert response.status_code == 200
-    assert [item["relativePath"] for item in response.json()] == [
-        "report.csv"
-    ]
+    assert [item["relativePath"] for item in response.json()] == ["report.csv"]
     resolver.store.freeze_artifact_manifest.assert_called_once_with(
         "user@example.com", snapshot, response.json()
     )
@@ -313,7 +309,9 @@ def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     assert response.headers["content-range"] == "bytes 2-5/10"
 
 
-def test_task_changes_endpoint_requires_local_capability(monkeypatch, tmp_path):
+def test_task_changes_endpoint_requires_local_capability(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("EIGENT_RUNTIME", "electron")
     monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
     snapshot = SimpleNamespace(

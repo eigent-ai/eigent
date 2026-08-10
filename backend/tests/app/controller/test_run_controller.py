@@ -213,9 +213,11 @@ async def test_stream_resumes_from_last_event_id_on_transport_reconnect():
     events = [_event(1, "confirmed"), _event(2, "end")]
     journal = MagicMock()
     journal.get_run.return_value = _run_record()
-    journal.list_events.side_effect = lambda run_id, *, after_sequence, limit: [
-        event for event in events if event.sequence > after_sequence
-    ][:limit]
+    journal.list_events.side_effect = (
+        lambda run_id, *, after_sequence, limit: [
+            event for event in events if event.sequence > after_sequence
+        ][:limit]
+    )
     coordinator = RunCoordinator()
 
     with (

@@ -202,3 +202,24 @@ def test_builtin_read_tools_and_code_owned_declarations_are_trusted():
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )
+
+
+def test_tool_safety_declaration_falls_back_to_wrapped_function():
+    class Function:
+        pass
+
+    class ReadOnlyProxy:
+        def __init__(self, function):
+            object.__setattr__(self, "func", function)
+
+        def __setattr__(self, name, value):
+            raise RuntimeError("proxy is read-only")
+
+    proxy = ReadOnlyProxy(Function())
+
+    declare_tool_safety(proxy, ToolSafetyClass.SAFE_READ)
+
+    assert declared_tool_safety(proxy, "vendor_lookup", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )

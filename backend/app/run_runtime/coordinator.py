@@ -103,7 +103,9 @@ class RuntimeHandle:
     run_id: str
     command_queue: asyncio.Queue[Any] | None = None
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
-    deadline_changed_event: asyncio.Event = field(default_factory=asyncio.Event)
+    deadline_changed_event: asyncio.Event = field(
+        default_factory=asyncio.Event
+    )
     execution_task: asyncio.Task[None] | None = None
     deadline_task: asyncio.Task[None] | None = None
     started_at: float = field(default_factory=time.time)

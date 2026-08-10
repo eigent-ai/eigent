@@ -219,7 +219,9 @@ class ListenChatAgent(ChatAgent):
 
         self._reset_tool_checkpoint_error()
         try:
-            async for item in super()._execute_tools_async_with_status_accumulator(
+            async for (
+                item
+            ) in super()._execute_tools_async_with_status_accumulator(
                 *args, **kwargs
             ):
                 yield item

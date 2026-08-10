@@ -265,7 +265,10 @@ def list_files(
                     continue
                 try:
                     file_path = os.path.join(root, name)
-                    if modified_after is not None or modified_before is not None:
+                    if (
+                        modified_after is not None
+                        or modified_before is not None
+                    ):
                         file_mtime = os.stat(
                             file_path, follow_symlinks=False
                         ).st_mtime

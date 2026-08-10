@@ -366,7 +366,9 @@ class CommandControlWorker:
                 configuration, limit=self._max_commands
             )
         except Exception:
-            logger.exception("Remote command pull failed; outbound lane remains live")
+            logger.exception(
+                "Remote command pull failed; outbound lane remains live"
+            )
             pulled = []
         for item in pulled:
             try:
@@ -396,7 +398,9 @@ class CommandControlWorker:
                 )
                 pulled_count += 1
             except Exception:
-                logger.exception("Ignoring malformed or conflicting remote command")
+                logger.exception(
+                    "Ignoring malformed or conflicting remote command"
+                )
         for command in await asyncio.to_thread(
             self._journal.list_reconcilable_commands,
             limit=self._max_commands,

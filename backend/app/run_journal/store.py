@@ -69,6 +69,26 @@ from app.run_policy import (
 SCHEMA_VERSION = 5
 logger = logging.getLogger("run_journal")
 
+_SQLITE_IN_PARAMETERS = "__SQLITE_IN_PARAMETERS__"
+
+
+def _sql_with_in_parameters(template: str, parameter_count: int) -> str:
+    """Expand one trusted marker into SQLite bind parameters.
+
+    SQL values never enter the query text: the only generated fragment is a
+    comma-separated sequence of ``?`` parameter markers. Keeping this boundary
+    in one validated helper makes the variable-length ``IN`` queries auditable
+    without suppressing SQL-injection checks at every call site.
+    """
+
+    if parameter_count < 1:
+        raise ValueError("SQL IN clauses require at least one parameter")
+    if template.count(_SQLITE_IN_PARAMETERS) != 1:
+        raise ValueError("SQL template must contain exactly one IN marker")
+    placeholders = ",".join("?" for _ in range(parameter_count))
+    return template.replace(_SQLITE_IN_PARAMETERS, placeholders)
+
+
 _MIGRATION_V1 = """
 BEGIN IMMEDIATE;
 
@@ -574,7 +594,9 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"project {project_id!r} cloud event page is not contiguous"
                 )
-            if (events[-1].cloud_cursor if events else after_cursor) != next_cursor:
+            if (
+                events[-1].cloud_cursor if events else after_cursor
+            ) != next_cursor:
                 raise IdempotencyConflictError(
                     f"project {project_id!r} next_cursor does not match its event page"
                 )
@@ -585,7 +607,9 @@ class SQLiteRunJournal:
                         f"event {event.event_id!r} belongs to another project"
                     )
                 if event.run_sequence < 1 or event.run_version < 1:
-                    raise ValueError("cloud Run sequence and version must be positive")
+                    raise ValueError(
+                        "cloud Run sequence and version must be positive"
+                    )
                 payload_json = json.dumps(
                     event.payload,
                     ensure_ascii=False,
@@ -1596,11 +1620,14 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                     )
-                if not transition_allowed(
-                    ATTEMPT_TRANSITIONS,
-                    str(attempt["status"]),
-                    "waiting_for_user",
-                ) or run["active_attempt_id"] != attempt_id:
+                if (
+                    not transition_allowed(
+                        ATTEMPT_TRANSITIONS,
+                        str(attempt["status"]),
+                        "waiting_for_user",
+                    )
+                    or run["active_attempt_id"] != attempt_id
+                ):
                     raise InvalidRunTransitionError(
                         f"approval attempt {attempt_id!r} must be the active running attempt"
                     )
@@ -1748,13 +1775,17 @@ class SQLiteRunJournal:
                     attempt is not None
                     and attempt["status"] == "waiting_for_user"
                 )
-                attempt_status = attempt["status"] if attempt is not None else None
+                attempt_status = (
+                    attempt["status"] if attempt is not None else None
+                )
             elif approval["attempt_id"] is not None:
                 attempt = connection.execute(
                     "SELECT status FROM run_attempts WHERE attempt_id = ?",
                     (approval["attempt_id"],),
                 ).fetchone()
-                attempt_status = attempt["status"] if attempt is not None else None
+                attempt_status = (
+                    attempt["status"] if attempt is not None else None
+                )
             if (
                 attempt_status in ATTEMPT_ACTIVE_STATES
                 and attempt_status != "waiting_for_user"
@@ -2059,7 +2090,8 @@ class SQLiteRunJournal:
                             event_type = "runtime.interrupted"
                             run_interrupted = True
                         run_attempt_ids = [
-                            attempt["attempt_id"] for attempt in active_attempts
+                            attempt["attempt_id"]
+                            for attempt in active_attempts
                         ]
                         connection.execute(
                             """
@@ -2403,7 +2435,9 @@ class SQLiteRunJournal:
                 """,
                 (command_id,),
             ).fetchone()
-            return self._command_event_from_row(row) if row is not None else None
+            return (
+                self._command_event_from_row(row) if row is not None else None
+            )
 
     def list_reconcilable_commands(
         self, *, limit: int = 100
@@ -2545,7 +2579,10 @@ class SQLiteRunJournal:
                     f"command {command_id!r} cannot move from "
                     f"{inbox['state']!r} to {next_state!r}"
                 )
-            if event_type == "execution.started" and inbox["state"] != "accepted":
+            if (
+                event_type == "execution.started"
+                and inbox["state"] != "accepted"
+            ):
                 raise InvalidRunTransitionError(
                     f"command {command_id!r} cannot start execution from "
                     f"{inbox['state']!r}"
@@ -2691,14 +2728,18 @@ class SQLiteRunJournal:
                     continue
                 token = uuid.uuid4().hex
                 event_ids = [row["event_id"] for row in ready]
-                placeholders = ",".join("?" for _ in event_ids)
-                updated = connection.execute(
-                    f"""
+                claim_statement = _sql_with_in_parameters(
+                    """
                     UPDATE command_result_outbox
                     SET status = 'sending', lease_token = ?, lease_until = ?,
                         updated_at = ?
-                    WHERE status = 'pending' AND event_id IN ({placeholders})
+                    WHERE status = 'pending'
+                      AND event_id IN (__SQLITE_IN_PARAMETERS__)
                     """,
+                    len(event_ids),
+                )
+                updated = connection.execute(
+                    claim_statement,
                     (
                         token,
                         timestamp + lease_seconds,
@@ -2761,14 +2802,17 @@ class SQLiteRunJournal:
             raise ValueError("failed event must belong to command batch")
         with self._write_transaction() as connection:
             self._assert_command_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
-            connection.execute(
-                f"""
+            release_statement = _sql_with_in_parameters(
+                """
                 UPDATE command_result_outbox
                 SET status = 'pending', lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (__SQLITE_IN_PARAMETERS__)
                 """,
+                len(event_ids),
+            )
+            connection.execute(
+                release_statement,
                 (timestamp, *event_ids),
             )
             connection.execute(
@@ -2881,14 +2925,18 @@ class SQLiteRunJournal:
                     continue
                 lease_token = uuid.uuid4().hex
                 event_ids = [row["event_id"] for row in ready]
-                placeholders = ",".join("?" for _ in event_ids)
-                claimed = connection.execute(
-                    f"""
+                claim_statement = _sql_with_in_parameters(
+                    """
                     UPDATE run_event_sync_outbox
                     SET status = 'sending', lease_token = ?, lease_until = ?,
                         updated_at = ?
-                    WHERE status = 'pending' AND event_id IN ({placeholders})
+                    WHERE status = 'pending'
+                      AND event_id IN (__SQLITE_IN_PARAMETERS__)
                     """,
+                    len(event_ids),
+                )
+                claimed = connection.execute(
+                    claim_statement,
                     (lease_token, lease_until, timestamp, *event_ids),
                 )
                 if claimed.rowcount != len(event_ids):
@@ -2918,14 +2966,17 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
-            connection.execute(
-                f"""
+            mark_sent_statement = _sql_with_in_parameters(
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'sent', lease_token = NULL, lease_until = NULL,
                     last_error = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (__SQLITE_IN_PARAMETERS__)
                 """,
+                len(event_ids),
+            )
+            connection.execute(
+                mark_sent_statement,
                 (timestamp, *event_ids),
             )
 
@@ -2941,15 +2992,18 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
-            connection.execute(
-                f"""
+            retry_statement = _sql_with_in_parameters(
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'pending', attempt_count = attempt_count + 1,
                     next_attempt_at = ?, last_error = ?, lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (__SQLITE_IN_PARAMETERS__)
                 """,
+                len(event_ids),
+            )
+            connection.execute(
+                retry_statement,
                 (next_attempt_at, error[:4000], timestamp, *event_ids),
             )
 
@@ -2967,14 +3021,17 @@ class SQLiteRunJournal:
             raise ValueError("failed event must belong to the leased batch")
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
-            connection.execute(
-                f"""
+            release_statement = _sql_with_in_parameters(
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'pending', lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (__SQLITE_IN_PARAMETERS__)
                 """,
+                len(event_ids),
+            )
+            connection.execute(
+                release_statement,
                 (timestamp, *event_ids),
             )
             connection.execute(
@@ -3117,21 +3174,29 @@ class SQLiteRunJournal:
                 draft.created_at,
             ),
         )
-        assignments = ["version = version + 1", "updated_at = ?"]
-        parameters: list[Any] = [draft.created_at]
-        if run_status is not None:
-            assignments.append("status = ?")
-            parameters.append(run_status)
-        if clear_active_attempt:
-            assignments.append("active_attempt_id = NULL")
-        elif active_attempt_id is not None:
-            assignments.append("active_attempt_id = ?")
-            parameters.append(active_attempt_id)
-        parameters.extend([run_id, current_version])
         updated = connection.execute(
-            f"UPDATE runs SET {', '.join(assignments)} "
-            "WHERE run_id = ? AND version = ?",
-            parameters,
+            """
+            UPDATE runs
+            SET version = version + 1,
+                updated_at = ?,
+                status = CASE WHEN ? THEN ? ELSE status END,
+                active_attempt_id = CASE
+                    WHEN ? THEN NULL
+                    WHEN ? THEN ?
+                    ELSE active_attempt_id
+                END
+            WHERE run_id = ? AND version = ?
+            """,
+            (
+                draft.created_at,
+                run_status is not None,
+                run_status,
+                clear_active_attempt,
+                active_attempt_id is not None,
+                active_attempt_id,
+                run_id,
+                current_version,
+            ),
         )
         if updated.rowcount != 1:
             raise OptimisticConcurrencyError(
@@ -3225,15 +3290,18 @@ class SQLiteRunJournal:
     ) -> None:
         if not event_ids:
             raise ValueError("outbox batch must contain events")
-        placeholders = ",".join("?" for _ in event_ids)
+        lease_statement = _sql_with_in_parameters(
+            """
+            SELECT COUNT(*)
+            FROM run_event_sync_outbox
+            WHERE status = 'sending' AND lease_token = ?
+              AND event_id IN (__SQLITE_IN_PARAMETERS__)
+            """,
+            len(event_ids),
+        )
         count = int(
             connection.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM run_event_sync_outbox
-                WHERE status = 'sending' AND lease_token = ?
-                  AND event_id IN ({placeholders})
-                """,
+                lease_statement,
                 (batch.lease_token, *event_ids),
             ).fetchone()[0]
         )
@@ -3250,14 +3318,17 @@ class SQLiteRunJournal:
     ) -> None:
         if not event_ids:
             raise ValueError("command outbox batch must contain events")
-        placeholders = ",".join("?" for _ in event_ids)
+        lease_statement = _sql_with_in_parameters(
+            """
+            SELECT COUNT(*) FROM command_result_outbox
+            WHERE status = 'sending' AND lease_token = ?
+              AND event_id IN (__SQLITE_IN_PARAMETERS__)
+            """,
+            len(event_ids),
+        )
         count = int(
             connection.execute(
-                f"""
-                SELECT COUNT(*) FROM command_result_outbox
-                WHERE status = 'sending' AND lease_token = ?
-                  AND event_id IN ({placeholders})
-                """,
+                lease_statement,
                 (batch.lease_token, *event_ids),
             ).fetchone()[0]
         )
@@ -3303,17 +3374,20 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_command_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
-            connection.execute(
-                f"""
+            finish_statement = _sql_with_in_parameters(
+                """
                 UPDATE command_result_outbox
                 SET status = ?,
                     attempt_count = attempt_count + ?,
                     next_attempt_at = COALESCE(?, next_attempt_at),
                     lease_token = NULL, lease_until = NULL,
                     last_error = ?, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (__SQLITE_IN_PARAMETERS__)
                 """,
+                len(event_ids),
+            )
+            connection.execute(
+                finish_statement,
                 (
                     status,
                     int(increment_attempt),

@@ -42,7 +42,9 @@ def test_attempt_admission_is_idempotent_and_startup_interrupts_it(tmp_path):
         )
 
 
-def test_startup_interruption_ends_attempt_at_last_consumer_heartbeat(tmp_path):
+def test_startup_interruption_ends_attempt_at_last_consumer_heartbeat(
+    tmp_path,
+):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
@@ -523,7 +525,9 @@ def test_terminal_run_expired_approval_does_not_abort_other_startup_recovery(
         )
 
 
-def test_startup_reconciliation_isolates_one_run_failure(tmp_path, monkeypatch):
+def test_startup_reconciliation_isolates_one_run_failure(
+    tmp_path, monkeypatch
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         for run_id in ("bad", "good"):
             journal.ensure_run(run_id=run_id, project_id="project-1", now=1)
@@ -542,7 +546,9 @@ def test_startup_reconciliation_isolates_one_run_failure(tmp_path, monkeypatch):
                 raise RuntimeError("corrupt run")
             return append(connection, run_id, draft, **kwargs)
 
-        monkeypatch.setattr(journal, "_append_event_in_transaction", fail_one_run)
+        monkeypatch.setattr(
+            journal, "_append_event_in_transaction", fail_one_run
+        )
 
         result = journal.reconcile_startup(now=2)
 
@@ -605,7 +611,8 @@ def test_approval_rejects_non_running_attempt_without_orphaning_it(tmp_path):
         )
 
         with pytest.raises(
-            InvalidRunTransitionError, match="must be the active running attempt"
+            InvalidRunTransitionError,
+            match="must be the active running attempt",
         ):
             journal.create_approval(
                 approval_id="approval-1",

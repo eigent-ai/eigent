@@ -388,9 +388,10 @@ class CloudSyncWorker:
                 "Run sync project list must contain an items array"
             )
         for item in project_items:
-            if not isinstance(item, dict) or not str(
-                item.get("project_id") or ""
-            ).strip():
+            if (
+                not isinstance(item, dict)
+                or not str(item.get("project_id") or "").strip()
+            ):
                 raise RunEventSyncProtocolError(
                     "invalid Run sync project descriptor"
                 )

@@ -47,8 +47,8 @@ from app.run_context import (
     stream_with_run_context,
 )
 from app.run_journal import (
-    RunEventDraft,
     RunAttemptRecord,
+    RunEventDraft,
     SQLiteRunJournal,
     get_default_run_journal,
 )
@@ -1116,9 +1116,7 @@ async def _improve_chat(
             ),
             new_task_id=data.task_id,
             request_id=(resolved_request_id if rotation_succeeded else None),
-            run_id=(
-                refreshed_context.run_id if rotation_succeeded else None
-            ),
+            run_id=(refreshed_context.run_id if rotation_succeeded else None),
             attempt_id=(attempt.attempt_id if rotation_succeeded else None),
         )
     )
@@ -1193,9 +1191,7 @@ async def stop(id: str):
     return Response(status_code=204)
 
 
-@router.post(
-    "/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES
-)
+@router.post("/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
@@ -1287,9 +1283,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
     return Response(status_code=201)
 
 
-@router.post(
-    "/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES
-)
+@router.post("/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",

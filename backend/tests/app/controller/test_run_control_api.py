@@ -10,14 +10,44 @@ from app.controller.run_controller import (
     ForkRunBody,
     ResumeRunBody,
     RunSignalBody,
+    _control_error,
     cancel_run,
     fork_run,
     list_project_runs,
     resume_run,
     signal_run,
 )
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    RunNotFoundError,
+    SQLiteRunJournal,
+)
 from app.run_runtime import RunCoordinator
+
+
+@pytest.mark.parametrize(
+    ("exception", "status_code", "public_code"),
+    [
+        (RunNotFoundError("secret database path"), 404, "run_not_found"),
+        (
+            InvalidRunTransitionError("secret internal state"),
+            409,
+            "run_state_conflict",
+        ),
+        (ValueError("secret request value"), 422, "invalid_run_request"),
+        (RuntimeError("secret stack detail"), 500, "run_control_failed"),
+    ],
+)
+def test_run_control_errors_do_not_expose_internal_exception_text(
+    exception,
+    status_code,
+    public_code,
+):
+    error = _control_error(exception)
+
+    assert error.status_code == status_code
+    assert error.detail == {"code": public_code}
+    assert "secret" not in str(error.detail)
 
 
 @pytest.mark.asyncio
@@ -97,9 +127,7 @@ async def test_signal_api_rejects_cross_run_approval_mutation(tmp_path):
 @pytest.mark.asyncio
 async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-        journal.ensure_run(
-            run_id="older", project_id="project-1", now=1
-        )
+        journal.ensure_run(run_id="older", project_id="project-1", now=1)
         journal.create_run_attempt(
             "older",
             request_id="initial-older",
@@ -108,9 +136,7 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
             now=1,
         )
         journal.reconcile_startup(now=2)
-        journal.ensure_run(
-            run_id="other", project_id="project-2", now=3
-        )
+        journal.ensure_run(run_id="other", project_id="project-2", now=3)
         with patch(
             "app.controller.run_controller.get_default_run_journal",
             return_value=journal,
