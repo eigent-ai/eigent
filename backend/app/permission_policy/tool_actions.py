@@ -82,6 +82,8 @@ _AUTO_EXECUTED_WORKSPACE_PATHS = (
     ".vscode/tasks.json",
     "node_modules/.bin/",
 )
+_COMMAND_WRAPPERS = frozenset({"command", "env", "nohup", "sudo"})
+_SHELL_EXECUTABLES = frozenset({"bash", "dash", "ksh", "sh", "zsh"})
 _BROWSER_READ_NAMES = frozenset(
     {
         "browser_console_view",
@@ -221,6 +223,91 @@ def _command_texts(arguments: dict[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(commands))
 
 
+def _command_word_sequences(
+    arguments: dict[str, Any],
+) -> tuple[tuple[str, ...], ...]:
+    sequences: list[tuple[str, ...]] = []
+    for command in _argument_values(arguments, _COMMAND_KEYS):
+        try:
+            words = tuple(shlex.split(command))
+        except ValueError:
+            words = tuple(command.split())
+        if words:
+            sequences.extend(_nested_command_sequences(words))
+    argv = arguments.get("argv")
+    if isinstance(argv, (list, tuple)) and argv:
+        sequences.extend(
+            _nested_command_sequences(tuple(str(item) for item in argv))
+        )
+    return tuple(sequences)
+
+
+def _nested_command_sequences(
+    words: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
+    sequences = [words]
+    index = 0
+    while index < len(words):
+        executable = words[index].replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if executable not in _COMMAND_WRAPPERS:
+            break
+        index += 1
+        if executable == "env":
+            while index < len(words):
+                token = words[index]
+                if "=" in token and not token.startswith("-"):
+                    index += 1
+                    continue
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if (
+                    option in {"-u", "--unset", "-C", "--chdir"}
+                    and "=" not in token
+                ):
+                    index += 1
+        elif executable == "sudo":
+            while index < len(words) and words[index].startswith("-"):
+                token = words[index]
+                option = token.split("=", 1)[0]
+                index += 1
+                if (
+                    option in {"-u", "--user", "-g", "--group", "-h", "--host"}
+                    and "=" not in token
+                ):
+                    index += 1
+        else:
+            while index < len(words) and words[index].startswith("-"):
+                index += 1
+    if index >= len(words):
+        return tuple(sequences)
+    executable = words[index].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if executable in _SHELL_EXECUTABLES:
+        for option_index in range(index + 1, len(words) - 1):
+            option = words[option_index]
+            if option.startswith("-") and "c" in option[1:]:
+                try:
+                    nested = tuple(shlex.split(words[option_index + 1]))
+                except ValueError:
+                    nested = tuple(words[option_index + 1].split())
+                if nested:
+                    sequences.extend(_nested_command_sequences(nested))
+                break
+    return tuple(sequences)
+
+
+def _is_control_plane_word(word: str) -> bool:
+    if any(character.isspace() for character in word):
+        return False
+    compact = re.sub(r"[^a-z0-9_]+", "", word.lower())
+    return bool(
+        re.search(r"run.*journal.*sqlite", compact)
+        or re.search(r"policy.*sqlite", compact)
+        or re.search(r"eigent.*local.*control.*capability", compact)
+    )
+
+
 def _risk_tags(
     *,
     operation: str,
@@ -281,25 +368,22 @@ def _risk_tags(
         if operation in {"terminal.execute", "skill.script.execute"}
         else ""
     )
-    # Shell quoting, globbing, arithmetic expansion, and variable fragments
-    # can split a sensitive filename without changing the target selected by
-    # the shell. Compact matching intentionally errs on the deny side for the
-    # local policy databases and capability name.
-    policy_text = re.sub(r"[^a-z0-9_]+", "", command_text)
-    policy_control_plane = bool(
-        re.search(r"run.*journal.*sqlite", policy_text)
-        or re.search(r"policy.*sqlite", policy_text)
-        or re.search(
-            r"eigent.*local.*control.*capability",
-            policy_text,
-        )
+    command_sequences = (
+        _command_word_sequences(arguments) if command_text else ()
     )
     if command_text:
-        if policy_control_plane:
+        if any(
+            _is_control_plane_word(word)
+            for words in command_sequences
+            for word in words
+        ):
             tags.add("policy_control_plane")
         if any(
-            re.sub(r"[^a-z0-9]+", "", marker) in policy_text
+            re.sub(r"[^a-z0-9]+", "", marker)
+            in re.sub(r"[^a-z0-9]+", "", word.lower())
             for marker in _GIT_EXECUTION_COMMAND_MARKERS
+            for words in command_sequences
+            for word in words
         ):
             tags.add("untrusted_hook")
         if any(

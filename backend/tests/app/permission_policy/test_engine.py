@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from app.permission_policy import (
     PRESET_PROFILES,
     ActionDescriptor,
@@ -456,6 +458,47 @@ def test_persistence_payload_redacts_real_key_shapes_and_argv_credentials():
     assert css_display["note"] == css_like
 
 
+@pytest.mark.parametrize(
+    ("argv", "secret"),
+    [
+        (["sudo", "mysql", "-phunter2"], "hunter2"),
+        (["env", "curl", "-u", "alice:pw"], "pw"),
+        (["bash", "-lc", "curl -u alice:pw"], "pw"),
+        (["redis-cli", "-a", "redis-secret"], "redis-secret"),
+        (["wget", "--user", "alice:pw"], "pw"),
+        (["wget", "--http-password", "http-secret"], "http-secret"),
+        (["curl", "--proxy-password=proxy-secret"], "proxy-secret"),
+    ],
+)
+def test_wrapper_and_long_form_argv_credentials_are_redacted(argv, secret):
+    display = _action(
+        arguments={"argv": argv}
+    ).persistence_payload()["normalized_arguments"]["argv"]
+
+    assert secret not in str(display)
+    assert "[REDACTED]" in str(display)
+
+
+def test_non_secret_short_flags_and_header_prose_remain_reviewable():
+    for argv in (
+        ["curl", "-h"],
+        ["wget", "-u", "https://example.test"],
+        ["ssh", "-p", "2222", "host"],
+    ):
+        display = _action(
+            arguments={"argv": argv}
+        ).persistence_payload()["normalized_arguments"]["argv"]
+        assert display == argv
+
+    prose = "Authorization: Bearer abcdefghijklmnop is configured for staging only"
+    redacted = _action(
+        arguments={"note": prose}
+    ).persistence_payload()["normalized_arguments"]["note"]
+    assert redacted == (
+        "Authorization: Bearer [REDACTED] is configured for staging only"
+    )
+
+
 def test_terminal_argv_participates_in_policy_risk_and_target_extraction(
     tmp_path,
 ):
@@ -541,6 +584,34 @@ def test_non_terminal_argv_is_not_treated_as_a_shell_command(tmp_path):
 
     assert descriptor.operation == "mcp.tool.write"
     assert "policy_control_plane" not in descriptor.risk_tags
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"command": "git commit -m 'update policy for sqlite migration'"},
+        {"argv": ["git", "config", "--list"]},
+    ],
+)
+def test_control_plane_words_in_separate_arguments_do_not_hard_deny(
+    tmp_path,
+    arguments,
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="benign-policy-words",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments=arguments,
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" not in descriptor.risk_tags
+    assert "untrusted_hook" not in descriptor.risk_tags
 
 
 def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
