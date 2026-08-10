@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import shlex
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -52,7 +53,8 @@ _URL_USERINFO = re.compile(
 )
 _SECRET_HEADER = re.compile(
     r"(?i)\b(authorization|proxy-authorization|x-api-key|api-key|"
-    r"x-auth-token|x-access-token)(\s*:\s*)([^\r\n'\";]+)"
+    r"x-auth-token|x-access-token)(\s*:\s*)(bearer\s+)?"
+    r"([A-Za-z0-9._~+/=-]{8,})"
 )
 _SECRET_ARGV_FLAGS = frozenset(
     {
@@ -61,22 +63,32 @@ _SECRET_ARGV_FLAGS = frozenset(
         "--authorization",
         "--client-secret",
         "--cookie",
+        "--http-password",
+        "--oauth2-bearer",
         "--password",
         "--private-key",
+        "--proxy-password",
         "--refresh-token",
         "--secret",
         "--secret-access-key",
         "--token",
+        "--with-token",
     }
 )
-_SECRET_ARGV_SHORT_FLAGS_BY_EXECUTABLE = {
-    "curl": frozenset({"-u"}),
-    "wget": frozenset({"-u"}),
-    "mysql": frozenset({"-p"}),
-    "mariadb": frozenset({"-p"}),
-    "mysqldump": frozenset({"-p"}),
+_SECRET_ARGV_FLAGS_BY_EXECUTABLE = {
+    "curl": {"-u": "user", "--user": "user"},
+    "wget": {"--user": "user"},
+    "mysql": {"-p": "secret"},
+    "mariadb": {"-p": "secret"},
+    "mysqldump": {"-p": "secret"},
+    "redis-cli": {"-a": "secret"},
 }
-_HEADER_ARGV_FLAGS = frozenset({"-h", "--header"})
+_HEADER_ARGV_FLAGS_BY_EXECUTABLE = {
+    "curl": frozenset({"-H", "--header"}),
+    "wget": frozenset({"--header"}),
+}
+_ARGV_WRAPPERS = frozenset({"command", "env", "nohup", "sudo"})
+_SHELL_EXECUTABLES = frozenset({"bash", "dash", "ksh", "sh", "zsh"})
 
 
 def _normalized_key(value: object) -> str:
@@ -101,29 +113,117 @@ def _is_redacted_argument_key(value: object) -> bool:
 
 def _redacted_string(value: str) -> str:
     redacted = _URL_USERINFO.sub(r"\1\2:[REDACTED]@", value)
-    redacted = _SECRET_HEADER.sub(r"\1\2[REDACTED]", redacted)
+    redacted = _SECRET_HEADER.sub(r"\1\2\3[REDACTED]", redacted)
     for pattern in _SECRET_VALUE_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
+
+
+def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
+    index = 0
+    while index < len(value):
+        item = value[index]
+        if not isinstance(item, str):
+            return None
+        executable = item.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if executable not in _ARGV_WRAPPERS:
+            return index
+        index += 1
+        if executable == "env":
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if "=" in token and not token.startswith("-"):
+                    index += 1
+                    continue
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if (
+                    option in {"-u", "--unset", "-C", "--chdir"}
+                    and "=" not in token
+                ):
+                    index += 1
+        elif executable == "sudo":
+            while index < len(value) and isinstance(value[index], str):
+                token = value[index]
+                if not token.startswith("-"):
+                    break
+                option = token.split("=", 1)[0]
+                index += 1
+                if (
+                    option in {"-u", "--user", "-g", "--group", "-h", "--host"}
+                    and "=" not in token
+                ):
+                    index += 1
+        else:
+            while (
+                index < len(value)
+                and isinstance(value[index], str)
+                and value[index].startswith("-")
+            ):
+                index += 1
+    return None
+
+
+def _shell_payload_index(
+    value: list[Any] | tuple[Any, ...],
+    command_index: int | None,
+) -> int | None:
+    if command_index is None or not isinstance(value[command_index], str):
+        return None
+    executable = (
+        value[command_index].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    )
+    if executable not in _SHELL_EXECUTABLES:
+        return None
+    for index in range(command_index + 1, len(value) - 1):
+        option = value[index]
+        if (
+            isinstance(option, str)
+            and option.startswith("-")
+            and "c" in option[1:]
+            and isinstance(value[index + 1], str)
+        ):
+            return index + 1
+    return None
 
 
 def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
     """Keep approvals readable while removing credential-bearing argv values."""
 
     result: list[Any] = []
+    command_index = _argv_command_index(value)
     executable = ""
-    if value and isinstance(value[0], str):
-        executable = value[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
-    secret_short_flags = _SECRET_ARGV_SHORT_FLAGS_BY_EXECUTABLE.get(
+    if command_index is not None and isinstance(value[command_index], str):
+        executable = (
+            value[command_index]
+            .replace("\\", "/")
+            .rsplit("/", 1)[-1]
+            .lower()
+        )
+    executable_secret_flags = _SECRET_ARGV_FLAGS_BY_EXECUTABLE.get(
+        executable,
+        {},
+    )
+    header_flags = _HEADER_ARGV_FLAGS_BY_EXECUTABLE.get(
         executable,
         frozenset(),
     )
+    shell_payload_index = _shell_payload_index(value, command_index)
     redact_next: str | None = None
-    for item in value:
+    for item_index, item in enumerate(value):
         canonical = _canonical_action_value(item)
         if not isinstance(canonical, str):
             result.append(_redacted_action_value(canonical))
             redact_next = None
+            continue
+        if item_index == shell_payload_index:
+            try:
+                nested = shlex.split(canonical)
+            except ValueError:
+                nested = canonical.split()
+            result.append(shlex.join(str(item) for item in _redacted_argv(nested)))
             continue
         if redact_next is not None:
             # A missing option value must not make the following option vanish
@@ -144,7 +244,7 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 continue
         lowered = canonical.strip().lower()
         if (
-            "-p" in secret_short_flags
+            executable_secret_flags.get("-p") == "secret"
             and lowered.startswith("-p")
             and not lowered.startswith("--")
             and len(canonical) > 2
@@ -152,7 +252,7 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
             result.append(f"{canonical[:2]}[REDACTED]")
             continue
         if (
-            "-u" in secret_short_flags
+            executable_secret_flags.get("-u") == "user"
             and lowered.startswith("-u")
             and not lowered.startswith("--")
             and len(canonical) > 2
@@ -164,20 +264,33 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 else f"{canonical[:2]}[REDACTED]"
             )
             continue
+        if (
+            executable_secret_flags.get("-a") == "secret"
+            and lowered.startswith("-a")
+            and not lowered.startswith("--")
+            and len(canonical) > 2
+        ):
+            result.append(f"{canonical[:2]}[REDACTED]")
+            continue
         flag, separator, _ = canonical.partition("=")
         normalized_flag = flag.strip().lower().replace("_", "-")
-        if normalized_flag in _SECRET_ARGV_FLAGS:
+        executable_mode = executable_secret_flags.get(normalized_flag)
+        if normalized_flag in _SECRET_ARGV_FLAGS or executable_mode:
             if separator:
-                result.append(f"{flag}=[REDACTED]")
+                if executable_mode == "user":
+                    username, user_separator, _ = canonical.partition("=")[2].partition(":")
+                    result.append(
+                        f"{flag}={username}:[REDACTED]"
+                        if user_separator
+                        else f"{flag}=[REDACTED]"
+                    )
+                else:
+                    result.append(f"{flag}=[REDACTED]")
             else:
                 result.append(flag)
-                redact_next = "secret"
+                redact_next = executable_mode or "secret"
             continue
-        if normalized_flag in secret_short_flags:
-            result.append(flag)
-            redact_next = "user" if normalized_flag == "-u" else "secret"
-            continue
-        if normalized_flag in _HEADER_ARGV_FLAGS:
+        if flag in header_flags or normalized_flag in header_flags:
             result.append(flag)
             redact_next = "header"
             continue

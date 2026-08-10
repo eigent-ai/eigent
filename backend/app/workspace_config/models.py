@@ -134,7 +134,7 @@ _CLOUD_FORBIDDEN_FIELD_NAMES = {
 }
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 _DEVICE_HOME_PATH = re.compile(
-    r"(?i)(?:/(?:Users|home)/(?!shared(?:/|$)|public(?:/|$)|node(?:/|$))"
+    r"(?i)(?:~[/\\]|/(?:Users|home)/(?!shared(?:/|$)|public(?:/|$)|node(?:/|$))"
     r"[^/\s]+/|[A-Z]:\\+Users\\+(?!shared(?:\\|$)|public(?:\\|$)|"
     r"node(?:\\|$))[^\\\s]+\\+)"
 )

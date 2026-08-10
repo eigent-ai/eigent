@@ -210,6 +210,7 @@ def test_cloud_projection_only_rejects_identifying_home_paths():
     for path in (
         "/Users/alice/private/report.pdf",
         "/home/alice/private/report.pdf",
+        "~/private/report.pdf",
         r"C:\Users\alice\private\report.pdf",
     ):
         with pytest.raises(UnsafeCloudProjectionError, match="device-local"):
@@ -219,7 +220,6 @@ def test_cloud_projection_only_rejects_identifying_home_paths():
         "/Users/Shared/report.pdf",
         "/Users/Public/report.pdf",
         "/home/node/app/report.pdf",
-        "~/private/report.pdf",
     ):
         assert_cloud_projection_safe({"content": f"Read {path}"})
 
