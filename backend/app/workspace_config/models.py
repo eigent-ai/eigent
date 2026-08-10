@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -25,6 +26,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Literal
 
+import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -110,6 +112,7 @@ def canonical_digest(value: Any) -> str:
 
 _SECRET_FIELD_NAMES = {
     "access_token",
+    "access_key",
     "api_key",
     "authorization",
     "client_secret",
@@ -139,7 +142,6 @@ _DEVICE_HOME_PATH = re.compile(
     r"node(?:\\|$))[^\\\s]+\\+)"
 )
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"(?<![.\w])sk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
     re.compile(r"(?<![.\w])sk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
@@ -149,6 +151,10 @@ _SECRET_VALUE_PATTERNS = (
         r"-----BEGIN (?:ENCRYPTED |OPENSSH |RSA |DSA |EC )?PRIVATE KEY-----"
     ),
 )
+_DASHED_SK_CANDIDATE = re.compile(
+    r"(?<![.\w])sk-(live|test|ant)-([A-Za-z0-9_-]{20,})\b",
+    re.IGNORECASE,
+)
 _FORBIDDEN_ASSET_FILENAMES = {
     ".env",
     "id_dsa",
@@ -157,12 +163,24 @@ _FORBIDDEN_ASSET_FILENAMES = {
     "id_rsa",
 }
 _FORBIDDEN_ASSET_SUFFIXES = {".key", ".p12", ".pfx"}
+_PRIVATE_KEY_MARKERS = (
+    b"-----BEGIN PRIVATE KEY-----",
+    b"-----BEGIN ENCRYPTED PRIVATE KEY-----",
+    b"-----BEGIN OPENSSH PRIVATE KEY-----",
+    b"-----BEGIN RSA PRIVATE KEY-----",
+    b"-----BEGIN DSA PRIVATE KEY-----",
+    b"-----BEGIN EC PRIVATE KEY-----",
+)
+_BASE64_CANDIDATE = re.compile(
+    r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])"
+)
 
 
 def _normalized_field_name(value: str) -> str:
+    value = value.replace("-", "_")
     value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", value)
     value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
-    return value.replace("-", "_").lower()
+    return re.sub(r"_+", "_", value).strip("_").lower()
 
 
 def _is_slot_reference(value: Any) -> bool:
@@ -177,13 +195,44 @@ def _is_slot_reference(value: Any) -> bool:
 
 def _is_secret_field_name(value: str) -> bool:
     normalized = _normalized_field_name(value)
-    return normalized in _SECRET_FIELD_NAMES or (
-        normalized.endswith("s") and normalized[:-1] in _SECRET_FIELD_NAMES
+    return any(
+        normalized == name
+        or normalized.endswith(f"_{name}")
+        or (normalized.endswith("s") and normalized[:-1] == name)
+        for name in _SECRET_FIELD_NAMES
     )
 
 
 def _contains_secret_value(value: str) -> bool:
-    return any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)
+    if any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS):
+        return True
+    return any(
+        _dashed_sk_is_credential(match)
+        for match in _DASHED_SK_CANDIDATE.finditer(value)
+    )
+
+
+def _dashed_sk_is_credential(match: re.Match[str]) -> bool:
+    prefix = match.group(1).lower()
+    body = match.group(2)
+    if prefix in {"live", "test"}:
+        return (
+            "-" not in body
+            or sum(character.isdigit() for character in body) >= 4
+        )
+    return any(character.isdigit() for character in body) and any(
+        character.isalpha() for character in body
+    )
+
+
+def _line_secret_field(line: str) -> str | None:
+    if "=" not in line and ":" not in line:
+        return None
+    key = line.split("=", 1)[0] if "=" in line else line.split(":", 1)[0]
+    candidate = re.split(r"[/.:]", key)[-1].lstrip("_").strip()
+    return (
+        candidate if candidate and _is_secret_field_name(candidate) else None
+    )
 
 
 def _contains_device_home_path(value: str) -> bool:
@@ -220,7 +269,7 @@ def assert_manifest_secret_free(value: Any, path: str = "$") -> None:
 
 
 def assert_bundle_asset_safe(logical_path: str, content: bytes) -> None:
-    """Scan downloaded Bundle assets before local materialization."""
+    """Reject the same high-confidence secret containers as Cloud ingest."""
 
     path = PurePosixPath(logical_path.removeprefix("bundle://"))
     name = path.name.lower()
@@ -232,14 +281,56 @@ def assert_bundle_asset_safe(logical_path: str, content: bytes) -> None:
         raise SecretValueInManifestError(
             "secret-bearing file type is forbidden in Bundle assets"
         )
+    if any(marker in content for marker in _PRIVATE_KEY_MARKERS):
+        raise SecretValueInManifestError(
+            "private key material is forbidden in Bundle assets"
+        )
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
-        return
-    if _contains_secret_value(text):
+        text = ""
+    if text and _contains_secret_value(text):
         raise SecretValueInManifestError(
             f"secret-like value is forbidden in Bundle asset {logical_path!r}"
         )
+    for candidate in _BASE64_CANDIDATE.findall(text):
+        try:
+            decoded = base64.b64decode(candidate, validate=True).decode(
+                "utf-8"
+            )
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if _contains_secret_value(decoded) or any(
+            _line_secret_field(line) is not None
+            for line in decoded.splitlines()
+        ):
+            raise SecretValueInManifestError(
+                "base64-encoded secret material is forbidden in Bundle assets"
+            )
+    structured_suffixes = {".json", ".yaml", ".yml"}
+    key_value_suffixes = {".ini", ".toml", ".npmrc"}
+    if path.suffix.lower() in key_value_suffixes or name in {
+        ".npmrc",
+        "credentials",
+    }:
+        for line in text.splitlines():
+            if _line_secret_field(line) is not None:
+                raise SecretValueInManifestError(
+                    "secret-bearing field is forbidden in Bundle assets"
+                )
+        return
+    if path.suffix.lower() not in structured_suffixes:
+        return
+    try:
+        if path.suffix.lower() == ".json":
+            structured = json.loads(content.decode("utf-8"))
+        else:
+            structured = yaml.safe_load(content.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, yaml.YAMLError) as exc:
+        raise SecretValueInManifestError(
+            "structured Bundle asset is not valid UTF-8 data"
+        ) from exc
+    assert_manifest_secret_free(structured)
 
 
 def assert_cloud_projection_safe(value: Any, path: str = "$") -> None:
@@ -382,6 +473,35 @@ class McpServerRequirement(_StrictFrozenModel):
         return value
 
 
+class EnvironmentVariableRequirement(_StrictFrozenModel):
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+    required: bool = True
+    sensitive: bool = False
+    description: str | None = Field(default=None, max_length=500)
+    example: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def reject_sensitive_examples(self) -> EnvironmentVariableRequirement:
+        if self.sensitive and self.example is not None:
+            raise ValueError(
+                "sensitive environment requirements cannot contain examples"
+            )
+        return self
+
+
+class EnvironmentRequirements(_StrictFrozenModel):
+    variables: tuple[EnvironmentVariableRequirement, ...] = Field(
+        default_factory=tuple
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_names(self) -> EnvironmentRequirements:
+        names = [item.name for item in self.variables]
+        if len(names) != len(set(names)):
+            raise ValueError("environment variable names must be unique")
+        return self
+
+
 class AgentProfile(_StrictFrozenModel):
     id: str = Field(min_length=1)
     role: str = Field(min_length=1)
@@ -450,6 +570,10 @@ class BundleSpec(_StrictFrozenModel):
         default_factory=tuple,
         alias="mcpServers",
     )
+    # Optional preserves the canonical digest of Bundles published before the
+    # environment-requirements field existed. New authoring documents include
+    # the field explicitly.
+    environment: EnvironmentRequirements | None = None
     agents: tuple[AgentProfile, ...] = Field(default_factory=tuple)
     models: dict[str, ModelProfile] = Field(default_factory=dict)
     permissions: PermissionProfile = Field(default_factory=PermissionProfile)

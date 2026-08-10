@@ -9,10 +9,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { EnvironmentRequirementsEditor } from '@/components/WorkspaceConfiguration/EnvironmentRequirementsEditor';
+import { WorkspaceBundleSaveDialog } from '@/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
-import type {
-  ThinkingEffort,
-  WorkspaceConfigurationDocument,
+import {
+  workspaceEnvironmentVariables,
+  type ThinkingEffort,
+  type WorkspaceConfigurationDocument,
 } from '@/service/workspaceConfigurationApi';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -21,12 +24,14 @@ import {
   Boxes,
   Cloud,
   GitBranch,
+  KeyRound,
   Plus,
   RefreshCw,
+  Share2,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 const csv = (value: string): string[] =>
   value
@@ -111,6 +116,7 @@ const selectClassName =
   'h-10 w-full rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-3 text-body-sm text-ds-text-neutral-default-default outline-none focus:ring-1 focus:ring-ds-ring-brand-default-focus';
 
 export default function WorkspaceConfiguration() {
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const activeSpace = useSpaceStore((state) =>
     state.activeSpaceId ? state.spaces[state.activeSpaceId] : null
@@ -182,7 +188,7 @@ export default function WorkspaceConfiguration() {
               that every Run in this Space inherits.
             </p>
           </div>
-          <div className="flex items-center gap-2 text-body-sm">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-body-sm">
             <span
               className={
                 saveState === 'needs_attention'
@@ -208,6 +214,15 @@ export default function WorkspaceConfiguration() {
                 Retry
               </Button>
             ) : null}
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={!draft?.persisted || saveState !== 'saved'}
+            >
+              <Share2 className="h-4 w-4" aria-hidden />
+              Save & share
+            </Button>
           </div>
         </header>
 
@@ -289,6 +304,21 @@ export default function WorkspaceConfiguration() {
               </select>
             </label>
           </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Environment requirements"
+          description="Define portable variable names that recipients must configure locally. Values never become Bundle content."
+          icon={<KeyRound className="h-5 w-5" aria-hidden />}
+        >
+          <EnvironmentRequirementsEditor
+            variables={workspaceEnvironmentVariables(document)}
+            onChange={(variables) =>
+              update((next) => {
+                next.spec.environment = { variables };
+              })
+            }
+          />
         </SectionCard>
 
         <SectionCard
@@ -802,6 +832,58 @@ export default function WorkspaceConfiguration() {
           journal. Secret values and physical local paths are not part of this
           document.
         </div>
+
+        {draft && identity ? (
+          <WorkspaceBundleSaveDialog
+            open={saveDialogOpen}
+            onOpenChange={setSaveDialogOpen}
+            spaceId={activeSpaceId}
+            identity={identity}
+            draft={draft}
+            onApplyRequirements={(requirements) =>
+              update((next) => {
+                const byName = new Map(
+                  workspaceEnvironmentVariables(next).map((item) => [
+                    item.name,
+                    item,
+                  ])
+                );
+                for (const requirement of requirements) {
+                  const current = byName.get(requirement.name);
+                  const merged = current
+                    ? {
+                        ...current,
+                        ...requirement,
+                        sensitive: current.sensitive || requirement.sensitive,
+                      }
+                    : requirement;
+                  if (merged.sensitive) delete merged.example;
+                  byName.set(requirement.name, merged);
+                }
+                next.spec.environment = {
+                  variables: Array.from(byName.values()),
+                };
+              })
+            }
+            onApplyMcpSecretSlots={(requirements) =>
+              update((next) => {
+                for (const requirement of requirements) {
+                  const server = next.spec.mcpServers.find(
+                    (item) => item.id === requirement.mcp_id
+                  );
+                  if (!server) continue;
+                  server.secretSlots = Array.from(
+                    new Set([
+                      ...server.secretSlots,
+                      ...requirement.secret_slots,
+                    ])
+                  ).sort();
+                }
+              })
+            }
+            onPublished={reload}
+          />
+        ) : null}
       </div>
     </main>
   );

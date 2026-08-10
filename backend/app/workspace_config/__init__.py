@@ -21,6 +21,8 @@ from app.workspace_config.models import (
     ConfigPlacement,
     EffectiveEnvironmentSpec,
     EffortResolution,
+    EnvironmentRequirements,
+    EnvironmentVariableRequirement,
     LocalMaterialization,
     ProviderModelCapability,
     ResolvedConnectorBinding,
@@ -44,6 +46,8 @@ from app.workspace_config.resolver import EnvironmentConfigResolver
 __all__ = [
     "ConfigPlacement",
     "EffectiveEnvironmentSpec",
+    "EnvironmentRequirements",
+    "EnvironmentVariableRequirement",
     "EffortResolution",
     "EnvironmentConfigResolver",
     "LocalMaterialization",

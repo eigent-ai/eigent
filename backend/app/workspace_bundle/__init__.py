@@ -8,6 +8,7 @@ from app.workspace_bundle.installer import (
     WorkspaceBundleInstallError,
     WorkspaceBundleInstaller,
 )
+from app.workspace_bundle.authoring import WorkspaceBundleAuthoringService
 
 __all__ = [
     "HttpWorkspaceBundleCloudTransport",
@@ -16,4 +17,5 @@ __all__ = [
     "WorkspaceBundleCloudTransport",
     "WorkspaceBundleInstallError",
     "WorkspaceBundleInstaller",
+    "WorkspaceBundleAuthoringService",
 ]

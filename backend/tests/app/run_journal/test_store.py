@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 
@@ -276,6 +277,205 @@ def test_workspace_config_draft_cannot_change_its_base_revision(journal):
             document=document,
             updated_by="user-1",
         )
+
+
+def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
+    journal,
+):
+    document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_publish",
+            "name": "Publish",
+            "revision": 1,
+        },
+        "spec": {
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "medium",
+                }
+            }
+        },
+    }
+    draft = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=document,
+        updated_by="user-1",
+    )
+
+    revision, next_draft = (
+        journal.finalize_workspace_config_publish(
+            space_id="space-1",
+            expected_draft_version=draft.version,
+            revision_id="bundle_publish@1",
+            manifest_digest=draft.document_digest,
+            published_manifest=document,
+            actor_id="user-1",
+            now=20,
+        )
+    )
+    replay = journal.finalize_workspace_config_publish(
+        space_id="space-1",
+        expected_draft_version=draft.version,
+        revision_id="bundle_publish@1",
+        manifest_digest=draft.document_digest,
+        published_manifest=document,
+        actor_id="user-1",
+        now=21,
+    )
+
+    assert revision.status == "published"
+    assert next_draft.version == 2
+    assert next_draft.base_revision_id == "bundle_publish@1"
+    assert next_draft.document["metadata"]["revision"] == 2
+    assert replay[1] == next_draft
+    assert journal.get_latest_workspace_config_materialization("space-1") is None
+
+
+def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
+    journal,
+):
+    document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_publish",
+            "name": "Publish",
+            "revision": 1,
+        },
+        "spec": {
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "medium",
+                }
+            }
+        },
+    }
+    draft = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=document,
+        updated_by="user-1",
+    )
+    journal.put_workspace_config_revision(
+        revision_id="bundle_publish@1",
+        bundle_id="other_bundle",
+        revision_number=7,
+        manifest=document,
+        status="published",
+        created_by="user-1",
+    )
+
+    with pytest.raises(IdempotencyConflictError, match="conflicts"):
+        journal.finalize_workspace_config_publish(
+            space_id="space-1",
+            expected_draft_version=draft.version,
+            revision_id="bundle_publish@1",
+            manifest_digest=draft.document_digest,
+            published_manifest=document,
+            actor_id="user-1",
+        )
+
+    assert journal.get_workspace_config_draft("space-1") == draft
+    assert journal.get_latest_workspace_config_materialization("space-1") is None
+
+
+def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
+    journal,
+):
+    published_document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_publish",
+            "name": "Published A",
+            "revision": 1,
+        },
+        "spec": {
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "medium",
+                }
+            }
+        },
+    }
+    original = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=published_document,
+        updated_by="user-1",
+    )
+    edited_document = json.loads(json.dumps(published_document))
+    edited_document["metadata"]["name"] = "Concurrent B"
+    edited = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=original.version,
+        document=edited_document,
+        updated_by="user-2",
+    )
+
+    revision, rebased = journal.finalize_workspace_config_publish(
+        space_id="space-1",
+        expected_draft_version=original.version,
+        revision_id="bundle_publish@1",
+        manifest_digest=original.document_digest,
+        published_manifest=published_document,
+        actor_id="user-1",
+    )
+
+    assert revision.manifest["metadata"]["name"] == "Published A"
+    assert rebased.version == edited.version + 1
+    assert rebased.base_revision_id == "bundle_publish@1"
+    assert rebased.document["metadata"] == {
+        "id": "bundle_publish",
+        "name": "Concurrent B",
+        "revision": 2,
+    }
+
+
+def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(journal):
+    document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_publish",
+            "name": "Publish",
+            "revision": 1,
+        },
+        "spec": {
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "medium",
+                }
+            }
+        },
+    }
+    draft = journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=document,
+        updated_by="user-1",
+    )
+
+    with pytest.raises(IdempotencyConflictError, match="does not match"):
+        journal.finalize_workspace_config_publish(
+            space_id="space-1",
+            expected_draft_version=draft.version,
+            revision_id="bundle_publish@1",
+            manifest_digest="f" * 64,
+            published_manifest=document,
+            actor_id="user-1",
+        )
+
+    assert journal.get_workspace_config_revision("bundle_publish@1") is None
+    assert journal.get_workspace_config_draft("space-1") == draft
+    assert journal.get_latest_workspace_config_materialization("space-1") is None
 
 
 def test_attempt_binds_environment_once_and_emits_resolved_values(journal):

@@ -1628,6 +1628,180 @@ class SQLiteRunJournal:
             assert persisted is not None
             return self._workspace_config_draft_from_row(persisted)
 
+    def finalize_workspace_config_publish(
+        self,
+        *,
+        space_id: str,
+        expected_draft_version: int,
+        revision_id: str,
+        manifest_digest: str,
+        published_manifest: dict[str, Any],
+        actor_id: str,
+        now: float | None = None,
+    ) -> tuple[
+        WorkspaceConfigRevisionRecord,
+        WorkspaceConfigDraftRecord,
+    ]:
+        """Record a Cloud-published revision without activating it locally."""
+
+        if len(manifest_digest) != 64:
+            raise ValueError("manifest_digest must be a SHA-256 digest")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            draft = connection.execute(
+                "SELECT * FROM workspace_config_drafts WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            if draft is None:
+                raise RunNotFoundError(
+                    f"workspace configuration for {space_id!r} does not exist"
+                )
+            if int(draft["version"]) < expected_draft_version:
+                raise OptimisticConcurrencyError(
+                    f"workspace configuration for {space_id!r} changed"
+                )
+            try:
+                receipt_bundle_id, receipt_revision_text = revision_id.rsplit(
+                    "@", 1
+                )
+                receipt_revision_number = int(receipt_revision_text)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("invalid revision_id") from exc
+            published_json = canonical_json(published_manifest)
+            if canonical_digest(published_manifest) != manifest_digest:
+                raise IdempotencyConflictError(
+                    "published manifest digest does not match its content"
+                )
+            published_metadata = published_manifest.get("metadata", {})
+            if (
+                published_metadata.get("id") != receipt_bundle_id
+                or published_metadata.get("revision")
+                != receipt_revision_number
+            ):
+                raise IdempotencyConflictError(
+                    "published revision identity does not match its manifest"
+                )
+            revision = connection.execute(
+                """
+                SELECT * FROM workspace_config_revisions
+                WHERE revision_id = ?
+                   OR (bundle_id = ? AND revision_number = ?)
+                """,
+                (revision_id, receipt_bundle_id, receipt_revision_number),
+            ).fetchone()
+            expected_revision = (
+                revision_id,
+                receipt_bundle_id,
+                receipt_revision_number,
+                published_json,
+                manifest_digest,
+            )
+            actual_revision = (
+                (
+                    revision["revision_id"],
+                    revision["bundle_id"],
+                    int(revision["revision_number"]),
+                    revision["manifest_json"],
+                    revision["manifest_digest"],
+                )
+                if revision is not None
+                else None
+            )
+            if revision is None:
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_revisions(
+                        revision_id, bundle_id, revision_number,
+                        status, version, manifest_json, manifest_digest,
+                        created_by, created_at
+                    ) VALUES (?, ?, ?, 'published', 0, ?, ?, ?, ?)
+                    """,
+                    (
+                        revision_id,
+                        receipt_bundle_id,
+                        receipt_revision_number,
+                        published_json,
+                        manifest_digest,
+                        actor_id,
+                        timestamp,
+                    ),
+                )
+            elif actual_revision != expected_revision:
+                raise IdempotencyConflictError(
+                    "local revision conflicts with the Cloud publish"
+                )
+            elif revision["status"] in {"draft", "validated"}:
+                connection.execute(
+                    """
+                    UPDATE workspace_config_revisions
+                    SET status = 'published', version = version + 1
+                    WHERE revision_id = ?
+                      AND status IN ('draft', 'validated')
+                    """,
+                    (revision_id,),
+                )
+            elif revision["status"] != "published":
+                raise InvalidRunTransitionError(
+                    "local revision cannot become published"
+                )
+
+            if draft["base_revision_id"] != revision_id:
+                document = json.loads(draft["document_json"])
+                metadata = document.get("metadata", {})
+                if (
+                    metadata.get("id") != receipt_bundle_id
+                    or metadata.get("revision") != receipt_revision_number
+                ):
+                    raise IdempotencyConflictError(
+                        "published revision cannot rebase this working copy"
+                    )
+                # Whether unchanged or edited concurrently, keep the current
+                # working content and move it to the next revision. The Cloud
+                # fact remains immutable at N while local edits continue at
+                # N+1 instead of being stranded behind a permanent conflict.
+                document["metadata"]["revision"] = (
+                    receipt_revision_number + 1
+                )
+                next_json = canonical_json(document)
+                updated = connection.execute(
+                    """
+                    UPDATE workspace_config_drafts
+                    SET version = version + 1,
+                        base_revision_id = ?,
+                        document_json = ?,
+                        document_digest = ?,
+                        updated_by = ?,
+                        updated_at = ?
+                    WHERE space_id = ? AND version = ?
+                    """,
+                    (
+                        revision_id,
+                        next_json,
+                        canonical_digest(document),
+                        actor_id,
+                        timestamp,
+                        space_id,
+                        int(draft["version"]),
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+            revision = connection.execute(
+                "SELECT * FROM workspace_config_revisions WHERE revision_id = ?",
+                (revision_id,),
+            ).fetchone()
+            draft = connection.execute(
+                "SELECT * FROM workspace_config_drafts WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            assert revision is not None and draft is not None
+            return (
+                self._workspace_config_revision_from_row(revision),
+                self._workspace_config_draft_from_row(draft),
+            )
+
     def put_workspace_bundle_install_proposal(
         self,
         *,
