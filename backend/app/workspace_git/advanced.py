@@ -505,7 +505,7 @@ class AdvancedGitCommandClassifier:
                 raise AdvancedGitCommandRejected(
                     "Git remote helpers are disabled"
                 )
-            if lowered.startswith(("--upload-pack", "--receive-pack")):
+            if lowered.startswith(("--upload-p", "--receive-p")):
                 raise AdvancedGitCommandRejected(
                     "custom remote executables are disabled"
                 )
@@ -663,8 +663,7 @@ class AdvancedGitCommandClassifier:
             if (
                 value == "-S"
                 or value.startswith("-S")
-                or value == "--gpg-sign"
-                or value.startswith("--gpg-sign=")
+                or value.startswith("--gpg-s")
                 or (
                     tag_mode
                     and value in {"-s", "-u", "--sign", "--local-user"}

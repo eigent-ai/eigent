@@ -1134,6 +1134,10 @@ class SQLiteRunJournal:
         self.path = path or default_run_journal_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # Durable approval rows are facts, not executable authority. A sibling
+        # process with the same uid must not manufacture dispatch permission by
+        # editing SQLite directly; only this live store can attest a decision.
+        self._trusted_approval_decisions: set[tuple[str, int, str]] = set()
         self._connection = sqlite3.connect(
             str(self.path),
             timeout=busy_timeout_ms / 1000,
@@ -7095,6 +7099,25 @@ class SQLiteRunJournal:
             assert row is not None
             return self._approval_from_row(row)
 
+    def approval_decision_is_trusted(
+        self,
+        approval_id: str,
+        *,
+        version: int,
+        action_digest: str,
+    ) -> bool:
+        """Return whether this process committed the dispatching decision.
+
+        SQLite remains the recovery/audit source of truth, while this volatile
+        attestation prevents a sibling process from turning a direct DB edit
+        into authority for an already-waiting live tool call. Restart loses the
+        attestation and therefore fails closed instead of replaying approval.
+        """
+
+        return (approval_id, version, action_digest) in (
+            self._trusted_approval_decisions
+        )
+
     def decide_approval(
         self,
         approval_id: str,
@@ -7403,7 +7426,11 @@ class SQLiteRunJournal:
                 "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
             ).fetchone()
             assert row is not None
-            return self._approval_from_row(row)
+            resolved = self._approval_from_row(row)
+        self._trusted_approval_decisions.add(
+            (resolved.approval_id, resolved.version, resolved.action_digest)
+        )
+        return resolved
 
     def list_approvals(
         self, run_id: str, *, pending_only: bool = False

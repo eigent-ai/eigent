@@ -91,6 +91,7 @@ class FakeCloud:
         self.installed_bundle_id: str | None = None
         self.installed_revision_id: str | None = None
         self.binding: tuple[str, str] | None = None
+        self.binding_payloads: list[dict] = []
         self.projection: dict | None = None
         self.projections: dict[str, dict] = {}
         self.lose_projection_response_once = lose_projection_response_once
@@ -175,6 +176,7 @@ class FakeCloud:
         }
 
     async def bind_connection(self, space_id, payload):
+        self.binding_payloads.append(dict(payload))
         requested = (payload["slot_id"], payload["connection_id"])
         if self.binding != requested:
             self.binding = requested
@@ -377,6 +379,9 @@ async def test_install_is_review_first_and_materializes_verified_assets(installe
     assert result.state == "materialized"
     assert replay == result
     assert cloud.binding == ("github_readonly", "connection-1")
+    assert cloud.binding_payloads[0]["acknowledged_grants"] == [
+        "repository.read"
+    ]
     assert cloud.projection is not None
     serialized_projection = str(cloud.projection)
     assert "connection-1" not in serialized_projection

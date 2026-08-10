@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -59,6 +61,7 @@ def test_electron_control_requires_matching_loopback_capability(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["kind"] == "desktop_renderer"
+    assert "EIGENT_LOCAL_CONTROL_CAPABILITY" not in os.environ
 
 
 def test_device_and_link_identity_do_not_replace_renderer_capability(monkeypatch):
@@ -114,7 +117,7 @@ def test_non_loopback_cannot_use_desktop_capability(monkeypatch):
     assert response.status_code == 403
 
 
-def test_rotated_desktop_capability_rejects_the_previous_process_token(
+def test_desktop_capability_is_immutable_after_process_capture(
     monkeypatch,
 ):
     monkeypatch.setenv("EIGENT_RUNTIME", "electron")
@@ -135,14 +138,14 @@ def test_rotated_desktop_capability_rejects_the_previous_process_token(
             "/control",
             headers={LOCAL_CONTROL_CAPABILITY_HEADER: "startup-1"},
         ).status_code
-        == 401
+        == 200
     )
     assert (
         client.get(
             "/control",
             headers={LOCAL_CONTROL_CAPABILITY_HEADER: "startup-2"},
         ).status_code
-        == 200
+        == 401
     )
 
 

@@ -1409,11 +1409,23 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             run_context.run_id,
             pending_only=True,
         )
+        current_run = await asyncio.to_thread(
+            journal.get_run, run_context.run_id
+        )
+        active_attempt_id = (
+            current_run.active_attempt_id if current_run is not None else None
+        )
+
+        def belongs_to_current_attempt(item: object) -> bool:
+            attempt_id = getattr(item, "attempt_id", None)
+            return attempt_id is None or attempt_id == active_attempt_id
+
         interaction = next(
             (
                 item
                 for item in reversed(pending_interactions)
                 if item.interaction_type != "approval"
+                and belongs_to_current_attempt(item)
                 and item.request.get("agent") == data.agent
                 and (
                     data.interaction_id is None
@@ -1427,6 +1439,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
                 item
                 for item in reversed(pending_interactions)
                 if item.interaction_type == "approval"
+                and belongs_to_current_attempt(item)
                 and item.request.get("agent") == data.agent
                 and (
                     data.interaction_id is None
@@ -1435,7 +1448,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             ),
             None,
         )
-        if interaction is None and pending_approval is not None:
+        if pending_approval is not None:
             raise UserException(
                 code.error,
                 "This task is waiting for an approval decision. Use the "

@@ -1119,6 +1119,122 @@ class TestChatController:
 
         mock_task_lock.put_human_input.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_human_reply_cannot_bypass_approval_when_question_is_also_pending(
+        self,
+        tmp_path,
+        mock_task_lock,
+        mock_request,
+        controller_run_journal,
+    ):
+        task_id = "test_task_mixed_interactions"
+        mock_task_lock.run_context = RunContext(
+            space_id="space-1",
+            project_id=task_id,
+            run_id="run-1",
+            task_id=task_id,
+            email="user@example.com",
+            user_id="user-1",
+            working_directory=tmp_path,
+            task_output_root=tmp_path,
+            camel_log_dir=tmp_path / "camel_logs",
+            binding_source="test",
+            workdir_mode="workspace",
+            browser_port=9222,
+        )
+        controller_run_journal.get_run.return_value = SimpleNamespace(
+            active_attempt_id="attempt-1"
+        )
+        controller_run_journal.list_human_interactions.return_value = [
+            SimpleNamespace(
+                interaction_id="question-old",
+                attempt_id="attempt-1",
+                interaction_type="question",
+                request={"agent": "test_agent"},
+            ),
+            SimpleNamespace(
+                interaction_id="approval-current",
+                attempt_id="attempt-1",
+                interaction_type="approval",
+                request={"agent": "test_agent"},
+            ),
+        ]
+
+        with patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=mock_task_lock,
+        ):
+            with pytest.raises(UserException, match="approval decision"):
+                await human_reply(
+                    task_id,
+                    HumanReply(agent="test_agent", reply="yes"),
+                    mock_request,
+                )
+
+        mock_task_lock.put_human_input.assert_not_awaited()
+        controller_run_journal.resolve_human_interaction.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stale_interrupted_approval_does_not_block_current_question(
+        self,
+        tmp_path,
+        mock_task_lock,
+        mock_request,
+        controller_run_journal,
+    ):
+        task_id = "test_task_stale_approval"
+        mock_task_lock.run_context = RunContext(
+            space_id="space-1",
+            project_id=task_id,
+            run_id="run-1",
+            task_id=task_id,
+            email="user@example.com",
+            user_id="user-1",
+            working_directory=tmp_path,
+            task_output_root=tmp_path,
+            camel_log_dir=tmp_path / "camel_logs",
+            binding_source="test",
+            workdir_mode="workspace",
+            browser_port=9222,
+        )
+        controller_run_journal.get_run.return_value = SimpleNamespace(
+            active_attempt_id="attempt-2"
+        )
+        controller_run_journal.list_human_interactions.return_value = [
+            SimpleNamespace(
+                interaction_id="approval-stale",
+                attempt_id="attempt-1",
+                interaction_type="approval",
+                request={"agent": "test_agent"},
+            ),
+            SimpleNamespace(
+                interaction_id="question-current",
+                attempt_id="attempt-2",
+                interaction_type="question",
+                request={"agent": "test_agent"},
+                version=0,
+            ),
+        ]
+
+        with patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=mock_task_lock,
+        ):
+            await human_reply(
+                task_id,
+                HumanReply(
+                    agent="test_agent",
+                    reply="continue",
+                    interaction_id="question-current",
+                ),
+                mock_request,
+            )
+
+        mock_task_lock.put_human_input.assert_awaited_once_with(
+            "test_agent", "continue"
+        )
+        controller_run_journal.resolve_human_interaction.assert_called_once()
+
     def test_install_mcp_success(self, mock_task_lock):
         """Test successful MCP installation."""
         task_id = "test_task_123"
