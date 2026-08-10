@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 
 import pytest
@@ -111,6 +112,12 @@ def test_manifest_is_strict_canonical_and_digest_stable():
     )
 
 
+def test_legacy_manifest_canonical_payload_does_not_gain_environment_field():
+    manifest = parse_workforce_manifest(MANIFEST_YAML)
+
+    assert "environment" not in manifest.canonical_payload()["spec"]
+
+
 def test_manifest_rejects_secret_value_even_inside_freeform_instructions():
     with pytest.raises(SecretValueInManifestError, match="api_key"):
         parse_workforce_manifest(
@@ -173,6 +180,47 @@ def test_secret_scan_covers_plural_fields_values_and_script_assets():
         "styles/stripe.css",
         b".sk_test_spinner_container_large{display:block}",
     )
+
+
+@pytest.mark.parametrize(
+    ("logical_path", "content"),
+    [
+        ("config.json", b'{"api_key":"low-entropy-real-secret"}'),
+        ("config.yaml", b"refresh_token: low-entropy-real-secret\n"),
+        ("settings.ini", b"DB_PASSWORD=low-entropy-real-secret\n"),
+        ("settings.toml", b'api_key = "low-entropy-real-secret"\n'),
+        (".npmrc", b"//registry/:_authToken=low-entropy-real-secret\n"),
+        ("credentials", b"secret_access_key=low-entropy-real-secret\n"),
+        (
+            "keys/id.pem",
+            b"-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n",
+        ),
+        (
+            "config.txt",
+            base64.b64encode(b"API_TOKEN=low-entropy-real-secret"),
+        ),
+    ],
+)
+def test_asset_preflight_matches_cloud_secret_container_policy(
+    logical_path, content
+):
+    with pytest.raises(SecretValueInManifestError):
+        assert_bundle_asset_safe(logical_path, content)
+
+
+@pytest.mark.parametrize(
+    ("logical_path", "content"),
+    [
+        ("config.json", b'{"theme":"dark","retry_count":3}'),
+        ("config.yaml", b"theme: dark\nretry_count: 3\n"),
+        ("settings.ini", b"LOG_LEVEL=debug\n"),
+        ("styles.css", b".sk-fading-circle{display:block}"),
+    ],
+)
+def test_asset_preflight_preserves_safe_structured_assets(
+    logical_path, content
+):
+    assert_bundle_asset_safe(logical_path, content)
 
 
 def test_manifest_allows_path_like_prose_and_requires_default_model():

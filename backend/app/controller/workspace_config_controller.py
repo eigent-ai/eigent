@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 import hashlib
-from copy import deepcopy
+import os
+from dataclasses import asdict
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from pydantic import BaseModel, Field, ValidationError
 
 from app.auth import require_local_control_principal
+from app.component.environment import env
 from app.run_journal import (
     IdempotencyConflictError,
     OptimisticConcurrencyError,
@@ -17,10 +28,21 @@ from app.run_journal import (
     WorkspaceConfigDraftRecord,
     get_default_run_journal,
 )
+from app.service.mcp_config import read_mcp_config
 from app.utils.workspace_resolver import get_workspace_resolver
-from app.workspace_config import WorkforceBundleManifest, WorkspaceConfigError
+from app.workspace_bundle import (
+    HttpWorkspaceBundleCloudTransport,
+    WorkspaceBundleAuthoringService,
+    WorkspaceBundleCloudError,
+)
+from app.workspace_config import (
+    WorkforceBundleManifest,
+    WorkspaceConfigError,
+    assert_bundle_asset_safe,
+)
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
+_MAX_BUNDLE_ASSET_BYTES = 16 * 1024 * 1024
 
 
 class WorkspaceConfigDraftBody(BaseModel):
@@ -31,6 +53,16 @@ class WorkspaceConfigDraftBody(BaseModel):
     email: str = Field(min_length=1, max_length=512)
     user_id: str | int | None = None
 
+
+class WorkspaceConfigPublishedBody(BaseModel):
+    expected_version: int = Field(ge=0)
+    revision_id: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}@[1-9][0-9]*$"
+    )
+    manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    actor_id: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=1, max_length=512)
+    user_id: str | int | None = None
 
 def _assert_space_binding(
     *, space_id: str, email: str, user_id: str | int | None
@@ -67,6 +99,7 @@ def _default_document(space_id: str, name: str | None) -> dict[str, Any]:
             "skills": [],
             "connectors": [],
             "mcpServers": [],
+            "environment": {"variables": []},
             "agents": [],
             "models": {
                 "default": {
@@ -100,7 +133,9 @@ def _base_document(space_id: str, name: str | None) -> tuple[dict, str | None]:
     )
     if revision is None:
         return _default_document(space_id, name), None
-    document = deepcopy(revision.manifest)
+    document = WorkforceBundleManifest.model_validate(
+        revision.manifest
+    ).canonical_payload()
     metadata = document.setdefault("metadata", {})
     metadata["revision"] = revision.revision_number + 1
     return document, revision.revision_id
@@ -144,6 +179,11 @@ def _configuration_error(exc: Exception) -> HTTPException:
             status_code=409,
             detail={"code": "workspace_configuration_changed"},
         )
+    if isinstance(exc, WorkspaceBundleCloudError):
+        return HTTPException(
+            status_code=exc.status_code,
+            detail={"code": "bundle_cloud_error", "upstream": exc.detail},
+        )
     if isinstance(exc, RunNotFoundError):
         return HTTPException(
             status_code=404,
@@ -160,6 +200,19 @@ def _configuration_error(exc: Exception) -> HTTPException:
     return HTTPException(
         status_code=500,
         detail={"code": "workspace_configuration_failed"},
+    )
+
+
+def _authoring_cloud(authorization: str) -> HttpWorkspaceBundleCloudTransport:
+    server_url = env("SERVER_URL", "").strip()
+    if not server_url:
+        raise ValueError("SERVER_URL is not configured")
+    return HttpWorkspaceBundleCloudTransport(
+        server_url=server_url,
+        authorization=authorization,
+        desktop_instance_id=os.environ.get(
+            "EIGENT_DESKTOP_INSTANCE_ID", ""
+        ),
     )
 
 
@@ -231,3 +284,101 @@ async def put_workspace_configuration(
         return _payload(space_id=space_id, draft=draft)
     except Exception as exc:
         raise _configuration_error(exc) from exc
+
+
+@router.get("/spaces/{space_id}/workspace-configuration/review")
+async def review_workspace_configuration(
+    space_id: str,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    try:
+        draft = get_default_run_journal().get_workspace_config_draft(space_id)
+        if draft is None:
+            raise RunNotFoundError(
+                "Save the Workspace Configuration before reviewing it"
+            )
+        manifest = WorkforceBundleManifest.model_validate(draft.document)
+        return {
+            "space_id": space_id,
+            "draft_version": draft.version,
+            "review": WorkspaceBundleAuthoringService.review(
+                manifest,
+                mcp_config=read_mcp_config(),
+            ),
+        }
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+
+
+@router.post("/spaces/{space_id}/workspace-configuration/asset-preflight")
+async def preflight_workspace_configuration_asset(
+    space_id: str,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    logical_path: Annotated[str, Form(min_length=1, max_length=1024)],
+    file: Annotated[UploadFile, File()],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    content = await file.read(_MAX_BUNDLE_ASSET_BYTES + 1)
+    if len(content) > _MAX_BUNDLE_ASSET_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={"code": "bundle_asset_too_large"},
+        )
+    try:
+        assert_bundle_asset_safe(logical_path, content)
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+    return {
+        "logical_path": logical_path.removeprefix("bundle://"),
+        "content_digest": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
+    }
+
+
+@router.post("/spaces/{space_id}/workspace-configuration/published")
+async def record_workspace_configuration_published(
+    space_id: str,
+    body: WorkspaceConfigPublishedBody,
+    authorization: Annotated[str, Header(alias="Authorization")],
+) -> dict[str, Any]:
+    _assert_space_binding(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    cloud = None
+    try:
+        cloud = _authoring_cloud(authorization)
+        cloud_revision = await cloud.get_revision(
+            body.revision_id.rsplit("@", 1)[0], body.revision_id
+        )
+        if (
+            cloud_revision.get("status") != "published"
+            or cloud_revision.get("id") != body.revision_id
+            or cloud_revision.get("manifest_digest") != body.manifest_digest
+        ):
+            raise IdempotencyConflictError(
+                "Cloud publish receipt does not match the local working copy"
+            )
+        revision, draft = (
+            get_default_run_journal().finalize_workspace_config_publish(
+                space_id=space_id,
+                expected_draft_version=body.expected_version,
+                revision_id=body.revision_id,
+                manifest_digest=body.manifest_digest,
+                published_manifest=cloud_revision.get("manifest", {}),
+                actor_id=body.actor_id,
+            )
+        )
+        return {
+            "revision": asdict(revision),
+            "draft": _payload(space_id=space_id, draft=draft),
+        }
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+    finally:
+        if cloud is not None:
+            await cloud.close()

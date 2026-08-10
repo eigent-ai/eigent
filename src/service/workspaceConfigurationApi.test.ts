@@ -1,18 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { fetchGetMock, fetchPutMock } = vi.hoisted(() => ({
-  fetchGetMock: vi.fn(),
-  fetchPutMock: vi.fn(),
-}));
+const { fetchGetMock, fetchPostFormMock, fetchPostMock, fetchPutMock } =
+  vi.hoisted(() => ({
+    fetchGetMock: vi.fn(),
+    fetchPostFormMock: vi.fn(),
+    fetchPostMock: vi.fn(),
+    fetchPutMock: vi.fn(),
+  }));
 
 vi.mock('@/api/http', () => ({
   fetchGet: fetchGetMock,
+  fetchPostForm: fetchPostFormMock,
+  fetchPost: fetchPostMock,
   fetchPut: fetchPutMock,
 }));
 
 import {
   fetchWorkspaceConfiguration,
+  preflightWorkspaceConfigurationAsset,
   saveWorkspaceConfiguration,
+  workspaceEnvironmentVariables,
   type WorkspaceConfigurationDocument,
 } from './workspaceConfigurationApi';
 
@@ -27,6 +34,7 @@ const document: WorkspaceConfigurationDocument = {
     connectors: [],
     mcpServers: [],
     agents: [],
+    environment: { variables: [] },
     models: {
       default: {
         modelRef: 'provider://default',
@@ -46,7 +54,84 @@ const document: WorkspaceConfigurationDocument = {
 describe('workspace configuration API', () => {
   beforeEach(() => {
     fetchGetMock.mockReset();
+    fetchPostFormMock.mockReset();
+    fetchPostMock.mockReset();
     fetchPutMock.mockReset();
+  });
+
+  it('treats a legacy Bundle without environment requirements as empty', () => {
+    const legacy = structuredClone(document);
+    delete legacy.spec.environment;
+
+    expect(workspaceEnvironmentVariables(legacy)).toEqual([]);
+  });
+
+  it('preflights an explicitly selected asset with the local Brain', async () => {
+    fetchPostFormMock.mockResolvedValue({
+      logical_path: 'instructions/coordinator.md',
+      content_digest: 'a'.repeat(64),
+      size_bytes: 4,
+    });
+    const file = new File(['safe'], 'coordinator.md');
+
+    await preflightWorkspaceConfigurationAsset(
+      'space/1',
+      { email: 'user@example.com', userId: 42 },
+      'bundle://instructions/coordinator.md',
+      file
+    );
+
+    const [path, form] = fetchPostFormMock.mock.calls[0];
+    expect(path).toContain(
+      '/api/v1/spaces/space%2F1/workspace-configuration/asset-preflight?'
+    );
+    expect(path).toContain('email=user%40example.com');
+    expect(path).toContain('user_id=42');
+    expect(form.get('logical_path')).toBe(
+      'bundle://instructions/coordinator.md'
+    );
+    expect((form.get('file') as File).name).toBe(file.name);
+    expect((form.get('file') as File).size).toBe(file.size);
+  });
+
+  it('reviews and records a publish through capability-protected local APIs', async () => {
+    const {
+      recordPublishedWorkspaceConfiguration,
+      reviewWorkspaceConfiguration,
+    } = await import('./workspaceConfigurationApi');
+    fetchGetMock.mockResolvedValue({ draft_version: 4, review: {} });
+    fetchPostMock.mockResolvedValue({ revision: {}, draft: {} });
+
+    await reviewWorkspaceConfiguration('space/1', {
+      email: 'user@example.com',
+      userId: 42,
+    });
+    await recordPublishedWorkspaceConfiguration(
+      'space/1',
+      { email: 'user@example.com', userId: 42 },
+      {
+        expectedVersion: 4,
+        revisionId: 'bundle-1@1',
+        manifestDigest: 'a'.repeat(64),
+        actorId: '42',
+      }
+    );
+
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/api/v1/spaces/space%2F1/workspace-configuration/review',
+      { email: 'user@example.com', user_id: 42 }
+    );
+    expect(fetchPostMock).toHaveBeenCalledWith(
+      '/api/v1/spaces/space%2F1/workspace-configuration/published',
+      {
+        email: 'user@example.com',
+        user_id: 42,
+        expected_version: 4,
+        revision_id: 'bundle-1@1',
+        manifest_digest: 'a'.repeat(64),
+        actor_id: '42',
+      }
+    );
   });
 
   it('loads a Space-scoped working copy without sending a local path', async () => {
