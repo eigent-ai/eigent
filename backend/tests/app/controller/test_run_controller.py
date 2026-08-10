@@ -241,3 +241,47 @@ async def test_stream_resumes_from_last_event_id_on_transport_reconnect():
         "run-1", after_sequence=1, limit=500
     )
     await coordinator.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_does_not_expose_runtime_exception_text():
+    journal = MagicMock()
+    journal.get_run.return_value = _run_record()
+    journal.list_events.return_value = []
+    coordinator = RunCoordinator()
+    release = asyncio.Event()
+
+    async def source():
+        await release.wait()
+        if False:
+            yield "unreachable"
+        raise RuntimeError("secret backend credential")
+
+    initial = await coordinator.start_with_subscription(
+        run_id="run-1",
+        stream_factory=source,
+    )
+    await initial.aclose()
+
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.controller.run_controller.get_default_run_coordinator",
+            return_value=coordinator,
+        ),
+    ):
+        response = await stream_run_events("run-1", after_sequence=0)
+        stream = response.body_iterator
+        next_frame = asyncio.create_task(stream.__anext__())
+        await asyncio.sleep(0)
+        release.set()
+
+        _, event_type, payload = _decode_sse(await next_frame)
+
+    assert event_type == "runtime_error"
+    assert payload["message"] == "An internal runtime error occurred."
+    assert "secret backend credential" not in json.dumps(payload)
+    await coordinator.close()

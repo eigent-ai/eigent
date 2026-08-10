@@ -61,6 +61,7 @@ logger = logging.getLogger("run_controller")
 
 _EVENT_PAGE_SIZE = 500
 _DEFAULT_HEARTBEAT_SECONDS = 15.0
+_PUBLIC_RUNTIME_ERROR_MESSAGE = "An internal runtime error occurred."
 _TERMINAL_EVENT_TYPES = {
     "run.completed",
     "run.failed",
@@ -231,8 +232,12 @@ async def _durable_event_stream(
             except SubscriberLaggedError:
                 subscriber_lagged = True
                 subscription = None
-            except RunExecutionError as exc:
-                runtime_error = str(exc)
+            except RunExecutionError:
+                logger.exception(
+                    "Run execution error while streaming run %s",
+                    run_id,
+                )
+                runtime_error = _PUBLIC_RUNTIME_ERROR_MESSAGE
                 subscription = None
             finally:
                 pending_notification = None
