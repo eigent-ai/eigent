@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,24 @@ _GIT_EXECUTION_COMMAND_MARKERS = (
     ".git/hooks",
     ".git\\hooks",
     "core.hookspath",
+)
+_AUTO_EXECUTED_WORKSPACE_FILENAMES = frozenset(
+    {
+        ".envrc",
+        "conftest.py",
+        "deno.json",
+        "deno.jsonc",
+        "gnumakefile",
+        "justfile",
+        "makefile",
+        "noxfile.py",
+        "package.json",
+        "pyproject.toml",
+        "pytest.ini",
+        "setup.cfg",
+        "setup.py",
+        "tox.ini",
+    }
 )
 _BROWSER_READ_NAMES = frozenset(
     {
@@ -221,6 +240,16 @@ def _risk_tags(
             tags.add("credential_export")
         if ".git" in parts and ({"hooks", "config"} & parts):
             tags.add("untrusted_hook")
+        if candidate.name.lower() in _AUTO_EXECUTED_WORKSPACE_FILENAMES:
+            tags.add("untrusted_script")
+        lowered_parts = tuple(part.lower() for part in candidate.parts)
+        if ".eigent" in lowered_parts:
+            eigent_index = lowered_parts.index(".eigent")
+            if (
+                len(lowered_parts) > eigent_index + 1
+                and lowered_parts[eigent_index + 1] == "skills"
+            ):
+                tags.add("untrusted_script")
         if ".eigent" in parts and candidate.name.lower() in (
             _CONTROL_PLANE_FILENAMES
         ):
@@ -230,8 +259,7 @@ def _risk_tags(
     ).lower()
     if command_text:
         if any(
-            marker in command_text
-            for marker in _CONTROL_PLANE_COMMAND_MARKERS
+            marker in command_text for marker in _CONTROL_PLANE_COMMAND_MARKERS
         ):
             tags.add("policy_control_plane")
         if any(
@@ -243,4 +271,31 @@ def _risk_tags(
             for part in _CREDENTIAL_PATH_PARTS
         ):
             tags.add("credential_export")
+        if re.search(
+            r"(?:^|[\s;&|])(?:pytest|py\.test|make|gmake|just|nox|tox|"
+            r"npm\s+(?:run|test)|pnpm\s+(?:run|test)|yarn\s+(?:run|test))"
+            r"(?:\s|$)",
+            command_text,
+        ):
+            tags.add("untrusted_script")
+        if any(
+            marker in command_text
+            for marker in (
+                ".envrc",
+                "conftest.py",
+                "package.json",
+                "pyproject.toml",
+                "pytest.ini",
+                "setup.cfg",
+                "setup.py",
+                "tox.ini",
+                "noxfile.py",
+                "makefile",
+                "gnumakefile",
+                "justfile",
+                ".eigent/skills/",
+                ".eigent\\skills\\",
+            )
+        ):
+            tags.add("untrusted_script")
     return tuple(sorted(tags))

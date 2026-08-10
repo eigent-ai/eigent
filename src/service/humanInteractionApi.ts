@@ -23,6 +23,7 @@ export interface HumanInteractionPayload {
   operation?: string;
   safety_class?: string;
   target_resources?: string[];
+  display_arguments?: Record<string, unknown>;
   rule_matcher?: {
     action_pattern?: string | null;
     resource_pattern?: string | null;

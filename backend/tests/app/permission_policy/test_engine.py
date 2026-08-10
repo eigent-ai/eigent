@@ -6,6 +6,7 @@ from app.permission_policy import (
     PRESET_PROFILES,
     ActionDescriptor,
     PermissionPolicyEngine,
+    PermissionProfile,
     PermissionProfileName,
     PolicyEffect,
     PolicyRule,
@@ -308,13 +309,17 @@ def test_git_config_and_terminal_journal_mutation_are_high_risk(tmp_path):
     assert journal_decision.effect is PolicyEffect.DENY
 
 
-def test_normal_eigent_terminal_workspace_is_not_a_control_plane_path(tmp_path):
+def test_normal_eigent_terminal_workspace_is_not_a_control_plane_path(
+    tmp_path,
+):
     action = build_tool_action_descriptor(
         action_id="terminal-output",
         tool_name="write_to_file",
         toolkit_name="File Toolkit",
         safety_class=ToolSafetyClass.UNSAFE_WRITE,
-        arguments={"filename": str(tmp_path / ".eigent" / "terminal" / "out.txt")},
+        arguments={
+            "filename": str(tmp_path / ".eigent" / "terminal" / "out.txt")
+        },
         run_id="run-1",
         attempt_id="attempt-1",
         environment_spec_digest="e" * 64,
@@ -344,6 +349,93 @@ def test_persistence_payload_redacts_secrets_but_keeps_a_bounded_preview():
     assert "[REDACTED]" in display["preview"]
     assert len(display["preview"]) <= 4000
     assert action.action_digest
+
+
+def test_persistence_payload_redacts_uppercase_keys_url_passwords_and_readable_argv():
+    action = _action(
+        arguments={
+            "env": {
+                "API_KEY": "top-secret-api-key",
+                "DB_PASSWORD": "top-secret-db-password",
+            },
+            "endpoint": "postgresql://user:plain-password@db.example/app",
+            "argv": [
+                "curl",
+                "--api-key",
+                "top-secret-argv-key",
+                "https://user:url-password@example.test/path",
+            ],
+        }
+    )
+
+    display = action.persistence_payload()["normalized_arguments"]
+
+    assert display["env"] == {
+        "API_KEY": "[REDACTED]",
+        "DB_PASSWORD": "[REDACTED]",
+    }
+    assert display["endpoint"] == (
+        "postgresql://user:[REDACTED]@db.example/app"
+    )
+    assert display["argv"] == [
+        "curl",
+        "--api-key",
+        "[REDACTED]",
+        "https://user:[REDACTED]@example.test/path",
+    ]
+    assert "top-secret" not in str(display)
+
+
+def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
+    tmp_path,
+):
+    profile = PermissionProfile(
+        name=PermissionProfileName.AUTO_REVIEWER,
+        sandbox_mode="workspace-write",
+        approval_mode="on-request",
+        reviewer_mode="auto_reviewer",
+        revision="preset:auto_reviewer:v1",
+    )
+    engine = PermissionPolicyEngine()
+    cases = [
+        ("package.json", "filesystem.write", {"path": "package.json"}),
+        ("conftest.py", "filesystem.write", {"path": "conftest.py"}),
+        (".envrc", "filesystem.write", {"path": ".envrc"}),
+        (
+            ".eigent/skills/run.py",
+            "filesystem.write",
+            {"path": ".eigent/skills/run.py"},
+        ),
+        ("pytest", "terminal.execute", {"command": "pytest -q"}),
+        ("make", "terminal.execute", {"command": "make test"}),
+        (
+            "shell-written-envrc",
+            "terminal.execute",
+            {"command": "printf 'code' > .envrc"},
+        ),
+    ]
+
+    for name, operation, arguments in cases:
+        descriptor = build_tool_action_descriptor(
+            action_id=f"danger-{name}",
+            tool_name="write_file"
+            if operation == "filesystem.write"
+            else "shell_exec",
+            toolkit_name="File Toolkit"
+            if operation == "filesystem.write"
+            else "Terminal Toolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments=arguments,
+            run_id="run-1",
+            attempt_id="attempt-1",
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+            workspace_root=tmp_path,
+        )
+        decision = engine.evaluate(descriptor, profile=profile)
+
+        assert "untrusted_script" in descriptor.risk_tags
+        assert decision.auto_review_eligible is False
 
 
 def test_non_finite_model_argument_is_bound_without_crashing():

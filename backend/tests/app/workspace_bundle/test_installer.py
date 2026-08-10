@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -92,6 +91,7 @@ class FakeCloud:
         self.installed_revision_id: str | None = None
         self.binding: tuple[str, str] | None = None
         self.binding_payloads: list[dict] = []
+        self.confirm_payloads: list[dict] = []
         self.projection: dict | None = None
         self.projections: dict[str, dict] = {}
         self.lose_projection_response_once = lose_projection_response_once
@@ -135,6 +135,20 @@ class FakeCloud:
             "space_id": space_id,
             "bundle_id": bundle_id,
             "installed_revision_id": revision_id,
+            "state": "proposed",
+            "version": self.installation_version,
+        }
+
+    async def confirm_install(self, space_id, payload):
+        self.confirm_payloads.append(dict(payload))
+        assert payload["bundle_id"] == self.installed_bundle_id
+        assert payload["revision_id"] == self.installed_revision_id
+        assert payload["expected_version"] == self.installation_version
+        self.installation_version += 1
+        return {
+            "space_id": space_id,
+            "bundle_id": self.installed_bundle_id,
+            "installed_revision_id": self.installed_revision_id,
             "state": (
                 "ready_to_materialize" if self.binding else "pending_bindings"
             ),
@@ -149,7 +163,9 @@ class FakeCloud:
                 "space_id": space_id,
                 "bundle_id": self.installed_bundle_id,
                 "installed_revision_id": self.installed_revision_id,
-                "state": "materialized" if self.projection else "pending_bindings",
+                "state": "materialized"
+                if self.projection
+                else "pending_bindings",
                 "version": self.installation_version,
             },
             "bindings": {},
@@ -359,7 +375,9 @@ async def _approved_and_bound(installer, journal, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_install_is_review_first_and_materializes_verified_assets(installer):
+async def test_install_is_review_first_and_materializes_verified_assets(
+    installer,
+):
     service, journal, cloud, tmp_path = installer
     proposal = await _approved_and_bound(service, journal, tmp_path)
 
@@ -379,10 +397,27 @@ async def test_install_is_review_first_and_materializes_verified_assets(installe
     assert result.state == "materialized"
     assert replay == result
     assert cloud.binding == ("github_readonly", "connection-1")
+    assert cloud.confirm_payloads[0]["reviewed_slots"] == [
+        {
+            "slot_id": "github_readonly",
+            "connector_id": "github",
+            "required_grants": ["repository.read"],
+        }
+    ]
     assert cloud.binding_payloads[0]["acknowledged_grants"] == [
         "repository.read"
     ]
     assert cloud.projection is not None
+    assert cloud.projection["projection_id"] == (
+        WorkspaceBundleInstaller._environment_projection_id(
+            space_id="space-1",
+            owner_type="space",
+            owner_id="space-1",
+            semantic_spec_digest=cloud.projection["semantic_spec_digest"],
+            projection_digest=cloud.projection["projection_digest"],
+            redaction_schema_version=1,
+        )
+    )
     serialized_projection = str(cloud.projection)
     assert "connection-1" not in serialized_projection
     assert str(tmp_path) not in serialized_projection
@@ -406,7 +441,9 @@ async def test_install_is_review_first_and_materializes_verified_assets(installe
 @pytest.mark.asyncio
 async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
     service, journal, cloud, tmp_path = installer
-    cloud.contents["asset-skill"] = b"API_KEY = 'sk-abcdefghijklmnop'\n"
+    cloud.contents["asset-skill"] = (
+        b"API_KEY = 'sk-abcdefghijklmnopqrstuvwxyzABCDEF12345678'\n"
+    )
     proposal = await _approved_and_bound(service, journal, tmp_path)
 
     with pytest.raises(
@@ -425,7 +462,9 @@ async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
 
 
 @pytest.mark.asyncio
-async def test_projection_response_loss_retries_without_duplicate_grants(tmp_path):
+async def test_projection_response_loss_retries_without_duplicate_grants(
+    tmp_path,
+):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     hooks = tmp_path / "empty-hooks"
     hooks.mkdir()
@@ -457,7 +496,7 @@ async def test_projection_response_loss_retries_without_duplicate_grants(tmp_pat
             actor_id="user-1",
         )
         assert installed.state == "materialized"
-        assert cloud.installation_version == 2
+        assert cloud.installation_version == 3
     finally:
         journal.close()
 
@@ -525,14 +564,17 @@ async def test_upgrade_reviews_again_and_commits_new_configuration(installer):
     assert (config_root / "instructions/coordinator.md").read_bytes() == (
         b"Coordinate the upgraded research.\n"
     )
-    assert int(
-        subprocess.run(
-            ("git", "-C", str(config_root), "rev-list", "--count", "HEAD"),
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-    ) == 2
+    assert (
+        int(
+            subprocess.run(
+                ("git", "-C", str(config_root), "rev-list", "--count", "HEAD"),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        == 2
+    )
 
 
 def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):

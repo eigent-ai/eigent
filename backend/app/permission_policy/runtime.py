@@ -105,6 +105,9 @@ async def authorize_tool_checkpoint(
                 "rule_matcher": result.approval.prompt.get("rule_matcher"),
                 "operation": descriptor.operation,
                 "target_resources": list(descriptor.target_resources),
+                "display_arguments": result.approval.prompt.get(
+                    "action", {}
+                ).get("normalized_arguments", {}),
             },
         )
     )

@@ -133,12 +133,9 @@ _CLOUD_FORBIDDEN_FIELD_NAMES = {
     "worktree_root",
 }
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
-_INLINE_ABSOLUTE_PATH = re.compile(
-    r"(?:^|[\s\"'`=(])(?:~/|/(?:Users|home|private|var|tmp|etc|opt)/|"
-    r"[A-Za-z]:[\\/]|\\\\[A-Za-z0-9_.-]+[\\/])"
-)
 _SECRET_VALUE_PATTERNS = (
-    re.compile(r"\bsk-(?:live-|test-)?[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
+    re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
     re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
@@ -157,7 +154,8 @@ _FORBIDDEN_ASSET_SUFFIXES = {".key", ".p12", ".pfx"}
 
 
 def _normalized_field_name(value: str) -> str:
-    value = re.sub(r"(?<!^)(?=[A-Z])", "_", value)
+    value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", value)
+    value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
     return value.replace("-", "_").lower()
 
 
@@ -314,12 +312,8 @@ class ContextSource(_StrictFrozenModel):
                 )
         if self.kind == "inline" and self.content is None:
             raise ValueError("inline context requires content")
-        if (
-            self.kind == "inline"
-            and self.content is not None
-            and _INLINE_ABSOLUTE_PATH.search(self.content)
-        ):
-            raise ValueError("inline context cannot contain an absolute path")
+        # Inline context is prose. Path-like text such as “never touch
+        # /etc/hosts” is not a local binding and must remain shareable.
         if self.kind == "connection_query" and self.query is None:
             raise ValueError("connection_query requires query")
         return self
