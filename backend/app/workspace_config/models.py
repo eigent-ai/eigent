@@ -139,16 +139,10 @@ _DEVICE_HOME_PATH = re.compile(
     r"node(?:\\|$))[^\\\s]+\\+)"
 )
 _SECRET_VALUE_PATTERNS = (
-    re.compile(
-        r"\bsk-(?:live|test|ant)-(?=[A-Za-z0-9_-]{20,}\b)"
-        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}\b"
-    ),
+    re.compile(r"(?<![.\w])sk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
-    re.compile(
-        r"\bsk_(?:live|test)_(?=[A-Za-z0-9_-]{12,}\b)"
-        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{12,}\b"
-    ),
+    re.compile(r"(?<![.\w])sk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
     re.compile(
@@ -806,13 +800,26 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
         return canonical_digest(self.local_payload())
 
     def cloud_projection(self) -> dict[str, Any]:
+        # The immutable Bundle revision already owns its declaration. Keep the
+        # full manifest (including local path instructions) in SQLite, while
+        # Cloud receives only its content-addressed identity plus runtime
+        # selections/capabilities.
+        cloud_semantic_spec = {
+            key: child
+            for key, child in self.semantic_spec.items()
+            if key != "bundle"
+        }
+        cloud_semantic_spec["bundle"] = {
+            "revision_id": self.bundle_revision_id,
+            "manifest_digest": self.manifest_digest,
+        }
         payload = {
             "schema_version": 1,
             "owner_type": self.owner_type,
             "owner_id": self.owner_id,
             "bundle_revision_id": self.bundle_revision_id,
             "manifest_digest": self.manifest_digest,
-            "semantic_spec": self.semantic_spec,
+            "semantic_spec": cloud_semantic_spec,
             "semantic_spec_digest": self.semantic_spec_digest,
             "local_projection": self.local_materialization.cloud_projection(),
             "permission_profile_revision": self.permission_profile_revision,

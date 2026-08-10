@@ -97,7 +97,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1084,6 +1084,40 @@ PRAGMA user_version = 14;
 COMMIT;
 """
 
+_MIGRATION_V15 = """
+BEGIN IMMEDIATE;
+
+-- Legacy tool approvals could wait forever after their owning attempt was
+-- interrupted.  Give every unresolved approval a finite recovery horizon and
+-- make expiry fail closed.  The paired HumanInteraction uses the same deadline
+-- so Desktop and Remote Control project one lifecycle.
+UPDATE approvals
+SET expires_at = created_at + 86400,
+    expiry_action = 'reject'
+WHERE status = 'pending'
+  AND expires_at IS NULL;
+
+UPDATE human_interactions
+SET expires_at = COALESCE(
+        (
+            SELECT approvals.expires_at
+            FROM approvals
+            WHERE approvals.approval_id = human_interactions.interaction_id
+        ),
+        created_at + 86400
+    ),
+    updated_at = MAX(updated_at, created_at)
+WHERE interaction_type = 'approval'
+  AND status IN ('requested', 'presented')
+  AND expires_at IS NULL;
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (15, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 15;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -1138,6 +1172,10 @@ class SQLiteRunJournal:
         # process with the same uid must not manufacture dispatch permission by
         # editing SQLite directly; only this live store can attest a decision.
         self._trusted_approval_decisions: set[tuple[str, int, str]] = set()
+        self._trusted_attempt_permission_profiles: set[
+            tuple[str, str | None]
+        ] = set()
+        self._trusted_approval_rules: set[str] = set()
         self._connection = sqlite3.connect(
             str(self.path),
             timeout=busy_timeout_ms / 1000,
@@ -5407,6 +5445,9 @@ class SQLiteRunJournal:
                         f"attempt request_id {request_id!r} was reused with "
                         "a different environment"
                     )
+                # An idempotent row loaded from SQLite is audit/recovery data,
+                # not a fresh control-plane attestation. The original process
+                # already attested a genuinely in-process creation.
                 return self._attempt_from_row(duplicate)
             if run["origin"] == "cloud_restore":
                 raise InvalidRunTransitionError(
@@ -5590,7 +5631,11 @@ class SQLiteRunJournal:
                 (identifier,),
             ).fetchone()
             assert row is not None
-            return self._attempt_from_row(row)
+            resolved = self._attempt_from_row(row)
+            self._trusted_attempt_permission_profiles.add(
+                (resolved.attempt_id, resolved.permission_profile_revision)
+            )
+            return resolved
 
     def get_run_attempt(self, attempt_id: str) -> RunAttemptRecord | None:
         with self._lock:
@@ -5599,6 +5644,15 @@ class SQLiteRunJournal:
                 (attempt_id,),
             ).fetchone()
             return self._attempt_from_row(row) if row is not None else None
+
+    def attempt_permission_profile_is_trusted(
+        self,
+        attempt_id: str,
+        permission_profile_revision: str | None,
+    ) -> bool:
+        return (attempt_id, permission_profile_revision) in (
+            self._trusted_attempt_permission_profiles
+        )
 
     def list_run_attempts(self, run_id: str) -> list[RunAttemptRecord]:
         with self._lock:
@@ -6763,6 +6817,8 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"approval rule {rule_id!r} was reused"
                     )
+                # Replaying a persisted rule must not convert arbitrary SQLite
+                # contents into an in-process ALLOW attestation.
                 return self._approval_rule_from_row(existing)
             connection.execute(
                 """
@@ -6778,7 +6834,12 @@ class SQLiteRunJournal:
                 "SELECT * FROM approval_rules WHERE rule_id = ?", (rule_id,)
             ).fetchone()
             assert row is not None
-            return self._approval_rule_from_row(row)
+            resolved = self._approval_rule_from_row(row)
+            self._trusted_approval_rules.add(resolved.rule_id)
+            return resolved
+
+    def approval_rule_is_trusted(self, rule_id: str) -> bool:
+        return rule_id in self._trusted_approval_rules
 
     def list_approval_rules(
         self,
@@ -7430,6 +7491,9 @@ class SQLiteRunJournal:
         self._trusted_approval_decisions.add(
             (resolved.approval_id, resolved.version, resolved.action_digest)
         )
+        if decision == "approved" and decision_scope in {"run", "space"}:
+            assert rule_id is not None
+            self._trusted_approval_rules.add(rule_id)
         return resolved
 
     def list_approvals(
@@ -8963,6 +9027,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V13)
         if version < 14:
             self._connection.executescript(_MIGRATION_V14)
+        if version < 15:
+            self._connection.executescript(_MIGRATION_V15)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

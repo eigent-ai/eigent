@@ -114,6 +114,51 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
         assert event.payload["thinking_effort_effective"] == "medium"
 
 
+def test_personal_default_import_is_secret_free_and_checksum_rerunnable():
+    importer = LegacyEnvironmentImporter()
+    arguments = {
+        "model_platform": "openai",
+        "model_type": "gpt-5.5-codex",
+        "auth_source": "codex_subscription",
+        "requested_effort": None,
+        "allow_local_system": False,
+        "mcp_server_configs": {
+            "github": {
+                "command": "npx",
+                "env": {
+                    "GITHUB_TOKEN": "ghp_do_not_put_this_in_manifest",
+                    "LOG_LEVEL": "info",
+                },
+            }
+        },
+        "skill_config": {
+            "version": 1,
+            "skills": {
+                "pdf": {"enabled": True},
+                "disabled": {"enabled": False},
+            },
+        },
+    }
+
+    first = importer.build_template(**arguments)
+    second = importer.build_template(**arguments)
+    payload = first.manifest.canonical_payload()
+
+    assert first.manifest.digest == second.manifest.digest
+    assert first.runtime_capability_manifest["legacy_source_checksum"] == (
+        second.runtime_capability_manifest["legacy_source_checksum"]
+    )
+    serialized = json.dumps(payload)
+    assert "ghp_do_not_put_this_in_manifest" not in serialized
+    assert payload["metadata"]["name"] == "Personal Default Bundle"
+    assert payload["spec"]["mcpServers"][0]["secretSlots"] == [
+        "mcp.github.env.github_token"
+    ]
+    assert payload["spec"]["skills"] == [
+        {"ref": "registry://skills/pdf@legacy", "assignTo": []}
+    ]
+
+
 def test_admission_pins_secret_free_git_capability(tmp_path):
     workspace = tmp_path / "private-workspace"
     workspace.mkdir()

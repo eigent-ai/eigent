@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass, replace
 from typing import Any
@@ -18,6 +19,8 @@ from app.permission_policy.models import (
     literal_resource_pattern,
 )
 from app.run_journal import ApprovalRecord, SQLiteRunJournal
+
+DEFAULT_TOOL_APPROVAL_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,22 @@ class PermissionPolicyService:
             space_id=space_id,
             revision=permission_profile_revision,
         )
+        profile_trusted = self._journal.attempt_permission_profile_is_trusted(
+            descriptor.attempt_id,
+            profile.revision,
+        )
+        if (
+            profile.name
+            in {
+                PermissionProfileName.AUTO_REVIEWER,
+                PermissionProfileName.FULL_ACCESS,
+            }
+            and not profile_trusted
+        ):
+            profile = replace(
+                PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
+                revision=f"untrusted:{profile.revision}",
+            )
         records = self._journal.list_approval_rules(
             space_id=space_id,
             run_id=descriptor.run_id,
@@ -101,6 +120,8 @@ class PermissionPolicyService:
                 run_id=record.run_id,
             )
             for record in records
+            if record.effect != PolicyEffect.ALLOW.value
+            or self._journal.approval_rule_is_trusted(record.rule_id)
         )
         return self._engine.evaluate(
             descriptor,
@@ -157,6 +178,20 @@ class PermissionPolicyService:
             revision=permission_profile_revision,
         )
         identifier = approval_id or f"approval_{uuid.uuid4().hex}"
+        if expires_at is None:
+            existing = next(
+                (
+                    item
+                    for item in self._journal.list_approvals(descriptor.run_id)
+                    if item.approval_id == identifier
+                ),
+                None,
+            )
+            expires_at = (
+                existing.expires_at
+                if existing is not None and existing.expires_at is not None
+                else time.time() + DEFAULT_TOOL_APPROVAL_TTL_SECONDS
+            )
         persistent_scopes_allowed = (
             len(descriptor.target_resources) == 1
             and descriptor.operation != "terminal.execute"
@@ -197,8 +232,6 @@ class PermissionPolicyService:
             safety_class=descriptor.safety_class.value,
             decision_scope="once",
             expires_at=expires_at,
-            expiry_action="reject"
-            if expires_at is not None
-            else "keep_pending",
+            expiry_action="reject",
         )
         return PolicyEvaluationResult(decision=decision, approval=approval)

@@ -567,6 +567,25 @@ def test_terminal_argv_participates_in_policy_risk_and_target_extraction(
         )
         assert "policy_control_plane" in obfuscated.risk_tags
 
+    indirect = build_tool_action_descriptor(
+        action_id="indirect-control-plane",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "command": (
+                "db=run-journal; ext=sqlite3; "
+                "sqlite3 \"$HOME/.eigent/$db.$ext\" 'UPDATE approvals'"
+            )
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    assert "policy_control_plane" in indirect.risk_tags
+
 
 def test_non_terminal_argv_is_not_treated_as_a_shell_command(tmp_path):
     descriptor = build_tool_action_descriptor(
@@ -628,6 +647,11 @@ def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
     cases = [
         ("package.json", "filesystem.write", {"path": "package.json"}),
         ("Rakefile", "filesystem.write", {"path": "Rakefile"}),
+        ("Gemfile", "filesystem.write", {"path": "Gemfile"}),
+        ("Vagrantfile", "filesystem.write", {"path": "Vagrantfile"}),
+        ("Procfile", "filesystem.write", {"path": "Procfile"}),
+        ("tasks.py", "filesystem.write", {"path": "tasks.py"}),
+        ("dodo.py", "filesystem.write", {"path": "dodo.py"}),
         (
             "docker-compose.yml",
             "filesystem.write",
@@ -665,18 +689,6 @@ def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
             "filesystem.write",
             {"path": ".eigent/skills/run.py"},
         ),
-        ("pytest", "terminal.execute", {"command": "pytest -q"}),
-        ("make", "terminal.execute", {"command": "make test"}),
-        (
-            "shell-written-envrc",
-            "terminal.execute",
-            {"command": "printf 'code' > .envrc"},
-        ),
-        (
-            "shell-written-workflow",
-            "terminal.execute",
-            {"command": "printf 'code' > .github/workflows/test.yml"},
-        ),
     ]
 
     for name, operation, arguments in cases:
@@ -700,6 +712,53 @@ def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
 
         assert "untrusted_script" in descriptor.risk_tags
         assert decision.auto_review_eligible is False
+
+
+@pytest.mark.parametrize(
+    "command",
+    ("grep make notes.txt", "cat pyproject.toml"),
+)
+def test_terminal_arguments_do_not_claim_auto_review_script_risk(
+    tmp_path, command
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="read-script-name",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"command": command},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "untrusted_script" not in descriptor.risk_tags
+
+
+def test_terminal_resource_is_shared_by_command_and_argv_shapes():
+    common = {
+        "tool_name": "shell_exec",
+        "toolkit_name": "Terminal Toolkit",
+        "safety_class": ToolSafetyClass.UNSAFE_WRITE,
+        "run_id": "run-1",
+        "attempt_id": "attempt-1",
+        "environment_spec_digest": "e" * 64,
+        "idempotency_key": None,
+    }
+    string_shape = build_tool_action_descriptor(
+        action_id="string-shape",
+        arguments={"command": "python -m pytest tests/unit"},
+        **common,
+    )
+    argv_shape = build_tool_action_descriptor(
+        action_id="argv-shape",
+        arguments={"argv": ["python", "-m", "pytest", "tests/unit"]},
+        **common,
+    )
+
+    assert string_shape.target_resources == argv_shape.target_resources
 
 
 def test_non_finite_model_argument_is_bound_without_crashing():

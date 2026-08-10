@@ -35,16 +35,10 @@ _REDACTED_ARGUMENT_KEYS = frozenset(
 )
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
-    re.compile(
-        r"\bsk-(?:live|test|ant)-(?=[A-Za-z0-9_-]{20,}\b)"
-        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}\b"
-    ),
+    re.compile(r"(?<![.\w])sk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
-    re.compile(
-        r"\bsk_(?:live|test)_(?=[A-Za-z0-9_-]{12,}\b)"
-        r"(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{12,}\b"
-    ),
+    re.compile(r"(?<![.\w])sk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
 )
@@ -278,7 +272,8 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
         if normalized_flag in _SECRET_ARGV_FLAGS or executable_mode:
             if separator:
                 if executable_mode == "user":
-                    username, user_separator, _ = canonical.partition("=")[2].partition(":")
+                    assigned = canonical.partition("=")[2]
+                    username, user_separator, _ = assigned.partition(":")
                     result.append(
                         f"{flag}={username}:[REDACTED]"
                         if user_separator

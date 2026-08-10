@@ -5,8 +5,75 @@ from app.permission_policy import (
     PermissionPolicyService,
     PolicyEffect,
 )
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import AttemptEnvironmentBinding, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
+from app.workspace_config import (
+    EnvironmentConfigResolver,
+    LocalMaterialization,
+    ProviderModelCapability,
+    ThinkingEffort,
+    parse_workforce_manifest,
+)
+
+
+def _create_bound_attempt(
+    journal: SQLiteRunJournal,
+    *,
+    run_id: str,
+    permission_profile_revision: str,
+):
+    manifest = parse_workforce_manifest(
+        f"""
+apiVersion: eigent.ai/v1alpha1
+kind: WorkforceBundle
+metadata:
+  id: bundle_{run_id}
+  name: Permission test
+  revision: 1
+spec:
+  models:
+    default:
+      modelRef: provider://default
+      thinkingEffort: medium
+"""
+    )
+    journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        bundle_id=manifest.metadata.id,
+        revision_number=manifest.metadata.revision,
+        manifest=manifest.canonical_payload(),
+        created_by="test",
+    )
+    capability = ProviderModelCapability(
+        supported_efforts=tuple(ThinkingEffort),
+        default_effort=ThinkingEffort.MEDIUM,
+        provider_mapping={effort: effort.value for effort in ThinkingEffort},
+        capability_revision="capability-v1",
+    )
+    spec = EnvironmentConfigResolver().resolve(
+        manifest=manifest,
+        owner_type="run",
+        owner_id=run_id,
+        local_materialization=LocalMaterialization(),
+        provider_capability=capability,
+        permission_profile_revision_override=permission_profile_revision,
+    )
+    journal.put_effective_environment_spec(spec)
+    return journal.create_run_attempt(
+        run_id,
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+        environment=AttemptEnvironmentBinding(
+            environment_spec_id=spec.spec_id,
+            environment_spec_digest=spec.digest,
+            bundle_revision_id=spec.bundle_revision_id,
+            permission_profile_revision=spec.permission_profile_revision,
+            thinking_effort_requested=spec.thinking_effort_requested.value,
+            thinking_effort_effective=spec.thinking_effort_effective.value,
+            provider_capability_revision=spec.provider_capability_revision,
+        ),
+    )
 
 
 def test_policy_service_creates_digest_bound_approval_and_audit(tmp_path):
@@ -43,6 +110,8 @@ def test_policy_service_creates_digest_bound_approval_and_audit(tmp_path):
 
         assert result.decision.effect is PolicyEffect.PROMPT
         assert result.approval is not None
+        assert result.approval.expires_at is not None
+        assert result.approval.expiry_action == "reject"
         assert result.approval.action_digest == descriptor.action_digest
         interaction = journal.get_human_interaction("approval-1")
         assert interaction is not None
@@ -174,13 +243,6 @@ def test_large_approval_projection_is_bounded_but_digest_is_full(tmp_path):
 def test_policy_service_uses_pinned_profile_revision(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
-        attempt = journal.create_run_attempt(
-            "run-1",
-            request_id="initial",
-            reason="initial_execution",
-            activate=True,
-            now=1,
-        )
         first = journal.put_space_permission_profile(
             space_id="space-1",
             profile_name="read_only",
@@ -191,6 +253,11 @@ def test_policy_service_uses_pinned_profile_revision(tmp_path):
             now=2,
         )
         pinned_revision = f"space:space-1:{first.revision}"
+        attempt = _create_bound_attempt(
+            journal,
+            run_id="run-1",
+            permission_profile_revision=pinned_revision,
+        )
         journal.put_space_permission_profile(
             space_id="space-1",
             profile_name="full_access",
@@ -223,19 +290,12 @@ def test_policy_service_uses_pinned_profile_revision(tmp_path):
         current = service.evaluate(descriptor, space_id="space-1")
 
         assert pinned.effect is PolicyEffect.DENY
-        assert current.effect is PolicyEffect.ALLOW
+        assert current.effect is PolicyEffect.PROMPT
 
 
 def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
-        attempt = journal.create_run_attempt(
-            "run-1",
-            request_id="initial",
-            reason="initial_execution",
-            activate=True,
-            now=1,
-        )
         profile = journal.put_space_permission_profile(
             space_id="space-1",
             profile_name="auto_reviewer",
@@ -246,6 +306,11 @@ def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
             now=2,
         )
         revision = f"space:space-1:{profile.revision}"
+        attempt = _create_bound_attempt(
+            journal,
+            run_id="run-1",
+            permission_profile_revision=revision,
+        )
         service = PermissionPolicyService(journal)
 
         eligible = ActionDescriptor(
@@ -291,3 +356,72 @@ def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
         assert allowed.approval is None
         assert prompted.decision.effect is PolicyEffect.PROMPT
         assert prompted.approval is not None
+
+
+def test_sqlite_tampering_cannot_enable_profile_or_allow_rule(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        descriptor = ActionDescriptor(
+            action_id="action-1",
+            tool_name="write_file",
+            operation="filesystem.write",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            normalized_arguments={"path": "report.md"},
+            target_resources=("report.md",),
+            external_side_effect=True,
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+        )
+        with journal._lock:
+            journal._connection.execute(
+                """
+                UPDATE run_attempts
+                SET permission_profile_revision = 'preset:full_access:v1'
+                WHERE attempt_id = ?
+                """,
+                (attempt.attempt_id,),
+            )
+            journal._connection.execute(
+                """
+                INSERT INTO approval_rules(
+                    rule_id, space_id, effect, action_pattern,
+                    resource_pattern, scope, run_id,
+                    source_interaction_id, expires_at, created_by, created_at
+                ) VALUES (
+                    'forged-rule', 'space-1', 'allow', '*', NULL, 'space',
+                    NULL, NULL, NULL, 'sqlite-tamper', 1
+                )
+                """
+            )
+
+        # Idempotent recovery reads must not turn forged rows into live
+        # control-plane attestations.
+        journal.create_approval_rule(
+            rule_id="forged-rule",
+            space_id="space-1",
+            effect="allow",
+            action_pattern="*",
+            resource_pattern=None,
+            scope="space",
+            run_id=None,
+            source_interaction_id=None,
+            expires_at=None,
+            created_by="sqlite-tamper",
+            now=1,
+        )
+
+        decision = PermissionPolicyService(journal).evaluate(
+            descriptor,
+            space_id="space-1",
+            permission_profile_revision="preset:full_access:v1",
+        )
+
+        assert decision.effect is PolicyEffect.PROMPT
+        assert decision.matched_rule_id is None
