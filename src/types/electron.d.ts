@@ -36,6 +36,17 @@ interface ElectronAPI {
     fileCount?: number;
     canceled?: boolean;
   }>;
+  /**
+   * Trusted user gesture for selecting an Agent Plugins standard directory
+   * or archive. The path is accepted only by local Brain import endpoints and
+   * must never be persisted in a Bundle or Cloud projection.
+   */
+  selectAgentPluginSource?: () => Promise<{
+    canceled: boolean;
+    source_path?: string;
+    display_name?: string;
+    source_kind?: 'directory' | 'archive';
+  }>;
   processDroppedFiles: (
     fileData: Array<{ name: string; path?: string }>
   ) => Promise<{

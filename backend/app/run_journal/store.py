@@ -22,6 +22,7 @@ lock makes the intended single-writer boundary explicit when async callers use
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sqlite3
@@ -69,6 +70,7 @@ from app.run_journal.models import (
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
     WorkspaceBundleSecretBindingRecord,
+    WorkspaceConfigDraftAssetRecord,
     WorkspaceConfigDraftRecord,
     WorkspaceConfigMaterializationRecord,
     WorkspaceConfigRevisionRecord,
@@ -99,7 +101,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1185,6 +1187,65 @@ PRAGMA user_version = 17;
 COMMIT;
 """
 
+_MIGRATION_V18 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE IF NOT EXISTS workspace_config_draft_asset_blobs (
+    content_digest TEXT PRIMARY KEY CHECK (length(content_digest) = 64),
+    content BLOB NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+    created_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_config_draft_assets (
+    space_id TEXT NOT NULL,
+    draft_version INTEGER NOT NULL CHECK (draft_version >= 1),
+    document_digest TEXT NOT NULL CHECK (length(document_digest) = 64),
+    logical_path TEXT NOT NULL,
+    content_digest TEXT NOT NULL REFERENCES workspace_config_draft_asset_blobs(
+        content_digest
+    ) ON DELETE RESTRICT,
+    media_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+    executable INTEGER NOT NULL CHECK (executable IN (0, 1)),
+    provenance TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    PRIMARY KEY(space_id, draft_version, logical_path)
+);
+
+CREATE INDEX IF NOT EXISTS workspace_config_draft_assets_digest_idx
+ON workspace_config_draft_assets(content_digest);
+
+CREATE TABLE IF NOT EXISTS workspace_agent_plugin_import_requests (
+    client_request_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    expected_target_draft_version INTEGER NOT NULL CHECK (
+        expected_target_draft_version >= 0
+    ),
+    expected_review_digest TEXT NOT NULL CHECK (
+        length(expected_review_digest) = 64
+    ),
+    requested_by TEXT NOT NULL,
+    request_digest TEXT NOT NULL CHECK (length(request_digest) = 64),
+    result_version INTEGER NOT NULL CHECK (result_version >= 1),
+    result_base_revision_id TEXT,
+    result_document_json TEXT NOT NULL,
+    result_document_digest TEXT NOT NULL CHECK (
+        length(result_document_digest) = 64
+    ),
+    result_updated_by TEXT NOT NULL,
+    result_created_at REAL NOT NULL,
+    result_updated_at REAL NOT NULL,
+    created_at REAL NOT NULL
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (18, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 18;
+COMMIT;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -1661,6 +1722,26 @@ class SQLiteRunJournal:
                     raise OptimisticConcurrencyError(
                         f"workspace configuration for {space_id!r} changed"
                     )
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_draft_assets(
+                        space_id, draft_version, document_digest, logical_path,
+                        content_digest, media_type, size_bytes, executable,
+                        provenance, created_at
+                    )
+                    SELECT space_id, ?, ?, logical_path, content_digest,
+                           media_type, size_bytes, executable, provenance, ?
+                    FROM workspace_config_draft_assets
+                    WHERE space_id = ? AND draft_version = ?
+                    """,
+                    (
+                        current_version + 1,
+                        digest,
+                        timestamp,
+                        space_id,
+                        current_version,
+                    ),
+                )
             persisted = connection.execute(
                 """
                 SELECT * FROM workspace_config_drafts
@@ -1670,6 +1751,324 @@ class SQLiteRunJournal:
             ).fetchone()
             assert persisted is not None
             return self._workspace_config_draft_from_row(persisted)
+
+    def put_workspace_config_draft_from_import(
+        self,
+        *,
+        space_id: str,
+        expected_target_draft_version: int,
+        client_request_id: str,
+        document: dict[str, Any],
+        review_digest: str,
+        assets: tuple[dict[str, Any], ...],
+        updated_by: str,
+        now: float | None = None,
+    ) -> WorkspaceConfigDraftRecord:
+        """CAS an imported draft and retain its exact reviewed asset bytes.
+
+        Idempotent replay is deliberately checked before the mutable draft CAS.
+        A response retry therefore returns the original conversion result even
+        after the working draft has advanced.
+        """
+
+        if not space_id.strip():
+            raise ValueError("space_id is required")
+        if expected_target_draft_version < 0:
+            raise ValueError(
+                "expected_target_draft_version cannot be negative"
+            )
+        if not client_request_id.strip():
+            raise ValueError("client_request_id is required")
+        if not updated_by.strip():
+            raise ValueError("updated_by is required")
+        if len(review_digest) != 64:
+            raise ValueError("review_digest must be a SHA-256 digest")
+
+        encoded = canonical_json(document)
+        document_digest = canonical_digest(document)
+        normalized_assets: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+        for asset in assets:
+            logical_path = asset.get("logical_path")
+            content = asset.get("content")
+            content_digest = asset.get("content_digest")
+            size_bytes = asset.get("size_bytes")
+            if (
+                not isinstance(logical_path, str)
+                or not logical_path.startswith("bundle://")
+                or logical_path in seen_paths
+                or not isinstance(content, bytes)
+                or not isinstance(content_digest, str)
+                or len(content_digest) != 64
+                or hashlib.sha256(content).hexdigest() != content_digest
+                or size_bytes != len(content)
+                or not isinstance(asset.get("media_type"), str)
+                or not isinstance(asset.get("provenance"), str)
+                or not isinstance(asset.get("executable"), bool)
+            ):
+                raise ValueError("imported draft asset is invalid")
+            seen_paths.add(logical_path)
+            normalized_assets.append(
+                {
+                    "logical_path": logical_path,
+                    "content_digest": content_digest,
+                    "media_type": asset["media_type"],
+                    "size_bytes": size_bytes,
+                    "executable": asset["executable"],
+                    "provenance": asset["provenance"],
+                    "content": content,
+                }
+            )
+        asset_fingerprint = [
+            {key: item[key] for key in item if key != "content"}
+            for item in normalized_assets
+        ]
+        request_digest = canonical_digest(
+            {
+                "space_id": space_id,
+                "expected_target_draft_version": expected_target_draft_version,
+                "document_digest": document_digest,
+                "review_digest": review_digest,
+                "assets": asset_fingerprint,
+                "updated_by": updated_by,
+            }
+        )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            replay = connection.execute(
+                """
+                SELECT * FROM workspace_agent_plugin_import_requests
+                WHERE client_request_id = ?
+                """,
+                (client_request_id,),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_digest"] != request_digest:
+                    raise IdempotencyConflictError(
+                        "Agent Plugin import request id was reused"
+                    )
+                return self._workspace_config_draft_from_import_request(replay)
+
+            current = connection.execute(
+                "SELECT * FROM workspace_config_drafts WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            if current is None:
+                if expected_target_draft_version != 0:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+                result_version = 1
+                base_revision_id = None
+                created_at = timestamp
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_drafts(
+                        space_id, version, base_revision_id,
+                        document_json, document_digest, updated_by,
+                        created_at, updated_at
+                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        space_id,
+                        result_version,
+                        encoded,
+                        document_digest,
+                        updated_by,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                if int(current["version"]) != expected_target_draft_version:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+                result_version = expected_target_draft_version + 1
+                base_revision_id = current["base_revision_id"]
+                created_at = float(current["created_at"])
+                updated = connection.execute(
+                    """
+                    UPDATE workspace_config_drafts
+                    SET version = ?, document_json = ?, document_digest = ?,
+                        updated_by = ?, updated_at = ?
+                    WHERE space_id = ? AND version = ?
+                    """,
+                    (
+                        result_version,
+                        encoded,
+                        document_digest,
+                        updated_by,
+                        timestamp,
+                        space_id,
+                        expected_target_draft_version,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise OptimisticConcurrencyError(
+                        f"workspace configuration for {space_id!r} changed"
+                    )
+
+            for asset in normalized_assets:
+                existing_blob = connection.execute(
+                    """
+                    SELECT content, size_bytes
+                    FROM workspace_config_draft_asset_blobs
+                    WHERE content_digest = ?
+                    """,
+                    (asset["content_digest"],),
+                ).fetchone()
+                if existing_blob is None:
+                    connection.execute(
+                        """
+                        INSERT INTO workspace_config_draft_asset_blobs(
+                            content_digest, content, size_bytes, created_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            asset["content_digest"],
+                            asset["content"],
+                            asset["size_bytes"],
+                            timestamp,
+                        ),
+                    )
+                elif (
+                    bytes(existing_blob["content"]) != asset["content"]
+                    or int(existing_blob["size_bytes"]) != asset["size_bytes"]
+                ):
+                    raise IdempotencyConflictError(
+                        "content-addressed draft asset conflicts with stored bytes"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_draft_assets(
+                        space_id, draft_version, document_digest, logical_path,
+                        content_digest, media_type, size_bytes, executable,
+                        provenance, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        space_id,
+                        result_version,
+                        document_digest,
+                        asset["logical_path"],
+                        asset["content_digest"],
+                        asset["media_type"],
+                        asset["size_bytes"],
+                        int(asset["executable"]),
+                        asset["provenance"],
+                        timestamp,
+                    ),
+                )
+
+            connection.execute(
+                """
+                INSERT INTO workspace_agent_plugin_import_requests(
+                    client_request_id, space_id,
+                    expected_target_draft_version,
+                    expected_review_digest, requested_by, request_digest,
+                    result_version, result_base_revision_id,
+                    result_document_json, result_document_digest,
+                    result_updated_by, result_created_at, result_updated_at,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    client_request_id,
+                    space_id,
+                    expected_target_draft_version,
+                    review_digest,
+                    updated_by,
+                    request_digest,
+                    result_version,
+                    base_revision_id,
+                    encoded,
+                    document_digest,
+                    updated_by,
+                    created_at,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            persisted = connection.execute(
+                "SELECT * FROM workspace_config_drafts WHERE space_id = ?",
+                (space_id,),
+            ).fetchone()
+            assert persisted is not None
+            return self._workspace_config_draft_from_row(persisted)
+
+    def replay_workspace_config_draft_import(
+        self,
+        *,
+        client_request_id: str,
+        space_id: str,
+        expected_target_draft_version: int,
+        expected_review_digest: str,
+        updated_by: str,
+    ) -> WorkspaceConfigDraftRecord | None:
+        """Return a durable conversion response without rereading its source."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_agent_plugin_import_requests
+                WHERE client_request_id = ?
+                """,
+                (client_request_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        if (
+            row["space_id"] != space_id
+            or int(row["expected_target_draft_version"])
+            != expected_target_draft_version
+            or row["expected_review_digest"] != expected_review_digest
+            or row["requested_by"] != updated_by
+        ):
+            raise IdempotencyConflictError(
+                "Agent Plugin import request id was reused"
+            )
+        return self._workspace_config_draft_from_import_request(row)
+
+    def list_workspace_config_draft_assets(
+        self,
+        *,
+        space_id: str,
+        draft_version: int,
+        document_digest: str | None = None,
+    ) -> tuple[WorkspaceConfigDraftAssetRecord, ...]:
+        """Read the exact imported bytes without depending on the source path."""
+
+        query = """
+            SELECT a.*, b.content
+            FROM workspace_config_draft_assets AS a
+            JOIN workspace_config_draft_asset_blobs AS b
+              ON b.content_digest = a.content_digest
+            WHERE a.space_id = ? AND a.draft_version = ?
+        """
+        parameters: list[Any] = [space_id, draft_version]
+        if document_digest is not None:
+            query += " AND a.document_digest = ?"
+            parameters.append(document_digest)
+        query += " ORDER BY a.logical_path"
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+        return tuple(
+            WorkspaceConfigDraftAssetRecord(
+                space_id=row["space_id"],
+                draft_version=int(row["draft_version"]),
+                document_digest=row["document_digest"],
+                logical_path=row["logical_path"],
+                content_digest=row["content_digest"],
+                media_type=row["media_type"],
+                size_bytes=int(row["size_bytes"]),
+                executable=bool(row["executable"]),
+                provenance=row["provenance"],
+                content=bytes(row["content"]),
+                created_at=float(row["created_at"]),
+            )
+            for row in rows
+        )
 
     def finalize_workspace_config_publish(
         self,
@@ -1804,6 +2203,7 @@ class SQLiteRunJournal:
                 # N+1 instead of being stranded behind a permanent conflict.
                 document["metadata"]["revision"] = receipt_revision_number + 1
                 next_json = canonical_json(document)
+                next_digest = canonical_digest(document)
                 updated = connection.execute(
                     """
                     UPDATE workspace_config_drafts
@@ -1818,7 +2218,7 @@ class SQLiteRunJournal:
                     (
                         revision_id,
                         next_json,
-                        canonical_digest(document),
+                        next_digest,
                         actor_id,
                         timestamp,
                         space_id,
@@ -1829,6 +2229,26 @@ class SQLiteRunJournal:
                     raise OptimisticConcurrencyError(
                         f"workspace configuration for {space_id!r} changed"
                     )
+                connection.execute(
+                    """
+                    INSERT INTO workspace_config_draft_assets(
+                        space_id, draft_version, document_digest, logical_path,
+                        content_digest, media_type, size_bytes, executable,
+                        provenance, created_at
+                    )
+                    SELECT space_id, ?, ?, logical_path, content_digest,
+                           media_type, size_bytes, executable, provenance, ?
+                    FROM workspace_config_draft_assets
+                    WHERE space_id = ? AND draft_version = ?
+                    """,
+                    (
+                        int(draft["version"]) + 1,
+                        next_digest,
+                        timestamp,
+                        space_id,
+                        int(draft["version"]),
+                    ),
+                )
             revision = connection.execute(
                 "SELECT * FROM workspace_config_revisions WHERE revision_id = ?",
                 (revision_id,),
@@ -2356,9 +2776,7 @@ class SQLiteRunJournal:
         normalized: list[dict[str, Any]] = []
         keys: set[str] = set()
         allowed_ref_characters = (
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "abcdefghijklmnopqrstuvwxyz"
-            "0123456789_-"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
         )
         for item in bindings:
             requirement_key = str(item.get("requirement_key") or "")
@@ -9798,6 +10216,8 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V16)
         if version < 17:
             self._connection.executescript(_MIGRATION_V17)
+        if version < 18:
+            self._connection.executescript(_MIGRATION_V18)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -10100,6 +10520,21 @@ class SQLiteRunJournal:
             updated_by=row["updated_by"],
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_config_draft_from_import_request(
+        row: sqlite3.Row,
+    ) -> WorkspaceConfigDraftRecord:
+        return WorkspaceConfigDraftRecord(
+            space_id=row["space_id"],
+            version=int(row["result_version"]),
+            base_revision_id=row["result_base_revision_id"],
+            document=json.loads(row["result_document_json"]),
+            document_digest=row["result_document_digest"],
+            updated_by=row["result_updated_by"],
+            created_at=float(row["result_created_at"]),
+            updated_at=float(row["result_updated_at"]),
         )
 
     @staticmethod

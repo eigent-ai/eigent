@@ -1,3 +1,4 @@
+import { isDesktop } from '@/client/platform';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -30,6 +31,7 @@ import {
   GitBranch,
   KeyRound,
   Plus,
+  Puzzle,
   RefreshCw,
   Settings2,
   Share2,
@@ -253,6 +255,21 @@ export default function WorkspaceConfiguration() {
               >
                 <Settings2 className="h-4 w-4" aria-hidden />
                 Local setup
+              </Button>
+            ) : null}
+            {isDesktop() ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  navigate(
+                    `/agent-plugins/import?target_space_id=${encodeURIComponent(activeSpaceId)}`
+                  )
+                }
+              >
+                <Puzzle className="h-4 w-4" aria-hidden />
+                Import Agent Plugin
               </Button>
             ) : null}
             <Button

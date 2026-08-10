@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
+  selectAgentPluginSource: () =>
+    ipcRenderer.invoke('select-agent-plugin-source'),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
   savePastedFile: (fileName: string, data: ArrayBuffer) =>

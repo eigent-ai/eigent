@@ -1,0 +1,61 @@
+import { fetchPost } from '@/api/http';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  convertAgentPluginToWorkspaceBundleDraft,
+  inspectAgentPluginSource,
+} from './agentPluginImportApi';
+
+vi.mock('@/api/http', () => ({ fetchPost: vi.fn() }));
+
+describe('Agent Plugins import API', () => {
+  const reviewDigest = 'a'.repeat(64);
+
+  beforeEach(() => vi.mocked(fetchPost).mockReset());
+
+  it('sends a user-selected local source only to the local inspection API', async () => {
+    vi.mocked(fetchPost).mockResolvedValue({ review_digest: reviewDigest });
+
+    await inspectAgentPluginSource({
+      sourcePath: '/selected/plugin',
+      email: 'owner@example.com',
+      userId: 'user-1',
+    });
+
+    expect(fetchPost).toHaveBeenCalledWith(
+      '/api/v1/workspace-bundles/agent-plugins:inspect',
+      {
+        source_path: '/selected/plugin',
+        email: 'owner@example.com',
+        user_id: 'user-1',
+      }
+    );
+  });
+
+  it('binds conversion to the reviewed digest and target Space without credential values', async () => {
+    vi.mocked(fetchPost).mockResolvedValue({ status: 'draft' });
+
+    await convertAgentPluginToWorkspaceBundleDraft({
+      sourcePath: '/selected/plugin.zip',
+      expectedReviewDigest: reviewDigest,
+      targetSpaceId: 'space-1',
+      expectedTargetDraftVersion: 7,
+      clientRequestId: 'agent-plugin-import-1',
+      updatedBy: 'user-1',
+      email: 'owner@example.com',
+      userId: 'user-1',
+    });
+
+    const [, body] = vi.mocked(fetchPost).mock.calls[0];
+    expect(body).toEqual({
+      source_path: '/selected/plugin.zip',
+      expected_review_digest: reviewDigest,
+      target_space_id: 'space-1',
+      expected_target_draft_version: 7,
+      client_request_id: 'agent-plugin-import-1',
+      updated_by: 'user-1',
+      email: 'owner@example.com',
+      user_id: 'user-1',
+    });
+    expect(JSON.stringify(body)).not.toMatch(/secret|token|password|value/i);
+  });
+});

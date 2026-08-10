@@ -75,6 +75,9 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "workspace_config_revisions",
         "workspace_config_materializations",
         "workspace_config_drafts",
+        "workspace_config_draft_asset_blobs",
+        "workspace_config_draft_assets",
+        "workspace_agent_plugin_import_requests",
         "effective_environment_specs",
         "human_interactions",
         "human_interaction_options",
@@ -306,16 +309,14 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
         updated_by="user-1",
     )
 
-    revision, next_draft = (
-        journal.finalize_workspace_config_publish(
-            space_id="space-1",
-            expected_draft_version=draft.version,
-            revision_id="bundle_publish@1",
-            manifest_digest=draft.document_digest,
-            published_manifest=document,
-            actor_id="user-1",
-            now=20,
-        )
+    revision, next_draft = journal.finalize_workspace_config_publish(
+        space_id="space-1",
+        expected_draft_version=draft.version,
+        revision_id="bundle_publish@1",
+        manifest_digest=draft.document_digest,
+        published_manifest=document,
+        actor_id="user-1",
+        now=20,
     )
     replay = journal.finalize_workspace_config_publish(
         space_id="space-1",
@@ -332,7 +333,9 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
     assert next_draft.base_revision_id == "bundle_publish@1"
     assert next_draft.document["metadata"]["revision"] == 2
     assert replay[1] == next_draft
-    assert journal.get_latest_workspace_config_materialization("space-1") is None
+    assert (
+        journal.get_latest_workspace_config_materialization("space-1") is None
+    )
 
 
 def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
@@ -381,7 +384,9 @@ def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
         )
 
     assert journal.get_workspace_config_draft("space-1") == draft
-    assert journal.get_latest_workspace_config_materialization("space-1") is None
+    assert (
+        journal.get_latest_workspace_config_materialization("space-1") is None
+    )
 
 
 def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
@@ -438,7 +443,9 @@ def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
     }
 
 
-def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(journal):
+def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(
+    journal,
+):
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
         "kind": "WorkforceBundle",
@@ -475,7 +482,9 @@ def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(journal):
 
     assert journal.get_workspace_config_revision("bundle_publish@1") is None
     assert journal.get_workspace_config_draft("space-1") == draft
-    assert journal.get_latest_workspace_config_materialization("space-1") is None
+    assert (
+        journal.get_latest_workspace_config_materialization("space-1") is None
+    )
 
 
 def test_attempt_binds_environment_once_and_emits_resolved_values(journal):
@@ -830,6 +839,52 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
     with SQLiteRunJournal(path) as reopened:
         assert reopened.schema_version == SCHEMA_VERSION
         assert reopened.get_run("run-1") is not None
+
+
+def test_v17_database_adds_agent_plugin_import_tables_without_losing_draft(
+    tmp_path,
+):
+    path = tmp_path / "run-journal.sqlite3"
+    document = {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle_existing",
+            "name": "Existing",
+            "revision": 1,
+        },
+        "spec": {},
+    }
+    with SQLiteRunJournal(path) as current:
+        current.put_workspace_config_draft(
+            space_id="space-1",
+            expected_version=0,
+            document=document,
+            updated_by="user-1",
+        )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys = OFF")
+        connection.execute("DROP TABLE workspace_agent_plugin_import_requests")
+        connection.execute("DROP TABLE workspace_config_draft_assets")
+        connection.execute("DROP TABLE workspace_config_draft_asset_blobs")
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 18"
+        )
+        connection.execute("PRAGMA user_version = 17")
+
+    with SQLiteRunJournal(path) as upgraded:
+        draft = upgraded.get_workspace_config_draft("space-1")
+        assert upgraded.schema_version == SCHEMA_VERSION
+        assert draft is not None
+        assert draft.document == document
+        assert (
+            upgraded.list_workspace_config_draft_assets(
+                space_id="space-1",
+                draft_version=draft.version,
+            )
+            == ()
+        )
 
 
 def test_bundle_secret_bindings_persist_only_opaque_refs_and_replay_requests(

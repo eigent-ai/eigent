@@ -1765,6 +1765,64 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle('select-agent-plugin-source', async (event) => {
+    assertMainRendererSender(event);
+
+    const sourceChoice = await dialog.showMessageBox(win!, {
+      type: 'question',
+      title: 'Import Agent Plugin',
+      message: 'Choose the Agent Plugin source',
+      detail:
+        'A plugin directory is the standard package format. Archives are supported only as an Eigent import transport.',
+      buttons: ['Plugin directory', 'Archive', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (sourceChoice.response === 2) {
+      return { canceled: true };
+    }
+
+    const sourceKind = sourceChoice.response === 0 ? 'directory' : 'archive';
+    const result = await dialog.showOpenDialog(win!, {
+      title:
+        sourceKind === 'directory'
+          ? 'Select Agent Plugin directory'
+          : 'Select Agent Plugin archive',
+      properties: sourceKind === 'directory' ? ['openDirectory'] : ['openFile'],
+      filters:
+        sourceKind === 'archive'
+          ? [
+              {
+                name: 'Agent Plugin archives',
+                extensions: ['zip'],
+              },
+            ]
+          : undefined,
+    });
+    if (result.canceled || result.filePaths.length !== 1) {
+      return { canceled: true };
+    }
+
+    const selectedPath = await fsp.realpath(result.filePaths[0]);
+    const selectedStat = await fsp.stat(selectedPath);
+    if (
+      (sourceKind === 'directory' && !selectedStat.isDirectory()) ||
+      (sourceKind === 'archive' &&
+        (!selectedStat.isFile() ||
+          path.extname(selectedPath).toLowerCase() !== '.zip'))
+    ) {
+      throw new Error('Selected Agent Plugin source has an invalid type');
+    }
+
+    return {
+      canceled: false,
+      source_path: selectedPath,
+      display_name: path.basename(selectedPath),
+      source_kind: sourceKind,
+    };
+  });
+
   // Handle drag-and-drop files - convert File objects to file paths
   ipcMain.handle(
     'process-dropped-files',

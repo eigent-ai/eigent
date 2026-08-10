@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import shutil
+import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -10,6 +14,7 @@ from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import workspace_config_controller
 from app.router import register_routers
 from app.run_journal import SQLiteRunJournal
+from app.workspace_bundle.agent_plugins import MCP_SCHEMA, PLUGIN_SCHEMA
 
 
 @dataclass
@@ -30,6 +35,18 @@ class _Resolver:
         self.store = _BindingStore(root)
 
 
+class _TestHands:
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+
+    def can_access_filesystem(self, path: str) -> bool:
+        try:
+            Path(path).expanduser().resolve().relative_to(self.root)
+            return True
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+
 @pytest.fixture
 def workspace_config_api(tmp_path, monkeypatch):
     journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
@@ -43,6 +60,11 @@ def workspace_config_api(tmp_path, monkeypatch):
         workspace_config_controller,
         "get_workspace_resolver",
         lambda: resolver,
+    )
+    monkeypatch.setattr(
+        workspace_config_controller,
+        "get_environment_hands",
+        lambda: _TestHands(tmp_path),
     )
     monkeypatch.setenv("EIGENT_RUNTIME", "electron")
     monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "test-secret")
@@ -58,6 +80,63 @@ def workspace_config_api(tmp_path, monkeypatch):
 
 def _headers() -> dict[str, str]:
     return {LOCAL_CONTROL_CAPABILITY_HEADER: "test-secret"}
+
+
+def _agent_plugin(root: Path, *, schema: str = PLUGIN_SCHEMA) -> Path:
+    root.mkdir()
+    (root / "skills" / "research").mkdir(parents=True)
+    (root / "bin").mkdir()
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "$schema": schema,
+                "name": "research-plugin",
+                "version": "1.2.3",
+                "author": {"name": "Example Author"},
+                "extensions": {
+                    "ai.eigent": {
+                        "mcpSecretRequirements": [
+                            {
+                                "serverId": "local",
+                                "location": "env",
+                                "name": "API_TOKEN",
+                                "slotId": "mcp.local.env.api_token",
+                            }
+                        ]
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "skills" / "research" / "SKILL.md").write_text(
+        "---\nname: research\ndescription: Research safely\n---\nDo research.\n",
+        encoding="utf-8",
+    )
+    executable = root / "bin" / "server"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    (root / "mcp.json").write_text(
+        json.dumps(
+            {
+                "$schema": MCP_SCHEMA,
+                "mcpServers": {
+                    "local": {
+                        "type": "stdio",
+                        "command": "./bin/server",
+                        "args": ["--root", "${PLUGIN_ROOT}"],
+                        "env": {
+                            "API_TOKEN": "source-only-value",
+                            "LOG_LEVEL": "debug",
+                        },
+                        "cwd": "${PLUGIN_ROOT}",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
 
 
 def _get(client: TestClient):
@@ -245,6 +324,600 @@ def test_workspace_configuration_asset_preflight_blocks_secret_before_cloud(
     assert accepted.json()["content_digest"] == (
         "a613c9e20970b8e66d1d94fa12f1f1726e7a6099ddba830c2628d37b3541e984"
     )
+
+
+def test_agent_plugin_inspect_and_convert_preserve_reviewed_assets(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    request = {
+        "source_path": str(source),
+        "email": "user@example.com",
+    }
+
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json=request,
+        headers=_headers(),
+    )
+
+    assert inspected.status_code == 200, inspected.text
+    inspection = inspected.json()
+    assert inspection["schema_version"] == "1.0.0"
+    assert len(inspection["source_tree_digest"]) == 64
+    assert inspection["skipped_skills"] == []
+    assert inspection["skipped_mcp_servers"] == []
+    assert inspection["skills"][0]["name"] == "research"
+    mcp_server = inspection["mcp_servers"][0]
+    assert mcp_server["id"] == "local"
+    assert mcp_server["transport"] == "stdio"
+    assert mcp_server["command"] == "./bin/server"
+    assert mcp_server["args"] == ["--root", "${PLUGIN_ROOT}"]
+    assert mcp_server["env_names"] == ["API_TOKEN", "LOG_LEVEL"]
+    assert mcp_server["public_environment"][0]["name"] == "LOG_LEVEL"
+    assert mcp_server["public_environment"][0]["value"] == "debug"
+    assert mcp_server["credential_requirement_keys"] == [
+        "mcp.local.env.api_token"
+    ]
+    assert "source-only-value" not in inspected.text
+    executable = next(
+        item
+        for item in inspection["files"]
+        if item["source_relative_path"] == "bin/server"
+    )
+    assert executable["executable"] is True
+
+    conversion_request = {
+        **request,
+        "target_space_id": "space-1",
+        "expected_review_digest": inspection["review_digest"],
+        "expected_target_draft_version": 0,
+        "client_request_id": "import-1",
+        "updated_by": "user-1",
+    }
+    converted = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json=conversion_request,
+        headers=_headers(),
+    )
+    assert converted.status_code == 200, converted.text
+    payload = converted.json()
+    assert payload == {
+        "bundle_id": "agent_plugin_research_plugin",
+        "revision_id": "1",
+        "target_space_id": "space-1",
+        "status": "draft",
+    }
+    draft = journal.get_workspace_config_draft("space-1")
+    assert draft is not None
+    assert draft.version == 1
+
+    shutil.rmtree(source)
+    replay = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json=conversion_request,
+        headers=_headers(),
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == payload
+    stored = journal.list_workspace_config_draft_assets(
+        space_id="space-1",
+        draft_version=1,
+        document_digest=draft.document_digest,
+    )
+    stored_executable = next(
+        item for item in stored if item.logical_path.endswith("/bin/server")
+    )
+    assert all(b"source-only-value" not in item.content for item in stored)
+    assert b"source-only-value" not in journal.path.read_bytes()
+    assert stored_executable.content == b"#!/bin/sh\nexit 0\n"
+    assert stored_executable.executable is True
+
+    edited_document = json.loads(json.dumps(draft.document))
+    edited_document["metadata"]["name"] = "Edited imported plugin"
+    autosaved = client.put(
+        "/api/v1/spaces/space-1/workspace-configuration",
+        json={
+            "expected_version": 1,
+            "base_revision_id": draft.base_revision_id,
+            "document": edited_document,
+            "updated_by": "user-1",
+            "email": "user@example.com",
+        },
+        headers=_headers(),
+    )
+    assert autosaved.status_code == 200, autosaved.text
+    edited = journal.get_workspace_config_draft("space-1")
+    assert edited is not None
+    carried = journal.list_workspace_config_draft_assets(
+        space_id="space-1",
+        draft_version=edited.version,
+        document_digest=edited.document_digest,
+    )
+    assert [(item.logical_path, item.content_digest) for item in carried] == [
+        (item.logical_path, item.content_digest) for item in stored
+    ]
+
+    revision_id = (
+        f"{edited.document['metadata']['id']}@"
+        f"{edited.document['metadata']['revision']}"
+    )
+    _, rebased = journal.finalize_workspace_config_publish(
+        space_id="space-1",
+        expected_draft_version=edited.version,
+        revision_id=revision_id,
+        manifest_digest=edited.document_digest,
+        published_manifest=edited.document,
+        actor_id="user-1",
+    )
+    after_publish = journal.list_workspace_config_draft_assets(
+        space_id="space-1",
+        draft_version=rebased.version,
+        document_digest=rebased.document_digest,
+    )
+    assert [
+        (item.logical_path, item.content_digest) for item in after_publish
+    ] == [(item.logical_path, item.content_digest) for item in stored]
+
+
+def test_agent_plugin_convert_replays_before_current_draft_cas(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert inspected.status_code == 200
+    body = {
+        "source_path": str(source),
+        "email": "user@example.com",
+        "target_space_id": "space-1",
+        "expected_review_digest": inspected.json()["review_digest"],
+        "expected_target_draft_version": 0,
+        "client_request_id": "import-replay",
+        "updated_by": "user-1",
+    }
+    first = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json=body,
+        headers=_headers(),
+    )
+    assert first.status_code == 200
+    draft = journal.get_workspace_config_draft("space-1")
+    assert draft is not None
+    advanced = dict(draft.document)
+    advanced["metadata"] = {**draft.document["metadata"], "name": "Edited"}
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=1,
+        base_revision_id=None,
+        document=advanced,
+        updated_by="user-1",
+    )
+
+    replay = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json=body,
+        headers=_headers(),
+    )
+
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    assert journal.get_workspace_config_draft("space-1").version == 2
+
+
+def test_agent_plugin_convert_rejects_reused_request_id_with_changed_parameters(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert inspected.status_code == 200
+    body = {
+        "source_path": str(source),
+        "email": "user@example.com",
+        "target_space_id": "space-1",
+        "expected_review_digest": inspected.json()["review_digest"],
+        "expected_target_draft_version": 0,
+        "client_request_id": "import-reused-with-different-request",
+        "updated_by": "user-1",
+    }
+    first = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json=body,
+        headers=_headers(),
+    )
+
+    conflict = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json={**body, "updated_by": "other-user"},
+        headers=_headers(),
+    )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert (
+        conflict.json()["detail"]["code"] == "workspace_configuration_changed"
+    )
+
+
+def test_agent_plugin_convert_rejects_source_changed_after_review(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert inspected.status_code == 200
+    (source / "skills" / "research" / "SKILL.md").write_text(
+        "---\nname: research\ndescription: Changed after review\n---\n",
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json={
+            "source_path": str(source),
+            "email": "user@example.com",
+            "target_space_id": "space-1",
+            "expected_review_digest": inspected.json()["review_digest"],
+            "expected_target_draft_version": 0,
+            "client_request_id": "changed-after-review",
+            "updated_by": "user-1",
+        },
+        headers=_headers(),
+    )
+
+    assert response.status_code == 422
+    assert journal.get_workspace_config_draft("space-1") is None
+
+
+def test_agent_plugin_zip_import_rejects_traversal_and_accepts_one_root(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    archive = tmp_path / "portable-plugin.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        for path in source.rglob("*"):
+            if path.is_file():
+                handle.write(
+                    path, Path("portable-plugin") / path.relative_to(source)
+                )
+    accepted = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(archive), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    traversal = tmp_path / "traversal.zip"
+    with zipfile.ZipFile(traversal, "w") as handle:
+        handle.writestr("../plugin.json", "{}")
+    rejected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(traversal), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    collision = tmp_path / "collision.zip"
+    with zipfile.ZipFile(collision, "w") as handle:
+        handle.writestr("plugin.json", "{}")
+        handle.writestr("PLUGIN.JSON", "{}")
+    collision_response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(collision), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["source"]["source_kind"] == "archive"
+    assert rejected.status_code == 422
+    assert collision_response.status_code == 422
+
+
+def test_agent_plugin_rejects_archive_entry_exhaustion_bad_crc_and_deep_directory(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    too_many = tmp_path / "too-many.zip"
+    with zipfile.ZipFile(too_many, "w") as handle:
+        for index in range(4_001):
+            handle.writestr(f"empty-{index}/", b"")
+
+    plugin_payload = json.dumps(
+        {"$schema": PLUGIN_SCHEMA, "name": "crc-plugin"}
+    ).encode()
+    bad_crc = tmp_path / "bad-crc.zip"
+    with zipfile.ZipFile(bad_crc, "w") as handle:
+        handle.writestr("plugin.json", plugin_payload)
+    corrupted = bytearray(bad_crc.read_bytes())
+    payload_index = corrupted.find(plugin_payload)
+    assert payload_index >= 0
+    corrupted[payload_index] ^= 0x01
+    bad_crc.write_bytes(corrupted)
+
+    deep_source = _agent_plugin(tmp_path / "deep-plugin")
+    directory = deep_source
+    for index in range(33):
+        directory = directory / f"level-{index}"
+        directory.mkdir()
+
+    too_many_directory = _agent_plugin(tmp_path / "too-many-directory")
+    for index in range(4_001):
+        (too_many_directory / f"empty-{index}").mkdir()
+
+    responses = [
+        client.post(
+            "/api/v1/workspace-bundles/agent-plugins:inspect",
+            json={"source_path": str(path), "email": "user@example.com"},
+            headers=_headers(),
+        )
+        for path in (too_many, bad_crc, deep_source, too_many_directory)
+    ]
+
+    assert [response.status_code for response in responses] == [
+        422,
+        422,
+        422,
+        422,
+    ]
+
+
+def test_agent_plugin_rejects_archive_entry_count_before_opening_central_directory(
+    workspace_config_api,
+    tmp_path,
+    monkeypatch,
+):
+    client, _ = workspace_config_api
+    archive = tmp_path / "entry-bomb.zip"
+    entry_count = 4_001
+    archive.write_bytes(
+        b"PK\x05\x06"
+        + (0).to_bytes(2, "little")
+        + (0).to_bytes(2, "little")
+        + entry_count.to_bytes(2, "little")
+        + entry_count.to_bytes(2, "little")
+        + (0).to_bytes(4, "little")
+        + (0).to_bytes(4, "little")
+        + (0).to_bytes(2, "little")
+    )
+
+    def fail_if_zipfile_is_opened(*_args, **_kwargs):
+        raise AssertionError("unsafe central directory was opened")
+
+    monkeypatch.setattr(zipfile, "ZipFile", fail_if_zipfile_is_opened)
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(archive), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 422
+
+
+def test_agent_plugin_skips_invalid_optional_components_and_warns_on_unknown_manifest_field(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    plugin = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
+    plugin["futureStandardField"] = {"keptByFutureHosts": True}
+    (source / "plugin.json").write_text(json.dumps(plugin), encoding="utf-8")
+    invalid_skill = source / "skills" / "invalid-skill"
+    invalid_skill.mkdir()
+    (invalid_skill / "SKILL.md").write_text(
+        "---\nname: does-not-match\ndescription: Invalid\n---\n",
+        encoding="utf-8",
+    )
+    mcp = json.loads((source / "mcp.json").read_text(encoding="utf-8"))
+    mcp["mcpServers"]["unsupported"] = {
+        "type": "future-transport",
+        "url": "https://example.invalid/mcp",
+    }
+    (source / "mcp.json").write_text(json.dumps(mcp), encoding="utf-8")
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["skills"]] == ["research"]
+    assert [item["id"] for item in payload["mcp_servers"]] == ["local"]
+    assert (
+        payload["skipped_skills"][0]["reason_code"] == "invalid_skill_skipped"
+    )
+    assert payload["skipped_mcp_servers"][0]["reason_code"] == (
+        "invalid_mcp_server_skipped"
+    )
+    assert any(
+        item["code"] == "unknown_manifest_field_ignored"
+        for item in payload["warnings"]
+    )
+
+
+def test_agent_plugin_invalid_mcp_component_does_not_discard_valid_skills(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    plugin = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
+    plugin["extensions"] = {}
+    (source / "plugin.json").write_text(json.dumps(plugin), encoding="utf-8")
+    (source / "mcp.json").write_text(
+        json.dumps({"$schema": MCP_SCHEMA, "unexpected": {}}),
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["skills"]] == ["research"]
+    assert response.json()["mcp_servers"] == []
+    assert response.json()["skipped_mcp_servers"][0]["reason_code"] == (
+        "invalid_mcp_component"
+    )
+
+
+def test_agent_plugin_rejects_undeclared_secret_without_echoing_it(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    plugin = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
+    plugin["extensions"] = {}
+    (source / "plugin.json").write_text(json.dumps(plugin), encoding="utf-8")
+    secret = "sk-ant-api03-" + "abcdefghijklmnopqrstuvwx1234567890"
+    mcp = json.loads((source / "mcp.json").read_text(encoding="utf-8"))
+    mcp["mcpServers"]["local"]["env"]["API_TOKEN"] = secret
+    (source / "mcp.json").write_text(json.dumps(mcp), encoding="utf-8")
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mcp_servers"] == []
+    assert secret not in response.text
+    assert journal.get_workspace_config_draft("space-1") is None
+
+
+def test_agent_plugin_allows_contained_symlinks_but_rejects_escapes_and_sources_outside_hands_scope(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    (source / "linked-skill").symlink_to(source / "skills" / "research")
+
+    contained = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    (source / "linked-skill").unlink()
+    (source / "escaped").symlink_to(Path.home())
+    escaped = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    outside_scope = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(Path.home()), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert contained.status_code == 200, contained.text
+    assert escaped.status_code == 422
+    assert outside_scope.status_code == 403
+
+
+def test_agent_plugin_isolates_escaping_skill_symlinks_and_excludes_git_aliases(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    (source / "skills" / "escaped-skill").symlink_to(Path.home())
+    git_directory = source / ".git"
+    git_directory.mkdir()
+    (git_directory / "config").write_text("private git data", encoding="utf-8")
+    (source / "linked-git").symlink_to(git_directory)
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["skills"]] == ["research"]
+    assert payload["skipped_skills"][0]["reason_code"] == (
+        "invalid_skill_skipped"
+    )
+    assert all(
+        "linked-git" not in item["logical_path"] for item in payload["files"]
+    )
+    assert "private git data" not in response.text
+
+
+def test_agent_plugin_skips_an_escaping_skills_component_without_losing_mcp(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    shutil.rmtree(source / "skills")
+    (source / "skills").symlink_to(Path.home())
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["skills"] == []
+    assert response.json()["skipped_skills"][0]["reason_code"] == (
+        "invalid_skills_component"
+    )
+    assert [item["id"] for item in response.json()["mcp_servers"]] == ["local"]
+
+
+def test_agent_plugin_rejects_unsupported_schema_without_network_fetch(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(
+        tmp_path / "portable-plugin",
+        schema="https://agent-plugins.org/schemas/9.9.9/plugin.schema.json",
+    )
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={
+            "source_path": str(source),
+            "email": "user@example.com",
+        },
+        headers=_headers(),
+    )
+
+    assert response.status_code == 422
+    assert (
+        response.json()["detail"]["code"] == "workspace_configuration_invalid"
+    )
+    assert journal.get_workspace_config_draft("space-1") is None
 
 
 def test_workspace_configuration_records_only_verified_cloud_publish(
