@@ -1,0 +1,470 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  fetchReview: vi.fn(),
+  fetchProposal: vi.fn(),
+  createProposal: vi.fn(),
+  decide: vi.fn(),
+  bindValues: vi.fn(),
+  bindPath: vi.fn(),
+  bindConnector: vi.fn(),
+  approveScript: vi.fn(),
+  materialize: vi.fn(),
+  digest: vi.fn(),
+  fetchConnected: vi.fn(),
+  secretPut: vi.fn(),
+  secretDelete: vi.fn(),
+  selectFile: vi.fn(),
+  createSpace: vi.fn(),
+  deleteSpace: vi.fn(),
+  ensureScratch: vi.fn(),
+  setActiveSpace: vi.fn(),
+  setActiveProject: vi.fn(),
+  setActiveWorkspaceTab: vi.fn(),
+}));
+
+vi.mock('@/service/workspaceBundleInstallApi', () => ({
+  parseWorkspaceBundleHandle: (value: string) => {
+    const match = /^([A-Za-z0-9][A-Za-z0-9._-]{0,79})@([1-9][0-9]*)$/.exec(
+      value
+    );
+    return match ? { bundleId: match[1], revisionId: value } : null;
+  },
+  fetchWorkspaceBundleInstallReview: mocks.fetchReview,
+  fetchWorkspaceBundleInstallProposal: mocks.fetchProposal,
+  createWorkspaceBundleInstallProposal: mocks.createProposal,
+  decideWorkspaceBundleInstall: mocks.decide,
+  bindWorkspaceBundleLocalValues: mocks.bindValues,
+  bindWorkspaceBundleLocalPath: mocks.bindPath,
+  bindWorkspaceBundleConnector: mocks.bindConnector,
+  approveWorkspaceBundleScript: mocks.approveScript,
+  materializeWorkspaceBundle: mocks.materialize,
+  workspaceBundleAccountScopeDigest: mocks.digest,
+}));
+
+vi.mock('@/api/connectors', () => ({
+  fetchConnectedProviders: mocks.fetchConnected,
+  providerLabel: (provider: { service: string }) => provider.service,
+}));
+
+vi.mock('@/host', () => ({
+  useHost: () => ({
+    electronAPI: {
+      workspaceSecretPut: mocks.secretPut,
+      workspaceSecretDelete: mocks.secretDelete,
+      selectFile: mocks.selectFile,
+    },
+  }),
+}));
+
+vi.mock('@/lib/scratchSpaceWorkspace', () => ({
+  ensureScratchSpaceWorkspaceBinding: mocks.ensureScratch,
+}));
+
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (selector: (state: object) => unknown) =>
+    selector({ email: 'owner@example.com', user_id: 'user-1' }),
+}));
+
+vi.mock('@/store/spaceStore', () => {
+  const state = {
+    createSpaceOnServer: mocks.createSpace,
+    deleteSpaceOnServer: mocks.deleteSpace,
+    setActiveSpace: mocks.setActiveSpace,
+    getSpaceById: (spaceId: string) => ({
+      id: spaceId,
+      name: 'Imported',
+      sourceType: 'blank',
+    }),
+  };
+  const useSpaceStore = Object.assign(
+    (selector: (value: typeof state) => unknown) => selector(state),
+    { getState: () => state }
+  );
+  return { useSpaceStore };
+});
+vi.mock('@/store/projectRuntimeStore', () => ({
+  useProjectRuntimeStore: () => ({ setActiveProject: mocks.setActiveProject }),
+}));
+vi.mock('@/store/pageTabStore', () => ({
+  usePageTabStore: (selector: (state: object) => unknown) =>
+    selector({ setActiveWorkspaceTab: mocks.setActiveWorkspaceTab }),
+}));
+
+import type { WorkspaceBundleInstallSnapshot } from '@/service/workspaceBundleInstallApi';
+import { WorkspaceBundleInstallWizard } from './WorkspaceBundleInstallWizard';
+
+const manifest = {
+  apiVersion: 'eigent.ai/v1alpha1',
+  kind: 'WorkforceBundle',
+  metadata: { id: 'research', name: 'Research workforce', revision: 1 },
+  spec: {
+    instructions: {},
+    context: [],
+    skills: [],
+    connectors: [],
+    mcpServers: [],
+    environment: {
+      variables: [
+        {
+          name: 'API_TOKEN',
+          required: true,
+          sensitive: true,
+          description: 'Research API token',
+        },
+      ],
+    },
+    agents: [],
+    models: {
+      default: { modelRef: 'provider://default', thinkingEffort: 'medium' },
+    },
+    permissions: { profile: 'request_approval', rules: [] },
+    git: {
+      enabled: true,
+      checkpointPolicy: 'user_and_run_terminal',
+      agentIsolation: 'worktree',
+      remotePolicy: 'prompt',
+    },
+  },
+} as const;
+
+const review = {
+  bundle: {
+    id: 'research',
+    workspace_id: 'author-space',
+    name: 'Research workforce',
+    visibility: 'public' as const,
+    latest_published_revision_id: 'research@1',
+  },
+  revision: {
+    id: 'research@1',
+    bundle_id: 'research',
+    revision: 1,
+    manifest,
+    manifest_digest: 'a'.repeat(64),
+    status: 'published' as const,
+    assets: [],
+  },
+};
+
+const snapshot = (configured = false): WorkspaceBundleInstallSnapshot => ({
+  proposal: {
+    proposal_id: 'proposal-1',
+    request_id: 'request-1',
+    space_id: 'space-1',
+    bundle_id: 'research',
+    revision_id: 'research@1',
+    config_placement: 'sidecar',
+    state: 'approved',
+    version: configured ? 3 : 2,
+    manifest:
+      manifest as WorkspaceBundleInstallSnapshot['proposal']['manifest'],
+    manifest_digest: 'a'.repeat(64),
+    assets: [],
+    install_plan: {
+      connector_slots: [],
+      local_path_slots: [],
+      script_actions: [],
+      environment_requirements: [],
+      mcp_secret_requirements: [],
+      permission_profile: 'request_approval',
+      git_policy: {},
+      asset_count: 0,
+      asset_bytes: 0,
+    },
+  },
+  bindings: [],
+  value_requirements: [
+    {
+      requirement_key: 'environment:API_TOKEN',
+      requirement_kind: 'environment',
+      name: 'API_TOKEN',
+      required: true,
+      sensitive: true,
+      configured,
+      available: configured,
+      binding_version: configured ? 1 : null,
+    },
+  ],
+  readiness: {
+    ready: configured,
+    missing_requirements: configured ? [] : ['environment:API_TOKEN'],
+  },
+});
+
+function renderWizard(props: {
+  initialHandle?: string;
+  initialProposalId?: string;
+}) {
+  return render(
+    <MemoryRouter>
+      <WorkspaceBundleInstallWizard {...props} />
+    </MemoryRouter>
+  );
+}
+
+describe('WorkspaceBundleInstallWizard', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    Object.values(mocks).forEach((mock) => mock.mockReset());
+    mocks.fetchConnected.mockResolvedValue([]);
+    mocks.digest.mockResolvedValue('b'.repeat(64));
+    mocks.createSpace.mockResolvedValue('space-1');
+    mocks.ensureScratch.mockResolvedValue('/tmp/space-1');
+    mocks.createProposal.mockResolvedValue({
+      ...snapshot(false),
+      proposal: { ...snapshot(false).proposal, state: 'proposed', version: 1 },
+    });
+    mocks.decide.mockResolvedValue(snapshot(false));
+  });
+
+  it('shows the immutable review before creating or approving a Space', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    const user = userEvent.setup();
+    renderWizard({ initialHandle: 'research@1' });
+
+    expect(await screen.findByText('Research workforce')).toBeInTheDocument();
+    expect(mocks.createSpace).not.toHaveBeenCalled();
+    expect(mocks.decide).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole('button', { name: /confirm and create/i })
+    );
+
+    await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
+    expect(mocks.createSpace).toHaveBeenCalledTimes(1);
+    expect(mocks.createProposal.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.decide.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('stores plaintext only through the Electron vault and binds an opaque ref', async () => {
+    mocks.fetchProposal.mockResolvedValue(snapshot(false));
+    mocks.secretPut.mockResolvedValue({
+      secret_ref: `wsvault_${'A'.repeat(32)}`,
+      account_scope_digest: 'b'.repeat(64),
+      space_id: 'space-1',
+      revision_id: 'research@1',
+      slot_id: 'environment:API_TOKEN',
+      state: 'available',
+    });
+    mocks.bindValues.mockResolvedValue(snapshot(true));
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    const input = await screen.findByLabelText('Local value for API_TOKEN');
+    await user.type(input, 'plaintext-do-not-send-to-brain');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(mocks.bindValues).toHaveBeenCalledTimes(1));
+    expect(mocks.secretPut).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 'plaintext-do-not-send-to-brain' })
+    );
+    expect(JSON.stringify(mocks.bindValues.mock.calls[0][0])).not.toContain(
+      'plaintext-do-not-send-to-brain'
+    );
+    expect(mocks.bindValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindings: [
+          expect.objectContaining({ secret_ref: `wsvault_${'A'.repeat(32)}` }),
+        ],
+      })
+    );
+  });
+
+  it('repairs an unavailable local value with the safe binding version', async () => {
+    const unavailable = snapshot(false);
+    unavailable.value_requirements[0] = {
+      ...unavailable.value_requirements[0],
+      configured: true,
+      available: false,
+      binding_version: 4,
+    };
+    mocks.fetchProposal.mockResolvedValue(unavailable);
+    mocks.secretPut.mockResolvedValue({
+      secret_ref: `wsvault_${'B'.repeat(32)}`,
+      account_scope_digest: 'b'.repeat(64),
+      space_id: 'space-1',
+      revision_id: 'research@1',
+      slot_id: 'environment:API_TOKEN',
+      state: 'available',
+    });
+    mocks.bindValues.mockResolvedValue({
+      ...snapshot(true),
+      cleanup_secret_refs: [`wsvault_${'A'.repeat(32)}`],
+    });
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(
+      await screen.findByText(/previous local value is unavailable/i)
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText('Local value for API_TOKEN'),
+      'replacement-value'
+    );
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mocks.bindValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bindings: [expect.objectContaining({ expected_binding_version: 4 })],
+        })
+      )
+    );
+    expect(mocks.secretDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ secret_ref: `wsvault_${'A'.repeat(32)}` })
+    );
+  });
+
+  it('keeps local setup editable after the Workspace is installed', async () => {
+    const installed = snapshot(true);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+    mocks.secretPut.mockResolvedValue({
+      secret_ref: `wsvault_${'C'.repeat(32)}`,
+      account_scope_digest: 'b'.repeat(64),
+      space_id: 'space-1',
+      revision_id: 'research@1',
+      slot_id: 'environment:API_TOKEN',
+      state: 'available',
+    });
+    mocks.bindValues.mockResolvedValue({
+      ...installed,
+      proposal: { ...installed.proposal, version: 9 },
+    });
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(
+      await screen.findByText('Workspace files installed')
+    ).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchConnected).toHaveBeenCalledTimes(1));
+    await user.type(
+      screen.getByLabelText('Local value for API_TOKEN'),
+      'rotated-value'
+    );
+    await user.click(screen.getByRole('button', { name: 'Replace' }));
+
+    await waitFor(() =>
+      expect(mocks.bindValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedVersion: 8,
+          bindings: [expect.objectContaining({ expected_binding_version: 1 })],
+        })
+      )
+    );
+  });
+
+  it('reconciles the durable binding after an ambiguous response loss', async () => {
+    mocks.fetchProposal
+      .mockResolvedValueOnce(snapshot(false))
+      .mockResolvedValueOnce(snapshot(true));
+    mocks.secretPut.mockResolvedValue({
+      secret_ref: `wsvault_${'D'.repeat(32)}`,
+      account_scope_digest: 'b'.repeat(64),
+      space_id: 'space-1',
+      revision_id: 'research@1',
+      slot_id: 'environment:API_TOKEN',
+      state: 'available',
+    });
+    mocks.bindValues.mockRejectedValue(
+      new Error('Response lost after the durable commit')
+    );
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    await user.type(
+      await screen.findByLabelText('Local value for API_TOKEN'),
+      'possibly-committed-value'
+    );
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText('Response lost after the durable commit')
+    ).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchProposal).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+  });
+
+  it('offers a retry when the read-only review request fails', async () => {
+    mocks.fetchReview
+      .mockRejectedValueOnce(new Error('Cloud is temporarily unavailable'))
+      .mockResolvedValueOnce(review);
+    const user = userEvent.setup();
+    renderWizard({ initialHandle: 'research@1' });
+
+    expect(
+      await screen.findByText('Cloud is temporarily unavailable')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Research workforce')).toBeInTheDocument();
+    expect(mocks.fetchReview).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a proposal failure without creating a second Space', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    mocks.createProposal
+      .mockRejectedValueOnce(new Error('Brain response was interrupted'))
+      .mockResolvedValueOnce({
+        ...snapshot(false),
+        proposal: {
+          ...snapshot(false).proposal,
+          state: 'proposed',
+          version: 1,
+        },
+      });
+    const user = userEvent.setup();
+    renderWizard({ initialHandle: 'research@1' });
+
+    await user.click(
+      await screen.findByRole('button', { name: /confirm and create/i })
+    );
+    expect(
+      await screen.findByText('Brain response was interrupted')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
+    expect(mocks.createProposal).toHaveBeenCalledTimes(2);
+    expect(mocks.createSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers the inactive Space seed after a renderer restart', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    mocks.createProposal.mockRejectedValueOnce(
+      new Error('Brain stopped before the proposal commit')
+    );
+    const user = userEvent.setup();
+    const first = renderWizard({ initialHandle: 'research@1' });
+
+    await user.click(
+      await screen.findByRole('button', { name: /confirm and create/i })
+    );
+    expect(
+      await screen.findByText('Brain stopped before the proposal commit')
+    ).toBeInTheDocument();
+    first.unmount();
+
+    mocks.createProposal.mockResolvedValueOnce({
+      ...snapshot(false),
+      proposal: { ...snapshot(false).proposal, state: 'proposed', version: 1 },
+    });
+    renderWizard({ initialHandle: 'research@1' });
+    await user.click(
+      await screen.findByRole('button', { name: /confirm and create/i })
+    );
+
+    await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
+    expect(mocks.createSpace).toHaveBeenCalledTimes(1);
+    expect(mocks.createProposal).toHaveBeenCalledTimes(2);
+  });
+});

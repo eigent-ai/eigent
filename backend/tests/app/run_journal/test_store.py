@@ -832,6 +832,208 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
         assert reopened.get_run("run-1") is not None
 
 
+def test_bundle_secret_bindings_persist_only_opaque_refs_and_replay_requests(
+    tmp_path,
+):
+    path = tmp_path / "run-journal.sqlite3"
+    sentinel = "raw-secret-must-never-enter-journal"
+    with SQLiteRunJournal(path) as journal:
+        proposal = journal.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-1",
+            request_id="proposal-request-1",
+            space_id="space-1",
+            bundle_id="bundle-1",
+            revision_id="bundle-1@1",
+            config_placement="sidecar",
+            manifest={"spec": {}},
+            assets=[],
+            install_plan={},
+        )
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="approved",
+            decided_by="user-1",
+        )
+        first_ref = f"wsvault_{'A' * 32}"
+        second_ref = f"wsvault_{'B' * 32}"
+        bindings = [
+            {
+                "requirement_key": "environment:API_TOKEN",
+                "requirement_kind": "environment",
+                "secret_ref": first_ref,
+                "account_scope_digest": "a" * 64,
+            }
+        ]
+        stored, advanced = journal.put_workspace_bundle_secret_bindings(
+            proposal_id=proposal.proposal_id,
+            client_request_id="bind-request-1",
+            expected_proposal_version=proposal.version,
+            bindings=bindings,
+            authorized_by="user-1",
+        )
+        replay, replay_proposal = journal.put_workspace_bundle_secret_bindings(
+            proposal_id=proposal.proposal_id,
+            client_request_id="bind-request-1",
+            expected_proposal_version=proposal.version,
+            bindings=bindings,
+            authorized_by="user-1",
+        )
+
+        assert replay == stored
+        assert replay_proposal == advanced
+        assert stored[0].secret_ref == first_ref
+        assert stored[0].binding_version == 1
+        with pytest.raises(IdempotencyConflictError):
+            journal.put_workspace_bundle_secret_bindings(
+                proposal_id=proposal.proposal_id,
+                client_request_id="bind-request-1",
+                expected_proposal_version=advanced.version,
+                bindings=[
+                    {
+                        **bindings[0],
+                        "secret_ref": f"wsvault_{'C' * 32}",
+                    }
+                ],
+                authorized_by="user-1",
+            )
+
+        replaced, replaced_proposal = (
+            journal.put_workspace_bundle_secret_bindings(
+                proposal_id=proposal.proposal_id,
+                client_request_id="bind-request-2",
+                expected_proposal_version=advanced.version,
+                bindings=[
+                    {
+                        **bindings[0],
+                        "secret_ref": second_ref,
+                        "expected_binding_version": 1,
+                    }
+                ],
+                authorized_by="user-1",
+            )
+        )
+        assert replaced[0].binding_version == 2
+        assert replaced[0].secret_ref == second_ref
+        assert replaced_proposal.version == advanced.version + 1
+        with pytest.raises(OptimisticConcurrencyError):
+            journal.put_workspace_bundle_secret_bindings(
+                proposal_id=proposal.proposal_id,
+                client_request_id="bind-request-stale",
+                expected_proposal_version=replaced_proposal.version,
+                bindings=[
+                    {
+                        **bindings[0],
+                        "secret_ref": f"wsvault_{'D' * 32}",
+                        "expected_binding_version": 1,
+                    }
+                ],
+                authorized_by="user-1",
+            )
+
+    database_bytes = path.read_bytes()
+    wal = path.with_name(path.name + "-wal")
+    if wal.exists():
+        database_bytes += wal.read_bytes()
+    assert sentinel.encode() not in database_bytes
+
+
+def test_materialized_bundle_bindings_can_be_reconfigured_with_cas(tmp_path):
+    with SQLiteRunJournal(tmp_path / "run-journal.sqlite3") as journal:
+        proposal = journal.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-installed",
+            request_id="proposal-installed-request",
+            space_id="space-1",
+            bundle_id="bundle-1",
+            revision_id="bundle-1@1",
+            config_placement="sidecar",
+            manifest={"spec": {}},
+            assets=[],
+            install_plan={},
+        )
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="approved",
+            decided_by="user-1",
+        )
+        _, proposal = journal.put_workspace_bundle_local_binding(
+            proposal_id=proposal.proposal_id,
+            expected_proposal_version=proposal.version,
+            slot_id="docs",
+            binding_kind="local_path",
+            connector_id=None,
+            opaque_connection_id=None,
+            local_path="/first/docs",
+            required_grants=[],
+            authorized_by="user-1",
+        )
+        secret_bindings, proposal = (
+            journal.put_workspace_bundle_secret_bindings(
+                proposal_id=proposal.proposal_id,
+                client_request_id="secret-first",
+                expected_proposal_version=proposal.version,
+                bindings=[
+                    {
+                        "requirement_key": "environment:API_TOKEN",
+                        "requirement_kind": "environment",
+                        "secret_ref": f"wsvault_{'A' * 32}",
+                        "account_scope_digest": "a" * 64,
+                    }
+                ],
+                authorized_by="user-1",
+            )
+        )
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="materializing",
+        )
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="materialized",
+        )
+
+        rebound_path, proposal = journal.put_workspace_bundle_local_binding(
+            proposal_id=proposal.proposal_id,
+            expected_proposal_version=proposal.version,
+            slot_id="docs",
+            binding_kind="local_path",
+            connector_id=None,
+            opaque_connection_id=None,
+            local_path="/replacement/docs",
+            required_grants=[],
+            authorized_by="user-2",
+        )
+        rebound_secret, proposal = (
+            journal.put_workspace_bundle_secret_bindings(
+                proposal_id=proposal.proposal_id,
+                client_request_id="secret-replacement",
+                expected_proposal_version=proposal.version,
+                bindings=[
+                    {
+                        "requirement_key": "environment:API_TOKEN",
+                        "requirement_kind": "environment",
+                        "secret_ref": f"wsvault_{'B' * 32}",
+                        "account_scope_digest": "a" * 64,
+                        "expected_binding_version": secret_bindings[
+                            0
+                        ].binding_version,
+                    }
+                ],
+                authorized_by="user-2",
+            )
+        )
+
+        assert proposal.state == "needs_attention"
+        assert proposal.error_code == "bundle_reconfiguration_pending"
+        assert rebound_path.local_path == "/replacement/docs"
+        assert rebound_path.authorized_by == "user-2"
+        assert rebound_secret[0].binding_version == 2
+        assert rebound_secret[0].secret_ref == f"wsvault_{'B' * 32}"
+
+
 def test_v14_database_backfills_finite_expiry_for_pending_approval(tmp_path):
     path = tmp_path / "run-journal.sqlite3"
     with SQLiteRunJournal(path) as current:

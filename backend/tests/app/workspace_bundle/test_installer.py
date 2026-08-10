@@ -10,6 +10,7 @@ from app.workspace_bundle import (
     WorkspaceBundleBindingsIncomplete,
     WorkspaceBundleInstaller,
     WorkspaceBundleInstallError,
+    WorkspaceSecretVerification,
 )
 from app.workspace_config import (
     ConfigPlacement,
@@ -237,6 +238,29 @@ class FakeCloud:
 
     async def close(self):
         return None
+
+
+class FakeSecretBroker:
+    def __init__(self):
+        self.verified = []
+        self.batches = []
+        self.rejected: set[str] = set()
+
+    def verify_many(self, identities):
+        batch = tuple(identities)
+        self.batches.append(batch)
+        self.verified.extend(batch)
+        return tuple(
+            WorkspaceSecretVerification(
+                identity=identity,
+                state=(
+                    "needs_rebind"
+                    if identity.secret_ref in self.rejected
+                    else "available"
+                ),
+            )
+            for identity in batch
+        )
 
 
 @pytest.fixture
@@ -519,6 +543,256 @@ async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
 
 
 @pytest.mark.asyncio
+async def test_required_local_values_block_before_cloud_and_optional_env_does_not(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    manifest = _manifest()
+    manifest["spec"].update(
+        {
+            "instructions": {},
+            "context": [],
+            "skills": [],
+            "connectors": [],
+            "environment": {
+                "variables": [
+                    {
+                        "name": "API_TOKEN",
+                        "required": True,
+                        "sensitive": True,
+                    },
+                    {
+                        "name": "LOG_LEVEL",
+                        "required": False,
+                        "sensitive": False,
+                        "example": "info",
+                    },
+                ]
+            },
+            "mcpServers": [
+                {
+                    "id": "linear",
+                    "definition": "registry://mcp/linear@1",
+                    "secretSlots": ["LINEAR_API_TOKEN"],
+                    "assignTo": ["lead"],
+                }
+            ],
+        }
+    )
+
+    async def get_revision(bundle_id, revision_id):
+        canonical = WorkforceBundleManifest.model_validate(
+            manifest
+        ).canonical_payload()
+        return {
+            "id": revision_id,
+            "bundle_id": bundle_id,
+            "status": "published",
+            "manifest": canonical,
+            "manifest_digest": canonical_digest(canonical),
+            "assets": [],
+        }
+
+    cloud.get_revision = get_revision
+    broker = FakeSecretBroker()
+    service.secret_broker = broker
+    proposal = await service.propose(
+        proposal_id="proposal-values",
+        request_id="request-values",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@1",
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    assert proposal.install_plan["environment_requirements"] == [
+        {
+            "requirement_key": "environment:API_TOKEN",
+            "name": "API_TOKEN",
+            "required": True,
+            "sensitive": True,
+            "description": None,
+            "example": None,
+        },
+        {
+            "requirement_key": "environment:LOG_LEVEL",
+            "name": "LOG_LEVEL",
+            "required": False,
+            "sensitive": False,
+            "description": None,
+            "example": "info",
+        },
+    ]
+    assert proposal.install_plan["mcp_secret_requirements"] == [
+        {
+            "requirement_key": "mcp_secret:linear:LINEAR_API_TOKEN",
+            "mcp_id": "linear",
+            "slot_id": "LINEAR_API_TOKEN",
+            "required": True,
+        }
+    ]
+    proposal = service.decide(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        approved=True,
+        decided_by="user-1",
+    )
+
+    with pytest.raises(WorkspaceBundleBindingsIncomplete) as missing:
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    assert set(missing.value.missing_slots) == {
+        "environment:API_TOKEN",
+        "mcp.server.start:linear",
+        "mcp_secret:linear:LINEAR_API_TOKEN",
+    }
+    assert cloud.installed_bundle_id is None
+
+    _, proposal = service.approve_script_action(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        action_id="mcp.server.start:linear",
+        authorized_by="user-1",
+    )
+
+    _, proposal = service.bind_local_values(
+        proposal.proposal_id,
+        client_request_id="bind-values-1",
+        expected_version=proposal.version,
+        authorized_by="user-1",
+        bindings=[
+            {
+                "requirement_key": "environment:API_TOKEN",
+                "requirement_kind": "environment",
+                "secret_ref": f"wsvault_{'E' * 32}",
+                "account_scope_digest": "a" * 64,
+            },
+            {
+                "requirement_key": "mcp_secret:linear:LINEAR_API_TOKEN",
+                "requirement_kind": "mcp_secret",
+                "secret_ref": f"wsvault_{'M' * 32}",
+                "account_scope_digest": "a" * 64,
+            },
+        ],
+    )
+    result = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert result.state == "materialized"
+    assert {item.slot_id for item in broker.verified} == {
+        "environment:API_TOKEN",
+        "mcp_secret:linear:LINEAR_API_TOKEN",
+    }
+    assert [len(batch) for batch in broker.batches] == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
+    service, _, cloud, tmp_path = installer
+    manifest = _manifest()
+    manifest["spec"]["context"] = []
+    manifest["spec"]["skills"] = []
+    manifest["spec"]["connectors"] = []
+    manifest["spec"]["environment"] = {
+        "variables": [{"name": "API_TOKEN", "required": True}]
+    }
+
+    async def get_revision(bundle_id, revision_id):
+        canonical = WorkforceBundleManifest.model_validate(
+            manifest
+        ).canonical_payload()
+        return {
+            "id": revision_id,
+            "bundle_id": bundle_id,
+            "status": "published",
+            "manifest": canonical,
+            "manifest_digest": canonical_digest(canonical),
+            "assets": [],
+        }
+
+    cloud.get_revision = get_revision
+    broker = FakeSecretBroker()
+    service.secret_broker = broker
+    proposal = await service.propose(
+        proposal_id="proposal-unreadable",
+        request_id="request-unreadable",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@1",
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    proposal = service.decide(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        approved=True,
+        decided_by="user-1",
+    )
+    _, proposal = service.bind_local_values(
+        proposal.proposal_id,
+        client_request_id="bind-unreadable",
+        expected_version=proposal.version,
+        authorized_by="user-1",
+        bindings=[
+            {
+                "requirement_key": "environment:API_TOKEN",
+                "requirement_kind": "environment",
+                "secret_ref": f"wsvault_{'U' * 32}",
+                "account_scope_digest": "a" * 64,
+            }
+        ],
+    )
+    broker.rejected.add(f"wsvault_{'U' * 32}")
+
+    with pytest.raises(WorkspaceBundleBindingsIncomplete):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+
+    assert cloud.installed_bundle_id is None
+    assert cloud.projection is None
+    assert [len(batch) for batch in broker.batches] == [1, 1]
+
+
+def test_legacy_install_plan_without_local_value_requirements_is_supported(
+    installer,
+):
+    service, journal, _, _ = installer
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-legacy-plan",
+        request_id="request-legacy-plan",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@1",
+        config_placement="sidecar",
+        manifest=_manifest(),
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+        },
+    )
+    proposal = service.decide(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        approved=True,
+        decided_by="user-1",
+    )
+
+    service._require_complete_bindings(proposal, (), ())
+
+
+@pytest.mark.asyncio
 async def test_projection_response_loss_retries_without_duplicate_grants(
     tmp_path,
 ):
@@ -632,6 +906,52 @@ async def test_upgrade_reviews_again_and_commits_new_configuration(installer):
         )
         == 2
     )
+
+
+@pytest.mark.asyncio
+async def test_materialized_local_rebind_requires_and_completes_cloud_resync(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    installed = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+    first_projection_id = cloud.projection["projection_id"]
+    replacement = tmp_path / "replacement-docs"
+    replacement.mkdir()
+
+    _, pending = service.bind_connector(
+        installed.proposal_id,
+        expected_version=installed.version,
+        slot_id="github_readonly",
+        connector_id="github",
+        opaque_connection_id="connection-2",
+        authorized_by="user-1",
+    )
+    _, pending = service.bind_local_path(
+        installed.proposal_id,
+        expected_version=pending.version,
+        slot_id="docs_folder",
+        local_path=replacement,
+        authorized_by="user-1",
+    )
+
+    assert pending.state == "needs_attention"
+    assert pending.error_code == "bundle_reconfiguration_pending"
+    resynced = await service.materialize(
+        pending.proposal_id,
+        expected_version=pending.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+    assert resynced.state == "materialized"
+    assert cloud.projection["projection_id"] != first_projection_id
+    assert len(cloud.projections) == 2
+    assert cloud.binding == ("github_readonly", "connection-2")
 
 
 def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):

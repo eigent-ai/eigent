@@ -173,6 +173,20 @@ class WorkspaceBundleLocalBindingRecord:
 
 
 @dataclass(frozen=True)
+class WorkspaceBundleSecretBindingRecord:
+    binding_id: str
+    proposal_id: str
+    requirement_key: str
+    requirement_kind: str
+    binding_version: int
+    secret_ref: str
+    account_scope_digest: str
+    authorized_by: str
+    authorized_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
 class EffectiveEnvironmentSpecRecord:
     environment_spec_id: str
     owner_type: str

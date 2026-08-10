@@ -52,6 +52,20 @@ class UnsafeCloudProjectionError(WorkspaceConfigError):
     """Raised when a Cloud projection contains device-local identity."""
 
 
+class WorkspaceBundleReconfigurationPendingError(WorkspaceConfigError):
+    """Raised when an installed Bundle must be re-synced before Run admission."""
+
+    code = "workspace_bundle_reconfiguration_pending"
+
+    def __init__(self, *, proposal_id: str, state: str) -> None:
+        self.proposal_id = proposal_id
+        self.state = state
+        super().__init__(
+            "Workspace Bundle local setup changed and must be synced before "
+            "starting another Run"
+        )
+
+
 class ThinkingEffort(StrEnum):
     LOW = "low"
     MEDIUM = "medium"

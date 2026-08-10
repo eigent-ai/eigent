@@ -29,6 +29,9 @@ const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 const WorkspaceConfiguration = lazy(
   () => import('@/pages/WorkspaceConfiguration')
 );
+const WorkspaceBundleInstall = lazy(
+  () => import('@/pages/WorkspaceBundleInstall')
+);
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
@@ -170,6 +173,10 @@ const AppRoutes = () => (
         <Route
           path="/workspace-configuration"
           element={<WorkspaceConfiguration />}
+        />
+        <Route
+          path="/workspace-bundles/install"
+          element={<WorkspaceBundleInstall />}
         />
         <Route
           path="/setting"

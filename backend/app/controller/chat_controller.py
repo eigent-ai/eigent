@@ -85,7 +85,11 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
-from app.workspace_config import EffectiveEnvironmentSpec, canonical_digest
+from app.workspace_config import (
+    EffectiveEnvironmentSpec,
+    WorkspaceBundleReconfigurationPendingError,
+    canonical_digest,
+)
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     EnvironmentAdmissionTemplate,
@@ -112,6 +116,17 @@ class _PreparedChatRun:
     run_context: RunContext
     attempt_id: str
     initial_action: ActionImproveData
+
+
+def _workspace_bundle_admission_error(
+    exc: WorkspaceBundleReconfigurationPendingError,
+) -> UserException:
+    return UserException(
+        code.error,
+        f"{exc}. Open Workspace configuration > Local setup and sync the "
+        "pending changes.",
+        error_code=exc.code,
+    )
 
 
 _EXPLICIT_RESUME_INSTRUCTION = """
@@ -682,14 +697,17 @@ async def _prepare_chat_run(
         environment = None
         if isinstance(journal, SQLiteRunJournal):
             template = _legacy_environment_template(data)
-            environment = await asyncio.to_thread(
-                EnvironmentAdmissionService(journal).persist_for_run,
-                run_id=run_context.run_id,
-                space_id=run_context.space_id,
-                working_directory=run_context.working_directory,
-                created_by=(run_context.user_id or "local-user"),
-                template=template,
-            )
+            try:
+                environment = await asyncio.to_thread(
+                    EnvironmentAdmissionService(journal).persist_for_run,
+                    run_id=run_context.run_id,
+                    space_id=run_context.space_id,
+                    working_directory=run_context.working_directory,
+                    created_by=(run_context.user_id or "local-user"),
+                    template=template,
+                )
+            except WorkspaceBundleReconfigurationPendingError as exc:
+                raise _workspace_bundle_admission_error(exc) from exc
             _apply_environment_to_task_lock(
                 task_lock,
                 environment.spec,
@@ -1270,14 +1288,17 @@ async def _improve_chat(
             template,
             EnvironmentAdmissionTemplate,
         ):
-            environment = await asyncio.to_thread(
-                EnvironmentAdmissionService(journal).persist_for_run,
-                run_id=refreshed_context.run_id,
-                space_id=refreshed_context.space_id,
-                working_directory=refreshed_context.working_directory,
-                created_by=(refreshed_context.user_id or "local-user"),
-                template=template,
-            )
+            try:
+                environment = await asyncio.to_thread(
+                    EnvironmentAdmissionService(journal).persist_for_run,
+                    run_id=refreshed_context.run_id,
+                    space_id=refreshed_context.space_id,
+                    working_directory=refreshed_context.working_directory,
+                    created_by=(refreshed_context.user_id or "local-user"),
+                    template=template,
+                )
+            except WorkspaceBundleReconfigurationPendingError as exc:
+                raise _workspace_bundle_admission_error(exc) from exc
             _apply_environment_to_task_lock(
                 task_lock,
                 environment.spec,

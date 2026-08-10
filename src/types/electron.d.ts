@@ -116,6 +116,52 @@ interface ElectronAPI {
   envWrite: (email: string, kv: { key: string; value: string }) => Promise<any>;
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
+  workspaceSecretPut: (request: {
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    value: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretStatus: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available' | 'missing' | 'needs_rebind';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretDelete: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'missing';
+  }>;
   executeCommand: (
     command: string,
     email: string

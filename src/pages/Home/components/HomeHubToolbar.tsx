@@ -41,6 +41,7 @@ import {
   FolderOpen,
   LayoutGrid,
   List,
+  PackagePlus,
   PlusCircle,
 } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
@@ -242,6 +243,18 @@ export default function HomeHubToolbar({
             </Button>
           </span>
         </TooltipSimple>
+
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          buttonContent="text"
+          buttonRadius="full"
+          onClick={() => navigate('/workspace-bundles/install')}
+        >
+          <PackagePlus className="h-4 w-4 shrink-0" aria-hidden />
+          Import Workforce Bundle
+        </Button>
 
         <DropdownMenu>
           <TooltipSimple content={sortLabel} variant="instant">

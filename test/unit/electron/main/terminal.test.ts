@@ -143,6 +143,8 @@ describe('terminal IPC lifecycle', () => {
         GH_TOKEN: 'secret',
         AWS_SECRET_ACCESS_KEY: 'secret',
         CODEX_RESOLVER_SECRET: 'secret',
+        EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY: 'secret',
+        EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY: 'legacy-secret',
       })
     ).toEqual({
       PATH: '/usr/bin',

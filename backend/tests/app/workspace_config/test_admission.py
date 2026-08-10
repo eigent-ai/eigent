@@ -3,8 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
+
 from app.run_journal import SQLiteRunJournal
-from app.workspace_config import ThinkingEffort, WorkforceBundleManifest
+from app.workspace_config import (
+    ThinkingEffort,
+    WorkforceBundleManifest,
+    WorkspaceBundleReconfigurationPendingError,
+)
 from app.workspace_config.admission import (
     EnvironmentAdmissionService,
     LegacyEnvironmentImporter,
@@ -383,7 +389,7 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
             expected_version=proposal.version,
             state="materializing",
         )
-        journal.transition_workspace_bundle_install_proposal(
+        proposal = journal.transition_workspace_bundle_install_proposal(
             proposal.proposal_id,
             expected_version=proposal.version,
             state="materialized",
@@ -425,3 +431,90 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
         event_json = json.dumps(event.payload)
         assert "private-connection-id" not in event_json
         assert str(docs) not in event_json
+
+        journal.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-review-only",
+            request_id="install-review-only",
+            space_id="space-1",
+            bundle_id="bundle-team",
+            revision_id="bundle-team@1",
+            config_placement="sidecar",
+            manifest=manifest,
+            assets=[],
+            install_plan=proposal.install_plan,
+        )
+        journal.ensure_run(
+            run_id="run-while-reviewing",
+            project_id="project-1",
+            status="pending",
+        )
+        while_reviewing = EnvironmentAdmissionService(journal).persist_for_run(
+            run_id="run-while-reviewing",
+            space_id="space-1",
+            working_directory=tmp_path,
+            created_by="user-1",
+            template=legacy,
+        )
+        assert while_reviewing.binding.bundle_revision_id == "bundle-team@1"
+        assert while_reviewing.spec.local_materialization.connector_bindings[
+            0
+        ].local_binding_id == "private-connection-id"
+
+        _, pending = journal.put_workspace_bundle_local_binding(
+            proposal_id=proposal.proposal_id,
+            expected_proposal_version=proposal.version,
+            slot_id="github_readonly",
+            binding_kind="connector",
+            connector_id="github",
+            opaque_connection_id="replacement-connection-id",
+            local_path=None,
+            required_grants=["repository.read"],
+            authorized_by="user-1",
+        )
+        assert pending.state == "needs_attention"
+        assert pending.error_code == "bundle_reconfiguration_pending"
+        journal.ensure_run(
+            run_id="run-after-rebind",
+            project_id="project-1",
+            status="pending",
+        )
+
+        with pytest.raises(
+            WorkspaceBundleReconfigurationPendingError,
+            match="must be synced",
+        ) as error:
+            EnvironmentAdmissionService(journal).persist_for_run(
+                run_id="run-after-rebind",
+                space_id="space-1",
+                working_directory=tmp_path,
+                created_by="user-1",
+                template=legacy,
+            )
+
+        assert error.value.code == "workspace_bundle_reconfiguration_pending"
+        assert error.value.proposal_id == proposal.proposal_id
+        assert journal.list_events("run-after-rebind") == []
+
+        materializing = journal.transition_workspace_bundle_install_proposal(
+            pending.proposal_id,
+            expected_version=pending.version,
+            state="materializing",
+        )
+        journal.ensure_run(
+            run_id="run-during-resync",
+            project_id="project-1",
+            status="pending",
+        )
+        with pytest.raises(
+            WorkspaceBundleReconfigurationPendingError,
+            match="must be synced",
+        ) as resync_error:
+            EnvironmentAdmissionService(journal).persist_for_run(
+                run_id="run-during-resync",
+                space_id="space-1",
+                working_directory=tmp_path,
+                created_by="user-1",
+                template=legacy,
+            )
+        assert resync_error.value.state == materializing.state
+        assert journal.list_events("run-during-resync") == []
