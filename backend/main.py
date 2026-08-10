@@ -57,6 +57,12 @@ def _enable_system_trust_store() -> None:
 
 _enable_system_trust_store()
 
+from app.auth.local_control import capture_local_control_capability
+
+# Electron passes this once at process creation. Consume it before routers,
+# toolkits, or model-controlled subprocesses can inspect the Brain environment.
+capture_local_control_capability()
+
 from app import api
 from app.component.environment import env
 from app.router import register_routers

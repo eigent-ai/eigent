@@ -268,6 +268,9 @@ class WorkspaceBundleInstaller:
                         "slot_id": binding.slot_id,
                         "connector_id": binding.connector_id,
                         "connection_id": binding.opaque_connection_id,
+                        "acknowledged_grants": list(
+                            binding.required_grants
+                        ),
                         "expected_installation_version": cloud_version,
                     },
                 )

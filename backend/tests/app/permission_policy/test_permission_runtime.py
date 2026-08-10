@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -182,3 +183,55 @@ async def test_large_tool_body_cannot_hide_resource_from_deny_rule(tmp_path):
 
         assert journal.list_approvals("run-1") == []
         assert task_lock.queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_direct_sqlite_approval_edit_has_no_live_dispatch_authority(
+    tmp_path,
+):
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    journal_path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(journal_path) as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-tamper",
+                tool_name="write_file",
+                arguments={"path": "report.md"},
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            assert checkpoint is not None
+            waiter = asyncio.create_task(
+                authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments={"path": "report.md"},
+                    toolkit_name="File Toolkit",
+                    agent_name="worker",
+                    task_lock=task_lock,
+                    journal=journal,
+                )
+            )
+            await task_lock.get_queue()
+            approval = journal.list_approvals("run-1")[0]
+            with sqlite3.connect(journal_path) as attacker:
+                attacker.execute(
+                    """
+                    UPDATE approvals
+                    SET status = 'approved', decision_json = '{"decision":"approved"}',
+                        version = 1, resolved_at = 2
+                    WHERE approval_id = ?
+                    """,
+                    (approval.approval_id,),
+                )
+            await task_lock.put_human_input("worker", "approved")
+
+            with pytest.raises(ToolPermissionRejectedError):
+                await waiter

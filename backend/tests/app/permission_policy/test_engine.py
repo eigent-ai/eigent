@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from app.permission_policy import (
     PRESET_PROFILES,
     ActionDescriptor,
@@ -215,3 +217,139 @@ def test_literal_resource_rule_does_not_expand_model_supplied_glob():
     assert engine.evaluate(other, profile=profile, rules=(rule,)).effect is (
         PolicyEffect.PROMPT
     )
+
+
+def test_resource_rule_must_cover_every_resource_in_a_multi_path_action():
+    action = _action()
+    action = ActionDescriptor(
+        **{
+            **action.__dict__,
+            "target_resources": ("/ws/notes.md", "/ws/.git/config"),
+        }
+    )
+    rule = PolicyRule(
+        rule_id="notes-only",
+        effect=PolicyEffect.ALLOW,
+        action_pattern="filesystem.write",
+        resource_pattern="/ws/notes.md",
+    )
+
+    decision = PermissionPolicyEngine().evaluate(
+        action,
+        profile=PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
+        rules=(rule,),
+    )
+
+    assert decision.effect is PolicyEffect.PROMPT
+    assert decision.matched_rule_id is None
+
+
+def test_resource_deny_still_matches_any_sensitive_target():
+    action = _action()
+    action = ActionDescriptor(
+        **{
+            **action.__dict__,
+            "target_resources": ("/ws/notes.md", "/ws/.git/config"),
+        }
+    )
+    rule = PolicyRule(
+        rule_id="deny-git-config",
+        effect=PolicyEffect.DENY,
+        action_pattern="filesystem.write",
+        resource_pattern="/ws/.git/config",
+    )
+
+    decision = PermissionPolicyEngine().evaluate(
+        action,
+        profile=PRESET_PROFILES[PermissionProfileName.FULL_ACCESS],
+        rules=(rule,),
+    )
+
+    assert decision.effect is PolicyEffect.DENY
+    assert decision.matched_rule_id == "deny-git-config"
+
+
+def test_git_config_and_terminal_journal_mutation_are_high_risk(tmp_path):
+    profile = PRESET_PROFILES[PermissionProfileName.AUTO_REVIEWER]
+    engine = PermissionPolicyEngine()
+    git_config = build_tool_action_descriptor(
+        action_id="git-config",
+        tool_name="write_to_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"filename": str(tmp_path / ".git" / "config")},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    journal_edit = build_tool_action_descriptor(
+        action_id="terminal-journal",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "command": "sqlite3 ~/.eigent/run-journal.sqlite3 'UPDATE approvals SET status=approved'"
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    git_decision = engine.evaluate(git_config, profile=profile)
+    journal_decision = engine.evaluate(journal_edit, profile=profile)
+
+    assert "untrusted_hook" in git_config.risk_tags
+    assert git_decision.auto_review_eligible is False
+    assert "policy_control_plane" in journal_edit.risk_tags
+    assert journal_decision.effect is PolicyEffect.DENY
+
+
+def test_normal_eigent_terminal_workspace_is_not_a_control_plane_path(tmp_path):
+    action = build_tool_action_descriptor(
+        action_id="terminal-output",
+        tool_name="write_to_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"filename": str(tmp_path / ".eigent" / "terminal" / "out.txt")},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" not in action.risk_tags
+
+
+def test_persistence_payload_redacts_secrets_but_keeps_a_bounded_preview():
+    action = _action(
+        arguments={
+            "path": "report.md",
+            "apiKeys": ["sk-never-persist-this"],
+            "command": "curl -H 'Authorization: Bearer abcdefghijklmnop'",
+            "content": "x" * 20_000,
+        }
+    )
+
+    payload = action.persistence_payload()
+    display = payload["normalized_arguments"]
+
+    assert display["truncated"] is True
+    assert "sk-never-persist-this" not in display["preview"]
+    assert "abcdefghijklmnop" not in display["preview"]
+    assert "[REDACTED]" in display["preview"]
+    assert len(display["preview"]) <= 4000
+    assert action.action_digest
+
+
+def test_non_finite_model_argument_is_bound_without_crashing():
+    action = _action(arguments={"path": "report.md", "score": math.nan})
+
+    assert action.action_digest
+    assert action.canonical_payload()["normalized_arguments"]["score"] == {
+        "__eigent_non_finite_float__": "nan"
+    }

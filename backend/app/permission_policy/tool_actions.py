@@ -34,6 +34,27 @@ _COMMAND_KEYS = ("command", "cmd", "script")
 _CREDENTIAL_PATH_PARTS = frozenset(
     {".aws", ".azure", ".gnupg", ".kube", ".ssh"}
 )
+_CONTROL_PLANE_FILENAMES = frozenset(
+    {
+        "desktop-instance-id",
+        "policy.sqlite3",
+        "run-journal.sqlite3",
+        "run-journal.sqlite3-shm",
+        "run-journal.sqlite3-wal",
+    }
+)
+_CONTROL_PLANE_COMMAND_MARKERS = (
+    "eigent_local_control_capability",
+    "policy.sqlite3",
+    "run-journal.sqlite3",
+)
+_GIT_EXECUTION_COMMAND_MARKERS = (
+    ".git/config",
+    ".git\\config",
+    ".git/hooks",
+    ".git\\hooks",
+    "core.hookspath",
+)
 _BROWSER_READ_NAMES = frozenset(
     {
         "browser_console_view",
@@ -171,7 +192,14 @@ def _risk_tags(
     arguments: dict[str, Any],
     workspace_root: str | Path | None,
 ) -> tuple[str, ...]:
-    if operation not in {"filesystem.write", "filesystem.delete"}:
+    if operation not in {
+        "filesystem.write",
+        "filesystem.delete",
+        "terminal.execute",
+        "mcp.tool.write",
+        "connector.write",
+        "skill.script.execute",
+    }:
         return ()
     root = (
         Path(workspace_root).expanduser().resolve(strict=False)
@@ -191,8 +219,28 @@ def _risk_tags(
             tags.add("new_filesystem_root")
         if parts & _CREDENTIAL_PATH_PARTS:
             tags.add("credential_export")
-        if ".git" in parts and "hooks" in parts:
+        if ".git" in parts and ({"hooks", "config"} & parts):
             tags.add("untrusted_hook")
-        if ".eigent" in parts:
+        if ".eigent" in parts and candidate.name.lower() in (
+            _CONTROL_PLANE_FILENAMES
+        ):
             tags.add("policy_control_plane")
+    command_text = "\n".join(
+        _argument_values(arguments, _COMMAND_KEYS)
+    ).lower()
+    if command_text:
+        if any(
+            marker in command_text
+            for marker in _CONTROL_PLANE_COMMAND_MARKERS
+        ):
+            tags.add("policy_control_plane")
+        if any(
+            marker in command_text for marker in _GIT_EXECUTION_COMMAND_MARKERS
+        ):
+            tags.add("untrusted_hook")
+        if any(
+            f"/{part}/" in command_text or f"~/{part}/" in command_text
+            for part in _CREDENTIAL_PATH_PARTS
+        ):
+            tags.add("credential_export")
     return tuple(sorted(tags))

@@ -2,12 +2,99 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
 from app.run_policy import ToolSafetyClass
 from app.workspace_config import canonical_digest, canonical_json
+
+_MAX_PERSISTED_ARGUMENT_BYTES = 16 * 1024
+_MAX_ARGUMENT_PREVIEW_CHARS = 4000
+_REDACTED_ARGUMENT_KEYS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "apikey",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "credential",
+        "credentials",
+        "password",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "secret_value",
+        "token",
+    }
+)
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"\bsk-(?:live-|test-)?[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
+)
+
+
+def _normalized_key(value: object) -> str:
+    text = re.sub(r"(?<!^)(?=[A-Z])", "_", str(value))
+    return text.replace("-", "_").lower()
+
+
+def _canonical_action_value(value: Any) -> Any:
+    """Make model-produced values digestible without weakening JSON manifests."""
+
+    if isinstance(value, dict):
+        return {
+            str(key): _canonical_action_value(child)
+            for key, child in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonical_action_value(child) for child in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"__eigent_non_finite_float__": repr(value)}
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return {"__eigent_python_repr__": repr(value)}
+
+
+def _redacted_action_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, child in value.items():
+            normalized = _normalized_key(key)
+            if normalized in _REDACTED_ARGUMENT_KEYS or (
+                normalized.endswith("s")
+                and normalized[:-1] in _REDACTED_ARGUMENT_KEYS
+            ):
+                redacted[str(key)] = "[REDACTED]"
+            elif normalized == "argv" and isinstance(child, (list, tuple)):
+                encoded = json.dumps(
+                    _canonical_action_value(child),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+                redacted[str(key)] = {
+                    "argument_count": len(child),
+                    "sha256": hashlib.sha256(encoded).hexdigest(),
+                }
+            else:
+                redacted[str(key)] = _redacted_action_value(child)
+        return redacted
+    if isinstance(value, (list, tuple)):
+        return [_redacted_action_value(child) for child in value]
+    if isinstance(value, str):
+        redacted = value
+        for pattern in _SECRET_VALUE_PATTERNS:
+            redacted = pattern.sub("[REDACTED]", redacted)
+        return redacted
+    return _canonical_action_value(value)
 
 
 class PermissionProfileName(StrEnum):
@@ -107,7 +194,9 @@ class ActionDescriptor:
             "tool_name": self.tool_name,
             "operation": self.operation,
             "safety_class": self.safety_class.value,
-            "normalized_arguments": self.normalized_arguments,
+            "normalized_arguments": _canonical_action_value(
+                self.normalized_arguments
+            ),
             "target_resources": list(self.target_resources),
             "external_side_effect": self.external_side_effect,
             "idempotency_key": self.idempotency_key,
@@ -121,12 +210,16 @@ class ActionDescriptor:
         """Return a bounded descriptor projection safe for durable display."""
 
         payload = self.canonical_payload()
-        encoded = canonical_json(self.normalized_arguments).encode("utf-8")
-        if len(encoded) > 16 * 1024:
+        display_arguments = _redacted_action_value(self.normalized_arguments)
+        encoded_text = canonical_json(display_arguments)
+        encoded = encoded_text.encode("utf-8")
+        payload["normalized_arguments"] = display_arguments
+        if len(encoded) > _MAX_PERSISTED_ARGUMENT_BYTES:
             payload["normalized_arguments"] = {
                 "truncated": True,
+                "preview": encoded_text[:_MAX_ARGUMENT_PREVIEW_CHARS],
                 "size_bytes": len(encoded),
-                "sha256": canonical_digest(self.normalized_arguments),
+                "sha256": hashlib.sha256(encoded).hexdigest(),
             }
         return payload
 

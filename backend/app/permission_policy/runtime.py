@@ -125,6 +125,11 @@ async def authorize_tool_checkpoint(
         approval is None
         or approval.action_digest != descriptor.action_digest
         or approval.status != "approved"
+        or not store.approval_decision_is_trusted(
+            approval.approval_id,
+            version=approval.version,
+            action_digest=descriptor.action_digest,
+        )
     ):
         raise ToolPermissionRejectedError(
             "tool action was not approved for the current action digest"

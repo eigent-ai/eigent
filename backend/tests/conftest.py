@@ -26,8 +26,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.auth import local_control
+
 # Load environment variables
 load_dotenv()
+
+
+@pytest.fixture(autouse=True)
+def reset_local_control_process_boundary(monkeypatch):
+    """Each test that supplies a capability models a fresh Brain process."""
+
+    monkeypatch.setattr(
+        local_control,
+        "_process_local_control_capability",
+        local_control._CAPABILITY_UNSET,
+    )
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

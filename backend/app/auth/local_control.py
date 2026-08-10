@@ -17,6 +17,26 @@ from app.auth.interface import NoneAuth
 
 LOCAL_CONTROL_CAPABILITY_ENV = "EIGENT_LOCAL_CONTROL_CAPABILITY"
 LOCAL_CONTROL_CAPABILITY_HEADER = "X-Eigent-Local-Capability"
+_CAPABILITY_UNSET = object()
+_process_local_control_capability: str | object = _CAPABILITY_UNSET
+
+
+def capture_local_control_capability() -> None:
+    """Move the one-process renderer capability out of the OS environment."""
+
+    global _process_local_control_capability
+    if _process_local_control_capability is not _CAPABILITY_UNSET:
+        return
+    candidate = os.environ.pop(LOCAL_CONTROL_CAPABILITY_ENV, "")
+    if candidate or os.environ.get("EIGENT_RUNTIME", "").lower() == "electron":
+        _process_local_control_capability = candidate
+
+
+def _expected_local_control_capability() -> str:
+    capture_local_control_capability()
+    if _process_local_control_capability is _CAPABILITY_UNSET:
+        return ""
+    return str(_process_local_control_capability or "")
 
 
 @dataclass(frozen=True)
@@ -46,7 +66,7 @@ async def require_local_control_principal(
     Cloud device credentials, user bearer tokens, and Remote Control link tokens.
     """
 
-    expected = os.environ.get(LOCAL_CONTROL_CAPABILITY_ENV, "")
+    expected = _expected_local_control_capability()
     if expected:
         if not _is_loopback(getattr(request.client, "host", None)):
             raise HTTPException(

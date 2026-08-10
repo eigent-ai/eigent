@@ -147,10 +147,17 @@ class PermissionPolicyEngine:
             return False
         if rule.resource_pattern is None:
             return True
-        return any(
+        resource_matches = tuple(
             fnmatchcase(resource, rule.resource_pattern)
             for resource in descriptor.target_resources
         )
+        if rule.effect is PolicyEffect.ALLOW:
+            # An allow rule grants the entire action, so every target must be
+            # within its matcher. This prevents a safe path from carrying an
+            # unrelated sensitive target in the same tool call.
+            return bool(resource_matches) and all(resource_matches)
+        # A deny or prompt rule is protective: one matching target is enough.
+        return any(resource_matches)
 
     @staticmethod
     def _auto_review_eligible(
