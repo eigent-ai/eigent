@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { sidebarTabButtonClass } from '@/components/Layout/AppSidebar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -26,8 +27,7 @@ import { cn } from '@/lib/utils';
 import { Archive, MoreHorizontal, Pin, Trash2, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
-import { workspaceTabButtonClass } from './NavTab';
+import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from './constants';
 
 export interface ProjectNavItem {
   id: string;
@@ -200,61 +200,71 @@ function ProjectNavRow({
 
   return (
     <div className="min-w-0">
-      <div
-        className={cn(
-          'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
-          'transition-colors duration-150',
-          selected
-            ? panelListHover
-              ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
-              : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
-            : !panelListHover
-              ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
-              : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
-        )}
+      {/* Tooltip trigger is the whole tab so it anchors to the row’s right edge,
+          not the inner title button. avoidCollisions={false} stops Floating UI
+          from treating the sidebar’s overflow clip as the boundary and shifting
+          the tip back over the row. */}
+      <TooltipSimple
+        content={project.title}
+        side="right"
+        align="start"
+        sideOffset={4}
+        avoidCollisions={false}
+        variant="instant"
+        className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
       >
-        {/* Main click area — always full width */}
-        <button
-          type="button"
-          onClick={() => onProjectClick?.(project.id)}
+        <div
           className={cn(
-            'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
+            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
+            'transition-colors duration-150',
+            selected
+              ? panelListHover
+                ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
+                : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+              : !panelListHover
+                ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
+                : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
           )}
         >
-          <LeadIcon className={leadClassName} aria-hidden />
-          <span
-            className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default"
-            title={project.title}
+          <button
+            type="button"
+            onClick={() => onProjectClick?.(project.id)}
+            className={cn(
+              'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
+            )}
           >
-            {project.title}
-          </span>
-          {project.source === 'trigger' ? (
-            <Zap
-              className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
-              aria-label={triggerSourceLabel}
+            <LeadIcon className={leadClassName} aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default">
+              {project.title}
+            </span>
+            {project.source === 'trigger' ? (
+              <Zap
+                className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
+                aria-label={triggerSourceLabel}
+              />
+            ) : null}
+            {!showRowMenu && project.trailing ? (
+              <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
+                {project.trailing}
+              </span>
+            ) : null}
+          </button>
+
+          {showRowMenu ? (
+            <ProjectNavRowMenu
+              projectId={project.id}
+              pinned={project.pinned}
+              achieved={project.achieved}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              onPinProject={onPinProject}
+              onAchieveProject={onAchieveProject}
+              onDeleteProject={onDeleteProject}
             />
           ) : null}
-          {!showRowMenu && project.trailing ? (
-            <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
-              {project.trailing}
-            </span>
-          ) : null}
-        </button>
-
-        {showRowMenu ? (
-          <ProjectNavRowMenu
-            projectId={project.id}
-            pinned={project.pinned}
-            achieved={project.achieved}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            onPinProject={onPinProject}
-            onAchieveProject={onAchieveProject}
-            onDeleteProject={onDeleteProject}
-          />
-        ) : null}
-      </div>
+        </div>
+      </TooltipSimple>
     </div>
   );
 }
@@ -292,16 +302,18 @@ export function ProjectNavListRows({
               <TooltipSimple
                 content={project.title}
                 side="right"
-                align="center"
+                align="start"
+                sideOffset={4}
+                avoidCollisions={false}
                 enabled
                 variant="instant"
-                className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
+                className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
               >
                 <button
                   type="button"
                   onClick={() => onProjectClick?.(project.id)}
                   className={cn(
-                    workspaceTabButtonClass(active),
+                    sidebarTabButtonClass(active),
                     'w-full min-w-0 gap-0'
                   )}
                   aria-label={project.title}

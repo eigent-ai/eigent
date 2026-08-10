@@ -30,7 +30,7 @@ import {
 import { skillNameToDirName } from '@/lib/skillToolkit';
 import { cn } from '@/lib/utils';
 import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { Check, Plus, Wrench } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -379,7 +379,7 @@ export function ConnectorPickerPanel({
       loading={loading}
       emptyLabel={t('chat.no-connectors-added')}
       emptyActionLabel={t('chat.input-attach-manage-connectors')}
-      onEmptyAction={() => openSettingsDialog('connectors')}
+      onEmptyAction={() => openSettings('connectors')}
     />
   );
 }
@@ -426,7 +426,7 @@ export function SkillPickerPanel({
       }}
       emptyLabel={t('chat.no-skills-added')}
       emptyActionLabel={t('chat.input-attach-manage-skills')}
-      onEmptyAction={() => openSettingsDialog('skills')}
+      onEmptyAction={() => openSettings('skills')}
     />
   );
 }

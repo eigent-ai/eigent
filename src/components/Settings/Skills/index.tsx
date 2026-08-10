@@ -25,9 +25,9 @@ import {
   SettingsHeaderActions,
   useSettingsHeader,
 } from '../SettingsHeaderContext';
-import SettingsPage from '../SettingsPage';
-import SettingsPageLoading from '../SettingsPageLoading';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionLoading from '../SettingsSectionLoading';
+import SettingsSectionPage from '../SettingsSectionPage';
 import SkillDeleteDialog from './components/SkillDeleteDialog';
 import SkillListItem from './components/SkillListItem';
 import SkillUploadDialog from './components/SkillUploadDialog';
@@ -215,7 +215,7 @@ export default function Skills() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsHeaderActions>
         <Tabs value={activeSkillTab} onValueChange={setActiveSkillTab}>
           <TabsList appearance="default">
@@ -253,7 +253,7 @@ export default function Skills() {
       </SettingsHeaderActions>
       <SettingsSection titleVariant="hidden">
         {!hasCompletedInitialSync && skills.length === 0 ? (
-          <SettingsPageLoading
+          <SettingsSectionLoading
             label={t('setting.loading', {
               defaultValue: 'Loading skills',
             })}
@@ -297,6 +297,6 @@ export default function Skills() {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

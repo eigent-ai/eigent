@@ -40,14 +40,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   useIntegrationManagement,
   type IntegrationItem,
 } from '@/hooks/useIntegrationManagement';
@@ -84,8 +76,8 @@ import {
   SettingsHeaderActions,
   useSettingsHeader,
 } from '../SettingsHeaderContext';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 import ConnectorBrowserPage, {
   actionLabel,
   isConnectedProvider,
@@ -120,6 +112,10 @@ const HIDDEN_BUILT_INS = new Set([
   'Reddit',
   'Github',
 ]);
+
+/** Shared surface for recommended cards and "Your connectors" rows. */
+const CONNECTOR_ITEM_SURFACE_CLASS =
+  'rounded-2xl border border-solid border-transparent !bg-ds-bg-neutral-subtle-default transition-colors hover:border-ds-border-neutral-default-default hover:!bg-ds-bg-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus';
 
 /** Preferred hosted connector service keys for the overview recommendations. */
 const RECOMMENDED_SERVICE_KEYS = [
@@ -1246,7 +1242,7 @@ export default function ConnectorGateway() {
               key={provider.service}
               type="button"
               onClick={() => openRecommendedConnector(liveProvider)}
-              className="group flex h-16 min-w-0 items-center gap-3 rounded-2xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default px-3 text-left transition-colors hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+              className={`group flex h-16 min-w-0 items-center gap-3 px-3 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
             >
               <ProviderIcon provider={liveProvider} />
               <span className="min-w-0 flex-1 truncate text-body-sm font-bold text-ds-text-neutral-default-default">
@@ -1263,12 +1259,12 @@ export default function ConnectorGateway() {
   const renderConnectorTable = () => {
     if (pageLoading && connectorItems.length === 0) {
       return (
-        <div className="w-full divide-y divide-ds-border-neutral-muted-default">
-          <div className="h-10 bg-ds-bg-neutral-subtle-default" />
+        <div className="flex w-full flex-col gap-2">
+          <div className="h-10 px-4" />
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-14 animate-pulse bg-ds-bg-neutral-default-default"
+              className="h-14 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default"
             />
           ))}
         </div>
@@ -1284,58 +1280,43 @@ export default function ConnectorGateway() {
     }
 
     return (
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow className="border-ds-border-neutral-muted-default hover:bg-transparent">
-            <TableHead className="w-1/2 px-4">
-              {t('connectors.title')}
-            </TableHead>
-            <TableHead className="w-1/4 px-4">{t('connectors.type')}</TableHead>
-            <TableHead className="w-1/4 px-4">
-              {t('connectors.status')}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibleItems.map((item) => (
-            <TableRow
-              key={item.id}
-              onClick={() => setSelectedId(item.id)}
-              className="cursor-pointer border-ds-border-neutral-muted-default hover:bg-ds-bg-neutral-subtle-default"
-            >
-              <TableCell className="px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(item.id)}
-                  className="flex max-w-full items-center gap-3 border-0 bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
-                >
-                  {renderListIcon(item)}
-                  <span className="truncate text-body-sm font-medium text-ds-text-neutral-default-default">
-                    {item.name}
-                  </span>
-                </button>
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <span className="truncate text-body-sm text-ds-text-neutral-muted-default">
-                  {sourceLabel(item, t)}
-                </span>
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <Badge
-                  size="sm"
-                  variant="secondary"
-                  tone={item.active ? 'success' : 'neutral'}
-                  className="whitespace-nowrap"
-                >
-                  {item.active
-                    ? t('connectors.connected')
-                    : t('connectors.not-connected')}
-                </Badge>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className="flex w-full flex-col gap-2">
+        <div className="flex w-full items-center px-4 py-2 text-body-sm font-medium text-ds-text-neutral-muted-default">
+          <span className="w-1/2 truncate">{t('connectors.title')}</span>
+          <span className="w-1/4 truncate">{t('connectors.type')}</span>
+          <span className="w-1/4 truncate">{t('connectors.status')}</span>
+        </div>
+        {visibleItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setSelectedId(item.id)}
+            className={`group flex h-14 w-full min-w-0 items-center px-4 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
+          >
+            <span className="flex w-1/2 min-w-0 items-center gap-3">
+              {renderListIcon(item)}
+              <span className="truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+                {item.name}
+              </span>
+            </span>
+            <span className="w-1/4 truncate text-body-sm text-ds-text-neutral-muted-default">
+              {sourceLabel(item, t)}
+            </span>
+            <span className="w-1/4">
+              <Badge
+                size="sm"
+                variant="secondary"
+                tone={item.active ? 'success' : 'neutral'}
+                className="whitespace-nowrap"
+              >
+                {item.active
+                  ? t('connectors.connected')
+                  : t('connectors.not-connected')}
+              </Badge>
+            </span>
+          </button>
+        ))}
+      </div>
     );
   };
 
@@ -1391,7 +1372,7 @@ export default function ConnectorGateway() {
   }
 
   return (
-    <SettingsPage className={selected ? 'min-h-full' : undefined}>
+    <SettingsSectionPage className={selected ? 'min-h-full' : undefined}>
       {!selected ? (
         <SettingsHeaderActions>
           <SearchInput
@@ -1435,7 +1416,7 @@ export default function ConnectorGateway() {
         <SettingsSection
           titleVariant="hidden"
           className="min-h-0 flex-1"
-          boxClassName="min-h-[54vh] flex-1 overflow-hidden bg-ds-bg-neutral-subtle-default p-0"
+          boxClassName="min-h-[54vh] flex-1 overflow-hidden p-0"
         >
           <main className="flex min-h-0 w-full min-w-0 flex-1">
             {renderDetailPanel(selected)}
@@ -1457,7 +1438,7 @@ export default function ConnectorGateway() {
                 {connectorItems.length}
               </Badge>
             }
-            boxClassName="overflow-hidden p-0"
+            boxClassName="p-3"
           >
             {renderConnectorTable()}
           </SettingsSection>
@@ -1482,6 +1463,6 @@ export default function ConnectorGateway() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

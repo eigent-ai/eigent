@@ -13,20 +13,32 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import * as React from 'react';
 
-const SettingsDialogOverlay = React.forwardRef<
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    ref={ref}
-    className={cn('fixed inset-0 z-50 bg-dialog-overlay-scrim', className)}
-    {...props}
-  />
-));
+interface SettingsSectionLoadingProps {
+  label: string;
+  rows?: number;
+  className?: string;
+}
 
-SettingsDialogOverlay.displayName = 'SettingsDialogOverlay';
-
-export default SettingsDialogOverlay;
+export default function SettingsSectionLoading({
+  label,
+  rows = 3,
+  className,
+}: SettingsSectionLoadingProps) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn('flex w-full flex-col gap-4 py-4', className)}
+    >
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          aria-hidden
+          className="h-24 w-full animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default motion-reduce:animate-none"
+        />
+      ))}
+    </div>
+  );
+}

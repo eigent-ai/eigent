@@ -14,7 +14,7 @@
 
 import i18n from '@/i18n';
 import { SITE_URL } from '@/lib';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import { toast } from 'sonner';
 
 export function showCreditsToast() {
@@ -31,7 +31,7 @@ export function showCreditsToast() {
       {i18n.t('chat.your-account-or-switch-to-a-self-hosted-model-and-api-in')}{' '}
       <a
         className="cursor-pointer underline"
-        onClick={() => openSettingsDialog('models')}
+        onClick={() => openSettings('models')}
       >
         {i18n.t('chat.settings')}
       </a>{' '}

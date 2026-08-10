@@ -24,6 +24,7 @@ const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
 const Home = lazy(() => import('@/pages/Home'));
+const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 
@@ -164,6 +165,7 @@ const AppRoutes = () => (
       <Route element={<Layout />}>
         <Route path="/" element={<Workspace />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Route>
     <Route path="*" element={<NotFound />} />

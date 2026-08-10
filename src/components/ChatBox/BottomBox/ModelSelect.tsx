@@ -48,7 +48,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import type { Provider } from '@/types';
 
@@ -410,7 +410,7 @@ export function ModelSelect({
           localProviderIds,
         })
       ) {
-        openSettingsDialog('models');
+        openSettings('models');
         return;
       }
       if (projectId) {
@@ -665,7 +665,7 @@ export function ModelSelect({
                         if (isConfigured) {
                           handleCodexSetDefault();
                         } else {
-                          openSettingsDialog('models');
+                          openSettings('models');
                         }
                         return;
                       }

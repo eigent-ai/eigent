@@ -24,8 +24,8 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsHeader } from '../SettingsHeaderContext';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 interface ProfileSettingRowProps {
   icon: LucideIcon;
@@ -77,8 +77,8 @@ export default function WorkspaceProfileSettings() {
 
   if (profileOpen) {
     return (
-      <SettingsPage>
-        <SettingsSection boxClassName="items-center gap-3 bg-ds-bg-neutral-subtle-default px-6 py-8 text-center">
+      <SettingsSectionPage>
+        <SettingsSection boxClassName="items-center gap-3 px-6 py-8 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-icon-neutral-default-default shadow-sm">
             <FolderKanban className="h-8 w-8" aria-hidden />
           </span>
@@ -129,12 +129,12 @@ export default function WorkspaceProfileSettings() {
             description={t('agents.skills-description')}
           />
         </SettingsSection>
-      </SettingsPage>
+      </SettingsSectionPage>
     );
   }
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsSection>
         <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
           <div className="flex min-h-24 min-w-0 items-center gap-3 rounded-2xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default p-4">
@@ -162,6 +162,6 @@ export default function WorkspaceProfileSettings() {
           </div>
         </div>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

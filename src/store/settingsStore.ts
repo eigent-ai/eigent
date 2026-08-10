@@ -33,7 +33,7 @@ export const SETTINGS_SECTIONS = [
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number];
 export type SettingsScope = 'workspace' | 'device' | 'settings';
 
-interface SettingsDialogState {
+interface SettingsState {
   isOpen: boolean;
   activeSection: SettingsSectionId;
   openSettings: (section?: SettingsSectionId) => void;
@@ -41,7 +41,7 @@ interface SettingsDialogState {
   setActiveSection: (section: SettingsSectionId) => void;
 }
 
-export const useSettingsDialogStore = create<SettingsDialogState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set) => ({
   isOpen: false,
   activeSection: 'workspace-profile',
   openSettings: (section) =>
@@ -54,6 +54,6 @@ export const useSettingsDialogStore = create<SettingsDialogState>((set) => ({
 }));
 
 /** Open settings from callbacks and non-React modules without route changes. */
-export function openSettingsDialog(section?: SettingsSectionId) {
-  useSettingsDialogStore.getState().openSettings(section);
+export function openSettings(section?: SettingsSectionId) {
+  useSettingsStore.getState().openSettings(section);
 }

@@ -30,8 +30,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useSettingsHeader } from '../../SettingsHeaderContext';
-import SettingsPage from '../../SettingsPage';
 import SettingsSection from '../../SettingsSection';
+import SettingsSectionPage from '../../SettingsSectionPage';
 import type { ConnectorInstallHint, MCPUserItem } from './types';
 
 if (typeof globalThis !== 'undefined') {
@@ -273,7 +273,7 @@ export default function AddCustomConnectorPage({
   }, [closePage, customHeaderTitle, setHeaderOverride]);
 
   return (
-    <SettingsPage className="min-h-full">
+    <SettingsSectionPage className="min-h-full">
       <SettingsSection
         titleVariant="hidden"
         className="min-h-0 flex-1"
@@ -381,6 +381,6 @@ export default function AddCustomConnectorPage({
           </div>
         </div>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

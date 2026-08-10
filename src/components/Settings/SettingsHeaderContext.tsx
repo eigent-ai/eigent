@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { SettingsSectionId } from '@/store/settingsDialogStore';
+import type { SettingsSectionId } from '@/store/settingsStore';
 import {
   createContext,
   type Dispatch,

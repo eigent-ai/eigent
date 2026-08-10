@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import {
   NavListSessionRows,
   type NavListSession,
@@ -77,24 +78,24 @@ export default function Sessions({
         className
       )}
     >
-      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 py-2">
-        <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            buttonContent="icon-only"
-            onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
-            aria-label={backToWorkspaceTooltip}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-          </Button>
-        </TooltipSimple>
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-body-md font-bold text-ds-text-neutral-default-default">
-          <span className="truncate">{t('layout.sessions-full-title')}</span>
-        </div>
-      </div>
+      <ContentHeader
+        leading={
+          <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              onClick={() => setActiveWorkspaceTab('workforce')}
+              className="no-drag shrink-0 rounded-lg text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+              aria-label={backToWorkspaceTooltip}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipSimple>
+        }
+        title={t('layout.sessions-full-title')}
+      />
       <div className="m-0 mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {sessions.length === 0 ? (
           <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">

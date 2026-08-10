@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export { default } from './Dialog/SettingsDialog';
 export { default as SettingsContentShell } from './SettingsContentShell';
-export { default as SettingsPage } from './SettingsPage';
+export { default as SettingsHeader } from './SettingsHeader';
+export { SettingsHeaderProvider } from './SettingsHeaderContext';
+export { SETTINGS_NAVIGATION } from './settingsNavigation';
 export { default as SettingsSection } from './SettingsSection';
+export { default as SettingsSectionContent } from './SettingsSectionContent';
+export { default as SettingsSectionPage } from './SettingsSectionPage';
+export { default as SettingsSidebar } from './SettingsSidebar';

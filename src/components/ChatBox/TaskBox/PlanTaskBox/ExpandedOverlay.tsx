@@ -119,7 +119,7 @@ export function ExpandedOverlay({
             </div>
           )}
 
-          <div className="scrollbar scrollbar-always-visible border-t-1 min-h-0 flex-1 overflow-y-auto overflow-x-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
+          <div className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-y-auto overflow-x-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
             {hasTaskInfo ? (
               <SubtaskEditor
                 taskInfo={taskInfo}

@@ -12,10 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type {
-  SettingsScope,
-  SettingsSectionId,
-} from '@/store/settingsDialogStore';
+import type { SettingsScope, SettingsSectionId } from '@/store/settingsStore';
 import type { LucideIcon } from 'lucide-react';
 import {
   Bot,

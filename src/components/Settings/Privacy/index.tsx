@@ -19,8 +19,8 @@ import { SITE_URL } from '@/lib';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 export default function SettingPrivacy() {
   const [helpImprove, setHelpImprove] = useState(false);
   const { t } = useTranslation();
@@ -42,7 +42,7 @@ export default function SettingPrivacy() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       {/* How We Handle Your Data Section */}
       <SettingsSection
         title={t('setting.how-we-handle-your-data')}
@@ -117,6 +117,6 @@ export default function SettingPrivacy() {
           />
         </div>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

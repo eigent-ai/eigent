@@ -12,6 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { proxyFetchGet } from '@/api/http';
+import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
+import {
+  TOP_BAR_CONTROL_SELECTED_CLASS,
+  TOP_BAR_CONTROL_STATE_CLASS,
+} from '@/components/TopBar/controlStyles';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -27,22 +33,40 @@ import {
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { LocaleEnum, switchLanguage } from '@/i18n';
+import { SITE_URL } from '@/lib';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
 import {
   Check,
+  Gem,
+  Gift,
   Languages,
+  Loader2,
   LogOut,
   Monitor,
   Moon,
-  Settings,
   Sun,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+
+const IS_LOCAL_PROXY = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
+
+function formatPlanName(planKey: unknown): string {
+  if (typeof planKey !== 'string' || !planKey.trim()) return 'Free';
+  const key = planKey.toLowerCase();
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function formatCredits(value: unknown): string {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return String(value ?? 0);
+  }
+  return new Intl.NumberFormat().format(numericValue);
+}
 
 const LANGUAGE_OPTIONS: { key: string; label: string }[] = [
   { key: 'system', label: '' },
@@ -76,6 +100,10 @@ export function UserMenu() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [languageSubOpen, setLanguageSubOpen] = useState(false);
+  const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
+  const [planName, setPlanName] = useState('Free');
+  const [credits, setCredits] = useState(0);
+  const [planLoading, setPlanLoading] = useState(!IS_LOCAL_PROXY);
   const { chatStore } = useChatStoreAdapter();
   const email = useAuthStore((s) => s.email);
   const username = useAuthStore((s) => s.username);
@@ -90,6 +118,37 @@ export function UserMenu() {
 
   const profileDisplayName = username?.trim() || email?.trim() || '';
   const profileInitial = (profileDisplayName || '?').charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (IS_LOCAL_PROXY) return;
+
+    let cancelled = false;
+    const loadPlanAndCredits = async () => {
+      setPlanLoading(true);
+      try {
+        const [subscriptionRes, creditsRes] = await Promise.all([
+          proxyFetchGet('/api/v1/subscription'),
+          proxyFetchGet('/api/v1/user/current_credits'),
+        ]);
+        if (cancelled) return;
+        setPlanName(formatPlanName(subscriptionRes?.plan_key));
+        setCredits(Number(creditsRes?.credits) || 0);
+      } catch (error) {
+        console.error('Failed to load subscription:', error);
+        if (!cancelled) {
+          setPlanName('Free');
+          setCredits(0);
+        }
+      } finally {
+        if (!cancelled) setPlanLoading(false);
+      }
+    };
+
+    void loadPlanAndCredits();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const colorModeOptions = useMemo(
     () =>
@@ -120,6 +179,10 @@ export function UserMenu() {
     if (!nextOpen) setLanguageSubOpen(false);
   };
 
+  const handleOpenSubscriptionDashboard = () => {
+    window.location.href = `${SITE_URL}/dashboard`;
+  };
+
   const handleLogout = () => {
     chatStore?.clearTasks?.();
     resetInstallation();
@@ -129,129 +192,163 @@ export function UserMenu() {
   };
 
   return (
-    <DropdownMenu dir="rtl" open={open} onOpenChange={handleMenuOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          buttonContent="text"
-          size="sm"
-          buttonRadius="full"
-          className={cn(
-            'no-drag max-w-[180px] gap-1.5 px-1.5',
-            open &&
-              '!bg-ds-bg-neutral-default-hover hover:!bg-ds-bg-neutral-default-hover focus:!bg-ds-bg-neutral-default-hover active:!bg-ds-bg-neutral-default-hover'
-          )}
-          aria-label={t('setting.profile')}
-          aria-expanded={open}
-        >
-          <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-bg-brand-default-default text-[10px] font-semibold leading-none text-ds-text-brand-inverse-default"
-            aria-hidden
+    <>
+      <DropdownMenu dir="rtl" open={open} onOpenChange={handleMenuOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            buttonContent="text"
+            size="sm"
+            buttonRadius="full"
+            className={cn(
+              'no-drag max-w-[180px] gap-1.5 px-1.5',
+              TOP_BAR_CONTROL_STATE_CLASS,
+              open && TOP_BAR_CONTROL_SELECTED_CLASS
+            )}
+            aria-label={t('setting.profile')}
+            aria-expanded={open}
           >
-            {profileInitial}
-          </span>
-          <span className="min-w-0 truncate text-label-sm font-medium">
-            {profileDisplayName || t('setting.profile')}
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        sideOffset={8}
-        className="min-w-56"
-        style={{ direction: 'ltr' }}
-        onCloseAutoFocus={(event) => event.preventDefault()}
-      >
-        <DropdownMenuLabel
-          className="truncate px-2 py-1.5 text-label-sm font-normal text-ds-text-neutral-muted-default"
-          onPointerEnter={closeLanguageSub}
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-bg-brand-default-default text-[10px] font-semibold leading-none text-ds-text-brand-inverse-default"
+              aria-hidden
+            >
+              {profileInitial}
+            </span>
+            <span className="min-w-0 truncate text-label-sm font-medium">
+              {profileDisplayName || t('setting.profile')}
+            </span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={8}
+          className="min-w-56"
+          style={{ direction: 'ltr' }}
+          onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          {email?.trim() || profileDisplayName || t('setting.profile')}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          className="gap-2"
-          onPointerEnter={closeLanguageSub}
-          onSelect={() => openSettingsDialog('general')}
-        >
-          <Settings className="h-4 w-4" aria-hidden />
-          {t('setting.settings')}
-        </DropdownMenuItem>
-
-        <DropdownMenuSub
-          open={languageSubOpen}
-          onOpenChange={setLanguageSubOpen}
-        >
-          <DropdownMenuSubTrigger className="gap-2">
-            <Languages className="h-4 w-4" aria-hidden />
-            {t('setting.language')}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            className="min-w-44"
-            sideOffset={6}
-            alignOffset={-4}
-            style={{ direction: 'ltr' }}
+          <DropdownMenuLabel
+            className="truncate px-2 py-1.5 text-label-sm font-normal text-ds-text-neutral-muted-default"
+            onPointerEnter={closeLanguageSub}
           >
-            {LANGUAGE_OPTIONS.map((option) => {
-              const selected = language === option.key;
-              return (
-                <DropdownMenuItem
-                  key={option.key}
-                  className="gap-2"
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    applyLanguage(option.key);
-                  }}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {option.key === 'system'
-                      ? t('setting.system-default')
-                      : option.label}
+            {email?.trim() || profileDisplayName || t('setting.profile')}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+
+          {!IS_LOCAL_PROXY ? (
+            <DropdownMenuItem
+              className="gap-2"
+              onPointerEnter={closeLanguageSub}
+              onSelect={handleOpenSubscriptionDashboard}
+            >
+              {planLoading ? (
+                <Loader2
+                  className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
+              ) : (
+                <Gem className="h-4 w-4" aria-hidden />
+              )}
+              {planLoading ? (
+                t('setting.loading', { defaultValue: 'Loading' })
+              ) : (
+                <span className="min-w-0 truncate">
+                  <span className="font-bold">{planName}</span>
+                  <span className="font-normal">
+                    {' · '}
+                    {formatCredits(credits)}
                   </span>
-                  {selected ? (
-                    <Check
-                      className="h-4 w-4 shrink-0 text-ds-icon-brand-default-default"
-                      aria-hidden
-                    />
-                  ) : null}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+                </span>
+              )}
+            </DropdownMenuItem>
+          ) : null}
 
-        <div
-          className="flex flex-col gap-1.5 px-2 py-1.5"
-          onPointerEnter={closeLanguageSub}
-          onPointerDown={(event) => event.preventDefault()}
-        >
-          <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-            {t('setting.appearance')}
-          </span>
-          <IconPillToggle
-            className="w-full"
-            layoutId="user-menu-color-mode"
-            aria-label={t('setting.appearance')}
-            value={appearanceMode}
-            options={colorModeOptions}
-            onValueChange={setAppearanceMode}
-          />
-        </div>
+          <DropdownMenuItem
+            className="gap-2"
+            onPointerEnter={closeLanguageSub}
+            onSelect={() => setInviteCodeDialogOpen(true)}
+          >
+            <Gift className="h-4 w-4" aria-hidden />
+            {t('layout.refer-friends')}
+          </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
-          onPointerEnter={closeLanguageSub}
-          onSelect={handleLogout}
-        >
-          <LogOut
-            className="h-4 w-4 text-ds-icon-error-default-default"
-            aria-hidden
-          />
-          {t('setting.log-out')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSub
+            open={languageSubOpen}
+            onOpenChange={setLanguageSubOpen}
+          >
+            <DropdownMenuSubTrigger className="gap-2">
+              <Languages className="h-4 w-4" aria-hidden />
+              {t('setting.language')}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              className="min-w-44"
+              sideOffset={6}
+              alignOffset={-4}
+              style={{ direction: 'ltr' }}
+            >
+              {LANGUAGE_OPTIONS.map((option) => {
+                const selected = language === option.key;
+                return (
+                  <DropdownMenuItem
+                    key={option.key}
+                    className="gap-2"
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      applyLanguage(option.key);
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {option.key === 'system'
+                        ? t('setting.system-default')
+                        : option.label}
+                    </span>
+                    {selected ? (
+                      <Check
+                        className="h-4 w-4 shrink-0 text-ds-icon-brand-default-default"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <div
+            className="flex flex-col gap-1.5 px-2 py-1.5"
+            onPointerEnter={closeLanguageSub}
+            onPointerDown={(event) => event.preventDefault()}
+          >
+            <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+              {t('setting.appearance')}
+            </span>
+            <IconPillToggle
+              className="w-full"
+              layoutId="user-menu-color-mode"
+              aria-label={t('setting.appearance')}
+              value={appearanceMode}
+              options={colorModeOptions}
+              onValueChange={setAppearanceMode}
+            />
+          </div>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
+            onPointerEnter={closeLanguageSub}
+            onSelect={handleLogout}
+          >
+            <LogOut
+              className="h-4 w-4 text-ds-icon-error-default-default"
+              aria-hidden
+            />
+            {t('setting.log-out')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <InviteCodeDialog
+        open={inviteCodeDialogOpen}
+        onOpenChange={setInviteCodeDialogOpen}
+      />
+    </>
   );
 }

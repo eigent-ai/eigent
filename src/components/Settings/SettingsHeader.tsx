@@ -12,47 +12,60 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { SettingsSectionId } from '@/store/settingsDialogStore';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { ArrowLeft, X } from 'lucide-react';
+import type { SettingsSectionId } from '@/store/settingsStore';
+import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useSettingsHeader } from '../SettingsHeaderContext';
+import { useSettingsHeader } from './SettingsHeaderContext';
 import { getSettingsNavigationItem } from './settingsNavigation';
 
-interface SettingsDialogHeaderProps {
+interface SettingsHeaderProps {
   activeSection: SettingsSectionId;
+  /** Leave settings and return to the workspace. */
+  onClose: () => void;
 }
 
-export default function SettingsDialogHeader({
+/**
+ * Settings content-pane header. Same 44px row as the other pages; sections
+ * still push their own title/back/actions through `SettingsHeaderContext`.
+ */
+export default function SettingsHeader({
   activeSection,
-}: SettingsDialogHeaderProps) {
+  onClose,
+}: SettingsHeaderProps) {
   const { t } = useTranslation();
   const { headerOverride, setHeaderActionsElement } = useSettingsHeader();
   const item = getSettingsNavigationItem(activeSection);
   const title =
     headerOverride?.title ??
     t(item.labelKey, { defaultValue: item.defaultLabel });
+  const closeLabel = t('layout.close', { defaultValue: 'Close settings' });
+  const backLabel = t('layout.back', { defaultValue: 'Back' });
 
   return (
-    <header className="flex h-[44px] shrink-0 items-center gap-2 border-0 bg-ds-bg-neutral-default-default pl-8 pr-2">
+    <ContentHeader>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {headerOverride?.onBack ? (
           <>
-            <button
+            <Button
               type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus"
-              aria-label={t('layout.back', { defaultValue: 'Back' })}
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              className="shrink-0 rounded-lg"
+              aria-label={backLabel}
               onClick={headerOverride.onBack}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
-            </button>
+            </Button>
             <span className="max-w-52 shrink-0 truncate text-body-md font-bold text-ds-text-neutral-default-default">
               {title}
             </span>
           </>
         ) : headerOverride?.hideTitle ? null : (
-          <span className="ml-4 min-w-0 shrink-0 truncate text-body-md font-bold text-ds-text-neutral-default-default">
+          <span className="min-w-0 shrink-0 truncate px-1 text-body-md font-bold text-ds-text-neutral-default-default">
             {title}
           </span>
         )}
@@ -65,16 +78,6 @@ export default function SettingsDialogHeader({
           )}
         />
       </div>
-
-      <DialogPrimitive.Close asChild>
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-ds-icon-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus"
-          aria-label={t('layout.close', { defaultValue: 'Close settings' })}
-        >
-          <X className="h-5 w-5" aria-hidden />
-        </button>
-      </DialogPrimitive.Close>
-    </header>
+    </ContentHeader>
   );
 }

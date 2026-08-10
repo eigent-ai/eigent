@@ -94,8 +94,8 @@ import {
   saveCachedModels,
   type ProviderModelGroup,
 } from '@/lib/providerModels';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 import { ProviderModelCombobox } from './components/ProviderModelCombobox';
 import { ConfigModelCard, type ConfigCardRingStatus } from './ConfigModelCard';
 import {
@@ -2595,7 +2595,7 @@ export default function SettingModels() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       {providersError ? (
         <span
           role="alert"
@@ -2999,6 +2999,6 @@ export default function SettingModels() {
           </div>
         </div>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

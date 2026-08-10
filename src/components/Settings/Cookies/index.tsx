@@ -21,9 +21,9 @@ import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import SettingsPage from '../SettingsPage';
-import SettingsPageLoading from '../SettingsPageLoading';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionLoading from '../SettingsSectionLoading';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 interface CookieDomain {
   domain: string;
@@ -220,7 +220,7 @@ export default function Cookies() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <AlertDialog
         isOpen={showRestartDialog}
         onClose={() => setShowRestartDialog(false)}
@@ -283,7 +283,7 @@ export default function Cookies() {
           </div>
 
           {cookiesLoading && cookieDomains.length === 0 ? (
-            <SettingsPageLoading
+            <SettingsSectionLoading
               label={t('setting.loading-cookies')}
               rows={2}
               className="py-0"
@@ -351,6 +351,6 @@ export default function Cookies() {
           {t('layout.privacy-policy')}
         </a>
       </span>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

@@ -34,7 +34,11 @@ export default function SettingsContentShell({
         className
       )}
     >
-      <div className="min-h-full px-8">{children}</div>
+      {/* Sections stay in one centered measure so they don't stretch across a
+          wide window. */}
+      <div className="mx-auto min-h-full w-full max-w-[964px] px-8">
+        {children}
+      </div>
     </div>
   );
 }

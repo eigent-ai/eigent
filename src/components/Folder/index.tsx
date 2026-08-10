@@ -14,6 +14,10 @@
 
 import cursorIcon from '@/assets/icon/cursor.svg';
 import vsCodeIcon from '@/assets/icon/vs-code.svg';
+import {
+  CONTENT_HEADER_BORDER_CLASS,
+  CONTENT_HEADER_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -70,6 +74,7 @@ import {
 } from '@/lib/htmlLocalAssets';
 import { containsDangerousContent } from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTranslation } from 'react-i18next';
@@ -1602,7 +1607,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default p-2">
+      <div className={cn(CONTENT_HEADER_CLASS, CONTENT_HEADER_BORDER_CLASS)}>
         <div className="flex min-w-0 max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"

@@ -12,7 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import HomeHub from '@/components/Home';
+import HomeHubRoot, {
+  HomeHeader,
+  HomeSections,
+  HomeSidebarNav,
+} from '@/components/Home';
+import AppShellLayout from '@/components/Layout/AppShellLayout';
 import WordCarousel from '@/components/ui/WordCarousel';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +34,7 @@ function formatWelcomeName(raw: string): string {
     .join(' ');
 }
 
-export default function Home() {
+function HomeGreeting() {
   const { t } = useTranslation();
   const { username, email } = useAuthStore();
   const welcomeName = formatWelcomeName(username || email || '');
@@ -42,30 +47,41 @@ export default function Home() {
         : 'layout.greeting-evening';
 
   return (
-    <main className="flex h-full w-full flex-1 flex-col pb-1 pt-10">
-      <div className="scrollbar-hide h-full overflow-y-auto">
-        <div className="flex w-full items-center justify-center py-8">
-          <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
-            <WordCarousel
-              words={[t(timeGreetingKey)]}
-              className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
-              rotateIntervalMs={100}
-              sweepDurationMs={2000}
-              sweepOnce
-              gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
-            />
-            {welcomeName ? (
-              <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
-                {`, ${welcomeName}!`}
-              </span>
-            ) : null}
-          </p>
-        </div>
+    <div className="flex w-full items-center justify-center py-6">
+      <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
+        <WordCarousel
+          words={[t(timeGreetingKey)]}
+          className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
+          rotateIntervalMs={100}
+          sweepDurationMs={2000}
+          sweepOnce
+          gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+        />
+        {welcomeName ? (
+          <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+            {`, ${welcomeName}!`}
+          </span>
+        ) : null}
+      </p>
+    </div>
+  );
+}
 
-        <div className="flex min-h-0 w-full px-[70px] pb-[120px]">
-          <HomeHub />
+/**
+ * Home runs in the same shell as Workspace and Settings: the rail picks the
+ * section (spaces / projects / tasks / triggers), the content pane carries the
+ * header controls and the section tables.
+ */
+export default function Home() {
+  return (
+    <HomeHubRoot>
+      <AppShellLayout sidebar={<HomeSidebarNav />}>
+        <HomeHeader />
+        <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+          <HomeGreeting />
+          <HomeSections />
         </div>
-      </div>
-    </main>
+      </AppShellLayout>
+    </HomeHubRoot>
   );
 }

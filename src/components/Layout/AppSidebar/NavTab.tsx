@@ -14,19 +14,16 @@
 
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { WebSocketConnectionStatus } from '@/store/triggerStore';
 import { motion } from 'framer-motion';
-import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import {
-  PROJECT_SIDEBAR_FOLD_SPRING,
+  SIDEBAR_FOLD_SPRING,
   SIDEBAR_TOOLTIP_CONTENT_CLASS,
 } from './constants';
 
-/** Workspace tabs: layout identical expanded/folded so the leading icon does not jump — text clips as the rail narrows. */
-export function workspaceTabButtonClass(active: boolean): string {
+/** App-sidebar tabs keep the same layout while folding so the leading icon does not jump. */
+export function sidebarTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
     'text-ds-text-neutral-muted-default',
@@ -35,7 +32,7 @@ export function workspaceTabButtonClass(active: boolean): string {
   );
 }
 
-export const WORKSPACE_TAB_LABEL_CLASS =
+export const SIDEBAR_TAB_LABEL_CLASS =
   'min-w-0 flex-1 truncate text-ds-text-neutral-muted-default text-body-sm font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
@@ -43,61 +40,6 @@ const SPLIT_MAIN_BUTTON_CLASS =
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
-
-export function triggerListenerLeadIconClass(
-  status: WebSocketConnectionStatus
-): string {
-  switch (status) {
-    case 'connected':
-      return 'text-ds-icon-neutral-muted-default';
-    case 'connecting':
-      return 'text-ds-icon-status-warning-default animate-pulse';
-    case 'unhealthy':
-      return 'text-ds-icon-status-error-default';
-    case 'disconnected':
-    default:
-      return '!text-ds-icon-status-error-default';
-  }
-}
-
-export interface NavTabReconnectSuffixProps {
-  wsConnectionStatus: WebSocketConnectionStatus;
-  onReconnect: () => void;
-}
-
-/** Reconnect button for the triggers tab — direct click, no dropdown. */
-export function NavTabReconnectSuffix({
-  wsConnectionStatus,
-  onReconnect,
-}: NavTabReconnectSuffixProps) {
-  const { t } = useTranslation();
-  const reconnectLabel = t('layout.triggers-reconnect-hint');
-  return (
-    <TooltipSimple content={reconnectLabel} side="top" sideOffset={8}>
-      <button
-        type="button"
-        className={cn(
-          'no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ds-icon-neutral-muted-default outline-none transition-colors hover:bg-ds-bg-neutral-strong-default',
-          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
-        )}
-        aria-label={reconnectLabel}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onReconnect();
-        }}
-      >
-        <RefreshCw
-          className={cn(
-            'h-3.5 w-3.5',
-            wsConnectionStatus === 'connecting' && 'animate-spin'
-          )}
-          aria-hidden
-        />
-      </button>
-    </TooltipSimple>
-  );
-}
 
 export type NavTabLayout = 'simple' | 'split';
 
@@ -122,7 +64,11 @@ export interface NavTabProps {
   endAction?: ReactNode;
   /** Override the max-width reveal class on the endAction wrapper (default: `group-hover:max-w-10`). */
   endActionMaxWidthClass?: string;
-  tooltip: string;
+  /**
+   * Hover tooltip. Omit it on rails whose labels are always fully visible —
+   * only rows that can truncate (project names) need one.
+   */
+  tooltip?: string;
   /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
   tooltipEnabledWhenCollapsed?: boolean;
   ariaLabel?: string;
@@ -134,6 +80,9 @@ export interface NavTabProps {
   /** Icon-only rail: fade/shrink label, trailing, and dot; keep leading icon fixed. */
   folded?: boolean;
   disabled?: boolean;
+  /** Hover/focus hooks on the primary control (e.g. preloading a lazy section). */
+  onPointerEnter?: () => void;
+  onFocus?: () => void;
 }
 
 function tabMainInner({
@@ -164,11 +113,11 @@ function tabMainInner({
           opacity: folded ? 0 : 1,
           maxWidth: folded ? 0 : 1600,
         }}
-        transition={PROJECT_SIDEBAR_FOLD_SPRING}
+        transition={SIDEBAR_FOLD_SPRING}
         aria-hidden={folded}
         style={{ pointerEvents: folded ? 'none' : undefined }}
       >
-        <span className={WORKSPACE_TAB_LABEL_CLASS}>{label}</span>
+        <span className={SIDEBAR_TAB_LABEL_CLASS}>{label}</span>
         {trailing}
         {showNotificationDot && (
           <span
@@ -188,7 +137,7 @@ function tabMainInner({
 }
 
 /**
- * Project page sidebar rail tab: leading icon, label, optional trailing chip, optional dot, optional split suffix.
+ * Sidebar rail tab: leading icon, label, optional trailing chip, optional dot, optional split suffix.
  * Add new tabs by composing `leading` / `trailing` / `suffix`; use `layout="split"` when the row needs a separate end control.
  */
 export function NavTab({
@@ -212,6 +161,8 @@ export function NavTab({
   endAction,
   endActionMaxWidthClass,
   disabled = false,
+  onPointerEnter,
+  onFocus,
 }: NavTabProps) {
   const inner = tabMainInner({
     leading,
@@ -223,7 +174,8 @@ export function NavTab({
     folded,
   });
 
-  const tooltipEnabled = folded || !tooltipEnabledWhenCollapsed;
+  const tooltipEnabled =
+    Boolean(tooltip) && (folded || !tooltipEnabledWhenCollapsed);
 
   if (layout === 'split') {
     return (
@@ -236,7 +188,7 @@ export function NavTab({
       >
         <div
           className={cn(
-            workspaceTabButtonClass(active),
+            sidebarTabButtonClass(active),
             SPLIT_OUTER_EXTRA_CLASS,
             'group',
             className
@@ -254,6 +206,8 @@ export function NavTab({
               disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
               mainButtonClassName
             )}
+            onPointerEnter={onPointerEnter}
+            onFocus={onFocus}
             aria-label={ariaLabel}
             aria-current={ariaCurrentPage ? 'page' : undefined}
             aria-disabled={disabled || undefined}
@@ -268,7 +222,7 @@ export function NavTab({
                 opacity: folded ? 0 : 1,
                 maxWidth: folded ? 0 : 160,
               }}
-              transition={PROJECT_SIDEBAR_FOLD_SPRING}
+              transition={SIDEBAR_FOLD_SPRING}
               aria-hidden={folded}
               style={{ pointerEvents: folded ? 'none' : undefined }}
             >
@@ -310,11 +264,13 @@ export function NavTab({
           onClick();
         }}
         className={cn(
-          workspaceTabButtonClass(active),
+          sidebarTabButtonClass(active),
           folded && 'gap-0',
           disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent',
           className
         )}
+        onPointerEnter={onPointerEnter}
+        onFocus={onFocus}
         aria-label={ariaLabel}
         aria-current={ariaCurrentPage ? 'page' : undefined}
         aria-disabled={disabled || undefined}

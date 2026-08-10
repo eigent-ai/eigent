@@ -15,6 +15,7 @@
 import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -55,16 +56,14 @@ export function HeaderBox({
   if (empty) {
     return (
       <div
-        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
+        className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
         aria-hidden
       />
     );
   }
 
   return (
-    <div
-      className={`flex h-[44px] w-full flex-row items-center justify-between pl-3 pr-1.5 ${className || ''}`}
-    >
+    <div className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}>
       {/* Left: return to project workspace */}
       <div className="flex items-center gap-2">
         <TooltipSimple content={backTooltip} variant="instant" side="bottom">

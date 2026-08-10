@@ -12,44 +12,41 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  openSettingsDialog,
-  useSettingsDialogStore,
-} from '@/store/settingsDialogStore';
+import { openSettings, useSettingsStore } from '@/store/settingsStore';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-describe('settingsDialogStore', () => {
+describe('settingsStore', () => {
   beforeEach(() => {
-    useSettingsDialogStore.setState({
+    useSettingsStore.setState({
       isOpen: false,
       activeSection: 'workspace-profile',
     });
   });
 
   it('opens a requested settings section without route state', () => {
-    openSettingsDialog('privacy');
+    openSettings('privacy');
 
-    expect(useSettingsDialogStore.getState()).toMatchObject({
+    expect(useSettingsStore.getState()).toMatchObject({
       isOpen: true,
       activeSection: 'privacy',
     });
   });
 
   it('reopens the last active section when no section is supplied', () => {
-    useSettingsDialogStore.getState().setActiveSection('cookies');
-    useSettingsDialogStore.getState().openSettings();
+    useSettingsStore.getState().setActiveSection('cookies');
+    useSettingsStore.getState().openSettings();
 
-    expect(useSettingsDialogStore.getState()).toMatchObject({
+    expect(useSettingsStore.getState()).toMatchObject({
       isOpen: true,
       activeSection: 'cookies',
     });
   });
 
   it('closes without losing the selected section', () => {
-    openSettingsDialog('connectors');
-    useSettingsDialogStore.getState().closeSettings();
+    openSettings('connectors');
+    useSettingsStore.getState().closeSettings();
 
-    expect(useSettingsDialogStore.getState()).toMatchObject({
+    expect(useSettingsStore.getState()).toMatchObject({
       isOpen: false,
       activeSection: 'connectors',
     });

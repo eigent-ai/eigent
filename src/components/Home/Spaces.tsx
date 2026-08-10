@@ -19,7 +19,7 @@ import {
   useSpaceStore,
   type Space,
 } from '@/store/spaceStore';
-import { FolderKanban } from 'lucide-react';
+import { Folder } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import HomeHubBoard from './components/HomeHubBoard';
@@ -236,7 +236,7 @@ export default function Spaces() {
       <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <FolderKanban className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
+            <Folder className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('layout.spaces-hub-empty-title')}
             </div>

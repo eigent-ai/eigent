@@ -44,8 +44,8 @@ import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 const DEFAULT_EDITABLE_THEME_IDS = [
   'eigent',
@@ -397,7 +397,7 @@ export default function AppearanceSettings() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsSection
         title={t('setting.color-mode')}
         variant="horizontal"
@@ -530,6 +530,6 @@ export default function AppearanceSettings() {
           </SelectContent>
         </Select>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

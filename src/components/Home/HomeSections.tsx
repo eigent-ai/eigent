@@ -12,21 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import Projects from './Projects';
+import Spaces from './Spaces';
+import Tasks from './Tasks';
+import Triggers from './Triggers';
+import { useHomeSection } from './hooks/useHomeSection';
 
-interface SettingsPageProps {
-  children: ReactNode;
-  className?: string;
-}
+/** Table / grid / board body for the section selected in the sidebar rail. */
+export default function HomeSections() {
+  const { section } = useHomeSection();
 
-export default function SettingsPage({
-  children,
-  className,
-}: SettingsPageProps) {
   return (
-    <section className={cn('flex w-full flex-col gap-4 py-4', className)}>
-      {children}
-    </section>
+    <div className="w-full min-w-0 flex-1 px-2 pb-12">
+      {section === 'spaces' && <Spaces />}
+      {section === 'projects' && <Projects />}
+      {section === 'tasks' && <Tasks />}
+      {section === 'triggers' && <Triggers />}
+    </div>
   );
 }

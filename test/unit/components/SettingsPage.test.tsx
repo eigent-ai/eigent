@@ -12,60 +12,76 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import SettingsDialog from '@/components/Settings';
 import SettingsSection from '@/components/Settings/SettingsSection';
-import { useSettingsDialogStore } from '@/store/settingsDialogStore';
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import SettingsPage from '@/pages/Settings';
+import { useSettingsStore } from '@/store/settingsStore';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe('SettingsDialog', () => {
+vi.mock('@/store/authStore', () => {
+  const authState = { appearance: 'light', language: 'en' };
+  const useAuthStore = (
+    selector: (state: typeof authState) => unknown = (state) => state
+  ) => selector(authState);
+
+  return {
+    getAuthStore: () => authState,
+    useAuthStore,
+    useWorkerList: () => [],
+  };
+});
+
+function renderSettingsPage() {
+  return render(
+    <MemoryRouter initialEntries={['/settings']}>
+      <SettingsPage />
+    </MemoryRouter>
+  );
+}
+
+function getSettingsHeader() {
+  const header = document.querySelector('header');
+  expect(header).not.toBeNull();
+  return header as HTMLElement;
+}
+
+describe('SettingsPage', () => {
   beforeEach(() => {
-    useSettingsDialogStore.setState({
-      isOpen: true,
+    useSettingsStore.setState({
       activeSection: 'workspace-profile',
     });
   });
 
-  it('renders scoped navigation in a dedicated accessible dialog', () => {
-    render(
-      <MemoryRouter>
-        <SettingsDialog />
-      </MemoryRouter>
-    );
+  it('renders scoped navigation in the shared app shell', () => {
+    renderSettingsPage();
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    const dialog = screen.getByRole('dialog');
-    const contentShell = dialog.querySelector('.scrollbar-always-visible');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const sidebar = screen.getByRole('complementary', {
+      name: 'layout.settings',
+    });
+    const contentShell = document.querySelector('.scrollbar-always-visible');
     expect(contentShell).toHaveClass(
       'overflow-y-scroll',
       '[scrollbar-gutter:stable]'
     );
     expect(contentShell?.firstElementChild).toHaveClass('px-8');
-    expect(screen.getByRole('navigation')).toBeInTheDocument();
-    expect(screen.getByRole('complementary').firstElementChild?.tagName).toBe(
-      'NAV'
-    );
+    expect(
+      within(sidebar).getByRole('navigation', { name: 'layout.settings' })
+    ).toBeInTheDocument();
     const selectedTab = screen.getByRole('button', {
       name: 'layout.workspace-profile',
     });
     const defaultTab = screen.getByRole('button', { name: 'setting.models' });
-    const header = screen
-      .getByRole('button', { name: /close/i })
-      .closest('header');
+    const header = getSettingsHeader();
     expect(header).toHaveClass('h-[44px]');
+    expect(within(header).getByText('layout.workspace-profile')).toHaveClass(
+      'text-body-md',
+      'font-bold'
+    );
     expect(
-      within(header as HTMLElement).getByText('layout.workspace-profile')
-    ).toHaveClass('text-body-md', 'font-bold');
-    expect(
-      within(header as HTMLElement).queryByRole('button', {
+      within(header).queryByRole('button', {
         name: 'layout.back',
       })
     ).not.toBeInTheDocument();
@@ -79,33 +95,18 @@ describe('SettingsDialog', () => {
     expect(profileSection?.firstElementChild).toHaveClass(
       'p-4',
       'rounded-2xl',
-      'border-ds-border-neutral-muted-default',
+      'border-0',
+      'bg-ds-bg-neutral-default-default',
       'flex-col'
     );
     expect(profileSection?.parentElement).toHaveClass('py-4', 'gap-4');
+    expect(selectedTab).toHaveAttribute('aria-current', 'page');
     expect(selectedTab).toHaveClass(
-      'bg-ds-bg-brand-default-default',
-      '!text-ds-text-brand-inverse-default',
+      'bg-ds-bg-neutral-subtle-default',
       'h-8',
-      'w-full',
-      'text-sm',
-      'font-semibold'
+      'w-full'
     );
-    expect(defaultTab).toHaveClass(
-      'bg-transparent',
-      'h-8',
-      'w-full',
-      'text-sm',
-      'font-semibold',
-      'hover:bg-ds-bg-brand-subtle-default',
-      'hover:!text-ds-text-brand-inverse-default'
-    );
-    expect(selectedTab.querySelector('svg')).toHaveClass(
-      '!text-ds-text-brand-inverse-default'
-    );
-    expect(defaultTab.querySelector('svg')).toHaveClass(
-      'group-hover:!text-ds-text-brand-inverse-default'
-    );
+    expect(defaultTab).not.toHaveAttribute('aria-current');
     expect(screen.getByText('setting.models')).toBeInTheDocument();
     expect(screen.getByText('layout.browser')).toBeInTheDocument();
     expect(screen.getByText('layout.browser-extension')).toBeInTheDocument();
@@ -128,11 +129,7 @@ describe('SettingsDialog', () => {
   it('updates the content header for a settings sub-tab', async () => {
     const user = userEvent.setup();
 
-    render(
-      <MemoryRouter>
-        <SettingsDialog />
-      </MemoryRouter>
-    );
+    renderSettingsPage();
 
     await user.click(screen.getByRole('button', { name: 'agents.skills' }));
     const exampleSkillsTab = await screen.findByRole('tab', {
@@ -141,9 +138,7 @@ describe('SettingsDialog', () => {
     const yourSkillsTab = screen.getByRole('tab', {
       name: 'agents.your-skills',
     });
-    const header = screen
-      .getByRole('button', { name: /close/i })
-      .closest('header') as HTMLElement;
+    const header = getSettingsHeader();
     expect(header).toContainElement(exampleSkillsTab);
     expect(within(header).getByRole('tablist')).toHaveClass(
       'rounded-xl',
@@ -183,16 +178,10 @@ describe('SettingsDialog', () => {
   it('clears section-owned header controls during a page switch', async () => {
     const user = userEvent.setup();
 
-    render(
-      <MemoryRouter>
-        <SettingsDialog />
-      </MemoryRouter>
-    );
+    renderSettingsPage();
 
     await user.click(screen.getByRole('button', { name: 'agents.skills' }));
-    const header = screen
-      .getByRole('button', { name: /close/i })
-      .closest('header') as HTMLElement;
+    const header = getSettingsHeader();
 
     expect(await within(header).findByRole('tablist')).toBeInTheDocument();
 
@@ -204,9 +193,7 @@ describe('SettingsDialog', () => {
     });
     await waitFor(() => {
       expect(
-        screen
-          .getByRole('dialog')
-          .querySelector('[data-settings-section="channels"]')
+        document.querySelector('[data-settings-section="channels"]')
       ).toBeInTheDocument();
     });
   });
@@ -240,27 +227,31 @@ describe('SettingsDialog', () => {
     expect(screen.queryByText('Section title')).not.toBeInTheDocument();
     expect(screen.getByText('Section content').parentElement).toHaveClass(
       'rounded-2xl',
-      'border-ds-border-neutral-muted-default',
+      'border-0',
+      'bg-ds-bg-neutral-default-default',
       'p-4'
     );
   });
 
-  it('closes through the custom header control', () => {
-    render(
-      <MemoryRouter>
-        <SettingsDialog />
-      </MemoryRouter>
+  it('returns from section-owned detail through the content header', async () => {
+    const user = userEvent.setup();
+    renderSettingsPage();
+
+    await user.click(
+      screen.getByRole('button', { name: 'layout.workspace-profile-open' })
     );
 
-    const closeButton = screen.getByRole('button', { name: /close/i });
-    expect(closeButton.closest('header')).toHaveClass(
-      'shrink-0',
-      'border-0',
-      'bg-ds-bg-neutral-default-default'
-    );
+    const header = getSettingsHeader();
+    const backButton = within(header).getByRole('button', {
+      name: 'layout.back',
+    });
+    expect(backButton).toBeInTheDocument();
 
-    fireEvent.click(closeButton);
+    await user.click(backButton);
 
-    expect(useSettingsDialogStore.getState().isOpen).toBe(false);
+    expect(
+      within(header).queryByRole('button', { name: 'layout.back' })
+    ).not.toBeInTheDocument();
+    expect(within(header).getByText('layout.workspace-profile')).toBeVisible();
   });
 });

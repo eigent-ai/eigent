@@ -34,8 +34,8 @@ import {
 } from '@/components/ui/select';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 type GeneralSettingsSection = 'all' | 'profile' | 'language' | 'network-proxy';
 
@@ -193,7 +193,7 @@ export default function SettingGeneral({
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       {/* Profile Section */}
       {(section === 'all' || section === 'profile') && (
         <SettingsSection
@@ -337,6 +337,6 @@ export default function SettingGeneral({
           />
         </SettingsSection>
       )}
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

@@ -13,19 +13,21 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import giftWhiteIcon from '@/assets/custom/gift-white.svg';
-import giftIcon from '@/assets/custom/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
-import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import {
+  TOP_BAR_CONTROL_STATE_CLASS,
+  TOP_BAR_PILL_CLASS,
+} from '@/components/TopBar/controlStyles';
 import UpdateButton from '@/components/TopBar/UpdateButton';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { shellBackState } from '@/hooks/useShellBackTarget';
 import { useHost } from '@/host';
 import {
   createSpaceFromFolderPicker,
@@ -42,11 +44,12 @@ import {
   getDefaultNewSpaceName,
 } from '@/lib/spaceLabel';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSettingsDialogStore } from '@/store/settingsDialogStore';
+import { openSettings, useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   isDisposableBlankSpace,
@@ -58,7 +61,8 @@ import {
   Folder,
   Minus,
   PanelLeft,
-  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
   Square,
   X,
 } from 'lucide-react';
@@ -66,6 +70,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+
+import ShellBackButton from './ShellBackButton';
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -76,7 +82,6 @@ function HeaderWin() {
   const navigate = useNavigate();
   const location = useLocation();
   const [reportBugOpen, setReportBugOpen] = useState(false);
-  const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
@@ -89,15 +94,16 @@ function HeaderWin() {
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const workspaceSidebarHidden = usePageTabStore(
+    (s) => s.workspaceSidebarHidden
+  );
+  const toggleWorkspaceSidebar = usePageTabStore(
+    (s) => s.toggleWorkspaceSidebar
+  );
   const requestWorkspaceChatFocus = usePageTabStore(
     (s) => s.requestWorkspaceChatFocus
   );
-  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
-  const toggleProjectSidebarFolded = usePageTabStore(
-    (s) => s.toggleProjectSidebarFolded
-  );
-  const openSettings = useSettingsDialogStore((state) => state.openSettings);
-  const closeSettings = useSettingsDialogStore((state) => state.closeSettings);
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
@@ -111,7 +117,23 @@ function HeaderWin() {
     setPlatform(p);
   }, [host]);
 
-  const isHomePage = location.pathname === '/home';
+  /**
+   * Home and Settings are project-independent management surfaces reached from
+   * somewhere else, so their title bar drops the Home tab and the Space
+   * switcher (neither means anything there) for a single way back.
+   */
+  const isShellSubPage =
+    location.pathname === '/home' || location.pathname === '/settings';
+  const shellSubPageTitle =
+    location.pathname === '/settings'
+      ? t('setting.settings')
+      : location.pathname === '/home'
+        ? t('layout.home')
+        : null;
+
+  const sidebarToggleLabel = workspaceSidebarHidden
+    ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
+    : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
 
   const activeSpaceTitle = useMemo(
     () =>
@@ -154,17 +176,22 @@ function HeaderWin() {
     [activeSpaceId, projectsBySpaceId, spacesById]
   );
 
-  const openInviteCodeDialog = () => {
-    setInviteCodeDialogOpen(true);
-  };
-
   const openHome = useCallback(() => {
     // Home is a project-independent management surface. Clear the active
     // Project so returning to it always runs the normal hydration path.
     projectStore.setActiveProject(null);
     closeSettings();
-    navigate('/home?section=spaces');
-  }, [closeSettings, navigate, projectStore]);
+    // Record the origin so Home's title-bar back button returns to it.
+    navigate('/home?section=spaces', {
+      state: shellBackState(`${location.pathname}${location.search}`),
+    });
+  }, [
+    closeSettings,
+    location.pathname,
+    location.search,
+    navigate,
+    projectStore,
+  ]);
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
@@ -409,44 +436,38 @@ function HeaderWin() {
           }}
         />
       </AlertDialog>
-      {!isHomePage ? (
-        /* Leading: panel, Home management, and active Space context */
+      {isShellSubPage ? (
+        /* Leading on Home / Settings: only the way back to where they came from. */
+        <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
+          <ShellBackButton />
+        </div>
+      ) : (
+        /* Leading: sidebar toggle, Home management, and active Space context */
         <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
           <TooltipSimple
-            content={
-              projectSidebarFolded
-                ? t('layout.expand-project-sidebar', {
-                    defaultValue: 'Expand sidebar',
-                  })
-                : t('layout.fold-project-sidebar', {
-                    defaultValue: 'Fold sidebar',
-                  })
-            }
+            content={sidebarToggleLabel}
             side="bottom"
             align="center"
             variant="instant"
           >
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
-              className="no-drag shrink-0 rounded-full"
-              onClick={toggleProjectSidebarFolded}
-              aria-pressed={!projectSidebarFolded}
-              aria-label={
-                projectSidebarFolded
-                  ? t('layout.expand-project-sidebar', {
-                      defaultValue: 'Expand sidebar',
-                    })
-                  : t('layout.fold-project-sidebar', {
-                      defaultValue: 'Fold sidebar',
-                    })
-              }
+              className={cn(
+                'no-drag rounded-full',
+                TOP_BAR_CONTROL_STATE_CLASS,
+                'aria-pressed:!bg-transparent'
+              )}
+              onClick={toggleWorkspaceSidebar}
+              aria-pressed={!workspaceSidebarHidden}
+              aria-label={sidebarToggleLabel}
             >
-              {projectSidebarFolded ? (
-                <PanelLeft className="h-4 w-4" aria-hidden />
+              {workspaceSidebarHidden ? (
+                <PanelLeftOpen className="h-4 w-4" aria-hidden />
               ) : (
-                <PanelLeftClose className="h-4 w-4" aria-hidden />
+                <PanelLeft className="h-4 w-4" aria-hidden />
               )}
             </Button>
           </TooltipSimple>
@@ -455,7 +476,7 @@ function HeaderWin() {
             type="button"
             onClick={openHome}
             aria-label={t('layout.home')}
-            className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
+            className={TOP_BAR_PILL_CLASS}
           >
             <img
               src={
@@ -476,7 +497,7 @@ function HeaderWin() {
               <button
                 id="active-space-title-btn"
                 type="button"
-                className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
+                className={TOP_BAR_PILL_CLASS}
                 aria-haspopup="menu"
                 aria-label={activeSpaceTitle}
               >
@@ -503,12 +524,19 @@ function HeaderWin() {
             contentAlign="start"
           />
         </div>
-      ) : null}
+      )}
 
-      {/* Middle: draggable spacer that pushes trailing controls to the right */}
+      {/* Middle: page title (Home / Settings) or draggable spacer */}
+      {shellSubPageTitle ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex h-10 items-center justify-center">
+          <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+            {shellSubPageTitle}
+          </span>
+        </div>
+      ) : null}
       <div className="drag h-7 min-h-0 min-w-0 flex-1" aria-hidden />
 
-      {/* Trailing: update, support, gift, and Settings */}
+      {/* Trailing: update, support, settings, and user menu */}
       <div
         className={`${
           platform === 'darwin' && 'px-1.5'
@@ -527,7 +555,10 @@ function HeaderWin() {
               type="button"
               variant="ghost"
               size="sm"
-              className="no-drag rounded-full"
+              className={cn(
+                'no-drag rounded-full',
+                TOP_BAR_CONTROL_STATE_CLASS
+              )}
               aria-label={t('layout.support')}
               onClick={() => setReportBugOpen(true)}
               buttonContent="icon-only"
@@ -536,26 +567,24 @@ function HeaderWin() {
             </Button>
           </TooltipSimple>
           <TooltipSimple
-            content={t('layout.refer-friends')}
+            content={t('setting.settings')}
             side="bottom"
             align="center"
             variant="instant"
           >
             <Button
-              onClick={openInviteCodeDialog}
+              type="button"
               variant="ghost"
               size="sm"
-              className="no-drag rounded-full"
+              className={cn(
+                'no-drag rounded-full',
+                TOP_BAR_CONTROL_STATE_CLASS
+              )}
               buttonContent="icon-only"
-              aria-label={t('layout.refer-friends')}
+              aria-label={t('setting.settings')}
+              onClick={() => openSettings('models')}
             >
-              <img
-                src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                alt=""
-                width={16}
-                height={16}
-                aria-hidden
-              />
+              <Settings className="h-4 w-4" aria-hidden />
             </Button>
           </TooltipSimple>
 
@@ -573,19 +602,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />
@@ -593,10 +622,6 @@ function HeaderWin() {
         </div>
       )}
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
-      <InviteCodeDialog
-        open={inviteCodeDialogOpen}
-        onOpenChange={setInviteCodeDialogOpen}
-      />
     </div>
   );
 }

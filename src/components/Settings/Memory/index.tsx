@@ -14,14 +14,14 @@
 
 import { Brain } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 export default function Memory() {
   const { t } = useTranslation();
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsSection
         title={t('layout.coming-soon')}
         boxClassName="items-center justify-between"
@@ -36,6 +36,6 @@ export default function Memory() {
           {t('agents.memory-coming-soon-description')}
         </span>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

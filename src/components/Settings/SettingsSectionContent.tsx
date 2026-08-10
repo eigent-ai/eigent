@@ -12,27 +12,27 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { SettingsSectionId } from '@/store/settingsDialogStore';
+import type { SettingsSectionId } from '@/store/settingsStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { LoaderCircle } from 'lucide-react';
 import { lazy, type RefObject, Suspense, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import SettingsContentShell from '../SettingsContentShell';
-import WorkspaceProfileSettings from '../WorkspaceProfile';
+import SettingsContentShell from './SettingsContentShell';
+import WorkspaceProfileSettings from './WorkspaceProfile';
 
 const sectionLoaders = {
-  models: () => import('../Models'),
-  skills: () => import('../Skills'),
-  'sub-agents': () => import('../SubAgents'),
-  memory: () => import('../Memory'),
-  connectors: () => import('../Connectors'),
-  channels: () => import('../Channels'),
-  'browser-connections': () => import('../Browser'),
-  'browser-plugins': () => import('../Extension'),
-  cookies: () => import('../Cookies'),
-  general: () => import('../General'),
-  appearance: () => import('../Appearance'),
-  privacy: () => import('../Privacy'),
+  models: () => import('./Models'),
+  skills: () => import('./Skills'),
+  'sub-agents': () => import('./SubAgents'),
+  memory: () => import('./Memory'),
+  connectors: () => import('./Connectors'),
+  channels: () => import('./Channels'),
+  'browser-connections': () => import('./Browser'),
+  'browser-plugins': () => import('./Extension'),
+  cookies: () => import('./Cookies'),
+  general: () => import('./General'),
+  appearance: () => import('./Appearance'),
+  privacy: () => import('./Privacy'),
 } satisfies Partial<
   Record<SettingsSectionId, () => Promise<{ default: React.ComponentType }>>
 >;
@@ -56,7 +56,7 @@ export function preloadSettingsSection(section: SettingsSectionId) {
   );
 }
 
-interface SettingsDialogContentProps {
+interface SettingsSectionContentProps {
   activeSection: SettingsSectionId;
 }
 
@@ -150,9 +150,9 @@ function AnimatedSettingsSection({
   );
 }
 
-export default function SettingsDialogContent({
+export default function SettingsSectionContent({
   activeSection,
-}: SettingsDialogContentProps) {
+}: SettingsSectionContentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
 

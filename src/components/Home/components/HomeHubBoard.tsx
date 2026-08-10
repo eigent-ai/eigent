@@ -76,8 +76,7 @@ export default function HomeHubBoard({
           >
             <header
               className={cn(
-                'sticky z-[9] -mx-3 mb-3 flex items-center gap-2 rounded-t-2xl px-3 pb-3 pt-3',
-                'top-[calc(var(--home-hub-history-tabs-offset,49px)+var(--home-hub-toolbar-sticky-height,5.25rem))]',
+                'sticky top-0 z-[9] -mx-3 mb-3 flex items-center gap-2 rounded-t-2xl px-3 pb-3 pt-3',
                 '!bg-ds-bg-neutral-default-default',
                 styles.column
               )}

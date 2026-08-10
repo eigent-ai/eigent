@@ -63,8 +63,8 @@ import {
   SettingsHeaderActions,
   useSettingsHeader,
 } from '../../SettingsHeaderContext';
-import SettingsPage from '../../SettingsPage';
 import SettingsSection from '../../SettingsSection';
+import SettingsSectionPage from '../../SettingsSectionPage';
 import type { ConnectorInstallHint } from './types';
 
 export type { ConnectorInstallHint };
@@ -859,7 +859,7 @@ export default function ConnectorBrowserPage({
   ]);
 
   return (
-    <SettingsPage className="min-h-full w-full">
+    <SettingsSectionPage className="min-h-full w-full">
       {!showingDetail ? (
         <SettingsHeaderActions>
           <SearchInput
@@ -1413,6 +1413,6 @@ export default function ConnectorBrowserPage({
           </>
         ) : null}
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

@@ -12,33 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from '@/lib/utils';
+import type { Transition } from 'framer-motion';
 
-interface SettingsPageLoadingProps {
-  label: string;
-  rows?: number;
-  className?: string;
-}
+/** Shared spring for app-sidebar fold and page-layout motion. */
+export const SIDEBAR_FOLD_SPRING: Transition = {
+  type: 'spring',
+  stiffness: 380,
+  damping: 38,
+  mass: 0.85,
+};
 
-export default function SettingsPageLoading({
-  label,
-  rows = 3,
-  className,
-}: SettingsPageLoadingProps) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn('flex w-full flex-col gap-4 py-4', className)}
-    >
-      <span className="sr-only">{label}</span>
-      {Array.from({ length: rows }).map((_, index) => (
-        <div
-          key={index}
-          aria-hidden
-          className="h-24 w-full animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default motion-reduce:animate-none"
-        />
-      ))}
-    </div>
-  );
-}
+/** Radix tooltip content: cap width so long labels (e.g. session titles) wrap. */
+export const SIDEBAR_TOOLTIP_CONTENT_CLASS =
+  'max-w-[400px] break-words whitespace-normal';

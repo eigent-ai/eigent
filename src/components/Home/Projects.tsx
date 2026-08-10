@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectGroup } from '@/types/history';
-import { FolderOpen } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import HomeHubBoard from './components/HomeHubBoard';
@@ -171,7 +171,7 @@ export default function Projects() {
       <div className="mb-12 w-full min-w-0">
         {projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <FolderOpen className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
+            <MessageCircle className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('dashboard.no-projects-found')}
             </div>

@@ -18,9 +18,9 @@ import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
 import {
   Folder,
-  FolderKanban,
   ListChecks,
   Loader2,
+  MessageCircle,
   Pencil,
   Power,
   Share2,
@@ -187,7 +187,7 @@ function SpaceItemContent({
         {layout === 'list' ? (
           <HomeHubItemBody
             title={title}
-            nameIcon={<FolderKanban className="h-4 w-4" />}
+            nameIcon={<Folder className="h-4 w-4" />}
             listCells={[
               { id: 'type', content: spaceKindLabel },
               {
@@ -332,7 +332,7 @@ function ProjectItemContent({
         {layout === 'list' ? (
           <HomeHubItemBody
             title={title}
-            nameIcon={<Folder className="h-4 w-4" />}
+            nameIcon={<MessageCircle className="h-4 w-4" />}
             listCells={[
               { id: 'space', content: spaceLabel || '—' },
               {

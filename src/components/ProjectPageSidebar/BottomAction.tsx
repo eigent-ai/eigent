@@ -18,10 +18,11 @@ import { motion } from 'framer-motion';
 import { Power } from 'lucide-react';
 
 import {
-  PROJECT_SIDEBAR_FOLD_SPRING,
+  SIDEBAR_FOLD_SPRING,
+  SIDEBAR_TAB_LABEL_CLASS,
   SIDEBAR_TOOLTIP_CONTENT_CLASS,
-} from './constants';
-import { WORKSPACE_TAB_LABEL_CLASS, workspaceTabButtonClass } from './NavTab';
+  sidebarTabButtonClass,
+} from '@/components/Layout/AppSidebar';
 
 export interface BottomActionProps {
   /** When false, the bottom rail is omitted entirely. */
@@ -66,7 +67,7 @@ export function BottomAction({
               type="button"
               onClick={onEndProjectClick}
               className={cn(
-                workspaceTabButtonClass(false),
+                sidebarTabButtonClass(false),
                 'bg-ds-bg-error-subtle-default hover:bg-ds-bg-status-error-subtle-hover active:bg-ds-bg-status-error-subtle-active',
                 folded && 'gap-0'
               )}
@@ -83,12 +84,12 @@ export function BottomAction({
                   opacity: folded ? 0 : 1,
                   maxWidth: folded ? 0 : 1600,
                 }}
-                transition={PROJECT_SIDEBAR_FOLD_SPRING}
+                transition={SIDEBAR_FOLD_SPRING}
                 aria-hidden={folded}
               >
                 <span
                   className={cn(
-                    WORKSPACE_TAB_LABEL_CLASS,
+                    SIDEBAR_TAB_LABEL_CLASS,
                     'text-body-sm font-medium !text-ds-text-error-default-default'
                   )}
                 >

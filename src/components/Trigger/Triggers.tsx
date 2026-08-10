@@ -344,7 +344,7 @@ export default function Overview({
             damping: 34,
             mass: 0.9,
           }}
-          className={`border-l-1 mb-2 flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default ${
+          className={`mb-2 flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default ${
             selectedTriggerId && isExecutionLogsOpen
               ? ''
               : 'pointer-events-none'

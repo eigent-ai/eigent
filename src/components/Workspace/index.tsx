@@ -36,7 +36,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
@@ -266,7 +266,7 @@ export default function Workspace({
 
     if (!hasModel) {
       toast.error(t('layout.please-select-model-first'));
-      openSettingsDialog('models');
+      openSettings('models');
       return;
     }
 
@@ -509,7 +509,7 @@ export default function Workspace({
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
-          onSelectModel={() => openSettingsDialog('models')}
+          onSelectModel={() => openSettings('models')}
           inputProps={buildComposerInputProps()}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}

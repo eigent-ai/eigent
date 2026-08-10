@@ -37,8 +37,8 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 export default function SubAgents() {
   const { t } = useTranslation();
@@ -451,7 +451,7 @@ export default function SubAgents() {
   );
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsSection
         title={t('setting.models-configuration')}
         boxClassName="items-start gap-2"
@@ -472,6 +472,6 @@ export default function SubAgents() {
           </div>
         </div>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

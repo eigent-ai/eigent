@@ -31,7 +31,7 @@ import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import type { TFunction } from 'i18next';
 import { CircleAlert, X } from 'lucide-react';
 import {
@@ -942,7 +942,7 @@ const ToolSelect = forwardRef<
                   variant="ghost"
                   size="xs"
                   buttonContent="text"
-                  onClick={() => openSettingsDialog('connectors')}
+                  onClick={() => openSettings('connectors')}
                 >
                   {t('chat.input-attach-manage-connectors')}
                 </Button>

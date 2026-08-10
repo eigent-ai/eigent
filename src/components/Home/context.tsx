@@ -20,7 +20,16 @@ import type { HomeSortBy, HomeSortDirection, HomeViewMode } from './utils';
 
 export type { HomeSortBy, HomeSortDirection, HomeViewMode } from './utils';
 
+export type HomeSectionCounts = {
+  spaces: number;
+  projects: number;
+  tasks: number;
+  triggers: number;
+};
+
 export type HomeHubContextValue = {
+  /** Item counts per rail tab (spaces / projects / tasks / triggers). */
+  sectionCounts: HomeSectionCounts;
   viewMode: HomeViewMode;
   setViewMode: (mode: HomeViewMode) => void;
   searchQuery: string;

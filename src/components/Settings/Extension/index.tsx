@@ -14,14 +14,14 @@
 
 import { Puzzle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import SettingsPage from '../SettingsPage';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 export default function Extension() {
   const { t } = useTranslation();
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <SettingsSection
         title={t('layout.coming-soon')}
         boxClassName="min-h-[200px] items-center justify-center py-16"
@@ -34,6 +34,6 @@ export default function Extension() {
           {t('layout.browser-plugins-description')}
         </span>
       </SettingsSection>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

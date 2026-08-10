@@ -33,7 +33,7 @@ import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { openSettingsDialog } from '@/store/settingsDialogStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -373,7 +373,7 @@ export default function ChatBox(): JSX.Element {
   const autoReplyAttemptRef = useRef<string | null>(null);
 
   const handleSelectModel = useCallback(() => {
-    openSettingsDialog('models');
+    openSettings('models');
   }, []);
 
   // Task time tracking
@@ -547,7 +547,7 @@ export default function ChatBox(): JSX.Element {
           return;
         }
         toast.error('Please select a model first.');
-        openSettingsDialog('models');
+        openSettings('models');
         return;
       }
 
@@ -657,7 +657,7 @@ export default function ChatBox(): JSX.Element {
         return;
       }
       toast.error('Please select a model first.');
-      openSettingsDialog('models');
+      openSettings('models');
       return;
     }
 

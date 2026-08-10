@@ -17,10 +17,14 @@ import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
 import { ChatTaskStatus } from '@/types/constants';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import HomeHubToolbar from './components/HomeHubToolbar';
 import {
   HomeHubProvider,
   type HomeSortBy,
@@ -30,28 +34,21 @@ import {
 import { useHomeHubCounts } from './hooks/useHomeHubCounts';
 import { useHomeHubProjects } from './hooks/useHomeHubProjects';
 import { useHomeHubTriggers } from './hooks/useHomeHubTriggers';
-import Projects from './Projects';
-import Spaces from './Spaces';
-import Tasks from './Tasks';
-import Triggers from './Triggers';
-import {
-  capitalizeLabel,
-  persistHomeViewMode,
-  readStoredHomeViewMode,
-} from './utils';
+import { useHomeSection } from './hooks/useHomeSection';
+import { persistHomeViewMode, readStoredHomeViewMode } from './utils';
 
-const HOME_SECTIONS = ['spaces', 'projects', 'tasks', 'triggers'] as const;
-type HomeSection = (typeof HOME_SECTIONS)[number];
+export { default as HomeHeader } from './HomeHeader';
+export { default as HomeSections } from './HomeSections';
+export { default as HomeSidebarNav } from './HomeSidebarNav';
 
-function isHomeSection(value: string | null): value is HomeSection {
-  return value !== null && HOME_SECTIONS.includes(value as HomeSection);
-}
-
-export default function HomeHub() {
+/**
+ * Data + dialog host for the home surface. Rendered above the app shell so the
+ * sidebar rail (tab counts) and the content pane (header controls + tables)
+ * read the same hub state.
+ */
+export default function HomeHubRoot({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const sectionFromUrl = searchParams.get('section');
+  const { section: activeTab } = useHomeSection();
   const { chatStore } = useChatStoreAdapter();
   const {
     projects,
@@ -72,11 +69,6 @@ export default function HomeHub() {
     (() => Promise<void>) | null
   >(null);
 
-  // URL is the source of truth for the active section — derive directly
-  // instead of mirroring into local state (avoids a resync window).
-  const activeTab: HomeSection = isHomeSection(sectionFromUrl)
-    ? sectionFromUrl
-    : 'spaces';
   const [viewMode, setViewModeState] = useState<HomeViewMode>(
     readStoredHomeViewMode
   );
@@ -93,37 +85,6 @@ export default function HomeHub() {
     setSortBy('created');
     setSortDirection('desc');
   }, [activeTab]);
-
-  const menuItems = useMemo(
-    () => [
-      {
-        id: 'spaces' as const,
-        name: capitalizeLabel(t('layout.spaces')),
-        count: sectionCounts.spaces,
-      },
-      {
-        id: 'projects' as const,
-        name: capitalizeLabel(t('layout.projects')),
-        count: sectionCounts.projects,
-      },
-      {
-        id: 'tasks' as const,
-        name: capitalizeLabel(t('layout.tasks')),
-        count: sectionCounts.tasks,
-      },
-      {
-        id: 'triggers' as const,
-        name: capitalizeLabel(t('layout.triggers')),
-        count: sectionCounts.triggers,
-      },
-    ],
-    [sectionCounts, t]
-  );
-
-  const handleTabChange = (tabId: string) => {
-    if (!HOME_SECTIONS.includes(tabId as HomeSection)) return;
-    navigate(`?section=${tabId}`, { replace: true });
-  };
 
   const handleDelete = (id: string, callback?: () => void) => {
     setCurHistoryId(id);
@@ -198,6 +159,7 @@ export default function HomeHub() {
 
   const hubContextValue = useMemo(
     () => ({
+      sectionCounts,
       viewMode,
       setViewMode,
       searchQuery,
@@ -226,6 +188,7 @@ export default function HomeHub() {
     // are infrequent; include only the data dependencies React tracks here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      sectionCounts,
       viewMode,
       searchQuery,
       sortBy,
@@ -265,20 +228,7 @@ export default function HomeHub() {
         cancelText={t('layout.cancel')}
       />
 
-      <div className="flex w-full min-w-0 flex-1 flex-col [--home-hub-history-tabs-offset:0px]">
-        <HomeHubToolbar
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          menuItems={menuItems}
-        />
-
-        <div className="w-full min-w-0 flex-1 px-2">
-          {activeTab === 'spaces' && <Spaces />}
-          {activeTab === 'projects' && <Projects />}
-          {activeTab === 'tasks' && <Tasks />}
-          {activeTab === 'triggers' && <Triggers />}
-        </div>
-      </div>
+      {children}
     </HomeHubProvider>
   );
 }

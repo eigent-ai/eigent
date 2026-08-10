@@ -16,15 +16,41 @@ import { InstallDependencies } from '@/components/InstallStep/InstallDependencie
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
+import { shellBackState } from '@/hooks/useShellBackTarget';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import CloseNoticeDialog from '../Dialog/CloseNotice';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
-import SettingsDialog from '../Settings';
+
+/**
+ * Settings used to be a modal, and `openSettings(section)` is still the
+ * call every feature uses to jump into a section. Settings is now a page in
+ * the app shell, so translate that request into a route change and clear the
+ * flag; `activeSection` stays in the store and drives the page.
+ */
+function SettingsRouteBridge() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isOpen = useSettingsStore((state) => state.isOpen);
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    closeSettings();
+    if (location.pathname === '/settings') return;
+    // Record where the user came from so the title-bar back button returns there.
+    navigate('/settings', {
+      state: shellBackState(`${location.pathname}${location.search}`),
+    });
+  }, [closeSettings, isOpen, location.pathname, location.search, navigate]);
+
+  return null;
+}
 
 const Layout = () => {
   const host = useHost();
@@ -103,7 +129,7 @@ const Layout = () => {
       >
         <TopBar />
       </div>
-      <SettingsDialog />
+      <SettingsRouteBridge />
       <div className="relative h-full min-h-0 flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}

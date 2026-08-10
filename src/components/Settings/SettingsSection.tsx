@@ -48,7 +48,9 @@ export default function SettingsSection({
       ) : null}
       <div
         className={cn(
-          'flex rounded-2xl border border-solid border-ds-border-neutral-muted-default p-4',
+          // Borderless: the section reads as a filled panel against the
+          // subtle content-pane background instead of an outlined card.
+          'flex rounded-2xl border-0 bg-ds-bg-neutral-default-default p-4',
           variant === 'horizontal' ? 'flex-row' : 'flex-col',
           boxClassName
         )}

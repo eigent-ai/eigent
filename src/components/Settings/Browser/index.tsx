@@ -27,9 +27,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import SettingsPage from '../SettingsPage';
-import SettingsPageLoading from '../SettingsPageLoading';
 import SettingsSection from '../SettingsSection';
+import SettingsSectionLoading from '../SettingsSectionLoading';
+import SettingsSectionPage from '../SettingsSectionPage';
 
 interface CdpBrowser {
   id: string;
@@ -229,7 +229,7 @@ export default function CDP() {
   };
 
   return (
-    <SettingsPage>
+    <SettingsSectionPage>
       <AlertDialog
         isOpen={!!browserToRemove}
         onClose={() => setBrowserToRemove(null)}
@@ -284,7 +284,7 @@ export default function CDP() {
       >
         <div className="flex w-full flex-col gap-2">
           {browsersLoading && cdpBrowsers.length === 0 ? (
-            <SettingsPageLoading
+            <SettingsSectionLoading
               label={t('layout.loading-browser-connections')}
               rows={2}
               className="py-0"
@@ -421,6 +421,6 @@ export default function CDP() {
           </div>
         </DialogContent>
       </Dialog>
-    </SettingsPage>
+    </SettingsSectionPage>
   );
 }

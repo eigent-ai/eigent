@@ -16,6 +16,7 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
 import { Button } from '@/components/ui/button';
 import {
@@ -650,11 +651,11 @@ export function WorkspaceDispatch() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b-1 box-border flex h-[45.5px] w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3">
-        <span className="text-body-md font-bold text-ds-text-neutral-muted-default">
-          {t('layout.workspace-work-with-title', { defaultValue: 'Work with' })}
-        </span>
-      </div>
+      <ContentHeader
+        title={t('layout.workspace-work-with-title', {
+          defaultValue: 'Work with',
+        })}
+      />
 
       {/* Body */}
       <div className="relative flex min-h-0 w-full flex-1 overflow-hidden">

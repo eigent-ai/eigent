@@ -25,7 +25,13 @@ import { cn } from '@/lib/utils';
 import type { Space } from '@/store/spaceStore';
 import { Trigger } from '@/types';
 import { HistoryTask, ProjectGroup as ProjectGroupType } from '@/types/history';
-import { Folder, ListChecks, MoreHorizontal, Zap } from 'lucide-react';
+import {
+  Folder,
+  ListChecks,
+  MessageCircle,
+  MoreHorizontal,
+  Zap,
+} from 'lucide-react';
 import {
   Fragment,
   useState,
@@ -557,7 +563,7 @@ export function HomeHubProjectCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<Folder />}
+      icon={<MessageCircle />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -587,7 +593,7 @@ export function HomeHubProjectBoardCardBody({
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<Folder />}
+      icon={<MessageCircle />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.tasks'), value: taskCount },
