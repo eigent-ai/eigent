@@ -76,6 +76,44 @@ def test_advanced_git_grammar_classifies_known_commands(argv, operation):
 
 
 @pytest.mark.parametrize(
+    ("argv", "operation"),
+    [
+        (("merge", "--log=5", "topic"), "git.integrate"),
+        (("fetch", "--no-write-fetch-head", "origin"), "git.remote_read"),
+        (("commit", "--verbose", "-m", "checkpoint"), "git.local_write"),
+    ],
+)
+def test_advanced_git_does_not_freeze_git_options_in_per_command_allowlists(
+    argv, operation
+):
+    assert AdvancedGitCommandClassifier().classify(argv).operation == operation
+
+
+def test_rejected_advanced_git_preview_is_durable_structured_audit(
+    advanced_git,
+):
+    service, journal, _, _, repository, _ = advanced_git
+
+    with pytest.raises(AdvancedGitCommandRejected) as rejected:
+        service.preview(
+            space_id="space-1",
+            repository_id=repository.repository_id,
+            argv=("rebase", "--exec=touch /tmp/pwn", "main"),
+            operation_request_id="model-rejected-1",
+        )
+
+    assert rejected.value.reason_code == "advanced_git_policy_rejected"
+    assert "preview" in rejected.value.remediation.lower()
+    row = journal._connection.execute(
+        "SELECT * FROM security_audit_events WHERE event_type = ?",
+        ("git.advanced.rejected",),
+    ).fetchone()
+    assert row is not None
+    assert row["actor_type"] == "model"
+    assert "--exec" not in row["details_json"]
+
+
+@pytest.mark.parametrize(
     "argv",
     [
         ("push", "--force", "origin", "HEAD"),

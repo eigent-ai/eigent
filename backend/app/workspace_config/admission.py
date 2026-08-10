@@ -47,6 +47,11 @@ _SECRET_NAME = re.compile(
     r"password|private[_-]?key|secret|token)$",
     re.IGNORECASE,
 )
+_SECRET_ARG = re.compile(
+    r"^--?(?:api[_-]?key|access[_-]?token|auth|authorization|password|"
+    r"private[_-]?key|secret|token)(?:=(.*))?$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -103,9 +108,7 @@ class LegacyEnvironmentImporter:
         )
         manifest_effort = explicit_effort or capability.default_effort
         configs = mcp_server_configs or {}
-        unique_mcp_names = tuple(
-            sorted(set(mcp_server_names) | set(configs))
-        )
+        unique_mcp_names = tuple(sorted(set(mcp_server_names) | set(configs)))
         secret_slots = {
             name: self._mcp_secret_slots(name, configs.get(name, {}))
             for name in unique_mcp_names
@@ -113,9 +116,9 @@ class LegacyEnvironmentImporter:
         enabled_skills = tuple(
             sorted(
                 name
-                for name, value in (skill_config or {}).get(
-                    "skills", {}
-                ).items()
+                for name, value in (skill_config or {})
+                .get("skills", {})
+                .items()
                 if isinstance(value, dict) and value.get("enabled", True)
             )
         )
@@ -126,8 +129,7 @@ class LegacyEnvironmentImporter:
                 # legacy values may contain low-entropy secrets and must not
                 # become even a dictionary-attackable Cloud-visible digest.
                 "mcp": {
-                    name: list(secret_slots[name])
-                    for name in unique_mcp_names
+                    name: list(secret_slots[name]) for name in unique_mcp_names
                 },
                 "skills": list(enabled_skills),
             }
@@ -207,9 +209,7 @@ class LegacyEnvironmentImporter:
 
     @staticmethod
     def _logical_name(value: str) -> str:
-        normalized = re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip(
-            "-."
-        )
+        normalized = re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip("-.")
         return normalized or "legacy"
 
     @classmethod
@@ -235,8 +235,31 @@ class LegacyEnvironmentImporter:
                     else:
                         visit(child, (*path, key_text))
             elif isinstance(value, list):
-                for child in value:
-                    visit(child, path)
+                index = 0
+                while index < len(value):
+                    child = value[index]
+                    if isinstance(child, str):
+                        match = _SECRET_ARG.match(child)
+                        if match:
+                            secret_index = (
+                                index
+                                if match.group(1) is not None
+                                else index + 1
+                            )
+                            if secret_index < len(value):
+                                slots.add(
+                                    "mcp."
+                                    + cls._logical_name(server_name)
+                                    + "."
+                                    + ".".join(
+                                        cls._logical_name(item)
+                                        for item in (*path, str(secret_index))
+                                    )
+                                )
+                                index = secret_index + 1
+                                continue
+                    visit(child, (*path, str(index)))
+                    index += 1
 
         visit(config, ())
         return tuple(sorted(slots))

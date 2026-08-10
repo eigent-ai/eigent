@@ -446,16 +446,28 @@ def test_persistence_payload_redacts_real_key_shapes_and_argv_credentials():
         ["python", "-u", "script.py"],
         ["sort", "-u", "input.txt"],
     ):
-        visible = _action(
-            arguments={"argv": argv}
-        ).persistence_payload()["normalized_arguments"]["argv"]
+        visible = _action(arguments={"argv": argv}).persistence_payload()[
+            "normalized_arguments"
+        ]["argv"]
         assert visible == argv
 
     css_like = ".sk-test-spinner-container-large .sk-ant-design-component"
-    css_display = _action(
-        arguments={"note": css_like}
-    ).persistence_payload()["normalized_arguments"]
+    css_display = _action(arguments={"note": css_like}).persistence_payload()[
+        "normalized_arguments"
+    ]
     assert css_display["note"] == css_like
+
+    word_like = "sk-live-status-indicator-large-2"
+    word_display = _action(
+        arguments={"note": word_like}
+    ).persistence_payload()["normalized_arguments"]
+    assert word_display["note"] == word_like
+
+    alpha_secret = "sk-" + "live-" + ("z" * 24)
+    alpha_display = _action(
+        arguments={"note": alpha_secret}
+    ).persistence_payload()["normalized_arguments"]
+    assert alpha_secret not in alpha_display["note"]
 
 
 @pytest.mark.parametrize(
@@ -464,6 +476,13 @@ def test_persistence_payload_redacts_real_key_shapes_and_argv_credentials():
         (["sudo", "mysql", "-phunter2"], "hunter2"),
         (["env", "curl", "-u", "alice:pw"], "pw"),
         (["bash", "-lc", "curl -u alice:pw"], "pw"),
+        (["nice", "-n", "5", "curl", "-u", "alice:pw"], "pw"),
+        (
+            ["timeout", "--signal", "TERM", "5s", "curl", "-u", "alice:pw"],
+            "pw",
+        ),
+        (["doas", "-u", "root", "mysql", "-phunter2"], "hunter2"),
+        (["xargs", "--", "curl", "-u", "alice:pw"], "pw"),
         (["redis-cli", "-a", "redis-secret"], "redis-secret"),
         (["wget", "--user", "alice:pw"], "pw"),
         (["wget", "--http-password", "http-secret"], "http-secret"),
@@ -471,9 +490,9 @@ def test_persistence_payload_redacts_real_key_shapes_and_argv_credentials():
     ],
 )
 def test_wrapper_and_long_form_argv_credentials_are_redacted(argv, secret):
-    display = _action(
-        arguments={"argv": argv}
-    ).persistence_payload()["normalized_arguments"]["argv"]
+    display = _action(arguments={"argv": argv}).persistence_payload()[
+        "normalized_arguments"
+    ]["argv"]
 
     assert secret not in str(display)
     assert "[REDACTED]" in str(display)
@@ -485,18 +504,29 @@ def test_non_secret_short_flags_and_header_prose_remain_reviewable():
         ["wget", "-u", "https://example.test"],
         ["ssh", "-p", "2222", "host"],
     ):
-        display = _action(
-            arguments={"argv": argv}
-        ).persistence_payload()["normalized_arguments"]["argv"]
+        display = _action(arguments={"argv": argv}).persistence_payload()[
+            "normalized_arguments"
+        ]["argv"]
         assert display == argv
 
-    prose = "Authorization: Bearer abcdefghijklmnop is configured for staging only"
-    redacted = _action(
-        arguments={"note": prose}
-    ).persistence_payload()["normalized_arguments"]["note"]
+    prose = (
+        "Authorization: Bearer abcdefghijklmnop is configured for staging only"
+    )
+    redacted = _action(arguments={"note": prose}).persistence_payload()[
+        "normalized_arguments"
+    ]["note"]
     assert redacted == (
         "Authorization: Bearer [REDACTED] is configured for staging only"
     )
+
+    documentation = (
+        "# Example connector\nAuthorization: Bearer YOUR_TOKEN_HERE\n"
+        "x-api-key: example-placeholder"
+    )
+    documentation_display = _action(
+        arguments={"content": documentation}
+    ).persistence_payload()["normalized_arguments"]["content"]
+    assert documentation_display == documentation
 
 
 def test_terminal_argv_participates_in_policy_risk_and_target_extraction(

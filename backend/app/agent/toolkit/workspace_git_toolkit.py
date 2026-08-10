@@ -19,7 +19,10 @@ from camel.toolkits.function_tool import FunctionTool
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
 from app.utils.space_overlay_client import run_context_for_task
-from app.workspace_git import get_default_advanced_git_service
+from app.workspace_git import (
+    AdvancedGitCommandRejected,
+    get_default_advanced_git_service,
+)
 
 
 @auto_listen_toolkit(BaseToolkit)
@@ -70,6 +73,12 @@ class WorkspaceGitToolkit(BaseToolkit, AbstractToolkit):
                     "merge_request_via_coordinator",
                 ],
                 "advanced_execution": "requires_user_review_in_desktop",
+                "model_guidance": (
+                    "Do not use Git options that launch editors, hooks, "
+                    "pagers, filters, helpers, signers, or other external "
+                    "programs. Request a HumanInteraction before dangerous "
+                    "or destructive Git work. A preview is never approval."
+                ),
             },
             sort_keys=True,
         )
@@ -151,15 +160,34 @@ class WorkspaceGitToolkit(BaseToolkit, AbstractToolkit):
         context, service, repository = self._scope()
         if repository is None:
             return json.dumps({"available": False})
-        request_id = operation_request_id.strip() or f"agent-preview-{uuid.uuid4().hex}"
-        preview = service.preview(
-            space_id=context.space_id,
-            repository_id=repository.repository_id,
-            argv=tuple(argv),
-            operation_request_id=request_id,
+        request_id = (
+            operation_request_id.strip() or f"agent-preview-{uuid.uuid4().hex}"
         )
+        try:
+            preview = service.preview(
+                space_id=context.space_id,
+                repository_id=repository.repository_id,
+                argv=tuple(argv),
+                operation_request_id=request_id,
+            )
+        except AdvancedGitCommandRejected as exc:
+            return json.dumps(
+                {
+                    "accepted": False,
+                    "rejection": {
+                        "code": exc.reason_code,
+                        "reason": str(exc),
+                        "remediation": exc.remediation,
+                        "human_interaction_required": (
+                            exc.human_interaction_required
+                        ),
+                    },
+                },
+                sort_keys=True,
+            )
         return json.dumps(
             {
+                "accepted": True,
                 "classification": preview.classification.operation,
                 "safety_class": preview.classification.safety_class.value,
                 "external_side_effect": (
@@ -168,7 +196,10 @@ class WorkspaceGitToolkit(BaseToolkit, AbstractToolkit):
                 "requires_user_confirmation": preview.requires_confirmation,
                 "display_argv": list(preview.display_argv),
                 "action_digest": preview.action_digest,
-                "execution": "open Desktop Version history to review",
+                "execution": (
+                    "request HumanInteraction when confirmation is required; "
+                    "then open Desktop Version history to review"
+                ),
             },
             sort_keys=True,
         )
@@ -176,7 +207,9 @@ class WorkspaceGitToolkit(BaseToolkit, AbstractToolkit):
     def _scope(self):
         context = run_context_for_task(self.api_task_id)
         if context is None:
-            raise RuntimeError("WorkspaceGitToolkit requires a durable RunContext")
+            raise RuntimeError(
+                "WorkspaceGitToolkit requires a durable RunContext"
+            )
         service = get_default_advanced_git_service()
         repository = service.journal.get_space_git_repository(
             space_id=context.space_id
