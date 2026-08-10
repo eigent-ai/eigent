@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import (
@@ -15,12 +17,14 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from pydantic import BaseModel, Field, ValidationError
 
 from app.auth import require_local_control_principal
 from app.component.environment import env
+from app.router_layer.hands_resolver import get_environment_hands
 from app.run_journal import (
     IdempotencyConflictError,
     OptimisticConcurrencyError,
@@ -31,6 +35,8 @@ from app.run_journal import (
 from app.service.mcp_config import read_mcp_config
 from app.utils.workspace_resolver import get_workspace_resolver
 from app.workspace_bundle import (
+    AgentPluginImporter,
+    AgentPluginImportError,
     HttpWorkspaceBundleCloudTransport,
     WorkspaceBundleAuthoringService,
     WorkspaceBundleCloudError,
@@ -63,6 +69,21 @@ class WorkspaceConfigPublishedBody(BaseModel):
     actor_id: str = Field(min_length=1, max_length=200)
     email: str = Field(min_length=1, max_length=512)
     user_id: str | int | None = None
+
+
+class AgentPluginInspectBody(BaseModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+    email: str = Field(min_length=1, max_length=512)
+    user_id: str | int | None = None
+
+
+class AgentPluginConvertBody(AgentPluginInspectBody):
+    target_space_id: str = Field(min_length=1, max_length=200)
+    expected_review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_target_draft_version: int = Field(ge=0)
+    client_request_id: str = Field(min_length=1, max_length=200)
+    updated_by: str = Field(min_length=1, max_length=200)
+
 
 def _assert_space_binding(
     *, space_id: str, email: str, user_id: str | int | None
@@ -189,7 +210,15 @@ def _configuration_error(exc: Exception) -> HTTPException:
             status_code=404,
             detail={"code": "workspace_configuration_base_not_found"},
         )
-    if isinstance(exc, (ValidationError, WorkspaceConfigError, ValueError)):
+    if isinstance(
+        exc,
+        (
+            AgentPluginImportError,
+            ValidationError,
+            WorkspaceConfigError,
+            ValueError,
+        ),
+    ):
         return HTTPException(
             status_code=422,
             detail={
@@ -210,10 +239,110 @@ def _authoring_cloud(authorization: str) -> HttpWorkspaceBundleCloudTransport:
     return HttpWorkspaceBundleCloudTransport(
         server_url=server_url,
         authorization=authorization,
-        desktop_instance_id=os.environ.get(
-            "EIGENT_DESKTOP_INSTANCE_ID", ""
-        ),
+        desktop_instance_id=os.environ.get("EIGENT_DESKTOP_INSTANCE_ID", ""),
     )
+
+
+def _authorized_agent_plugin_source(request: Request, value: str) -> Path:
+    if not Path(value).expanduser().is_absolute():
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "agent_plugin_source_invalid"},
+        )
+    hands = getattr(request.state, "hands", None) or get_environment_hands()
+    can_access = getattr(hands, "can_access_filesystem", None)
+    if can_access is None or not can_access(value):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "agent_plugin_source_not_allowed"},
+        )
+    try:
+        source = Path(value).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "agent_plugin_source_invalid"},
+        ) from exc
+    if not source.is_dir() and not (
+        source.is_file() and source.suffix.lower() == ".zip"
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "agent_plugin_source_invalid"},
+        )
+    return source
+
+
+def _agent_plugin_conversion_payload(
+    draft: WorkspaceConfigDraftRecord,
+    target_space_id: str,
+) -> dict[str, Any]:
+    metadata = draft.document["metadata"]
+    return {
+        "bundle_id": metadata["id"],
+        "revision_id": str(metadata["revision"]),
+        "target_space_id": target_space_id,
+        "status": "draft",
+    }
+
+
+@router.post("/workspace-bundles/agent-plugins:inspect")
+async def inspect_agent_plugin(
+    body: AgentPluginInspectBody,
+    request: Request,
+) -> dict[str, Any]:
+    try:
+        source = _authorized_agent_plugin_source(request, body.source_path)
+        result = await asyncio.to_thread(
+            AgentPluginImporter().import_plugin,
+            source,
+        )
+        return result.review
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+
+
+@router.post("/workspace-bundles/agent-plugins:convert")
+async def convert_agent_plugin(
+    body: AgentPluginConvertBody,
+    request: Request,
+) -> dict[str, Any]:
+    _assert_space_binding(
+        space_id=body.target_space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    journal = get_default_run_journal()
+    try:
+        replay = journal.replay_workspace_config_draft_import(
+            client_request_id=body.client_request_id,
+            space_id=body.target_space_id,
+            expected_target_draft_version=body.expected_target_draft_version,
+            expected_review_digest=body.expected_review_digest,
+            updated_by=body.updated_by,
+        )
+        if replay is not None:
+            return _agent_plugin_conversion_payload(
+                replay,
+                body.target_space_id,
+            )
+        source = _authorized_agent_plugin_source(request, body.source_path)
+        conversion = await asyncio.to_thread(
+            AgentPluginImporter().convert_to_draft,
+            source,
+            journal=journal,
+            space_id=body.target_space_id,
+            expected_target_draft_version=body.expected_target_draft_version,
+            expected_review_digest=body.expected_review_digest,
+            client_request_id=body.client_request_id,
+            updated_by=body.updated_by,
+        )
+        return _agent_plugin_conversion_payload(
+            conversion.draft,
+            body.target_space_id,
+        )
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
 
 
 @router.get("/spaces/{space_id}/workspace-configuration")

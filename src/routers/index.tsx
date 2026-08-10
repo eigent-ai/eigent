@@ -32,6 +32,7 @@ const WorkspaceConfiguration = lazy(
 const WorkspaceBundleInstall = lazy(
   () => import('@/pages/WorkspaceBundleInstall')
 );
+const AgentPluginImport = lazy(() => import('@/pages/AgentPluginImport'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
@@ -177,6 +178,12 @@ const AppRoutes = () => (
         <Route
           path="/workspace-bundles/install"
           element={<WorkspaceBundleInstall />}
+        />
+        <Route
+          path="/agent-plugins/import"
+          element={
+            isDesktop() ? <AgentPluginImport /> : <Navigate to="/" replace />
+          }
         />
         <Route
           path="/setting"

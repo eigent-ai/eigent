@@ -138,6 +138,21 @@ class WorkspaceConfigDraftRecord:
 
 
 @dataclass(frozen=True)
+class WorkspaceConfigDraftAssetRecord:
+    space_id: str
+    draft_version: int
+    document_digest: str
+    logical_path: str
+    content_digest: str
+    media_type: str
+    size_bytes: int
+    executable: bool
+    provenance: str
+    content: bytes
+    created_at: float
+
+
+@dataclass(frozen=True)
 class WorkspaceBundleInstallProposalRecord:
     proposal_id: str
     request_id: str

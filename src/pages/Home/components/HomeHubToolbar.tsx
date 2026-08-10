@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isDesktop } from '@/client/platform';
 import SearchInput from '@/components/Dashboard/SearchInput';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,6 +44,7 @@ import {
   List,
   PackagePlus,
   PlusCircle,
+  Puzzle,
 } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -255,6 +257,20 @@ export default function HomeHubToolbar({
           <PackagePlus className="h-4 w-4 shrink-0" aria-hidden />
           Import Workforce Bundle
         </Button>
+
+        {isDesktop() ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            buttonContent="text"
+            buttonRadius="full"
+            onClick={() => navigate('/agent-plugins/import')}
+          >
+            <Puzzle className="h-4 w-4 shrink-0" aria-hidden />
+            Import Agent Plugin
+          </Button>
+        ) : null}
 
         <DropdownMenu>
           <TooltipSimple content={sortLabel} variant="instant">
