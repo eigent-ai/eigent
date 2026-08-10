@@ -9,8 +9,8 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
 from pathlib import PurePath
+from typing import Any, Protocol
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -66,6 +66,13 @@ def _cloud_event_payload(
             action["target_resources"] = [
                 _cloud_resource_label(item) for item in action_resources
             ]
+    matcher = prompt.get("rule_matcher")
+    if isinstance(matcher, dict) and isinstance(
+        matcher.get("resource_pattern"), str
+    ):
+        matcher["resource_pattern"] = _cloud_resource_label(
+            matcher["resource_pattern"]
+        )
     return projected
 
 

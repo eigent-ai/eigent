@@ -93,6 +93,19 @@ export function HumanInteractionCard({
             </div>
           ) : null}
 
+          {interaction.rule_matcher?.resource_pattern ? (
+            <div className="rounded-xl border border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
+              <div className="font-medium">Persistent approval matcher</div>
+              <div
+                className="mt-1 font-mono"
+                title={interaction.rule_matcher.resource_pattern}
+              >
+                {interaction.rule_matcher.action_pattern}{' '}
+                {interaction.rule_matcher.resource_pattern}
+              </div>
+            </div>
+          ) : null}
+
           {interaction.interaction_type === 'form' ? (
             <div className="space-y-2">
               {(interaction.fields || []).map((field) => (

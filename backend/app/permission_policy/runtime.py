@@ -43,11 +43,14 @@ async def authorize_tool_checkpoint(
         tool_name=checkpoint.tool_name,
         toolkit_name=toolkit_name,
         safety_class=checkpoint.safety_class,
-        arguments=checkpoint.request,
+        # Policy and the action digest bind to the complete trusted call. The
+        # checkpoint request is only a bounded persistence/display record.
+        arguments=arguments,
         run_id=checkpoint.run_id,
         attempt_id=checkpoint.attempt_id,
         environment_spec_digest=environment_digest,
         idempotency_key=checkpoint.idempotency_key,
+        workspace_root=run_context.working_directory,
     )
     result = PermissionPolicyService(store).evaluate_and_request_approval(
         descriptor,
@@ -99,6 +102,7 @@ async def authorize_tool_checkpoint(
                 "allowed_scopes": result.approval.prompt.get(
                     "allowed_scopes", ["once"]
                 ),
+                "rule_matcher": result.approval.prompt.get("rule_matcher"),
                 "operation": descriptor.operation,
                 "target_resources": list(descriptor.target_resources),
             },

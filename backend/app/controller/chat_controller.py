@@ -1422,6 +1422,30 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             ),
             None,
         )
+        pending_approval = next(
+            (
+                item
+                for item in reversed(pending_interactions)
+                if item.interaction_type == "approval"
+                and item.request.get("agent") == data.agent
+                and (
+                    data.interaction_id is None
+                    or item.interaction_id == data.interaction_id
+                )
+            ),
+            None,
+        )
+        if interaction is None and pending_approval is not None:
+            raise UserException(
+                code.error,
+                "This task is waiting for an approval decision. Use the "
+                "approval controls instead of sending a human reply.",
+            )
+        if data.interaction_id is not None and interaction is None:
+            raise UserException(
+                code.error,
+                "The requested human interaction is no longer pending.",
+            )
         if interaction is not None:
             reply_decision = {"agent": data.agent, "reply": data.reply}
             request_id = data.decision_request_id or (

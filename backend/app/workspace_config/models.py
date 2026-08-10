@@ -21,6 +21,7 @@ import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Literal
 
@@ -132,6 +133,27 @@ _CLOUD_FORBIDDEN_FIELD_NAMES = {
     "worktree_root",
 }
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
+_INLINE_ABSOLUTE_PATH = re.compile(
+    r"(?:^|[\s\"'`=(])(?:~/|/(?:Users|home|private|var|tmp|etc|opt)/|"
+    r"[A-Za-z]:[\\/]|\\\\[A-Za-z0-9_.-]+[\\/])"
+)
+_SECRET_VALUE_PATTERNS = (
+    re.compile(r"\bsk-(?:live-|test-)?[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
+    re.compile(
+        r"-----BEGIN (?:ENCRYPTED |OPENSSH |RSA |DSA |EC )?PRIVATE KEY-----"
+    ),
+)
+_FORBIDDEN_ASSET_FILENAMES = {
+    ".env",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "id_rsa",
+}
+_FORBIDDEN_ASSET_SUFFIXES = {".key", ".p12", ".pfx"}
 
 
 def _normalized_field_name(value: str) -> str:
@@ -149,14 +171,24 @@ def _is_slot_reference(value: Any) -> bool:
     )
 
 
+def _is_secret_field_name(value: str) -> bool:
+    normalized = _normalized_field_name(value)
+    return normalized in _SECRET_FIELD_NAMES or (
+        normalized.endswith("s") and normalized[:-1] in _SECRET_FIELD_NAMES
+    )
+
+
+def _contains_secret_value(value: str) -> bool:
+    return any(pattern.search(value) for pattern in _SECRET_VALUE_PATTERNS)
+
+
 def assert_manifest_secret_free(value: Any, path: str = "$") -> None:
     """Reject secret values while allowing opaque slot references."""
 
     if isinstance(value, dict):
         for key, child in value.items():
             field_path = f"{path}.{key}"
-            normalized = _normalized_field_name(str(key))
-            if normalized in _SECRET_FIELD_NAMES and not _is_slot_reference(
+            if _is_secret_field_name(str(key)) and not _is_slot_reference(
                 child
             ):
                 raise SecretValueInManifestError(
@@ -168,6 +200,38 @@ def assert_manifest_secret_free(value: Any, path: str = "$") -> None:
     if isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
             assert_manifest_secret_free(child, f"{path}[{index}]")
+        return
+    if (
+        isinstance(value, str)
+        and not _is_slot_reference(value)
+        and _contains_secret_value(value)
+    ):
+        raise SecretValueInManifestError(
+            f"secret-like value is forbidden in Bundle manifest: {path}"
+        )
+
+
+def assert_bundle_asset_safe(logical_path: str, content: bytes) -> None:
+    """Scan downloaded Bundle assets before local materialization."""
+
+    path = PurePosixPath(logical_path.removeprefix("bundle://"))
+    name = path.name.lower()
+    if (
+        name in _FORBIDDEN_ASSET_FILENAMES
+        or name.startswith(".env.")
+        or path.suffix.lower() in _FORBIDDEN_ASSET_SUFFIXES
+    ):
+        raise SecretValueInManifestError(
+            "secret-bearing file type is forbidden in Bundle assets"
+        )
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return
+    if _contains_secret_value(text):
+        raise SecretValueInManifestError(
+            f"secret-like value is forbidden in Bundle asset {logical_path!r}"
+        )
 
 
 def assert_cloud_projection_safe(value: Any, path: str = "$") -> None:
@@ -250,6 +314,12 @@ class ContextSource(_StrictFrozenModel):
                 )
         if self.kind == "inline" and self.content is None:
             raise ValueError("inline context requires content")
+        if (
+            self.kind == "inline"
+            and self.content is not None
+            and _INLINE_ABSOLUTE_PATH.search(self.content)
+        ):
+            raise ValueError("inline context cannot contain an absolute path")
         if self.kind == "connection_query" and self.query is None:
             raise ValueError("connection_query requires query")
         return self
@@ -406,6 +476,8 @@ class BundleSpec(_StrictFrozenModel):
         mcp_ids = {item.id for item in self.mcp_servers}
         if len(mcp_ids) != len(self.mcp_servers):
             raise ValueError("MCP server ids must be unique")
+        if "default" not in self.models:
+            raise ValueError("Bundle models must define the default profile")
         missing_profiles = {
             agent.model_profile
             for agent in self.agents

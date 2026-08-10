@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.run_policy import ToolSafetyClass
-from app.workspace_config import canonical_digest
+from app.workspace_config import canonical_digest, canonical_json
 
 
 class PermissionProfileName(StrEnum):
@@ -21,6 +21,12 @@ class PolicyEffect(StrEnum):
     ALLOW = "allow"
     PROMPT = "prompt"
     DENY = "deny"
+
+
+def literal_resource_pattern(value: str) -> str:
+    """Escape a code-owned resource so fnmatch treats it literally."""
+
+    return value.replace("[", "[[]").replace("*", "[*]").replace("?", "[?]")
 
 
 ACTION_OPERATIONS = frozenset(
@@ -88,6 +94,14 @@ class ActionDescriptor:
             raise ValueError("idempotent writes require an idempotency key")
 
     def canonical_payload(self) -> dict[str, Any]:
+        """Return the complete in-memory payload used for action binding.
+
+        This payload is deliberately not a persistence contract. Policy must
+        evaluate and bind the digest to the real arguments, even when a tool
+        call contains a large body. Call ``persistence_payload`` before
+        writing the descriptor into SQLite or a Cloud event.
+        """
+
         return {
             "action_id": self.action_id,
             "tool_name": self.tool_name,
@@ -102,6 +116,19 @@ class ActionDescriptor:
             "environment_spec_digest": self.environment_spec_digest,
             "risk_tags": sorted(self.risk_tags),
         }
+
+    def persistence_payload(self) -> dict[str, Any]:
+        """Return a bounded descriptor projection safe for durable display."""
+
+        payload = self.canonical_payload()
+        encoded = canonical_json(self.normalized_arguments).encode("utf-8")
+        if len(encoded) > 16 * 1024:
+            payload["normalized_arguments"] = {
+                "truncated": True,
+                "size_bytes": len(encoded),
+                "sha256": canonical_digest(self.normalized_arguments),
+            }
+        return payload
 
     @property
     def action_digest(self) -> str:

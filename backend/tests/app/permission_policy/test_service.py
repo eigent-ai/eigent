@@ -54,6 +54,123 @@ def test_policy_service_creates_digest_bound_approval_and_audit(tmp_path):
         assert len(audit) == 1
 
 
+def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        common = {
+            "safety_class": ToolSafetyClass.UNSAFE_WRITE,
+            "external_side_effect": True,
+            "run_id": "run-1",
+            "attempt_id": attempt.attempt_id,
+            "environment_spec_digest": "e" * 64,
+        }
+        file_result = PermissionPolicyService(
+            journal
+        ).evaluate_and_request_approval(
+            ActionDescriptor(
+                action_id="file-action",
+                tool_name="write_to_file",
+                operation="filesystem.write",
+                normalized_arguments={"filename": "out*.txt"},
+                target_resources=("out*.txt",),
+                **common,
+            ),
+            space_id="space-1",
+            prompt={"title": "write"},
+        )
+        journal.ensure_run(run_id="run-2", project_id="project-1")
+        shell_attempt = journal.create_run_attempt(
+            "run-2",
+            request_id="shell",
+            reason="initial_execution",
+            activate=True,
+            now=2,
+        )
+        terminal_result = PermissionPolicyService(
+            journal
+        ).evaluate_and_request_approval(
+            ActionDescriptor(
+                action_id="shell-action",
+                tool_name="shell_exec",
+                operation="terminal.execute",
+                normalized_arguments={"command": "ls"},
+                target_resources=("terminal-command:sha256:digest",),
+                safety_class=ToolSafetyClass.UNSAFE_WRITE,
+                external_side_effect=True,
+                run_id="run-2",
+                attempt_id=shell_attempt.attempt_id,
+                environment_spec_digest="e" * 64,
+            ),
+            space_id="space-1",
+            prompt={"title": "shell"},
+        )
+
+        assert file_result.approval is not None
+        assert file_result.approval.prompt["allowed_scopes"] == [
+            "once",
+            "run",
+            "space",
+        ]
+        assert file_result.approval.prompt["rule_matcher"] == {
+            "action_pattern": "filesystem.write",
+            "resource_pattern": "out[*].txt",
+            "matcher_kind": "literal_resource",
+        }
+        assert terminal_result.approval is not None
+        assert terminal_result.approval.prompt["allowed_scopes"] == ["once"]
+        assert terminal_result.approval.prompt["rule_matcher"] is None
+
+
+def test_large_approval_projection_is_bounded_but_digest_is_full(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        descriptor = ActionDescriptor(
+            action_id="large-action",
+            tool_name="write_to_file",
+            operation="filesystem.write",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            normalized_arguments={
+                "filename": "report.md",
+                "content": "x" * 20_000,
+            },
+            target_resources=("report.md",),
+            external_side_effect=True,
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+        )
+
+        result = PermissionPolicyService(
+            journal
+        ).evaluate_and_request_approval(
+            descriptor,
+            space_id="space-1",
+            prompt={"title": "write"},
+        )
+
+        assert result.approval is not None
+        persisted = result.approval.prompt["action"]["normalized_arguments"]
+        assert persisted["truncated"] is True
+        assert persisted["size_bytes"] > 16 * 1024
+        assert result.approval.action_digest == descriptor.action_digest
+
+
 def test_policy_service_uses_pinned_profile_revision(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")

@@ -48,7 +48,8 @@ class EnvironmentAdmissionTemplate:
     manifest: WorkforceBundleManifest
     provider_capability: ProviderModelCapability
     runtime_capability_manifest: dict[str, Any]
-    thinking_effort_requested: ThinkingEffort
+    # None means the user did not override the installed Bundle layer.
+    thinking_effort_requested: ThinkingEffort | None
 
 
 @dataclass(frozen=True)
@@ -87,17 +88,18 @@ class LegacyEnvironmentImporter:
             model_type=model_type,
             auth_source=auth_source,
         )
-        effort = (
+        explicit_effort = (
             normalize_thinking_effort(requested_effort)
             if requested_effort is not None
-            else capability.default_effort
+            else None
         )
+        manifest_effort = explicit_effort or capability.default_effort
         unique_mcp_names = tuple(sorted(set(mcp_server_names)))
         spec = {
             "models": {
                 "default": {
                     "modelRef": "provider://default",
-                    "thinkingEffort": effort.value,
+                    "thinkingEffort": manifest_effort.value,
                 }
             },
             "permissions": {
@@ -153,7 +155,7 @@ class LegacyEnvironmentImporter:
             manifest=manifest,
             provider_capability=capability,
             runtime_capability_manifest=runtime_capability_manifest,
-            thinking_effort_requested=effort,
+            thinking_effort_requested=explicit_effort,
         )
 
 
@@ -192,11 +194,9 @@ class EnvironmentAdmissionService:
             installed_manifest = WorkforceBundleManifest.model_validate(
                 revision.manifest
             )
-            proposal = (
-                self.journal.get_materialized_workspace_bundle_proposal(
-                    space_id=space_id,
-                    revision_id=installed.revision_id,
-                )
+            proposal = self.journal.get_materialized_workspace_bundle_proposal(
+                space_id=space_id,
+                revision_id=installed.revision_id,
             )
             if proposal is not None:
                 bindings = {
@@ -269,7 +269,9 @@ class EnvironmentAdmissionService:
             if current_profile is not None
             else None
         )
-        if not any(item.id == "workspace_root" for item in local_context_sources):
+        if not any(
+            item.id == "workspace_root" for item in local_context_sources
+        ):
             local_context_sources.insert(
                 0,
                 ResolvedContextSource(

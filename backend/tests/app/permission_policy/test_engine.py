@@ -7,6 +7,7 @@ from app.permission_policy import (
     PermissionProfileName,
     PolicyEffect,
     PolicyRule,
+    build_tool_action_descriptor,
 )
 from app.run_policy import ToolSafetyClass
 
@@ -147,3 +148,70 @@ def test_auto_reviewer_only_marks_bounded_local_writes_eligible():
 
     assert local_write.auto_review_eligible is True
     assert external_write.auto_review_eligible is False
+
+
+def test_auto_reviewer_uses_workspace_and_sensitive_path_risk_tags(tmp_path):
+    engine = PermissionPolicyEngine()
+    profile = PRESET_PROFILES[PermissionProfileName.AUTO_REVIEWER]
+
+    def descriptor(path: str) -> ActionDescriptor:
+        return build_tool_action_descriptor(
+            action_id=f"action-{path}",
+            tool_name="write_to_file",
+            toolkit_name="File Toolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"filename": path, "content": "value"},
+            run_id="run-1",
+            attempt_id="attempt-1",
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+            workspace_root=tmp_path,
+        )
+
+    local = engine.evaluate(descriptor("report.md"), profile=profile)
+    credential = engine.evaluate(
+        descriptor(str(tmp_path.parent / ".ssh" / "authorized_keys")),
+        profile=profile,
+    )
+    policy_db = engine.evaluate(
+        descriptor(str(tmp_path / ".eigent" / "policy.sqlite3")),
+        profile=profile,
+    )
+
+    assert local.auto_review_eligible is True
+    assert credential.effect is PolicyEffect.PROMPT
+    assert credential.auto_review_eligible is False
+    assert policy_db.effect is PolicyEffect.DENY
+    assert policy_db.reason == "platform_hard_deny_resource"
+
+
+def test_literal_resource_rule_does_not_expand_model_supplied_glob():
+    engine = PermissionPolicyEngine()
+    profile = PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL]
+    rule = PolicyRule(
+        rule_id="literal-star",
+        effect=PolicyEffect.ALLOW,
+        action_pattern="filesystem.write",
+        resource_pattern="out[*].txt",
+    )
+    literal = _action()
+    literal = ActionDescriptor(
+        **{
+            **literal.__dict__,
+            "target_resources": ("out*.txt",),
+        }
+    )
+    other = ActionDescriptor(
+        **{
+            **literal.__dict__,
+            "action_id": "action-2",
+            "target_resources": ("output.txt",),
+        }
+    )
+
+    assert engine.evaluate(literal, profile=profile, rules=(rule,)).effect is (
+        PolicyEffect.ALLOW
+    )
+    assert engine.evaluate(other, profile=profile, rules=(rule,)).effect is (
+        PolicyEffect.PROMPT
+    )

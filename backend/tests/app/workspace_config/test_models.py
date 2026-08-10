@@ -17,6 +17,8 @@ from app.workspace_config import (
     UnsafeCloudProjectionError,
     UnsupportedThinkingEffortError,
     WorktreeMaterialization,
+    assert_bundle_asset_safe,
+    assert_manifest_secret_free,
     canonical_digest,
     parse_workforce_manifest,
 )
@@ -115,6 +117,37 @@ def test_manifest_rejects_secret_value_even_inside_freeform_instructions():
                 "coordinator: bundle://instructions/coordinator.md",
                 "api_key: sk-must-not-enter-a-bundle",
             )
+        )
+
+
+def test_secret_scan_covers_plural_fields_values_and_script_assets():
+    with pytest.raises(SecretValueInManifestError, match="api_keys"):
+        assert_manifest_secret_free({"api_keys": ["not-a-slot"]})
+    with pytest.raises(SecretValueInManifestError, match="secret-like"):
+        assert_manifest_secret_free(
+            {"note": "use sk-live-abcdefghijklmnop for the demo"}
+        )
+    with pytest.raises(SecretValueInManifestError, match="asset"):
+        assert_bundle_asset_safe(
+            "skills/importer.py",
+            b"TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz123456'",
+        )
+
+
+def test_manifest_rejects_inline_absolute_path_and_missing_default_model():
+    with pytest.raises(ValidationError, match="absolute path"):
+        parse_workforce_manifest(
+            MANIFEST_YAML.replace(
+                "  context:\n",
+                "  context:\n"
+                "    - id: local_hint\n"
+                "      kind: inline\n"
+                "      content: 'Read /Users/alice/private/report.md'\n",
+            )
+        )
+    with pytest.raises(ValidationError, match="default profile"):
+        parse_workforce_manifest(
+            MANIFEST_YAML.replace("    default:\n", "    custom:\n")
         )
 
 

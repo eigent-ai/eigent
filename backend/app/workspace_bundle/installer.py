@@ -16,7 +16,9 @@ from app.run_journal import (
 from app.workspace_bundle.cloud import WorkspaceBundleCloudTransport
 from app.workspace_config import (
     ConfigPlacement,
+    SecretValueInManifestError,
     WorkforceBundleManifest,
+    assert_bundle_asset_safe,
     canonical_digest,
 )
 from app.workspace_git import ConfigurationRepositoryService
@@ -59,7 +61,9 @@ class WorkspaceBundleInstaller:
         config_placement: ConfigPlacement,
     ) -> WorkspaceBundleInstallProposalRecord:
         if self.cloud is None:
-            raise WorkspaceBundleInstallError("Bundle Cloud transport is unavailable")
+            raise WorkspaceBundleInstallError(
+                "Bundle Cloud transport is unavailable"
+            )
         revision = await self.cloud.get_revision(bundle_id, revision_id)
         if revision.get("status") != "published":
             raise WorkspaceBundleInstallError(
@@ -69,14 +73,25 @@ class WorkspaceBundleInstaller:
         if not isinstance(manifest_value, dict):
             raise WorkspaceBundleInstallError("Bundle manifest is missing")
         manifest = WorkforceBundleManifest.model_validate(manifest_value)
-        if manifest.metadata.id != bundle_id or manifest.revision_id != revision_id:
-            raise WorkspaceBundleInstallError("Bundle revision identity mismatch")
+        if (
+            manifest.metadata.id != bundle_id
+            or manifest.revision_id != revision_id
+        ):
+            raise WorkspaceBundleInstallError(
+                "Bundle revision identity mismatch"
+            )
         if revision.get("manifest_digest") != manifest.digest:
-            raise WorkspaceBundleInstallError("Bundle manifest digest mismatch")
+            raise WorkspaceBundleInstallError(
+                "Bundle manifest digest mismatch"
+            )
         assets = revision.get("assets", [])
         if not isinstance(assets, list):
-            raise WorkspaceBundleInstallError("Bundle asset manifest is invalid")
-        normalized_assets = [self._validate_asset_descriptor(item) for item in assets]
+            raise WorkspaceBundleInstallError(
+                "Bundle asset manifest is invalid"
+            )
+        normalized_assets = [
+            self._validate_asset_descriptor(item) for item in assets
+        ]
         logical_paths = [item["logical_path"] for item in normalized_assets]
         if len(set(logical_paths)) != len(logical_paths):
             raise WorkspaceBundleInstallError(
@@ -226,20 +241,22 @@ class WorkspaceBundleInstaller:
             return proposal
         if proposal.version != expected_version:
             raise InvalidRunTransitionError("Bundle install proposal changed")
-        bindings = self.journal.list_workspace_bundle_local_bindings(proposal_id)
+        bindings = self.journal.list_workspace_bundle_local_bindings(
+            proposal_id
+        )
         self._require_complete_bindings(proposal, bindings)
-        materializing = self.journal.transition_workspace_bundle_install_proposal(
-            proposal_id,
-            expected_version=expected_version,
-            state="materializing",
+        materializing = (
+            self.journal.transition_workspace_bundle_install_proposal(
+                proposal_id,
+                expected_version=expected_version,
+                state="materializing",
+            )
         )
         try:
             (
                 cloud_installation,
                 previous_revision_id,
-            ) = await self._ensure_cloud_installation(
-                proposal
-            )
+            ) = await self._ensure_cloud_installation(proposal)
             cloud_version = int(cloud_installation["version"])
             for binding in bindings:
                 if binding.binding_kind != "connector":
@@ -256,7 +273,9 @@ class WorkspaceBundleInstaller:
                 )
                 cloud_version = int(cloud_installation["version"])
             assets = await self._download_assets(proposal)
-            manifest = WorkforceBundleManifest.model_validate(proposal.manifest)
+            manifest = WorkforceBundleManifest.model_validate(
+                proposal.manifest
+            )
             lock_payload = {
                 "apiVersion": "eigent.ai/lock/v1alpha1",
                 "bundleRevision": proposal.revision_id,
@@ -304,7 +323,9 @@ class WorkspaceBundleInstaller:
                             {
                                 "space_id": proposal.space_id,
                                 "revision_id": proposal.revision_id,
-                                "projection_digest": projection["projection_digest"],
+                                "projection_digest": projection[
+                                    "projection_digest"
+                                ],
                             }
                         )[:40]
                     ),
@@ -390,19 +411,35 @@ class WorkspaceBundleInstaller:
         )
         return upgraded, installed_revision_id
 
-    def _proposal(self, proposal_id: str) -> WorkspaceBundleInstallProposalRecord:
-        proposal = self.journal.get_workspace_bundle_install_proposal(proposal_id)
+    def _proposal(
+        self, proposal_id: str
+    ) -> WorkspaceBundleInstallProposalRecord:
+        proposal = self.journal.get_workspace_bundle_install_proposal(
+            proposal_id
+        )
         if proposal is None:
-            raise WorkspaceBundleInstallError("Bundle install proposal not found")
+            raise WorkspaceBundleInstallError(
+                "Bundle install proposal not found"
+            )
         return proposal
 
     @staticmethod
     def _validate_asset_descriptor(value: Any) -> dict[str, Any]:
         if not isinstance(value, dict):
-            raise WorkspaceBundleInstallError("Bundle asset descriptor is invalid")
-        required = ("id", "logical_path", "content_digest", "media_type", "size_bytes")
+            raise WorkspaceBundleInstallError(
+                "Bundle asset descriptor is invalid"
+            )
+        required = (
+            "id",
+            "logical_path",
+            "content_digest",
+            "media_type",
+            "size_bytes",
+        )
         if any(value.get(key) is None for key in required):
-            raise WorkspaceBundleInstallError("Bundle asset descriptor is incomplete")
+            raise WorkspaceBundleInstallError(
+                "Bundle asset descriptor is incomplete"
+            )
         digest = str(value["content_digest"])
         size = int(value["size_bytes"])
         if len(digest) != 64 or set(digest) - set("0123456789abcdef"):
@@ -428,8 +465,7 @@ class WorkspaceBundleInstaller:
             for item in manifest.spec.skills
             if item.ref.startswith("bundle://")
         ] + [
-            f"mcp.server.start:{item.id}"
-            for item in manifest.spec.mcp_servers
+            f"mcp.server.start:{item.id}" for item in manifest.spec.mcp_servers
         ]
         return {
             "connector_slots": [
@@ -449,7 +485,9 @@ class WorkspaceBundleInstaller:
             ),
             "script_actions": sorted(script_actions),
             "permission_profile": manifest.spec.permissions.profile,
-            "git_policy": manifest.spec.git.model_dump(by_alias=True, mode="json"),
+            "git_policy": manifest.spec.git.model_dump(
+                by_alias=True, mode="json"
+            ),
             "asset_count": len(assets),
             "asset_bytes": sum(int(item["size_bytes"]) for item in assets),
             "automatic_grants": [],
@@ -489,7 +527,16 @@ class WorkspaceBundleInstaller:
             if len(content) != int(item["size_bytes"]):
                 raise WorkspaceBundleInstallError("Bundle asset size mismatch")
             if hashlib.sha256(content).hexdigest() != item["content_digest"]:
-                raise WorkspaceBundleInstallError("Bundle asset digest mismatch")
+                raise WorkspaceBundleInstallError(
+                    "Bundle asset digest mismatch"
+                )
+            try:
+                assert_bundle_asset_safe(item["logical_path"], content)
+            except SecretValueInManifestError as exc:
+                raise WorkspaceBundleInstallError(
+                    f"Bundle asset failed the local safety scan: "
+                    f"{item['logical_path']}"
+                ) from exc
             downloaded[item["logical_path"]] = content
         return downloaded
 

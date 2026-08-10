@@ -23,6 +23,11 @@ export interface HumanInteractionPayload {
   operation?: string;
   safety_class?: string;
   target_resources?: string[];
+  rule_matcher?: {
+    action_pattern?: string | null;
+    resource_pattern?: string | null;
+    matcher_kind?: string | null;
+  } | null;
   allowed_scopes?: InteractionDecisionScope[];
   options?: Array<{
     option_id?: string;

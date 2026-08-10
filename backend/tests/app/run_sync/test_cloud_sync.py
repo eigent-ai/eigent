@@ -168,6 +168,10 @@ async def test_worker_redacts_approval_arguments_and_local_targets(journal):
                         },
                         "target_resources": ["/Users/test/private/report.md"],
                     },
+                    "rule_matcher": {
+                        "action_pattern": "filesystem.write",
+                        "resource_pattern": "/Users/test/private/report.md",
+                    },
                 },
             },
             created_at=1,
@@ -187,6 +191,10 @@ async def test_worker_redacts_approval_arguments_and_local_targets(journal):
         "[local]/report.md",
         "https://example.test",
     ]
+    assert (
+        cloud_payload["prompt"]["rule_matcher"]["resource_pattern"]
+        == "[local]/report.md"
+    )
     local_event = journal.list_events("run-approval")[0]
     assert "normalized_arguments" in local_event.payload["prompt"]["action"]
     await worker.close()

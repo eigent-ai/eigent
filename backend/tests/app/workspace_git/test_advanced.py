@@ -99,6 +99,7 @@ def test_advanced_git_grammar_classifies_known_commands(argv, operation):
         ("log", "--show-signature"),
         ("cat-file", "--filters", "HEAD:README.md"),
         ("rebase", "--exec=touch /tmp/pwn", "main"),
+        ("rebase", "--exe=touch /tmp/pwn", "main"),
         ("merge", "--strategy=evil", "topic"),
         ("commit", "-SDEADBEEF", "-m", "signed"),
         ("tag", "-s", "v1.0.0"),
@@ -260,7 +261,9 @@ def test_remote_timeout_becomes_outcome_unknown_and_never_replays(
         service.execute(**kwargs)
 
 
-def test_history_is_metadata_only_and_declares_conservative_retention(advanced_git):
+def test_history_is_metadata_only_and_declares_conservative_retention(
+    advanced_git,
+):
     service, _, backend, _, repository, root = advanced_git
     expected = backend.repo_state_token(root).digest
     argv = ("commit", "--allow-empty", "-m", "history subject")
@@ -285,7 +288,9 @@ def test_history_is_metadata_only_and_declares_conservative_retention(advanced_g
     assert history["commits"][0]["subject"] == "history subject"
     assert history["branches"][0]["ref"].startswith("refs/heads/")
     assert history["retention_policy"]["automatic_object_gc"] is False
-    assert history["retention_policy"]["automatic_archive_ref_deletion"] is False
+    assert (
+        history["retention_policy"]["automatic_archive_ref_deletion"] is False
+    )
     assert history["backup"]["configured"] is False
 
 

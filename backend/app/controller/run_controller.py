@@ -35,6 +35,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import require_local_control_principal
+from app.permission_policy import literal_resource_pattern
 from app.run_journal import (
     CommittedRunEvent,
     IdempotencyConflictError,
@@ -430,6 +431,30 @@ async def decide_run_interaction(
             target_resources = (
                 target_resources if isinstance(target_resources, list) else []
             )
+            allowed_scopes = interaction.request.get("allowed_scopes")
+            allowed_scopes = (
+                {str(item) for item in allowed_scopes}
+                if isinstance(allowed_scopes, list)
+                else {"once"}
+            )
+            if decision_scope not in allowed_scopes:
+                raise ValueError(
+                    f"approval scope {decision_scope!r} was not offered"
+                )
+            resource_pattern = (
+                literal_resource_pattern(str(target_resources[0]))
+                if decision_scope in {"run", "space"}
+                and len(target_resources) == 1
+                else None
+            )
+            if (
+                approval_decision == "approved"
+                and decision_scope in {"run", "space"}
+                and resource_pattern is None
+            ):
+                raise ValueError(
+                    "persistent approval requires one exact resource matcher"
+                )
             rule_space_id = interaction.request.get("space_id")
             details = {
                 key: value
@@ -464,9 +489,7 @@ async def decide_run_interaction(
                     if action.get("operation") is not None
                     else None
                 ),
-                rule_resource_pattern=(
-                    str(target_resources[0]) if target_resources else None
-                ),
+                rule_resource_pattern=(resource_pattern),
             )
             result = await asyncio.to_thread(
                 journal.get_human_interaction, interaction_id

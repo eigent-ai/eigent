@@ -10,6 +10,7 @@ from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.workspace_bundle import (
     WorkspaceBundleBindingsIncomplete,
     WorkspaceBundleInstaller,
+    WorkspaceBundleInstallError,
 )
 from app.workspace_config import (
     ConfigPlacement,
@@ -395,6 +396,27 @@ async def test_install_is_review_first_and_materializes_verified_assets(installe
         "workspace.lock",
         "workspace.yaml",
     }
+
+
+@pytest.mark.asyncio
+async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
+    service, journal, cloud, tmp_path = installer
+    cloud.contents["asset-skill"] = b"API_KEY = 'sk-abcdefghijklmnop'\n"
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="failed the local safety scan",
+    ):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+
+    config_root = tmp_path / "state/spaces/space-1/configuration"
+    assert not (config_root / "skills/research.py").exists()
 
 
 @pytest.mark.asyncio

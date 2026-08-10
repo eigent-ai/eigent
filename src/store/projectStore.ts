@@ -491,6 +491,9 @@ interface ProjectStore {
     effort: ThinkingEffortType
   ) => void;
   getProjectThinkingEffort: (projectId: string | null) => ThinkingEffortType;
+  getProjectThinkingEffortOverride: (
+    projectId: string | null
+  ) => ThinkingEffortType | undefined;
 }
 
 // Helper function to check if a project is empty/unused
@@ -2439,6 +2442,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         useSpaceStore.getState().getProjectMeta(projectId)?.metadata
           ?.thinkingEffort
     );
+  },
+
+  getProjectThinkingEffortOverride: (projectId: string | null) => {
+    if (!projectId) return undefined;
+    const persisted =
+      get().projects[projectId]?.metadata?.thinkingEffort ??
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort;
+    return persisted === undefined
+      ? undefined
+      : normalizeThinkingEffort(persisted);
   },
 
   isEmptyProject: (project: Project) => {
