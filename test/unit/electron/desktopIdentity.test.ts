@@ -46,4 +46,21 @@ describe('main-process desktop identity', () => {
 
     expect(identity).toMatch(/^desk_[A-Za-z0-9_-]{16,128}$/);
   });
+
+  it('atomically repairs a corrupt identity file instead of dead-ending', () => {
+    const directory = temporaryDirectory();
+    const identityPath = path.join(directory, 'desktop-instance-id');
+    fs.writeFileSync(identityPath, 'not-a-valid-id', 'utf-8');
+
+    const repaired = getOrCreateDesktopInstanceId(directory, null);
+
+    expect(repaired).toMatch(/^desk_[A-Za-z0-9_-]{16,128}$/);
+    // The freshly minted id is persisted (no leftover temp files), so the
+    // next launch reuses it rather than re-minting.
+    expect(fs.readFileSync(identityPath, 'utf-8')).toBe(repaired);
+    expect(
+      fs.readdirSync(directory).filter((name) => name.endsWith('.tmp'))
+    ).toHaveLength(0);
+    expect(getOrCreateDesktopInstanceId(directory, null)).toBe(repaired);
+  });
 });

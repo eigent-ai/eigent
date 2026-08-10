@@ -64,6 +64,7 @@ _alive_wrappers: "weakref.WeakValueDictionary[str, object]" = (
 def _is_session_alive(session_id: str) -> bool:
     return session_id in _alive_wrappers
 
+
 _DEFAULT_MAX_SESSION_TABS = 4
 _DEFAULT_MAX_MANAGED_TABS_PER_ENDPOINT = 8
 

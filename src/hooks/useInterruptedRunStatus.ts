@@ -97,6 +97,10 @@ export function useInterruptedRunStatus(projectId: string | null) {
     projectId: string;
     promise: Promise<void>;
   } | null>(null);
+  const trailingRef = useRef<{
+    projectId: string;
+    promise: Promise<void>;
+  } | null>(null);
   const storedRun = projectId ? (runsByProject[projectId] ?? null) : null;
   const run = actionableInterruptedRun(storedRun);
 
@@ -117,42 +121,64 @@ export function useInterruptedRunStatus(projectId: string | null) {
     if (!projectId) {
       return Promise.resolve();
     }
+    const pid = projectId;
+
+    const start = (): Promise<void> => {
+      const promise = (async () => {
+        try {
+          const result = await fetchGet('/runs', {
+            project_id: pid,
+            status: 'interrupted',
+            limit: 1,
+          });
+          const next = Array.isArray(result?.runs) ? result.runs[0] : null;
+          // Store by Project so a late response can never paint another
+          // Project's banner or overwrite its newer result.
+          setInterruptedRunState((current) => {
+            const currentByProject = normalizeInterruptedRunState(current);
+            const nextRun = next || null;
+            return sameRunSummary(currentByProject[pid] ?? null, nextRun)
+              ? currentByProject
+              : { ...currentByProject, [pid]: nextRun };
+          });
+        } catch (error: any) {
+          // Brain can still be booting while the Project shell is visible. Keep
+          // the last canonical state until backend-ready/focus retries it.
+          if (error?.name !== 'AbortError') {
+            console.debug('[RunControl] Run status refresh deferred', error);
+          }
+        }
+      })().finally(() => {
+        if (inFlightRef.current?.promise === promise) {
+          inFlightRef.current = null;
+        }
+      });
+
+      inFlightRef.current = { projectId: pid, promise };
+      return promise;
+    };
 
     const existing = inFlightRef.current;
-    if (existing?.projectId === projectId) return existing.promise;
-
-    const promise = (async () => {
-      try {
-        const result = await fetchGet('/runs', {
-          project_id: projectId,
-          status: 'interrupted',
-          limit: 1,
+    if (existing?.projectId === pid) {
+      // A refresh arrived while one is already in flight. chatStore
+      // deliberately double-notifies (t=0 and t=300ms) to close the
+      // interrupted-commit race; returning the in-flight promise would drop
+      // that update and the Resume banner could miss a just-committed
+      // interruption until refocus. Schedule exactly one trailing fetch after
+      // the in-flight settles and coalesce extra requests into it.
+      if (trailingRef.current?.projectId !== pid) {
+        const trailing = existing.promise.then(() => start());
+        trailingRef.current = { projectId: pid, promise: trailing };
+        void trailing.finally(() => {
+          if (trailingRef.current?.promise === trailing) {
+            trailingRef.current = null;
+          }
         });
-        const next = Array.isArray(result?.runs) ? result.runs[0] : null;
-        // Store by Project so a late response can never paint another
-        // Project's banner or overwrite its newer result.
-        setInterruptedRunState((current) => {
-          const currentByProject = normalizeInterruptedRunState(current);
-          const nextRun = next || null;
-          return sameRunSummary(currentByProject[projectId] ?? null, nextRun)
-            ? currentByProject
-            : { ...currentByProject, [projectId]: nextRun };
-        });
-      } catch (error: any) {
-        // Brain can still be booting while the Project shell is visible. Keep
-        // the last canonical state until backend-ready/focus retries it.
-        if (error?.name !== 'AbortError') {
-          console.debug('[RunControl] Run status refresh deferred', error);
-        }
       }
-    })().finally(() => {
-      if (inFlightRef.current?.promise === promise) {
-        inFlightRef.current = null;
-      }
-    });
+      return trailingRef.current.promise;
+    }
 
-    inFlightRef.current = { projectId, promise };
-    return promise;
+    return start();
   }, [projectId]);
 
   useEffect(() => {
@@ -184,5 +210,8 @@ export function useInterruptedRunStatus(projectId: string | null) {
     };
   }, [host?.ipcRenderer, projectId, refresh]);
 
-  return { run, setRun, refresh };
+  // `run` is the actionable (Resume/Cancel) projection and is null for
+  // cloud-restored history. `displayRun` keeps the raw stored Run so ChatBox
+  // can render the read-only cloud-restored banner without offering Resume.
+  return { run, displayRun: storedRun, setRun, refresh };
 }

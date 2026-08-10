@@ -199,6 +199,46 @@ function removePendingCommandResult(commandId: string) {
   );
 }
 
+async function persistCommandResult(
+  command: RemoteCommand,
+  body: CommandResultBody
+): Promise<void> {
+  const queued = queuePendingCommandResult({ command, body });
+  await fetchPost(
+    `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
+    queued.body,
+    brainHeaders(queued.command)
+  );
+  removePendingCommandResult(command.id);
+}
+
+async function flushPendingCommandResults(): Promise<void> {
+  for (const item of readPendingCommandResults()) {
+    try {
+      await persistCommandResult(item.command, item.body);
+    } catch (error) {
+      const status = (error as any)?.status;
+      // 404: the inbox row is gone (server already reconciled/expired it).
+      // 409: a durable conflict the server will never accept a result for.
+      // Neither becomes deliverable by retrying, so drop the entry once
+      // instead of re-POSTing it on every reconnect until the 7-day TTL.
+      if (status === 404 || status === 409) {
+        removePendingCommandResult(item.command.id);
+        console.warn(
+          '[RemoteControlBridge] Dropping unresolvable pending command result',
+          { command_id: item.command.id, status }
+        );
+        continue;
+      }
+      // Network errors, 5xx and 503 stay queued for the next reconnect.
+      console.warn(
+        '[RemoteControlBridge] Pending command result remains queued',
+        { command_id: item.command.id, error }
+      );
+    }
+  }
+}
+
 export function ackFromDurableExecution(
   commandId: string,
   event?: DurableCommandEvent | null
@@ -982,6 +1022,7 @@ export const __remoteControlBridgeTestHooks = {
   ackFromPendingCommandResult,
   ensureRemoteProjectLoaded,
   executeRemoteCommand,
+  flushPendingCommandResults,
   pendingCommandResult,
   queuePendingCommandResult,
   removePendingCommandResult,
@@ -1068,32 +1109,6 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       }
 
       return executeRemoteCommand(command, token);
-    };
-
-    const persistCommandResult = async (
-      command: RemoteCommand,
-      body: CommandResultBody
-    ) => {
-      const queued = queuePendingCommandResult({ command, body });
-      await fetchPost(
-        `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
-        queued.body,
-        brainHeaders(queued.command)
-      );
-      removePendingCommandResult(command.id);
-    };
-
-    const flushPendingCommandResults = async () => {
-      for (const item of readPendingCommandResults()) {
-        try {
-          await persistCommandResult(item.command, item.body);
-        } catch (error) {
-          console.warn(
-            '[RemoteControlBridge] Pending command result remains queued',
-            { command_id: item.command.id, error }
-          );
-        }
-      }
     };
 
     const persistCommandAndExecute = async (

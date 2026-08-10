@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { INLINE_ASSET_TOTAL_BUDGET_BYTES } from '@/shared/filePreviewContract';
+
 const IMAGE_EXTENSIONS = [
   'png',
   'jpg',
@@ -23,6 +25,44 @@ const IMAGE_EXTENSIONS = [
   'ico',
   'avif',
 ];
+
+/**
+ * Shared, mutable running total for assets inlined as data URLs across the
+ * several passes that build a single HTML srcDoc. Callers create one budget and
+ * thread it through every inlining pass so the aggregate (not just per-file)
+ * size stays bounded; `truncated` flips to true once an asset is skipped so the
+ * caller can surface a notice.
+ */
+export interface InlineAssetBudget {
+  remaining: number;
+  truncated: boolean;
+}
+
+export function createInlineAssetBudget(
+  totalBudget: number = INLINE_ASSET_TOTAL_BUDGET_BYTES
+): InlineAssetBudget {
+  return { remaining: totalBudget, truncated: false };
+}
+
+/**
+ * Charge a would-be data URL against the shared budget. Returns true when the
+ * asset fits (and deducts its cost); returns false and marks the budget
+ * truncated when it does not, so the caller leaves the original reference in
+ * place instead of inlining. A null budget always admits the asset.
+ */
+function chargeInlineAsset(
+  budget: InlineAssetBudget | undefined,
+  dataUrl: string
+): boolean {
+  if (!budget) return true;
+  if (budget.remaining <= 0 || dataUrl.length > budget.remaining) {
+    budget.truncated = true;
+    budget.remaining = 0;
+    return false;
+  }
+  budget.remaining -= dataUrl.length;
+  return true;
+}
 
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
@@ -145,7 +185,8 @@ export async function inlineLocalProjectImagePaths(
   html: string,
   htmlDir: string,
   projectFiles: LocalProjectImageFile[],
-  readFileAsDataUrl: (path: string) => Promise<string>
+  readFileAsDataUrl: (path: string) => Promise<string>,
+  budget?: InlineAssetBudget
 ): Promise<string> {
   let result = html;
 
@@ -162,6 +203,9 @@ export async function inlineLocalProjectImagePaths(
 
     try {
       const dataUrl = await readFileAsDataUrl(file.path);
+      // Aggregate budget: once the running total is spent, leave the original
+      // reference in place rather than growing the srcDoc further.
+      if (!chargeInlineAsset(budget, dataUrl)) continue;
       const quotedPathPattern = new RegExp(
         `(["'])${escapeRegExp(relativePath)}\\1`,
         'g'
@@ -184,7 +228,8 @@ export async function inlineLocalProjectImagePaths(
 export async function inlineLocalHtmlImgElements(
   html: string,
   htmlDir: string,
-  readFileAsDataUrl: (path: string) => Promise<string>
+  readFileAsDataUrl: (path: string) => Promise<string>,
+  budget?: InlineAssetBudget
 ): Promise<string> {
   if (typeof DOMParser === 'undefined') {
     return html;
@@ -194,24 +239,26 @@ export async function inlineLocalHtmlImgElements(
   const doc = parser.parseFromString(html, 'text/html');
   const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
 
-  await Promise.all(
-    Array.from(doc.querySelectorAll('img[src]')).map(async (image) => {
-      const src = image.getAttribute('src');
-      if (!src || !isStaticImageSrc(src) || isSpecialImageSrc(src)) {
-        return;
-      }
+  // Sequential (not Promise.all) so the shared budget is charged
+  // deterministically rather than raced across parallel reads.
+  for (const image of Array.from(doc.querySelectorAll('img[src]'))) {
+    const src = image.getAttribute('src');
+    if (!src || !isStaticImageSrc(src) || isSpecialImageSrc(src)) {
+      continue;
+    }
 
-      try {
-        const dataUrl = await readFileAsDataUrl(joinPath(htmlDir, src));
-        image.setAttribute('src', dataUrl);
-      } catch (error) {
-        console.error(
-          `[HtmlRenderer] Failed to load image: ${joinPath(htmlDir, src)}`,
-          error
-        );
-      }
-    })
-  );
+    try {
+      const dataUrl = await readFileAsDataUrl(joinPath(htmlDir, src));
+      // Aggregate budget: leave the original src untouched once spent.
+      if (!chargeInlineAsset(budget, dataUrl)) continue;
+      image.setAttribute('src', dataUrl);
+    } catch (error) {
+      console.error(
+        `[HtmlRenderer] Failed to load image: ${joinPath(htmlDir, src)}`,
+        error
+      );
+    }
+  }
 
   const serialized = doc.documentElement?.outerHTML || html;
   return `${doctype}${serialized}`;

@@ -68,6 +68,7 @@ import {
   injectFontStyles,
 } from '@/lib/htmlFontStyles';
 import {
+  createInlineAssetBudget,
   inlineLocalHtmlImgElements,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
@@ -78,6 +79,7 @@ import {
 } from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
+  FILE_PREVIEW_LIMITS,
   formatFileSize,
   type FilePreviewPayload,
 } from '@/shared/filePreviewContract';
@@ -918,6 +920,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
@@ -1008,6 +1011,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     const controller = new AbortController();
     previewRequestRef.current = controller;
     setSelectedFile(file);
+    setPreviewError(null);
     setLoading(true);
     void loadFilePreview(file, {
       ipcRenderer,
@@ -1022,6 +1026,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           console.error('Failed to load file preview:', error);
+          setPreviewError(
+            error instanceof Error && error.message
+              ? error.message
+              : 'The file could not be read. Check that it still exists and try again.'
+          );
         }
       })
       .finally(() => {
@@ -1713,6 +1722,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           breadcrumbSegments={fileBreadcrumbSegments}
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          previewError={previewError}
+          onRetryPreview={() => {
+            if (selectedFile) selectedFileChange(selectedFile, isShowSourceCode);
+          }}
           onRevealFile={() => {
             if (!selectedFile) return;
             // if file is remote, don't call reveal-in-folder
@@ -2565,12 +2578,19 @@ function HtmlRenderer({
   projectFiles: FileInfo[];
 }) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  // Notice shown when a sibling asset (image/JS/CSS) could not be fully inlined
+  // — either an individual asset exceeded its limit or the aggregate srcDoc
+  // budget was reached. Rendered above the iframe instead of failing silently.
+  const [assetNotice, setAssetNotice] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
 
   useEffect(() => {
+    setAssetNotice(null);
+    const truncatedAssets: string[] = [];
+    const budget = createInlineAssetBudget();
     const processHtml = async () => {
       if (!selectedFile.content) {
         setProcessedHtml('');
@@ -2638,16 +2658,33 @@ function HtmlRenderer({
         processedHtmlContent = await inlineLocalHtmlImgElements(
           processedHtmlContent,
           htmlDir,
-          electronAPI.readFileAsDataUrl
+          electronAPI.readFileAsDataUrl,
+          budget
         );
       }
 
       // Load and inject CSS files, replacing external link tags
       for (const cssFile of cssFiles) {
         try {
-          const cssContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'css', cssFile.path, false)
+          const cssResult = ipcRenderer
+            ? ((await ipcRenderer.invoke(
+                'preview-text-file',
+                cssFile.path,
+                FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+              )) as {
+                content: string;
+                bytesRead: number;
+                totalBytes: number | null;
+              })
             : null;
+          const cssContent = cssResult?.content || null;
+          if (
+            cssResult &&
+            cssResult.totalBytes !== null &&
+            cssResult.bytesRead < cssResult.totalBytes
+          ) {
+            truncatedAssets.push(cssFile.name);
+          }
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
 
@@ -2682,9 +2719,25 @@ function HtmlRenderer({
       // Load JS files content and replace external script tags
       for (const jsFile of jsFiles) {
         try {
-          const jsContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'js', jsFile.path, false)
+          const jsResult = ipcRenderer
+            ? ((await ipcRenderer.invoke(
+                'preview-text-file',
+                jsFile.path,
+                FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+              )) as {
+                content: string;
+                bytesRead: number;
+                totalBytes: number | null;
+              })
             : null;
+          const jsContent = jsResult?.content || null;
+          if (
+            jsResult &&
+            jsResult.totalBytes !== null &&
+            jsResult.bytesRead < jsResult.totalBytes
+          ) {
+            truncatedAssets.push(jsFile.name);
+          }
           if (jsContent) {
             processedHtmlContent = inlineExternalScriptByName(
               processedHtmlContent,
@@ -2702,7 +2755,8 @@ function HtmlRenderer({
           processedHtmlContent,
           htmlDir,
           projectFiles,
-          electronAPI.readFileAsDataUrl
+          electronAPI.readFileAsDataUrl,
+          budget
         );
       }
 
@@ -2730,14 +2784,26 @@ function HtmlRenderer({
       );
     };
 
-    processHtml().catch((error) => {
-      console.error('[HtmlRenderer] Failed to process HTML:', error);
-      setProcessedHtml(
-        injectPreviewContentSecurityPolicy(
-          injectFontStyles(selectedFile.content || '')
-        )
-      );
-    });
+    processHtml()
+      .then(() => {
+        if (truncatedAssets.length > 0) {
+          setAssetNotice(
+            `Some assets were too large to embed and were skipped: ${truncatedAssets.join(', ')}. The preview may render incompletely.`
+          );
+        } else if (budget.truncated) {
+          setAssetNotice(
+            'Some embedded images were skipped to keep the preview within its size budget. The preview may render incompletely.'
+          );
+        }
+      })
+      .catch((error) => {
+        console.error('[HtmlRenderer] Failed to process HTML:', error);
+        setProcessedHtml(
+          injectPreviewContentSecurityPolicy(
+            injectFontStyles(selectedFile.content || '')
+          )
+        );
+      });
   }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
 
   // Zoom state and controls
@@ -2766,6 +2832,11 @@ function HtmlRenderer({
 
   return (
     <div className="relative flex h-full w-full flex-col">
+      {assetNotice ? (
+        <div className="mx-2 mb-1 mt-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+          {assetNotice}
+        </div>
+      ) : null}
       {/* Floating notch-style zoom controls */}
       <ZoomControls
         zoom={zoom}
@@ -2835,6 +2906,10 @@ export interface FileViewerPanelProps {
   headerActionsExtra?: React.ReactNode;
   /** Replaces the default placeholder shown when no file is selected. */
   emptyState?: React.ReactNode;
+  /** Human-readable reason the preview failed to load, or null when it did not. */
+  previewError?: string | null;
+  /** Re-run the preview load for the current file (wired to the error card). */
+  onRetryPreview?: () => void;
 }
 
 function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
@@ -2865,7 +2940,9 @@ function BlockedPreviewPlaceholder({
       ? 'This file exceeds the safe in-app preview limit.'
       : file.preview.reason === 'metadata-unavailable'
         ? 'Eigent could not verify the file size, so automatic preview was blocked.'
-        : 'This file type cannot be safely previewed in this environment.';
+        : file.preview.reason === 'binary'
+          ? 'This looks like a binary file and cannot be previewed as text.'
+          : 'This file type cannot be safely previewed in this environment.';
   return (
     <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
       <div className="flex max-w-md flex-col items-center gap-3 text-center">
@@ -2899,6 +2976,38 @@ function BlockedPreviewPlaceholder({
   );
 }
 
+// Shown when the loader threw (read failure, IPC error) rather than returning a
+// file. Without this the pane stayed empty and the failure only reached the
+// console. Reuses BlockedPreviewPlaceholder's layout/styling and adds a retry.
+function PreviewErrorCard({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <AlertTriangle className="size-10 text-ds-icon-neutral-muted-default" />
+        <div>
+          <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+            Preview failed to load
+          </p>
+          <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            {message}
+          </p>
+        </div>
+        {onRetry ? (
+          <Button type="button" variant="secondary" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Presentational file viewer: breadcrumb header + type-aware content body.
  * Shared by the Inbox/Folder tab and the inline project-page preview so both
@@ -2920,6 +3029,8 @@ export function FileViewerPanel({
   onToggleSourceCode,
   headerActionsExtra,
   emptyState,
+  previewError,
+  onRetryPreview,
 }: FileViewerPanelProps) {
   const { t } = useTranslation();
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
@@ -3026,7 +3137,12 @@ export function FileViewerPanel({
         >
           {selectedFile ? (
             !loading ? (
-              selectedFile.preview?.kind === 'blocked' ? (
+              previewError ? (
+                <PreviewErrorCard
+                  message={previewError}
+                  onRetry={onRetryPreview}
+                />
+              ) : selectedFile.preview?.kind === 'blocked' ? (
                 <BlockedPreviewPlaceholder
                   file={selectedFile}
                   onRevealFile={onOpenExternalFile || onRevealFile}

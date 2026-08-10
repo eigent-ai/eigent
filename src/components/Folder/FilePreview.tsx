@@ -57,6 +57,7 @@ export function FilePreview({
 
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const previewRequestRef = useRef<AbortController | null>(null);
 
@@ -76,6 +77,7 @@ export function FilePreview({
       const controller = new AbortController();
       previewRequestRef.current = controller;
       setSelectedFile(target);
+      setPreviewError(null);
       setLoading(true);
       void loadFilePreview(target, {
         ipcRenderer,
@@ -88,6 +90,11 @@ export function FilePreview({
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
             console.error('Failed to load file preview:', error);
+            setPreviewError(
+              error instanceof Error && error.message
+                ? error.message
+                : 'The file could not be read. Check that it still exists and try again.'
+            );
           }
         })
         .finally(() => {
@@ -187,6 +194,10 @@ export function FilePreview({
       projectFiles={projectFiles}
       surfaceClassName={surfaceClassName}
       embedded={embedded}
+      previewError={previewError}
+      onRetryPreview={() => {
+        if (selectedFile) loadFileContent(selectedFile, isShowSourceCode);
+      }}
       onRevealFile={handleRevealFile}
       onOpenExternalFile={handleOpenExternalFile}
       onDownloadFile={handleDownloadFile}

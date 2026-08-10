@@ -283,12 +283,14 @@ export default function ChatBox(): JSX.Element {
     useState<string | null>(null);
   const {
     run: interruptedRun,
+    displayRun: interruptedRunForDisplay,
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
   } = useInterruptedRunStatus(activeProjectId);
   const [durableRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
-  const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
+  const isCloudRestoredRun =
+    interruptedRunForDisplay?.origin === 'cloud_restore';
 
   const refreshUsageLimits = useCallback(async () => {
     if (modelType !== 'cloud' || !token) {
@@ -1360,7 +1362,7 @@ export default function ChatBox(): JSX.Element {
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
-              {interruptedRun && (
+              {interruptedRunForDisplay && (
                 <InterruptedRunBanner
                   title={t(
                     isCloudRestoredRun
@@ -1432,7 +1434,7 @@ export default function ChatBox(): JSX.Element {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
-              {interruptedRun && (
+              {interruptedRunForDisplay && (
                 <InterruptedRunBanner
                   compact
                   title={t(
@@ -1445,7 +1447,9 @@ export default function ChatBox(): JSX.Element {
                       ? 'chat.run-cloud-restored-description'
                       : 'chat.run-interrupted-description'
                   )}
-                  attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  attemptNumber={
+                    interruptedRunForDisplay.latest_attempt?.attempt_number
+                  }
                   action={durableRunAction}
                   resumeLabel={t('chat.run-resume')}
                   resumingLabel={t('chat.run-resuming')}

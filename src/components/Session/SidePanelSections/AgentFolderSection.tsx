@@ -20,6 +20,7 @@ import {
   buildWorkspaceFileTree,
   type WorkspaceFileTreeNode,
 } from '@/lib/workspaceFileTree';
+import { useProjectStore } from '@/store/projectStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronDown,
@@ -36,7 +37,7 @@ import {
   FolderOpen,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const EXT_MAP: Record<string, LucideIcon> = {
   // images
@@ -114,7 +115,7 @@ function AgentFolderTree({
 
         return (
           <motion.li
-            key={`${node.isFolder ? 'folder' : 'file'}:${node.relativePath}`}
+            key={node.key}
             layout
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -202,9 +203,17 @@ export function AgentFolderSection({
     return out;
   }, [files]);
   const fileTree = useMemo(() => buildWorkspaceFileTree(unique), [unique]);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set()
   );
+
+  // Folder expansion is per-project UI state. This section instance is reused
+  // across project switches, so clear stale expansion when the active project
+  // changes instead of carrying another project's open folders over.
+  useEffect(() => {
+    setExpandedFolders(new Set());
+  }, [activeProjectId]);
 
   const toggleFolder = (path: string) => {
     setExpandedFolders((current) => {

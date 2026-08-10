@@ -52,4 +52,37 @@ describe('buildWorkspaceFileTree', () => {
       file: files[0],
     });
   });
+
+  it('gives colliding display paths distinct keys without altering labels', () => {
+    const files: FileInfo[] = [
+      {
+        name: 'index.html',
+        path: '/root-a/report/index.html',
+        relativePath: 'report/index.html',
+        type: 'html',
+      },
+      {
+        name: 'index.html',
+        path: '/root-b/report/index.html',
+        relativePath: 'report/index.html',
+        type: 'html',
+      },
+    ];
+
+    const tree = buildWorkspaceFileTree(files);
+    const leaves = tree[0].children;
+
+    expect(leaves).toHaveLength(2);
+    // Display labels and relative paths are unchanged...
+    expect(leaves.map((node) => node.name)).toEqual([
+      'index.html',
+      'index.html',
+    ]);
+    expect(leaves.map((node) => node.relativePath)).toEqual([
+      'report/index.html',
+      'report/index.html',
+    ]);
+    // ...but the React keys are distinct so the list has no duplicate keys.
+    expect(new Set(leaves.map((node) => node.key)).size).toBe(2);
+  });
 });

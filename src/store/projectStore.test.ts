@@ -520,6 +520,64 @@ describe('projectStore runtime shape', () => {
     }
   });
 
+  it('retains and hydrates the cache when the local /runs fetch fails', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      // A failed /runs fetch leaves no canonical anchor. It must not be treated
+      // as a mismatch that deletes a valid snapshot into cloud-replay churn.
+      fetchGetMock.mockRejectedValue(new Error('local RunJournal unavailable'));
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 2,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_runs_down'],
+        tasks: {
+          task_runs_down: {
+            taskState: {
+              status: 'finished',
+              elapsed: 613_328,
+              taskTime: 0,
+              hasMessages: true,
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_runs_down'],
+          'cached prompt',
+          'project_runs_down',
+          'history_runs_down',
+          'Runs-unavailable project',
+          'space_test',
+          { task_runs_down: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).not.toHaveBeenCalled();
+      const project = useProjectStore.getState().projects.project_runs_down;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_runs_down;
+      expect(task.elapsed).toBe(613_328);
+      expect(task.messages).toHaveLength(1);
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
   it('repairs zero duration in a current cache from the canonical local Run', async () => {
     const { useAuthStore } = await import('./authStore');
     const previousUserId = useAuthStore.getState().user_id;

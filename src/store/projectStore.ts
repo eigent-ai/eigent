@@ -1376,6 +1376,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         }
       >();
       let localCanonicalUpdatedAt: number | null = null;
+      // Distinct from `null` (which means "the local RunJournal exists and has
+      // no runs yet"): this marks the /runs fetch itself as having failed, so
+      // we have no canonical anchor to compare against. In that state we must
+      // trust the cache instead of treating a missing anchor as a mismatch and
+      // deleting a valid snapshot into needless cloud-replay churn.
+      let localCanonicalUnavailable = false;
       try {
         const localRuns = await fetchGet('/runs', {
           project_id: loadProjectId,
@@ -1414,6 +1420,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           }
         }
       } catch (localRunError) {
+        localCanonicalUnavailable = true;
         console.info(
           `[ProjectStore] Local RunJournal unavailable for ${loadProjectId}; using cloud history`,
           localRunError
@@ -1440,8 +1447,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             cached &&
             (cached.serverUpdatedAt == null ||
               (serverUpdatedAt as number) > cached.serverUpdatedAt ||
-              (cached.localCanonicalUpdatedAt ?? null) !==
-                localCanonicalUpdatedAt)
+              // Only compare the local canonical anchor when we actually have
+              // one. A failed /runs fetch leaves no anchor, so skip this leg
+              // and trust the cached snapshot rather than discarding it.
+              (!localCanonicalUnavailable &&
+                (cached.localCanonicalUpdatedAt ?? null) !==
+                  localCanonicalUpdatedAt))
           );
           if (cacheIsStale) {
             await deleteCachedProject(cacheScope);
@@ -1546,7 +1557,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 // be corrected again on every project open.
                 void putCachedProject(cacheScope, {
                   serverUpdatedAt: cached.serverUpdatedAt,
-                  localCanonicalUpdatedAt,
+                  // With no fresh anchor (failed /runs fetch), keep the one the
+                  // cache already trusts instead of overwriting it with null.
+                  localCanonicalUpdatedAt: localCanonicalUnavailable
+                    ? cached.localCanonicalUpdatedAt
+                    : localCanonicalUpdatedAt,
                   taskIds: cached.taskIds,
                   tasks: repairedCachedTasks,
                   projectName: cached.projectName,
@@ -1758,7 +1773,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (snapshotComplete && cachedTaskIds.length === taskIds.length) {
             void putCachedProject(cacheScope, {
               serverUpdatedAt: serverUpdatedAt as number,
-              localCanonicalUpdatedAt,
+              // A failed /runs fetch yields no canonical anchor; persist null
+              // rather than a fabricated fresh timestamp.
+              localCanonicalUpdatedAt: localCanonicalUnavailable
+                ? null
+                : localCanonicalUpdatedAt,
               taskIds: cachedTaskIds,
               tasks: tasksSnapshot,
               projectName: displayName,

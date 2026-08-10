@@ -18,6 +18,7 @@ import {
   admitDurableRunResume,
   canonicalRunEventToLegacyMessage,
   createCanonicalRunEventCursor,
+  durableRunStatusForModelError,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
 } from './chatStore';
@@ -36,6 +37,13 @@ describe('canonical Run replay projection', () => {
       request_id: 'resume-request-1',
       reason: 'explicit_resume',
     });
+  });
+
+  it('labels a retryable Run error interrupted and a terminal one failed', () => {
+    // Retryable interruptions are resumable, so the work-log header must not
+    // read "Failed after X" while the banner still offers Resume.
+    expect(durableRunStatusForModelError(true)).toBe('interrupted');
+    expect(durableRunStatusForModelError(false)).toBe('failed');
   });
 
   it('unwraps legacy UI events and ignores typed-only/control events', () => {

@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createInlineAssetBudget,
   getRelativePathFromDir,
   inlineLocalHtmlImgElements,
   inlineLocalProjectImagePaths,
@@ -153,5 +154,62 @@ describe('inlineLocalProjectImagePaths', () => {
     expect(readFileAsDataUrl).toHaveBeenCalledWith(
       '/Users/test/canvas_map/assets/home.png'
     );
+  });
+});
+
+describe('inline asset aggregate budget', () => {
+  const dataUrl = `data:image/png;base64,${'A'.repeat(100)}`;
+
+  it('stops inlining html <img> elements once the budget is exhausted', async () => {
+    const html = '<img src="a.png"><img src="b.png"><img src="c.png">';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    // Enough for the first asset (~123 chars) but not the second.
+    const budget = createInlineAssetBudget(150);
+
+    const result = await inlineLocalHtmlImgElements(
+      html,
+      '/dir',
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(true);
+    expect(result).toContain(`src="${dataUrl}"`);
+    expect(result).toContain('src="b.png"');
+    expect(result).toContain('src="c.png"');
+  });
+
+  it('leaves the budget untruncated when every asset fits', async () => {
+    const html = '<img src="a.png">';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    const budget = createInlineAssetBudget();
+
+    const result = await inlineLocalHtmlImgElements(
+      html,
+      '/dir',
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(false);
+    expect(result).toContain(`src="${dataUrl}"`);
+  });
+
+  it('shares one budget across project-path inlining and skips over-budget assets', async () => {
+    const html = '{ "x": "a.png", "y": "b.png" }';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    const budget = createInlineAssetBudget(150);
+
+    const result = await inlineLocalProjectImagePaths(
+      html,
+      '/dir',
+      [{ path: '/dir/a.png' }, { path: '/dir/b.png' }],
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(true);
+    expect(result).toContain(dataUrl);
+    expect(result).toContain('"b.png"');
   });
 });

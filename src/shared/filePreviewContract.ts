@@ -18,12 +18,24 @@ export const FILE_PREVIEW_LIMITS = {
   csvColumns: 50,
   csvCellCharacters: 4096,
   textBytes: 1024 * 1024,
-  richHtmlBytes: 1024 * 1024,
+  richHtmlBytes: 4 * 1024 * 1024,
+  // Sibling JS/CSS inlined into an HTML preview get a larger budget than plain
+  // text: a chart bundle can legitimately be several MB and must still render.
+  htmlInlineAssetBytes: 8 * 1024 * 1024,
   officeBytes: 20 * 1024 * 1024,
   pdfBytes: 100 * 1024 * 1024,
   imageBytes: 25 * 1024 * 1024,
   defaultBytes: 20 * 1024 * 1024,
 } as const;
+
+/**
+ * Aggregate ceiling for assets inlined as data URLs into a single HTML srcDoc.
+ * Each image may be up to {@link FILE_PREVIEW_LIMITS.imageBytes}, but ten of
+ * them would still balloon the srcDoc past what the renderer can hold, so
+ * inlining stops once this running total is exceeded. Shared here so the main
+ * and renderer processes agree on the same budget.
+ */
+export const INLINE_ASSET_TOTAL_BUDGET_BYTES = 64 * 1024 * 1024;
 
 export type FilePreviewMode =
   | 'full'
@@ -36,7 +48,8 @@ export type FilePreviewMode =
 export type FilePreviewBlockedReason =
   | 'too-large'
   | 'metadata-unavailable'
-  | 'unsupported';
+  | 'unsupported'
+  | 'binary';
 
 export interface FilePreviewMetadata {
   size: number | null;

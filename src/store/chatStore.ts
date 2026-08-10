@@ -470,6 +470,18 @@ export type DurableRunDisplayStatus =
   | 'interrupted'
   | 'stopped';
 
+/**
+ * A retryable Run error is a resumable interruption, not a terminal failure.
+ * Labeling it 'failed' made the work-log header read "Failed after X" while the
+ * banner still offered Resume and the journal recorded it as interrupted. Keep
+ * 'failed' only for terminal (non-retryable) errors.
+ */
+export function durableRunStatusForModelError(
+  isRetryableRunError: boolean
+): DurableRunDisplayStatus {
+  return isRetryableRunError ? 'interrupted' : 'failed';
+}
+
 interface Task {
   source: 'user' | 'trigger';
   sessionMode?: SessionModeType;
@@ -4056,7 +4068,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               );
               setTaskTime(currentTaskId, 0);
               setElapsed(currentTaskId, settledElapsed);
-              get().setDurableRunStatus(currentTaskId, 'failed');
+              get().setDurableRunStatus(
+                currentTaskId,
+                durableRunStatusForModelError(isRetryableRunError)
+              );
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];

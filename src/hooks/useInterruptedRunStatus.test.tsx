@@ -140,29 +140,72 @@ describe('useInterruptedRunStatus', () => {
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
   });
 
-  it('coalesces overlapping refreshes for the same Project', async () => {
-    let resolveRequest!: (value: unknown) => void;
-    fetchGetMock.mockReturnValue(
+  it('runs exactly one trailing refresh after an in-flight refresh settles', async () => {
+    let resolveInitial!: (value: unknown) => void;
+    // The mount fetch stays in flight so the overlapping refreshes below
+    // coalesce against it; every later fetch resolves immediately.
+    fetchGetMock.mockReturnValueOnce(
       new Promise((resolve) => {
-        resolveRequest = resolve;
+        resolveInitial = resolve;
       })
     );
+    fetchGetMock.mockResolvedValue({ runs: [] });
+
     const { result } = renderHook(
       () => useInterruptedRunStatus('project_one'),
       { wrapper }
     );
 
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+
+    let trailing!: Promise<void>;
     act(() => {
       void result.current.refresh();
-      window.dispatchEvent(new Event('focus'));
-      listeners.get('backend-ready')?.();
+      trailing = result.current.refresh();
     });
+    // The trailing fetch is deferred until the in-flight one settles; the
+    // overlapping requests must not each fire their own fetch.
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveRequest({ runs: [] });
+      resolveInitial({ runs: [] });
+      await trailing;
+    });
+    // The deliberate double-notify is honored by a single follow-up fetch
+    // rather than being dropped onto the stale in-flight promise.
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('exposes cloud-restored history for display without making it actionable', async () => {
+    fetchGetMock.mockResolvedValue({
+      runs: [
+        {
+          run_id: 'cloud_run',
+          project_id: 'project_one',
+          status: 'interrupted',
+          updated_at: 456,
+          origin: 'cloud_restore',
+        },
+      ],
+    });
+
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+
+    await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Resume/Cancel stay suppressed for cloud-restored history...
+    expect(result.current.run).toBeNull();
+    // ...but the raw Run is still exposed so ChatBox can render the read-only
+    // cloud-restored banner (previously dead because it was filtered here).
+    expect(result.current.displayRun).toMatchObject({
+      run_id: 'cloud_run',
+      origin: 'cloud_restore',
     });
   });
 });

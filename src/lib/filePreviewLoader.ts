@@ -357,7 +357,27 @@ export async function loadFilePreview(
         'preview-text-file',
         file.path,
         limit
-      )) as { content: string; bytesRead: number; totalBytes: number };
+      )) as {
+        content: string;
+        bytesRead: number;
+        totalBytes: number;
+        binary?: boolean;
+      };
+      // The main process sniffed the prefix and found this is not decodable
+      // text: surface a blocked card (download / open in folder) instead of
+      // dumping garbage into a <pre>.
+      if (result.binary) {
+        return {
+          ...baseFile,
+          content: undefined,
+          preview: {
+            kind: 'blocked',
+            reason: 'binary',
+            size: metadata.size,
+            limit,
+          },
+        };
+      }
       content = result.content;
       bytesRead = result.bytesRead;
       totalBytes = result.totalBytes;

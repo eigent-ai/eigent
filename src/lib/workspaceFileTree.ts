@@ -15,6 +15,13 @@
 import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
 
 export interface WorkspaceFileTreeNode {
+  /**
+   * Stable, tree-unique React key. Two files can resolve to the same display
+   * `relativePath` (e.g. same-named artifacts under different absolute roots),
+   * so the key is disambiguated by absolute path and, as a last resort, an
+   * index — while `name`/`relativePath` keep their unchanged display values.
+   */
+  key: string;
   name: string;
   relativePath: string;
   isFolder: boolean;
@@ -35,14 +42,25 @@ export function buildWorkspaceFileTree(
   files: FileInfo[]
 ): WorkspaceFileTreeNode[] {
   const root: WorkspaceFileTreeNode = {
+    key: '',
     name: '',
     relativePath: '',
     isFolder: true,
     children: [],
   };
   const folders = new Map<string, WorkspaceFileTreeNode>([['', root]]);
+  const usedKeys = new Set<string>();
 
-  for (const file of files) {
+  const uniqueKey = (base: string): string => {
+    let key = base;
+    let suffix = 1;
+    while (usedKeys.has(key)) key = `${base}#${suffix++}`;
+    usedKeys.add(key);
+    return key;
+  };
+
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
     const relativePath = getWorkspaceRelativeFilePath(file);
     const segments = relativePath.split('/').filter(Boolean);
     if (!segments.length) continue;
@@ -54,6 +72,7 @@ export function buildWorkspaceFileTree(
       let folder = folders.get(folderPath);
       if (!folder) {
         folder = {
+          key: uniqueKey(`folder:${folderPath}`),
           name: segment,
           relativePath: folderPath,
           isFolder: true,
@@ -66,6 +85,7 @@ export function buildWorkspaceFileTree(
     }
 
     parent.children.push({
+      key: uniqueKey(`file:${file.path || relativePath}:${index}`),
       name: segments.at(-1) || file.name || 'File',
       relativePath,
       isFolder: false,

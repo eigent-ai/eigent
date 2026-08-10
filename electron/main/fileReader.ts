@@ -501,26 +501,57 @@ export class FileReader {
     };
   }
 
+  // Cheap binary sniff over a prefix: any NUL byte, or more than 30% control
+  // characters (excluding tab/newline/carriage-return), means the bytes are not
+  // safe to decode and dump as text. Bytes >= 0x80 are treated as printable so
+  // legitimate UTF-8 (e.g. CJK) text is not misclassified.
+  private isProbablyBinary(buffer: Buffer, length: number): boolean {
+    if (length === 0) return false;
+    let suspicious = 0;
+    for (let index = 0; index < length; index += 1) {
+      const byte = buffer[index];
+      if (byte === 0) return true;
+      const printable =
+        byte === 9 || byte === 10 || byte === 13 || (byte >= 32 && byte !== 127);
+      if (!printable) suspicious += 1;
+    }
+    return suspicious / length > 0.3;
+  }
+
   public async previewTextFile(filePath: string, requestedLimit?: number) {
     const localPath = this.normalizeLocalPreviewPath(filePath);
     const stats = await fs.promises.stat(localPath);
     if (!stats.isFile()) throw new Error('Preview target is not a file');
+    // Clamp to the caller's requested limit, capped by the largest bounded-text
+    // class the contract allows. Previously this hard-clamped to textBytes,
+    // making the richer HTML / inline-asset budgets unreachable.
+    const ceiling = Math.max(
+      FILE_PREVIEW_LIMITS.textBytes,
+      FILE_PREVIEW_LIMITS.richHtmlBytes,
+      FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+    );
     const limit = Math.max(
       1,
-      Math.min(
-        Number(requestedLimit) || FILE_PREVIEW_LIMITS.textBytes,
-        FILE_PREVIEW_LIMITS.textBytes
-      )
+      Math.min(Number(requestedLimit) || FILE_PREVIEW_LIMITS.textBytes, ceiling)
     );
     const bytesRead = Math.min(stats.size, limit);
     const handle = await fs.promises.open(localPath, 'r');
     try {
       const buffer = Buffer.alloc(bytesRead);
       const result = await handle.read(buffer, 0, bytesRead, 0);
+      const binary = this.isProbablyBinary(
+        buffer,
+        Math.min(result.bytesRead, 8192)
+      );
       return {
-        content: buffer.subarray(0, result.bytesRead).toString('utf-8'),
+        // A binary file has no useful text preview; skip the wasted utf-8
+        // transfer and let the renderer show a download / open-in-folder card.
+        content: binary
+          ? ''
+          : buffer.subarray(0, result.bytesRead).toString('utf-8'),
         bytesRead: result.bytesRead,
         totalBytes: stats.size,
+        binary,
       };
     } finally {
       await handle.close();
