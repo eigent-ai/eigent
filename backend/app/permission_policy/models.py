@@ -34,13 +34,19 @@ _REDACTED_ARGUMENT_KEYS = frozenset(
 )
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"\bsk-(?:live|test|ant)-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"),
     re.compile(r"\bsk-(?:proj|svcacct)-[A-Za-z0-9_-]{32,}\b"),
+    re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{12,}\b"),
     re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
 )
 _URL_USERINFO = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^\s/:@]+):([^\s/@]+)@"
+)
+_SECRET_HEADER = re.compile(
+    r"(?i)\b(authorization|proxy-authorization|x-api-key|api-key|"
+    r"x-auth-token|x-access-token)(\s*:\s*)([^\r\n'\";]+)"
 )
 _SECRET_ARGV_FLAGS = frozenset(
     {
@@ -53,9 +59,12 @@ _SECRET_ARGV_FLAGS = frozenset(
         "--private-key",
         "--refresh-token",
         "--secret",
+        "--secret-access-key",
         "--token",
     }
 )
+_SECRET_ARGV_SHORT_FLAGS = frozenset({"-p", "-u"})
+_HEADER_ARGV_FLAGS = frozenset({"-h", "--header"})
 
 
 def _normalized_key(value: object) -> str:
@@ -80,6 +89,7 @@ def _is_redacted_argument_key(value: object) -> bool:
 
 def _redacted_string(value: str) -> str:
     redacted = _URL_USERINFO.sub(r"\1\2:[REDACTED]@", value)
+    redacted = _SECRET_HEADER.sub(r"\1\2[REDACTED]", redacted)
     for pattern in _SECRET_VALUE_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
@@ -89,16 +99,41 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
     """Keep approvals readable while removing credential-bearing argv values."""
 
     result: list[Any] = []
-    redact_next = False
+    redact_next: str | None = None
     for item in value:
         canonical = _canonical_action_value(item)
         if not isinstance(canonical, str):
             result.append(_redacted_action_value(canonical))
-            redact_next = False
+            redact_next = None
             continue
-        if redact_next:
-            result.append("[REDACTED]")
-            redact_next = False
+        if redact_next is not None:
+            # A missing option value must not make the following option vanish
+            # from the approval card (for example ``--token --verbose``).
+            if canonical.startswith("-"):
+                redact_next = None
+            else:
+                if redact_next == "user":
+                    username, separator, _ = canonical.partition(":")
+                    result.append(
+                        f"{username}:[REDACTED]" if separator else "[REDACTED]"
+                    )
+                elif redact_next == "header":
+                    result.append(_redacted_string(canonical))
+                else:
+                    result.append("[REDACTED]")
+                redact_next = None
+                continue
+        lowered = canonical.strip().lower()
+        if lowered.startswith("-p") and not lowered.startswith("--") and len(canonical) > 2:
+            result.append(f"{canonical[:2]}[REDACTED]")
+            continue
+        if lowered.startswith("-u") and not lowered.startswith("--") and len(canonical) > 2:
+            username, separator, _ = canonical[2:].partition(":")
+            result.append(
+                f"{canonical[:2]}{username}:[REDACTED]"
+                if separator
+                else f"{canonical[:2]}[REDACTED]"
+            )
             continue
         flag, separator, _ = canonical.partition("=")
         normalized_flag = flag.strip().lower().replace("_", "-")
@@ -107,7 +142,15 @@ def _redacted_argv(value: list[Any] | tuple[Any, ...]) -> list[Any]:
                 result.append(f"{flag}=[REDACTED]")
             else:
                 result.append(flag)
-                redact_next = True
+                redact_next = "secret"
+            continue
+        if normalized_flag in _SECRET_ARGV_SHORT_FLAGS:
+            result.append(flag)
+            redact_next = "user" if normalized_flag == "-u" else "secret"
+            continue
+        if normalized_flag in _HEADER_ARGV_FLAGS:
+            result.append(flag)
+            redact_next = "header"
             continue
         assignment_key, assignment_separator, _ = canonical.partition("=")
         if assignment_separator and _is_redacted_argument_key(assignment_key):

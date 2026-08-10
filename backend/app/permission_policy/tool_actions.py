@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,12 @@ _AUTO_EXECUTED_WORKSPACE_FILENAMES = frozenset(
         "setup.py",
         "tox.ini",
     }
+)
+_AUTO_EXECUTED_WORKSPACE_PATHS = (
+    ".devcontainer/",
+    ".github/workflows/",
+    ".vscode/launch.json",
+    ".vscode/tasks.json",
 )
 _BROWSER_READ_NAMES = frozenset(
     {
@@ -196,13 +203,21 @@ def _target_resources(
 ) -> tuple[str, ...]:
     resources = list(_argument_values(arguments, (*_PATH_KEYS, *_URL_KEYS)))
     if operation == "terminal.execute":
-        commands = _argument_values(arguments, _COMMAND_KEYS)
+        commands = _command_texts(arguments)
         resources.extend(
             "terminal-command:sha256:"
             + hashlib.sha256(command.encode("utf-8")).hexdigest()
             for command in commands
         )
     return tuple(dict.fromkeys(resources))
+
+
+def _command_texts(arguments: dict[str, Any]) -> tuple[str, ...]:
+    commands = list(_argument_values(arguments, _COMMAND_KEYS))
+    argv = arguments.get("argv")
+    if isinstance(argv, (list, tuple)) and argv:
+        commands.append(shlex.join(str(item) for item in argv))
+    return tuple(dict.fromkeys(commands))
 
 
 def _risk_tags(
@@ -242,6 +257,12 @@ def _risk_tags(
             tags.add("untrusted_hook")
         if candidate.name.lower() in _AUTO_EXECUTED_WORKSPACE_FILENAMES:
             tags.add("untrusted_script")
+        normalized_path = candidate.as_posix().lower()
+        if any(
+            marker in normalized_path
+            for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
+        ):
+            tags.add("untrusted_script")
         lowered_parts = tuple(part.lower() for part in candidate.parts)
         if ".eigent" in lowered_parts:
             eigent_index = lowered_parts.index(".eigent")
@@ -254,18 +275,26 @@ def _risk_tags(
             _CONTROL_PLANE_FILENAMES
         ):
             tags.add("policy_control_plane")
-    command_text = "\n".join(
-        _argument_values(arguments, _COMMAND_KEYS)
-    ).lower()
+    command_text = "\n".join(_command_texts(arguments)).lower()
+    # Shell quoting may split a sensitive filename without changing the path
+    # interpreted by the shell (for example ``run-journal.sqlite'3'``).
+    policy_text = re.sub(r"['\"`]", "", command_text)
     if command_text:
         if any(
-            marker in command_text for marker in _CONTROL_PLANE_COMMAND_MARKERS
+            marker in policy_text
+            for marker in _CONTROL_PLANE_COMMAND_MARKERS
         ):
             tags.add("policy_control_plane")
         if any(
-            marker in command_text for marker in _GIT_EXECUTION_COMMAND_MARKERS
+            marker in policy_text
+            for marker in _GIT_EXECUTION_COMMAND_MARKERS
         ):
             tags.add("untrusted_hook")
+        if any(
+            marker in policy_text
+            for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
+        ):
+            tags.add("untrusted_script")
         if any(
             f"/{part}/" in command_text or f"~/{part}/" in command_text
             for part in _CREDENTIAL_PATH_PARTS

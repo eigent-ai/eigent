@@ -386,6 +386,96 @@ def test_persistence_payload_redacts_uppercase_keys_url_passwords_and_readable_a
     assert "top-secret" not in str(display)
 
 
+def test_persistence_payload_redacts_real_key_shapes_and_argv_credentials():
+    # Build representative values at runtime so repository secret scanning
+    # does not mistake the regression fixture for a live credential.
+    anthropic = "sk-" + "ant-api03-" + ("a" * 24)
+    stripe = "sk-" + "live-" + ("b" * 24)
+    action = _action(
+        arguments={
+            "note": f"{anthropic} {stripe}",
+            "argv": [
+                "curl",
+                "-u",
+                "alice:pw",
+                "-phunter2",
+                "-H",
+                "X-API-Key: header-secret",
+                "--secret-access-key",
+                "cloud-secret",
+                "--token",
+                "--verbose",
+                "build",
+            ],
+        }
+    )
+
+    display = action.persistence_payload()["normalized_arguments"]
+
+    assert anthropic not in str(display)
+    assert stripe not in str(display)
+    assert display["argv"] == [
+        "curl",
+        "-u",
+        "alice:[REDACTED]",
+        "-p[REDACTED]",
+        "-H",
+        "X-API-Key: [REDACTED]",
+        "--secret-access-key",
+        "[REDACTED]",
+        "--token",
+        "--verbose",
+        "build",
+    ]
+
+
+def test_terminal_argv_participates_in_policy_risk_and_target_extraction(
+    tmp_path,
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="argv-control-plane",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "argv": [
+                "sqlite3",
+                "~/.eigent/run-journal.sqlite3",
+                "UPDATE approvals SET status='approved'",
+            ]
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" in descriptor.risk_tags
+    assert descriptor.target_resources[0].startswith(
+        "terminal-command:sha256:"
+    )
+
+    quoted = build_tool_action_descriptor(
+        action_id="quoted-control-plane",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "command": (
+                "sqlite3 ~/.eigent/run-journal.sqlite'3' "
+                "\"UPDATE approvals SET status='approved'\""
+            )
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    assert "policy_control_plane" in quoted.risk_tags
+
+
 def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
     tmp_path,
 ):
@@ -402,6 +492,21 @@ def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
         ("conftest.py", "filesystem.write", {"path": "conftest.py"}),
         (".envrc", "filesystem.write", {"path": ".envrc"}),
         (
+            ".vscode/tasks.json",
+            "filesystem.write",
+            {"path": ".vscode/tasks.json"},
+        ),
+        (
+            ".github/workflows/test.yml",
+            "filesystem.write",
+            {"path": ".github/workflows/test.yml"},
+        ),
+        (
+            ".devcontainer/devcontainer.json",
+            "filesystem.write",
+            {"path": ".devcontainer/devcontainer.json"},
+        ),
+        (
             ".eigent/skills/run.py",
             "filesystem.write",
             {"path": ".eigent/skills/run.py"},
@@ -412,6 +517,11 @@ def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(
             "shell-written-envrc",
             "terminal.execute",
             {"command": "printf 'code' > .envrc"},
+        ),
+        (
+            "shell-written-workflow",
+            "terminal.execute",
+            {"command": "printf 'code' > .github/workflows/test.yml"},
         ),
     ]
 

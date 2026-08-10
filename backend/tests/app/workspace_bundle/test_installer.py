@@ -95,6 +95,10 @@ class FakeCloud:
         self.projection: dict | None = None
         self.projections: dict[str, dict] = {}
         self.lose_projection_response_once = lose_projection_response_once
+        self.protocol_capabilities = [
+            "bundle.asset.integrity.v1",
+            "bundle.install.review.v1",
+        ]
 
     async def get_revision(self, bundle_id, revision_id):
         revision_number = int(str(revision_id).rsplit("@", 1)[1])
@@ -157,7 +161,11 @@ class FakeCloud:
 
     async def get_environment(self, space_id):
         if self.installed_revision_id is None:
-            return {"installation": None, "bindings": {}}
+            return {
+                "installation": None,
+                "bindings": {},
+                "protocol_capabilities": self.protocol_capabilities,
+            }
         return {
             "installation": {
                 "space_id": space_id,
@@ -169,6 +177,7 @@ class FakeCloud:
                 "version": self.installation_version,
             },
             "bindings": {},
+            "protocol_capabilities": self.protocol_capabilities,
         }
 
     async def upgrade(
@@ -187,7 +196,7 @@ class FakeCloud:
             "space_id": space_id,
             "bundle_id": self.installed_bundle_id,
             "installed_revision_id": revision_id,
-            "state": "pending_bindings",
+            "state": "proposed",
             "version": self.installation_version,
         }
 
@@ -439,10 +448,33 @@ async def test_install_is_review_first_and_materializes_verified_assets(
 
 
 @pytest.mark.asyncio
+async def test_materialize_requires_cloud_protocol_before_mutation(installer):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    cloud.protocol_capabilities = []
+
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="Cloud must be upgraded",
+    ):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+
+    assert cloud.installed_bundle_id is None
+    assert cloud.projection is None
+
+
+@pytest.mark.asyncio
 async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
     service, journal, cloud, tmp_path = installer
     cloud.contents["asset-skill"] = (
-        b"API_KEY = 'sk-abcdefghijklmnopqrstuvwxyzABCDEF12345678'\n"
+        b"API_KEY = '"
+        + b"sk-"
+        + b"abcdefghijklmnopqrstuvwxyzABCDEF12345678'\n"
     )
     proposal = await _approved_and_bound(service, journal, tmp_path)
 
