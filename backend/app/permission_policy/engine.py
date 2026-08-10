@@ -51,10 +51,18 @@ _AUTO_REVIEW_ELIGIBLE_OPERATIONS = frozenset(
         "git.integrate",
     }
 )
+_PLATFORM_HARD_DENY_OPERATIONS = frozenset(
+    {"permission.rule.create", "permission.profile.modify"}
+)
+_PLATFORM_HARD_DENY_RISK_TAGS = frozenset({"policy_control_plane"})
 
 
 class PermissionPolicyEngine:
-    def __init__(self, *, platform_hard_denies: frozenset[str] = frozenset()):
+    def __init__(
+        self,
+        *,
+        platform_hard_denies: frozenset[str] = _PLATFORM_HARD_DENY_OPERATIONS,
+    ):
         self._platform_hard_denies = platform_hard_denies
 
     def evaluate(
@@ -68,6 +76,13 @@ class PermissionPolicyEngine:
             return self._decision(
                 PolicyEffect.DENY,
                 "platform_hard_deny",
+                descriptor,
+                profile,
+            )
+        if set(descriptor.risk_tags) & _PLATFORM_HARD_DENY_RISK_TAGS:
+            return self._decision(
+                PolicyEffect.DENY,
+                "platform_hard_deny_resource",
                 descriptor,
                 profile,
             )

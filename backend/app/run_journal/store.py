@@ -66,10 +66,10 @@ from app.run_journal.models import (
     SpacePermissionProfileRevisionRecord,
     StartupReconciliationResult,
     ToolCallRecord,
-    WorkspaceConfigMaterializationRecord,
-    WorkspaceConfigRevisionRecord,
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
+    WorkspaceConfigMaterializationRecord,
+    WorkspaceConfigRevisionRecord,
     WorkspaceOverlayEntryRecord,
     WorkspaceReadSnapshotRecord,
     WorkspaceSnapshotRangeRecord,
@@ -1626,7 +1626,9 @@ class SQLiteRunJournal:
             decision_at = row["decided_at"]
             if state in {"approved", "rejected"}:
                 if not decided_by or not decided_by.strip():
-                    raise ValueError("decided_by is required for user decision")
+                    raise ValueError(
+                        "decided_by is required for user decision"
+                    )
                 decision_actor = decided_by
                 decision_at = timestamp
             updated = connection.execute(
@@ -1684,7 +1686,9 @@ class SQLiteRunJournal:
         if binding_kind == "connector" and (
             not connector_id or not opaque_connection_id
         ):
-            raise ValueError("connector binding requires connector and connection ids")
+            raise ValueError(
+                "connector binding requires connector and connection ids"
+            )
         if binding_kind == "local_path" and not local_path:
             raise ValueError("local path binding requires a path")
         if binding_kind == "script_approval" and any(
@@ -1692,9 +1696,12 @@ class SQLiteRunJournal:
             for value in (connector_id, opaque_connection_id, local_path)
         ):
             raise ValueError("script approval cannot carry a resource binding")
-        binding_id = "bundlebind_" + canonical_digest(
-            {"proposal_id": proposal_id, "slot_id": slot_id}
-        )[:32]
+        binding_id = (
+            "bundlebind_"
+            + canonical_digest(
+                {"proposal_id": proposal_id, "slot_id": slot_id}
+            )[:32]
+        )
         grants_json = canonical_json(sorted(set(required_grants)))
         expected = (
             binding_id,
@@ -6257,6 +6264,7 @@ class SQLiteRunJournal:
                     event_type="interaction.requested",
                     payload={
                         "interaction_id": interaction_id,
+                        "version": 0,
                         "interaction_type": interaction_type,
                         "attempt_id": attempt_id,
                         "request": request,
@@ -7066,6 +7074,7 @@ class SQLiteRunJournal:
                     event_type="approval.requested",
                     payload={
                         "approval_id": approval_id,
+                        "version": 0,
                         "attempt_id": attempt_id,
                         "prompt": prompt,
                         "expires_at": expires_at,
@@ -7119,9 +7128,15 @@ class SQLiteRunJournal:
                 "approval decision scope must be once, run, or space"
             )
         if decision == "approved" and decision_scope in {"run", "space"}:
-            if not rule_space_id or not rule_id or not rule_action_pattern:
+            if (
+                not rule_space_id
+                or not rule_id
+                or not rule_action_pattern
+                or not rule_resource_pattern
+            ):
                 raise ValueError(
-                    "bounded approval scope requires space, rule id, and action"
+                    "bounded approval scope requires space, rule id, action, "
+                    "and an exact resource matcher"
                 )
         timestamp = now if now is not None else time.time()
         decision_value = {"decision": decision, **(details or {})}

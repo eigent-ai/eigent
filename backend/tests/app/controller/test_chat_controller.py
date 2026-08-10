@@ -24,9 +24,9 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.controller.chat_controller import (
-    _PreparedChatRun,
     _admission_request_id,
     _classify_persisted_admission,
+    _PreparedChatRun,
     human_reply,
     improve,
     install_mcp,
@@ -362,9 +362,9 @@ class TestChatController:
                 assert attempts[1].resume_reason == "explicit_resume"
                 assert attempts[1].resume_request_id == "resume-request-1"
                 prepare.assert_awaited_once()
-                assert prepare.await_args.kwargs["resume_attempt"].attempt_id == (
-                    attempts[1].attempt_id
-                )
+                assert prepare.await_args.kwargs[
+                    "resume_attempt"
+                ].attempt_id == (attempts[1].attempt_id)
 
                 release.set()
                 assert await stream.__anext__() == "data: resumed\n\n"
@@ -418,7 +418,9 @@ class TestChatController:
             run = journal.get_run(run_id)
             assert run is not None
             assert run.status == "interrupted"
-            assert journal.list_run_attempts(run_id)[-1].status == "interrupted"
+            assert (
+                journal.list_run_attempts(run_id)[-1].status == "interrupted"
+            )
             assert journal.list_events(run_id)[-1].payload["reason"] == (
                 "resume_admission_failed"
             )
@@ -1075,6 +1077,47 @@ class TestChatController:
         ):
             with pytest.raises(UserException):
                 await human_reply(task_id, reply_data, mock_request)
+
+    @pytest.mark.asyncio
+    async def test_human_reply_cannot_consume_pending_approval(
+        self,
+        tmp_path,
+        mock_task_lock,
+        mock_request,
+        controller_run_journal,
+    ):
+        task_id = "test_task_approval"
+        mock_task_lock.run_context = RunContext(
+            space_id="space-1",
+            project_id=task_id,
+            run_id="run-1",
+            task_id=task_id,
+            email="user@example.com",
+            user_id="user-1",
+            working_directory=tmp_path,
+            task_output_root=tmp_path,
+            camel_log_dir=tmp_path / "camel_logs",
+            binding_source="test",
+            workdir_mode="workspace",
+            browser_port=9222,
+        )
+        controller_run_journal.list_human_interactions.return_value = [
+            SimpleNamespace(
+                interaction_id="approval-1",
+                interaction_type="approval",
+                request={"agent": "test_agent"},
+            )
+        ]
+        reply_data = HumanReply(agent="test_agent", reply="yes")
+
+        with patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=mock_task_lock,
+        ):
+            with pytest.raises(UserException, match="approval decision"):
+                await human_reply(task_id, reply_data, mock_request)
+
+        mock_task_lock.put_human_input.assert_not_awaited()
 
     def test_install_mcp_success(self, mock_task_lock):
         """Test successful MCP installation."""

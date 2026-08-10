@@ -162,9 +162,9 @@ def test_admission_pins_secret_free_git_capability(tmp_path):
             template=template,
         )
 
-        capability = result.spec.semantic_spec[
-            "runtime_capability_manifest"
-        ]["git"]
+        capability = result.spec.semantic_spec["runtime_capability_manifest"][
+            "git"
+        ]
         assert capability == {
             "available": True,
             "repository_id": "repo-local-1",
@@ -225,38 +225,40 @@ def test_admission_pins_current_space_permission_profile(tmp_path):
 
 
 def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
-    manifest = WorkforceBundleManifest.model_validate({
-        "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
-        "metadata": {
-            "id": "bundle-team",
-            "name": "Team Workspace",
-            "revision": 1,
-        },
-        "spec": {
-            "context": [
-                {
-                    "id": "team_docs",
-                    "kind": "local_path_slot",
-                    "slot": "docs_folder",
-                }
-            ],
-            "connectors": [
-                {
-                    "id": "source",
-                    "connector": "github",
-                    "connectionSlot": "github_readonly",
-                    "requiredGrants": ["repository.read"],
-                }
-            ],
-            "models": {
-                "default": {
-                    "modelRef": "provider://default",
-                    "thinkingEffort": "high",
-                }
+    manifest = WorkforceBundleManifest.model_validate(
+        {
+            "apiVersion": "eigent.ai/v1alpha1",
+            "kind": "WorkforceBundle",
+            "metadata": {
+                "id": "bundle-team",
+                "name": "Team Workspace",
+                "revision": 1,
             },
-        },
-    }).canonical_payload()
+            "spec": {
+                "context": [
+                    {
+                        "id": "team_docs",
+                        "kind": "local_path_slot",
+                        "slot": "docs_folder",
+                    }
+                ],
+                "connectors": [
+                    {
+                        "id": "source",
+                        "connector": "github",
+                        "connectionSlot": "github_readonly",
+                        "requiredGrants": ["repository.read"],
+                    }
+                ],
+                "models": {
+                    "default": {
+                        "modelRef": "provider://default",
+                        "thinkingEffort": "high",
+                    }
+                },
+            },
+        }
+    ).canonical_payload()
     docs = tmp_path / "team-docs"
     docs.mkdir()
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
@@ -346,7 +348,7 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
             model_platform="openai",
             model_type="gpt-5.5-codex",
             auth_source="codex_subscription",
-            requested_effort=ThinkingEffort.HIGH,
+            requested_effort=None,
             allow_local_system=True,
         )
         result = EnvironmentAdmissionService(journal).persist_for_run(
@@ -359,6 +361,8 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
 
         assert result.template.manifest.metadata.id == "bundle-team"
         assert result.binding.bundle_revision_id == "bundle-team@1"
+        assert result.spec.thinking_effort_requested is ThinkingEffort.HIGH
+        assert result.spec.thinking_effort_effective is ThinkingEffort.HIGH
         local = result.spec.local_materialization
         assert next(
             item.absolute_path

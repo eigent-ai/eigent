@@ -15,6 +15,7 @@ from app.permission_policy.models import (
     PolicyDecision,
     PolicyEffect,
     PolicyRule,
+    literal_resource_pattern,
 )
 from app.run_journal import ApprovalRecord, SQLiteRunJournal
 
@@ -156,6 +157,15 @@ class PermissionPolicyService:
             revision=permission_profile_revision,
         )
         identifier = approval_id or f"approval_{uuid.uuid4().hex}"
+        persistent_scopes_allowed = (
+            len(descriptor.target_resources) == 1
+            and descriptor.operation != "terminal.execute"
+        )
+        resource_matcher = (
+            literal_resource_pattern(descriptor.target_resources[0])
+            if persistent_scopes_allowed
+            else None
+        )
         approval = self._journal.create_approval(
             approval_id=identifier,
             run_id=descriptor.run_id,
@@ -163,8 +173,23 @@ class PermissionPolicyService:
             prompt={
                 **prompt,
                 "space_id": space_id,
-                "action": descriptor.canonical_payload(),
-                "allowed_scopes": ["once", "run", "space"],
+                "action": descriptor.persistence_payload(),
+                # Persistent rules are only sound when the approved action
+                # has one exact code-owned resource matcher. Shell commands,
+                # broad multi-file calls, and opaque MCP actions remain
+                # approve-once until a typed matcher exists for them.
+                "allowed_scopes": (
+                    ["once", "run", "space"]
+                    if persistent_scopes_allowed
+                    else ["once"]
+                ),
+                "rule_matcher": {
+                    "action_pattern": descriptor.operation,
+                    "resource_pattern": resource_matcher,
+                    "matcher_kind": "literal_resource",
+                }
+                if resource_matcher is not None
+                else None,
                 "auto_review_eligible": decision.auto_review_eligible,
             },
             action_digest=descriptor.action_digest,

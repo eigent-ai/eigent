@@ -117,7 +117,119 @@ _EXECUTABLE_OPERATION_OPTIONS = (
     "--upload-pack",
     "--receive-pack",
 )
-_URL_WITH_CREDENTIALS = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s/@]+:[^\s/@]+@", re.I)
+_MUTATING_FLAG_OPTIONS: dict[str, frozenset[str]] = {
+    "merge": frozenset(
+        {
+            "--abort",
+            "--autostash",
+            "--commit",
+            "--continue",
+            "--edit",
+            "--ff",
+            "--ff-only",
+            "--no-autostash",
+            "--no-commit",
+            "--no-edit",
+            "--no-ff",
+            "--no-log",
+            "--no-squash",
+            "--no-stat",
+            "--no-verify",
+            "--no-verify-signatures",
+            "--quit",
+            "--squash",
+            "--stat",
+            "--verify",
+            "--verify-signatures",
+        }
+    ),
+    "cherry-pick": frozenset(
+        {
+            "-e",
+            "-n",
+            "-s",
+            "-x",
+            "--abort",
+            "--continue",
+            "--edit",
+            "--ff",
+            "--no-commit",
+            "--no-rerere-autoupdate",
+            "--quit",
+            "--rerere-autoupdate",
+            "--signoff",
+        }
+    ),
+    "revert": frozenset(
+        {
+            "-e",
+            "-n",
+            "-s",
+            "--abort",
+            "--continue",
+            "--edit",
+            "--no-commit",
+            "--no-rerere-autoupdate",
+            "--quit",
+            "--rerere-autoupdate",
+            "--signoff",
+        }
+    ),
+    "rebase": frozenset(
+        {
+            "-m",
+            "--abort",
+            "--apply",
+            "--autostash",
+            "--continue",
+            "--fork-point",
+            "--keep-base",
+            "--keep-empty",
+            "--merge",
+            "--no-autostash",
+            "--no-fork-point",
+            "--no-keep-base",
+            "--no-keep-empty",
+            "--no-rerere-autoupdate",
+            "--no-stat",
+            "--no-update-refs",
+            "--no-verify",
+            "--quit",
+            "--rerere-autoupdate",
+            "--root",
+            "--skip",
+            "--stat",
+            "--update-refs",
+            "--verify",
+        }
+    ),
+    "reset": frozenset(
+        {
+            "-N",
+            "-q",
+            "--hard",
+            "--keep",
+            "--merge",
+            "--mixed",
+            "--no-recurse-submodules",
+            "--no-refresh",
+            "--quiet",
+            "--recurse-submodules",
+            "--refresh",
+            "--soft",
+        }
+    ),
+}
+_MUTATING_VALUE_OPTIONS: dict[str, frozenset[str]] = {
+    "merge": frozenset({"-m", "--message"}),
+    "cherry-pick": frozenset({"-m", "--mainline", "--cleanup", "--empty"}),
+    "revert": frozenset({"-m", "--mainline", "--cleanup"}),
+    "rebase": frozenset({"--empty", "--onto"}),
+    "reset": frozenset(),
+}
+_URL_WITH_CREDENTIALS = re.compile(
+    r"\b[a-z][a-z0-9+.-]*://[^\s/@]+:[^\s/@]+@", re.I
+)
 _URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^\s/@]+@", re.I)
 
 
@@ -161,7 +273,10 @@ class AdvancedGitPreview:
 
     @property
     def requires_confirmation(self) -> bool:
-        return self.classification.always_confirm or self.effect is PolicyEffect.PROMPT
+        return (
+            self.classification.always_confirm
+            or self.effect is PolicyEffect.PROMPT
+        )
 
 
 class AdvancedGitCommandClassifier:
@@ -235,10 +350,12 @@ class AdvancedGitCommandClassifier:
                 )
             return self._classification("git.local_write", command)
         if command in _INTEGRATE_COMMANDS:
+            self._validate_mutating_options(argv, command)
             self._reject_signing(argv, tag_mode=False)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS)
             return self._classification("git.integrate", command)
         if command in _HISTORY_REWRITE_COMMANDS:
+            self._validate_mutating_options(argv, command)
             self._reject_options(argv, _EXECUTABLE_OPERATION_OPTIONS + ("-x",))
             return self._classification(
                 "git.history_rewrite",
@@ -246,12 +363,18 @@ class AdvancedGitCommandClassifier:
                 always_confirm=True,
             )
         if command in _DESTRUCTIVE_COMMANDS:
-            return self._classification("git.destructive", command, always_confirm=True)
+            return self._classification(
+                "git.destructive", command, always_confirm=True
+            )
         if command in _REMOTE_READ_COMMANDS:
             self._validate_remote_target(argv)
-            return self._classification("git.remote_read", command, external=True)
+            return self._classification(
+                "git.remote_read", command, external=True
+            )
         if command == "pull":
-            raise AdvancedGitCommandRejected("use fetch followed by an explicit merge")
+            raise AdvancedGitCommandRejected(
+                "use fetch followed by an explicit merge"
+            )
         if command == "push":
             if any(
                 value in {"-f", "--force", "--force-with-lease"}
@@ -269,11 +392,19 @@ class AdvancedGitCommandClassifier:
                 risk_tags=("external_publish",),
             )
         if command == "remote":
-            verb = next((value for value in lowered if not value.startswith("-")), "")
-            if verb in {"", "get-url"} or "-v" in lowered or "--verbose" in lowered:
+            verb = next(
+                (value for value in lowered if not value.startswith("-")), ""
+            )
+            if (
+                verb in {"", "get-url"}
+                or "-v" in lowered
+                or "--verbose" in lowered
+            ):
                 return self._classification("git.read", command)
             if verb == "show" and "-n" not in lowered:
-                return self._classification("git.remote_read", command, external=True)
+                return self._classification(
+                    "git.remote_read", command, external=True
+                )
             self._validate_remote_target(argv)
             return self._classification(
                 "git.config_sensitive",
@@ -282,7 +413,9 @@ class AdvancedGitCommandClassifier:
             )
         if command == "config":
             joined = " ".join(lowered)
-            if any(fragment in joined for fragment in _SENSITIVE_CONFIG_FRAGMENTS):
+            if any(
+                fragment in joined for fragment in _SENSITIVE_CONFIG_FRAGMENTS
+            ):
                 raise AdvancedGitCommandRejected(
                     "sensitive Git configuration is disabled"
                 )
@@ -340,9 +473,13 @@ class AdvancedGitCommandClassifier:
             raise AdvancedGitCommandRejected("Git argv length is invalid")
         for index, value in enumerate(argv):
             if not value or "\x00" in value or len(value) > _MAX_ARG_CHARS:
-                raise AdvancedGitCommandRejected("Git argv contains an invalid value")
+                raise AdvancedGitCommandRejected(
+                    "Git argv contains an invalid value"
+                )
             if index == 0 and value.startswith("-"):
-                raise AdvancedGitCommandRejected("Git global options are disabled")
+                raise AdvancedGitCommandRejected(
+                    "Git global options are disabled"
+                )
             lowered = value.lower()
             if any(
                 lowered == prefix or lowered.startswith(prefix + "=")
@@ -361,9 +498,13 @@ class AdvancedGitCommandClassifier:
                     "credentials must not be embedded in Git argv"
                 )
             if lowered.startswith("file://"):
-                raise AdvancedGitCommandRejected("Git file protocol is disabled")
+                raise AdvancedGitCommandRejected(
+                    "Git file protocol is disabled"
+                )
             if lowered.startswith(("ext::", "fd::")):
-                raise AdvancedGitCommandRejected("Git remote helpers are disabled")
+                raise AdvancedGitCommandRejected(
+                    "Git remote helpers are disabled"
+                )
             if lowered.startswith(("--upload-pack", "--receive-pack")):
                 raise AdvancedGitCommandRejected(
                     "custom remote executables are disabled"
@@ -406,7 +547,9 @@ class AdvancedGitCommandClassifier:
             lowered = value.lower()
             if value.startswith("-"):
                 continue
-            if lowered.startswith(("/", "./", "../", "~/", "file:", "ext::", "fd::")):
+            if lowered.startswith(
+                ("/", "./", "../", "~/", "file:", "ext::", "fd::")
+            ):
                 raise AdvancedGitCommandRejected(
                     "local-path and helper Git transports are disabled"
                 )
@@ -450,11 +593,7 @@ class AdvancedGitCommandClassifier:
     @staticmethod
     def push_remote(argv: tuple[str, ...]) -> str:
         AdvancedGitCommandClassifier._validate_push(argv)
-        return next(
-            value
-            for value in argv[1:]
-            if not value.startswith("-")
-        )
+        return next(value for value in argv[1:] if not value.startswith("-"))
 
     @staticmethod
     def _reject_options(
@@ -464,7 +603,8 @@ class AdvancedGitCommandClassifier:
         for value in argv[1:]:
             lowered = value.lower()
             if any(
-                lowered == option or lowered.startswith(option + "=")
+                lowered == option
+                or lowered.startswith(option + "=")
                 or (
                     len(option) == 2
                     and option.startswith("-")
@@ -476,6 +616,42 @@ class AdvancedGitCommandClassifier:
                     f"Git option {value!r} can execute code or write outside "
                     "the typed operation boundary"
                 )
+
+    @staticmethod
+    def _validate_mutating_options(
+        argv: tuple[str, ...],
+        command: str,
+    ) -> None:
+        """Reject unknown and abbreviated options for high-risk mutations."""
+
+        flags = _MUTATING_FLAG_OPTIONS[command]
+        value_options = _MUTATING_VALUE_OPTIONS[command]
+        consume_value = False
+        after_separator = False
+        for value in argv[1:]:
+            if consume_value:
+                consume_value = False
+                continue
+            if value == "--":
+                after_separator = True
+                continue
+            if after_separator or not value.startswith("-"):
+                continue
+            if value in flags:
+                continue
+            if value in value_options:
+                consume_value = True
+                continue
+            option_name, separator, _ = value.partition("=")
+            if separator and option_name in value_options:
+                continue
+            raise AdvancedGitCommandRejected(
+                f"Git {command} option {value!r} is outside the safe grammar"
+            )
+        if consume_value:
+            raise AdvancedGitCommandRejected(
+                f"Git {command} option is missing its value"
+            )
 
     @staticmethod
     def _reject_signing(
@@ -491,8 +667,7 @@ class AdvancedGitCommandClassifier:
                 or value.startswith("--gpg-sign=")
                 or (
                     tag_mode
-                    and value
-                    in {"-s", "-u", "--sign", "--local-user"}
+                    and value in {"-s", "-u", "--sign", "--local-user"}
                 )
             ):
                 raise AdvancedGitCommandRejected(
@@ -586,9 +761,15 @@ class AdvancedGitService:
                 "mutating Advanced Git operations require RepoStateToken CAS"
             )
 
-        operation_id = "gitop_" + canonical_digest(
-            {"repository_id": repository_id, "request_id": operation_request_id}
-        )[:32]
+        operation_id = (
+            "gitop_"
+            + canonical_digest(
+                {
+                    "repository_id": repository_id,
+                    "request_id": operation_request_id,
+                }
+            )[:32]
+        )
         operation = self.journal.begin_git_operation(
             operation_id=operation_id,
             repository_id=repository_id,
@@ -648,10 +829,14 @@ class AdvancedGitService:
                     raise
             if classification.subcommand == "push":
                 try:
-                    publish_scan = GitPublishPolicy(self.git).scan_head(
-                        root,
-                        remote_name=self.classifier.push_remote(argv),
-                    ).to_dict()
+                    publish_scan = (
+                        GitPublishPolicy(self.git)
+                        .scan_head(
+                            root,
+                            remote_name=self.classifier.push_remote(argv),
+                        )
+                        .to_dict()
+                    )
                 except GitBackendError as exc:
                     self.journal.fail_git_operation(
                         operation_id,
@@ -723,7 +908,9 @@ class AdvancedGitService:
                     raise AdvancedGitOutcomeUnknown(str(exc)) from exc
                 raise
             if result.returncode != 0:
-                message = self._redact(result.stderr).strip() or "Git command failed"
+                message = (
+                    self._redact(result.stderr).strip() or "Git command failed"
+                )
                 self.journal.fail_git_operation(
                     operation_id,
                     error_code="git_nonzero_exit",
@@ -800,10 +987,13 @@ class AdvancedGitService:
             "repo_state_digest": self.git.repo_state_token(root).digest,
             "branches": self._parse_branches(branches.stdout),
             "commits": self._parse_commits(commits.stdout),
-            "remotes": [value for value in remotes.stdout.splitlines() if value],
+            "remotes": [
+                value for value in remotes.stdout.splitlines() if value
+            ],
             "large_repository": {
                 "estimated_object_bytes": estimated_bytes,
-                "warning": estimated_bytes >= policy.large_repository_warning_bytes,
+                "warning": estimated_bytes
+                >= policy.large_repository_warning_bytes,
                 "lfs_recommended_for_blob_bytes": policy.lfs_recommendation_blob_bytes,
                 "object_stats": object_stats,
             },
@@ -838,7 +1028,8 @@ class AdvancedGitService:
             external_side_effect=classification.external_side_effect,
             idempotency_key=(
                 operation_request_id
-                if classification.safety_class is ToolSafetyClass.IDEMPOTENT_WRITE
+                if classification.safety_class
+                is ToolSafetyClass.IDEMPOTENT_WRITE
                 else None
             ),
             run_id=f"space:{space_id}",
@@ -956,4 +1147,6 @@ def get_default_advanced_git_service() -> AdvancedGitService:
         journal,
         state_root=configured_run_journal_path().parent / "workspace-git",
     )
-    return AdvancedGitService(journal, content=content, git_backend=content.git)
+    return AdvancedGitService(
+        journal, content=content, git_backend=content.git
+    )

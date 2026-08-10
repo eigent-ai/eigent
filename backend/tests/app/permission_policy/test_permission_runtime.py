@@ -131,3 +131,54 @@ async def test_read_only_profile_denies_write_before_dispatch(tmp_path):
 
         assert journal.list_tool_calls("run-1")[0].status == "prepared"
         assert journal.list_approvals("run-1") == []
+
+
+@pytest.mark.asyncio
+async def test_large_tool_body_cannot_hide_resource_from_deny_rule(tmp_path):
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    denied_path = "/secrets/private-report.md"
+    arguments = {"filename": denied_path, "content": "x" * 20_000}
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.create_approval_rule(
+            rule_id="deny-secrets",
+            space_id="space-1",
+            effect="deny",
+            action_pattern="filesystem.write",
+            resource_pattern=denied_path,
+            scope="space",
+            run_id=None,
+            source_interaction_id=None,
+            expires_at=None,
+            created_by="user-1",
+            now=1,
+        )
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-large",
+                tool_name="write_to_file",
+                arguments=arguments,
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            assert checkpoint is not None
+            assert checkpoint.request.get("truncated") is True
+            with pytest.raises(ToolPermissionRejectedError):
+                await authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments=arguments,
+                    toolkit_name="File Toolkit",
+                    agent_name="worker",
+                    task_lock=task_lock,
+                    journal=journal,
+                )
+
+        assert journal.list_approvals("run-1") == []
+        assert task_lock.queue.empty()

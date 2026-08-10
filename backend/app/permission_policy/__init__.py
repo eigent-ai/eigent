@@ -8,6 +8,7 @@ from app.permission_policy.models import (
     PolicyDecision,
     PolicyEffect,
     PolicyRule,
+    literal_resource_pattern,
 )
 from app.permission_policy.runtime import (
     ToolPermissionRejectedError,
@@ -38,4 +39,5 @@ __all__ = [
     "PolicyRule",
     "build_tool_action_descriptor",
     "operation_for_tool",
+    "literal_resource_pattern",
 ]

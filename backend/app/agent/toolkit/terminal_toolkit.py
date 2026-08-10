@@ -51,6 +51,16 @@ logger = logging.getLogger("terminal_toolkit")
 APP_VERSION = "1.0.2"
 
 
+def _is_control_plane_environment_key(name: str) -> bool:
+    normalized = name.strip().upper()
+    return (
+        normalized == "EIGENT_LOCAL_CONTROL_CAPABILITY"
+        or normalized == "AUTHORIZATION"
+        or normalized.endswith("_AUTHORIZATION")
+        or normalized == "PROXY_AUTHORIZATION"
+    )
+
+
 def get_terminal_base_venv_path() -> str:
     """Get the path to the terminal base venv created during app installation."""
     return os.path.join(
@@ -132,6 +142,15 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     "working_directory": working_directory,
                 },
             )
+
+    def _get_env_vars(self) -> dict[str, str]:
+        """Build an agent environment without Desktop control credentials."""
+
+        environment = super()._get_env_vars()
+        for key in tuple(environment):
+            if _is_control_plane_environment_key(key):
+                environment.pop(key, None)
+        return environment
 
     def _setup_cloned_environment(self):
         """Override to clone from terminal_base venv instead of current process venv.

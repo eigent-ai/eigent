@@ -2,13 +2,38 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+from pathlib import Path
 from typing import Any
 
 from app.permission_policy.models import ActionDescriptor
 from app.run_policy import ToolSafetyClass
 
-_PATH_KEYS = ("path", "file_path", "directory", "cwd", "working_directory")
+_PATH_KEYS = (
+    "path",
+    "paths",
+    "file_path",
+    "file_paths",
+    "filename",
+    "directory",
+    "directory_path",
+    "folder",
+    "folder_path",
+    "cwd",
+    "working_directory",
+    "destination",
+    "destination_path",
+    "target_path",
+    "output_path",
+    "image_path",
+    "html_file_path",
+)
 _URL_KEYS = ("url", "target_url", "endpoint")
+_COMMAND_KEYS = ("command", "cmd", "script")
+_CREDENTIAL_PATH_PARTS = frozenset(
+    {".aws", ".azure", ".gnupg", ".kube", ".ssh"}
+)
 _BROWSER_READ_NAMES = frozenset(
     {
         "browser_console_view",
@@ -81,18 +106,24 @@ def build_tool_action_descriptor(
     attempt_id: str,
     environment_spec_digest: str,
     idempotency_key: str | None,
+    workspace_root: str | Path | None = None,
 ) -> ActionDescriptor:
-    resources = tuple(
-        str(arguments[key])
-        for key in (*_PATH_KEYS, *_URL_KEYS)
-        if arguments.get(key) is not None
+    operation = operation_for_tool(
+        tool_name, safety_class, toolkit_name=toolkit_name
+    )
+    resources = _target_resources(
+        operation=operation,
+        arguments=arguments,
+    )
+    risk_tags = _risk_tags(
+        operation=operation,
+        arguments=arguments,
+        workspace_root=workspace_root,
     )
     return ActionDescriptor(
         action_id=action_id,
         tool_name=tool_name,
-        operation=operation_for_tool(
-            tool_name, safety_class, toolkit_name=toolkit_name
-        ),
+        operation=operation,
         safety_class=safety_class,
         normalized_arguments=dict(arguments),
         target_resources=resources,
@@ -101,4 +132,67 @@ def build_tool_action_descriptor(
         run_id=run_id,
         attempt_id=attempt_id,
         environment_spec_digest=environment_spec_digest,
+        risk_tags=risk_tags,
     )
+
+
+def _argument_values(
+    arguments: dict[str, Any], keys: tuple[str, ...]
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for key in keys:
+        value = arguments.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            values.extend(str(item) for item in value if item is not None)
+        else:
+            values.append(str(value))
+    return tuple(dict.fromkeys(item for item in values if item.strip()))
+
+
+def _target_resources(
+    *, operation: str, arguments: dict[str, Any]
+) -> tuple[str, ...]:
+    resources = list(_argument_values(arguments, (*_PATH_KEYS, *_URL_KEYS)))
+    if operation == "terminal.execute":
+        commands = _argument_values(arguments, _COMMAND_KEYS)
+        resources.extend(
+            "terminal-command:sha256:"
+            + hashlib.sha256(command.encode("utf-8")).hexdigest()
+            for command in commands
+        )
+    return tuple(dict.fromkeys(resources))
+
+
+def _risk_tags(
+    *,
+    operation: str,
+    arguments: dict[str, Any],
+    workspace_root: str | Path | None,
+) -> tuple[str, ...]:
+    if operation not in {"filesystem.write", "filesystem.delete"}:
+        return ()
+    root = (
+        Path(workspace_root).expanduser().resolve(strict=False)
+        if workspace_root is not None
+        else None
+    )
+    tags: set[str] = set()
+    for raw_path in _argument_values(arguments, _PATH_KEYS):
+        expanded = Path(os.path.expandvars(raw_path)).expanduser()
+        candidate = (
+            expanded.resolve(strict=False)
+            if expanded.is_absolute() or root is None
+            else (root / expanded).resolve(strict=False)
+        )
+        parts = {part.lower() for part in candidate.parts}
+        if root is None or not candidate.is_relative_to(root):
+            tags.add("new_filesystem_root")
+        if parts & _CREDENTIAL_PATH_PARTS:
+            tags.add("credential_export")
+        if ".git" in parts and "hooks" in parts:
+            tags.add("untrusted_hook")
+        if ".eigent" in parts:
+            tags.add("policy_control_plane")
+    return tuple(sorted(tags))

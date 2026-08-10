@@ -232,6 +232,9 @@ describe('projectStore runtime shape', () => {
     expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
       ThinkingEffort.MEDIUM
     );
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
 
     useProjectStore
       .getState()
@@ -240,6 +243,9 @@ describe('projectStore runtime shape', () => {
     expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
       ThinkingEffort.MAX
     );
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBe(ThinkingEffort.MAX);
     expect(
       useSpaceStore.getState().getProjectMeta(projectId)?.metadata
         ?.thinkingEffort

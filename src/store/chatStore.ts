@@ -2471,7 +2471,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             api_url: apiModel.api_url,
             model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
-            thinking_effort: projectStore.getProjectThinkingEffort(
+            thinking_effort: projectStore.getProjectThinkingEffortOverride(
               project_id ?? null
             ),
             auth_source: apiModel.auth_source,
