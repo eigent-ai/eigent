@@ -346,6 +346,13 @@ describe('WorkspaceBundleInstallWizard', () => {
     expect(
       await screen.findByText('Workspace files installed')
     ).toBeInTheDocument();
+    expect(screen.queryByText(/runtime ready/i)).toBeNull();
+    expect(
+      screen.getByText(/is installed\. Local bindings are encrypted/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/All declared local bindings are currently available/i)
+    ).toBeInTheDocument();
     await waitFor(() => expect(mocks.fetchConnected).toHaveBeenCalledTimes(1));
     await user.type(
       screen.getByLabelText('Local value for API_TOKEN'),

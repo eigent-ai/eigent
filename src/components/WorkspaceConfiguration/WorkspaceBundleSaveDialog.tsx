@@ -18,7 +18,6 @@ import {
   type CloudWorkspaceBundle,
   type CloudWorkspaceBundleRevision,
   type WorkspaceBundleSelectedAsset,
-  type WorkspaceBundleVisibility,
 } from '@/service/workspaceBundleAuthoringApi';
 import {
   preflightPreparedWorkspaceConfigurationAssets,
@@ -39,6 +38,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 const MAX_ASSET_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_COUNT = 512;
 const MAX_TOTAL_ASSET_BYTES = 128 * 1024 * 1024;
+type PublishableWorkspaceBundleVisibility = 'private' | 'public';
+
+const isPublishableVisibility = (
+  value: string
+): value is PublishableWorkspaceBundleVisibility =>
+  value === 'private' || value === 'public';
 
 interface WorkspaceBundleSaveDialogProps {
   open: boolean;
@@ -109,7 +114,7 @@ export function WorkspaceBundleSaveDialog({
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] =
-    useState<WorkspaceBundleVisibility>('private');
+    useState<PublishableWorkspaceBundleVisibility>('private');
   const [knownCloudBundle, setKnownCloudBundle] =
     useState<CloudWorkspaceBundle | null>(null);
   const [recoverablePublishedRevision, setRecoverablePublishedRevision] =
@@ -139,6 +144,11 @@ export function WorkspaceBundleSaveDialog({
         if (existing.workspace_id !== spaceId) {
           throw new Error(
             'This Bundle id already belongs to a different Workspace.'
+          );
+        }
+        if (!isPublishableVisibility(existing.visibility)) {
+          throw new Error(
+            'Team sharing is not available without team publishing authority. Choose a private or public Bundle instead.'
           );
         }
         setVisibility(existing.visibility);
@@ -791,10 +801,7 @@ export function WorkspaceBundleSaveDialog({
               <section className="space-y-2">
                 <h3 className="text-body-sm font-bold">Sharing</h3>
                 <div className="grid gap-2 md:grid-cols-2">
-                  {(visibility === 'team'
-                    ? (['team'] as const)
-                    : (['private', 'public'] as const)
-                  ).map((option) => (
+                  {(['private', 'public'] as const).map((option) => (
                     <button
                       key={option}
                       type="button"
@@ -803,11 +810,7 @@ export function WorkspaceBundleSaveDialog({
                           ? 'border-ds-border-brand-default-default bg-ds-bg-brand-subtle-default'
                           : 'border-ds-border-neutral-subtle-default'
                       }`}
-                      disabled={
-                        visibility === 'team' ||
-                        publishing ||
-                        Boolean(publishedHandle)
-                      }
+                      disabled={publishing || Boolean(publishedHandle)}
                       onClick={() => {
                         if (visibility === option) return;
                         setVisibility(option);
@@ -821,9 +824,7 @@ export function WorkspaceBundleSaveDialog({
                       <span className="mt-1 block text-body-xs text-ds-text-neutral-muted-default">
                         {option === 'private'
                           ? 'Only you can install this version.'
-                          : option === 'team'
-                            ? 'Managed by your team administrator.'
-                            : 'Anyone with access to the Bundle can review and install it.'}
+                          : 'Anyone with access to the Bundle can review and install it.'}
                       </span>
                     </button>
                   ))}
@@ -858,7 +859,13 @@ export function WorkspaceBundleSaveDialog({
                   <p className="flex items-center gap-2 text-body-sm font-bold">
                     <Check className="h-4 w-4" aria-hidden /> Published
                   </p>
-                  <p className="mt-2 font-mono text-body-sm">
+                  <p className="mt-2 text-body-xs font-medium text-ds-text-neutral-muted-default">
+                    Shareable install handle
+                  </p>
+                  <p
+                    className="mt-1 font-mono text-body-sm"
+                    aria-label="Published Workforce Bundle handle"
+                  >
                     {publishedHandle}
                   </p>
                   <Button
@@ -871,6 +878,11 @@ export function WorkspaceBundleSaveDialog({
                     <Copy className="h-4 w-4" aria-hidden />
                     {copied ? 'Copied' : 'Copy share handle'}
                   </Button>
+                  <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
+                    Share this exact <code>bundle_id@revision</code> handle.
+                    Recipients can paste it into Import Workforce Bundle to
+                    review and install this immutable version.
+                  </p>
                   <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
                     {recoveredConcurrentEdits
                       ? 'The Cloud version was recovered. Your newer local edits continue in the next version.'

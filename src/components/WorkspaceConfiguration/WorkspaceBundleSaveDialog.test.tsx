@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   validateRevision: vi.fn(),
   uploadAsset: vi.fn(),
   publishRevision: vi.fn(),
+  copyText: vi.fn(),
 }));
 
 vi.mock('@/service/workspaceConfigurationApi', async (original) => ({
@@ -144,6 +145,10 @@ const selectAsset = (file: File) => {
 describe('WorkspaceBundleSaveDialog', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mocks.copyText },
+    });
     mocks.review.mockResolvedValue({ draft_version: 1, review });
     mocks.findBundle.mockResolvedValue(null);
     mocks.preflight.mockImplementation(
@@ -243,6 +248,68 @@ describe('WorkspaceBundleSaveDialog', () => {
     expect(onPublished).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onPublished).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers only private and public publishing without team authority', async () => {
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: { ...review, assets: [] },
+    });
+    renderDialog();
+
+    expect(
+      await screen.findByRole('button', { name: /^private/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^public/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^team/i })).toBeNull();
+  });
+
+  it('rejects an existing team-scoped Bundle when team authority is unavailable', async () => {
+    mocks.findBundle.mockResolvedValue({
+      id: 'bundle-1',
+      workspace_id: 'space-1',
+      name: 'Research',
+      visibility: 'team',
+      latest_published_revision_id: null,
+    });
+    renderDialog();
+
+    expect(
+      await screen.findByText(/team sharing is not available/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Publish version' })
+    ).toBeDisabled();
+    expect(mocks.ensureBundle).not.toHaveBeenCalled();
+  });
+
+  it('shows and copies the exact immutable install handle after publishing', async () => {
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: { ...review, assets: [] },
+    });
+    renderDialog();
+    await screen.findByText('Values stay on this device');
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+
+    expect(
+      await screen.findByLabelText('Published Workforce Bundle handle')
+    ).toHaveTextContent('bundle-1@1');
+    expect(screen.getByText('Shareable install handle')).toBeInTheDocument();
+    expect(
+      screen.getByText(/paste it into Import Workforce Bundle/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy share handle' }));
+    await waitFor(() =>
+      expect(mocks.copyText).toHaveBeenCalledWith('bundle-1@1')
+    );
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
   });
 
   it('does not make a Cloud mutation when local asset preflight fails', async () => {
