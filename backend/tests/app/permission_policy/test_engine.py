@@ -863,21 +863,26 @@ def test_shell_segments_only_mark_real_eigent_control_plane_targets(tmp_path):
         )
         assert "policy_control_plane" not in descriptor.risk_tags
 
-    attack = build_tool_action_descriptor(
-        action_id="split-quote-control-plane",
-        tool_name="shell_exec",
-        toolkit_name="Terminal Toolkit",
-        safety_class=ToolSafetyClass.UNSAFE_WRITE,
-        arguments={
-            "command": "sqlite3 ~/.eigent/run-journal.sqlite'3' 'UPDATE approvals'"
-        },
-        run_id="run-1",
-        attempt_id="attempt-1",
-        environment_spec_digest="e" * 64,
-        idempotency_key=None,
-        workspace_root=tmp_path,
+    attacks = (
+        "sqlite3 ~/.eigent/run-journal.sqlite'3' 'UPDATE approvals'",
+        "cd ~/.eigent && sqlite3 run-journal.sqlite3 'UPDATE approvals'",
+        "cd ~/.eigent; sqlite3 run-journal.sqlite3 'UPDATE approvals'",
+        "(cd ~/.eigent && sqlite3 run-journal.sqlite3 'UPDATE approvals')",
     )
-    assert "policy_control_plane" in attack.risk_tags
+    for index, command in enumerate(attacks):
+        attack = build_tool_action_descriptor(
+            action_id=f"split-control-plane-{index}",
+            tool_name="shell_exec",
+            toolkit_name="Terminal Toolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"command": command},
+            run_id="run-1",
+            attempt_id="attempt-1",
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+            workspace_root=tmp_path,
+        )
+        assert "policy_control_plane" in attack.risk_tags
 
 
 @pytest.mark.parametrize(
