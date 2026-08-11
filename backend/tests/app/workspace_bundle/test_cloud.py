@@ -12,6 +12,32 @@ from app.workspace_bundle.cloud import (
 
 
 @pytest.mark.asyncio
+async def test_revision_reads_use_distinct_owner_and_public_catalog_paths():
+    requested_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        return httpx.Response(200, json={"id": "bundle-1@3"})
+
+    cloud = HttpWorkspaceBundleCloudTransport(
+        server_url="https://api.example.test",
+        authorization="Bearer user",
+        desktop_instance_id="desk-1",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        await cloud.get_owner_revision("bundle-1", "bundle-1@3")
+        await cloud.get_catalog_revision("bundle-1", "bundle-1@3")
+    finally:
+        await cloud.close()
+
+    assert requested_paths == [
+        "/api/v1/workspace-bundles/bundle-1/revisions/bundle-1@3",
+        "/api/v1/workspace-bundles/catalog/bundle-1/revisions/bundle-1@3",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_asset_download_verifies_server_digest_and_size():
     content = b"reviewed bundle asset"
     digest = hashlib.sha256(content).hexdigest()

@@ -17,7 +17,11 @@ class WorkspaceBundleCloudError(RuntimeError):
 
 
 class WorkspaceBundleCloudTransport(Protocol):
-    async def get_revision(
+    async def get_owner_revision(
+        self, bundle_id: str, revision_id: str
+    ) -> dict[str, Any]: ...
+
+    async def get_catalog_revision(
         self, bundle_id: str, revision_id: str
     ) -> dict[str, Any]: ...
 
@@ -131,12 +135,20 @@ class HttpWorkspaceBundleCloudTransport:
             )
         return result
 
-    async def get_revision(
+    async def get_owner_revision(
         self, bundle_id: str, revision_id: str
     ) -> dict[str, Any]:
         return await self._json(
             "GET",
             f"/workspace-bundles/{bundle_id}/revisions/{revision_id}",
+        )
+
+    async def get_catalog_revision(
+        self, bundle_id: str, revision_id: str
+    ) -> dict[str, Any]:
+        return await self._json(
+            "GET",
+            f"/workspace-bundles/catalog/{bundle_id}/revisions/{revision_id}",
         )
 
     async def install(

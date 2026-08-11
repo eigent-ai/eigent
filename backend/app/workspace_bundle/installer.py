@@ -78,7 +78,9 @@ class WorkspaceBundleInstaller:
             raise WorkspaceBundleInstallError(
                 "Bundle Cloud transport is unavailable"
             )
-        revision = await self.cloud.get_revision(bundle_id, revision_id)
+        revision = await self.cloud.get_catalog_revision(
+            bundle_id, revision_id
+        )
         if revision.get("status") != "published":
             raise WorkspaceBundleInstallError(
                 "Only published Bundle revisions can be installed"

@@ -560,7 +560,7 @@ def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from
             cloud_receipts.append(receipt)
             return receipt
 
-        async def get_revision(self, bundle_id, revision_id):
+        async def get_owner_revision(self, bundle_id, revision_id):
             assert bundle_id == draft.document["metadata"]["id"]
             return {
                 "id": revision_id,
@@ -681,7 +681,7 @@ def test_prepared_asset_publish_recovery_matches_historical_snapshot_after_edit(
     assert edited.document_digest != published_draft.document_digest
 
     class _Cloud:
-        async def get_revision(self, _bundle_id, revision_id):
+        async def get_owner_revision(self, _bundle_id, revision_id):
             return {
                 "id": revision_id,
                 "status": "published",
@@ -1344,7 +1344,7 @@ def test_workspace_configuration_records_only_verified_cloud_publish(
     ).json()
 
     class _Cloud:
-        async def get_revision(self, bundle_id, revision_id):
+        async def get_owner_revision(self, bundle_id, revision_id):
             assert bundle_id == saved["document"]["metadata"]["id"]
             return {
                 "id": revision_id,
@@ -1422,7 +1422,7 @@ def test_workspace_configuration_recovers_cloud_publish_after_local_edit(
     )
 
     class _Cloud:
-        async def get_revision(self, _bundle_id, _revision_id):
+        async def get_owner_revision(self, _bundle_id, _revision_id):
             return {
                 "id": revision_id,
                 "status": "published",
@@ -1498,7 +1498,7 @@ def test_workspace_configuration_rejects_unverified_cloud_publish_receipt(
     )
 
     class _Cloud:
-        async def get_revision(self, _bundle_id, _revision_id):
+        async def get_owner_revision(self, _bundle_id, _revision_id):
             return {
                 "id": cloud_id or revision_id,
                 "status": cloud_status,

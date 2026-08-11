@@ -103,7 +103,7 @@ class FakeCloud:
         ]
         self.executable_asset_ids: set[str] = set()
 
-    async def get_revision(self, bundle_id, revision_id):
+    async def get_catalog_revision(self, bundle_id, revision_id):
         revision_number = int(str(revision_id).rsplit("@", 1)[1])
         manifest = WorkforceBundleManifest.model_validate(
             _manifest(revision_number)
@@ -624,7 +624,7 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         }
     )
 
-    async def get_revision(bundle_id, revision_id):
+    async def get_catalog_revision(bundle_id, revision_id):
         canonical = WorkforceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
@@ -637,7 +637,7 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
             "assets": [],
         }
 
-    cloud.get_revision = get_revision
+    cloud.get_catalog_revision = get_catalog_revision
     broker = FakeSecretBroker()
     service.secret_broker = broker
     proposal = await service.propose(
@@ -748,7 +748,7 @@ async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
         "variables": [{"name": "API_TOKEN", "required": True}]
     }
 
-    async def get_revision(bundle_id, revision_id):
+    async def get_catalog_revision(bundle_id, revision_id):
         canonical = WorkforceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
@@ -761,7 +761,7 @@ async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
             "assets": [],
         }
 
-    cloud.get_revision = get_revision
+    cloud.get_catalog_revision = get_catalog_revision
     broker = FakeSecretBroker()
     service.secret_broker = broker
     proposal = await service.propose(
