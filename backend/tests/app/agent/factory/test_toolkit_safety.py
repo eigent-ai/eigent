@@ -1,4 +1,6 @@
-from app.agent.factory.toolkit_assembler import _tag_tools
+from types import SimpleNamespace
+
+from app.agent.factory.toolkit_assembler import _mcp_config, _tag_tools
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
@@ -63,3 +65,38 @@ def test_immutable_wrapper_declaration_falls_back_to_wrapped_function():
         ToolSafetyClass.SAFE_READ,
         None,
     )
+
+
+def test_mcp_process_environment_excludes_secret_broker_authority():
+    options = SimpleNamespace(
+        installed_mcp={
+            "mcpServers": {
+                "example": {
+                    "command": "example-mcp",
+                    "env": {
+                        "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT": (
+                            "http://127.0.0.1:1234"
+                        ),
+                        "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY": (
+                            "broker-secret"
+                        ),
+                        "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY": (
+                            "legacy-secret"
+                        ),
+                        "AUTHORIZATION": "consumer-authorization",
+                        "MCP_API_TOKEN": "consumer-secret",
+                    },
+                }
+            }
+        }
+    )
+
+    config = _mcp_config(options, None)
+
+    assert config is not None
+    environment = config["mcpServers"]["example"]["env"]
+    assert environment["MCP_API_TOKEN"] == "consumer-secret"
+    assert environment["AUTHORIZATION"] == "consumer-authorization"
+    assert "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT" not in environment
+    assert "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY" not in environment
+    assert "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY" not in environment

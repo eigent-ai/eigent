@@ -21,6 +21,7 @@ from app.workspace_bundle.secrets import (
     WorkspaceSecretBroker,
     WorkspaceSecretBrokerError,
     WorkspaceSecretIdentity,
+    WorkspaceSecretResolution,
     WorkspaceSecretVerification,
 )
 
@@ -41,5 +42,6 @@ __all__ = [
     "WorkspaceSecretBroker",
     "WorkspaceSecretBrokerError",
     "WorkspaceSecretIdentity",
+    "WorkspaceSecretResolution",
     "WorkspaceSecretVerification",
 ]

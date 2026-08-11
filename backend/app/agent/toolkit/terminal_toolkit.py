@@ -51,10 +51,23 @@ logger = logging.getLogger("terminal_toolkit")
 APP_VERSION = "1.0.2"
 
 
-def _is_control_plane_environment_key(name: str) -> bool:
+_SECRET_BROKER_ENVIRONMENT_KEYS = {
+    "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT",
+    "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY",
+    "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT",
+    "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY",
+}
+
+
+def is_secret_broker_environment_key(name: str) -> bool:
+    return name.strip().upper() in _SECRET_BROKER_ENVIRONMENT_KEYS
+
+
+def is_control_plane_environment_key(name: str) -> bool:
     normalized = name.strip().upper()
     return (
         normalized == "EIGENT_LOCAL_CONTROL_CAPABILITY"
+        or is_secret_broker_environment_key(normalized)
         or normalized == "AUTHORIZATION"
         or normalized.endswith("_AUTHORIZATION")
         or normalized == "PROXY_AUTHORIZATION"
@@ -148,7 +161,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         environment = super()._get_env_vars()
         for key in tuple(environment):
-            if _is_control_plane_environment_key(key):
+            if is_control_plane_environment_key(key):
                 environment.pop(key, None)
         return environment
 
