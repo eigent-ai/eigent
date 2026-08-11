@@ -10,6 +10,7 @@ from app.workspace_bundle import (
     WorkspaceSecretBroker,
     WorkspaceSecretBrokerError,
     WorkspaceSecretIdentity,
+    WorkspaceSecretResolution,
 )
 from app.workspace_bundle.secrets import _capture_broker_environment
 
@@ -122,6 +123,63 @@ def test_secret_broker_fails_closed_without_returning_error_payload():
 
     assert sentinel not in str(caught.value)
     assert not hasattr(broker, "resolve")
+
+
+def test_secret_broker_resolves_exact_identity_without_repr_leak():
+    identity = _identity()
+    sentinel = "runtime-only-secret"
+    endpoint, requests, thread = _serve_once(
+        {
+            "resolutions": [
+                {
+                    **identity.__dict__,
+                    "value": sentinel,
+                }
+            ]
+        }
+    )
+    broker = WorkspaceSecretBroker(endpoint=endpoint, capability="x" * 43)
+
+    resolutions = broker.resolve_many((identity,))
+    thread.join(timeout=2)
+
+    assert resolutions == (
+        WorkspaceSecretResolution(identity=identity, value=sentinel),
+    )
+    assert resolutions[0].value == sentinel
+    assert sentinel not in repr(resolutions)
+    assert requests == [
+        {
+            "path": "/v1/workspace-secrets/resolve-batch",
+            "authorization": "Bearer " + "x" * 43,
+            "content_type": "application/json",
+            "body": {"bindings": [identity.__dict__]},
+        }
+    ]
+
+
+def test_secret_broker_rejects_mismatched_resolution_without_value_leak():
+    identity = _identity()
+    sentinel = "must-not-appear-in-resolution-error"
+    endpoint, _, thread = _serve_once(
+        {
+            "resolutions": [
+                {
+                    **identity.__dict__,
+                    "revision_id": "bundle-1@2",
+                    "value": sentinel,
+                }
+            ]
+        }
+    )
+    broker = WorkspaceSecretBroker(endpoint=endpoint, capability="x" * 43)
+
+    with pytest.raises(WorkspaceSecretBrokerError) as caught:
+        broker.resolve_many((identity,))
+    thread.join(timeout=2)
+
+    assert "invalid resolution" in str(caught.value)
+    assert sentinel not in str(caught.value)
 
 
 @pytest.mark.parametrize(

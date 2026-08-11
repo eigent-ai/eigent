@@ -210,6 +210,11 @@ describe('workspace secret IPC', () => {
     });
     registerWorkspaceSecretIpcHandlers(ipcMain as any, vault as any, guard);
 
+    expect([...handlers.keys()]).toEqual([
+      'workspace-secret:put',
+      'workspace-secret:status',
+      'workspace-secret:delete',
+    ]);
     for (const channel of [
       'workspace-secret:put',
       'workspace-secret:status',
@@ -240,7 +245,7 @@ describe('WorkspaceSecretBroker', () => {
     fs.rmSync(rootDir, { recursive: true, force: true });
   });
 
-  it('requires its random capability and only reveals binding status', async () => {
+  it('requires its random capability and keeps single-item resolution closed', async () => {
     const store = new WorkspaceSecretVault({
       rootDir: path.join(rootDir, 'secure'),
       crypto: fakeCrypto(),
@@ -288,6 +293,60 @@ describe('WorkspaceSecretBroker', () => {
       }
     );
     expect(resolveAttempt.status).toBe(404);
+  });
+
+  it('resolves a batch only with the process capability and exact identity', async () => {
+    const sentinel = 'resolved-only-inside-brain';
+    const store = new WorkspaceSecretVault({
+      rootDir: path.join(rootDir, 'secure'),
+      crypto: fakeCrypto(),
+    });
+    const created = store.put({ ...scope, value: sentinel });
+    broker = new WorkspaceSecretBroker(store, () => Buffer.alloc(32, 9));
+    const runtime = await broker.start();
+    const endpoint = `${runtime.endpoint}/v1/workspace-secrets/resolve-batch`;
+    const body = JSON.stringify({ bindings: [created] });
+
+    const unauthorized = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer wrong-process-capability',
+        'content-type': 'application/json',
+      },
+      body,
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(await unauthorized.text()).not.toContain(sentinel);
+
+    const authorized = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${runtime.capability}`,
+        'content-type': 'application/json',
+      },
+      body,
+    });
+    expect(authorized.status).toBe(200);
+    expect(await authorized.json()).toEqual({
+      resolutions: [
+        { ...scope, secret_ref: created.secret_ref, value: sentinel },
+      ],
+    });
+
+    const mismatched = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${runtime.capability}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        bindings: [{ ...created, revision_id: 'bundle@2' }],
+      }),
+    });
+    expect(mismatched.status).toBe(403);
+    const mismatchBody = await mismatched.text();
+    expect(mismatchBody).toContain('binding_scope_mismatch');
+    expect(mismatchBody).not.toContain(sentinel);
   });
 
   it('verifies up to 100 bindings in one ordered response without values', async () => {

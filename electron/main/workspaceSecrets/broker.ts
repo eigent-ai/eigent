@@ -137,11 +137,13 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 /**
- * A process-local verification channel for the Brain.
+ * A process-capability-authenticated channel for the Brain.
  *
- * Deliberately does not expose decryption or secret values. Runtime secret
- * injection requires a stronger process-bound design and must not be added to
- * this loopback bearer service.
+ * The random capability is created in Electron main and passed only to the
+ * Brain process at spawn. Python removes it from ``os.environ`` immediately so
+ * agent subprocesses cannot inherit broker authority. Renderer IPC deliberately
+ * exposes put/status/delete only; resolving a value is available solely through
+ * this private loopback channel and always requires the complete binding tuple.
  */
 export class WorkspaceSecretBroker {
   private server: http.Server | null = null;
@@ -210,13 +212,21 @@ export class WorkspaceSecretBroker {
     }
     const isSingleVerify = request.url === '/v1/workspace-secrets/verify';
     const isBatchVerify = request.url === '/v1/workspace-secrets/verify-batch';
-    if (!isSingleVerify && !isBatchVerify) {
+    const isBatchResolve =
+      request.url === '/v1/workspace-secrets/resolve-batch';
+    if (!isSingleVerify && !isBatchVerify && !isBatchResolve) {
       sendJson(response, 404, { error_code: 'not_found' });
       return;
     }
     try {
       const body = await readJsonBody(request);
-      if (isBatchVerify) {
+      if (isBatchResolve) {
+        const resolutions = parseLookupBatch(body).map((lookup) => ({
+          ...lookup,
+          value: this.vault.resolve(lookup),
+        }));
+        sendJson(response, 200, { resolutions });
+      } else if (isBatchVerify) {
         const statuses = parseLookupBatch(body).map((lookup) =>
           this.vault.status(lookup)
         );

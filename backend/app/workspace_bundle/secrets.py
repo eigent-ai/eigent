@@ -6,7 +6,7 @@ import json
 import os
 import re
 from collections.abc import MutableMapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import HTTPConnection, HTTPException
 from typing import Literal
 from urllib.parse import urlsplit
@@ -54,12 +54,21 @@ class WorkspaceSecretVerification:
     state: Literal["available", "missing", "needs_rebind"]
 
 
+@dataclass(frozen=True)
+class WorkspaceSecretResolution:
+    """One in-memory secret value resolved for its exact binding identity."""
+
+    identity: WorkspaceSecretIdentity
+    value: str = field(repr=False)
+
+
 class WorkspaceSecretBroker:
-    """Verify opaque bindings through Electron without receiving secret values."""
+    """Verify or resolve exact bindings through Electron's private channel."""
 
     MAX_BATCH_BINDINGS = 100
     MAX_REQUEST_BYTES = 16 * 1024
     MAX_RESPONSE_BYTES = 64 * 1024
+    MAX_RESOLVE_RESPONSE_BYTES = 8 * 1024 * 1024
 
     def __init__(
         self,
@@ -182,6 +191,76 @@ class WorkspaceSecretBroker:
             )
         return tuple(result)
 
+    def resolve_many(
+        self,
+        identities: Sequence[WorkspaceSecretIdentity],
+    ) -> tuple[WorkspaceSecretResolution, ...]:
+        """Resolve values in memory without persisting or logging them.
+
+        Electron binds every value to the complete secret reference and
+        account/Space/revision/slot tuple. Any missing, stale, or mismatched
+        binding fails the entire batch closed.
+        """
+
+        requested = tuple(identities)
+        if not requested:
+            return ()
+        if len(requested) > self.MAX_BATCH_BINDINGS:
+            raise WorkspaceSecretBrokerError(
+                "Workspace secret resolution batch is too large"
+            )
+        response = self._request(
+            "/v1/workspace-secrets/resolve-batch",
+            {
+                "bindings": [
+                    self._identity_payload(identity) for identity in requested
+                ]
+            },
+            max_response_bytes=self.MAX_RESOLVE_RESPONSE_BYTES,
+        )
+        if set(response) != {"resolutions"}:
+            raise WorkspaceSecretBrokerError(
+                "Workspace secret broker returned an invalid resolution"
+            )
+        resolutions = response.get("resolutions")
+        if not isinstance(resolutions, list) or len(resolutions) != len(
+            requested
+        ):
+            raise WorkspaceSecretBrokerError(
+                "Workspace secret broker returned an invalid resolution"
+            )
+        allowed_keys = {
+            "secret_ref",
+            "account_scope_digest",
+            "space_id",
+            "revision_id",
+            "slot_id",
+            "value",
+        }
+        result: list[WorkspaceSecretResolution] = []
+        for identity, resolution in zip(requested, resolutions, strict=True):
+            expected = self._identity_payload(identity)
+            if (
+                not isinstance(resolution, dict)
+                or set(resolution) != allowed_keys
+                or any(
+                    resolution.get(key) != value
+                    for key, value in expected.items()
+                )
+                or not isinstance(resolution.get("value"), str)
+                or not resolution["value"]
+            ):
+                raise WorkspaceSecretBrokerError(
+                    "Workspace secret broker returned an invalid resolution"
+                )
+            result.append(
+                WorkspaceSecretResolution(
+                    identity=identity,
+                    value=resolution["value"],
+                )
+            )
+        return tuple(result)
+
     @staticmethod
     def _identity_payload(identity: WorkspaceSecretIdentity) -> dict[str, str]:
         return {
@@ -192,7 +271,14 @@ class WorkspaceSecretBroker:
             "slot_id": identity.slot_id,
         }
 
-    def _request(self, path: str, request: dict) -> dict:
+    def _request(
+        self,
+        path: str,
+        request: dict,
+        *,
+        max_response_bytes: int | None = None,
+    ) -> dict:
+        response_limit = max_response_bytes or self.MAX_RESPONSE_BYTES
         encoded = json.dumps(
             request, separators=(",", ":"), sort_keys=True
         ).encode("utf-8")
@@ -225,12 +311,12 @@ class WorkspaceSecretBroker:
                     raise WorkspaceSecretBrokerError(
                         "Workspace secret broker returned invalid metadata"
                     ) from exc
-                if declared_length > self.MAX_RESPONSE_BYTES:
+                if declared_length > response_limit:
                     raise WorkspaceSecretBrokerError(
                         "Workspace secret broker response is too large"
                     )
-            raw = http_response.read(self.MAX_RESPONSE_BYTES + 1)
-            if len(raw) > self.MAX_RESPONSE_BYTES:
+            raw = http_response.read(response_limit + 1)
+            if len(raw) > response_limit:
                 raise WorkspaceSecretBrokerError(
                     "Workspace secret broker response is too large"
                 )

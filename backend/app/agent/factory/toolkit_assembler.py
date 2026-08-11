@@ -39,7 +39,10 @@ from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
-from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.terminal_toolkit import (
+    TerminalToolkit,
+    is_secret_broker_environment_key,
+)
 from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.toolkit.workspace_git_toolkit import WorkspaceGitToolkit
 from app.component.environment import env
@@ -238,7 +241,11 @@ def _mcp_config(options: Chat, hands: IHands | None) -> dict[str, Any] | None:
     normalized_servers = {}
     for name, cfg in servers.items():
         server_cfg = dict(cfg)
-        server_env = dict(server_cfg.get("env", {}))
+        server_env = {
+            key: value
+            for key, value in dict(server_cfg.get("env", {})).items()
+            if not is_secret_broker_environment_key(key)
+        }
         server_env.setdefault(
             "MCP_REMOTE_CONFIG_DIR",
             env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")),
