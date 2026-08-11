@@ -134,7 +134,7 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         },
         {
             "router": workspace_bundle_controller.router,
-            "tags": ["Workforce Bundles"],
+            "tags": ["Workspace Bundles"],
             "description": "Review-first local Bundle installation",
             "self_authenticated": True,
         },

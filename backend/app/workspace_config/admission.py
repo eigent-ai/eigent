@@ -36,7 +36,7 @@ from app.workspace_config.models import (
     ResolvedConnectorBinding,
     ResolvedContextSource,
     ThinkingEffort,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceBundleReconfigurationPendingError,
     canonical_digest,
     normalize_thinking_effort,
@@ -58,7 +58,7 @@ _SECRET_ARG = re.compile(
 
 @dataclass(frozen=True)
 class EnvironmentAdmissionTemplate:
-    manifest: WorkforceBundleManifest
+    manifest: WorkspaceBundleManifest
     provider_capability: ProviderModelCapability
     runtime_capability_manifest: dict[str, Any]
     # None means the user did not override the installed Bundle layer.
@@ -177,10 +177,10 @@ class LegacyEnvironmentImporter:
                 "legacy_source_checksum": source_checksum,
             }
         )
-        manifest = WorkforceBundleManifest.model_validate(
+        manifest = WorkspaceBundleManifest.model_validate(
             {
                 "apiVersion": "eigent.ai/v1alpha1",
-                "kind": "WorkforceBundle",
+                "kind": "WorkspaceBundle",
                 "metadata": {
                     "id": f"bundle_legacy_{identity[:24]}",
                     "name": "Personal Default Bundle",
@@ -313,7 +313,7 @@ class EnvironmentAdmissionService:
                 raise ValueError(
                     "Materialized Workspace Bundle revision is missing"
                 )
-            installed_manifest = WorkforceBundleManifest.model_validate(
+            installed_manifest = WorkspaceBundleManifest.model_validate(
                 revision.manifest
             )
             proposal = self.journal.get_active_workspace_bundle_proposal(

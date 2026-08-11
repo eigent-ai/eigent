@@ -26,7 +26,7 @@ import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 
 const makeDocument = (name = 'Research'): WorkspaceConfigurationDocument => ({
   apiVersion: 'eigent.ai/v1alpha1',
-  kind: 'WorkforceBundle',
+  kind: 'WorkspaceBundle',
   metadata: { id: 'bundle-1', name, revision: 1 },
   spec: {
     instructions: {},

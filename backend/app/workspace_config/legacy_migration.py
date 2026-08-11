@@ -61,7 +61,7 @@ class LegacyWorkspaceBundleMigration:
         self.output_path = (
             self.root
             / "migrations"
-            / "personal-default-workforce-bundle-v1.json"
+            / "personal-default-workspace-bundle-v1.json"
         )
 
     def run(self) -> LegacyMigrationResult:
@@ -106,7 +106,7 @@ class LegacyWorkspaceBundleMigration:
             bindings = self._secret_bindings(servers)
             safe_payload = {
                 "migration_version": _MIGRATION_VERSION,
-                "kind": "PersonalDefaultWorkforceBundleMigration",
+                "kind": "PersonalDefaultWorkspaceBundleMigration",
                 "bundle_manifest": template.manifest.canonical_payload(),
                 "runtime_capability_manifest": (
                     template.runtime_capability_manifest
@@ -136,7 +136,7 @@ class LegacyWorkspaceBundleMigration:
             Exception
         ) as exc:  # startup migration is intentionally fail-open
             logger.warning(
-                "Legacy Workforce Bundle migration degraded: %s", exc
+                "Legacy Workspace Bundle migration degraded: %s", exc
             )
             return LegacyMigrationResult(
                 status="degraded",

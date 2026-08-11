@@ -21,15 +21,16 @@ def _capture_broker_environment(
     capability = environment.pop(
         "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY", ""
     )
-    legacy_endpoint = environment.pop(
-        "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT", ""
-    )
-    legacy_capability = environment.pop(
-        "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY", ""
-    )
-    if endpoint or capability:
-        return endpoint, capability
-    return legacy_endpoint, legacy_capability
+    # Strip any obsolete or vendor-specific broker authority as well. Only the
+    # Workspace keys above are accepted as the active authority, but no broker
+    # credential may leak into an agent child process.
+    for key in tuple(environment):
+        if re.fullmatch(
+            r"EIGENT_[A-Z0-9_]+_SECRET_BROKER_(?:ENDPOINT|CAPABILITY)",
+            key.strip().upper(),
+        ):
+            environment.pop(key, None)
+    return endpoint, capability
 
 
 _BROKER_ENDPOINT, _BROKER_CAPABILITY = _capture_broker_environment(os.environ)

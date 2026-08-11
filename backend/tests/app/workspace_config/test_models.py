@@ -21,13 +21,13 @@ from app.workspace_config import (
     assert_bundle_asset_safe,
     assert_manifest_secret_free,
     canonical_digest,
-    parse_workforce_manifest,
+    parse_workspace_manifest,
 )
 from app.workspace_config.models import assert_cloud_projection_safe
 
 MANIFEST_YAML = """
 apiVersion: eigent.ai/v1alpha1
-kind: WorkforceBundle
+kind: WorkspaceBundle
 metadata:
   id: bundle_product_research
   name: Product Research Workforce
@@ -96,8 +96,8 @@ def _capability() -> ProviderModelCapability:
 
 
 def test_manifest_is_strict_canonical_and_digest_stable():
-    first = parse_workforce_manifest(MANIFEST_YAML)
-    reordered = parse_workforce_manifest(
+    first = parse_workspace_manifest(MANIFEST_YAML)
+    reordered = parse_workspace_manifest(
         MANIFEST_YAML.replace(
             "  name: Product Research Workforce\n  revision: 7",
             "  revision: 7\n  name: Product Research Workforce",
@@ -113,14 +113,14 @@ def test_manifest_is_strict_canonical_and_digest_stable():
 
 
 def test_legacy_manifest_canonical_payload_does_not_gain_environment_field():
-    manifest = parse_workforce_manifest(MANIFEST_YAML)
+    manifest = parse_workspace_manifest(MANIFEST_YAML)
 
     assert "environment" not in manifest.canonical_payload()["spec"]
 
 
 def test_manifest_rejects_secret_value_even_inside_freeform_instructions():
     with pytest.raises(SecretValueInManifestError, match="api_key"):
-        parse_workforce_manifest(
+        parse_workspace_manifest(
             MANIFEST_YAML.replace(
                 "coordinator: bundle://instructions/coordinator.md",
                 "api_key: sk-must-not-enter-a-bundle",
@@ -224,7 +224,7 @@ def test_asset_preflight_preserves_safe_structured_assets(
 
 
 def test_manifest_allows_path_like_prose_and_requires_default_model():
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         MANIFEST_YAML.replace(
             "  context:\n",
             "  context:\n"
@@ -235,7 +235,7 @@ def test_manifest_allows_path_like_prose_and_requires_default_model():
     )
     assert manifest.spec.context[0].content is not None
     with pytest.raises(ValidationError, match="default profile"):
-        parse_workforce_manifest(
+        parse_workspace_manifest(
             MANIFEST_YAML.replace("    default:\n", "    custom:\n")
         )
 
@@ -250,7 +250,7 @@ def test_manifest_allows_path_like_prose_and_requires_default_model():
     ],
 )
 def test_manifest_allows_device_paths_inside_local_inline_prose(path):
-    parse_workforce_manifest(
+    parse_workspace_manifest(
         MANIFEST_YAML.replace(
             "  context:\n",
             "  context:\n"
@@ -281,7 +281,7 @@ def test_cloud_projection_only_rejects_identifying_home_paths():
 
 def test_manifest_rejects_physical_path_for_local_slot():
     with pytest.raises(ValidationError, match="physical path"):
-        parse_workforce_manifest(
+        parse_workspace_manifest(
             MANIFEST_YAML.replace(
                 "      sharing: reference_only",
                 "      path: /Users/alice/private\n"
@@ -292,7 +292,7 @@ def test_manifest_rejects_physical_path_for_local_slot():
 
 
 def test_thinking_effort_aliases_are_normalized_and_unsupported_is_explicit():
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         MANIFEST_YAML.replace(
             "thinkingEffort: medium", "thinkingEffort: light"
         )
@@ -361,7 +361,7 @@ def test_capability_registry_maps_product_max_without_blind_forwarding():
 
 
 def test_cloud_projection_redacts_local_paths_and_binding_ids():
-    manifest = parse_workforce_manifest(MANIFEST_YAML)
+    manifest = parse_workspace_manifest(MANIFEST_YAML)
     local = LocalMaterialization(
         context_sources=(
             ResolvedContextSource(
@@ -420,7 +420,7 @@ def test_cloud_projection_redacts_local_paths_and_binding_ids():
 
 
 def test_cloud_projection_does_not_repeat_inline_bundle_path_instructions():
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         MANIFEST_YAML.replace(
             "  context:\n",
             "  context:\n"
@@ -449,7 +449,7 @@ def test_cloud_projection_does_not_repeat_inline_bundle_path_instructions():
 
 
 def test_cloud_projection_rejects_local_fields_in_semantic_capabilities():
-    manifest = parse_workforce_manifest(MANIFEST_YAML)
+    manifest = parse_workspace_manifest(MANIFEST_YAML)
     spec = EnvironmentConfigResolver().resolve(
         manifest=manifest,
         owner_type="run",

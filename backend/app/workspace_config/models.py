@@ -12,7 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Immutable Workforce Bundle and environment materialization contracts."""
+"""Immutable Workspace Bundle and environment materialization contracts."""
 
 from __future__ import annotations
 
@@ -650,14 +650,14 @@ class BundleSpec(_StrictFrozenModel):
         return self
 
 
-class WorkforceBundleManifest(_StrictFrozenModel):
+class WorkspaceBundleManifest(_StrictFrozenModel):
     api_version: Literal["eigent.ai/v1alpha1"] = Field(alias="apiVersion")
-    kind: Literal["WorkforceBundle"]
+    kind: Literal["WorkspaceBundle"]
     metadata: BundleMetadata
     spec: BundleSpec
 
     @model_validator(mode="after")
-    def reject_secret_values(self) -> WorkforceBundleManifest:
+    def reject_secret_values(self) -> WorkspaceBundleManifest:
         assert_manifest_secret_free(self.canonical_payload())
         return self
 
@@ -896,7 +896,7 @@ class EffectiveEnvironmentSpec(_StrictFrozenModel):
         *,
         owner_type: Literal["run", "run_attempt"],
         owner_id: str,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         semantic_spec: dict[str, Any],
         local_materialization: LocalMaterialization,
         permission_profile_revision: str,

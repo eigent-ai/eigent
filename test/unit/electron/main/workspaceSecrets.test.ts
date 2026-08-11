@@ -105,7 +105,7 @@ describe('WorkspaceSecretVault', () => {
     expect(fs.statSync(store.rootDir).mode & 0o777).toBe(0o700);
     expect(fs.statSync(store.filePath).mode & 0o777).toBe(0o600);
     expect(fs.readdirSync(store.rootDir)).toEqual([
-      'workforce-secret-vault.v1.json',
+      'workspace-secret-vault.v1.json',
     ]);
     expect(fsync).toHaveBeenCalledTimes(2);
     expect(store.resolve(result)).toBe('sentinel-super-secret');

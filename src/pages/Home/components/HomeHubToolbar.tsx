@@ -255,7 +255,7 @@ export default function HomeHubToolbar({
           onClick={() => navigate('/workspace-bundles/install')}
         >
           <PackagePlus className="h-4 w-4 shrink-0" aria-hidden />
-          Import Workforce Bundle
+          Import Workspace Bundle
         </Button>
 
         {isDesktop() ? (

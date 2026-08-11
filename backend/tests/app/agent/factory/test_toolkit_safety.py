@@ -80,8 +80,8 @@ def test_mcp_process_environment_excludes_secret_broker_authority():
                         "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY": (
                             "broker-secret"
                         ),
-                        "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY": (
-                            "legacy-secret"
+                        "EIGENT_OBSOLETE_SECRET_BROKER_CAPABILITY": (
+                            "obsolete-secret"
                         ),
                         "AUTHORIZATION": "consumer-authorization",
                         "MCP_API_TOKEN": "consumer-secret",
@@ -99,4 +99,4 @@ def test_mcp_process_environment_excludes_secret_broker_authority():
     assert environment["AUTHORIZATION"] == "consumer-authorization"
     assert "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT" not in environment
     assert "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY" not in environment
-    assert "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY" not in environment
+    assert "EIGENT_OBSOLETE_SECRET_BROKER_CAPABILITY" not in environment

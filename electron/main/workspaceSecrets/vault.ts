@@ -26,7 +26,7 @@ import type {
 } from './types';
 
 const FORMAT_VERSION = 1;
-const VAULT_FILE_NAME = 'workforce-secret-vault.v1.json';
+const VAULT_FILE_NAME = 'workspace-secret-vault.v1.json';
 const MAX_VAULT_BYTES = 8 * 1024 * 1024;
 export const MAX_WORKSPACE_SECRET_BYTES = 64 * 1024;
 

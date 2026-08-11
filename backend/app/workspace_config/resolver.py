@@ -23,7 +23,7 @@ from app.workspace_config.models import (
     LocalMaterialization,
     ProviderModelCapability,
     ThinkingEffort,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     canonical_digest,
 )
 
@@ -34,7 +34,7 @@ class EnvironmentConfigResolver:
     def resolve(
         self,
         *,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         owner_type: Literal["run", "run_attempt"],
         owner_id: str,
         local_materialization: LocalMaterialization,

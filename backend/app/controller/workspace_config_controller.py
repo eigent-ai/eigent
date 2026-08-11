@@ -42,7 +42,7 @@ from app.workspace_bundle import (
     WorkspaceBundleCloudError,
 )
 from app.workspace_config import (
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceConfigError,
     assert_bundle_asset_safe,
     canonical_digest,
@@ -130,7 +130,7 @@ def _default_document(space_id: str, name: str | None) -> dict[str, Any]:
     display_name = (name or "Workspace").strip() or "Workspace"
     return {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": _default_bundle_id(space_id),
             "name": display_name,
@@ -176,7 +176,7 @@ def _base_document(space_id: str, name: str | None) -> tuple[dict, str | None]:
     )
     if revision is None:
         return _default_document(space_id, name), None
-    document = WorkforceBundleManifest.model_validate(
+    document = WorkspaceBundleManifest.model_validate(
         revision.manifest
     ).canonical_payload()
     metadata = document.setdefault("metadata", {})
@@ -197,7 +197,7 @@ def _payload(
             "version": 0,
             "base_revision_id": base_revision_id,
             "document": document,
-            "document_digest": WorkforceBundleManifest.model_validate(
+            "document_digest": WorkspaceBundleManifest.model_validate(
                 document
             ).digest,
             "persisted": False,
@@ -329,7 +329,7 @@ def _prepared_asset_payload(asset: Any) -> dict[str, Any]:
 def _workspace_configuration_review(
     draft: WorkspaceConfigDraftRecord,
 ) -> dict[str, Any]:
-    manifest = WorkforceBundleManifest.model_validate(draft.document)
+    manifest = WorkspaceBundleManifest.model_validate(draft.document)
     base = WorkspaceBundleAuthoringService.review(
         manifest,
         mcp_config=read_mcp_config(),
@@ -396,7 +396,7 @@ def _assert_cloud_prepared_assets_match(
     manifest_digest: str,
     cloud_revision: dict[str, Any],
 ) -> None:
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         cloud_revision.get("manifest", {})
     )
     base = WorkspaceBundleAuthoringService.review(
@@ -600,7 +600,7 @@ async def put_workspace_configuration(
     )
     journal = get_default_run_journal()
     try:
-        manifest = WorkforceBundleManifest.model_validate(body.document)
+        manifest = WorkspaceBundleManifest.model_validate(body.document)
         canonical = manifest.canonical_payload()
         existing = journal.get_workspace_config_draft(space_id)
         if existing is not None:
@@ -766,7 +766,7 @@ async def upload_prepared_workspace_configuration_asset(
             draft=draft,
             descriptor=descriptor,
         )
-        manifest = WorkforceBundleManifest.model_validate(draft.document)
+        manifest = WorkspaceBundleManifest.model_validate(draft.document)
         bundle_id = manifest.metadata.id
         revision_id = f"{bundle_id}@{manifest.metadata.revision}"
         cloud = _authoring_cloud(authorization)

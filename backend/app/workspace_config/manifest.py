@@ -12,7 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-"""Safe parser for shareable Workforce Bundle manifests."""
+"""Safe parser for shareable Workspace Bundle manifests."""
 
 from __future__ import annotations
 
@@ -22,30 +22,30 @@ from typing import Any
 import yaml
 
 from app.workspace_config.models import (
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceConfigError,
     assert_manifest_secret_free,
 )
 
 
-def parse_workforce_manifest(value: str | bytes) -> WorkforceBundleManifest:
+def parse_workspace_manifest(value: str | bytes) -> WorkspaceBundleManifest:
     try:
         payload: Any = yaml.safe_load(value)
     except yaml.YAMLError as exc:
-        raise WorkspaceConfigError("invalid Workforce Bundle YAML") from exc
+        raise WorkspaceConfigError("invalid Workspace Bundle YAML") from exc
     if not isinstance(payload, dict):
         raise WorkspaceConfigError(
-            "Workforce Bundle manifest must be a YAML mapping"
+            "Workspace Bundle manifest must be a YAML mapping"
         )
     # Run this before Pydantic so callers receive the typed privacy-boundary
     # error instead of a generic wrapped ValidationError.
     assert_manifest_secret_free(payload)
-    return WorkforceBundleManifest.model_validate(payload)
+    return WorkspaceBundleManifest.model_validate(payload)
 
 
-def load_workforce_manifest(path: Path) -> WorkforceBundleManifest:
+def load_workspace_manifest(path: Path) -> WorkspaceBundleManifest:
     if path.name != "workspace.yaml":
         raise WorkspaceConfigError(
-            "Workforce Bundle manifest must be named workspace.yaml"
+            "Workspace Bundle manifest must be named workspace.yaml"
         )
-    return parse_workforce_manifest(path.read_text(encoding="utf-8"))
+    return parse_workspace_manifest(path.read_text(encoding="utf-8"))

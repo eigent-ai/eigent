@@ -1,4 +1,4 @@
-"""Agent Plugins v1.0.0 importer for reviewable Workforce Bundle drafts."""
+"""Agent Plugins v1.0.0 importer for reviewable Workspace Bundle drafts."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.run_journal.store import SQLiteRunJournal
 from app.workspace_bundle.authoring import WorkspaceBundleAuthoringService
 from app.workspace_config import (
     SecretValueInManifestError,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     assert_bundle_asset_safe,
     assert_manifest_secret_free,
     canonical_digest,
@@ -161,7 +161,7 @@ class AgentPluginAsset:
 
 @dataclass(frozen=True)
 class AgentPluginImportResult:
-    manifest: WorkforceBundleManifest
+    manifest: WorkspaceBundleManifest
     assets: tuple[AgentPluginAsset, ...]
     source_metadata: dict[str, Any]
     warnings: tuple[AgentPluginImportWarning, ...]
@@ -291,10 +291,10 @@ class AgentPluginImporter:
             excluded=excluded,
             semantic_executable_paths=semantic_executable_paths,
         )
-        manifest = WorkforceBundleManifest.model_validate(
+        manifest = WorkspaceBundleManifest.model_validate(
             {
                 "apiVersion": "eigent.ai/v1alpha1",
-                "kind": "WorkforceBundle",
+                "kind": "WorkspaceBundle",
                 "metadata": {
                     "id": bundle_id or self._bundle_id(plugin_name),
                     "name": plugin_name,

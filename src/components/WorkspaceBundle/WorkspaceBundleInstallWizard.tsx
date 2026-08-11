@@ -337,7 +337,7 @@ function McpDestinationReview({
 }
 
 const installSeedKey = (revisionId: string, actorId: string): string =>
-  `eigent:workforce-bundle-install-seed:v1:${actorId}:${revisionId}`;
+  `eigent:workspace-bundle-install-seed:v1:${actorId}:${revisionId}`;
 
 function readInstallSeed(
   revisionId: string,
@@ -564,7 +564,7 @@ export function WorkspaceBundleInstallWizard({
     async (rawHandle: string) => {
       const parsed = parseWorkspaceBundleHandle(rawHandle);
       if (!parsed) {
-        setError('Use a published handle such as my-workforce@1.');
+        setError('Use a published handle such as my-workspace@1.');
         setRetryMode(null);
         return;
       }
@@ -634,13 +634,13 @@ export function WorkspaceBundleInstallWizard({
         const name =
           review.bundle?.name ||
           review.revision.manifest.metadata.name ||
-          'Imported workforce';
+          'Imported workspace';
         const spaceId = await createSpaceOnServer({
           name,
           sourceType: 'blank',
           setActive: false,
           metadata: {
-            createdFrom: 'workforce_bundle_install',
+            createdFrom: 'workspace_bundle_install',
             bundleRevision: handle.revisionId,
             bundleInstallProposalId: proposalId,
             bundleInstallRequestId: requestId,
@@ -963,10 +963,10 @@ export function WorkspaceBundleInstallWizard({
 
       <header>
         <h1 className="text-heading-2xl font-semibold">
-          Install Workforce Bundle
+          Install Workspace Bundle
         </h1>
         <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
-          Review what the workforce can access, then configure required values
+          Review what the workspace environment can access, then configure required values
           and connections locally.
         </p>
       </header>
@@ -1010,8 +1010,8 @@ export function WorkspaceBundleInstallWizard({
               <Input
                 value={handleInput}
                 onChange={(event) => setHandleInput(event.target.value)}
-                placeholder="research-workforce@1"
-                aria-label="Workforce Bundle share handle"
+                placeholder="research-workspace@1"
+                aria-label="Workspace Bundle share handle"
               />
               <Button type="submit" disabled={busyKey === 'review'}>
                 {busyKey === 'review' ? (

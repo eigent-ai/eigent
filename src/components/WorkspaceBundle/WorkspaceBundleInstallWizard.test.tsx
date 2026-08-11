@@ -99,8 +99,8 @@ import { WorkspaceBundleInstallWizard } from './WorkspaceBundleInstallWizard';
 
 const manifest = {
   apiVersion: 'eigent.ai/v1alpha1',
-  kind: 'WorkforceBundle',
-  metadata: { id: 'research', name: 'Research workforce', revision: 1 },
+  kind: 'WorkspaceBundle',
+  metadata: { id: 'research', name: 'Research workspace', revision: 1 },
   spec: {
     instructions: {},
     context: [],
@@ -135,7 +135,7 @@ const review = {
   bundle: {
     id: 'research',
     workspace_id: 'author-space',
-    name: 'Research workforce',
+    name: 'Research workspace',
     visibility: 'public' as const,
     latest_published_revision_id: 'research@1',
   },
@@ -236,7 +236,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     const user = userEvent.setup();
     renderWizard({ initialHandle: 'research@1' });
 
-    expect(await screen.findByText('Research workforce')).toBeInTheDocument();
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
     expect(mocks.createSpace).not.toHaveBeenCalled();
     expect(mocks.decide).not.toHaveBeenCalled();
 
@@ -785,7 +785,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByText('Research workforce')).toBeInTheDocument();
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
     expect(mocks.fetchReview).toHaveBeenCalledTimes(2);
   });
 

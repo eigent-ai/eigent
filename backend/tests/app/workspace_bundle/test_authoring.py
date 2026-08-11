@@ -5,14 +5,14 @@ import json
 import pytest
 
 from app.workspace_bundle import WorkspaceBundleAuthoringService
-from app.workspace_config import WorkforceBundleManifest
+from app.workspace_config import WorkspaceBundleManifest
 
 
 def test_save_review_extracts_requirement_names_without_local_values():
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
-            "kind": "WorkforceBundle",
+            "kind": "WorkspaceBundle",
             "metadata": {
                 "id": "bundle_review",
                 "name": "Review",
@@ -86,10 +86,10 @@ def test_save_review_extracts_requirement_names_without_local_values():
 def test_save_review_keeps_non_env_secret_slots_when_legacy_env_is_not_object(
     legacy_environment,
 ):
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
-            "kind": "WorkforceBundle",
+            "kind": "WorkspaceBundle",
             "metadata": {
                 "id": "bundle_review",
                 "name": "Review",
@@ -141,10 +141,10 @@ def test_save_review_keeps_non_env_secret_slots_when_legacy_env_is_not_object(
 
 
 def test_save_review_hardens_declared_environment_secret_without_value():
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
-            "kind": "WorkforceBundle",
+            "kind": "WorkspaceBundle",
             "metadata": {
                 "id": "bundle_review",
                 "name": "Review",
@@ -194,7 +194,7 @@ def test_save_review_hardens_declared_environment_secret_without_value():
 def test_sensitive_environment_requirement_cannot_carry_example_value():
     payload = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_review",
             "name": "Review",
@@ -220,7 +220,7 @@ def test_sensitive_environment_requirement_cannot_carry_example_value():
     }
 
     try:
-        WorkforceBundleManifest.model_validate(payload)
+        WorkspaceBundleManifest.model_validate(payload)
     except ValueError as exc:
         assert "cannot contain examples" in str(exc)
     else:

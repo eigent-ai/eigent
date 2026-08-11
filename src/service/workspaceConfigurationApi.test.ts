@@ -27,7 +27,7 @@ import {
 
 const document: WorkspaceConfigurationDocument = {
   apiVersion: 'eigent.ai/v1alpha1',
-  kind: 'WorkforceBundle',
+  kind: 'WorkspaceBundle',
   metadata: { id: 'bundle-1', name: 'Bundle', revision: 1 },
   spec: {
     instructions: {},

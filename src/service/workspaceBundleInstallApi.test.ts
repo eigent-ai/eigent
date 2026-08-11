@@ -33,46 +33,46 @@ describe('workspace Bundle install API', () => {
   });
 
   it('accepts only a canonical immutable share handle', () => {
-    expect(parseWorkspaceBundleHandle('research-workforce@12')).toEqual({
-      bundleId: 'research-workforce',
-      revisionId: 'research-workforce@12',
+    expect(parseWorkspaceBundleHandle('research-workspace@12')).toEqual({
+      bundleId: 'research-workspace',
+      revisionId: 'research-workspace@12',
     });
-    expect(parseWorkspaceBundleHandle('research-workforce')).toBeNull();
-    expect(parseWorkspaceBundleHandle('research-workforce@0')).toBeNull();
+    expect(parseWorkspaceBundleHandle('research-workspace')).toBeNull();
+    expect(parseWorkspaceBundleHandle('research-workspace@0')).toBeNull();
   });
 
   it('loads the published revision before creating a local proposal', async () => {
-    mocks.findBundle.mockResolvedValue({ id: 'research-workforce' });
+    mocks.findBundle.mockResolvedValue({ id: 'research-workspace' });
     mocks.getRevision.mockResolvedValue({
-      id: 'research-workforce@1',
-      bundle_id: 'research-workforce',
+      id: 'research-workspace@1',
+      bundle_id: 'research-workspace',
       status: 'published',
     });
 
     await fetchWorkspaceBundleInstallReview({
-      bundleId: 'research-workforce',
-      revisionId: 'research-workforce@1',
+      bundleId: 'research-workspace',
+      revisionId: 'research-workspace@1',
     });
 
     expect(mocks.getRevision).toHaveBeenCalledWith(
-      'research-workforce',
-      'research-workforce@1'
+      'research-workspace',
+      'research-workspace@1'
     );
     expect(mocks.fetchPost).not.toHaveBeenCalled();
   });
 
   it('rejects a draft revision during the review-first read', async () => {
-    mocks.findBundle.mockResolvedValue({ id: 'research-workforce' });
+    mocks.findBundle.mockResolvedValue({ id: 'research-workspace' });
     mocks.getRevision.mockResolvedValue({
-      id: 'research-workforce@1',
-      bundle_id: 'research-workforce',
+      id: 'research-workspace@1',
+      bundle_id: 'research-workspace',
       status: 'validated',
     });
 
     await expect(
       fetchWorkspaceBundleInstallReview({
-        bundleId: 'research-workforce',
-        revisionId: 'research-workforce@1',
+        bundleId: 'research-workspace',
+        revisionId: 'research-workspace@1',
       })
     ).rejects.toThrow('Only published');
   });
@@ -84,8 +84,8 @@ describe('workspace Bundle install API', () => {
       proposalId: 'p-1',
       requestId: 'r-1',
       spaceId: 'space-1',
-      bundleId: 'research-workforce',
-      revisionId: 'research-workforce@1',
+      bundleId: 'research-workspace',
+      revisionId: 'research-workspace@1',
     });
 
     expect(mocks.fetchPost).toHaveBeenCalledWith(

@@ -16,7 +16,7 @@ from app.workspace_bundle import (
 )
 from app.workspace_config import (
     ConfigPlacement,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     canonical_digest,
 )
 from app.workspace_git import ConfigurationRepositoryService, GitBackend
@@ -25,7 +25,7 @@ from app.workspace_git import ConfigurationRepositoryService, GitBackend
 def _manifest(revision: int = 1) -> dict:
     return {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle-research",
             "name": "Research Workforce",
@@ -106,7 +106,7 @@ class FakeCloud:
 
     async def get_catalog_revision(self, bundle_id, revision_id):
         revision_number = int(str(revision_id).rsplit("@", 1)[1])
-        manifest = WorkforceBundleManifest.model_validate(
+        manifest = WorkspaceBundleManifest.model_validate(
             _manifest(revision_number)
         ).canonical_payload()
         suffix = "" if revision_number == 1 else f"-v{revision_number}"
@@ -287,7 +287,7 @@ def installer(tmp_path):
 
 def test_local_review_decision_does_not_require_cloud(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-        manifest = WorkforceBundleManifest.model_validate(
+        manifest = WorkspaceBundleManifest.model_validate(
             _manifest()
         ).canonical_payload()
         proposal = journal.put_workspace_bundle_install_proposal(
@@ -626,7 +626,7 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
     )
 
     async def get_catalog_revision(bundle_id, revision_id):
-        canonical = WorkforceBundleManifest.model_validate(
+        canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         definition = json.dumps(
@@ -809,7 +809,7 @@ async def test_registry_secret_mcp_cannot_be_approved_or_reported_ready(
     ]
 
     async def get_catalog_revision(bundle_id, revision_id):
-        canonical = WorkforceBundleManifest.model_validate(
+        canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
@@ -874,7 +874,7 @@ async def test_proposal_rejects_mcp_definition_digest_mismatch(installer):
     cloud.contents["asset-mcp-private"] = content
 
     async def get_catalog_revision(bundle_id, revision_id):
-        canonical = WorkforceBundleManifest.model_validate(
+        canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
@@ -923,7 +923,7 @@ async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
     }
 
     async def get_catalog_revision(bundle_id, revision_id):
-        canonical = WorkforceBundleManifest.model_validate(
+        canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
@@ -1182,7 +1182,7 @@ def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):
             bundle_id="bundle-research",
             revision_id="bundle-research@1",
             config_placement="sidecar",
-            manifest=WorkforceBundleManifest.model_validate(
+            manifest=WorkspaceBundleManifest.model_validate(
                 _manifest()
             ).canonical_payload(),
             assets=[],

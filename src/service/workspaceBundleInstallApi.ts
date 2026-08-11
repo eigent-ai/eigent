@@ -149,14 +149,14 @@ export async function fetchWorkspaceBundleInstallReview(
   );
   if (revision.status !== 'published') {
     throw new Error(
-      'Only published Workforce Bundle versions can be installed.'
+      'Only published Workspace Bundle versions can be installed.'
     );
   }
   if (
     revision.bundle_id !== handle.bundleId ||
     revision.id !== handle.revisionId
   ) {
-    throw new Error('The Workforce Bundle version identity does not match.');
+    throw new Error('The Workspace Bundle version identity does not match.');
   }
   // Public install remains usable even if mutable owner metadata is not
   // readable by this account. The immutable revision is the authority.

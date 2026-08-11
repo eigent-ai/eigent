@@ -14,8 +14,8 @@
 
 from app.workspace_config.capabilities import ModelCapabilityRegistry
 from app.workspace_config.manifest import (
-    load_workforce_manifest,
-    parse_workforce_manifest,
+    load_workspace_manifest,
+    parse_workspace_manifest,
 )
 from app.workspace_config.models import (
     ConfigPlacement,
@@ -31,7 +31,7 @@ from app.workspace_config.models import (
     ThinkingEffort,
     UnsafeCloudProjectionError,
     UnsupportedThinkingEffortError,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceBundleReconfigurationPendingError,
     WorkspaceConfigError,
     WorkspaceLock,
@@ -60,7 +60,7 @@ __all__ = [
     "ThinkingEffort",
     "UnsafeCloudProjectionError",
     "UnsupportedThinkingEffortError",
-    "WorkforceBundleManifest",
+    "WorkspaceBundleManifest",
     "WorkspaceBundleReconfigurationPendingError",
     "WorkspaceLock",
     "WorkspaceConfigError",
@@ -69,7 +69,7 @@ __all__ = [
     "assert_manifest_secret_free",
     "canonical_digest",
     "canonical_json",
-    "load_workforce_manifest",
+    "load_workspace_manifest",
     "normalize_thinking_effort",
-    "parse_workforce_manifest",
+    "parse_workspace_manifest",
 ]

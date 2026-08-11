@@ -1,4 +1,4 @@
-"""Device-authenticated Cloud transport for Workforce Bundle installation."""
+"""Device-authenticated Cloud transport for Workspace Bundle installation."""
 
 from __future__ import annotations
 

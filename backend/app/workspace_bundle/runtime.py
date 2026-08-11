@@ -33,7 +33,7 @@ from app.workspace_bundle.mcp_destination import (
 )
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceLock,
     canonical_digest,
 )
@@ -361,7 +361,7 @@ class RuntimeEnvironmentAssembler:
         if revision is None:
             raise EnvironmentSetupRequiredError(["bundle_revision_missing"])
         try:
-            manifest = WorkforceBundleManifest.model_validate(
+            manifest = WorkspaceBundleManifest.model_validate(
                 spec.semantic_spec.get("bundle")
             )
         except Exception as exc:
@@ -724,13 +724,13 @@ class RuntimeEnvironmentAssembler:
     def _load_configuration_contract(
         self,
         root: Path,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
     ) -> WorkspaceLock:
         try:
             manifest_value = yaml.safe_load(
                 self._read_limited(root / "workspace.yaml").decode("utf-8")
             )
-            materialized_manifest = WorkforceBundleManifest.model_validate(
+            materialized_manifest = WorkspaceBundleManifest.model_validate(
                 manifest_value
             )
             lock_value = yaml.safe_load(
@@ -807,7 +807,7 @@ class RuntimeEnvironmentAssembler:
 
     def _validate_declared_bindings(
         self,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         proposal: WorkspaceBundleInstallProposalRecord,
         local_by_slot: dict[str, WorkspaceBundleLocalBindingRecord],
         secret_bindings: tuple[WorkspaceBundleSecretBindingRecord, ...],

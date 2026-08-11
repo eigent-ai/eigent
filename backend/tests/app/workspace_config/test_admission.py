@@ -8,7 +8,7 @@ import pytest
 from app.run_journal import SQLiteRunJournal
 from app.workspace_config import (
     ThinkingEffort,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceBundleReconfigurationPendingError,
 )
 from app.workspace_config.admission import (
@@ -276,10 +276,10 @@ def test_admission_pins_current_space_permission_profile(tmp_path):
 
 
 def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
-            "kind": "WorkforceBundle",
+            "kind": "WorkspaceBundle",
             "metadata": {
                 "id": "bundle-team",
                 "name": "Team Workspace",
