@@ -365,7 +365,18 @@ def _expanded_shell_words(words: tuple[str, ...]) -> tuple[tuple[str, ...], ...]
 
 
 def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
-    for segment in _expanded_shell_words(words):
+    expanded_segments = _expanded_shell_words(words)
+    whole_command = " ".join(
+        word for segment in expanded_segments for word in segment
+    ).lower()
+    whole_command_path = whole_command.replace(chr(92), "/")
+    whole_command_compact = re.sub(r"[^a-z0-9_]+", "", whole_command)
+    if ".eigent" in whole_command_path and (
+        re.search(r"run.*journal.*sqlite", whole_command_compact)
+        or re.search(r"policy.*sqlite", whole_command_compact)
+    ):
+        return True
+    for segment in expanded_segments:
         raw = " ".join(segment).lower()
         compact = re.sub(r"[^a-z0-9_]+", "", raw)
         if "eigentlocalcontrolcapability" in compact:
