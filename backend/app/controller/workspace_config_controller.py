@@ -817,7 +817,7 @@ async def record_workspace_configuration_published(
     cloud = None
     try:
         cloud = _authoring_cloud(authorization)
-        cloud_revision = await cloud.get_revision(
+        cloud_revision = await cloud.get_owner_revision(
             body.revision_id.rsplit("@", 1)[0], body.revision_id
         )
         if (
