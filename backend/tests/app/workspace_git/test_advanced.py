@@ -80,7 +80,13 @@ def test_advanced_git_grammar_classifies_known_commands(argv, operation):
     [
         (("merge", "--log=5", "topic"), "git.integrate"),
         (("fetch", "--no-write-fetch-head", "origin"), "git.remote_read"),
+        (("fetch", "--unshallow", "origin"), "git.remote_read"),
+        (("fetch", "--filter=blob:none", "origin"), "git.remote_read"),
+        (("fetch", "--set-upstream", "origin"), "git.remote_read"),
         (("commit", "--verbose", "-m", "checkpoint"), "git.local_write"),
+        (("commit", "-s", "-m", "checkpoint"), "git.local_write"),
+        (("commit", "--signoff", "-m", "checkpoint"), "git.local_write"),
+        (("commit", "--no-edit"), "git.local_write"),
     ],
 )
 def test_advanced_git_allowlists_cover_supported_complete_option_spellings(
