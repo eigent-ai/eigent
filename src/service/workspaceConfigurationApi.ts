@@ -58,7 +58,7 @@ export interface WorkspaceAgentProfile {
 
 export interface WorkspaceConfigurationDocument {
   apiVersion: 'eigent.ai/v1alpha1';
-  kind: 'WorkforceBundle';
+  kind: 'WorkspaceBundle';
   metadata: {
     id: string;
     name: string;

@@ -1,4 +1,4 @@
-"""Review-first local Workforce Bundle installation and materialization."""
+"""Review-first local Workspace Bundle installation and materialization."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from app.workspace_bundle.secrets import (
 from app.workspace_config import (
     ConfigPlacement,
     SecretValueInManifestError,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     assert_bundle_asset_safe,
     canonical_digest,
 )
@@ -96,7 +96,7 @@ class WorkspaceBundleInstaller:
         manifest_value = revision.get("manifest")
         if not isinstance(manifest_value, dict):
             raise WorkspaceBundleInstallError("Bundle manifest is missing")
-        manifest = WorkforceBundleManifest.model_validate(manifest_value)
+        manifest = WorkspaceBundleManifest.model_validate(manifest_value)
         if (
             manifest.metadata.id != bundle_id
             or manifest.revision_id != revision_id
@@ -458,7 +458,7 @@ class WorkspaceBundleInstaller:
                 )
                 cloud_version = int(cloud_installation["version"])
             assets, executable_assets = await self._download_assets(proposal)
-            manifest = WorkforceBundleManifest.model_validate(
+            manifest = WorkspaceBundleManifest.model_validate(
                 proposal.manifest
             )
             lock_payload = {
@@ -579,7 +579,7 @@ class WorkspaceBundleInstaller:
         )
         if installed_bundle_id != proposal.bundle_id:
             raise WorkspaceBundleInstallError(
-                "Space already uses a different Workforce Bundle"
+                "Space already uses a different Workspace Bundle"
             )
         if installed_revision_id == proposal.revision_id:
             local_materialization = (
@@ -725,7 +725,7 @@ class WorkspaceBundleInstaller:
 
     @staticmethod
     def _install_plan(
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         assets: list[dict[str, Any]],
         *,
         mcp_destinations: list[dict[str, Any]] | None = None,
@@ -796,7 +796,7 @@ class WorkspaceBundleInstaller:
 
     async def _inspect_mcp_destinations(
         self,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         assets: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         assert self.cloud is not None

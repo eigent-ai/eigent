@@ -230,7 +230,7 @@ export function WorkspaceBundleSaveDialog({
   const totalAssetBytes = selectedAssetBytes + preparedAssetBytes;
   const assetLimitError = review
     ? totalAssetCount > MAX_ASSET_COUNT
-      ? `A Workforce Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
+      ? `A Workspace Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
       : totalAssetBytes > MAX_TOTAL_ASSET_BYTES
         ? 'Selected assets exceed the 128 MiB total Bundle limit.'
         : Object.values(assetFiles).some(
@@ -284,7 +284,7 @@ export function WorkspaceBundleSaveDialog({
     try {
       if (totalAssetCount > MAX_ASSET_COUNT) {
         throw new Error(
-          `A Workforce Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
+          `A Workspace Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
         );
       }
       const selected = manualAssetPaths.map((path) => {
@@ -558,7 +558,7 @@ export function WorkspaceBundleSaveDialog({
         }}
       >
         <DialogHeader
-          title="Save Workforce Bundle"
+          title="Save Workspace Bundle"
           subtitle="Review the portable configuration before creating an immutable version."
         />
         <DialogContentSection className="space-y-4 overflow-y-auto">
@@ -864,7 +864,7 @@ export function WorkspaceBundleSaveDialog({
                   </p>
                   <p
                     className="mt-1 font-mono text-body-sm"
-                    aria-label="Published Workforce Bundle handle"
+                    aria-label="Published Workspace Bundle handle"
                   >
                     {publishedHandle}
                   </p>
@@ -880,7 +880,7 @@ export function WorkspaceBundleSaveDialog({
                   </Button>
                   <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
                     Share this exact <code>bundle_id@revision</code> handle.
-                    Recipients can paste it into Import Workforce Bundle to
+                    Recipients can paste it into Import Workspace Bundle to
                     review and install this immutable version.
                   </p>
                   <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">

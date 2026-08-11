@@ -1,11 +1,11 @@
-"""Secret-free review projection for authoring a Workforce Bundle."""
+"""Secret-free review projection for authoring a Workspace Bundle."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from app.workspace_config import WorkforceBundleManifest, canonical_digest
+from app.workspace_config import WorkspaceBundleManifest, canonical_digest
 from app.workspace_config.admission import LegacyEnvironmentImporter
 
 _SENSITIVE_ENV_NAME = re.compile(
@@ -21,7 +21,7 @@ class WorkspaceBundleAuthoringService:
     @classmethod
     def review(
         cls,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         *,
         mcp_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:

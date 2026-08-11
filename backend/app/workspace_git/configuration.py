@@ -37,7 +37,7 @@ from app.run_journal import (
 )
 from app.workspace_config import (
     ConfigPlacement,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
     WorkspaceLock,
     assert_manifest_secret_free,
     canonical_digest,
@@ -92,7 +92,7 @@ class ConfigurationRepositoryService:
         *,
         space_id: str,
         space_root: Path,
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
         placement: ConfigPlacement,
         created_by: str,
         lock_payload: dict[str, Any] | None = None,
@@ -263,7 +263,7 @@ class ConfigurationRepositoryService:
                     current_lock_payload = yaml.safe_load(
                         workspace_lock_path.read_text(encoding="utf-8")
                     )
-                    current_manifest = WorkforceBundleManifest.model_validate(
+                    current_manifest = WorkspaceBundleManifest.model_validate(
                         current_manifest_payload
                     )
                     current_lock = WorkspaceLock.model_validate(
@@ -397,7 +397,7 @@ class ConfigurationRepositoryService:
 
     @staticmethod
     def _default_lock(
-        manifest: WorkforceBundleManifest,
+        manifest: WorkspaceBundleManifest,
     ) -> dict[str, Any]:
         return {
             "apiVersion": "eigent.ai/lock/v1alpha1",

@@ -142,10 +142,10 @@ class TestTerminalToolkit:
                     "http://127.0.0.1:1234"
                 ),
                 "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY": "broker-secret",
-                "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT": (
+                "EIGENT_OBSOLETE_SECRET_BROKER_ENDPOINT": (
                     "http://127.0.0.1:5678"
                 ),
-                "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY": "legacy-secret",
+                "EIGENT_OBSOLETE_SECRET_BROKER_CAPABILITY": "obsolete-secret",
                 "AUTHORIZATION": "Bearer secret",
                 "SERVICE_AUTHORIZATION": "Bearer service-secret",
                 "NORMAL_API_KEY": "allowed-tool-secret",
@@ -160,7 +160,7 @@ class TestTerminalToolkit:
         assert "EIGENT_LOCAL_CONTROL_CAPABILITY" not in environment
         assert "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT" not in environment
         assert "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY" not in environment
-        assert "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT" not in environment
-        assert "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY" not in environment
+        assert "EIGENT_OBSOLETE_SECRET_BROKER_ENDPOINT" not in environment
+        assert "EIGENT_OBSOLETE_SECRET_BROKER_CAPABILITY" not in environment
         assert "AUTHORIZATION" not in environment
         assert "SERVICE_AUTHORIZATION" not in environment

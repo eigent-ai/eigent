@@ -295,8 +295,8 @@ def test_secret_broker_authority_is_removed_from_child_environment():
         "PATH": "/usr/bin",
         "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT": "http://127.0.0.1:1234",
         "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY": "x" * 43,
-        "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT": "legacy-endpoint",
-        "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY": "legacy-capability",
+        "EIGENT_OBSOLETE_SECRET_BROKER_ENDPOINT": "obsolete-endpoint",
+        "EIGENT_OBSOLETE_SECRET_BROKER_CAPABILITY": "obsolete-capability",
     }
 
     captured = _capture_broker_environment(environment)

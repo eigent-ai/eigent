@@ -53,7 +53,7 @@ export function EnvironmentRequirementsEditor({
         <p className="max-w-2xl text-body-xs text-ds-text-neutral-muted-default">
           Declare names and safe documentation only. Secret values, tokens, and
           local environment values are never stored in or shared with a
-          Workforce Bundle.
+          Workspace Bundle.
         </p>
         <Button
           type="button"

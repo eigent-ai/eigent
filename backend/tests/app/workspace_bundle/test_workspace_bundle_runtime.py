@@ -36,7 +36,7 @@ from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
     ResolvedContextSource,
-    WorkforceBundleManifest,
+    WorkspaceBundleManifest,
 )
 from app.workspace_config.admission import LegacyEnvironmentImporter
 from app.workspace_config.admission import EnvironmentAdmissionService
@@ -96,10 +96,10 @@ def _installed_spec(
             slot: f"slot://{slot}" for slot in mcp_secret_slots
         }
         contents["mcp/local.json"] = json.dumps(mcp_definition).encode()
-    manifest = WorkforceBundleManifest.model_validate(
+    manifest = WorkspaceBundleManifest.model_validate(
         {
             "apiVersion": "eigent.ai/v1alpha1",
-            "kind": "WorkforceBundle",
+            "kind": "WorkspaceBundle",
             "metadata": {
                 "id": "bundle-runtime",
                 "name": "Runtime Bundle",

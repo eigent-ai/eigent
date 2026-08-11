@@ -286,7 +286,7 @@ export function AgentPluginImportWizard({
           />
           <CardTitle>Agent Plugin converted</CardTitle>
           <CardDescription>
-            {conversion.bundle_id}@{conversion.revision_id} is a local Workforce
+            {conversion.bundle_id}@{conversion.revision_id} is a local Workspace
             Bundle draft. It has not been published or installed elsewhere.
           </CardDescription>
         </CardHeader>
@@ -311,7 +311,7 @@ export function AgentPluginImportWizard({
         <h1 className="text-heading-2xl font-semibold">Import Agent Plugin</h1>
         <p className="mt-2 max-w-2xl text-body-sm text-ds-text-neutral-muted-default">
           Import the Agent Plugins standard. Eigent reviews the package before
-          converting it to a local Workforce Bundle draft.
+          converting it to a local Workspace Bundle draft.
         </p>
       </header>
 

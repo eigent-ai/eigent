@@ -183,7 +183,7 @@ async def startup_event():
     )
     if legacy_bundle_migration.status == "degraded":
         app_logger.warning(
-            "Legacy Workforce Bundle migration degraded without blocking "
+            "Legacy Workspace Bundle migration degraded without blocking "
             "startup: %s",
             legacy_bundle_migration.error,
         )

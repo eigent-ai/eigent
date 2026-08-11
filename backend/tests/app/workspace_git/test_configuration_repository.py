@@ -12,7 +12,7 @@ from app.run_journal import IdempotencyConflictError, SQLiteRunJournal
 from app.workspace_config import (
     ConfigPlacement,
     SecretValueInManifestError,
-    parse_workforce_manifest,
+    parse_workspace_manifest,
 )
 from app.workspace_git import (
     ConfigurationRepositoryError,
@@ -24,7 +24,7 @@ from app.workspace_git import (
 
 MANIFEST = """
 apiVersion: eigent.ai/v1alpha1
-kind: WorkforceBundle
+kind: WorkspaceBundle
 metadata:
   id: bundle_local
   name: Local Workspace
@@ -84,7 +84,7 @@ def test_sidecar_bootstrap_never_mutates_user_space(
     original = space / "private-notes.txt"
     original.write_text("never import me", encoding="utf-8")
     service, backend = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
 
     first = service.bootstrap(
         space_id="space-1",
@@ -132,7 +132,7 @@ def test_sidecar_bootstrap_commits_verified_bundle_assets(tmp_path, journal):
     result = service.bootstrap(
         space_id="space-1",
         space_root=space,
-        manifest=parse_workforce_manifest(MANIFEST),
+        manifest=parse_workspace_manifest(MANIFEST),
         placement=ConfigPlacement.SIDECAR,
         created_by="user-1",
         assets={
@@ -142,7 +142,7 @@ def test_sidecar_bootstrap_commits_verified_bundle_assets(tmp_path, journal):
         lock_payload={
             "apiVersion": "eigent.ai/lock/v1alpha1",
             "bundleRevision": "bundle_local@1",
-            "manifestDigest": parse_workforce_manifest(MANIFEST).digest,
+            "manifestDigest": parse_workspace_manifest(MANIFEST).digest,
             "assets": [
                 {
                     "ref": "bundle://instructions/coordinator.md",
@@ -182,7 +182,7 @@ def test_same_bundle_revision_materializes_into_multiple_spaces(
     first_space.mkdir()
     second_space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
 
     first = service.bootstrap(
         space_id="space-1",
@@ -218,7 +218,7 @@ def test_existing_space_materialization_rejects_placement_change_before_git(
     space = tmp_path / "space"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
     service.bootstrap(
         space_id="space-1",
         space_root=space,
@@ -263,7 +263,7 @@ def test_in_repo_commit_excludes_and_preserves_user_staged_changes(
     result = service.bootstrap(
         space_id="space-1",
         space_root=space,
-        manifest=parse_workforce_manifest(MANIFEST),
+        manifest=parse_workspace_manifest(MANIFEST),
         placement=ConfigPlacement.IN_REPO,
         created_by="user-1",
     )
@@ -284,7 +284,7 @@ def test_in_repo_requires_explicit_content_init(tmp_path, journal):
     space = tmp_path / "plain-folder"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
 
     with pytest.raises(
         ConfigurationRepositoryError,
@@ -328,7 +328,7 @@ def test_nested_repository_is_rejected_without_writing_child(
         service.bootstrap(
             space_id="space-1",
             space_root=child,
-            manifest=parse_workforce_manifest(MANIFEST),
+            manifest=parse_workspace_manifest(MANIFEST),
             placement=ConfigPlacement.IN_REPO,
             created_by="user-1",
             allow_content_repository_init=True,
@@ -345,7 +345,7 @@ def test_secret_or_device_capability_in_lock_is_rejected_before_init(
     space = tmp_path / "space"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
 
     with pytest.raises(SecretValueInManifestError):
         service.bootstrap(
@@ -376,7 +376,7 @@ def test_lock_must_match_bundle_revision_before_git_init(tmp_path, journal):
     space = tmp_path / "space"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
 
     with pytest.raises(
         ConfigurationRepositoryError,
@@ -408,7 +408,7 @@ def test_replay_does_not_overwrite_manual_manifest_edit(
     space = tmp_path / "space"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
     first = service.bootstrap(
         space_id="space-1",
         space_root=space,
@@ -444,7 +444,7 @@ def test_bootstrap_recovers_exact_untracked_files_after_crash(
     space = tmp_path / "space"
     space.mkdir()
     service, backend = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
     repository = tmp_path / "state" / "spaces" / "space-1" / "configuration"
     backend.init_repository(repository)
     manifest_path = repository / "workspace.yaml"
@@ -502,7 +502,7 @@ def test_bootstrap_clears_owner_execute_for_non_executable_asset_recovery(
     space = tmp_path / "space"
     space.mkdir()
     service, backend = _service(tmp_path, journal)
-    manifest = parse_workforce_manifest(MANIFEST)
+    manifest = parse_workspace_manifest(MANIFEST)
     repository = tmp_path / "state" / "spaces" / "space-1" / "configuration"
     backend.init_repository(repository)
     content = b"public package data\n"
@@ -558,7 +558,7 @@ def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
     space = tmp_path / "space"
     space.mkdir()
     service, backend = _service(tmp_path, journal)
-    first_manifest = parse_workforce_manifest(MANIFEST)
+    first_manifest = parse_workspace_manifest(MANIFEST)
     first_assets = {
         "instructions/coordinator.md": b"version one\n",
         "assets/obsolete.txt": b"remove on upgrade\n",
@@ -587,7 +587,7 @@ def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
     )
     edited_path = first.configuration_repository_root / "instructions/coordinator.md"
     edited_path.write_text("user edit\n", encoding="utf-8")
-    second_manifest = parse_workforce_manifest(
+    second_manifest = parse_workspace_manifest(
         MANIFEST.replace("revision: 1", "revision: 2")
     )
     second_assets = {"instructions/coordinator.md": b"version two\n"}
@@ -652,7 +652,7 @@ def test_revision_conflict_is_detected_before_git_mutation(
     space = tmp_path / "space"
     space.mkdir()
     service, _ = _service(tmp_path, journal)
-    original = parse_workforce_manifest(MANIFEST)
+    original = parse_workspace_manifest(MANIFEST)
     first = service.bootstrap(
         space_id="space-1",
         space_root=space,
@@ -660,7 +660,7 @@ def test_revision_conflict_is_detected_before_git_mutation(
         placement=ConfigPlacement.SIDECAR,
         created_by="user-1",
     )
-    conflicting = parse_workforce_manifest(
+    conflicting = parse_workspace_manifest(
         MANIFEST.replace("name: Local Workspace", "name: Changed Name")
     )
 

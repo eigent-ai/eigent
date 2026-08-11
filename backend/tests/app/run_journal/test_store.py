@@ -39,7 +39,7 @@ from app.workspace_config import (
     LocalMaterialization,
     ProviderModelCapability,
     ThinkingEffort,
-    parse_workforce_manifest,
+    parse_workspace_manifest,
 )
 
 
@@ -90,10 +90,10 @@ def test_initializes_schema_and_durability_pragmas(journal):
 
 
 def _persist_environment_spec(journal, *, owner_id: str = "run-1"):
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         """
 apiVersion: eigent.ai/v1alpha1
-kind: WorkforceBundle
+kind: WorkspaceBundle
 metadata:
   id: bundle_test
   name: Test Bundle
@@ -157,10 +157,10 @@ def test_workspace_config_and_environment_spec_are_immutable(journal):
 
 
 def test_workspace_config_revision_lifecycle_uses_version_cas(journal):
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         """
 apiVersion: eigent.ai/v1alpha1
-kind: WorkforceBundle
+kind: WorkspaceBundle
 metadata:
   id: bundle_lifecycle
   name: Lifecycle Bundle
@@ -213,7 +213,7 @@ spec:
 def test_workspace_config_draft_autosave_uses_version_cas(journal):
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_working_copy",
             "name": "Working copy",
@@ -287,7 +287,7 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
 ):
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_publish",
             "name": "Publish",
@@ -343,7 +343,7 @@ def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
 ):
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_publish",
             "name": "Publish",
@@ -394,7 +394,7 @@ def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
 ):
     published_document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_publish",
             "name": "Published A",
@@ -448,7 +448,7 @@ def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(
 ):
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_publish",
             "name": "Publish",
@@ -847,7 +847,7 @@ def test_v17_database_adds_agent_plugin_import_tables_without_losing_draft(
     path = tmp_path / "run-journal.sqlite3"
     document = {
         "apiVersion": "eigent.ai/v1alpha1",
-        "kind": "WorkforceBundle",
+        "kind": "WorkspaceBundle",
         "metadata": {
             "id": "bundle_existing",
             "name": "Existing",

@@ -54,7 +54,7 @@ const draft: WorkspaceConfigurationDraft = {
   updated_at: 1,
   document: {
     apiVersion: 'eigent.ai/v1alpha1',
-    kind: 'WorkforceBundle',
+    kind: 'WorkspaceBundle',
     metadata: { id: 'bundle-1', name: 'Research', revision: 1 },
     spec: {
       instructions: { coordinator: 'bundle://instructions/coordinator.md' },
@@ -298,11 +298,11 @@ describe('WorkspaceBundleSaveDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
 
     expect(
-      await screen.findByLabelText('Published Workforce Bundle handle')
+      await screen.findByLabelText('Published Workspace Bundle handle')
     ).toHaveTextContent('bundle-1@1');
     expect(screen.getByText('Shareable install handle')).toBeInTheDocument();
     expect(
-      screen.getByText(/paste it into Import Workforce Bundle/i)
+      screen.getByText(/paste it into Import Workspace Bundle/i)
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy share handle' }));

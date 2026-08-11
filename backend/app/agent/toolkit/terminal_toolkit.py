@@ -16,6 +16,7 @@ import asyncio
 import logging
 import os
 import platform
+import re
 import shlex
 import shutil
 import signal
@@ -55,12 +56,9 @@ logger = logging.getLogger("terminal_toolkit")
 APP_VERSION = "1.0.2"
 
 
-_SECRET_BROKER_ENVIRONMENT_KEYS = {
-    "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT",
-    "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY",
-    "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT",
-    "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY",
-}
+_SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
+    r"^EIGENT_[A-Z0-9_]+_SECRET_BROKER_(?:ENDPOINT|CAPABILITY)$"
+)
 
 _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
     "APPDATA",
@@ -92,7 +90,9 @@ _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
 
 
 def is_secret_broker_environment_key(name: str) -> bool:
-    return name.strip().upper() in _SECRET_BROKER_ENVIRONMENT_KEYS
+    return bool(
+        _SECRET_BROKER_ENVIRONMENT_KEY.fullmatch(name.strip().upper())
+    )
 
 
 def is_control_plane_environment_key(name: str) -> bool:

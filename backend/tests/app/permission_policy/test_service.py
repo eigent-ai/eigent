@@ -12,7 +12,7 @@ from app.workspace_config import (
     LocalMaterialization,
     ProviderModelCapability,
     ThinkingEffort,
-    parse_workforce_manifest,
+    parse_workspace_manifest,
 )
 
 
@@ -22,10 +22,10 @@ def _create_bound_attempt(
     run_id: str,
     permission_profile_revision: str,
 ):
-    manifest = parse_workforce_manifest(
+    manifest = parse_workspace_manifest(
         f"""
 apiVersion: eigent.ai/v1alpha1
-kind: WorkforceBundle
+kind: WorkspaceBundle
 metadata:
   id: bundle_{run_id}
   name: Permission test
