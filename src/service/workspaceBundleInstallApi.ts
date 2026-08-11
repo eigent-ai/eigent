@@ -85,6 +85,9 @@ export interface WorkspaceBundleInstallSnapshot {
     ready: boolean;
     missing_requirements: string[];
   };
+  /** Runtime preflight is independent from files and local binding readiness. */
+  runtime_readiness?: 'ready' | 'needs_confirmation' | 'unavailable';
+  runtime_readiness_issues?: string[];
   /** Exact prior refs replaced by this CAS; present only on local-value PUT. */
   cleanup_secret_refs?: string[];
 }

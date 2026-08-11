@@ -150,7 +150,11 @@ const review = {
   },
 };
 
-const snapshot = (configured = false): WorkspaceBundleInstallSnapshot => ({
+const snapshot = (
+  configured = false,
+  runtimeReadiness?: WorkspaceBundleInstallSnapshot['runtime_readiness'],
+  runtimeReadinessIssues: string[] = []
+): WorkspaceBundleInstallSnapshot => ({
   proposal: {
     proposal_id: 'proposal-1',
     request_id: 'request-1',
@@ -193,6 +197,12 @@ const snapshot = (configured = false): WorkspaceBundleInstallSnapshot => ({
     ready: configured,
     missing_requirements: configured ? [] : ['environment:API_TOKEN'],
   },
+  ...(runtimeReadiness
+    ? {
+        runtime_readiness: runtimeReadiness,
+        runtime_readiness_issues: runtimeReadinessIssues,
+      }
+    : {}),
 });
 
 function renderWizard(props: {
@@ -347,6 +357,7 @@ describe('WorkspaceBundleInstallWizard', () => {
       await screen.findByText('Workspace files installed')
     ).toBeInTheDocument();
     expect(screen.queryByText(/runtime ready/i)).toBeNull();
+    expect(screen.getByText('Runtime check unavailable')).toBeInTheDocument();
     expect(
       screen.getByText(/is installed\. Local bindings are encrypted/i)
     ).toBeInTheDocument();
@@ -368,6 +379,105 @@ describe('WorkspaceBundleInstallWizard', () => {
         })
       )
     );
+  });
+
+  it('shows Runtime ready only after a successful Brain runtime preflight', async () => {
+    const installed = snapshot(true, 'ready');
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(await screen.findByText('Runtime ready')).toBeInTheDocument();
+    expect(screen.getByText(/Brain preflight confirmed/i)).toBeInTheDocument();
+    expect(screen.queryByText('Runtime check unavailable')).toBeNull();
+  });
+
+  it('keeps MCP target confirmation separate from installed files', async () => {
+    const installed = snapshot(true, 'needs_confirmation', [
+      'mcp_destination_confirmation_required',
+    ]);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(
+      await screen.findByText('Workspace files installed')
+    ).toBeInTheDocument();
+    expect(screen.getByText('MCP target review required')).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not provide that confirmation control yet/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'One or more MCP servers require explicit destination review.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('mcp_destination_confirmation_required')
+    ).toBeNull();
+    expect(screen.queryByText('Runtime ready')).toBeNull();
+  });
+
+  it('maps every reported Brain issue code to user-readable copy', async () => {
+    const issues = [
+      'connector_runtime_adapter_unavailable',
+      'multi_agent_runtime_adapter_unavailable',
+      'workspace_bundle_not_materialized',
+      'local_setup_incomplete',
+    ];
+    const installed = snapshot(true, 'unavailable', issues);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(await screen.findByText('Runtime unavailable')).toBeInTheDocument();
+    for (const message of [
+      'A required connector cannot run in this Desktop version.',
+      'This Bundle requires multi-agent runtime support that is not available.',
+      'Workspace files and configuration have not finished installing.',
+      'Required local values, folders, connections, or approvals are incomplete.',
+    ]) {
+      expect(screen.getByText(message)).toBeInTheDocument();
+    }
+    for (const issue of issues) {
+      expect(screen.queryByText(issue)).toBeNull();
+    }
+    expect(screen.queryByText('Runtime ready')).toBeNull();
+  });
+
+  it('does not expose an unknown Brain issue code as user-facing copy', async () => {
+    const unknownIssue = 'future_adapter_error:private/runtime/detail';
+    const installed = snapshot(true, 'unavailable', [unknownIssue]);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(
+      await screen.findByText(
+        'An additional runtime requirement needs attention.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(unknownIssue)).toBeNull();
   });
 
   it('reconciles the durable binding after an ambiguous response loss', async () => {

@@ -47,6 +47,93 @@ interface InstallSeed {
   spaceId: string;
 }
 
+const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
+  connector_runtime_adapter_unavailable:
+    'A required connector cannot run in this Desktop version.',
+  mcp_destination_confirmation_required:
+    'One or more MCP servers require explicit destination review.',
+  multi_agent_runtime_adapter_unavailable:
+    'This Bundle requires multi-agent runtime support that is not available.',
+  local_setup_incomplete:
+    'Required local values, folders, connections, or approvals are incomplete.',
+  workspace_bundle_not_materialized:
+    'Workspace files and configuration have not finished installing.',
+};
+
+const runtimeReadinessIssueMessage = (issue: string): string =>
+  RUNTIME_READINESS_ISSUE_MESSAGES[issue] ||
+  'An additional runtime requirement needs attention.';
+
+function RuntimeReadinessStatus({
+  status,
+  issues,
+}: {
+  status: WorkspaceBundleInstallSnapshot['runtime_readiness'];
+  issues: WorkspaceBundleInstallSnapshot['runtime_readiness_issues'];
+}) {
+  const visibleIssues = Array.isArray(issues)
+    ? Array.from(
+        new Set(
+          issues
+            .filter((issue): issue is string => typeof issue === 'string')
+            .map(runtimeReadinessIssueMessage)
+        )
+      )
+    : [];
+  const issueList = visibleIssues.length ? (
+    <ul className="mt-2 list-inside list-disc text-body-xs">
+      {visibleIssues.map((issue, index) => (
+        <li key={`${issue}-${index}`}>{issue}</li>
+      ))}
+    </ul>
+  ) : null;
+
+  if (status === 'ready') {
+    return (
+      <div className="mt-4 rounded-xl bg-ds-bg-success-subtle-default p-3 text-body-sm text-ds-text-success-default-default">
+        <p className="font-semibold">Runtime ready</p>
+        <p className="mt-1 text-body-xs">
+          Brain preflight confirmed this installed configuration can start a
+          Run.
+        </p>
+      </div>
+    );
+  }
+  if (status === 'needs_confirmation') {
+    return (
+      <div className="mt-4 rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm">
+        <p className="font-semibold">MCP target review required</p>
+        <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+          This Bundle requires explicit review of its MCP destinations. This
+          version does not provide that confirmation control yet, so a Run
+          cannot start.
+        </p>
+        {issueList}
+      </div>
+    );
+  }
+  if (status === 'unavailable') {
+    return (
+      <div className="mt-4 rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+        <p className="font-semibold">Runtime unavailable</p>
+        <p className="mt-1 text-body-xs">
+          Resolve these runtime preflight issues before starting a Run.
+        </p>
+        {issueList}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-4 rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+      <p className="font-semibold">Runtime check unavailable</p>
+      <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+        Workspace files and local bindings are installed, but runtime readiness
+        has not been verified.
+      </p>
+    </div>
+  );
+}
+
 const installSeedKey = (revisionId: string, actorId: string): string =>
   `eigent:workforce-bundle-install-seed:v1:${actorId}:${revisionId}`;
 
@@ -860,6 +947,10 @@ export function WorkspaceBundleInstallWizard({
                   encrypted on this device and can be repaired or replaced
                   below. They are not exposed globally to unrelated tools.
                 </p>
+                <RuntimeReadinessStatus
+                  status={snapshot.runtime_readiness}
+                  issues={snapshot.runtime_readiness_issues}
+                />
                 <Button className="mt-4" onClick={openWorkspace}>
                   Open Workspace
                 </Button>
