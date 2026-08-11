@@ -48,6 +48,19 @@ class WorkspaceBundleCloudTransport(Protocol):
         self, bundle_id: str, revision_id: str, asset_id: str
     ) -> bytes: ...
 
+    async def upload_asset(
+        self,
+        bundle_id: str,
+        revision_id: str,
+        *,
+        logical_path: str,
+        content: bytes,
+        media_type: str,
+        provenance: str,
+        executable: bool,
+        expected_old_digest: str | None = None,
+    ) -> dict[str, Any]: ...
+
     async def put_environment_projection(
         self, payload: dict[str, Any]
     ) -> dict[str, Any]: ...
@@ -220,6 +233,48 @@ class HttpWorkspaceBundleCloudTransport:
                 502, "Bundle asset failed integrity verification"
             )
         return b"".join(chunks)
+
+    async def upload_asset(
+        self,
+        bundle_id: str,
+        revision_id: str,
+        *,
+        logical_path: str,
+        content: bytes,
+        media_type: str,
+        provenance: str,
+        executable: bool,
+        expected_old_digest: str | None = None,
+    ) -> dict[str, Any]:
+        if len(content) > self.MAX_ASSET_BYTES:
+            raise ValueError("Bundle asset exceeds Desktop limit")
+        filename = logical_path.rsplit("/", 1)[-1] or "bundle-asset"
+        data = {
+            "logical_path": logical_path.removeprefix("bundle://"),
+            "provenance": provenance,
+            "executable": str(executable).lower(),
+        }
+        if expected_old_digest is not None:
+            data["expected_old_digest"] = expected_old_digest
+        response = await self.client.post(
+            f"{self.base_url}/workspace-bundles/{bundle_id}/revisions/"
+            f"{revision_id}/assets",
+            headers=self.headers,
+            data=data,
+            files={"file": (filename, content, media_type)},
+        )
+        if response.is_error:
+            try:
+                detail: Any = response.json()
+            except ValueError:
+                detail = response.text[:2000]
+            raise WorkspaceBundleCloudError(response.status_code, detail)
+        result = response.json()
+        if not isinstance(result, dict):
+            raise WorkspaceBundleCloudError(
+                502, "Workspace Bundle API returned a non-object response"
+            )
+        return result
 
     async def put_environment_projection(
         self, payload: dict[str, Any]

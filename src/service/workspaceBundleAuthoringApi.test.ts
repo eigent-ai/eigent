@@ -114,6 +114,8 @@ describe('workspace bundle authoring API', () => {
     const [path, form] = uploadFileMock.mock.calls[0];
     expect(path).toContain('/workspace-bundles/bundle-1/revisions/');
     expect(form.get('logical_path')).toBe('instructions/coordinator.md');
+    expect(form.get('provenance')).toBe('bundle_author');
+    expect(form.get('executable')).toBe('false');
     expect(form.get('expected_old_digest')).toBe('b'.repeat(64));
     expect((form.get('file') as File).name).toBe('chosen.md');
     expect((form.get('file') as File).size).toBe(file.size);
@@ -126,8 +128,22 @@ describe('workspace bundle authoring API', () => {
       manifestDigest: 'a'.repeat(64),
       visibility: 'public',
       selectedAssets: [
-        { logical_path: 'z.md', content_digest: '2'.repeat(64) },
-        { logical_path: 'a.md', content_digest: '1'.repeat(64) },
+        {
+          logical_path: 'z.md',
+          content_digest: '2'.repeat(64),
+          media_type: 'text/markdown',
+          size_bytes: 20,
+          provenance: 'bundle_author',
+          executable: false,
+        },
+        {
+          logical_path: 'a.md',
+          content_digest: '1'.repeat(64),
+          media_type: 'text/markdown',
+          size_bytes: 10,
+          provenance: 'agent_plugin_import',
+          executable: true,
+        },
       ],
     });
 
@@ -142,8 +158,16 @@ describe('workspace bundle authoring API', () => {
       authorReview.selected_assets.map((item) => item.logical_path)
     ).toEqual(['a.md', 'z.md']);
     expect(authorReview.review_digest).toBe(
-      '26208b762793917008b19eb9b574d2259d7446b2d742baf618c541c6be78c9cf'
+      '2593f077663509db844d19096b8b92f5bbda1c6a44f33a83afcce2dbc708c951'
     );
+    expect(authorReview.selected_assets[0]).toEqual({
+      logical_path: 'a.md',
+      content_digest: '1'.repeat(64),
+      media_type: 'text/markdown',
+      size_bytes: 10,
+      provenance: 'agent_plugin_import',
+      executable: true,
+    });
     expect(proxyFetchPostMock).toHaveBeenCalledWith(
       '/api/v1/workspace-bundles/bundle-1/revisions:publish',
       expect.objectContaining({ author_review: authorReview })

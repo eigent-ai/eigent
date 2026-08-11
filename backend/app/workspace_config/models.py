@@ -677,6 +677,8 @@ class LockedDependency(_StrictFrozenModel):
     ref: str = Field(min_length=1)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     version: str | None = None
+    provenance: str | None = None
+    executable: bool = False
 
 
 class WorkspaceLock(_StrictFrozenModel):

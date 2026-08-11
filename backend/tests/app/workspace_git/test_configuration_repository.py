@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 import subprocess
 from pathlib import Path
 
@@ -492,6 +493,62 @@ def test_bootstrap_recovers_exact_untracked_files_after_crash(
         )
         == ()
     )
+
+
+def test_bootstrap_clears_owner_execute_for_non_executable_asset_recovery(
+    tmp_path,
+    journal,
+):
+    space = tmp_path / "space"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+    manifest = parse_workforce_manifest(MANIFEST)
+    repository = tmp_path / "state" / "spaces" / "space-1" / "configuration"
+    backend.init_repository(repository)
+    content = b"public package data\n"
+    lock_payload = {
+        "apiVersion": "eigent.ai/lock/v1alpha1",
+        "bundleRevision": manifest.revision_id,
+        "manifestDigest": manifest.digest,
+        "assets": [
+            {
+                "ref": "bundle://assets/data.txt",
+                "digest": hashlib.sha256(content).hexdigest(),
+                "executable": False,
+            }
+        ],
+        "skills": [],
+        "mcpPackages": [],
+    }
+    (repository / "workspace.yaml").write_text(
+        yaml.safe_dump(
+            manifest.canonical_payload(),
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (repository / "workspace.lock").write_text(
+        yaml.safe_dump(lock_payload, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    asset_path = repository / "assets" / "data.txt"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_bytes(content)
+    asset_path.chmod(0o755)
+
+    service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        manifest=manifest,
+        placement=ConfigPlacement.SIDECAR,
+        created_by="user-1",
+        assets={"assets/data.txt": content},
+        lock_payload=lock_payload,
+        executable_assets=set(),
+    )
+
+    assert stat.S_IMODE(asset_path.stat().st_mode) == 0o644
 
 
 def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(

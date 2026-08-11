@@ -376,7 +376,7 @@ class WorkspaceBundleInstaller:
                     },
                 )
                 cloud_version = int(cloud_installation["version"])
-            assets = await self._download_assets(proposal)
+            assets, executable_assets = await self._download_assets(proposal)
             manifest = WorkforceBundleManifest.model_validate(
                 proposal.manifest
             )
@@ -388,6 +388,8 @@ class WorkspaceBundleInstaller:
                     {
                         "ref": f"bundle://{item['logical_path']}",
                         "digest": item["content_digest"],
+                        "provenance": item["provenance"],
+                        "executable": item["executable"],
                     }
                     for item in proposal.assets
                 ],
@@ -403,6 +405,7 @@ class WorkspaceBundleInstaller:
                 created_by=actor_id,
                 lock_payload=lock_payload,
                 assets=assets,
+                executable_assets=executable_assets,
                 expected_previous_revision_id=previous_revision_id,
                 allow_content_repository_init=allow_content_repository_init,
             )
@@ -624,6 +627,11 @@ class WorkspaceBundleInstaller:
             raise WorkspaceBundleInstallError("Bundle asset digest is invalid")
         if size < 0 or size > 16 * 1024 * 1024:
             raise WorkspaceBundleInstallError("Bundle asset size is invalid")
+        executable = value.get("executable", False)
+        if not isinstance(executable, bool):
+            raise WorkspaceBundleInstallError(
+                "Bundle asset executable metadata is invalid"
+            )
         return {
             "id": str(value["id"]),
             "logical_path": str(value["logical_path"]),
@@ -631,6 +639,7 @@ class WorkspaceBundleInstaller:
             "media_type": str(value["media_type"]),
             "size_bytes": size,
             "provenance": str(value.get("provenance", "bundle_author")),
+            "executable": executable,
         }
 
     @staticmethod
@@ -771,13 +780,14 @@ class WorkspaceBundleInstaller:
 
     async def _download_assets(
         self, proposal: WorkspaceBundleInstallProposalRecord
-    ) -> dict[str, bytes]:
+    ) -> tuple[dict[str, bytes], set[str]]:
         total = sum(int(item["size_bytes"]) for item in proposal.assets)
         if total > self.MAX_TOTAL_ASSET_BYTES:
             raise WorkspaceBundleInstallError(
                 "Bundle assets exceed the Desktop installation limit"
             )
         downloaded: dict[str, bytes] = {}
+        executable_assets: set[str] = set()
         for item in proposal.assets:
             content = await self.cloud.download_asset(
                 proposal.bundle_id,
@@ -798,7 +808,9 @@ class WorkspaceBundleInstaller:
                     f"{item['logical_path']}"
                 ) from exc
             downloaded[item["logical_path"]] = content
-        return downloaded
+            if item["executable"]:
+                executable_assets.add(item["logical_path"])
+        return downloaded, executable_assets
 
     @staticmethod
     def _space_projection(

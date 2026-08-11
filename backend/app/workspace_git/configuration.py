@@ -23,8 +23,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -98,6 +97,7 @@ class ConfigurationRepositoryService:
         created_by: str,
         lock_payload: dict[str, Any] | None = None,
         assets: dict[str, bytes] | None = None,
+        executable_assets: set[str] | None = None,
         expected_previous_revision_id: str | None = None,
         allow_content_repository_init: bool = False,
     ) -> ConfigurationRepositoryResult:
@@ -221,6 +221,13 @@ class ConfigurationRepositoryService:
                 manifest_path: manifest.canonical_payload(),
                 workspace_lock_path: lock,
             }
+            executable_paths: set[Path] = set()
+            executable_refs = executable_assets or set()
+            unknown_executable_refs = executable_refs - set(assets or {})
+            if unknown_executable_refs:
+                raise ConfigurationRepositoryError(
+                    "Executable Bundle asset metadata references a missing asset"
+                )
             for logical_path, content in sorted((assets or {}).items()):
                 relative = self._validate_asset_path(logical_path)
                 target = configuration_root / relative
@@ -237,10 +244,15 @@ class ConfigurationRepositoryService:
                         "Bundle asset conflicts with a reserved configuration file"
                     )
                 desired_files[target] = bytes(content)
+                if logical_path in executable_refs:
+                    executable_paths.add(target)
             obsolete_asset_paths: set[Path] = set()
             upgrade_mode = False
             if manifest_path.exists() or workspace_lock_path.exists():
-                if not manifest_path.is_file() or not workspace_lock_path.is_file():
+                if (
+                    not manifest_path.is_file()
+                    or not workspace_lock_path.is_file()
+                ):
                     raise ConfigurationRepositoryError(
                         "existing Bundle configuration is incomplete"
                     )
@@ -336,6 +348,10 @@ class ConfigurationRepositoryService:
                         self._atomic_write_bytes(path, content)
                     else:
                         self._write_new_or_equal_bytes(path, content)
+                    if path in executable_paths:
+                        path.chmod(0o755)
+                    else:
+                        path.chmod(0o644)
             for path in obsolete_asset_paths:
                 if path.exists():
                     path.unlink()

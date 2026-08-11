@@ -140,6 +140,7 @@ export interface WorkspaceConfigurationSaveReview {
     local_path_slots: string[];
   };
   assets: string[];
+  prepared_assets: WorkspaceConfigurationPreparedAsset[];
   warnings: Array<{ code: string; message: string }>;
   local_values_excluded: number;
 }
@@ -154,6 +155,23 @@ export interface WorkspaceConfigurationAssetPreflight {
   logical_path: string;
   content_digest: string;
   size_bytes: number;
+}
+
+export interface WorkspaceConfigurationPreparedAsset {
+  logical_path: string;
+  content_digest: string;
+  media_type: string;
+  size_bytes: number;
+  executable: boolean;
+  provenance: 'agent_plugin_import';
+}
+
+export interface WorkspaceConfigurationPreparedAssetPreflight {
+  space_id: string;
+  draft_version: number;
+  manifest_digest: string;
+  review_digest: string;
+  assets: WorkspaceConfigurationPreparedAsset[];
 }
 
 const identityParams = (identity: WorkspaceConfigurationIdentity) => ({
@@ -226,6 +244,58 @@ export const preflightWorkspaceConfigurationAsset = async (
     form
   );
 };
+
+const preparedAssetsPayload = (
+  identity: WorkspaceConfigurationIdentity,
+  input: {
+    expectedVersion: number;
+    expectedManifestDigest: string;
+    expectedReviewDigest: string;
+  }
+) => ({
+  ...identityParams(identity),
+  expected_version: input.expectedVersion,
+  expected_manifest_digest: input.expectedManifestDigest,
+  expected_review_digest: input.expectedReviewDigest,
+});
+
+export const preflightPreparedWorkspaceConfigurationAssets = async (
+  spaceId: string,
+  identity: WorkspaceConfigurationIdentity,
+  input: {
+    expectedVersion: number;
+    expectedManifestDigest: string;
+    expectedReviewDigest: string;
+  }
+): Promise<WorkspaceConfigurationPreparedAssetPreflight> =>
+  fetchPost(
+    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:preflight`,
+    preparedAssetsPayload(identity, input)
+  );
+
+export const uploadPreparedWorkspaceConfigurationAsset = async (
+  spaceId: string,
+  identity: WorkspaceConfigurationIdentity,
+  input: {
+    expectedVersion: number;
+    expectedManifestDigest: string;
+    expectedReviewDigest: string;
+    logicalPath: string;
+    contentDigest: string;
+    expectedOldDigest?: string;
+  }
+): Promise<{ asset: WorkspaceConfigurationPreparedAsset & { id: string } }> =>
+  fetchPost(
+    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:upload`,
+    {
+      ...preparedAssetsPayload(identity, input),
+      logical_path: input.logicalPath,
+      content_digest: input.contentDigest,
+      ...(input.expectedOldDigest
+        ? { expected_old_digest: input.expectedOldDigest }
+        : {}),
+    }
+  );
 
 export const recordPublishedWorkspaceConfiguration = async (
   spaceId: string,

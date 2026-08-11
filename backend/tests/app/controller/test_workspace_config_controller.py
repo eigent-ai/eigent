@@ -462,6 +462,386 @@ def test_agent_plugin_inspect_and_convert_preserve_reviewed_assets(
     ] == [(item.logical_path, item.content_digest) for item in stored]
 
 
+def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from_sqlite(
+    workspace_config_api,
+    tmp_path,
+    monkeypatch,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    ).json()
+    converted = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json={
+            "source_path": str(source),
+            "email": "user@example.com",
+            "target_space_id": "space-1",
+            "expected_review_digest": inspected["review_digest"],
+            "expected_target_draft_version": 0,
+            "client_request_id": "publish-import-1",
+            "updated_by": "user-1",
+        },
+        headers=_headers(),
+    )
+    assert converted.status_code == 200, converted.text
+    shutil.rmtree(source)
+
+    review_response = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/review",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert review_response.status_code == 200, review_response.text
+    review_payload = review_response.json()
+    review = review_payload["review"]
+    prepared = review["prepared_assets"]
+    assert {item["logical_path"].rsplit("/", 1)[-1] for item in prepared} == {
+        "plugin.json",
+        "SKILL.md",
+        "server",
+        "mcp.json",
+    }
+    assert all(
+        "content" not in item and "source_path" not in item
+        for item in prepared
+    )
+    executable = next(
+        item
+        for item in prepared
+        if item["logical_path"].endswith("/bin/server")
+    )
+    assert executable["executable"] is True
+    assert executable["provenance"] == "agent_plugin_import"
+
+    draft = journal.get_workspace_config_draft("space-1")
+    assert draft is not None
+    pinned = {
+        "expected_version": review_payload["draft_version"],
+        "expected_manifest_digest": draft.document_digest,
+        "expected_review_digest": review["review_digest"],
+        "email": "user@example.com",
+    }
+    preflight = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/prepared-assets:preflight",
+        json=pinned,
+        headers=_headers(),
+    )
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.json()["assets"] == prepared
+    assert "source-only-value" not in preflight.text
+
+    uploaded: list[dict] = []
+    cloud_receipts: list[dict] = []
+
+    class _Cloud:
+        async def upload_asset(self, bundle_id, revision_id, **kwargs):
+            content = kwargs.pop("content")
+            descriptor = next(
+                item
+                for item in prepared
+                if item["logical_path"] == kwargs["logical_path"]
+            )
+            assert bundle_id == draft.document["metadata"]["id"]
+            assert revision_id == f"{bundle_id}@1"
+            assert len(content) == descriptor["size_bytes"]
+            assert kwargs["provenance"] == "agent_plugin_import"
+            uploaded.append({"content": content, **kwargs})
+            receipt = {
+                "id": "asset_" + descriptor["content_digest"][:32],
+                **descriptor,
+                "logical_path": descriptor["logical_path"].removeprefix(
+                    "bundle://"
+                ),
+            }
+            cloud_receipts.append(receipt)
+            return receipt
+
+        async def get_revision(self, bundle_id, revision_id):
+            assert bundle_id == draft.document["metadata"]["id"]
+            return {
+                "id": revision_id,
+                "status": "published",
+                "manifest_digest": draft.document_digest,
+                "manifest": draft.document,
+                "assets": cloud_receipts,
+            }
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        workspace_config_controller,
+        "_authoring_cloud",
+        lambda _authorization: _Cloud(),
+    )
+    for descriptor in prepared:
+        upload = client.post(
+            "/api/v1/spaces/space-1/workspace-configuration/prepared-assets:upload",
+            json={
+                **pinned,
+                "logical_path": descriptor["logical_path"],
+                "content_digest": descriptor["content_digest"],
+            },
+            headers={**_headers(), "Authorization": "Bearer cloud-token"},
+        )
+        assert upload.status_code == 200, upload.text
+        assert "content" not in upload.json()["asset"]
+    assert [item["logical_path"] for item in uploaded] == [
+        item["logical_path"] for item in prepared
+    ]
+    publish_payload = {
+        "expected_version": draft.version,
+        "revision_id": (
+            f"{draft.document['metadata']['id']}@"
+            f"{draft.document['metadata']['revision']}"
+        ),
+        "manifest_digest": draft.document_digest,
+        "actor_id": "user-1",
+        "email": "user@example.com",
+    }
+    original_executable = cloud_receipts[-1]["executable"]
+    cloud_receipts[-1]["executable"] = not original_executable
+    mismatched = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/published",
+        json=publish_payload,
+        headers={**_headers(), "Authorization": "Bearer cloud-token"},
+    )
+    assert mismatched.status_code == 409
+    cloud_receipts[-1]["executable"] = original_executable
+    recorded = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/published",
+        json=publish_payload,
+        headers={**_headers(), "Authorization": "Bearer cloud-token"},
+    )
+    assert recorded.status_code == 200, recorded.text
+
+
+def test_prepared_asset_publish_recovery_matches_historical_snapshot_after_edit(
+    workspace_config_api,
+    tmp_path,
+    monkeypatch,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    ).json()
+    converted = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json={
+            "source_path": str(source),
+            "email": "user@example.com",
+            "target_space_id": "space-1",
+            "expected_review_digest": inspected["review_digest"],
+            "expected_target_draft_version": 0,
+            "client_request_id": "recovery-import-1",
+            "updated_by": "user-1",
+        },
+        headers=_headers(),
+    )
+    assert converted.status_code == 200, converted.text
+    published_draft = journal.get_workspace_config_draft("space-1")
+    assert published_draft is not None
+    review = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/review",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    ).json()["review"]
+    cloud_assets = [
+        {
+            "id": "asset_" + item["content_digest"][:32],
+            **item,
+            "logical_path": item["logical_path"].removeprefix("bundle://"),
+        }
+        for item in review["prepared_assets"]
+    ]
+
+    edited_document = json.loads(json.dumps(published_draft.document))
+    edited_document["metadata"]["name"] = "Edited after Cloud publish"
+    edited_response = client.put(
+        "/api/v1/spaces/space-1/workspace-configuration",
+        json={
+            "expected_version": published_draft.version,
+            "base_revision_id": published_draft.base_revision_id,
+            "document": edited_document,
+            "updated_by": "user-2",
+            "email": "user@example.com",
+        },
+        headers=_headers(),
+    )
+    assert edited_response.status_code == 200, edited_response.text
+    edited = journal.get_workspace_config_draft("space-1")
+    assert edited is not None
+    assert edited.document_digest != published_draft.document_digest
+
+    class _Cloud:
+        async def get_revision(self, _bundle_id, revision_id):
+            return {
+                "id": revision_id,
+                "status": "published",
+                "manifest_digest": published_draft.document_digest,
+                "manifest": published_draft.document,
+                "assets": cloud_assets,
+            }
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(
+        workspace_config_controller,
+        "_authoring_cloud",
+        lambda _authorization: _Cloud(),
+    )
+    publish_payload = {
+        "expected_version": edited.version,
+        "revision_id": (
+            f"{published_draft.document['metadata']['id']}@"
+            f"{published_draft.document['metadata']['revision']}"
+        ),
+        "manifest_digest": published_draft.document_digest,
+        "actor_id": "user-1",
+        "email": "user@example.com",
+    }
+
+    original_digest = cloud_assets[-1]["content_digest"]
+    cloud_assets[-1]["content_digest"] = "f" * 64
+    mismatched = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/published",
+        json=publish_payload,
+        headers={**_headers(), "Authorization": "Bearer cloud-token"},
+    )
+    assert mismatched.status_code == 409
+
+    cloud_assets[-1]["content_digest"] = original_digest
+    recovered = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/published",
+        json=publish_payload,
+        headers={**_headers(), "Authorization": "Bearer cloud-token"},
+    )
+    assert recovered.status_code == 200, recovered.text
+    rebased = recovered.json()["draft"]
+    assert rebased["version"] == edited.version + 1
+    assert rebased["document"]["metadata"]["name"] == (
+        "Edited after Cloud publish"
+    )
+    assert rebased["document"]["metadata"]["revision"] == 2
+
+
+def test_plugin_relative_mcp_command_is_semantically_executable(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    command = source / "bin" / "server"
+    command.chmod(0o644)
+
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert inspected.status_code == 200, inspected.text
+    review = inspected.json()
+    descriptor = next(
+        item
+        for item in review["files"]
+        if item["source_relative_path"] == "bin/server"
+    )
+    assert descriptor["executable"] is True
+
+    converted = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:convert",
+        json={
+            "source_path": str(source),
+            "email": "user@example.com",
+            "target_space_id": "space-1",
+            "expected_review_digest": review["review_digest"],
+            "expected_target_draft_version": 0,
+            "client_request_id": "semantic-executable-import-1",
+            "updated_by": "user-1",
+        },
+        headers=_headers(),
+    )
+    assert converted.status_code == 200, converted.text
+    draft = journal.get_workspace_config_draft("space-1")
+    assert draft is not None
+    stored = journal.list_workspace_config_draft_assets(
+        space_id="space-1",
+        draft_version=draft.version,
+        document_digest=draft.document_digest,
+    )
+    stored_command = next(
+        item for item in stored if item.logical_path.endswith("/bin/server")
+    )
+    assert stored_command.executable is True
+
+
+def test_prepared_asset_preflight_rejects_corrupted_sqlite_blob_before_cloud_write(
+    workspace_config_api,
+    tmp_path,
+):
+    client, journal = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    inspected = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    ).json()
+    assert (
+        client.post(
+            "/api/v1/workspace-bundles/agent-plugins:convert",
+            json={
+                "source_path": str(source),
+                "email": "user@example.com",
+                "target_space_id": "space-1",
+                "expected_review_digest": inspected["review_digest"],
+                "expected_target_draft_version": 0,
+                "client_request_id": "corrupt-import-1",
+                "updated_by": "user-1",
+            },
+            headers=_headers(),
+        ).status_code
+        == 200
+    )
+    review_payload = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/review",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    ).json()
+    review = review_payload["review"]
+    descriptor = review["prepared_assets"][0]
+    with journal._lock:
+        journal._connection.execute(
+            "UPDATE workspace_config_draft_asset_blobs SET content = ? "
+            "WHERE content_digest = ?",
+            (b"corrupt", descriptor["content_digest"]),
+        )
+        journal._connection.commit()
+    response = client.post(
+        "/api/v1/spaces/space-1/workspace-configuration/prepared-assets:preflight",
+        json={
+            "expected_version": review_payload["draft_version"],
+            "expected_manifest_digest": journal.get_workspace_config_draft(
+                "space-1"
+            ).document_digest,
+            "expected_review_digest": review["review_digest"],
+            "email": "user@example.com",
+        },
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]["code"] == "workspace_configuration_changed"
+    )
+
+
 def test_agent_plugin_convert_replays_before_current_draft_cas(
     workspace_config_api,
     tmp_path,
@@ -808,6 +1188,32 @@ def test_agent_plugin_rejects_undeclared_secret_without_echoing_it(
     assert response.json()["mcp_servers"] == []
     assert secret not in response.text
     assert journal.get_workspace_config_draft("space-1") is None
+
+
+def test_agent_plugin_requires_secret_slot_for_sensitive_mcp_field_name(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    plugin = json.loads((source / "plugin.json").read_text(encoding="utf-8"))
+    plugin["extensions"] = {}
+    (source / "plugin.json").write_text(json.dumps(plugin), encoding="utf-8")
+    mcp = json.loads((source / "mcp.json").read_text(encoding="utf-8"))
+    mcp["mcpServers"]["local"]["env"]["API_TOKEN"] = "not-high-entropy"
+    (source / "mcp.json").write_text(json.dumps(mcp), encoding="utf-8")
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mcp_servers"] == []
+    assert response.json()["skipped_mcp_servers"][0]["reason_code"] == (
+        "invalid_mcp_server_skipped"
+    )
 
 
 def test_agent_plugin_allows_contained_symlinks_but_rejects_escapes_and_sources_outside_hands_scope(
