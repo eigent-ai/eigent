@@ -17,15 +17,19 @@ import {
   validateWorkspaceBundleRevision,
   type CloudWorkspaceBundle,
   type CloudWorkspaceBundleRevision,
+  type WorkspaceBundleSelectedAsset,
   type WorkspaceBundleVisibility,
 } from '@/service/workspaceBundleAuthoringApi';
 import {
+  preflightPreparedWorkspaceConfigurationAssets,
   preflightWorkspaceConfigurationAsset,
   recordPublishedWorkspaceConfiguration,
   reviewWorkspaceConfiguration,
+  uploadPreparedWorkspaceConfigurationAsset,
   type WorkspaceConfigurationAssetPreflight,
   type WorkspaceConfigurationDraft,
   type WorkspaceConfigurationIdentity,
+  type WorkspaceConfigurationPreparedAsset,
   type WorkspaceConfigurationSaveReview,
   type WorkspaceEnvironmentVariableRequirement,
 } from '@/service/workspaceConfigurationApi';
@@ -58,6 +62,24 @@ const errorMessage = (error: unknown): string => {
 
 const logicalAssetPath = (value: string): string =>
   value.replace(/^bundle:\/\//, '');
+
+const assetDescriptorKey = (
+  asset: WorkspaceConfigurationPreparedAsset
+): string =>
+  [
+    logicalAssetPath(asset.logical_path),
+    asset.content_digest,
+    asset.media_type,
+    asset.size_bytes,
+    asset.executable ? '1' : '0',
+    asset.provenance,
+  ].join('\0');
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+};
 
 const isVerifiedPublishedRevision = (
   revision: CloudWorkspaceBundleRevision,
@@ -95,6 +117,7 @@ export function WorkspaceBundleSaveDialog({
   const [recoveredConcurrentEdits, setRecoveredConcurrentEdits] =
     useState(false);
   const [assetFiles, setAssetFiles] = useState<Record<string, File>>({});
+  const [preparedUploadConfirmed, setPreparedUploadConfirmed] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [publishedHandle, setPublishedHandle] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -103,6 +126,7 @@ export function WorkspaceBundleSaveDialog({
     setLoading(true);
     setError(null);
     setPublishedHandle(null);
+    setPreparedUploadConfirmed(false);
     try {
       const response = await reviewWorkspaceConfiguration(spaceId, identity);
       if (response.draft_version !== draft.version) {
@@ -144,6 +168,7 @@ export function WorkspaceBundleSaveDialog({
   useEffect(() => {
     if (!open) return;
     setAssetFiles({});
+    setPreparedUploadConfirmed(false);
     setReviewed(false);
     setVisibility('private');
     setKnownCloudBundle(null);
@@ -153,9 +178,31 @@ export function WorkspaceBundleSaveDialog({
     void loadReview();
   }, [loadReview, open]);
 
+  const preparedAssets = useMemo(() => review?.prepared_assets ?? [], [review]);
+  const preparedAssetPaths = useMemo(
+    () =>
+      new Set(
+        preparedAssets.map((asset) => logicalAssetPath(asset.logical_path))
+      ),
+    [preparedAssets]
+  );
+  const manualAssetPaths = useMemo(
+    () =>
+      review?.assets.filter(
+        (path) => !preparedAssetPaths.has(logicalAssetPath(path))
+      ) ?? [],
+    [preparedAssetPaths, review]
+  );
   const assetsReady = useMemo(
-    () => review?.assets.every((path) => Boolean(assetFiles[path])) ?? false,
-    [assetFiles, review]
+    () =>
+      manualAssetPaths.every((path) => Boolean(assetFiles[path])) &&
+      (preparedAssets.length === 0 || preparedUploadConfirmed),
+    [
+      assetFiles,
+      manualAssetPaths,
+      preparedAssets.length,
+      preparedUploadConfirmed,
+    ]
   );
   const requirementsReady =
     (review?.requirements.suggested_environment_variables.length ?? 0) === 0 &&
@@ -165,13 +212,22 @@ export function WorkspaceBundleSaveDialog({
       Object.values(assetFiles).reduce((total, file) => total + file.size, 0),
     [assetFiles]
   );
+  const preparedAssetBytes = useMemo(
+    () => preparedAssets.reduce((total, asset) => total + asset.size_bytes, 0),
+    [preparedAssets]
+  );
+  const totalAssetCount = manualAssetPaths.length + preparedAssets.length;
+  const totalAssetBytes = selectedAssetBytes + preparedAssetBytes;
   const assetLimitError = review
-    ? review.assets.length > MAX_ASSET_COUNT
+    ? totalAssetCount > MAX_ASSET_COUNT
       ? `A Workforce Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
-      : selectedAssetBytes > MAX_TOTAL_ASSET_BYTES
+      : totalAssetBytes > MAX_TOTAL_ASSET_BYTES
         ? 'Selected assets exceed the 128 MiB total Bundle limit.'
-        : Object.values(assetFiles).some((file) => file.size > MAX_ASSET_BYTES)
-          ? 'A selected asset exceeds the 16 MiB per-file limit.'
+        : Object.values(assetFiles).some(
+              (file) => file.size > MAX_ASSET_BYTES
+            ) ||
+            preparedAssets.some((asset) => asset.size_bytes > MAX_ASSET_BYTES)
+          ? 'A Bundle asset exceeds the 16 MiB per-file limit.'
           : null
     : null;
   const canPublish = Boolean(
@@ -216,12 +272,12 @@ export function WorkspaceBundleSaveDialog({
     setPublishing(true);
     setError(null);
     try {
-      if (review.assets.length > MAX_ASSET_COUNT) {
+      if (totalAssetCount > MAX_ASSET_COUNT) {
         throw new Error(
           `A Workforce Bundle can contain at most ${MAX_ASSET_COUNT} assets.`
         );
       }
-      const selected = review.assets.map((path) => {
+      const selected = manualAssetPaths.map((path) => {
         const file = assetFiles[path];
         if (!file) throw new Error(`Select an asset for ${path}.`);
         if (file.size > MAX_ASSET_BYTES) {
@@ -232,7 +288,8 @@ export function WorkspaceBundleSaveDialog({
         return { path, file };
       });
       if (
-        selected.reduce((total, item) => total + item.file.size, 0) >
+        selected.reduce((total, item) => total + item.file.size, 0) +
+          preparedAssetBytes >
         MAX_TOTAL_ASSET_BYTES
       ) {
         throw new Error(
@@ -262,6 +319,44 @@ export function WorkspaceBundleSaveDialog({
           throw new Error(`Local asset preflight mismatch for ${item.path}.`);
         }
         preflightedAssets.push({ ...item, preflight });
+      }
+
+      // Prepared Agent Plugin bytes remain in Brain-owned SQLite. Renderer
+      // receives and compares bounded descriptors only; all bytes are checked
+      // before the first Cloud mutation.
+      let preflightedPreparedAssets: WorkspaceConfigurationPreparedAsset[] = [];
+      if (preparedAssets.length > 0) {
+        const preparedPreflight =
+          await preflightPreparedWorkspaceConfigurationAssets(
+            spaceId,
+            identity,
+            {
+              expectedVersion: targetDraft.version,
+              expectedManifestDigest: review.manifest_digest,
+              expectedReviewDigest: review.review_digest,
+            }
+          );
+        const expectedDescriptors = preparedAssets
+          .map(assetDescriptorKey)
+          .sort();
+        const actualDescriptors = preparedPreflight.assets
+          .map(assetDescriptorKey)
+          .sort();
+        if (
+          preparedPreflight.space_id !== spaceId ||
+          preparedPreflight.draft_version !== targetDraft.version ||
+          preparedPreflight.manifest_digest !== review.manifest_digest ||
+          preparedPreflight.review_digest !== review.review_digest ||
+          expectedDescriptors.length !== actualDescriptors.length ||
+          expectedDescriptors.some(
+            (descriptor, index) => descriptor !== actualDescriptors[index]
+          )
+        ) {
+          throw new Error(
+            'Prepared Agent Plugin assets changed after this review.'
+          );
+        }
+        preflightedPreparedAssets = preparedPreflight.assets;
       }
 
       const bundle = await ensureWorkspaceBundle({
@@ -316,6 +411,7 @@ export function WorkspaceBundleSaveDialog({
         setPublishedHandle(validated.id);
         return;
       }
+      const selectedAssetReceipts: WorkspaceBundleSelectedAsset[] = [];
       for (const item of preflightedAssets) {
         const existingAsset = validated.assets.find(
           (asset) => asset.logical_path === item.preflight.logical_path
@@ -330,19 +426,61 @@ export function WorkspaceBundleSaveDialog({
         if (
           uploaded.logical_path !== item.preflight.logical_path ||
           uploaded.content_digest !== item.preflight.content_digest ||
-          uploaded.size_bytes !== item.preflight.size_bytes
+          uploaded.size_bytes !== item.preflight.size_bytes ||
+          uploaded.provenance !== 'bundle_author' ||
+          uploaded.executable
         ) {
           throw new Error(`Cloud asset receipt mismatch for ${item.path}.`);
         }
+        selectedAssetReceipts.push({
+          logical_path: uploaded.logical_path,
+          content_digest: uploaded.content_digest,
+          media_type: uploaded.media_type,
+          size_bytes: uploaded.size_bytes,
+          provenance: uploaded.provenance,
+          executable: uploaded.executable,
+        });
+      }
+      for (const prepared of preflightedPreparedAssets) {
+        const normalizedPath = logicalAssetPath(prepared.logical_path);
+        const existingAsset = validated.assets.find(
+          (asset) => asset.logical_path === normalizedPath
+        );
+        const { asset: uploaded } =
+          await uploadPreparedWorkspaceConfigurationAsset(spaceId, identity, {
+            expectedVersion: targetDraft.version,
+            expectedManifestDigest: review.manifest_digest,
+            expectedReviewDigest: review.review_digest,
+            logicalPath: prepared.logical_path,
+            contentDigest: prepared.content_digest,
+            expectedOldDigest: existingAsset?.content_digest,
+          });
+        if (
+          uploaded.logical_path !== normalizedPath ||
+          uploaded.content_digest !== prepared.content_digest ||
+          uploaded.media_type !== prepared.media_type ||
+          uploaded.size_bytes !== prepared.size_bytes ||
+          uploaded.provenance !== prepared.provenance ||
+          uploaded.executable !== prepared.executable
+        ) {
+          throw new Error(
+            `Cloud prepared asset receipt mismatch for ${prepared.logical_path}.`
+          );
+        }
+        selectedAssetReceipts.push({
+          logical_path: uploaded.logical_path,
+          content_digest: uploaded.content_digest,
+          media_type: uploaded.media_type,
+          size_bytes: uploaded.size_bytes,
+          provenance: uploaded.provenance,
+          executable: uploaded.executable,
+        });
       }
       const authorReview = await buildWorkspaceBundleAuthorReview({
         presentedReviewDigest: review.review_digest,
         manifestDigest: review.manifest_digest,
         visibility,
-        selectedAssets: preflightedAssets.map(({ preflight }) => ({
-          logical_path: preflight.logical_path,
-          content_digest: preflight.content_digest,
-        })),
+        selectedAssets: selectedAssetReceipts,
       });
       const published = await publishWorkspaceBundleRevision({
         bundleId: review.bundle_id,
@@ -449,9 +587,11 @@ export function WorkspaceBundleSaveDialog({
                       Values stay on this device
                     </p>
                     <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
-                      {review.local_values_excluded} local value fields were
-                      excluded. This version contains requirement names and
-                      slots only—never tokens, passwords, or environment values.
+                      {review.local_values_excluded} configured local value
+                      fields were excluded. Imported Agent Plugin package files
+                      listed below are reviewed upload candidates and may
+                      contain public configuration literals; local secret slot
+                      values are never included.
                     </p>
                   </div>
                 </div>
@@ -523,7 +663,7 @@ export function WorkspaceBundleSaveDialog({
 
               <section className="space-y-2">
                 <h3 className="text-body-sm font-bold">
-                  Explicit Bundle assets ({review.assets.length})
+                  Bundle assets ({totalAssetCount})
                 </h3>
                 {recoverablePublishedRevision ? (
                   <p className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-xs text-ds-text-neutral-muted-default">
@@ -532,8 +672,10 @@ export function WorkspaceBundleSaveDialog({
                   </p>
                 ) : (
                   <p className="text-body-xs text-ds-text-neutral-muted-default">
-                    Eigent never scans or uploads Workspace files automatically.
-                    Choose each referenced asset deliberately.
+                    Eigent does not scan or upload ordinary Workspace files
+                    automatically. Choose each manually referenced asset;
+                    explicitly imported Agent Plugin files are reviewed
+                    separately below.
                   </p>
                 )}
                 {!recoverablePublishedRevision && assetLimitError ? (
@@ -541,13 +683,12 @@ export function WorkspaceBundleSaveDialog({
                     {assetLimitError}
                   </div>
                 ) : null}
-                {recoverablePublishedRevision ? null : review.assets.length ===
-                  0 ? (
+                {recoverablePublishedRevision ? null : totalAssetCount === 0 ? (
                   <p className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-xs text-ds-text-neutral-muted-default">
                     This Bundle has no file assets.
                   </p>
-                ) : (
-                  review.assets.map((path) => (
+                ) : manualAssetPaths.length > 0 ? (
+                  manualAssetPaths.map((path) => (
                     <label
                       key={path}
                       className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-ds-border-neutral-subtle-default p-3"
@@ -590,7 +731,61 @@ export function WorkspaceBundleSaveDialog({
                       />
                     </label>
                   ))
-                )}
+                ) : null}
+
+                {preparedAssets.length > 0 ? (
+                  <div className="space-y-3 rounded-xl border border-ds-border-neutral-subtle-default p-3">
+                    <div>
+                      <p className="text-body-sm font-bold">
+                        Imported Agent Plugin package files (
+                        {preparedAssets.length})
+                      </p>
+                      <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                        {formatBytes(preparedAssetBytes)} was persisted by Brain
+                        when you explicitly imported this package. File bytes
+                        stay outside the renderer and ordinary Workspace files
+                        are not included.
+                      </p>
+                    </div>
+                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                      {preparedAssets.map((asset) => (
+                        <div
+                          key={assetDescriptorKey(asset)}
+                          className="rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                        >
+                          <p className="truncate font-mono text-body-xs">
+                            {logicalAssetPath(asset.logical_path)}
+                          </p>
+                          <p className="text-caption mt-1 truncate text-ds-text-neutral-muted-default">
+                            {formatBytes(asset.size_bytes)} · {asset.media_type}
+                            {asset.executable ? ' · executable' : ''} ·{' '}
+                            {asset.provenance} · sha256:
+                            {asset.content_digest.slice(0, 12)}…
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    {!recoverablePublishedRevision ? (
+                      <label className="flex items-start gap-3 rounded-lg bg-ds-bg-warning-subtle-default p-3 text-body-sm">
+                        <Switch
+                          size="sm"
+                          checked={preparedUploadConfirmed}
+                          onCheckedChange={(checked) => {
+                            setPreparedUploadConfirmed(checked);
+                            setReviewed(false);
+                          }}
+                          disabled={publishing || Boolean(publishedHandle)}
+                          aria-label="Confirm imported package upload"
+                        />
+                        <span>
+                          Upload these {preparedAssets.length} imported package
+                          files ({formatBytes(preparedAssetBytes)}) to this{' '}
+                          {visibility} Bundle.
+                        </span>
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
 
               <section className="space-y-2">
@@ -617,6 +812,7 @@ export function WorkspaceBundleSaveDialog({
                         if (visibility === option) return;
                         setVisibility(option);
                         setReviewed(false);
+                        setPreparedUploadConfirmed(false);
                       }}
                     >
                       <span className="text-body-sm font-bold capitalize">

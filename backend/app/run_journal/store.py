@@ -70,6 +70,7 @@ from app.run_journal.models import (
     WorkspaceBundleInstallProposalRecord,
     WorkspaceBundleLocalBindingRecord,
     WorkspaceBundleSecretBindingRecord,
+    WorkspaceConfigDraftAssetDescriptorRecord,
     WorkspaceConfigDraftAssetRecord,
     WorkspaceConfigDraftRecord,
     WorkspaceConfigMaterializationRecord,
@@ -2068,6 +2069,116 @@ class SQLiteRunJournal:
                 created_at=float(row["created_at"]),
             )
             for row in rows
+        )
+
+    def list_workspace_config_draft_asset_descriptors(
+        self,
+        *,
+        space_id: str,
+        draft_version: int,
+        document_digest: str | None = None,
+    ) -> tuple[WorkspaceConfigDraftAssetDescriptorRecord, ...]:
+        """List prepared assets without loading their BLOB content."""
+
+        query = """
+            SELECT * FROM workspace_config_draft_assets
+            WHERE space_id = ? AND draft_version = ?
+        """
+        parameters: list[Any] = [space_id, draft_version]
+        if document_digest is not None:
+            query += " AND document_digest = ?"
+            parameters.append(document_digest)
+        query += " ORDER BY logical_path"
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+        return tuple(
+            self._workspace_config_draft_asset_descriptor_from_row(row)
+            for row in rows
+        )
+
+    def list_workspace_config_draft_asset_descriptor_snapshots(
+        self,
+        *,
+        space_id: str,
+        document_digest: str,
+    ) -> tuple[tuple[WorkspaceConfigDraftAssetDescriptorRecord, ...], ...]:
+        """List every persisted asset snapshot for one immutable document.
+
+        A Cloud publish receipt may arrive after the mutable draft has advanced.
+        Recovery must therefore compare the Cloud asset set with a historical
+        ``(draft_version, document_digest)`` snapshot, never with the current
+        draft version paired with the old digest.
+        """
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM workspace_config_draft_assets
+                WHERE space_id = ? AND document_digest = ?
+                ORDER BY draft_version, logical_path
+                """,
+                (space_id, document_digest),
+            ).fetchall()
+        snapshots: dict[
+            int, list[WorkspaceConfigDraftAssetDescriptorRecord]
+        ] = {}
+        for row in rows:
+            descriptor = (
+                self._workspace_config_draft_asset_descriptor_from_row(row)
+            )
+            snapshots.setdefault(descriptor.draft_version, []).append(
+                descriptor
+            )
+        return tuple(
+            tuple(snapshots[version]) for version in sorted(snapshots)
+        )
+
+    def get_workspace_config_draft_asset(
+        self,
+        *,
+        space_id: str,
+        draft_version: int,
+        document_digest: str,
+        logical_path: str,
+        content_digest: str,
+    ) -> WorkspaceConfigDraftAssetRecord | None:
+        """Load one exact prepared asset for bounded Brain-to-Cloud upload."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT a.*, b.content
+                FROM workspace_config_draft_assets AS a
+                JOIN workspace_config_draft_asset_blobs AS b
+                  ON b.content_digest = a.content_digest
+                WHERE a.space_id = ?
+                  AND a.draft_version = ?
+                  AND a.document_digest = ?
+                  AND a.logical_path = ?
+                  AND a.content_digest = ?
+                """,
+                (
+                    space_id,
+                    draft_version,
+                    document_digest,
+                    logical_path,
+                    content_digest,
+                ),
+            ).fetchone()
+        if row is None:
+            return None
+        return WorkspaceConfigDraftAssetRecord(
+            space_id=row["space_id"],
+            draft_version=int(row["draft_version"]),
+            document_digest=row["document_digest"],
+            logical_path=row["logical_path"],
+            content_digest=row["content_digest"],
+            media_type=row["media_type"],
+            size_bytes=int(row["size_bytes"]),
+            executable=bool(row["executable"]),
+            provenance=row["provenance"],
+            content=bytes(row["content"]),
+            created_at=float(row["created_at"]),
         )
 
     def finalize_workspace_config_publish(
@@ -10520,6 +10631,23 @@ class SQLiteRunJournal:
             updated_by=row["updated_by"],
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_config_draft_asset_descriptor_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceConfigDraftAssetDescriptorRecord:
+        return WorkspaceConfigDraftAssetDescriptorRecord(
+            space_id=row["space_id"],
+            draft_version=int(row["draft_version"]),
+            document_digest=row["document_digest"],
+            logical_path=row["logical_path"],
+            content_digest=row["content_digest"],
+            media_type=row["media_type"],
+            size_bytes=int(row["size_bytes"]),
+            executable=bool(row["executable"]),
+            provenance=row["provenance"],
+            created_at=float(row["created_at"]),
         )
 
     @staticmethod

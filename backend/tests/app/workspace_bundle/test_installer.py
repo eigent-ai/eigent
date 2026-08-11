@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 import subprocess
 
 import pytest
@@ -100,6 +101,7 @@ class FakeCloud:
             "bundle.asset.integrity.v1",
             "bundle.install.review.v1",
         ]
+        self.executable_asset_ids: set[str] = set()
 
     async def get_revision(self, bundle_id, revision_id):
         revision_number = int(str(revision_id).rsplit("@", 1)[1])
@@ -131,6 +133,7 @@ class FakeCloud:
             "media_type": "text/plain",
             "size_bytes": len(content),
             "provenance": "bundle_author",
+            "executable": asset_id in self.executable_asset_ids,
         }
 
     async def install(self, space_id, bundle_id, revision_id):
@@ -515,6 +518,47 @@ async def test_materialize_treats_missing_protocol_field_as_legacy_cloud(
 
     assert materialized.state == "materialized"
     assert cloud.projection is not None
+
+
+@pytest.mark.asyncio
+async def test_materialize_restores_reviewed_executable_asset_mode(installer):
+    service, journal, cloud, tmp_path = installer
+    cloud.executable_asset_ids.add("asset-skill")
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+
+    materialized = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert materialized.state == "materialized"
+    executable = (
+        tmp_path / "state/spaces/space-1/configuration/skills/research.py"
+    )
+    assert stat.S_IMODE(executable.stat().st_mode) == 0o755
+    lock = (
+        tmp_path / "state/spaces/space-1/configuration/workspace.lock"
+    ).read_text(encoding="utf-8")
+    assert "executable: true" in lock
+
+
+def test_asset_descriptor_rejects_non_boolean_executable_metadata():
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="executable metadata is invalid",
+    ):
+        WorkspaceBundleInstaller._validate_asset_descriptor(
+            {
+                "id": "asset-1",
+                "logical_path": "assets/tool",
+                "content_digest": "a" * 64,
+                "media_type": "application/octet-stream",
+                "size_bytes": 1,
+                "executable": "false",
+            }
+        )
 
 
 @pytest.mark.asyncio

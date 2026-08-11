@@ -27,13 +27,28 @@ export interface CloudWorkspaceBundleRevision {
     id: string;
     logical_path: string;
     content_digest: string;
+    media_type: string;
     size_bytes: number;
+    provenance:
+      | 'bundle_author'
+      | 'user_uploaded'
+      | 'ai_generated'
+      | 'agent_plugin_import';
+    executable: boolean;
   }>;
 }
 
 export interface WorkspaceBundleSelectedAsset {
   logical_path: string;
   content_digest: string;
+  media_type: string;
+  size_bytes: number;
+  provenance:
+    | 'bundle_author'
+    | 'user_uploaded'
+    | 'ai_generated'
+    | 'agent_plugin_import';
+  executable: boolean;
 }
 
 const canonicalJson = (value: unknown): string => {
@@ -176,6 +191,7 @@ export const uploadWorkspaceBundleAsset = async (input: {
   const form = new FormData();
   form.set('logical_path', input.logicalPath.replace(/^bundle:\/\//, ''));
   form.set('provenance', 'bundle_author');
+  form.set('executable', 'false');
   if (input.expectedOldDigest) {
     form.set('expected_old_digest', input.expectedOldDigest);
   }

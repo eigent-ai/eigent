@@ -17,8 +17,10 @@ vi.mock('@/api/http', () => ({
 
 import {
   fetchWorkspaceConfiguration,
+  preflightPreparedWorkspaceConfigurationAssets,
   preflightWorkspaceConfigurationAsset,
   saveWorkspaceConfiguration,
+  uploadPreparedWorkspaceConfigurationAsset,
   workspaceEnvironmentVariables,
   type WorkspaceConfigurationDocument,
 } from './workspaceConfigurationApi';
@@ -92,6 +94,61 @@ describe('workspace configuration API', () => {
     );
     expect((form.get('file') as File).name).toBe(file.name);
     expect((form.get('file') as File).size).toBe(file.size);
+  });
+
+  it('preflights and uploads prepared assets using descriptors only', async () => {
+    fetchPostMock.mockResolvedValue({ assets: [] });
+    const pin = {
+      expectedVersion: 4,
+      expectedManifestDigest: 'a'.repeat(64),
+      expectedReviewDigest: 'b'.repeat(64),
+    };
+
+    await preflightPreparedWorkspaceConfigurationAssets(
+      'space/1',
+      { email: 'user@example.com', userId: 42 },
+      pin
+    );
+    await uploadPreparedWorkspaceConfigurationAsset(
+      'space/1',
+      { email: 'user@example.com', userId: 42 },
+      {
+        ...pin,
+        logicalPath: 'bundle://agent-plugins/demo/bin/server',
+        contentDigest: 'c'.repeat(64),
+        expectedOldDigest: 'd'.repeat(64),
+      }
+    );
+
+    expect(fetchPostMock.mock.calls).toEqual([
+      [
+        '/api/v1/spaces/space%2F1/workspace-configuration/prepared-assets:preflight',
+        {
+          email: 'user@example.com',
+          user_id: 42,
+          expected_version: 4,
+          expected_manifest_digest: 'a'.repeat(64),
+          expected_review_digest: 'b'.repeat(64),
+        },
+      ],
+      [
+        '/api/v1/spaces/space%2F1/workspace-configuration/prepared-assets:upload',
+        {
+          email: 'user@example.com',
+          user_id: 42,
+          expected_version: 4,
+          expected_manifest_digest: 'a'.repeat(64),
+          expected_review_digest: 'b'.repeat(64),
+          logical_path: 'bundle://agent-plugins/demo/bin/server',
+          content_digest: 'c'.repeat(64),
+          expected_old_digest: 'd'.repeat(64),
+        },
+      ],
+    ]);
+    expect(fetchPostMock.mock.calls[0][1]).not.toHaveProperty('content');
+    expect(fetchPostMock.mock.calls[1][1]).not.toHaveProperty('content');
+    expect(fetchPostMock.mock.calls[1][1]).not.toHaveProperty('file');
+    expect(JSON.stringify(fetchPostMock.mock.calls)).not.toContain('File');
   });
 
   it('reviews and records a publish through capability-protected local APIs', async () => {

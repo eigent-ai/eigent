@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import os
 from dataclasses import asdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Any
 
 from fastapi import (
@@ -45,10 +45,13 @@ from app.workspace_config import (
     WorkforceBundleManifest,
     WorkspaceConfigError,
     assert_bundle_asset_safe,
+    canonical_digest,
 )
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 _MAX_BUNDLE_ASSET_BYTES = 16 * 1024 * 1024
+_MAX_PREPARED_ASSETS = 512
+_MAX_PREPARED_ASSET_BYTES = 64 * 1024 * 1024
 
 
 class WorkspaceConfigDraftBody(BaseModel):
@@ -83,6 +86,25 @@ class AgentPluginConvertBody(AgentPluginInspectBody):
     expected_target_draft_version: int = Field(ge=0)
     client_request_id: str = Field(min_length=1, max_length=200)
     updated_by: str = Field(min_length=1, max_length=200)
+
+
+class WorkspaceConfigPreparedAssetsBody(BaseModel):
+    expected_version: int = Field(ge=1)
+    expected_manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_review_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    email: str = Field(min_length=1, max_length=512)
+    user_id: str | int | None = None
+
+
+class WorkspaceConfigPreparedAssetUploadBody(
+    WorkspaceConfigPreparedAssetsBody
+):
+    logical_path: str = Field(min_length=1, max_length=1024)
+    content_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_old_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
 
 
 def _assert_space_binding(
@@ -286,6 +308,207 @@ def _agent_plugin_conversion_payload(
     }
 
 
+def _prepared_asset_payload(asset: Any) -> dict[str, Any]:
+    if asset.provenance not in {
+        "agent_plugins_v1_import",
+        "agent_plugin_import",
+    }:
+        raise IdempotencyConflictError(
+            "Prepared Workspace Bundle asset has invalid provenance"
+        )
+    return {
+        "logical_path": asset.logical_path,
+        "content_digest": asset.content_digest,
+        "media_type": asset.media_type,
+        "size_bytes": asset.size_bytes,
+        "executable": asset.executable,
+        "provenance": "agent_plugin_import",
+    }
+
+
+def _workspace_configuration_review(
+    draft: WorkspaceConfigDraftRecord,
+) -> dict[str, Any]:
+    manifest = WorkforceBundleManifest.model_validate(draft.document)
+    base = WorkspaceBundleAuthoringService.review(
+        manifest,
+        mcp_config=read_mcp_config(),
+    )
+    prepared = _prepared_assets_for_document(
+        space_id=draft.space_id,
+        draft_version=draft.version,
+        document_digest=draft.document_digest,
+        direct_assets=set(base["assets"]),
+    )
+    payload = {
+        key: value for key, value in base.items() if key != "review_digest"
+    }
+    payload["prepared_assets"] = prepared
+    return {**payload, "review_digest": canonical_digest(payload)}
+
+
+def _prepared_assets_for_document(
+    *,
+    space_id: str,
+    draft_version: int,
+    document_digest: str,
+    direct_assets: set[str],
+) -> list[dict[str, Any]]:
+    descriptors = get_default_run_journal().list_workspace_config_draft_asset_descriptors(
+        space_id=space_id,
+        draft_version=draft_version,
+        document_digest=document_digest,
+    )
+    return _prepared_assets_from_descriptors(
+        direct_assets=direct_assets,
+        descriptors=descriptors,
+    )
+
+
+def _prepared_assets_from_descriptors(
+    *,
+    direct_assets: set[str],
+    descriptors: Any,
+) -> list[dict[str, Any]]:
+    active_plugin_roots: set[str] = set()
+    for asset_ref in direct_assets:
+        logical = asset_ref.removeprefix("bundle://")
+        parts = PurePosixPath(logical).parts
+        if len(parts) >= 2 and parts[0] == "agent-plugins":
+            active_plugin_roots.add("/".join(parts[:2]) + "/")
+    prepared = [
+        _prepared_asset_payload(asset)
+        for asset in descriptors
+        if (
+            asset.logical_path in direct_assets
+            or any(
+                asset.logical_path.removeprefix("bundle://").startswith(root)
+                for root in active_plugin_roots
+            )
+        )
+    ]
+    return prepared
+
+
+def _assert_cloud_prepared_assets_match(
+    *,
+    space_id: str,
+    manifest_digest: str,
+    cloud_revision: dict[str, Any],
+) -> None:
+    manifest = WorkforceBundleManifest.model_validate(
+        cloud_revision.get("manifest", {})
+    )
+    base = WorkspaceBundleAuthoringService.review(
+        manifest,
+        mcp_config=read_mcp_config(),
+    )
+    direct_assets = set(base["assets"])
+    historical_snapshots = get_default_run_journal().list_workspace_config_draft_asset_descriptor_snapshots(
+        space_id=space_id,
+        document_digest=manifest_digest,
+    )
+    expected_snapshots = [
+        _prepared_assets_from_descriptors(
+            direct_assets=direct_assets,
+            descriptors=snapshot,
+        )
+        for snapshot in historical_snapshots
+    ]
+    # A manifest without any persisted imported package is a valid manual-only
+    # Bundle. Once a prepared snapshot exists, however, recovery must match one
+    # exact historical set rather than silently falling back to an empty set.
+    if not expected_snapshots:
+        expected_snapshots = [[]]
+    cloud_imported = [
+        item
+        for item in cloud_revision.get("assets", [])
+        if item.get("provenance") == "agent_plugin_import"
+    ]
+
+    def comparable(item: dict[str, Any]) -> str:
+        logical_path = item.get("logical_path")
+        return canonical_digest(
+            {
+                "logical_path": (
+                    logical_path.removeprefix("bundle://")
+                    if isinstance(logical_path, str)
+                    else None
+                ),
+                "content_digest": item.get("content_digest"),
+                "media_type": item.get("media_type"),
+                "size_bytes": item.get("size_bytes"),
+                "provenance": item.get("provenance"),
+                "executable": item.get("executable", False),
+            }
+        )
+
+    cloud_comparable = sorted(map(comparable, cloud_imported))
+    if not any(
+        sorted(map(comparable, expected)) == cloud_comparable
+        for expected in expected_snapshots
+    ):
+        raise IdempotencyConflictError(
+            "Cloud prepared assets do not match the confirmed local package"
+        )
+
+
+def _verified_prepared_asset_review(
+    *,
+    space_id: str,
+    body: WorkspaceConfigPreparedAssetsBody,
+) -> tuple[WorkspaceConfigDraftRecord, dict[str, Any]]:
+    draft = get_default_run_journal().get_workspace_config_draft(space_id)
+    if draft is None:
+        raise RunNotFoundError(
+            "Save the Workspace Configuration before publishing assets"
+        )
+    if (
+        draft.version != body.expected_version
+        or draft.document_digest != body.expected_manifest_digest
+    ):
+        raise OptimisticConcurrencyError(
+            f"workspace configuration for {space_id!r} changed"
+        )
+    review = _workspace_configuration_review(draft)
+    if review["review_digest"] != body.expected_review_digest:
+        raise IdempotencyConflictError(
+            "Workspace Configuration review changed"
+        )
+    return draft, review
+
+
+def _verified_prepared_asset(
+    *,
+    draft: WorkspaceConfigDraftRecord,
+    descriptor: dict[str, Any],
+) -> Any:
+    asset = get_default_run_journal().get_workspace_config_draft_asset(
+        space_id=draft.space_id,
+        draft_version=draft.version,
+        document_digest=draft.document_digest,
+        logical_path=descriptor["logical_path"],
+        content_digest=descriptor["content_digest"],
+    )
+    if asset is None:
+        raise IdempotencyConflictError(
+            "Prepared Workspace Bundle asset is no longer available"
+        )
+    if (
+        asset.size_bytes != descriptor["size_bytes"]
+        or len(asset.content) != descriptor["size_bytes"]
+        or hashlib.sha256(asset.content).hexdigest()
+        != descriptor["content_digest"]
+        or asset.media_type != descriptor["media_type"]
+        or asset.executable != descriptor["executable"]
+    ):
+        raise IdempotencyConflictError(
+            "Prepared Workspace Bundle asset changed after review"
+        )
+    assert_bundle_asset_safe(asset.logical_path, asset.content)
+    return asset
+
+
 @router.post("/workspace-bundles/agent-plugins:inspect")
 async def inspect_agent_plugin(
     body: AgentPluginInspectBody,
@@ -428,14 +651,10 @@ async def review_workspace_configuration(
             raise RunNotFoundError(
                 "Save the Workspace Configuration before reviewing it"
             )
-        manifest = WorkforceBundleManifest.model_validate(draft.document)
         return {
             "space_id": space_id,
             "draft_version": draft.version,
-            "review": WorkspaceBundleAuthoringService.review(
-                manifest,
-                mcp_config=read_mcp_config(),
-            ),
+            "review": _workspace_configuration_review(draft),
         }
     except Exception as exc:
         raise _configuration_error(exc) from exc
@@ -467,6 +686,123 @@ async def preflight_workspace_configuration_asset(
     }
 
 
+@router.post(
+    "/spaces/{space_id}/workspace-configuration/prepared-assets:preflight"
+)
+async def preflight_prepared_workspace_configuration_assets(
+    space_id: str,
+    body: WorkspaceConfigPreparedAssetsBody,
+) -> dict[str, Any]:
+    """Validate the complete prepared package before the first Cloud write."""
+
+    _assert_space_binding(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    try:
+        draft, review = _verified_prepared_asset_review(
+            space_id=space_id,
+            body=body,
+        )
+        descriptors = review["prepared_assets"]
+        if len(descriptors) > _MAX_PREPARED_ASSETS:
+            raise ValueError("Prepared Workspace Bundle has too many assets")
+        if sum(item["size_bytes"] for item in descriptors) > (
+            _MAX_PREPARED_ASSET_BYTES
+        ):
+            raise ValueError("Prepared Workspace Bundle assets are too large")
+        for descriptor in descriptors:
+            _verified_prepared_asset(
+                draft=draft,
+                descriptor=descriptor,
+            )
+        return {
+            "space_id": space_id,
+            "draft_version": draft.version,
+            "manifest_digest": draft.document_digest,
+            "review_digest": review["review_digest"],
+            "assets": descriptors,
+        }
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+
+
+@router.post(
+    "/spaces/{space_id}/workspace-configuration/prepared-assets:upload"
+)
+async def upload_prepared_workspace_configuration_asset(
+    space_id: str,
+    body: WorkspaceConfigPreparedAssetUploadBody,
+    authorization: Annotated[str, Header(alias="Authorization")],
+) -> dict[str, Any]:
+    """Upload one reviewed local asset without exposing bytes to renderer."""
+
+    _assert_space_binding(
+        space_id=space_id,
+        email=body.email,
+        user_id=body.user_id,
+    )
+    cloud = None
+    try:
+        draft, review = _verified_prepared_asset_review(
+            space_id=space_id,
+            body=body,
+        )
+        descriptor = next(
+            (
+                item
+                for item in review["prepared_assets"]
+                if item["logical_path"] == body.logical_path
+                and item["content_digest"] == body.content_digest
+            ),
+            None,
+        )
+        if descriptor is None:
+            raise IdempotencyConflictError(
+                "Prepared Workspace Bundle asset was not in the confirmed review"
+            )
+        asset = _verified_prepared_asset(
+            draft=draft,
+            descriptor=descriptor,
+        )
+        manifest = WorkforceBundleManifest.model_validate(draft.document)
+        bundle_id = manifest.metadata.id
+        revision_id = f"{bundle_id}@{manifest.metadata.revision}"
+        cloud = _authoring_cloud(authorization)
+        receipt = await cloud.upload_asset(
+            bundle_id,
+            revision_id,
+            logical_path=asset.logical_path,
+            content=asset.content,
+            media_type=asset.media_type,
+            provenance=descriptor["provenance"],
+            executable=asset.executable,
+            expected_old_digest=body.expected_old_digest,
+        )
+        expected_receipt = {
+            "logical_path": asset.logical_path.removeprefix("bundle://"),
+            "content_digest": asset.content_digest,
+            "media_type": asset.media_type,
+            "size_bytes": asset.size_bytes,
+            "provenance": descriptor["provenance"],
+            "executable": asset.executable,
+        }
+        if any(
+            receipt.get(key) != value
+            for key, value in expected_receipt.items()
+        ):
+            raise IdempotencyConflictError(
+                "Cloud asset receipt does not match the prepared asset"
+            )
+        return {"asset": receipt}
+    except Exception as exc:
+        raise _configuration_error(exc) from exc
+    finally:
+        if cloud is not None:
+            await cloud.close()
+
+
 @router.post("/spaces/{space_id}/workspace-configuration/published")
 async def record_workspace_configuration_published(
     space_id: str,
@@ -492,6 +828,11 @@ async def record_workspace_configuration_published(
             raise IdempotencyConflictError(
                 "Cloud publish receipt does not match the local working copy"
             )
+        _assert_cloud_prepared_assets_match(
+            space_id=space_id,
+            manifest_digest=body.manifest_digest,
+            cloud_revision=cloud_revision,
+        )
         revision, draft = (
             get_default_run_journal().finalize_workspace_config_publish(
                 space_id=space_id,

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   review: vi.fn(),
   preflight: vi.fn(),
+  preflightPrepared: vi.fn(),
+  uploadPrepared: vi.fn(),
   recordPublished: vi.fn(),
   buildAuthorReview: vi.fn(),
   ensureBundle: vi.fn(),
@@ -18,6 +20,8 @@ vi.mock('@/service/workspaceConfigurationApi', async (original) => ({
   ...(await original()),
   reviewWorkspaceConfiguration: mocks.review,
   preflightWorkspaceConfigurationAsset: mocks.preflight,
+  preflightPreparedWorkspaceConfigurationAssets: mocks.preflightPrepared,
+  uploadPreparedWorkspaceConfigurationAsset: mocks.uploadPrepared,
   recordPublishedWorkspaceConfiguration: mocks.recordPublished,
 }));
 
@@ -99,6 +103,7 @@ const review: WorkspaceConfigurationSaveReview = {
     local_path_slots: [],
   },
   assets: ['bundle://instructions/coordinator.md'],
+  prepared_assets: [],
   warnings: [],
   local_values_excluded: 0,
 };
@@ -109,6 +114,7 @@ const renderDialog = (
     onApplyRequirements?: ReturnType<typeof vi.fn>;
     onApplyMcpSecretSlots?: ReturnType<typeof vi.fn>;
     onPublished?: ReturnType<typeof vi.fn>;
+    draft?: WorkspaceConfigurationDraft;
   } = {}
 ) => {
   const props = {
@@ -122,7 +128,7 @@ const renderDialog = (
       open
       spaceId="space-1"
       identity={{ email: 'user@example.com', userId: 42 }}
-      draft={draft}
+      draft={overrides.draft ?? draft}
       {...props}
     />
   );
@@ -147,6 +153,13 @@ describe('WorkspaceBundleSaveDialog', () => {
         size_bytes: file.size,
       })
     );
+    mocks.preflightPrepared.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      manifest_digest: digest,
+      review_digest: review.review_digest,
+      assets: [],
+    });
     mocks.buildAuthorReview.mockResolvedValue({
       presented_review_digest: review.review_digest,
       review_digest: 'e'.repeat(64),
@@ -170,9 +183,24 @@ describe('WorkspaceBundleSaveDialog', () => {
       assets: [],
     });
     mocks.uploadAsset.mockResolvedValue({
+      id: 'asset-manual',
       logical_path: 'instructions/coordinator.md',
       content_digest: assetDigest,
+      media_type: 'text/markdown',
       size_bytes: 17,
+      provenance: 'bundle_author',
+      executable: false,
+    });
+    mocks.uploadPrepared.mockResolvedValue({
+      asset: {
+        id: 'asset-prepared',
+        logical_path: 'agent-plugins/demo/plugin.json',
+        content_digest: 'f'.repeat(64),
+        media_type: 'application/json',
+        size_bytes: 21,
+        provenance: 'agent_plugin_import',
+        executable: false,
+      },
     });
     mocks.publishRevision.mockResolvedValue({
       id: 'bundle-1@1',
@@ -236,6 +264,278 @@ describe('WorkspaceBundleSaveDialog', () => {
     expect(mocks.validateRevision).not.toHaveBeenCalled();
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
     expect(mocks.publishRevision).not.toHaveBeenCalled();
+  });
+
+  it('publishes prepared-only Agent Plugin assets without exposing file bytes to renderer', async () => {
+    const preparedAssets = [
+      {
+        logical_path: 'bundle://agent-plugins/demo/plugin.json',
+        content_digest: 'f'.repeat(64),
+        media_type: 'application/json',
+        size_bytes: 21,
+        provenance: 'agent_plugin_import' as const,
+        executable: false,
+      },
+      {
+        logical_path: 'bundle://agent-plugins/demo/bin/server',
+        content_digest: '9'.repeat(64),
+        media_type: 'application/octet-stream',
+        size_bytes: 37,
+        provenance: 'agent_plugin_import' as const,
+        executable: true,
+      },
+    ];
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: {
+        ...review,
+        assets: ['bundle://agent-plugins/demo/plugin.json'],
+        prepared_assets: preparedAssets,
+      },
+    });
+    mocks.preflightPrepared.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      manifest_digest: digest,
+      review_digest: review.review_digest,
+      assets: preparedAssets,
+    });
+    mocks.uploadPrepared
+      .mockResolvedValueOnce({
+        asset: {
+          id: 'asset-plugin',
+          ...preparedAssets[0],
+          logical_path: 'agent-plugins/demo/plugin.json',
+        },
+      })
+      .mockResolvedValueOnce({
+        asset: {
+          id: 'asset-server',
+          ...preparedAssets[1],
+          logical_path: 'agent-plugins/demo/bin/server',
+        },
+      });
+
+    renderDialog();
+    await screen.findByText('Imported Agent Plugin package files (2)');
+
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(
+      screen.getByText('agent-plugins/demo/bin/server')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/executable/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Publish version' })
+    ).toBeDisabled();
+
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm imported package upload' })
+    );
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+
+    await screen.findByText('Published');
+    expect(mocks.preflightPrepared.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureBundle.mock.invocationCallOrder[0]
+    );
+    expect(mocks.preflight).not.toHaveBeenCalled();
+    expect(mocks.uploadPrepared).toHaveBeenCalledTimes(2);
+    expect(mocks.uploadPrepared.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.uploadPrepared.mock.invocationCallOrder[1]
+    );
+    for (const call of mocks.uploadPrepared.mock.calls) {
+      const request = call[2];
+      expect(request).not.toHaveProperty('file');
+      expect(request).not.toHaveProperty('content');
+      expect(JSON.stringify(request)).not.toContain('File');
+    }
+    expect(mocks.buildAuthorReview).toHaveBeenCalledWith({
+      presentedReviewDigest: review.review_digest,
+      manifestDigest: digest,
+      visibility: 'private',
+      selectedAssets: [
+        {
+          logical_path: 'agent-plugins/demo/plugin.json',
+          content_digest: 'f'.repeat(64),
+          media_type: 'application/json',
+          size_bytes: 21,
+          provenance: 'agent_plugin_import',
+          executable: false,
+        },
+        {
+          logical_path: 'agent-plugins/demo/bin/server',
+          content_digest: '9'.repeat(64),
+          media_type: 'application/octet-stream',
+          size_bytes: 37,
+          provenance: 'agent_plugin_import',
+          executable: true,
+        },
+      ],
+    });
+  });
+
+  it('requires file selection only for manual assets in a mixed review', async () => {
+    const preparedAsset = {
+      logical_path: 'bundle://agent-plugins/demo/plugin.json',
+      content_digest: 'f'.repeat(64),
+      media_type: 'application/json',
+      size_bytes: 21,
+      provenance: 'agent_plugin_import' as const,
+      executable: false,
+    };
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: {
+        ...review,
+        assets: [
+          'bundle://instructions/coordinator.md',
+          preparedAsset.logical_path,
+        ],
+        prepared_assets: [preparedAsset],
+      },
+    });
+    mocks.preflightPrepared.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      manifest_digest: digest,
+      review_digest: review.review_digest,
+      assets: [preparedAsset],
+    });
+
+    renderDialog();
+    await screen.findByText('Imported Agent Plugin package files (1)');
+
+    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(screen.getByText('instructions/coordinator.md')).toBeInTheDocument();
+    expect(screen.getAllByText('agent-plugins/demo/plugin.json')).toHaveLength(
+      1
+    );
+
+    selectAsset(
+      new File(['safe instructions'], 'coordinator.md', {
+        type: 'text/markdown',
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm imported package upload' })
+    );
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+
+    await screen.findByText('Published');
+    expect(mocks.preflight.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureBundle.mock.invocationCallOrder[0]
+    );
+    expect(mocks.preflightPrepared.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureBundle.mock.invocationCallOrder[0]
+    );
+    expect(mocks.uploadAsset.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.uploadPrepared.mock.invocationCallOrder[0]
+    );
+    expect(mocks.buildAuthorReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedAssets: [
+          expect.objectContaining({
+            logical_path: 'instructions/coordinator.md',
+            provenance: 'bundle_author',
+            executable: false,
+          }),
+          expect.objectContaining({
+            logical_path: 'agent-plugins/demo/plugin.json',
+            provenance: 'agent_plugin_import',
+            executable: false,
+          }),
+        ],
+      })
+    );
+  });
+
+  it('keeps prepared confirmation after a transient Cloud failure for an idempotent retry', async () => {
+    const preparedAsset = {
+      logical_path: 'bundle://agent-plugins/demo/plugin.json',
+      content_digest: 'f'.repeat(64),
+      media_type: 'application/json',
+      size_bytes: 21,
+      provenance: 'agent_plugin_import' as const,
+      executable: false,
+    };
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: {
+        ...review,
+        assets: [preparedAsset.logical_path],
+        prepared_assets: [preparedAsset],
+      },
+    });
+    mocks.preflightPrepared.mockResolvedValue({
+      space_id: 'space-1',
+      draft_version: 1,
+      manifest_digest: digest,
+      review_digest: review.review_digest,
+      assets: [preparedAsset],
+    });
+    mocks.uploadPrepared.mockRejectedValueOnce(
+      new Error('Cloud temporarily unavailable')
+    );
+
+    renderDialog();
+    await screen.findByText('Imported Agent Plugin package files (1)');
+    const preparedConfirmation = screen.getByRole('switch', {
+      name: 'Confirm imported package upload',
+    });
+    fireEvent.click(preparedConfirmation);
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+
+    await screen.findByText('Cloud temporarily unavailable');
+    expect(preparedConfirmation).toBeChecked();
+    expect(
+      screen.getByRole('switch', { name: 'Confirm secret-free review' })
+    ).toBeChecked();
+    expect(
+      screen.getByRole('button', { name: 'Publish version' })
+    ).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publish version' }));
+
+    await screen.findByText('Published');
+    expect(mocks.uploadPrepared).toHaveBeenCalledTimes(2);
+  });
+
+  it('resets prepared upload confirmation when sharing visibility changes', async () => {
+    const preparedAsset = {
+      logical_path: 'bundle://agent-plugins/demo/plugin.json',
+      content_digest: 'f'.repeat(64),
+      media_type: 'application/json',
+      size_bytes: 21,
+      provenance: 'agent_plugin_import' as const,
+      executable: false,
+    };
+    mocks.review.mockResolvedValue({
+      draft_version: 1,
+      review: {
+        ...review,
+        assets: [preparedAsset.logical_path],
+        prepared_assets: [preparedAsset],
+      },
+    });
+
+    renderDialog();
+    await screen.findByText('Imported Agent Plugin package files (1)');
+    const preparedConfirmation = screen.getByRole('switch', {
+      name: 'Confirm imported package upload',
+    });
+    fireEvent.click(preparedConfirmation);
+    expect(preparedConfirmation).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /^public/ }));
+    expect(preparedConfirmation).not.toBeChecked();
   });
 
   it('cannot be dismissed by close, overlay, or Escape while publishing', async () => {
@@ -318,6 +618,35 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('recovers a Cloud-published version without selecting assets and rebases newer local edits', async () => {
     const onPublished = vi.fn();
+    const editedDraft: WorkspaceConfigurationDraft = {
+      ...draft,
+      version: 2,
+      document_digest: digest,
+      document: {
+        ...draft.document,
+        metadata: {
+          ...draft.document.metadata,
+          name: 'Edited after Cloud publish',
+        },
+      },
+    };
+    const preparedAsset = {
+      logical_path: 'bundle://agent-plugins/demo/plugin.json',
+      content_digest: 'f'.repeat(64),
+      media_type: 'application/json',
+      size_bytes: 21,
+      provenance: 'agent_plugin_import' as const,
+      executable: false,
+    };
+    mocks.review.mockResolvedValue({
+      draft_version: editedDraft.version,
+      review: {
+        ...review,
+        name: editedDraft.document.metadata.name,
+        assets: ['bundle://agent-plugins/demo/plugin.json'],
+        prepared_assets: [preparedAsset],
+      },
+    });
     mocks.findBundle.mockResolvedValue({
       id: 'bundle-1',
       workspace_id: 'space-1',
@@ -332,9 +661,15 @@ describe('WorkspaceBundleSaveDialog', () => {
       manifest: draft.document,
       manifest_digest: cloudDigest,
       status: 'published',
-      assets: [],
+      assets: [
+        {
+          id: 'asset-prepared',
+          ...preparedAsset,
+          logical_path: 'agent-plugins/demo/plugin.json',
+        },
+      ],
     });
-    renderDialog({ onPublished });
+    renderDialog({ onPublished, draft: editedDraft });
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Finish saving locally' })
@@ -344,9 +679,14 @@ describe('WorkspaceBundleSaveDialog', () => {
     expect(mocks.recordPublished).toHaveBeenCalledWith(
       'space-1',
       { email: 'user@example.com', userId: 42 },
-      expect.objectContaining({ manifestDigest: cloudDigest })
+      expect.objectContaining({
+        expectedVersion: editedDraft.version,
+        manifestDigest: cloudDigest,
+      })
     );
     expect(mocks.preflight).not.toHaveBeenCalled();
+    expect(mocks.preflightPrepared).not.toHaveBeenCalled();
+    expect(mocks.uploadPrepared).not.toHaveBeenCalled();
     expect(document.querySelector('input[type="file"]')).toBeNull();
     expect(mocks.ensureBundle).not.toHaveBeenCalled();
     expect(mocks.validateRevision).not.toHaveBeenCalled();

@@ -29,6 +29,7 @@ from app.workspace_config import (
     SecretValueInManifestError,
     WorkforceBundleManifest,
     assert_bundle_asset_safe,
+    assert_manifest_secret_free,
     canonical_digest,
 )
 
@@ -66,7 +67,7 @@ _MAX_JSON_BYTES = 1024 * 1024
 _MAX_SKILL_BYTES = 1024 * 1024
 _MAX_ASSET_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_BYTES = 64 * 1024 * 1024
-_MAX_PACKAGE_FILES = 2_000
+_MAX_PACKAGE_FILES = 512
 _MAX_PACKAGE_ENTRIES = 4_000
 _MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 _MAX_ARCHIVE_DEPTH = 32
@@ -137,7 +138,7 @@ class AgentPluginAsset:
     size_bytes: int
     content: bytes
     executable: bool = False
-    provenance: str = "agent_plugins_v1_import"
+    provenance: str = "agent_plugin_import"
 
     def descriptor(self) -> dict[str, Any]:
         return {
@@ -266,6 +267,13 @@ class AgentPluginImporter:
                 "ai.eigent MCP secret requirement does not match a valid "
                 "MCP server declaration"
             )
+        semantic_executable_paths = {
+            review["executable_asset_ref"].removeprefix(
+                f"bundle://{asset_prefix}/"
+            )
+            for review in mcp_review
+            if review.get("executable_asset_ref")
+        }
         overrides: dict[str, bytes] = {
             "plugin.json": self._json_bytes(source_manifest),
         }
@@ -281,6 +289,7 @@ class AgentPluginImporter:
             asset_prefix=asset_prefix,
             overrides=overrides,
             excluded=excluded,
+            semantic_executable_paths=semantic_executable_paths,
         )
         manifest = WorkforceBundleManifest.model_validate(
             {
@@ -843,15 +852,14 @@ class AgentPluginImporter:
                     )
                 )
                 continue
-            result.append(f"bundle://{asset_prefix}/skills/{child.name}")
+            skill_ref = f"bundle://{asset_prefix}/skills/{child.name}/SKILL.md"
+            result.append(skill_ref)
             reviews.append(
                 {
                     "id": child.name,
                     "name": frontmatter["name"],
                     "description": frontmatter["description"],
-                    "logical_path": (
-                        f"bundle://{asset_prefix}/skills/{child.name}"
-                    ),
+                    "logical_path": skill_ref,
                 }
             )
         return tuple(result), reviews
@@ -1209,7 +1217,15 @@ class AgentPluginImporter:
                 None,
             )
             if slot is None:
-                self._assert_public_package_value(value)
+                try:
+                    assert_manifest_secret_free({name: value})
+                    self._assert_public_package_value(value)
+                except SecretValueInManifestError as exc:
+                    raise AgentPluginImportError(
+                        "Agent Plugin contains a secret-like MCP field; "
+                        "declare an explicit ai.eigent secret requirement "
+                        "instead"
+                    ) from exc
                 result[name] = value
                 continue
             result[name] = f"slot://{slot}"
@@ -1305,6 +1321,7 @@ class AgentPluginImporter:
         asset_prefix: str,
         overrides: dict[str, bytes],
         excluded: set[str],
+        semantic_executable_paths: set[str],
     ) -> tuple[AgentPluginAsset, ...]:
         files = self._walk_package(root)
         assets: list[AgentPluginAsset] = []
@@ -1333,7 +1350,9 @@ class AgentPluginImporter:
                 assert_bundle_asset_safe(logical_path, content)
             media_type = mimetypes.guess_type(relative_text)[0]
             try:
-                executable = bool(path.stat().st_mode & 0o111)
+                executable = bool(path.stat().st_mode & 0o111) or (
+                    relative_text in semantic_executable_paths
+                )
             except OSError as exc:
                 raise AgentPluginImportError(
                     "Agent Plugin asset metadata cannot be read"
