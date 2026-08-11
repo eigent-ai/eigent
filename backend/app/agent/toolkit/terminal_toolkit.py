@@ -16,11 +16,15 @@ import asyncio
 import logging
 import os
 import platform
+import shlex
 import shutil
+import signal
 import subprocess
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, ContextManager
 
 from camel.toolkits.terminal_toolkit import (
     TerminalToolkit as BaseTerminalToolkit,
@@ -56,6 +60,34 @@ _SECRET_BROKER_ENVIRONMENT_KEYS = {
     "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY",
     "EIGENT_WORKFORCE_SECRET_BROKER_ENDPOINT",
     "EIGENT_WORKFORCE_SECRET_BROKER_CAPABILITY",
+}
+
+_BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
+    "APPDATA",
+    "COMSPEC",
+    "CURL_CA_BUNDLE",
+    "HOME",
+    "JAVA_HOME",
+    "LANG",
+    "LOCALAPPDATA",
+    "LOGNAME",
+    "NODE_EXTRA_CA_CERTS",
+    "PATH",
+    "PATHEXT",
+    "PYTHONIOENCODING",
+    "REQUESTS_CA_BUNDLE",
+    "SHELL",
+    "SSL_CERT_DIR",
+    "SSL_CERT_FILE",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TERM",
+    "TMP",
+    "TMPDIR",
+    "USER",
+    "USERPROFILE",
+    "WINDIR",
 }
 
 
@@ -102,8 +134,15 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         safe_mode: bool = True,
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
+        runtime_env_provider: (
+            Callable[[], ContextManager[dict[str, str]]] | None
+        ) = None,
     ):
         self.api_task_id = api_task_id
+        self._runtime_env_provider = runtime_env_provider
+        self._runtime_env_overlay: dict[str, str] | None = None
+        self._active_runtime_secret_values: tuple[str, ...] = ()
+        self._runtime_env_lock = threading.RLock()
         if agent_name is not None:
             self.agent_name = agent_name
 
@@ -159,11 +198,225 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     def _get_env_vars(self) -> dict[str, str]:
         """Build an agent environment without Desktop control credentials."""
 
-        environment = super()._get_env_vars()
+        if self._runtime_env_provider is None:
+            environment = super()._get_env_vars()
+        else:
+            if self._runtime_env_overlay is None:
+                raise RuntimeError(
+                    "Workspace Bundle environment is only available during "
+                    "an authorized process spawn"
+                )
+            environment = {
+                key: value
+                for key, value in os.environ.items()
+                if key.upper() in _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS
+                or key.upper().startswith("LC_")
+            }
+            environment.update(self._runtime_env_vars)
+            environment.update(self._runtime_env_overlay)
+            environment["PYTHONUNBUFFERED"] = "1"
         for key in tuple(environment):
             if is_control_plane_environment_key(key):
                 environment.pop(key, None)
         return environment
+
+    def _scrub_runtime_output(self, content: str) -> str:
+        scrubbed = content
+        for value in getattr(self, "_active_runtime_secret_values", ()):
+            scrubbed = scrubbed.replace(
+                value,
+                "[REDACTED_WORKSPACE_SECRET]",
+            )
+        return scrubbed
+
+    def _runtime_shell_exec(
+        self,
+        *,
+        command: str,
+        block: bool,
+        timeout: float,
+    ) -> str:
+        """Run one secret-bearing Bundle command without background sessions.
+
+        A background process can emit after its vault values have left the
+        authorized spawn scope. Until per-session streaming redaction exists,
+        secret-bearing Bundle commands are therefore blocking-only and are
+        given a dedicated process group that is cleaned on return or timeout.
+
+        This is lifecycle hygiene, not an OS sandbox: a same-UID command that
+        deliberately starts a new session is inside the documented
+        ``shell == full access`` trust boundary.
+        """
+
+        if not block:
+            return (
+                "Error: Background terminal sessions are unavailable when "
+                "this Workspace injects protected environment values. Run "
+                "a bounded command instead."
+            )
+        if self.use_docker_backend:
+            return (
+                "Error: Docker terminal execution is unavailable when this "
+                "Workspace injects protected environment values."
+            )
+        if self.safe_mode:
+            is_safe, sanitized = self._sanitize_command(command)
+            if not is_safe:
+                return (
+                    "Error: Command rejected by TerminalToolkit safe mode. "
+                    f"{sanitized}"
+                )
+            command = sanitized
+        env_path = self._get_venv_path()
+        if env_path:
+            if self.os_type == "Windows":
+                activate = os.path.join(env_path, "Scripts", "activate.bat")
+                command = f'call "{activate}" && {command}'
+            else:
+                activate = os.path.join(env_path, "bin", "activate")
+                command = f". {shlex.quote(activate)} && {command}"
+
+        log_entry = (
+            f"--- Executing protected Bundle command at {time.ctime()} ---\n"
+            f"> {command}\n"
+        )
+        output = ""
+        process: subprocess.Popen[str] | None = None
+        timed_out = False
+        try:
+            popen_options: dict[str, object] = {}
+            if os.name == "nt":
+                create_group = getattr(
+                    subprocess,
+                    "CREATE_NEW_PROCESS_GROUP",
+                    0,
+                )
+                if create_group:
+                    popen_options["creationflags"] = create_group
+            else:
+                popen_options["start_new_session"] = True
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
+                shell=True,
+                text=True,
+                cwd=self.working_dir,
+                encoding="utf-8",
+                env=self._get_env_vars(),
+                **popen_options,
+            )
+            try:
+                output, _ = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                self._terminate_runtime_process_tree(process)
+                try:
+                    output, _ = process.communicate(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    output, _ = process.communicate()
+            output = output or ""
+            log_entry += f"--- Output ---\n{output}\n"
+            if timed_out:
+                return self._scrub_runtime_output(
+                    "Error: Protected Bundle command exceeded the timeout "
+                    "and was terminated.\n" + _to_plain(output)
+                )
+            if output.strip():
+                return self._scrub_runtime_output(_to_plain(output))
+            return "Command executed successfully (no output)."
+        except Exception as exc:
+            message = self._scrub_runtime_output(
+                f"Error executing command: {exc}"
+            )
+            log_entry += f"--- Error ---\n{message}\n"
+            return message
+        finally:
+            cleanup_failure: Exception | None = None
+            if process is not None:
+                try:
+                    self._terminate_runtime_process_tree(process)
+                except Exception as exc:
+                    cleanup_failure = exc
+                    cleanup_error = self._scrub_runtime_output(str(exc))
+                    log_entry += (
+                        "--- Process cleanup error ---\n"
+                        f"{cleanup_error}\n"
+                    )
+                    logger.exception(
+                        "Failed to terminate protected Bundle process tree",
+                        extra={"api_task_id": self.api_task_id},
+                    )
+            self._write_to_log(self.blocking_log_file, log_entry + "\n")
+            if cleanup_failure is not None:
+                raise RuntimeError(
+                    "Protected Bundle process cleanup failed"
+                ) from cleanup_failure
+
+    def _terminate_runtime_process_tree(
+        self,
+        process: subprocess.Popen[str],
+    ) -> None:
+        """Best-effort cleanup for descendants in the command process group."""
+
+        if os.name == "nt":
+            completed = subprocess.run(
+                [
+                    "taskkill",
+                    "/PID",
+                    str(process.pid),
+                    "/T",
+                    "/F",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if completed.returncode not in {0, 128}:
+                raise RuntimeError(
+                    "Protected Bundle process tree cleanup failed: "
+                    + (completed.stderr or completed.stdout).strip()
+                )
+            return
+
+        # The session leader may already have exited while ordinary children
+        # remain. Its process group still uses the leader PID, so signal that
+        # stable id directly instead of asking getpgid() about the dead leader.
+        process_group = process.pid
+        try:
+            os.killpg(process_group, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            try:
+                process_group_detail = os.getpgid(process.pid)
+            except ProcessLookupError:
+                # macOS may report EPERM for killpg() after the session leader
+                # and its final child have become unreapable zombies. A dead
+                # leader proves there is no live root left to supervise.
+                return
+            except OSError:
+                process_group_detail = None
+            raise RuntimeError(
+                "Protected Bundle process tree could not be terminated "
+                f"(pid={process.pid}, pgid={process_group_detail})"
+            ) from exc
+
+        time.sleep(0.1)
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            try:
+                os.getpgid(process.pid)
+            except ProcessLookupError:
+                return
+            raise RuntimeError(
+                "Protected Bundle process tree could not be force-terminated"
+            ) from exc
 
     def _setup_cloned_environment(self):
         """Override to clone from terminal_base venv instead of current process venv.
@@ -325,7 +578,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             log_file (str): Path to the log file
             content (str): Content to write
         """
-        # Convert ANSI escape sequences to plain text
+        # ANSI controls can split one secret into fragments. Normalize first,
+        # then scrub the exact runtime values before logging or SSE emission.
+        content = self._scrub_runtime_output(_to_plain(content))
         super()._write_to_log(log_file, content)
         logger.debug(
             "Terminal output logged",
@@ -335,7 +590,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "content_length": len(content),
             },
         )
-        self._update_terminal_output(_to_plain(content))
+        self._update_terminal_output(content)
 
     def _update_terminal_output(self, output: str):
         task_lock = get_task_lock(self.api_task_id)
@@ -407,6 +662,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Returns:
             str: The output of the command execution.
         """
+        runtime_env_provider = getattr(self, "_runtime_env_provider", None)
+        if runtime_env_provider is not None and not block:
+            return (
+                "Error: Background terminal sessions are unavailable when "
+                "this Workspace injects protected environment values. Run "
+                "a bounded command instead."
+            )
+
         # Auto-generate ID if not provided
         if id is None:
             import time
@@ -437,9 +700,35 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # never started in the User Worktree once Git is enabled.
                 self.working_dir = str(prepared.agent_workspace.agent_worktree)
 
-        result = super().shell_exec(
-            id=id, command=command, block=block, timeout=timeout
-        )
+        if runtime_env_provider is None:
+            result = super().shell_exec(
+                id=id, command=command, block=block, timeout=timeout
+            )
+        else:
+            with self._runtime_env_lock:
+                with runtime_env_provider() as runtime_environment:
+                    self._runtime_env_overlay = dict(runtime_environment)
+                    self._active_runtime_secret_values = tuple(
+                        sorted(
+                            {
+                                value
+                                for value in runtime_environment.values()
+                                if value
+                            },
+                            key=len,
+                            reverse=True,
+                        )
+                    )
+                    try:
+                        result = self._runtime_shell_exec(
+                            command=command,
+                            block=block,
+                            timeout=timeout,
+                        )
+                    finally:
+                        self._runtime_env_overlay.clear()
+                        self._runtime_env_overlay = None
+                        self._active_runtime_secret_values = ()
 
         process_continues = (
             isinstance(result, str)

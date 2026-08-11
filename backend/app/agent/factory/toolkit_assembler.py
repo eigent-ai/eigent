@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import inspect
 import logging
 import os
 import uuid
@@ -50,8 +51,9 @@ from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import declare_tool_safety
-from app.service.task import Agents
+from app.service.task import Agents, get_task_lock_if_exists
 from app.utils.browser_launcher import normalize_cdp_url
+from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
 
 logger = logging.getLogger("toolkit_assembler")
 
@@ -111,6 +113,7 @@ class ToolkitAssembly:
     toolkits_to_register_agent: list[RegisteredAgentToolkit] = field(
         default_factory=list
     )
+    cleanup_toolkits: list[Any] = field(default_factory=list)
     observable_todo_toolkit: ObservableTodoToolkit | None = None
     browser_toolkit: HybridBrowserToolkit | None = None
     browser_port: int | None = None
@@ -129,6 +132,78 @@ class ToolkitAssembly:
         self.tools.extend(tools)
         if toolkit_name not in self.tool_names:
             self.tool_names.append(toolkit_name)
+
+
+async def _rollback_runtime_assembly(
+    assembly: ToolkitAssembly,
+    *,
+    project_id: str,
+    options: Chat,
+    hands: IHands | None,
+) -> None:
+    """Best-effort rollback when fail-closed Bundle assembly aborts."""
+
+    candidates = list(assembly.cleanup_toolkits)
+    if (
+        assembly.browser_toolkit is not None
+        and assembly.browser_toolkit not in candidates
+    ):
+        candidates.append(assembly.browser_toolkit)
+    disposed: list[Any] = []
+    for toolkit in reversed(candidates):
+        try:
+            cleanup = getattr(toolkit, "disconnect", None)
+            if cleanup is None:
+                cleanup = getattr(toolkit, "cleanup_tab_tracking", None)
+            if cleanup is None:
+                cleanup = getattr(toolkit, "cleanup", None)
+            if cleanup is not None:
+                outcome = cleanup()
+                if inspect.isawaitable(outcome):
+                    await outcome
+            disposed.append(toolkit)
+        except Exception:
+            logger.exception(
+                "Failed to roll back partial Bundle toolkit assembly",
+                extra={
+                    "project_id": project_id,
+                    "toolkit": type(toolkit).__name__,
+                },
+            )
+
+    task_lock = get_task_lock_if_exists(project_id)
+    if task_lock is not None and disposed:
+        task_lock.registered_toolkits = [
+            toolkit
+            for toolkit in task_lock.registered_toolkits
+            if toolkit not in disposed
+        ]
+
+    if assembly.browser_session_id is not None:
+        if assembly.browser_owned_by_hands and hands is not None:
+            try:
+                hands.release_resource(
+                    "browser",
+                    assembly.browser_session_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to release partial Bundle browser resource",
+                    extra={"project_id": project_id},
+                )
+        elif options.cdp_browsers and assembly.browser_port is not None:
+            try:
+                from app.agent.factory.browser import _cdp_pool_manager
+
+                _cdp_pool_manager.release_browser(
+                    assembly.browser_port,
+                    assembly.browser_session_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to release partial Bundle CDP reservation",
+                    extra={"project_id": project_id},
+                )
 
 
 def _merged_config(options: Chat) -> dict[str, Any]:
@@ -223,8 +298,14 @@ def _browser_enabled_tools() -> list[str]:
     ]
 
 
-def _mcp_config(options: Chat, hands: IHands | None) -> dict[str, Any] | None:
-    servers = dict((options.installed_mcp or {}).get("mcpServers", {}))
+def _mcp_config(
+    options: Chat,
+    hands: IHands | None,
+    *,
+    exact_config: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    source = exact_config if exact_config is not None else options.installed_mcp
+    servers = dict((source or {}).get("mcpServers", {}))
     if not servers:
         return None
 
@@ -246,10 +327,14 @@ def _mcp_config(options: Chat, hands: IHands | None) -> dict[str, Any] | None:
             for key, value in dict(server_cfg.get("env", {})).items()
             if not is_secret_broker_environment_key(key)
         }
-        server_env.setdefault(
-            "MCP_REMOTE_CONFIG_DIR",
-            env("MCP_REMOTE_CONFIG_DIR", os.path.expanduser("~/.mcp-auth")),
-        )
+        if exact_config is None:
+            server_env.setdefault(
+                "MCP_REMOTE_CONFIG_DIR",
+                env(
+                    "MCP_REMOTE_CONFIG_DIR",
+                    os.path.expanduser("~/.mcp-auth"),
+                ),
+            )
         server_cfg["env"] = server_env
         normalized_servers[name] = server_cfg
 
@@ -265,9 +350,36 @@ async def assemble_single_agent_toolkits(
     can_delegate: bool,
     current_depth: int = 0,
     max_depth: int = 1,
+    runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> ToolkitAssembly:
     config = _merged_config(options)
     assembly = ToolkitAssembly()
+    pinned_skill_sources = (
+        runtime_environment.pinned_skill_sources(Agents.single_agent)
+        if runtime_environment is not None
+        else None
+    )
+    pinned_mcp_config = (
+        runtime_environment.mcp_config_without_secrets()
+        if runtime_environment is not None
+        else None
+    )
+    if runtime_environment is not None and hands is not None:
+        denied_mcp_servers = [
+            name
+            for name in (pinned_mcp_config or {}).get("mcpServers", {})
+            if not hands.can_use_mcp(name)
+        ]
+        if denied_mcp_servers:
+            from app.workspace_bundle.runtime import (
+                EnvironmentSetupRequiredError,
+            )
+
+            # This preflight must happen before Browser, Terminal, or MCP
+            # construction so a denied pinned server cannot leak resources.
+            raise EnvironmentSetupRequiredError(
+                [f"mcp_not_allowed:{name}" for name in denied_mcp_servers]
+            )
 
     human_toolkit = HumanToolkit(options.project_id, Agents.single_agent)
     message_integration = ToolkitMessageIntegration(
@@ -319,12 +431,17 @@ async def assemble_single_agent_toolkits(
             registered.get_tools(), ScreenshotToolkit.toolkit_name()
         )
 
-    if _enabled(config, "skill"):
+    if _enabled(config, "skill") or bool(pinned_skill_sources):
         skill_options = {
             "working_directory": working_directory,
             "user_id": options.skill_config_user_id(),
             **_options(config, "skill"),
         }
+        if runtime_environment is not None:
+            # Immutable Bundle inputs are runtime authority, never request
+            # customization. Legacy sessions retain their existing options.
+            skill_options["working_directory"] = working_directory
+            skill_options["pinned_skill_sources"] = pinned_skill_sources
         toolkit = SkillToolkit(
             options.project_id,
             Agents.single_agent,
@@ -443,12 +560,27 @@ async def assemble_single_agent_toolkits(
             "clone_current_env": True,
             **_options(config, "terminal"),
         }
-        toolkit = TerminalToolkit(
+        if runtime_environment is not None:
+            terminal_options.update(
+                {
+                    "working_directory": working_directory,
+                    "safe_mode": True,
+                    "clone_current_env": True,
+                    "use_docker_backend": False,
+                    "runtime_env_provider": (
+                        runtime_environment.process_environment
+                    ),
+                }
+            )
+        else:
+            terminal_options.setdefault("runtime_env_provider", None)
+        terminal_toolkit = TerminalToolkit(
             options.project_id,
             Agents.single_agent,
             **terminal_options,
         )
-        toolkit = message_integration.register_toolkits(toolkit)
+        assembly.cleanup_toolkits.append(terminal_toolkit)
+        toolkit = message_integration.register_toolkits(terminal_toolkit)
         assembly.add_tools(toolkit.get_tools(), TerminalToolkit.toolkit_name())
 
     if _enabled(config, "workspace_git"):
@@ -476,21 +608,59 @@ async def assemble_single_agent_toolkits(
         )
         assembly.add_tools(toolkit.get_tools(), "PlanningWorktreeToolkit")
 
-    if _enabled(config, "mcp"):
-        mcp_config = _mcp_config(options, hands)
+    if _enabled(config, "mcp") or pinned_mcp_config is not None:
+        if runtime_environment is None:
+            mcp_config = _mcp_config(options, hands)
+        else:
+            exact_mcp_config = pinned_mcp_config
+            mcp_config = _mcp_config(
+                options,
+                hands,
+                exact_config=(
+                    exact_mcp_config or {"mcpServers": {}}
+                ),
+            )
         if mcp_config is not None:
             mcp_options = {
-                "config_dict": mcp_config,
                 "timeout": 180,
                 **_options(config, "mcp"),
             }
-            toolkit = MCPToolkit(**mcp_options)
-            try:
-                await toolkit.connect()
-            except Exception:
-                logger.error("Failed to connect MCPToolkit", exc_info=True)
-            else:
+            mcp_options["config_dict"] = mcp_config
+            mcp_options["skip_failed"] = runtime_environment is None
+            if runtime_environment is not None:
+                try:
+                    toolkit = MCPToolkit(**mcp_options)
+                    # connect() can partially allocate subprocesses before it
+                    # raises. Include it in rollback before attempting startup.
+                    assembly.cleanup_toolkits.append(toolkit)
+                    await toolkit.connect()
+                except Exception as exc:
+                    from app.workspace_bundle.runtime import (
+                        EnvironmentSetupRequiredError,
+                    )
+
+                    await _rollback_runtime_assembly(
+                        assembly,
+                        project_id=options.project_id,
+                        options=options,
+                        hands=hands,
+                    )
+                    raise EnvironmentSetupRequiredError(
+                        ["bundle_mcp_start_failed"]
+                    ) from exc
                 assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
+            else:
+                toolkit = MCPToolkit(**mcp_options)
+                try:
+                    await toolkit.connect()
+                except Exception:
+                    logger.error(
+                        "Failed to connect MCPToolkit",
+                        exc_info=True,
+                    )
+                else:
+                    assembly.cleanup_toolkits.append(toolkit)
+                    assembly.add_tools(toolkit.get_tools(), "MCPToolkit")
 
     if _enabled(config, "agent") and can_delegate:
         toolkit = DepthLimitedAgentToolkit(

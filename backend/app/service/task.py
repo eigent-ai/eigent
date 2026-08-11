@@ -425,6 +425,10 @@ class TaskLock:
     processed_improve_request_ids: set[str]
     """In-process dedupe for durable admission retries that enqueue twice."""
     environment_admission_template: Any | None
+    resolved_runtime_environment: Any | None
+    """Secret-free pinned Bundle runtime declaration for the live Attempt."""
+    runtime_session_mode: str | None
+    """Secret-free execution mode currently bound to this Project runtime."""
     """Secret-free template used to bind follow-up Runs in this process."""
     environment_spec_id: str | None
     """Immutable EnvironmentSpec currently driving model/tool assembly."""
@@ -469,6 +473,8 @@ class TaskLock:
         self.memory_service = None
         self.processed_improve_request_ids = set()
         self.environment_admission_template = None
+        self.resolved_runtime_environment = None
+        self.runtime_session_mode = None
         self.environment_spec_id = None
         self.thinking_effort_requested = None
         self.thinking_effort_effective = None

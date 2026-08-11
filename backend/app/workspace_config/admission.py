@@ -21,6 +21,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from app.permission_policy import PRESET_PROFILES, PermissionProfileName
 from app.run_journal.models import (
     AttemptEnvironmentBinding,
     EffectiveEnvironmentSpecRecord,
@@ -281,6 +282,7 @@ class EnvironmentAdmissionService:
         run_id: str,
         space_id: str,
         working_directory: Path,
+        space_root: Path | None = None,
         created_by: str,
         template: EnvironmentAdmissionTemplate,
     ) -> EnvironmentAdmissionResult:
@@ -290,7 +292,20 @@ class EnvironmentAdmissionService:
         effective_template = template
         local_context_sources: list[ResolvedContextSource] = []
         connector_bindings: list[ResolvedConnectorBinding] = []
+        bundle_proposal_id: str | None = None
+        bundle_proposal_version: int | None = None
+        bundle_binding_digest: str | None = None
+        configuration_root: str | None = None
         if installed is not None:
+            from app.workspace_bundle.runtime import (
+                EnvironmentSetupRequiredError,
+                bundle_runtime_binding_digest,
+            )
+
+            if installed.state != "materialized":
+                raise EnvironmentSetupRequiredError(
+                    ["workspace_bundle_not_materialized"]
+                )
             revision = self.journal.get_workspace_config_revision(
                 installed.revision_id
             )
@@ -309,6 +324,17 @@ class EnvironmentAdmissionService:
                 raise WorkspaceBundleReconfigurationPendingError(
                     proposal_id=proposal.proposal_id,
                     state=proposal.state,
+                )
+            if proposal is None:
+                proposal = (
+                    self.journal.get_materialized_workspace_bundle_proposal(
+                        space_id=space_id,
+                        revision_id=installed.revision_id,
+                    )
+                )
+            if proposal is None:
+                raise EnvironmentSetupRequiredError(
+                    ["bundle_materialization_proposal_missing"]
                 )
             if proposal is not None:
                 bindings = {
@@ -363,11 +389,53 @@ class EnvironmentAdmissionService:
                     for item in bindings.values()
                     if item.binding_kind == "connector"
                 )
+                secret_bindings = (
+                    self.journal.list_workspace_bundle_secret_bindings(
+                        proposal.proposal_id
+                    )
+                )
+                bundle_proposal_id = proposal.proposal_id
+                bundle_proposal_version = proposal.version
+                bundle_binding_digest = bundle_runtime_binding_digest(
+                    proposal,
+                    bindings.values(),
+                    secret_bindings,
+                )
+                resolved_space_root = (
+                    space_root or working_directory
+                ).expanduser().resolve()
+                if installed.config_placement == "in_repo":
+                    resolved_configuration_root = (
+                        resolved_space_root / ".eigent"
+                    )
+                elif installed.config_placement == "sidecar":
+                    from app.run_journal import configured_run_journal_path
+
+                    resolved_configuration_root = (
+                        configured_run_journal_path().parent
+                        / "workspace-git"
+                        / "spaces"
+                        / space_id
+                        / "configuration"
+                    )
+                else:
+                    raise EnvironmentSetupRequiredError(
+                        ["config_placement_invalid"]
+                    )
+                configuration_root = str(
+                    resolved_configuration_root.expanduser().resolve()
+                )
             effective_template = replace(
                 template,
                 manifest=installed_manifest,
                 runtime_capability_manifest={
                     **template.runtime_capability_manifest,
+                    "mcp_server_ids": [
+                        item.id for item in installed_manifest.spec.mcp_servers
+                    ],
+                    "skill_refs": [
+                        item.ref for item in installed_manifest.spec.skills
+                    ],
                     "workspace_bundle": {
                         "revision_id": installed.revision_id,
                         "config_placement": installed.config_placement,
@@ -381,6 +449,43 @@ class EnvironmentAdmissionService:
             if current_profile is not None
             else None
         )
+        if installed is not None:
+            bundle_profile = (
+                effective_template.manifest.spec.permissions.profile
+            )
+            bundle_rank = {
+                "request_approval": 0,
+                "workspace_write": 0,
+                "auto_review": 1,
+                "full_access": 2,
+            }[bundle_profile]
+            current_name = (
+                current_profile.profile_name
+                if current_profile is not None
+                else PermissionProfileName.REQUEST_APPROVAL.value
+            )
+            current_rank = {
+                PermissionProfileName.READ_ONLY.value: -1,
+                PermissionProfileName.REQUEST_APPROVAL.value: 0,
+                PermissionProfileName.AUTO_REVIEWER.value: 1,
+                PermissionProfileName.FULL_ACCESS.value: 2,
+            }.get(current_name, 0)
+            # Bundle policy can narrow an explicit Space profile, never widen
+            # it. A Bundle full_access declaration therefore remains at the
+            # user's existing (default request-approval) authority.
+            if bundle_rank < current_rank:
+                narrowed = (
+                    PermissionProfileName.AUTO_REVIEWER
+                    if bundle_rank == 1
+                    else PermissionProfileName.REQUEST_APPROVAL
+                )
+                permission_profile_revision = PRESET_PROFILES[
+                    narrowed
+                ].revision
+            elif current_profile is None:
+                permission_profile_revision = PRESET_PROFILES[
+                    PermissionProfileName.REQUEST_APPROVAL
+                ].revision
         if not any(
             item.id == "workspace_root" for item in local_context_sources
         ):
@@ -398,6 +503,10 @@ class EnvironmentAdmissionService:
         local_materialization = LocalMaterialization(
             context_sources=tuple(local_context_sources),
             connector_bindings=tuple(connector_bindings),
+            bundle_proposal_id=bundle_proposal_id,
+            bundle_proposal_version=bundle_proposal_version,
+            bundle_binding_digest=bundle_binding_digest,
+            configuration_root=configuration_root,
         )
         git_repository = self.journal.get_space_git_repository(
             space_id=space_id

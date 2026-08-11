@@ -19,6 +19,7 @@ from app.permission_policy.models import (
     literal_resource_pattern,
 )
 from app.run_journal import ApprovalRecord, SQLiteRunJournal
+from app.workspace_config.models import EffectiveEnvironmentSpec
 
 DEFAULT_TOOL_APPROVAL_TTL_SECONDS = 24 * 60 * 60
 
@@ -123,6 +124,49 @@ class PermissionPolicyService:
             if record.effect != PolicyEffect.ALLOW.value
             or self._journal.approval_rule_is_trusted(record.rule_id)
         )
+        attempt = self._journal.get_run_attempt(descriptor.attempt_id)
+        if attempt is not None and attempt.environment_spec_id:
+            spec_record = self._journal.get_effective_environment_spec(
+                attempt.environment_spec_id
+            )
+            if spec_record is not None:
+                spec = EffectiveEnvironmentSpec.model_validate(
+                    spec_record.spec
+                )
+                if isinstance(
+                    spec.semantic_spec.get("runtime_capability_manifest", {})
+                    .get("workspace_bundle"),
+                    dict,
+                ):
+                    bundle_rules = (
+                        spec.semantic_spec.get("bundle", {})
+                        .get("spec", {})
+                        .get("permissions", {})
+                        .get("rules", [])
+                    )
+                    rules += tuple(
+                        PolicyRule(
+                            rule_id=(
+                                f"bundle:{spec.manifest_digest}:{index}"
+                            ),
+                            # A shared Bundle may only make local policy more
+                            # restrictive. Explicit Space/Run approval rules
+                            # remain the sole source of durable allow grants.
+                            effect=(
+                                PolicyEffect.PROMPT
+                                if item.get("effect") == "allow"
+                                else PolicyEffect(item["effect"])
+                            ),
+                            action_pattern=str(item["action"]),
+                            scope="run",
+                            run_id=descriptor.run_id,
+                        )
+                        for index, item in enumerate(bundle_rules)
+                        if isinstance(item, dict)
+                        and item.get("effect")
+                        in {"allow", "prompt", "deny"}
+                        and isinstance(item.get("action"), str)
+                    )
         return self._engine.evaluate(
             descriptor,
             profile=profile,

@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 from typing import Any
@@ -71,6 +72,63 @@ def _is_retryable_turn_error(error: Exception) -> bool:
         "connection error",
         "request timed out",
     }
+
+
+async def _dispose_stale_agent_runtime(
+    agent: Any,
+    task_lock: TaskLock,
+    *,
+    task_id: str,
+) -> None:
+    """Dispose every stale adapter before a replacement can be assembled."""
+
+    failures: list[Exception] = []
+    release_cdp = getattr(agent, "_cdp_release_callback", None)
+    if callable(release_cdp):
+        try:
+            release_cdp(agent)
+            agent._cdp_release_callback = None
+        except Exception as exc:
+            failures.append(exc)
+            logger.exception(
+                "Failed to release stale Agent browser runtime",
+                extra={"task_id": task_id},
+            )
+
+    remaining_toolkits: list[Any] = []
+    for toolkit in getattr(agent, "_runtime_cleanup_toolkits", ()):
+        disposed = False
+        try:
+            cleanup = getattr(toolkit, "disconnect", None)
+            if cleanup is None:
+                cleanup = getattr(toolkit, "cleanup", None)
+            if cleanup is not None:
+                outcome = cleanup()
+                if inspect.isawaitable(outcome):
+                    await outcome
+            disposed = True
+        except Exception as exc:
+            failures.append(exc)
+            remaining_toolkits.append(toolkit)
+            logger.exception(
+                "Failed to dispose stale Agent toolkit",
+                extra={
+                    "task_id": task_id,
+                    "toolkit": type(toolkit).__name__,
+                },
+            )
+        if disposed:
+            task_lock.registered_toolkits = [
+                item
+                for item in task_lock.registered_toolkits
+                if item is not toolkit
+            ]
+    agent._runtime_cleanup_toolkits = tuple(remaining_toolkits)
+
+    if failures:
+        raise RuntimeError(
+            "Failed to dispose stale Agent runtime; replacement blocked"
+        ) from failures[0]
 
 
 # Char budget for the durable memory bundle (~32k chars at 4 chars/token).
@@ -255,18 +313,41 @@ async def single_agent_solve(
     pause_event = asyncio.Event()
     pause_event.set()
     agent = None
+    agent_environment_spec_id: str | None = None
     running_turn: asyncio.Task[tuple[str, int]] | None = None
     current_task_id = options.task_id
 
     async def ensure_agent(task_id: str):
-        nonlocal agent
+        nonlocal agent, agent_environment_spec_id
+        current_environment_spec_id = getattr(
+            task_lock,
+            "environment_spec_id",
+            None,
+        )
+        if (
+            agent is not None
+            and agent_environment_spec_id != current_environment_spec_id
+        ):
+            await _dispose_stale_agent_runtime(
+                agent,
+                task_lock,
+                task_id=task_id,
+            )
+            agent = None
+            agent_environment_spec_id = None
         if agent is None:
             agent = await single_agent(
                 options,
                 task_id=task_id,
                 hands=hands,
                 pause_event=pause_event,
+                runtime_environment=getattr(
+                    task_lock,
+                    "resolved_runtime_environment",
+                    None,
+                ),
             )
+            agent_environment_spec_id = current_environment_spec_id
         observable_todo = getattr(agent, "_observable_todo_toolkit", None)
         if observable_todo is not None:
             observable_todo.task_id = task_id

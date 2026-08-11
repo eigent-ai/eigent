@@ -26,7 +26,9 @@ from pydantic import ValidationError
 from app.controller.chat_controller import (
     _admission_request_id,
     _classify_persisted_admission,
+    _prepare_chat_run,
     _PreparedChatRun,
+    _require_supported_bundle_session_mode,
     human_reply,
     improve,
     install_mcp,
@@ -41,6 +43,7 @@ from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
 from app.run_context import RunContext
 from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator
+from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
 
 
 @pytest.fixture(autouse=True)
@@ -409,6 +412,9 @@ class TestChatController:
                     new=AsyncMock(side_effect=RuntimeError("binding failed")),
                 ),
                 patch(
+                    "app.controller.chat_controller.step_solve"
+                ) as solve,
+                patch(
                     "app.controller.chat_controller.get_memory_service"
                 ) as memory_service,
             ):
@@ -418,6 +424,12 @@ class TestChatController:
             run = journal.get_run(run_id)
             assert run is not None
             assert run.status == "interrupted"
+            assert run.active_attempt_id is None
+            assert not any(
+                attempt.status in {"pending", "running", "waiting_for_user"}
+                for attempt in journal.list_run_attempts(run_id)
+            )
+            solve.assert_not_called()
             assert (
                 journal.list_run_attempts(run_id)[-1].status == "interrupted"
             )
@@ -430,6 +442,91 @@ class TestChatController:
                 error="resume_admission_failed",
             )
         await coordinator.close()
+
+    @pytest.mark.asyncio
+    async def test_legacy_resume_without_environment_spec_fails_closed(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+    ):
+        run_id = sample_chat_data["task_id"]
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id=run_id,
+            resume_request_id="resume-needs-upgrade",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+        mock_task_lock.resolved_runtime_environment = object()
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(run_id=run_id, project_id=chat_data.project_id)
+            journal.create_run_attempt(
+                run_id,
+                request_id="initial-request",
+                reason="initial_execution",
+                activate=True,
+                now=1,
+            )
+            journal.reconcile_startup(now=2)
+            planned_attempt = journal.list_run_attempts(run_id)[0]
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.load_dotenv"),
+            ):
+                with pytest.raises(UserException) as error:
+                    await _prepare_chat_run(
+                        chat_data,
+                        mock_request,
+                        resume_attempt=planned_attempt,
+                    )
+
+        assert error.value.error_code == "environment_setup_required"
+        assert "resume_environment_upgrade_required" in str(error.value)
+        assert mock_task_lock.resolved_runtime_environment is None
+
+    def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
+        with pytest.raises(EnvironmentSetupRequiredError) as error:
+            _require_supported_bundle_session_mode("workforce", object())
+
+        assert error.value.issues == ("bundle_session_mode_unsupported",)
+
+    def test_bundle_runtime_accepts_persisted_follow_up_single_agent_mode(self):
+        from app.model.chat import SupplementChat
+
+        follow_up = SupplementChat(question="continue from the pinned files")
+        assert not hasattr(follow_up, "session_mode")
+        _require_supported_bundle_session_mode("single-agent", object())
 
     @pytest.mark.asyncio
     async def test_status_distinguishes_lock_from_live_consumer(
@@ -664,7 +761,8 @@ class TestChatController:
                 return_value=mock_task_lock,
             ),
             patch(
-                "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
+                "app.controller.chat_controller."
+                "_prepare_browser_for_request_with_timeout",
                 new=AsyncMock(return_value=True),
             ),
         ):
@@ -694,6 +792,8 @@ class TestChatController:
             stream_factory=source,
         )
         mock_task_lock.status = Status.processing
+        mock_task_lock.runtime_session_mode = "single-agent"
+        mock_task_lock.environment_admission_template = MagicMock()
         mock_task_lock.email = "u@example.com"
         mock_task_lock.user_id = "42"
         mock_task_lock.space_id = "space-1"
@@ -723,6 +823,19 @@ class TestChatController:
         resolver = MagicMock()
         resolver.freeze_task_directories_for.return_value = frozen_dirs
         memory_service = MagicMock()
+        admission_service = MagicMock()
+        follow_up_spec = SimpleNamespace(
+            spec_id="envspec-follow-up",
+            thinking_effort_requested=SimpleNamespace(value="medium"),
+            thinking_effort_effective=SimpleNamespace(value="medium"),
+            provider_parameter_name=None,
+            provider_value=None,
+            provider_capability_revision="provider-test",
+        )
+        admission_service.persist_for_run.return_value = SimpleNamespace(
+            spec=follow_up_spec,
+            binding=object(),
+        )
         data = SupplementChat(question="next turn", task_id="run-new")
 
         with (
@@ -741,6 +854,22 @@ class TestChatController:
             patch(
                 "app.controller.chat_controller.get_memory_service",
                 return_value=memory_service,
+            ),
+            patch(
+                "app.controller.chat_controller.SQLiteRunJournal",
+                new=MagicMock,
+            ),
+            patch(
+                "app.controller.chat_controller.EnvironmentAdmissionTemplate",
+                new=MagicMock,
+            ),
+            patch(
+                "app.controller.chat_controller.EnvironmentAdmissionService",
+                return_value=admission_service,
+            ),
+            patch(
+                "app.controller.chat_controller._assemble_runtime_environment",
+                return_value=object(),
             ),
             patch(
                 "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
@@ -765,6 +894,7 @@ class TestChatController:
         assert await coordinator.get_handle("run-old") is None
         assert await coordinator.get_handle("run-new") is subscription.handle
         mock_task_lock.put_queue.assert_awaited_once()
+        admission_service.persist_for_run.assert_called_once()
 
         await subscription.aclose()
         release.set()
@@ -1515,3 +1645,87 @@ class TestChatControllerErrorCases:
             # Should handle environment setup failures gracefully
             with pytest.raises(Exception):
                 await post(chat_data, mock_request)
+
+    @pytest.mark.asyncio
+    async def test_bundle_runtime_setup_failure_prevents_attempt_and_dispatch(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+    ):
+        chat_data = Chat(**sample_chat_data)
+        database = tmp_path / "run-journal.sqlite3"
+        journal = SQLiteRunJournal(database)
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+
+        with (
+            patch(
+                "app.controller.chat_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=RunCoordinator(),
+            ),
+            patch(
+                "app.controller.chat_controller.get_or_create_task_lock",
+                return_value=mock_task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.get_workspace_resolver",
+                return_value=resolver,
+            ),
+            patch(
+                "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.controller.chat_controller._camel_log_dir",
+                return_value=tmp_path / "camel-log",
+            ),
+            patch(
+                "app.controller.chat_controller._legacy_environment_template",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.controller.chat_controller."
+                "EnvironmentAdmissionService.persist_for_run",
+                return_value=SimpleNamespace(
+                    spec=MagicMock(),
+                    binding=MagicMock(),
+                ),
+            ),
+            patch(
+                "app.controller.chat_controller._assemble_runtime_environment",
+                side_effect=EnvironmentSetupRequiredError(
+                    ["mcp_destination_confirmation_required"]
+                ),
+            ),
+            patch(
+                "app.controller.chat_controller.step_solve"
+            ) as solve,
+            patch(
+                "app.agent.factory.toolkit_assembler.assemble_single_agent_toolkits",
+                new=AsyncMock(),
+            ) as assemble_toolkits,
+        ):
+            with pytest.raises(UserException) as error:
+                await start_chat_stream(chat_data, mock_request)
+
+        assert error.value.error_code == "environment_setup_required"
+        assert journal.list_run_attempts(
+            chat_data.run_id or chat_data.task_id
+        ) == []
+        solve.assert_not_called()
+        assemble_toolkits.assert_not_awaited()
+        journal.close()

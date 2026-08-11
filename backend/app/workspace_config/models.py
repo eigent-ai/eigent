@@ -848,6 +848,13 @@ class LocalMaterialization(_StrictFrozenModel):
     connector_bindings: tuple[ResolvedConnectorBinding, ...] = Field(
         default_factory=tuple
     )
+    # Local-only pins used by the runtime assembler. They are deliberately
+    # excluded from ``cloud_projection`` below: proposal ids, configuration
+    # roots, and opaque binding identities are device-local authority.
+    bundle_proposal_id: str | None = None
+    bundle_proposal_version: int | None = None
+    bundle_binding_digest: str | None = None
+    configuration_root: str | None = None
     worktree: WorktreeMaterialization | None = None
 
     def cloud_projection(self) -> dict[str, Any]:

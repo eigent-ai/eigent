@@ -245,3 +245,127 @@ async def test_skip_task_emits_end_without_blocking_on_cancellation():
         # Cleanup: close the generator so the underlying task gets cancelled
         # and pytest does not warn about pending tasks.
         await agen.aclose()
+
+
+@pytest.mark.asyncio
+async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
+    from app.model.chat import Chat
+    from app.service.single_agent_service import single_agent_solve
+    from app.service.task import ActionImproveData, ImprovePayload
+
+    def fake_agent(name: str, cleanup_toolkit=None):
+        value = MagicMock()
+        value.agent_id = name
+        value._observable_todo_toolkit = None
+        value._cdp_release_callback = None
+        value._runtime_cleanup_toolkits = (
+            (cleanup_toolkit,) if cleanup_toolkit is not None else ()
+        )
+        value.astep = AsyncMock(return_value=object())
+        return value
+
+    stale_toolkit = MagicMock()
+    stale_toolkit.disconnect = AsyncMock()
+    agent_a = fake_agent("agent-a", stale_toolkit)
+    release_stale_browser = MagicMock()
+    agent_a._cdp_release_callback = release_stale_browser
+    agent_b = fake_agent("agent-b")
+    runtime_a = object()
+    runtime_b = object()
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put(
+        ActionImproveData(
+            data=ImprovePayload(question="first", attaches=[]),
+            new_task_id="run-a",
+        )
+    )
+
+    task_lock = MagicMock()
+    task_lock.id = "project-runtime-switch"
+    task_lock.email = "u@example.com"
+    task_lock.status = "OPEN"
+    task_lock.environment_spec_id = "env-a"
+    task_lock.resolved_runtime_environment = runtime_a
+    task_lock.registered_toolkits = [stale_toolkit]
+    task_lock.conversation_history = []
+    task_lock.last_task_result = ""
+    task_lock.agent_memory_history = []
+    task_lock.memory_summary = ""
+    task_lock.summary_generated = False
+    task_lock.run_context = None
+    task_lock.processed_improve_request_ids = set()
+    task_lock.get_queue = queue.get
+    task_lock.add_background_task = MagicMock()
+    task_lock.add_conversation = MagicMock()
+
+    options = MagicMock(spec=Chat)
+    options.project_id = "project-runtime-switch"
+    options.task_id = "run-a"
+    options.project_context = None
+
+    create_agent = AsyncMock(side_effect=[agent_a, agent_b])
+    with (
+        patch(
+            "app.service.single_agent_service.single_agent",
+            new=create_agent,
+        ),
+        patch("app.service.single_agent_service.set_current_task_id"),
+        patch("app.service.single_agent_service.record_agent_memory_snapshot"),
+        patch("app.service.single_agent_service._finalize_memory_for_turn"),
+        patch(
+            "app.service.single_agent_service._build_single_agent_prompt",
+            return_value="prompt",
+        ),
+        patch(
+            "app.service.single_agent_service._response_content",
+            new=AsyncMock(side_effect=[("first result", 1), ("second result", 1)]),
+        ),
+    ):
+        stream = single_agent_solve(options, MagicMock(), task_lock)
+        assert _parse_sse(await stream.__anext__())[0] == "confirmed"
+        assert _parse_sse(await stream.__anext__())[0] == "end"
+
+        task_lock.environment_spec_id = "env-b"
+        task_lock.resolved_runtime_environment = runtime_b
+        await queue.put(
+            ActionImproveData(
+                data=ImprovePayload(question="second", attaches=[]),
+                new_task_id="run-b",
+            )
+        )
+        assert _parse_sse(await stream.__anext__())[0] == "confirmed"
+        assert _parse_sse(await stream.__anext__())[0] == "end"
+        await stream.aclose()
+
+    assert create_agent.await_count == 2
+    assert create_agent.await_args_list[0].kwargs["runtime_environment"] is runtime_a
+    assert create_agent.await_args_list[1].kwargs["runtime_environment"] is runtime_b
+    stale_toolkit.disconnect.assert_awaited_once()
+    release_stale_browser.assert_called_once_with(agent_a)
+    assert agent_a._cdp_release_callback is None
+    assert stale_toolkit not in task_lock.registered_toolkits
+
+
+@pytest.mark.asyncio
+async def test_stale_runtime_cleanup_failure_blocks_replacement():
+    from app.service.single_agent_service import _dispose_stale_agent_runtime
+
+    stale_toolkit = MagicMock()
+    stale_toolkit.disconnect = AsyncMock(
+        side_effect=RuntimeError("adapter shutdown failed")
+    )
+    agent = MagicMock()
+    agent._cdp_release_callback = None
+    agent._runtime_cleanup_toolkits = (stale_toolkit,)
+    task_lock = MagicMock()
+    task_lock.registered_toolkits = [stale_toolkit]
+
+    with pytest.raises(RuntimeError, match="replacement blocked"):
+        await _dispose_stale_agent_runtime(
+            agent,
+            task_lock,
+            task_id="run-runtime-switch",
+        )
+
+    assert stale_toolkit in task_lock.registered_toolkits
+    assert agent._runtime_cleanup_toolkits == (stale_toolkit,)
