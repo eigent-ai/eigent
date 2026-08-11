@@ -8,6 +8,26 @@ from app.run_journal import SQLiteRunJournal
 from app.workspace_bundle import WorkspaceSecretVerification
 
 
+def _mark_materialized(journal, proposal):
+    if proposal.state == "proposed":
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="approved",
+            decided_by="user-1",
+        )
+    proposal = journal.transition_workspace_bundle_install_proposal(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        state="materializing",
+    )
+    return journal.transition_workspace_bundle_install_proposal(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        state="materialized",
+    )
+
+
 def test_electron_generated_secret_reference_matches_brain_contract():
     electron_generated_ref = f"wsvault_{'A' * 32}"
 
@@ -78,7 +98,7 @@ def test_install_payload_masks_vault_references(tmp_path, monkeypatch):
     )
     # Electron emits this exact opaque format: prefix plus 32 base64url chars.
     secret_ref = f"wsvault_{'A' * 32}"
-    journal.put_workspace_bundle_secret_bindings(
+    _, proposal = journal.put_workspace_bundle_secret_bindings(
         proposal_id=proposal.proposal_id,
         client_request_id="binding-request-1",
         expected_proposal_version=proposal.version,
@@ -92,6 +112,7 @@ def test_install_payload_masks_vault_references(tmp_path, monkeypatch):
         ],
         authorized_by="user-1",
     )
+    proposal = _mark_materialized(journal, proposal)
 
     class AvailableBroker:
         def __init__(self):
@@ -121,6 +142,8 @@ def test_install_payload_masks_vault_references(tmp_path, monkeypatch):
         "ready": True,
         "missing_requirements": [],
     }
+    assert payload["runtime_readiness"] == "ready"
+    assert payload["runtime_readiness_issues"] == []
     assert payload["value_requirements"][0]["configured"] is True
     assert payload["value_requirements"][0]["available"] is True
     assert payload["value_requirements"][0]["binding_version"] == 1
@@ -169,7 +192,7 @@ def test_install_payload_marks_missing_vault_value_unready(
         state="approved",
         decided_by="user-1",
     )
-    journal.put_workspace_bundle_secret_bindings(
+    _, proposal = journal.put_workspace_bundle_secret_bindings(
         proposal_id=proposal.proposal_id,
         client_request_id="binding-request-missing",
         expected_proposal_version=proposal.version,
@@ -183,6 +206,7 @@ def test_install_payload_marks_missing_vault_value_unready(
         ],
         authorized_by="user-1",
     )
+    proposal = _mark_materialized(journal, proposal)
 
     payload = workspace_bundle_controller._payload(proposal.proposal_id)
 
@@ -190,8 +214,244 @@ def test_install_payload_marks_missing_vault_value_unready(
         "ready": False,
         "missing_requirements": ["environment:API_TOKEN"],
     }
+    assert payload["runtime_readiness"] == "unavailable"
+    assert payload["runtime_readiness_issues"] == [
+        "local_setup_incomplete"
+    ]
     assert payload["value_requirements"][0]["configured"] is True
     assert payload["value_requirements"][0]["available"] is False
+    journal.close()
+
+
+def test_install_payload_reports_mcp_destination_confirmation(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-mcp-runtime",
+        request_id="proposal-mcp-runtime-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={
+            "spec": {
+                "mcpServers": [
+                    {
+                        "id": "private-mcp",
+                        "secretSlots": ["API_TOKEN"],
+                    }
+                ]
+            }
+        },
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [],
+        },
+    )
+    proposal = _mark_materialized(journal, proposal)
+
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    assert payload["runtime_readiness"] == "needs_confirmation"
+    assert payload["runtime_readiness_issues"] == [
+        "mcp_destination_confirmation_required"
+    ]
+    journal.close()
+
+
+def test_install_payload_aggregates_all_runtime_readiness_issues(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-runtime-issues",
+        request_id="proposal-runtime-issues-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={
+            "spec": {
+                "connectors": [{"id": "github"}],
+                "mcpServers": [
+                    {
+                        "id": "private-mcp",
+                        "secretSlots": ["API_TOKEN"],
+                    }
+                ],
+                "agents": [
+                    {"id": "coordinator"},
+                    {"id": "researcher"},
+                ],
+            }
+        },
+        assets=[],
+        install_plan={
+            "connector_slots": [
+                {
+                    "slot_id": "github_connection",
+                    "connector_id": "github",
+                }
+            ],
+            "local_path_slots": ["documents"],
+            "script_actions": [],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [],
+        },
+    )
+    proposal = _mark_materialized(journal, proposal)
+
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    assert payload["runtime_readiness"] == "unavailable"
+    assert payload["runtime_readiness_issues"] == [
+        "connector_runtime_adapter_unavailable",
+        "mcp_destination_confirmation_required",
+        "multi_agent_runtime_adapter_unavailable",
+        "local_setup_incomplete",
+    ]
+    journal.close()
+
+
+def test_install_payload_accepts_single_portable_agent_id(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-single-agent",
+        request_id="proposal-single-agent-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={"spec": {"agents": [{"id": "coordinator"}]}},
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [],
+        },
+    )
+    proposal = _mark_materialized(journal, proposal)
+
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    assert payload["runtime_readiness"] == "ready"
+    assert payload["runtime_readiness_issues"] == []
+    journal.close()
+
+
+def test_install_payload_rejects_unmaterialized_registry_dependencies(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-registry-dependency",
+        request_id="proposal-registry-dependency-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={
+            "spec": {
+                "skills": [{"ref": "registry://skills/research@1"}],
+                "mcpServers": [
+                    {
+                        "id": "issues",
+                        "definition": "registry://mcp/issues@1",
+                    }
+                ],
+            }
+        },
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [],
+        },
+    )
+    proposal = _mark_materialized(journal, proposal)
+
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    assert payload["runtime_readiness"] == "unavailable"
+    assert payload["runtime_readiness_issues"] == [
+        "registry_dependencies_unmaterialized"
+    ]
+    journal.close()
+
+
+def test_install_payload_never_marks_proposed_bundle_runtime_ready(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-not-materialized",
+        request_id="proposal-not-materialized-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={"spec": {}},
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": [],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [],
+        },
+    )
+
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    assert payload["readiness"] == {
+        "ready": True,
+        "missing_requirements": [],
+    }
+    assert payload["runtime_readiness"] == "unavailable"
+    assert payload["runtime_readiness_issues"] == [
+        "workspace_bundle_not_materialized"
+    ]
     journal.close()
 
 

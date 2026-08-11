@@ -54,6 +54,8 @@ const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
     'One or more MCP servers require explicit destination review.',
   multi_agent_runtime_adapter_unavailable:
     'This Bundle requires multi-agent runtime support that is not available.',
+  registry_dependencies_unmaterialized:
+    'A registry dependency has not been downloaded and pinned locally yet.',
   local_setup_incomplete:
     'Required local values, folders, connections, or approvals are incomplete.',
   workspace_bundle_not_materialized:

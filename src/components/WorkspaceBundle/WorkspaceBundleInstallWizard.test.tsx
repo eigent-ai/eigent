@@ -432,6 +432,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     const issues = [
       'connector_runtime_adapter_unavailable',
       'multi_agent_runtime_adapter_unavailable',
+      'registry_dependencies_unmaterialized',
       'workspace_bundle_not_materialized',
       'local_setup_incomplete',
     ];
@@ -449,6 +450,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     for (const message of [
       'A required connector cannot run in this Desktop version.',
       'This Bundle requires multi-agent runtime support that is not available.',
+      'A registry dependency has not been downloaded and pinned locally yet.',
       'Workspace files and configuration have not finished installing.',
       'Required local values, folders, connections, or approvals are incomplete.',
     ]) {

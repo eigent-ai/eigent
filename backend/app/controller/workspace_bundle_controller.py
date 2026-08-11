@@ -220,6 +220,89 @@ def _payload(proposal_id: str) -> dict:
     configured = {item.slot_id for item in local_bindings}
     configured.update(available_values)
     missing = sorted(required - configured)
+    runtime_issues: list[str] = []
+    manifest_spec = proposal.manifest.get("spec", {})
+    manifest_connectors = manifest_spec.get("connectors")
+    manifest_mcp_servers = manifest_spec.get(
+        "mcpServers",
+        manifest_spec.get("mcp_servers"),
+    )
+    manifest_agents = manifest_spec.get("agents", [])
+    manifest_skills = manifest_spec.get("skills", [])
+    connector_slots = (
+        manifest_connectors
+        if isinstance(manifest_connectors, list)
+        else install_plan.get("connector_slots", [])
+    )
+    has_mcp_secrets = bool(
+        isinstance(manifest_mcp_servers, list)
+        and any(
+            isinstance(server, dict)
+            and bool(
+                server.get("secretSlots", server.get("secret_slots", []))
+            )
+            for server in manifest_mcp_servers
+        )
+    )
+    # Older locally persisted proposals did not retain a complete manifest.
+    # Their immutable install plan remains the compatibility source.
+    if not isinstance(manifest_mcp_servers, list):
+        has_mcp_secrets = bool(mcp_secret_requirements)
+    agent_entries = (
+        manifest_agents if isinstance(manifest_agents, list) else []
+    )
+    agent_ids = {
+        str(agent.get("id", ""))
+        for agent in agent_entries
+        if isinstance(agent, dict)
+    }
+    # Portable Bundle agent ids are logical names. A single logical Agent is
+    # mapped to Desktop's concrete ``single_agent`` runtime; only a true
+    # multi-Agent graph requires the future workforce adapter.
+    has_unsupported_agents = len(agent_ids) > 1
+    has_unmaterialized_registry_dependencies = bool(
+        isinstance(manifest_skills, list)
+        and any(
+            isinstance(skill, dict)
+            and isinstance(skill.get("ref"), str)
+            and not skill["ref"].startswith("bundle://")
+            for skill in manifest_skills
+        )
+    ) or bool(
+        isinstance(manifest_mcp_servers, list)
+        and any(
+            isinstance(server, dict)
+            and isinstance(server.get("definition"), str)
+            and not server["definition"].startswith("bundle://")
+            for server in manifest_mcp_servers
+        )
+    )
+    if connector_slots:
+        runtime_issues.append("connector_runtime_adapter_unavailable")
+    if has_mcp_secrets:
+        runtime_issues.append("mcp_destination_confirmation_required")
+    if has_unsupported_agents:
+        runtime_issues.append("multi_agent_runtime_adapter_unavailable")
+    if has_unmaterialized_registry_dependencies:
+        runtime_issues.append("registry_dependencies_unmaterialized")
+    if missing:
+        runtime_issues.append("local_setup_incomplete")
+    is_materialized = proposal.state == "materialized"
+    if not is_materialized:
+        runtime_issues.append("workspace_bundle_not_materialized")
+
+    if (
+        connector_slots
+        or has_unsupported_agents
+        or has_unmaterialized_registry_dependencies
+        or missing
+        or not is_materialized
+    ):
+        runtime_readiness = "unavailable"
+    elif has_mcp_secrets:
+        runtime_readiness = "needs_confirmation"
+    else:
+        runtime_readiness = "ready"
     return {
         "proposal": asdict(proposal),
         "bindings": [asdict(item) for item in local_bindings],
@@ -228,6 +311,11 @@ def _payload(proposal_id: str) -> dict:
             "ready": not missing,
             "missing_requirements": missing,
         },
+        # File materialization and runtime dispatch readiness are deliberately
+        # separate. A materialized proposal may still require an MCP
+        # destination attestation or an executable connector adapter.
+        "runtime_readiness": runtime_readiness,
+        "runtime_readiness_issues": runtime_issues,
     }
 
 
