@@ -19,10 +19,29 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
+from app import api as brain_api
 from app.auth.local_control import LOCAL_CONTROL_CAPABILITY_HEADER
 from app.controller import file_controller
+
+
+def test_brain_cors_exposes_file_preview_metadata_headers():
+    cors = next(
+        middleware
+        for middleware in brain_api.user_middleware
+        if middleware.cls is CORSMiddleware
+    )
+    exposed = {header.lower() for header in cors.kwargs["expose_headers"]}
+
+    assert {
+        "accept-ranges",
+        "content-disposition",
+        "content-length",
+        "content-range",
+        "last-modified",
+    } <= exposed
 
 
 def test_resolve_project_root_prefers_user_id_root(
@@ -183,9 +202,7 @@ def test_task_changes_exclude_files_written_after_run_attempt(tmp_path):
         modification_windows=((started_at - 1, ended_at),),
     )
 
-    assert [item["relativePath"] for item in files] == [
-        "bank-transfer.csv"
-    ]
+    assert [item["relativePath"] for item in files] == ["bank-transfer.csv"]
 
 
 def test_task_changes_skip_file_deleted_between_walk_and_stat(
@@ -275,9 +292,7 @@ def test_task_changes_endpoint_freezes_completed_run_manifest(
     )
 
     assert response.status_code == 200
-    assert [item["relativePath"] for item in response.json()] == [
-        "report.csv"
-    ]
+    assert [item["relativePath"] for item in response.json()] == ["report.csv"]
     resolver.store.freeze_artifact_manifest.assert_called_once_with(
         "user@example.com", snapshot, response.json()
     )
@@ -312,8 +327,23 @@ def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     assert response.headers["accept-ranges"] == "bytes"
     assert response.headers["content-range"] == "bytes 2-5/10"
 
+    head = client.head(
+        "/files/stream",
+        params={
+            "path": "report.pdf",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+    )
+    assert head.status_code == 200
+    assert head.content == b""
+    assert head.headers["content-length"] == str(len(payload))
+    assert head.headers["accept-ranges"] == "bytes"
 
-def test_task_changes_endpoint_requires_local_capability(monkeypatch, tmp_path):
+
+def test_task_changes_endpoint_requires_local_capability(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("EIGENT_RUNTIME", "electron")
     monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
     snapshot = SimpleNamespace(

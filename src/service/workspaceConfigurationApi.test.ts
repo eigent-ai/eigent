@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { fetchGetMock, fetchPostFormMock, fetchPostMock, fetchPutMock } =
@@ -85,7 +99,7 @@ describe('workspace configuration API', () => {
 
     const [path, form] = fetchPostFormMock.mock.calls[0];
     expect(path).toContain(
-      '/api/v1/spaces/space%2F1/workspace-configuration/asset-preflight?'
+      '/spaces/space%2F1/workspace-configuration/asset-preflight?'
     );
     expect(path).toContain('email=user%40example.com');
     expect(path).toContain('user_id=42');
@@ -122,7 +136,7 @@ describe('workspace configuration API', () => {
 
     expect(fetchPostMock.mock.calls).toEqual([
       [
-        '/api/v1/spaces/space%2F1/workspace-configuration/prepared-assets:preflight',
+        '/spaces/space%2F1/workspace-configuration/prepared-assets:preflight',
         {
           email: 'user@example.com',
           user_id: 42,
@@ -132,7 +146,7 @@ describe('workspace configuration API', () => {
         },
       ],
       [
-        '/api/v1/spaces/space%2F1/workspace-configuration/prepared-assets:upload',
+        '/spaces/space%2F1/workspace-configuration/prepared-assets:upload',
         {
           email: 'user@example.com',
           user_id: 42,
@@ -175,11 +189,11 @@ describe('workspace configuration API', () => {
     );
 
     expect(fetchGetMock).toHaveBeenCalledWith(
-      '/api/v1/spaces/space%2F1/workspace-configuration/review',
+      '/spaces/space%2F1/workspace-configuration/review',
       { email: 'user@example.com', user_id: 42 }
     );
     expect(fetchPostMock).toHaveBeenCalledWith(
-      '/api/v1/spaces/space%2F1/workspace-configuration/published',
+      '/spaces/space%2F1/workspace-configuration/published',
       {
         email: 'user@example.com',
         user_id: 42,
@@ -201,7 +215,7 @@ describe('workspace configuration API', () => {
     );
 
     expect(fetchGetMock).toHaveBeenCalledWith(
-      '/api/v1/spaces/space%2F1/workspace-configuration',
+      '/spaces/space%2F1/workspace-configuration',
       {
         email: 'user@example.com',
         user_id: 42,
@@ -226,7 +240,7 @@ describe('workspace configuration API', () => {
     );
 
     expect(fetchPutMock).toHaveBeenCalledWith(
-      '/api/v1/spaces/space-1/workspace-configuration',
+      '/spaces/space-1/workspace-configuration',
       {
         email: 'user@example.com',
         expected_version: 3,

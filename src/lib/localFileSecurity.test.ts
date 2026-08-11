@@ -18,6 +18,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   authorizeLocalFilePath,
+  authorizeLocalPreviewPath,
   isExecutableExternalOpenPath,
   isMainRendererSender,
 } from '../../electron/main/localFileSecurity';
@@ -87,6 +88,29 @@ describe('local file security', () => {
       allowed: false,
       reason: 'outside-roots',
     });
+  });
+
+  it('resolves relative preview paths only inside an active workspace root', async () => {
+    const root = await temporaryDirectory();
+    const workspace = path.join(root, 'workspace');
+    const outside = path.join(root, 'secret.txt');
+    const report = path.join(workspace, 'reports', 'summary.md');
+    await fsp.mkdir(path.dirname(report), { recursive: true });
+    await fsp.writeFile(report, '# Summary');
+    await fsp.writeFile(outside, 'secret');
+
+    await expect(
+      authorizeLocalPreviewPath('reports/summary.md', [workspace])
+    ).resolves.toEqual({
+      allowed: true,
+      filePath: await fsp.realpath(report),
+    });
+    await expect(
+      authorizeLocalPreviewPath('../secret.txt', [workspace])
+    ).resolves.toEqual({ allowed: false, reason: 'outside-roots' });
+    await expect(
+      authorizeLocalPreviewPath('reports/summary.md', [])
+    ).resolves.toEqual({ allowed: false, reason: 'invalid' });
   });
 
   it('blocks executable files from external-open actions', () => {

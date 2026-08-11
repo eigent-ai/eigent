@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import hashlib
@@ -10,22 +24,23 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from app.agent.toolkit.terminal_toolkit import _shell_command_argv
 from app.controller.chat_controller import _load_attempt_environment_spec
 from app.exception.exception import UserException
 from app.permission_policy import ActionDescriptor, PermissionPolicyService
 from app.run_journal import AttemptEnvironmentBinding, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
-from app.workspace_bundle.runtime import (
-    EnvironmentSetupRequiredError,
-    ResolvedRuntimeEnvironment,
-    RuntimeEnvironmentAssembler,
-    bundle_runtime_binding_digest,
-)
 from app.workspace_bundle.mcp_destination import (
     attestation_grant,
     inspect_bundle_mcp_destination,
     secret_binding_attestation,
     secret_binding_grant,
+)
+from app.workspace_bundle.runtime import (
+    EnvironmentSetupRequiredError,
+    ResolvedRuntimeEnvironment,
+    RuntimeEnvironmentAssembler,
+    bundle_runtime_binding_digest,
 )
 from app.workspace_bundle.secrets import (
     WorkspaceSecretIdentity,
@@ -38,8 +53,10 @@ from app.workspace_config import (
     ResolvedContextSource,
     WorkspaceBundleManifest,
 )
-from app.workspace_config.admission import LegacyEnvironmentImporter
-from app.workspace_config.admission import EnvironmentAdmissionService
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    LegacyEnvironmentImporter,
+)
 
 
 class _SecretBroker:
@@ -62,6 +79,27 @@ class _SecretBroker:
             WorkspaceSecretVerification(identity=item, state="available")
             for item in identities
         )
+
+
+def test_protected_bundle_commands_use_explicit_shell_argv():
+    command = "printf 'safe' && printf ' shell'"
+
+    assert _shell_command_argv(command, os_name="posix") == [
+        "/bin/sh",
+        "-c",
+        command,
+    ]
+    assert _shell_command_argv(
+        command,
+        os_name="nt",
+        comspec=r"C:\Windows\System32\cmd.exe",
+    ) == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        command,
+    ]
 
 
 def _installed_spec(
@@ -237,9 +275,7 @@ def _installed_spec(
             ],
             "mcp_secret_requirements": [
                 {
-                    "requirement_key": (
-                        f"mcp_secret:bundle-local:{slot}"
-                    ),
+                    "requirement_key": (f"mcp_secret:bundle-local:{slot}"),
                     "mcp_id": "bundle-local",
                     "slot_id": slot,
                     "required": True,
@@ -399,13 +435,17 @@ def _installed_spec(
         ),
         configuration_root=str(configuration_root),
     )
-    capability = LegacyEnvironmentImporter().build_template(
-        model_platform="openai",
-        model_type="gpt-5.5-codex",
-        auth_source="codex_subscription",
-        requested_effort="high",
-        allow_local_system=False,
-    ).provider_capability
+    capability = (
+        LegacyEnvironmentImporter()
+        .build_template(
+            model_platform="openai",
+            model_type="gpt-5.5-codex",
+            auth_source="codex_subscription",
+            requested_effort="high",
+            allow_local_system=False,
+        )
+        .provider_capability
+    )
     spec = EnvironmentConfigResolver().resolve(
         manifest=manifest,
         owner_type="run",
@@ -427,8 +467,8 @@ def test_runtime_assembles_pinned_bundle_without_persisting_secret(
     tmp_path,
     monkeypatch,
 ):
-    from app.agent.toolkit.terminal_toolkit import TerminalToolkit
     from app.agent.toolkit.skill_toolkit import SkillToolkit
+    from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 
     secret = "runtime-only-secret"
     broker = _SecretBroker(secret)
@@ -484,10 +524,12 @@ def test_runtime_assembles_pinned_bundle_without_persisting_secret(
         )
         with pytest.raises(RuntimeError, match="authorized process spawn"):
             terminal._get_env_vars()
-        raw_shell_exec = TerminalToolkit.shell_exec.__closure__[0].cell_contents
+        raw_shell_exec = TerminalToolkit.shell_exec.__closure__[
+            0
+        ].cell_contents
         output = raw_shell_exec(
             terminal,
-            "python -c \"import os; "
+            'python -c "import os; '
             "print(os.getenv('WORKSPACE_TOKEN')); "
             "print(os.getenv('LEGACY_SPACE_API_KEY', 'missing'))\"",
         )
@@ -518,9 +560,7 @@ def test_runtime_assembles_pinned_bundle_without_persisting_secret(
                 terminal,
                 "sleep 5",
                 block=False,
-            ).startswith(
-                "Error: Background terminal sessions are unavailable"
-            )
+            ).startswith("Error: Background terminal sessions are unavailable")
         mutation_service.prepare_broad_write.assert_not_called()
 
         leaked_secret_path = tmp_path / "daemon-secret.txt"
@@ -582,9 +622,7 @@ def test_runtime_assembles_pinned_bundle_without_persisting_secret(
             "project-runtime",
             "single_agent",
             working_directory=str(tmp_path),
-            pinned_skill_sources=runtime.pinned_skill_sources(
-                "single_agent"
-            ),
+            pinned_skill_sources=runtime.pinned_skill_sources("single_agent"),
         )
         assert "Always use the pinned procedure" in (
             skill_toolkit.load_skill("demo")
@@ -737,9 +775,7 @@ def test_secret_bearing_mcp_requires_destination_confirmation(tmp_path):
 
     with pytest.raises(EnvironmentSetupRequiredError) as error:
         runtime.mcp_config_without_secrets()
-    assert error.value.issues == (
-        "mcp_destination_confirmation_required",
-    )
+    assert error.value.issues == ("mcp_destination_confirmation_required",)
     assert broker.calls == 0
 
 
@@ -786,8 +822,7 @@ def test_rotated_mcp_secret_makes_destination_approval_stale_before_broker(
             for item in journal.list_workspace_bundle_secret_bindings(
                 proposal.proposal_id
             )
-            if item.requirement_key
-            == "mcp_secret:bundle-local:API_TOKEN"
+            if item.requirement_key == "mcp_secret:bundle-local:API_TOKEN"
         )
         _, proposal = journal.put_workspace_bundle_secret_bindings(
             proposal_id=proposal.proposal_id,

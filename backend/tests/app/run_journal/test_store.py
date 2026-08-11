@@ -1199,6 +1199,26 @@ def test_outbox_claims_fifo_batches_across_runs(journal):
     )
 
 
+def test_outbox_event_ids_remain_parameter_bound(journal):
+    adversarial_event_id = "event-1') OR 1=1 --"
+    journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id=adversarial_event_id,
+            event_type="message.created",
+            payload={},
+            created_at=1,
+        ),
+    )
+
+    batch = journal.claim_ready_outbox_batches(now=2)[0]
+
+    assert [event.event_id for event in batch.events] == [adversarial_event_id]
+    journal.mark_outbox_batch_sent(batch, now=3)
+    assert journal.list_pending_outbox(now=4) == []
+
+
 def test_expired_sending_lease_is_reclaimed_and_old_worker_is_fenced(journal):
     journal.ensure_run(run_id="run-1", project_id="project-1", now=1)
     journal.append_event(

@@ -141,7 +141,7 @@ export const fetchWorkspaceGitStatus = async (
   identity: WorkspaceGitIdentity
 ): Promise<WorkspaceGitStatus> =>
   fetchGet(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/git/status`,
+    `/spaces/${encodeURIComponent(spaceId)}/git/status`,
     identityParams(identity)
   );
 
@@ -150,7 +150,7 @@ export const bootstrapWorkspaceGit = async (
   identity: WorkspaceGitIdentity,
   allowInit: boolean
 ): Promise<WorkspaceGitStatus> =>
-  fetchPost(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/bootstrap`, {
+  fetchPost(`/spaces/${encodeURIComponent(spaceId)}/git/bootstrap`, {
     ...identityParams(identity),
     allow_init: allowInit,
     eigent_owned_space: false,
@@ -166,7 +166,7 @@ export const createWorkspaceSavePoint = async (
     message?: string;
   }
 ): Promise<WorkspaceSavePointResult> =>
-  fetchPost(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/save-point`, {
+  fetchPost(`/spaces/${encodeURIComponent(spaceId)}/git/save-point`, {
     ...identityParams(identity),
     operation_request_id: input.operationRequestId,
     expected_repo_state_digest: input.expectedRepoStateDigest,
@@ -179,7 +179,7 @@ export const fetchWorkspaceGitHistory = async (
   identity: WorkspaceGitIdentity,
   limit = 50
 ): Promise<WorkspaceGitHistory> =>
-  fetchGet(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/history`, {
+  fetchGet(`/spaces/${encodeURIComponent(spaceId)}/git/history`, {
     ...identityParams(identity),
     limit,
   });
@@ -189,14 +189,11 @@ export const previewAdvancedGit = async (
   identity: WorkspaceGitIdentity,
   input: { operationRequestId: string; argv: string[] }
 ): Promise<AdvancedGitPreview> =>
-  fetchPost(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/git/operations:preview`,
-    {
-      ...identityParams(identity),
-      operation_request_id: input.operationRequestId,
-      argv: input.argv,
-    }
-  );
+  fetchPost(`/spaces/${encodeURIComponent(spaceId)}/git/operations:preview`, {
+    ...identityParams(identity),
+    operation_request_id: input.operationRequestId,
+    argv: input.argv,
+  });
 
 export const executeAdvancedGit = async (
   spaceId: string,
@@ -209,7 +206,7 @@ export const executeAdvancedGit = async (
     actorId: string;
   }
 ): Promise<AdvancedGitResult> =>
-  fetchPost(`/api/v1/spaces/${encodeURIComponent(spaceId)}/git/operations`, {
+  fetchPost(`/spaces/${encodeURIComponent(spaceId)}/git/operations`, {
     ...identityParams(identity),
     operation_request_id: input.operationRequestId,
     argv: input.argv,
