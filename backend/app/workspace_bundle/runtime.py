@@ -24,6 +24,13 @@ from app.workspace_bundle.secrets import (
     WorkspaceSecretBrokerError,
     WorkspaceSecretIdentity,
 )
+from app.workspace_bundle.mcp_destination import (
+    McpDestinationError,
+    attestation_from_grants,
+    inspect_bundle_mcp_destination,
+    secret_binding_attestation,
+    secret_binding_attestation_from_grants,
+)
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
     WorkforceBundleManifest,
@@ -425,6 +432,13 @@ class RuntimeEnvironmentAssembler:
             item.ref: item.digest
             for item in (*lock.assets, *lock.skills, *lock.mcp_packages)
         }
+        executable_assets = {
+            item.ref: {
+                "content_digest": item.digest,
+                "executable": item.executable,
+            }
+            for item in (*lock.assets, *lock.skills, *lock.mcp_packages)
+        }
         file_cache: dict[str, tuple[Path, bytes]] = {}
 
         def asset(ref: str) -> tuple[Path, bytes]:
@@ -469,19 +483,29 @@ class RuntimeEnvironmentAssembler:
                 ]
             )
 
-        secret_mcp_servers = sorted(
-            server.id for server in manifest.spec.mcp_servers
+        secret_mcp_servers = tuple(
+            server
+            for server in manifest.spec.mcp_servers
             if server.secret_slots
         )
         if secret_mcp_servers:
-            # A secret-slot binding proves which local vault item was chosen,
-            # but not yet the executable/endpoint digest that may receive it.
-            # Keep this fail-closed until destination attestation is a separate
-            # explicit installation step.
+            self._validate_secret_mcp_attestations(
+                proposal=proposal,
+                servers=secret_mcp_servers,
+                local_by_slot=local_by_slot,
+                secret_bindings=secret_bindings,
+                asset=asset,
+                executable_assets=executable_assets,
+            )
+            # The authorization contract is now complete and stale-safe, but
+            # plaintext injection still requires an Eigent-owned stdio adapter
+            # that does not retain values in MCPClient configuration. Until
+            # that adapter lands, remain explicitly fail-closed before any
+            # secret broker call.
             raise EnvironmentSetupRequiredError(
                 [
-                    f"mcp_destination_confirmation_required:{server_id}"
-                    for server_id in secret_mcp_servers
+                    f"mcp_secret_stdio_runtime_adapter_unavailable:{server.id}"
+                    for server in secret_mcp_servers
                 ]
             )
 
@@ -863,6 +887,91 @@ class RuntimeEnvironmentAssembler:
             or proposal.manifest != manifest.canonical_payload()
         ):
             issues.append("proposal_manifest_changed")
+
+    def _validate_secret_mcp_attestations(
+        self,
+        *,
+        proposal: WorkspaceBundleInstallProposalRecord,
+        servers,
+        local_by_slot: dict[str, WorkspaceBundleLocalBindingRecord],
+        secret_bindings: tuple[WorkspaceBundleSecretBindingRecord, ...],
+        asset: Callable[[str], tuple[Path, bytes]],
+        executable_assets: dict[str, dict[str, Any]],
+    ) -> None:
+        destinations = {
+            str(item.get("mcp_id")): item
+            for item in proposal.install_plan.get("mcp_destinations", [])
+            if isinstance(item, dict) and item.get("mcp_id")
+        }
+        secret_records = [
+            {
+                "requirement_key": item.requirement_key,
+                "secret_ref": item.secret_ref,
+                "binding_version": item.binding_version,
+                "account_scope_digest": item.account_scope_digest,
+            }
+            for item in secret_bindings
+        ]
+        for server in servers:
+            issue = f"mcp_destination_confirmation_stale:{server.id}"
+            destination = destinations.get(server.id)
+            binding = local_by_slot.get(f"mcp.server.start:{server.id}")
+            if (
+                destination is None
+                or binding is None
+                or binding.binding_kind != "script_approval"
+            ):
+                raise EnvironmentSetupRequiredError([issue])
+            availability_issue = destination.get("availability_issue")
+            if availability_issue:
+                raise EnvironmentSetupRequiredError(
+                    [f"{availability_issue}:{server.id}"]
+                )
+            expected_destination_digest = destination.get(
+                "attestation_digest"
+            )
+            if not isinstance(expected_destination_digest, str):
+                raise EnvironmentSetupRequiredError([issue])
+            if not server.definition.startswith("bundle://"):
+                raise EnvironmentSetupRequiredError(
+                    [f"registry_mcp_unmaterialized:{server.id}"]
+                )
+            try:
+                _, definition_content = asset(server.definition)
+                current = inspect_bundle_mcp_destination(
+                    revision_id=proposal.revision_id,
+                    mcp_id=server.id,
+                    definition_ref=server.definition,
+                    definition_digest=hashlib.sha256(
+                        definition_content
+                    ).hexdigest(),
+                    content=definition_content,
+                    secret_slots=server.secret_slots,
+                    executable_assets_by_ref=executable_assets,
+                )
+                executable_ref = current.get("executable_asset_ref")
+                if isinstance(executable_ref, str):
+                    # ``asset`` repeats the locked digest check against the
+                    # actual materialized executable before authorization is
+                    # considered current.
+                    asset(executable_ref)
+            except (McpDestinationError, EnvironmentSetupRequiredError):
+                raise EnvironmentSetupRequiredError([issue]) from None
+            current_destination_digest = current.get("attestation_digest")
+            current_secret_digest = secret_binding_attestation(
+                mcp_id=server.id,
+                bindings=secret_records,
+            )
+            if (
+                current_destination_digest != expected_destination_digest
+                or attestation_from_grants(binding.required_grants)
+                != current_destination_digest
+                or secret_binding_attestation_from_grants(
+                    binding.required_grants
+                )
+                != current_secret_digest
+            ):
+                raise EnvironmentSetupRequiredError([issue])
 
     @staticmethod
     def _secret_identities(

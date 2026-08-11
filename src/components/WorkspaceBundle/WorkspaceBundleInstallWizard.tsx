@@ -20,6 +20,7 @@ import {
   type WorkspaceBundleInstallPlan,
   type WorkspaceBundleInstallReview,
   type WorkspaceBundleInstallSnapshot,
+  type WorkspaceBundleMcpDestination,
   type WorkspaceBundleValueRequirement,
 } from '@/service/workspaceBundleInstallApi';
 import { useAuthStore } from '@/store/authStore';
@@ -62,9 +63,15 @@ const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
     'Workspace files and configuration have not finished installing.',
 };
 
-const runtimeReadinessIssueMessage = (issue: string): string =>
-  RUNTIME_READINESS_ISSUE_MESSAGES[issue] ||
-  'An additional runtime requirement needs attention.';
+const runtimeReadinessIssueMessage = (issue: string): string => {
+  if (issue.startsWith('mcp_secret_stdio_runtime_adapter_unavailable:')) {
+    return 'This Desktop version cannot yet safely start this approved secret-backed MCP server.';
+  }
+  return (
+    RUNTIME_READINESS_ISSUE_MESSAGES[issue] ||
+    'An additional runtime requirement needs attention.'
+  );
+};
 
 function RuntimeReadinessStatus({
   status,
@@ -106,9 +113,9 @@ function RuntimeReadinessStatus({
       <div className="mt-4 rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm">
         <p className="font-semibold">MCP target review required</p>
         <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
-          This Bundle requires explicit review of its MCP destinations. This
-          version does not provide that confirmation control yet, so a Run
-          cannot start.
+          Review and approve each supported MCP destination in Actions and
+          readiness below. Unsupported destination types must be removed or
+          replaced before a Run can start.
         </p>
         {issueList}
       </div>
@@ -132,6 +139,199 @@ function RuntimeReadinessStatus({
         Workspace files and local bindings are installed, but runtime readiness
         has not been verified.
       </p>
+    </div>
+  );
+}
+
+const mcpDestinationActionId = (mcpId: string): string =>
+  `mcp.server.start:${mcpId}`;
+
+function McpDestinationReview({
+  destination,
+  approved,
+  missingSecretSlots,
+  busy,
+  onApprove,
+}: {
+  destination: WorkspaceBundleMcpDestination;
+  approved: boolean;
+  missingSecretSlots: string[];
+  busy: boolean;
+  onApprove: () => void;
+}) {
+  const isStdio = destination.destination_kind.startsWith('stdio');
+  const canApprove = Boolean(
+    destination.definition_digest &&
+    destination.attestation_digest &&
+    ((destination.destination_kind === 'stdio' &&
+      destination.executable_command) ||
+      (destination.destination_kind === 'http' && destination.endpoint_url))
+  );
+  const secretBindings = destination.secret_environment_bindings ?? [];
+
+  return (
+    <div className="rounded-xl border border-ds-border-warning-default-default p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-body-sm font-semibold">{destination.mcp_id}</p>
+          <p className="text-body-xs text-ds-text-neutral-muted-default">
+            MCP destination · {destination.destination_kind}
+          </p>
+        </div>
+        {approved ? (
+          <div className="flex items-center gap-1 text-body-xs text-ds-text-success-default-default">
+            <Check className="h-4 w-4" aria-hidden /> Approved
+          </div>
+        ) : canApprove ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onApprove}
+            disabled={busy || missingSecretSlots.length > 0}
+            aria-label={`Approve ${destination.mcp_id} MCP destination`}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Approve
+          </Button>
+        ) : null}
+      </div>
+
+      <dl className="mt-3 grid gap-3 text-body-xs">
+        {isStdio ? (
+          <div>
+            <dt className="font-semibold">Command and arguments</dt>
+            <dd className="mt-1 break-all rounded-lg bg-ds-bg-neutral-subtle-default p-2 font-mono">
+              <span>{destination.executable_command || 'Unavailable'}</span>
+              {destination.argument_preview.map((argument, index) => (
+                <span key={`${argument}-${index}`} className="ml-2">
+                  {argument}
+                </span>
+              ))}
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <dt className="font-semibold">Endpoint</dt>
+            <dd className="mt-1 break-all font-mono">
+              {destination.endpoint_url || 'Not provided'}
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt className="font-semibold">Working directory scope</dt>
+          <dd className="mt-1 break-all font-mono">
+            {destination.cwd_scope || 'Workspace default'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold">Definition</dt>
+          <dd className="mt-1 break-all font-mono">
+            {destination.definition_ref}
+          </dd>
+          <dd className="mt-1 break-all font-mono text-ds-text-neutral-muted-default">
+            SHA-256: {destination.definition_digest || 'Unavailable'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold">Destination attestation</dt>
+          <dd className="mt-1 break-all font-mono">
+            {destination.attestation_digest || 'Unavailable'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold">Local secrets sent to this MCP</dt>
+          <dd className="mt-1">
+            {secretBindings.length ? (
+              <ul className="space-y-1">
+                {secretBindings.map((binding) => (
+                  <li
+                    key={`${binding.slot_id}:${binding.environment_variable}`}
+                  >
+                    <code>{binding.slot_id}</code>
+                    <span aria-hidden> → </span>
+                    <code>{binding.environment_variable}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : destination.secret_slots.length ? (
+              <ul className="list-inside list-disc">
+                {destination.secret_slots.map((slot) => (
+                  <li key={slot}>
+                    <code>{slot}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              'None'
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold">Public environment sent to this MCP</dt>
+          <dd className="mt-1">
+            {destination.public_environment.length ? (
+              <div
+                role="region"
+                aria-label={`Public environment for ${destination.mcp_id}`}
+                className="max-h-32 overflow-y-auto rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+              >
+                <ul className="space-y-1">
+                  {destination.public_environment.map((item, index) => (
+                    <li key={`${item.name}-${index}`} className="break-all">
+                      <code>{item.name}</code>
+                      <span aria-hidden> · </span>
+                      <code>SHA-256 {item.value_digest}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              'None'
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold">Public headers sent to this MCP</dt>
+          <dd className="mt-1">
+            {destination.public_headers.length ? (
+              <div
+                role="region"
+                aria-label={`Public headers for ${destination.mcp_id}`}
+                className="max-h-32 overflow-y-auto rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+              >
+                <ul className="space-y-1">
+                  {destination.public_headers.map((item, index) => (
+                    <li key={`${item.name}-${index}`} className="break-all">
+                      <code>{item.name}</code>
+                      <span aria-hidden> · </span>
+                      <code>SHA-256 {item.value_digest}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              'None'
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      {!approved && canApprove && missingSecretSlots.length > 0 ? (
+        <p className="mt-3 rounded-lg bg-ds-bg-warning-subtle-default p-2 text-body-xs">
+          Add the required local secrets before approving:{' '}
+          {missingSecretSlots.join(', ')}.
+        </p>
+      ) : null}
+
+      {!approved && !canApprove ? (
+        <p className="mt-3 rounded-lg bg-ds-bg-error-subtle-default p-2 text-body-xs text-ds-text-error-strong-default">
+          {destination.destination_kind === 'stdio_unstable'
+            ? 'This MCP executable is not pinned to a reviewed Bundle asset and cannot be approved or started.'
+            : destination.destination_kind === 'http_secret_unavailable'
+              ? 'Secret-backed HTTP or header MCP destinations are not supported in this version. This destination cannot be approved or started.'
+              : 'This MCP definition is unavailable and cannot be approved or started.'}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -314,8 +514,23 @@ export function WorkspaceBundleInstallWizard({
   const [installSeed, setInstallSeed] = useState<InstallSeed | null>(null);
 
   const proposal = snapshot?.proposal;
+  const mcpDestinations = proposal?.install_plan.mcp_destinations ?? [];
+  const mcpDestinationActionIds = useMemo(
+    () =>
+      new Set(
+        mcpDestinations.map((destination) =>
+          mcpDestinationActionId(destination.mcp_id)
+        )
+      ),
+    [mcpDestinations]
+  );
   const configuredSlots = useMemo(
-    () => new Set(snapshot?.bindings.map((item) => item.slot_id) ?? []),
+    () =>
+      new Set(
+        snapshot?.bindings
+          .filter((item) => item.current !== false)
+          .map((item) => item.slot_id) ?? []
+      ),
     [snapshot]
   );
   const reviewedSetup = useMemo(() => {
@@ -1124,31 +1339,61 @@ export function WorkspaceBundleInstallWizard({
                   <CardTitle>3. Actions and readiness</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {proposal.install_plan.script_actions.map((actionId) => (
-                    <div
-                      key={actionId}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-ds-border-warning-default-default p-3"
-                    >
-                      <div>
-                        <p className="font-mono text-body-sm">{actionId}</p>
-                        <p className="text-body-xs text-ds-text-neutral-muted-default">
-                          This action may execute local code.
-                        </p>
+                  {mcpDestinations.map((destination) => {
+                    const actionId = mcpDestinationActionId(destination.mcp_id);
+                    const missingSecretSlots = destination.secret_slots.filter(
+                      (slotId) => {
+                        const requirementKey = `mcp_secret:${destination.mcp_id}:${slotId}`;
+                        const requirement = snapshot.value_requirements.find(
+                          (item) =>
+                            item.requirement_kind === 'mcp_secret' &&
+                            item.requirement_key === requirementKey
+                        );
+                        return !(
+                          requirement?.configured && requirement.available
+                        );
+                      }
+                    );
+                    return (
+                      <McpDestinationReview
+                        key={destination.mcp_id}
+                        destination={destination}
+                        approved={configuredSlots.has(actionId)}
+                        missingSecretSlots={missingSecretSlots}
+                        busy={busyKey === actionId}
+                        onApprove={() => void approveScript(actionId)}
+                      />
+                    );
+                  })}
+                  {proposal.install_plan.script_actions
+                    .filter(
+                      (actionId) => !mcpDestinationActionIds.has(actionId)
+                    )
+                    .map((actionId) => (
+                      <div
+                        key={actionId}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-ds-border-warning-default-default p-3"
+                      >
+                        <div>
+                          <p className="font-mono text-body-sm">{actionId}</p>
+                          <p className="text-body-xs text-ds-text-neutral-muted-default">
+                            This action may execute local code.
+                          </p>
+                        </div>
+                        {configuredSlots.has(actionId) ? (
+                          <Check className="h-4 w-4 text-ds-text-success-default-default" />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void approveScript(actionId)}
+                            disabled={busyKey === actionId}
+                          >
+                            Approve
+                          </Button>
+                        )}
                       </div>
-                      {configuredSlots.has(actionId) ? (
-                        <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => void approveScript(actionId)}
-                          disabled={busyKey === actionId}
-                        >
-                          Approve
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                    ))}
                   {!snapshot.readiness.ready ? (
                     <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
                       <p className="font-semibold">Still required</p>

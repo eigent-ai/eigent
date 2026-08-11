@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import stat
 import subprocess
 
@@ -616,7 +617,7 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
             "mcpServers": [
                 {
                     "id": "linear",
-                    "definition": "registry://mcp/linear@1",
+                    "definition": "bundle://mcp/linear.json",
                     "secretSlots": ["LINEAR_API_TOKEN"],
                     "assignTo": ["lead"],
                 }
@@ -628,13 +629,39 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         canonical = WorkforceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
+        definition = json.dumps(
+            {
+                "mcpServers": {
+                    "linear": {
+                        "command": "python",
+                        "args": ["-c", "print('ready')"],
+                        "env": {
+                            "LINEAR_TOKEN": "slot://LINEAR_API_TOKEN",
+                            "LOG_LEVEL": "info",
+                        },
+                    }
+                }
+            },
+            sort_keys=True,
+        ).encode()
+        cloud.contents["asset-mcp-linear"] = definition
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
             "status": "published",
             "manifest": canonical,
             "manifest_digest": canonical_digest(canonical),
-            "assets": [],
+            "assets": [
+                {
+                    "id": "asset-mcp-linear",
+                    "logical_path": "mcp/linear.json",
+                    "content_digest": hashlib.sha256(definition).hexdigest(),
+                    "media_type": "application/json",
+                    "size_bytes": len(definition),
+                    "provenance": "bundle_author",
+                    "executable": False,
+                }
+            ],
         }
 
     cloud.get_catalog_revision = get_catalog_revision
@@ -674,6 +701,24 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
             "required": True,
         }
     ]
+    destination = proposal.install_plan["mcp_destinations"][0]
+    assert destination["destination_kind"] == "stdio"
+    assert destination["cwd_scope"] == "bundle://mcp"
+    assert destination["secret_environment_bindings"] == [
+        {
+            "slot_id": "LINEAR_API_TOKEN",
+            "environment_variable": "LINEAR_TOKEN",
+        }
+    ]
+    assert destination["public_environment"] == [
+        {
+            "name": "LOG_LEVEL",
+            "value_digest": canonical_digest("info"),
+        }
+    ]
+    assert "LINEAR_API_TOKEN" not in str(
+        destination["public_environment"]
+    )
     proposal = service.decide(
         proposal.proposal_id,
         expected_version=proposal.version,
@@ -695,12 +740,13 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
     }
     assert cloud.installed_bundle_id is None
 
-    _, proposal = service.approve_script_action(
-        proposal.proposal_id,
-        expected_version=proposal.version,
-        action_id="mcp.server.start:linear",
-        authorized_by="user-1",
-    )
+    with pytest.raises(WorkspaceBundleBindingsIncomplete):
+        service.approve_script_action(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            action_id="mcp.server.start:linear",
+            authorized_by="user-1",
+        )
 
     _, proposal = service.bind_local_values(
         proposal.proposal_id,
@@ -722,6 +768,13 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
             },
         ],
     )
+    approval, proposal = service.approve_script_action(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        action_id="mcp.server.start:linear",
+        authorized_by="user-1",
+    )
+    assert len(approval.required_grants) == 2
     result = await service.materialize(
         proposal.proposal_id,
         expected_version=proposal.version,
@@ -735,6 +788,127 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         "mcp_secret:linear:LINEAR_API_TOKEN",
     }
     assert [len(batch) for batch in broker.batches] == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_registry_secret_mcp_cannot_be_approved_or_reported_ready(
+    installer,
+):
+    service, _, cloud, _ = installer
+    manifest = _manifest()
+    manifest["spec"]["context"] = []
+    manifest["spec"]["skills"] = []
+    manifest["spec"]["connectors"] = []
+    manifest["spec"]["mcpServers"] = [
+        {
+            "id": "private",
+            "definition": "registry://mcp/private@1",
+            "secretSlots": ["TOKEN"],
+            "assignTo": ["lead"],
+        }
+    ]
+
+    async def get_catalog_revision(bundle_id, revision_id):
+        canonical = WorkforceBundleManifest.model_validate(
+            manifest
+        ).canonical_payload()
+        return {
+            "id": revision_id,
+            "bundle_id": bundle_id,
+            "status": "published",
+            "manifest": canonical,
+            "manifest_digest": canonical_digest(canonical),
+            "assets": [],
+        }
+
+    cloud.get_catalog_revision = get_catalog_revision
+    proposal = await service.propose(
+        proposal_id="proposal-registry-secret",
+        request_id="request-registry-secret",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@1",
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    destination = proposal.install_plan["mcp_destinations"][0]
+    assert destination["attestation_digest"] is None
+    assert destination["availability_issue"] == "registry_mcp_unmaterialized"
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="registry_mcp_unmaterialized",
+    ):
+        service.approve_script_action(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            action_id="mcp.server.start:private",
+            authorized_by="user-1",
+        )
+    assert cloud.installed_bundle_id is None
+
+
+@pytest.mark.asyncio
+async def test_proposal_rejects_mcp_definition_digest_mismatch(installer):
+    service, _, cloud, _ = installer
+    manifest = _manifest()
+    manifest["spec"]["context"] = []
+    manifest["spec"]["skills"] = []
+    manifest["spec"]["connectors"] = []
+    manifest["spec"]["mcpServers"] = [
+        {
+            "id": "private",
+            "definition": "bundle://mcp/private.json",
+            "secretSlots": ["TOKEN"],
+            "assignTo": ["lead"],
+        }
+    ]
+    content = json.dumps(
+        {
+            "mcpServers": {
+                "private": {
+                    "command": "python",
+                    "env": {"TOKEN": "slot://TOKEN"},
+                }
+            }
+        }
+    ).encode()
+    cloud.contents["asset-mcp-private"] = content
+
+    async def get_catalog_revision(bundle_id, revision_id):
+        canonical = WorkforceBundleManifest.model_validate(
+            manifest
+        ).canonical_payload()
+        return {
+            "id": revision_id,
+            "bundle_id": bundle_id,
+            "status": "published",
+            "manifest": canonical,
+            "manifest_digest": canonical_digest(canonical),
+            "assets": [
+                {
+                    "id": "asset-mcp-private",
+                    "logical_path": "mcp/private.json",
+                    "content_digest": "0" * 64,
+                    "media_type": "application/json",
+                    "size_bytes": len(content),
+                    "provenance": "bundle_author",
+                    "executable": False,
+                }
+            ],
+        }
+
+    cloud.get_catalog_revision = get_catalog_revision
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="MCP destination review failed",
+    ):
+        await service.propose(
+            proposal_id="proposal-digest-mismatch",
+            request_id="request-digest-mismatch",
+            space_id="space-1",
+            bundle_id="bundle-research",
+            revision_id="bundle-research@1",
+            config_placement=ConfigPlacement.SIDECAR,
+        )
 
 
 @pytest.mark.asyncio

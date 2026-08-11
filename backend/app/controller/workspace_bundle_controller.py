@@ -31,6 +31,11 @@ from app.workspace_bundle import (
     WorkspaceSecretBrokerError,
     WorkspaceSecretIdentity,
 )
+from app.workspace_bundle.mcp_destination import (
+    attestation_from_grants,
+    secret_binding_attestation,
+    secret_binding_attestation_from_grants,
+)
 from app.workspace_config import ConfigPlacement
 from app.workspace_git import ConfigurationRepositoryService
 
@@ -217,7 +222,73 @@ def _payload(proposal_id: str) -> dict:
     # the user chose to configure. Do not show Ready while such a binding is
     # unreadable and would fail one step later.
     required.update(configured_values)
-    configured = {item.slot_id for item in local_bindings}
+    destinations = {
+        str(item.get("mcp_id")): item
+        for item in install_plan.get("mcp_destinations", [])
+        if isinstance(item, dict) and item.get("mcp_id")
+    }
+    mcp_secret_keys = {
+        str(item.get("mcp_id")): {
+            str(requirement.get("requirement_key"))
+            for requirement in mcp_secret_requirements
+            if requirement.get("mcp_id") == item.get("mcp_id")
+        }
+        for item in install_plan.get("mcp_destinations", [])
+        if isinstance(item, dict) and item.get("mcp_id")
+    }
+    current_secret_approvals: dict[str, bool] = {}
+    serialized_bindings: list[dict] = []
+    for item in local_bindings:
+        serialized = asdict(item)
+        current = True
+        prefix = "mcp.server.start:"
+        if item.slot_id.startswith(prefix):
+            server_id = item.slot_id.removeprefix(prefix)
+            destination = destinations.get(server_id)
+            if destination and destination.get(
+                "requires_secret_confirmation"
+            ):
+                relevant = [
+                    {
+                        "requirement_key": secret.requirement_key,
+                        "secret_ref": secret.secret_ref,
+                        "binding_version": secret.binding_version,
+                        "account_scope_digest": (
+                            secret.account_scope_digest
+                        ),
+                    }
+                    for secret in secret_bindings
+                    if secret.requirement_key
+                    in mcp_secret_keys.get(server_id, set())
+                ]
+                current = bool(
+                    destination.get("attestation_digest")
+                    and destination.get("availability_issue") is None
+                    and {
+                        value["requirement_key"] for value in relevant
+                    }
+                    == mcp_secret_keys.get(server_id, set())
+                    and attestation_from_grants(item.required_grants)
+                    == destination.get("attestation_digest")
+                    and secret_binding_attestation_from_grants(
+                        item.required_grants
+                    )
+                    == secret_binding_attestation(
+                        mcp_id=server_id,
+                        bindings=relevant,
+                    )
+                )
+                current_secret_approvals[server_id] = current
+        serialized["current"] = current
+        serialized_bindings.append(serialized)
+
+    configured = {
+        item.slot_id
+        for item, serialized in zip(
+            local_bindings, serialized_bindings, strict=True
+        )
+        if serialized["current"]
+    }
     configured.update(available_values)
     missing = sorted(required - configured)
     runtime_issues: list[str] = []
@@ -234,20 +305,6 @@ def _payload(proposal_id: str) -> dict:
         if isinstance(manifest_connectors, list)
         else install_plan.get("connector_slots", [])
     )
-    has_mcp_secrets = bool(
-        isinstance(manifest_mcp_servers, list)
-        and any(
-            isinstance(server, dict)
-            and bool(
-                server.get("secretSlots", server.get("secret_slots", []))
-            )
-            for server in manifest_mcp_servers
-        )
-    )
-    # Older locally persisted proposals did not retain a complete manifest.
-    # Their immutable install plan remains the compatibility source.
-    if not isinstance(manifest_mcp_servers, list):
-        has_mcp_secrets = bool(mcp_secret_requirements)
     agent_entries = (
         manifest_agents if isinstance(manifest_agents, list) else []
     )
@@ -279,8 +336,47 @@ def _payload(proposal_id: str) -> dict:
     )
     if connector_slots:
         runtime_issues.append("connector_runtime_adapter_unavailable")
-    if has_mcp_secrets:
-        runtime_issues.append("mcp_destination_confirmation_required")
+    secret_mcp_ids = {
+        str(item.get("mcp_id"))
+        for item in mcp_secret_requirements
+        if item.get("mcp_id")
+    }
+    if not secret_mcp_ids and isinstance(manifest_mcp_servers, list):
+        secret_mcp_ids = {
+            str(item.get("id"))
+            for item in manifest_mcp_servers
+            if isinstance(item, dict)
+            and item.get("id")
+            and item.get("secretSlots", item.get("secret_slots", []))
+        }
+    needs_mcp_confirmation = False
+    has_unavailable_secret_mcp = False
+    for server_id in sorted(secret_mcp_ids):
+        destination = destinations.get(server_id)
+        action_id = f"mcp.server.start:{server_id}"
+        binding_exists = any(
+            item.slot_id == action_id for item in local_bindings
+        )
+        if destination and destination.get("availability_issue"):
+            runtime_issues.append(
+                f"{destination['availability_issue']}:{server_id}"
+            )
+            has_unavailable_secret_mcp = True
+        elif not binding_exists:
+            runtime_issues.append(
+                f"mcp_destination_confirmation_required:{server_id}"
+            )
+            needs_mcp_confirmation = True
+        elif not current_secret_approvals.get(server_id, False):
+            runtime_issues.append(
+                f"mcp_destination_confirmation_stale:{server_id}"
+            )
+            needs_mcp_confirmation = True
+        else:
+            runtime_issues.append(
+                f"mcp_secret_stdio_runtime_adapter_unavailable:{server_id}"
+            )
+            has_unavailable_secret_mcp = True
     if has_unsupported_agents:
         runtime_issues.append("multi_agent_runtime_adapter_unavailable")
     if has_unmaterialized_registry_dependencies:
@@ -295,17 +391,18 @@ def _payload(proposal_id: str) -> dict:
         connector_slots
         or has_unsupported_agents
         or has_unmaterialized_registry_dependencies
+        or has_unavailable_secret_mcp
         or missing
         or not is_materialized
     ):
         runtime_readiness = "unavailable"
-    elif has_mcp_secrets:
+    elif needs_mcp_confirmation:
         runtime_readiness = "needs_confirmation"
     else:
         runtime_readiness = "ready"
     return {
         "proposal": asdict(proposal),
-        "bindings": [asdict(item) for item in local_bindings],
+        "bindings": serialized_bindings,
         "value_requirements": value_requirements,
         "readiness": {
             "ready": not missing,

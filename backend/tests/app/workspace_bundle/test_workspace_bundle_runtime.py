@@ -21,6 +21,12 @@ from app.workspace_bundle.runtime import (
     RuntimeEnvironmentAssembler,
     bundle_runtime_binding_digest,
 )
+from app.workspace_bundle.mcp_destination import (
+    attestation_grant,
+    inspect_bundle_mcp_destination,
+    secret_binding_attestation,
+    secret_binding_grant,
+)
 from app.workspace_bundle.secrets import (
     WorkspaceSecretIdentity,
     WorkspaceSecretResolution,
@@ -173,6 +179,19 @@ def _installed_spec(
         }
         for index, (path, content) in enumerate(contents.items())
     ]
+    mcp_destination = inspect_bundle_mcp_destination(
+        revision_id=manifest.revision_id,
+        mcp_id="bundle-local",
+        definition_ref="bundle://mcp/local.json",
+        definition_digest=hashlib.sha256(
+            contents["mcp/local.json"]
+        ).hexdigest(),
+        content=contents["mcp/local.json"],
+        secret_slots=mcp_secret_slots,
+        executable_assets_by_ref={
+            f"bundle://{item['logical_path']}": item for item in assets
+        },
+    )
     journal.ensure_run(
         run_id="run-runtime",
         project_id="project-runtime",
@@ -227,6 +246,7 @@ def _installed_spec(
                 }
                 for slot in mcp_secret_slots
             ],
+            "mcp_destinations": [mcp_destination],
             "permission_profile": "request_approval",
             "git_policy": {},
             "automatic_grants": [],
@@ -238,21 +258,6 @@ def _installed_spec(
         state="approved",
         decided_by="user-1",
     )
-    for action in (
-        "skill.script.execute:bundle://skills/demo/SKILL.md",
-        "mcp.server.start:bundle-local",
-    ):
-        _, proposal = journal.put_workspace_bundle_local_binding(
-            proposal_id=proposal.proposal_id,
-            expected_proposal_version=proposal.version,
-            slot_id=action,
-            binding_kind="script_approval",
-            connector_id=None,
-            opaque_connection_id=None,
-            local_path=None,
-            required_grants=[],
-            authorized_by="user-1",
-        )
     secret_binding_payloads = []
     if bind_environment:
         secret_binding_payloads.append(
@@ -278,6 +283,47 @@ def _installed_spec(
             client_request_id="bind-runtime-secret",
             expected_proposal_version=proposal.version,
             bindings=secret_binding_payloads,
+            authorized_by="user-1",
+        )
+    for action in (
+        "skill.script.execute:bundle://skills/demo/SKILL.md",
+        "mcp.server.start:bundle-local",
+    ):
+        required_grants: list[str] = []
+        if action == "mcp.server.start:bundle-local" and mcp_secret_slots:
+            current_secret_bindings = (
+                journal.list_workspace_bundle_secret_bindings(
+                    proposal.proposal_id
+                )
+            )
+            required_grants = [
+                attestation_grant(mcp_destination["attestation_digest"]),
+                secret_binding_grant(
+                    secret_binding_attestation(
+                        mcp_id="bundle-local",
+                        bindings=[
+                            {
+                                "requirement_key": item.requirement_key,
+                                "secret_ref": item.secret_ref,
+                                "binding_version": item.binding_version,
+                                "account_scope_digest": (
+                                    item.account_scope_digest
+                                ),
+                            }
+                            for item in current_secret_bindings
+                        ],
+                    )
+                ),
+            ]
+        _, proposal = journal.put_workspace_bundle_local_binding(
+            proposal_id=proposal.proposal_id,
+            expected_proposal_version=proposal.version,
+            slot_id=action,
+            binding_kind="script_approval",
+            connector_id=None,
+            opaque_connection_id=None,
+            local_path=None,
+            required_grants=required_grants,
             authorized_by="user-1",
         )
     proposal = journal.transition_workspace_bundle_install_proposal(
@@ -720,7 +766,107 @@ def test_secret_bearing_mcp_fails_during_assembly_without_resolving_secret(
             )
 
         assert error.value.issues == (
-            "mcp_destination_confirmation_required:bundle-local",
+            "mcp_secret_stdio_runtime_adapter_unavailable:bundle-local",
+        )
+        assert broker.calls == 0
+
+
+def test_rotated_mcp_secret_makes_destination_approval_stale_before_broker(
+    tmp_path,
+):
+    broker = _SecretBroker("must-not-be-resolved")
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _, proposal, spec, state_root, _ = _installed_spec(
+            tmp_path,
+            journal,
+            mcp_secret_slots=("API_TOKEN",),
+        )
+        existing = next(
+            item
+            for item in journal.list_workspace_bundle_secret_bindings(
+                proposal.proposal_id
+            )
+            if item.requirement_key
+            == "mcp_secret:bundle-local:API_TOKEN"
+        )
+        _, proposal = journal.put_workspace_bundle_secret_bindings(
+            proposal_id=proposal.proposal_id,
+            client_request_id="rotate-runtime-secret",
+            expected_proposal_version=proposal.version,
+            bindings=[
+                {
+                    "requirement_key": existing.requirement_key,
+                    "requirement_kind": "mcp_secret",
+                    "secret_ref": "wsvault_" + "e" * 32,
+                    "account_scope_digest": "f" * 64,
+                    "expected_binding_version": existing.binding_version,
+                }
+            ],
+            authorized_by="user-1",
+        )
+        local_bindings = journal.list_workspace_bundle_local_bindings(
+            proposal.proposal_id
+        )
+        secret_bindings = journal.list_workspace_bundle_secret_bindings(
+            proposal.proposal_id
+        )
+        local = spec.local_materialization.model_copy(
+            update={
+                "bundle_proposal_version": proposal.version,
+                "bundle_binding_digest": bundle_runtime_binding_digest(
+                    proposal,
+                    local_bindings,
+                    secret_bindings,
+                ),
+            }
+        )
+        refreshed_spec = spec.model_copy(
+            update={"local_materialization": local}
+        )
+
+        with pytest.raises(EnvironmentSetupRequiredError) as error:
+            RuntimeEnvironmentAssembler(
+                journal,
+                state_root=state_root,
+                secret_broker_factory=lambda: broker,
+            ).assemble(
+                refreshed_spec,
+                space_id="space-runtime",
+                space_root=tmp_path,
+            )
+
+        assert error.value.issues == (
+            "mcp_destination_confirmation_stale:bundle-local",
+        )
+        assert broker.calls == 0
+
+
+def test_mcp_definition_drift_blocks_before_secret_broker(tmp_path):
+    broker = _SecretBroker("must-not-be-resolved")
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        _, _, spec, state_root, configuration_root = _installed_spec(
+            tmp_path,
+            journal,
+            mcp_secret_slots=("API_TOKEN",),
+        )
+        (configuration_root / "mcp/local.json").write_text(
+            '{"mcpServers":{"bundle-local":{"command":"other"}}}',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(EnvironmentSetupRequiredError) as error:
+            RuntimeEnvironmentAssembler(
+                journal,
+                state_root=state_root,
+                secret_broker_factory=lambda: broker,
+            ).assemble(
+                spec,
+                space_id="space-runtime",
+                space_root=tmp_path,
+            )
+
+        assert error.value.issues == (
+            "mcp_destination_confirmation_stale:bundle-local",
         )
         assert broker.calls == 0
 

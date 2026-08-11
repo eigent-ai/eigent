@@ -30,6 +30,32 @@ export interface WorkspaceBundleValueRequirement {
   example?: string | null;
 }
 
+export interface WorkspaceBundleMcpDestination {
+  mcp_id: string;
+  definition_ref: string;
+  definition_digest: string | null;
+  destination_kind: string;
+  executable_command: string | null;
+  argument_preview: string[];
+  endpoint_url: string | null;
+  cwd_scope: string | null;
+  public_environment: Array<{
+    name: string;
+    value_digest: string;
+  }>;
+  public_headers: Array<{
+    name: string;
+    value_digest: string;
+  }>;
+  secret_slots: string[];
+  secret_environment_bindings?: Array<{
+    slot_id: string;
+    environment_variable: string;
+  }>;
+  attestation_digest: string | null;
+  requires_secret_confirmation: boolean;
+}
+
 export interface WorkspaceBundleInstallPlan {
   connector_slots: Array<{
     slot_id: string;
@@ -38,6 +64,7 @@ export interface WorkspaceBundleInstallPlan {
   }>;
   local_path_slots: string[];
   script_actions: string[];
+  mcp_destinations?: WorkspaceBundleMcpDestination[];
   environment_requirements: Array<Record<string, unknown>>;
   mcp_secret_requirements: Array<Record<string, unknown>>;
   permission_profile: string;
@@ -75,6 +102,8 @@ export interface WorkspaceBundleInstallBinding {
   opaque_connection_id?: string | null;
   local_path?: string | null;
   required_grants: string[];
+  /** False when a dependent secret binding rotated after this approval. */
+  current?: boolean;
 }
 
 export interface WorkspaceBundleInstallSnapshot {

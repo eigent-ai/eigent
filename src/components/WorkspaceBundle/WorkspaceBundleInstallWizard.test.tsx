@@ -415,7 +415,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('MCP target review required')).toBeInTheDocument();
     expect(
-      screen.getByText(/does not provide that confirmation control yet/i)
+      screen.getByText(/review and approve each supported MCP destination/i)
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -426,6 +426,266 @@ describe('WorkspaceBundleInstallWizard', () => {
       screen.queryByText('mcp_destination_confirmation_required')
     ).toBeNull();
     expect(screen.queryByText('Runtime ready')).toBeNull();
+  });
+
+  it('shows exact MCP destination details and approves by action identity only', async () => {
+    const definitionDigest = 'c'.repeat(64);
+    const attestationDigest = 'd'.repeat(64);
+    const logLevelDigest = 'e'.repeat(64);
+    const mcpModeDigest = 'f'.repeat(64);
+    const clientVersionDigest = '1'.repeat(64);
+    const actionId = 'mcp.server.start:bundle-local';
+    const destination = {
+      mcp_id: 'bundle-local',
+      definition_ref: 'bundle://mcp/bundle-local',
+      definition_digest: definitionDigest,
+      destination_kind: 'stdio',
+      executable_command: 'node',
+      argument_preview: ['server.js', '--mode=readonly'],
+      endpoint_url: null,
+      cwd_scope: 'workspace://project',
+      public_environment: [
+        { name: 'LOG_LEVEL', value_digest: logLevelDigest },
+        { name: 'MCP_MODE', value_digest: mcpModeDigest },
+      ],
+      public_headers: [
+        {
+          name: 'X-Client-Version',
+          value_digest: clientVersionDigest,
+        },
+      ],
+      secret_slots: ['github-token'],
+      secret_environment_bindings: [
+        {
+          slot_id: 'github-token',
+          environment_variable: 'GITHUB_TOKEN',
+        },
+      ],
+      attestation_digest: attestationDigest,
+      requires_secret_confirmation: true,
+    };
+    const installed = snapshot(true, 'needs_confirmation', [
+      'mcp_destination_confirmation_required',
+    ]);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+      install_plan: {
+        ...installed.proposal.install_plan,
+        script_actions: [actionId],
+        mcp_destinations: [destination],
+      },
+    };
+    installed.value_requirements.push({
+      requirement_key: 'mcp_secret:bundle-local:github-token',
+      requirement_kind: 'mcp_secret',
+      configured: true,
+      available: true,
+      binding_version: 1,
+      required: true,
+      mcp_id: 'bundle-local',
+      slot_id: 'github-token',
+    });
+    const approved = snapshot(true, 'unavailable', [
+      'mcp_secret_stdio_runtime_adapter_unavailable:bundle-local',
+    ]);
+    approved.proposal = {
+      ...approved.proposal,
+      state: 'materialized',
+      version: 9,
+      install_plan: {
+        ...approved.proposal.install_plan,
+        script_actions: [actionId],
+        mcp_destinations: [destination],
+      },
+    };
+    approved.bindings = [
+      {
+        slot_id: actionId,
+        binding_kind: 'script_approval',
+        required_grants: [],
+        current: true,
+      },
+    ];
+    mocks.fetchProposal.mockResolvedValue(installed);
+    mocks.approveScript.mockResolvedValue(approved);
+    const user = userEvent.setup();
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(await screen.findByText('bundle-local')).toBeInTheDocument();
+    expect(screen.getByText('node')).toBeInTheDocument();
+    expect(screen.getByText('server.js')).toBeInTheDocument();
+    expect(screen.getByText('--mode=readonly')).toBeInTheDocument();
+    expect(screen.getByText('workspace://project')).toBeInTheDocument();
+    expect(screen.getByText('bundle://mcp/bundle-local')).toBeInTheDocument();
+    expect(
+      screen.getByText(`SHA-256: ${definitionDigest}`)
+    ).toBeInTheDocument();
+    expect(screen.getByText(attestationDigest)).toBeInTheDocument();
+    expect(screen.getAllByText('github-token')).toHaveLength(2);
+    expect(screen.getByText('GITHUB_TOKEN')).toBeInTheDocument();
+    const publicEnvironment = screen.getByRole('region', {
+      name: 'Public environment for bundle-local',
+    });
+    expect(publicEnvironment).toHaveClass('max-h-32', 'overflow-y-auto');
+    expect(screen.getByText('LOG_LEVEL')).toBeInTheDocument();
+    expect(screen.getByText(`SHA-256 ${logLevelDigest}`)).toBeInTheDocument();
+    expect(screen.getByText('MCP_MODE')).toBeInTheDocument();
+    expect(screen.getByText(`SHA-256 ${mcpModeDigest}`)).toBeInTheDocument();
+    const publicHeaders = screen.getByRole('region', {
+      name: 'Public headers for bundle-local',
+    });
+    expect(publicHeaders).toHaveClass('max-h-32', 'overflow-y-auto');
+    expect(screen.getByText('X-Client-Version')).toBeInTheDocument();
+    expect(
+      screen.getByText(`SHA-256 ${clientVersionDigest}`)
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Approve bundle-local MCP destination',
+      })
+    );
+
+    await waitFor(() => expect(mocks.approveScript).toHaveBeenCalledTimes(1));
+    const approvalRequest = mocks.approveScript.mock.calls[0][0];
+    expect(approvalRequest).toEqual({
+      proposalId: 'proposal-1',
+      expectedVersion: 8,
+      actionId,
+      actorId: 'user-1',
+    });
+    expect(JSON.stringify(approvalRequest)).not.toContain(definitionDigest);
+    expect(JSON.stringify(approvalRequest)).not.toContain(attestationDigest);
+    expect(JSON.stringify(approvalRequest)).not.toContain('github-token');
+    expect(await screen.findByText('Runtime unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This Desktop version cannot yet safely start this approved secret-backed MCP server.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+    expect(screen.queryByText('Runtime ready')).toBeNull();
+  });
+
+  it('requires every MCP secret to be locally available before approval', async () => {
+    const actionId = 'mcp.server.start:bundle-local';
+    const installed = snapshot(true, 'needs_confirmation', [
+      'mcp_destination_confirmation_required',
+    ]);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+      install_plan: {
+        ...installed.proposal.install_plan,
+        script_actions: [actionId],
+        mcp_destinations: [
+          {
+            mcp_id: 'bundle-local',
+            definition_ref: 'bundle://mcp/bundle-local',
+            definition_digest: 'c'.repeat(64),
+            destination_kind: 'stdio',
+            executable_command: 'node',
+            argument_preview: ['server.js'],
+            endpoint_url: null,
+            cwd_scope: 'workspace://project',
+            public_environment: [],
+            public_headers: [],
+            secret_slots: ['github-token'],
+            secret_environment_bindings: [
+              {
+                slot_id: 'github-token',
+                environment_variable: 'GITHUB_TOKEN',
+              },
+            ],
+            attestation_digest: 'd'.repeat(64),
+            requires_secret_confirmation: true,
+          },
+        ],
+      },
+    };
+    installed.value_requirements.push({
+      requirement_key: 'mcp_secret:bundle-local:github-token',
+      requirement_kind: 'mcp_secret',
+      configured: true,
+      available: false,
+      binding_version: 1,
+      required: true,
+      mcp_id: 'bundle-local',
+      slot_id: 'github-token',
+    });
+    installed.bindings = [
+      {
+        slot_id: actionId,
+        binding_kind: 'script_approval',
+        required_grants: [],
+        current: false,
+      },
+    ];
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    const approve = await screen.findByRole('button', {
+      name: 'Approve bundle-local MCP destination',
+    });
+    expect(approve).toBeDisabled();
+    expect(
+      screen.getByText(/add the required local secrets before approving/i)
+    ).toHaveTextContent('github-token');
+    expect(screen.queryByText('Approved')).toBeNull();
+  });
+
+  it('does not offer approval for unsupported secret-backed HTTP MCP destinations', async () => {
+    const installed = snapshot(true, 'unavailable', [
+      'mcp_destination_confirmation_required',
+    ]);
+    installed.proposal = {
+      ...installed.proposal,
+      state: 'materialized',
+      version: 8,
+      install_plan: {
+        ...installed.proposal.install_plan,
+        mcp_destinations: [
+          {
+            mcp_id: 'remote-mcp',
+            definition_ref: 'bundle://mcp/remote-mcp',
+            definition_digest: 'e'.repeat(64),
+            destination_kind: 'http_secret_unavailable',
+            executable_command: null,
+            argument_preview: [],
+            endpoint_url: 'https://mcp.example.test/events',
+            cwd_scope: null,
+            public_environment: [],
+            public_headers: [],
+            secret_slots: ['authorization'],
+            secret_environment_bindings: [],
+            attestation_digest: null,
+            requires_secret_confirmation: true,
+          },
+        ],
+      },
+    };
+    mocks.fetchProposal.mockResolvedValue(installed);
+
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    expect(
+      await screen.findByText('https://mcp.example.test/events')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /secret-backed HTTP or header MCP destinations are not supported/i
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Approve remote-mcp MCP destination',
+      })
+    ).toBeNull();
   });
 
   it('maps every reported Brain issue code to user-readable copy', async () => {

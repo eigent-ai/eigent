@@ -15,6 +15,14 @@ from app.run_journal import (
     WorkspaceBundleSecretBindingRecord,
 )
 from app.workspace_bundle.cloud import WorkspaceBundleCloudTransport
+from app.workspace_bundle.mcp_destination import (
+    McpDestinationError,
+    attestation_grant,
+    inspect_bundle_mcp_destination,
+    registry_unavailable_destination,
+    secret_binding_attestation,
+    secret_binding_grant,
+)
 from app.workspace_bundle.secrets import (
     WorkspaceSecretBroker,
     WorkspaceSecretBrokerError,
@@ -113,7 +121,15 @@ class WorkspaceBundleInstaller:
             raise WorkspaceBundleInstallError(
                 "Bundle asset logical paths must be unique"
             )
-        install_plan = self._install_plan(manifest, normalized_assets)
+        mcp_destinations = await self._inspect_mcp_destinations(
+            manifest,
+            normalized_assets,
+        )
+        install_plan = self._install_plan(
+            manifest,
+            normalized_assets,
+            mcp_destinations=mcp_destinations,
+        )
         return self.journal.put_workspace_bundle_install_proposal(
             proposal_id=proposal_id,
             request_id=request_id,
@@ -227,6 +243,69 @@ class WorkspaceBundleInstaller:
             raise WorkspaceBundleInstallError(
                 "Script action is not declared by this Bundle"
             )
+        required_grants: list[str] = []
+        if action_id.startswith("mcp.server.start:"):
+            server_id = action_id.removeprefix("mcp.server.start:")
+            destination = next(
+                (
+                    item
+                    for item in proposal.install_plan.get(
+                        "mcp_destinations", []
+                    )
+                    if item.get("mcp_id") == server_id
+                ),
+                None,
+            )
+            if destination is None:
+                raise WorkspaceBundleInstallError(
+                    "MCP destination review is unavailable"
+                )
+            if destination.get("requires_secret_confirmation"):
+                digest = destination.get("attestation_digest")
+                if not isinstance(digest, str):
+                    issue = destination.get("availability_issue") or (
+                        "mcp_destination_confirmation_required"
+                    )
+                    raise WorkspaceBundleInstallError(str(issue))
+                required_grants.append(attestation_grant(digest))
+                secret_bindings = (
+                    self.journal.list_workspace_bundle_secret_bindings(
+                        proposal_id
+                    )
+                )
+                expected_keys = {
+                    item["requirement_key"]
+                    for item in proposal.install_plan.get(
+                        "mcp_secret_requirements", []
+                    )
+                    if item.get("mcp_id") == server_id
+                }
+                current = {
+                    item.requirement_key: item
+                    for item in secret_bindings
+                    if item.requirement_key in expected_keys
+                }
+                if set(current) != expected_keys:
+                    raise WorkspaceBundleBindingsIncomplete(
+                        sorted(expected_keys - set(current))
+                    )
+                binding_digest = secret_binding_attestation(
+                    mcp_id=server_id,
+                    bindings=[
+                        {
+                            "requirement_key": item.requirement_key,
+                            "secret_ref": item.secret_ref,
+                            "binding_version": item.binding_version,
+                            "account_scope_digest": (
+                                item.account_scope_digest
+                            ),
+                        }
+                        for item in current.values()
+                    ],
+                )
+                required_grants.append(
+                    secret_binding_grant(binding_digest)
+                )
         return self.journal.put_workspace_bundle_local_binding(
             proposal_id=proposal_id,
             expected_proposal_version=expected_version,
@@ -235,7 +314,7 @@ class WorkspaceBundleInstaller:
             connector_id=None,
             opaque_connection_id=None,
             local_path=None,
-            required_grants=[],
+            required_grants=required_grants,
             authorized_by=authorized_by,
         )
 
@@ -648,6 +727,8 @@ class WorkspaceBundleInstaller:
     def _install_plan(
         manifest: WorkforceBundleManifest,
         assets: list[dict[str, Any]],
+        *,
+        mcp_destinations: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         script_actions = [
             f"skill.script.execute:{item.ref}"
@@ -703,6 +784,7 @@ class WorkspaceBundleInstaller:
                 ),
                 key=lambda item: item["requirement_key"],
             ),
+            "mcp_destinations": list(mcp_destinations or []),
             "permission_profile": manifest.spec.permissions.profile,
             "git_policy": manifest.spec.git.model_dump(
                 by_alias=True, mode="json"
@@ -711,6 +793,58 @@ class WorkspaceBundleInstaller:
             "asset_bytes": sum(int(item["size_bytes"]) for item in assets),
             "automatic_grants": [],
         }
+
+    async def _inspect_mcp_destinations(
+        self,
+        manifest: WorkforceBundleManifest,
+        assets: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        assert self.cloud is not None
+        assets_by_ref = {
+            f"bundle://{item['logical_path']}": item for item in assets
+        }
+        destinations: list[dict[str, Any]] = []
+        for server in manifest.spec.mcp_servers:
+            if server.definition.startswith("registry://"):
+                destinations.append(
+                    registry_unavailable_destination(
+                        mcp_id=server.id,
+                        definition_ref=server.definition,
+                        secret_slots=server.secret_slots,
+                    )
+                )
+                continue
+            descriptor = assets_by_ref.get(server.definition)
+            if descriptor is None:
+                raise WorkspaceBundleInstallError(
+                    f"MCP definition asset is missing: {server.id}"
+                )
+            content = await self.cloud.download_asset(
+                manifest.metadata.id,
+                manifest.revision_id,
+                descriptor["id"],
+            )
+            if len(content) != int(descriptor["size_bytes"]):
+                raise WorkspaceBundleInstallError(
+                    "MCP definition asset size mismatch"
+                )
+            try:
+                assert_bundle_asset_safe(descriptor["logical_path"], content)
+                destination = inspect_bundle_mcp_destination(
+                    revision_id=manifest.revision_id,
+                    mcp_id=server.id,
+                    definition_ref=server.definition,
+                    definition_digest=descriptor["content_digest"],
+                    content=content,
+                    secret_slots=server.secret_slots,
+                    executable_assets_by_ref=assets_by_ref,
+                )
+            except (McpDestinationError, SecretValueInManifestError) as exc:
+                raise WorkspaceBundleInstallError(
+                    f"MCP destination review failed: {server.id}"
+                ) from exc
+            destinations.append(destination)
+        return destinations
 
     @staticmethod
     def _require_complete_bindings(

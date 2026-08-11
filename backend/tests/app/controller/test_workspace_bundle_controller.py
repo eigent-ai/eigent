@@ -6,6 +6,11 @@ from pydantic import ValidationError
 from app.controller import workspace_bundle_controller
 from app.run_journal import SQLiteRunJournal
 from app.workspace_bundle import WorkspaceSecretVerification
+from app.workspace_bundle.mcp_destination import (
+    attestation_grant,
+    secret_binding_attestation,
+    secret_binding_grant,
+)
 
 
 def _mark_materialized(journal, proposal):
@@ -265,8 +270,155 @@ def test_install_payload_reports_mcp_destination_confirmation(
 
     assert payload["runtime_readiness"] == "needs_confirmation"
     assert payload["runtime_readiness_issues"] == [
-        "mcp_destination_confirmation_required"
+        "mcp_destination_confirmation_required:private-mcp"
     ]
+    journal.close()
+
+
+def test_install_payload_marks_rotated_secret_approval_stale(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "run-journal.sqlite3")
+    monkeypatch.setattr(
+        workspace_bundle_controller,
+        "get_default_run_journal",
+        lambda: journal,
+    )
+    destination_digest = "a" * 64
+    requirement_key = "mcp_secret:private-mcp:API_TOKEN"
+    proposal = journal.put_workspace_bundle_install_proposal(
+        proposal_id="proposal-mcp-stale",
+        request_id="proposal-mcp-stale-request",
+        space_id="space-1",
+        bundle_id="bundle-1",
+        revision_id="bundle-1@1",
+        config_placement="sidecar",
+        manifest={
+            "spec": {
+                "mcpServers": [
+                    {
+                        "id": "private-mcp",
+                        "secretSlots": ["API_TOKEN"],
+                    }
+                ]
+            }
+        },
+        assets=[],
+        install_plan={
+            "connector_slots": [],
+            "local_path_slots": [],
+            "script_actions": ["mcp.server.start:private-mcp"],
+            "environment_requirements": [],
+            "mcp_secret_requirements": [
+                {
+                    "requirement_key": requirement_key,
+                    "mcp_id": "private-mcp",
+                    "slot_id": "API_TOKEN",
+                    "required": True,
+                }
+            ],
+            "mcp_destinations": [
+                {
+                    "mcp_id": "private-mcp",
+                    "attestation_digest": destination_digest,
+                    "requires_secret_confirmation": True,
+                    "availability_issue": None,
+                }
+            ],
+        },
+    )
+    proposal = journal.transition_workspace_bundle_install_proposal(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        state="approved",
+        decided_by="user-1",
+    )
+    secrets, proposal = journal.put_workspace_bundle_secret_bindings(
+        proposal_id=proposal.proposal_id,
+        client_request_id="binding-mcp-stale-1",
+        expected_proposal_version=proposal.version,
+        bindings=[
+            {
+                "requirement_key": requirement_key,
+                "requirement_kind": "mcp_secret",
+                "secret_ref": "wsvault_" + "b" * 32,
+                "account_scope_digest": "c" * 64,
+            }
+        ],
+        authorized_by="user-1",
+    )
+    initial_binding_digest = secret_binding_attestation(
+        mcp_id="private-mcp",
+        bindings=[
+            {
+                "requirement_key": item.requirement_key,
+                "secret_ref": item.secret_ref,
+                "binding_version": item.binding_version,
+                "account_scope_digest": item.account_scope_digest,
+            }
+            for item in secrets
+        ],
+    )
+    _, proposal = journal.put_workspace_bundle_local_binding(
+        proposal_id=proposal.proposal_id,
+        expected_proposal_version=proposal.version,
+        slot_id="mcp.server.start:private-mcp",
+        binding_kind="script_approval",
+        connector_id=None,
+        opaque_connection_id=None,
+        local_path=None,
+        required_grants=[
+            attestation_grant(destination_digest),
+            secret_binding_grant(initial_binding_digest),
+        ],
+        authorized_by="user-1",
+    )
+    proposal = _mark_materialized(journal, proposal)
+    _, proposal = journal.put_workspace_bundle_secret_bindings(
+        proposal_id=proposal.proposal_id,
+        client_request_id="binding-mcp-stale-2",
+        expected_proposal_version=proposal.version,
+        bindings=[
+            {
+                "requirement_key": requirement_key,
+                "requirement_kind": "mcp_secret",
+                "secret_ref": "wsvault_" + "d" * 32,
+                "account_scope_digest": "e" * 64,
+                "expected_binding_version": 1,
+            }
+        ],
+        authorized_by="user-1",
+    )
+
+    class AvailableBroker:
+        def verify_many(self, identities):
+            return tuple(
+                WorkspaceSecretVerification(
+                    identity=item,
+                    state="available",
+                )
+                for item in identities
+            )
+
+    monkeypatch.setattr(
+        workspace_bundle_controller.WorkspaceSecretBroker,
+        "from_environment",
+        lambda: AvailableBroker(),
+    )
+    payload = workspace_bundle_controller._payload(proposal.proposal_id)
+
+    approval = next(
+        item
+        for item in payload["bindings"]
+        if item["slot_id"] == "mcp.server.start:private-mcp"
+    )
+    assert approval["current"] is False
+    assert payload["runtime_readiness"] == "unavailable"
+    assert (
+        "mcp_destination_confirmation_stale:private-mcp"
+        in payload["runtime_readiness_issues"]
+    )
     journal.close()
 
 
@@ -323,7 +475,7 @@ def test_install_payload_aggregates_all_runtime_readiness_issues(
     assert payload["runtime_readiness"] == "unavailable"
     assert payload["runtime_readiness_issues"] == [
         "connector_runtime_adapter_unavailable",
-        "mcp_destination_confirmation_required",
+        "mcp_destination_confirmation_required:private-mcp",
         "multi_agent_runtime_adapter_unavailable",
         "local_setup_incomplete",
     ]
