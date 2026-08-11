@@ -91,7 +91,9 @@ _REMOTE_READ_FLAG_OPTIONS: dict[str, frozenset[str]] = {
             "--refetch",
             "--recurse-submodules",
             "--show-forced-updates",
+            "--set-upstream",
             "--tags",
+            "--unshallow",
             "--update-head-ok",
             "--verbose",
             "--write-fetch-head",
@@ -127,6 +129,7 @@ _REMOTE_READ_VALUE_OPTIONS: dict[str, frozenset[str]] = {
         {
             "--depth",
             "--deepen",
+            "--filter",
             "--jobs",
             "--negotiation-tip",
             "--recurse-submodules",
@@ -148,6 +151,7 @@ _COMMIT_FLAG_OPTIONS = frozenset(
         "--amend",
         "--dry-run",
         "--include",
+        "--no-edit",
         "--no-gpg-sign",
         "--no-post-rewrite",
         "--no-status",
@@ -156,6 +160,7 @@ _COMMIT_FLAG_OPTIONS = frozenset(
         "--quiet",
         "--reset-author",
         "--short",
+        "--signoff",
         "--status",
         "--verbose",
         "-a",
@@ -163,6 +168,7 @@ _COMMIT_FLAG_OPTIONS = frozenset(
         "-n",
         "-o",
         "-q",
+        "-s",
         "-v",
     }
 )
