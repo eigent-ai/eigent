@@ -12,9 +12,6 @@ permissions:
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -27,10 +24,17 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dev dependencies
-        run: uv sync --group dev
+        run: uv sync --project backend --group dev
 
       - name: Run pre-commit
         run: |
-          uv run pre-commit run --files $(git ls-files .)
+          uv run --project backend pre-commit run \
+            --config backend/.pre-commit-config.yaml --files $(git ls-files backend)
         env:
-          SKIP: no-commit-to-branch
+          SKIP: no-commit-to-branch,bandit-full
+
+      - name: Run full backend Bandit scan
+        run: >-
+          uv run --project backend pre-commit run bandit-full
+          --config backend/.pre-commit-config.yaml
+          --hook-stage manual --all-files

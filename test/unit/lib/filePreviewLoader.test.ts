@@ -126,9 +126,73 @@ describe('loadFilePreview', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       'https://files.example/remote.pdf',
-      expect.objectContaining({ headers: { Range: 'bytes=0-0' } })
+      expect.objectContaining({
+        credentials: 'same-origin',
+        headers: { Range: 'bytes=0-0' },
+      })
     );
     expect(result.preview).toMatchObject({ kind: 'range-pdf', size: 2048 });
     expect(result.content).toBe('https://files.example/remote.pdf');
+  });
+
+  it('does not send browser credentials to a cross-port local Brain preview', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new TextEncoder().encode('<h1>preview</h1>'), {
+        status: 206,
+        headers: {
+          'Content-Range': 'bytes 0-15/16',
+          'Content-Type': 'text/html',
+        },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFilePreview(
+      {
+        name: 'index.html',
+        type: 'html',
+        path: 'http://localhost:5001/files/stream?path=index.html',
+        size: 16,
+        isRemote: true,
+      },
+      {}
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:5001/files/stream?path=index.html',
+      expect.objectContaining({ credentials: 'same-origin' })
+    );
+    expect(result.content).toContain('<h1>preview</h1>');
+  });
+
+  it('never sends an HTTP Brain preview URL through the local file IPC channel', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new TextEncoder().encode('# preview'), {
+        status: 206,
+        headers: {
+          'Content-Range': 'bytes 0-8/9',
+          'Content-Type': 'text/markdown',
+        },
+      })
+    );
+    const invoke = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFilePreview(
+      {
+        name: 'todo.md',
+        type: 'md',
+        path: 'http://localhost:5001/files/stream?path=todo.md',
+        size: 9,
+      },
+      { ipcRenderer: { invoke } }
+    );
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:5001/files/stream?path=todo.md',
+      expect.objectContaining({ credentials: 'same-origin' })
+    );
+    expect(result.content).toBe('# preview');
   });
 });

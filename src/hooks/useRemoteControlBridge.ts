@@ -25,6 +25,7 @@ import {
   getRemoteControlWebSocketUrl,
   setRemoteControlBridgeConnected,
 } from '@/lib/remoteControl';
+import { humanInteractionDecisionPath } from '@/service/humanInteractionApi';
 import { toLocalSpace, type ServerProject } from '@/service/spaceApi';
 import { getAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -764,7 +765,7 @@ async function executeRemoteCommand(
         command,
         token,
         'POST',
-        `/api/v1/runs/${encodeURIComponent(runId)}/interactions/${encodeURIComponent(interactionId)}/decisions`,
+        humanInteractionDecisionPath(runId, interactionId),
         {
           decision_request_id:
             command.payload.decision_request_id || command.id,

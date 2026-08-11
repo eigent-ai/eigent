@@ -24,8 +24,9 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, ContextManager
+from contextlib import AbstractContextManager
 
 from camel.toolkits.terminal_toolkit import (
     TerminalToolkit as BaseTerminalToolkit,
@@ -90,9 +91,7 @@ _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
 
 
 def is_secret_broker_environment_key(name: str) -> bool:
-    return bool(
-        _SECRET_BROKER_ENVIRONMENT_KEY.fullmatch(name.strip().upper())
-    )
+    return bool(_SECRET_BROKER_ENVIRONMENT_KEY.fullmatch(name.strip().upper()))
 
 
 def is_control_plane_environment_key(name: str) -> bool:
@@ -116,6 +115,19 @@ def get_terminal_base_venv_path() -> str:
     )
 
 
+def _shell_command_argv(
+    command: str,
+    *,
+    os_name: str,
+    comspec: str | None = None,
+) -> list[str]:
+    """Build an explicit shell invocation without ``Popen(shell=True)``."""
+
+    if os_name == "nt":
+        return [comspec or "cmd.exe", "/d", "/s", "/c", command]
+    return ["/bin/sh", "-c", command]
+
+
 @auto_listen_toolkit(BaseTerminalToolkit)
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
@@ -135,7 +147,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         allowed_commands: list[str] | None = None,
         clone_current_env: bool = True,
         runtime_env_provider: (
-            Callable[[], ContextManager[dict[str, str]]] | None
+            Callable[[], AbstractContextManager[dict[str, str]]] | None
         ) = None,
     ):
         self.api_task_id = api_task_id
@@ -296,11 +308,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             else:
                 popen_options["start_new_session"] = True
             process = subprocess.Popen(
-                command,
+                _shell_command_argv(
+                    command,
+                    os_name=os.name,
+                    comspec=os.environ.get("COMSPEC"),
+                ),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
-                shell=True,
                 text=True,
                 cwd=self.working_dir,
                 encoding="utf-8",
@@ -342,8 +357,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     cleanup_failure = exc
                     cleanup_error = self._scrub_runtime_output(str(exc))
                     log_entry += (
-                        "--- Process cleanup error ---\n"
-                        f"{cleanup_error}\n"
+                        f"--- Process cleanup error ---\n{cleanup_error}\n"
                     )
                     logger.exception(
                         "Failed to terminate protected Bundle process tree",

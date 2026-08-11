@@ -55,6 +55,7 @@ import {
 } from './install-deps';
 import {
   authorizeLocalFilePath,
+  authorizeLocalPreviewPath,
   isExecutableExternalOpenPath,
   isMainRendererSender,
 } from './localFileSecurity';
@@ -178,9 +179,10 @@ async function requireAuthorizedPreviewFile(
   filePath: string
 ): Promise<string> {
   assertMainRendererSender(event);
-  const authorization = await authorizeLocalFilePath(
+  const authorization = await authorizeLocalPreviewPath(
     filePath,
-    localFileAllowedRoots()
+    activeLocalFileRoots,
+    [RENDERER_DIST, VITE_PUBLIC]
   );
   if (!authorization.allowed) {
     throw new Error('Preview file is outside the active workspace');
@@ -207,8 +209,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

@@ -54,6 +54,10 @@ function finiteSize(value: unknown): number | null {
     : null;
 }
 
+function isRemotePreviewSource(file: FileInfo): boolean {
+  return file.isRemote === true || /^https?:\/\//i.test(file.path);
+}
+
 function headerSize(value: string | null): number | null {
   if (value === null || value.trim() === '') return null;
   return finiteSize(Number(value));
@@ -79,7 +83,10 @@ async function probeRemoteMetadata(
   try {
     const response = await fetch(url, {
       method: 'HEAD',
-      credentials: 'include',
+      // Local Brain runs on a different loopback port. Credentialed CORS is
+      // incompatible with its safe wildcard fallback, and this endpoint does
+      // not use browser cookies. Same-origin deployments still send cookies.
+      credentials: 'same-origin',
       signal,
     });
     if (response.ok) {
@@ -102,7 +109,7 @@ async function probeRemoteMetadata(
 
   try {
     const response = await fetch(url, {
-      credentials: 'include',
+      credentials: 'same-origin',
       headers: { Range: 'bytes=0-0' },
       signal,
     });
@@ -129,7 +136,7 @@ async function readRemotePrefix(
   signal?: AbortSignal
 ): Promise<PrefixReadResult> {
   const response = await fetch(url, {
-    credentials: 'include',
+    credentials: 'same-origin',
     headers: { Range: `bytes=0-${Math.max(0, maxBytes - 1)}` },
     signal,
   });
@@ -239,9 +246,10 @@ export async function resolveFilePreviewMetadata(
 ): Promise<FilePreviewMetadata> {
   const knownSize = finiteSize(file.size);
   const ipcRenderer = options.ipcRenderer;
+  const isRemote = isRemotePreviewSource(file);
   throwIfAborted(options.signal);
 
-  if (!file.isRemote && ipcRenderer) {
+  if (!isRemote && ipcRenderer) {
     const result = (await ipcRenderer.invoke(
       'get-file-preview-metadata',
       file.path
@@ -285,6 +293,7 @@ export async function loadFilePreview(
   file: FileInfo,
   options: LoadFilePreviewOptions
 ): Promise<FileInfo> {
+  const isRemote = isRemotePreviewSource(file);
   const metadata = await resolveFilePreviewMetadata(file, options);
   const decision = decideFilePreview(
     file.type || metadata.mimeType || '',
@@ -315,7 +324,7 @@ export async function loadFilePreview(
   if (decision.mode === 'range-pdf') {
     return {
       ...baseFile,
-      content: file.isRemote ? file.path : toLocalPreviewUrl(file.path),
+      content: isRemote ? file.path : toLocalPreviewUrl(file.path),
       preview: {
         kind: 'range-pdf',
         size: metadata.size as number,
@@ -327,7 +336,7 @@ export async function loadFilePreview(
 
   if (decision.mode === 'bounded-csv') {
     let preview: CsvFilePreview;
-    if (!file.isRemote && options.ipcRenderer) {
+    if (!isRemote && options.ipcRenderer) {
       preview = (await options.ipcRenderer.invoke(
         'preview-csv-file',
         file.path
@@ -352,7 +361,7 @@ export async function loadFilePreview(
     let content = '';
     let bytesRead = 0;
     let totalBytes = metadata.size;
-    if (!file.isRemote && options.ipcRenderer) {
+    if (!isRemote && options.ipcRenderer) {
       const result = (await options.ipcRenderer.invoke(
         'preview-text-file',
         file.path,
@@ -375,7 +384,7 @@ export async function loadFilePreview(
     };
   }
 
-  if (options.ipcRenderer) {
+  if (!isRemote && options.ipcRenderer) {
     const content = (await options.ipcRenderer.invoke(
       'open-file',
       file.type,

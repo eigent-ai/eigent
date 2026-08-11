@@ -809,7 +809,7 @@ export async function downloadFromUrl(
 
   const tryFetchAsBlob = async (): Promise<boolean> => {
     try {
-      const response = await fetch(trimmed, { credentials: 'include' });
+      const response = await fetch(trimmed, { credentials: 'same-origin' });
       if (!response.ok) return false;
       const blob = await response.blob();
       const filename =

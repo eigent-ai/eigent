@@ -99,6 +99,49 @@ export async function authorizeLocalFilePath(
   return { allowed: false, reason: 'outside-roots' };
 }
 
+/**
+ * Authorize a preview path from the renderer.
+ *
+ * Agent/file events may carry a workspace-relative path. Resolve those paths
+ * only against roots that the main renderer has explicitly registered for the
+ * active Space; never against process.cwd(), HOME, or application asset roots.
+ * Absolute paths retain the stricter realpath containment check above.
+ */
+export async function authorizeLocalPreviewPath(
+  candidatePath: string,
+  activeWorkspaceRoots: Iterable<string>,
+  additionalAbsoluteRoots: Iterable<string> = []
+): Promise<LocalFileAuthorization> {
+  if (!candidatePath) return { allowed: false, reason: 'invalid' };
+
+  if (path.isAbsolute(candidatePath)) {
+    return authorizeLocalFilePath(candidatePath, [
+      ...activeWorkspaceRoots,
+      ...additionalAbsoluteRoots,
+    ]);
+  }
+
+  const roots = [...activeWorkspaceRoots].filter(
+    (root) => root && path.isAbsolute(root)
+  );
+  if (roots.length === 0) return { allowed: false, reason: 'invalid' };
+
+  let sawMissing = false;
+  for (const root of roots) {
+    const authorization = await authorizeLocalFilePath(
+      path.resolve(root, candidatePath),
+      [root]
+    );
+    if (authorization.allowed) return authorization;
+    if (authorization.reason === 'missing') sawMissing = true;
+  }
+
+  return {
+    allowed: false,
+    reason: sawMissing ? 'missing' : 'outside-roots',
+  };
+}
+
 export function isExecutableExternalOpenPath(
   filePath: string,
   mode = 0

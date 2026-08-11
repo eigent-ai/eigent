@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fetchPost } from '@/api/http';
 
 export type InteractionDecisionScope = 'once' | 'run' | 'space';
@@ -45,6 +59,12 @@ export interface HumanInteractionPayload {
   }>;
 }
 
+export const humanInteractionDecisionPath = (
+  runId: string,
+  interactionId: string
+): string =>
+  `/runs/${encodeURIComponent(runId)}/interactions/${encodeURIComponent(interactionId)}/decisions`;
+
 export async function decideHumanInteraction(
   interaction: HumanInteractionPayload,
   input: {
@@ -55,7 +75,10 @@ export async function decideHumanInteraction(
 ) {
   if (!interaction.run_id) throw new Error('Missing durable Run id');
   return fetchPost(
-    `/api/v1/runs/${encodeURIComponent(interaction.run_id)}/interactions/${encodeURIComponent(interaction.interaction_id)}/decisions`,
+    humanInteractionDecisionPath(
+      interaction.run_id,
+      interaction.interaction_id
+    ),
     {
       decision_request_id: input.decisionRequestId,
       decision: input.decision,

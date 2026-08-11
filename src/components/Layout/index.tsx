@@ -29,6 +29,7 @@ import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/Inst
 
 const Layout = () => {
   const host = useHost();
+  const { chatStore, projectStore } = useChatStoreAdapter();
   const {
     initState,
     isFirstLaunch,
@@ -37,12 +38,12 @@ const Layout = () => {
   } = useAuthStore();
   const [noticeOpen, setNoticeOpen] = useState(false);
   const activeWorkspaceRoot = useSpaceStore((state) => {
-    const activeSpaceId = state.activeSpaceId;
+    const projectSpaceId = projectStore.activeProjectId
+      ? state.projectIdIndex[projectStore.activeProjectId]
+      : null;
+    const activeSpaceId = projectSpaceId || state.activeSpaceId;
     return activeSpaceId ? state.spaces[activeSpaceId]?.rootPath || null : null;
   });
-
-  //Get Chatstore for the active project's task
-  const { chatStore } = useChatStoreAdapter();
 
   const {
     installationState,

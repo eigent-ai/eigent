@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fetchGet, fetchPost, fetchPostForm, fetchPut } from '@/api/http';
 
 export type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -80,10 +94,7 @@ export interface WorkspaceConfigurationDocument {
     >;
     permissions: {
       profile:
-        | 'request_approval'
-        | 'auto_review'
-        | 'workspace_write'
-        | 'full_access';
+        'request_approval' | 'auto_review' | 'workspace_write' | 'full_access';
       rules: Array<{ action: string; effect: 'allow' | 'prompt' | 'deny' }>;
     };
     git: {
@@ -186,13 +197,10 @@ export const fetchWorkspaceConfiguration = async (
   identity: WorkspaceConfigurationIdentity,
   name?: string
 ): Promise<WorkspaceConfigurationDraft> =>
-  fetchGet(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`,
-    {
-      ...identityParams(identity),
-      ...(name ? { name } : {}),
-    }
-  );
+  fetchGet(`/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`, {
+    ...identityParams(identity),
+    ...(name ? { name } : {}),
+  });
 
 export const saveWorkspaceConfiguration = async (
   spaceId: string,
@@ -204,23 +212,20 @@ export const saveWorkspaceConfiguration = async (
     updatedBy: string;
   }
 ): Promise<WorkspaceConfigurationDraft> =>
-  fetchPut(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`,
-    {
-      ...identityParams(identity),
-      expected_version: input.expectedVersion,
-      base_revision_id: input.baseRevisionId,
-      document: input.document,
-      updated_by: input.updatedBy,
-    }
-  );
+  fetchPut(`/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`, {
+    ...identityParams(identity),
+    expected_version: input.expectedVersion,
+    base_revision_id: input.baseRevisionId,
+    document: input.document,
+    updated_by: input.updatedBy,
+  });
 
 export const reviewWorkspaceConfiguration = async (
   spaceId: string,
   identity: WorkspaceConfigurationIdentity
 ): Promise<WorkspaceConfigurationReviewResponse> =>
   fetchGet(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/review`,
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/review`,
     identityParams(identity)
   );
 
@@ -240,7 +245,7 @@ export const preflightWorkspaceConfigurationAsset = async (
   form.set('logical_path', logicalPath);
   form.set('file', file, file.name);
   return fetchPostForm(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/asset-preflight?${query.toString()}`,
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/asset-preflight?${query.toString()}`,
     form
   );
 };
@@ -269,7 +274,7 @@ export const preflightPreparedWorkspaceConfigurationAssets = async (
   }
 ): Promise<WorkspaceConfigurationPreparedAssetPreflight> =>
   fetchPost(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:preflight`,
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:preflight`,
     preparedAssetsPayload(identity, input)
   );
 
@@ -286,7 +291,7 @@ export const uploadPreparedWorkspaceConfigurationAsset = async (
   }
 ): Promise<{ asset: WorkspaceConfigurationPreparedAsset & { id: string } }> =>
   fetchPost(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:upload`,
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/prepared-assets:upload`,
     {
       ...preparedAssetsPayload(identity, input),
       logical_path: input.logicalPath,
@@ -311,7 +316,7 @@ export const recordPublishedWorkspaceConfiguration = async (
   draft: WorkspaceConfigurationDraft;
 }> =>
   fetchPost(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/published`,
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration/published`,
     {
       ...identityParams(identity),
       expected_version: input.expectedVersion,

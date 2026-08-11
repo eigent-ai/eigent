@@ -245,9 +245,7 @@ def _list_task_changed_files(
     # Account for filesystems whose mtimes have one-second resolution. Run
     # attempt windows prevent a historical direct-write Run from absorbing
     # files created by every later Run in the same selected Space folder.
-    windows = modification_windows or (
-        (snapshot.task_start_time - 1.0, None),
-    )
+    windows = modification_windows or ((snapshot.task_start_time - 1.0, None),)
 
     for root, include_all in _task_change_roots(snapshot):
         if remaining <= 0:
@@ -360,7 +358,9 @@ async def list_task_changed_files(
     task_id: str = Query(..., description="Run/task ID"),
     project_id: str = Query(..., description="Project ID"),
     email: str = Query(..., description="User email"),
-    user_id: str | None = Query(None, description="Optional canonical user ID"),
+    user_id: str | None = Query(
+        None, description="Optional canonical user ID"
+    ),
 ) -> list[dict]:
     """Return the Desktop-local preview index for one Run's changed files."""
     snapshot = get_workspace_resolver().store.get_snapshot(
@@ -489,7 +489,7 @@ async def list_project_files(
     return result
 
 
-@router.get("/files/stream")
+@router.api_route("/files/stream", methods=["GET", "HEAD"])
 async def stream_file(
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),

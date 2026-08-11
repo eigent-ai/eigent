@@ -2946,13 +2946,16 @@ class SQLiteRunJournal:
                         "Bundle secret binding request id was reused"
                     )
                 rows = connection.execute(
-                    f"""SELECT * FROM workspace_bundle_secret_bindings
+                    """SELECT * FROM workspace_bundle_secret_bindings
                     WHERE proposal_id = ? AND requirement_key IN (
-                        {",".join("?" for _ in normalized)}
+                        SELECT value FROM json_each(?)
                     ) ORDER BY requirement_key""",
                     (
                         proposal_id,
-                        *(item["requirement_key"] for item in normalized),
+                        json.dumps(
+                            [item["requirement_key"] for item in normalized],
+                            separators=(",", ":"),
+                        ),
                     ),
                 ).fetchall()
                 proposal = connection.execute(
@@ -3097,13 +3100,16 @@ class SQLiteRunJournal:
                     (timestamp, proposal_id, expected_proposal_version),
                 )
             rows = connection.execute(
-                f"""SELECT * FROM workspace_bundle_secret_bindings
+                """SELECT * FROM workspace_bundle_secret_bindings
                 WHERE proposal_id = ? AND requirement_key IN (
-                    {",".join("?" for _ in normalized)}
+                    SELECT value FROM json_each(?)
                 ) ORDER BY requirement_key""",
                 (
                     proposal_id,
-                    *(item["requirement_key"] for item in normalized),
+                    json.dumps(
+                        [item["requirement_key"] for item in normalized],
+                        separators=(",", ":"),
+                    ),
                 ),
             ).fetchall()
             proposal = connection.execute(
@@ -9827,19 +9833,20 @@ class SQLiteRunJournal:
                     continue
                 token = uuid.uuid4().hex
                 event_ids = [row["event_id"] for row in ready]
-                placeholders = ",".join("?" for _ in event_ids)
                 updated = connection.execute(
-                    f"""
+                    """
                     UPDATE command_result_outbox
                     SET status = 'sending', lease_token = ?, lease_until = ?,
                         updated_at = ?
-                    WHERE status = 'pending' AND event_id IN ({placeholders})
+                    WHERE status = 'pending' AND event_id IN (
+                        SELECT value FROM json_each(?)
+                    )
                     """,
                     (
                         token,
                         timestamp + lease_seconds,
                         timestamp,
-                        *event_ids,
+                        json.dumps(event_ids, separators=(",", ":")),
                     ),
                 )
                 if updated.rowcount != len(event_ids):
@@ -9897,15 +9904,14 @@ class SQLiteRunJournal:
             raise ValueError("failed event must belong to command batch")
         with self._write_transaction() as connection:
             self._assert_command_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
             connection.execute(
-                f"""
+                """
                 UPDATE command_result_outbox
                 SET status = 'pending', lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (SELECT value FROM json_each(?))
                 """,
-                (timestamp, *event_ids),
+                (timestamp, json.dumps(event_ids, separators=(",", ":"))),
             )
             connection.execute(
                 """
@@ -10017,15 +10023,21 @@ class SQLiteRunJournal:
                     continue
                 lease_token = uuid.uuid4().hex
                 event_ids = [row["event_id"] for row in ready]
-                placeholders = ",".join("?" for _ in event_ids)
                 claimed = connection.execute(
-                    f"""
+                    """
                     UPDATE run_event_sync_outbox
                     SET status = 'sending', lease_token = ?, lease_until = ?,
                         updated_at = ?
-                    WHERE status = 'pending' AND event_id IN ({placeholders})
+                    WHERE status = 'pending' AND event_id IN (
+                        SELECT value FROM json_each(?)
+                    )
                     """,
-                    (lease_token, lease_until, timestamp, *event_ids),
+                    (
+                        lease_token,
+                        lease_until,
+                        timestamp,
+                        json.dumps(event_ids, separators=(",", ":")),
+                    ),
                 )
                 if claimed.rowcount != len(event_ids):
                     raise OutboxLeaseLostError(
@@ -10054,15 +10066,14 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
             connection.execute(
-                f"""
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'sent', lease_token = NULL, lease_until = NULL,
                     last_error = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (SELECT value FROM json_each(?))
                 """,
-                (timestamp, *event_ids),
+                (timestamp, json.dumps(event_ids, separators=(",", ":"))),
             )
 
     def retry_outbox_batch(
@@ -10077,16 +10088,20 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
             connection.execute(
-                f"""
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'pending', attempt_count = attempt_count + 1,
                     next_attempt_at = ?, last_error = ?, lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (SELECT value FROM json_each(?))
                 """,
-                (next_attempt_at, error[:4000], timestamp, *event_ids),
+                (
+                    next_attempt_at,
+                    error[:4000],
+                    timestamp,
+                    json.dumps(event_ids, separators=(",", ":")),
+                ),
             )
 
     def block_outbox_batch(
@@ -10103,15 +10118,14 @@ class SQLiteRunJournal:
             raise ValueError("failed event must belong to the leased batch")
         with self._write_transaction() as connection:
             self._assert_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
             connection.execute(
-                f"""
+                """
                 UPDATE run_event_sync_outbox
                 SET status = 'pending', lease_token = NULL,
                     lease_until = NULL, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (SELECT value FROM json_each(?))
                 """,
-                (timestamp, *event_ids),
+                (timestamp, json.dumps(event_ids, separators=(",", ":"))),
             )
             connection.execute(
                 """
@@ -10253,21 +10267,27 @@ class SQLiteRunJournal:
                 draft.created_at,
             ),
         )
-        assignments = ["version = version + 1", "updated_at = ?"]
-        parameters: list[Any] = [draft.created_at]
-        if run_status is not None:
-            assignments.append("status = ?")
-            parameters.append(run_status)
-        if clear_active_attempt:
-            assignments.append("active_attempt_id = NULL")
-        elif active_attempt_id is not None:
-            assignments.append("active_attempt_id = ?")
-            parameters.append(active_attempt_id)
-        parameters.extend([run_id, current_version])
         updated = connection.execute(
-            f"UPDATE runs SET {', '.join(assignments)} "
-            "WHERE run_id = ? AND version = ?",
-            parameters,
+            """UPDATE runs
+            SET version = version + 1,
+                updated_at = ?,
+                status = CASE WHEN ? THEN ? ELSE status END,
+                active_attempt_id = CASE
+                    WHEN ? THEN NULL
+                    WHEN ? THEN ?
+                    ELSE active_attempt_id
+                END
+            WHERE run_id = ? AND version = ?""",
+            (
+                draft.created_at,
+                run_status is not None,
+                run_status,
+                clear_active_attempt,
+                not clear_active_attempt and active_attempt_id is not None,
+                active_attempt_id,
+                run_id,
+                current_version,
+            ),
         )
         if updated.rowcount != 1:
             raise OptimisticConcurrencyError(
@@ -10387,16 +10407,18 @@ class SQLiteRunJournal:
     ) -> None:
         if not event_ids:
             raise ValueError("outbox batch must contain events")
-        placeholders = ",".join("?" for _ in event_ids)
         count = int(
             connection.execute(
-                f"""
+                """
                 SELECT COUNT(*)
                 FROM run_event_sync_outbox
                 WHERE status = 'sending' AND lease_token = ?
-                  AND event_id IN ({placeholders})
+                  AND event_id IN (SELECT value FROM json_each(?))
                 """,
-                (batch.lease_token, *event_ids),
+                (
+                    batch.lease_token,
+                    json.dumps(event_ids, separators=(",", ":")),
+                ),
             ).fetchone()[0]
         )
         if count != len(event_ids):
@@ -10412,15 +10434,17 @@ class SQLiteRunJournal:
     ) -> None:
         if not event_ids:
             raise ValueError("command outbox batch must contain events")
-        placeholders = ",".join("?" for _ in event_ids)
         count = int(
             connection.execute(
-                f"""
+                """
                 SELECT COUNT(*) FROM command_result_outbox
                 WHERE status = 'sending' AND lease_token = ?
-                  AND event_id IN ({placeholders})
+                  AND event_id IN (SELECT value FROM json_each(?))
                 """,
-                (batch.lease_token, *event_ids),
+                (
+                    batch.lease_token,
+                    json.dumps(event_ids, separators=(",", ":")),
+                ),
             ).fetchone()[0]
         )
         if count != len(event_ids):
@@ -10465,16 +10489,15 @@ class SQLiteRunJournal:
         event_ids = [event.event_id for event in batch.events]
         with self._write_transaction() as connection:
             self._assert_command_batch_lease(connection, batch, event_ids)
-            placeholders = ",".join("?" for _ in event_ids)
             connection.execute(
-                f"""
+                """
                 UPDATE command_result_outbox
                 SET status = ?,
                     attempt_count = attempt_count + ?,
                     next_attempt_at = COALESCE(?, next_attempt_at),
                     lease_token = NULL, lease_until = NULL,
                     last_error = ?, updated_at = ?
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN (SELECT value FROM json_each(?))
                 """,
                 (
                     status,
@@ -10482,7 +10505,7 @@ class SQLiteRunJournal:
                     next_attempt_at,
                     error[:4000] if error else None,
                     timestamp,
-                    *event_ids,
+                    json.dumps(event_ids, separators=(",", ":")),
                 ),
             )
 

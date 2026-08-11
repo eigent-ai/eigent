@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fetchGet, fetchPost, fetchPut } from '@/api/http';
 import {
   findWorkspaceBundle,
@@ -171,7 +185,7 @@ export const createWorkspaceBundleInstallProposal = async (input: {
   bundleId: string;
   revisionId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost('/api/v1/workspace-bundles/install-proposals', {
+  fetchPost('/workspace-bundles/install-proposals', {
     proposal_id: input.proposalId,
     request_id: input.requestId,
     space_id: input.spaceId,
@@ -184,14 +198,14 @@ export const fetchWorkspaceBundleInstallProposal = async (
   proposalId: string
 ): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchGet(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(proposalId)}`
+    `/workspace-bundles/install-proposals/${encodeURIComponent(proposalId)}`
   );
 
 export const fetchWorkspaceBundleInstallForSpace = async (
   spaceId: string
 ): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchGet(
-    `/api/v1/spaces/${encodeURIComponent(spaceId)}/workspace-bundle-installation`
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-bundle-installation`
   );
 
 export const decideWorkspaceBundleInstall = async (input: {
@@ -201,7 +215,7 @@ export const decideWorkspaceBundleInstall = async (input: {
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/decision`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/decision`,
     {
       expected_version: input.expectedVersion,
       approved: input.approved,
@@ -218,7 +232,7 @@ export const bindWorkspaceBundleConnector = async (input: {
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/connector-bindings`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/connector-bindings`,
     {
       expected_version: input.expectedVersion,
       slot_id: input.slotId,
@@ -236,7 +250,7 @@ export const bindWorkspaceBundleLocalPath = async (input: {
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-path-bindings`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-path-bindings`,
     {
       expected_version: input.expectedVersion,
       slot_id: input.slotId,
@@ -252,7 +266,7 @@ export const approveWorkspaceBundleScript = async (input: {
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/script-approvals`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/script-approvals`,
     {
       expected_version: input.expectedVersion,
       action_id: input.actionId,
@@ -276,7 +290,7 @@ export const bindWorkspaceBundleLocalValues = async (input: {
   bindings: WorkspaceBundleOpaqueValueBinding[];
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPut(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-values`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-values`,
     {
       client_request_id: input.clientRequestId,
       expected_version: input.expectedVersion,
@@ -293,7 +307,7 @@ export const materializeWorkspaceBundle = async (input: {
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost(
-    `/api/v1/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/materialize`,
+    `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/materialize`,
     {
       expected_version: input.expectedVersion,
       email: input.email,
