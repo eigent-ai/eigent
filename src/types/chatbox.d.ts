@@ -141,11 +141,15 @@ declare global {
     agent_name?: string;
     attaches?: File[];
     interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
+    /** Explicit ASK identity for a user response retained in legacy history. */
+    interactionResponseTo?: string;
   }
 
   interface AgentMessage {
     timestamp?: number | null;
     created_at?: string | null;
+    /** Per-Run receive order used to merge legacy per-agent work logs. */
+    timelineSequence?: number;
     step: AgentStepType;
     data: {
       project_id?: string;

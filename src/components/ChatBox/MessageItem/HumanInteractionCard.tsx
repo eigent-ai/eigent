@@ -26,8 +26,13 @@ import { toast } from 'sonner';
 
 interface HumanInteractionCardProps {
   interaction: HumanInteractionPayload;
+  /** Historical answer for a question resolved through the legacy composer. */
+  response?: string;
   readOnly?: boolean;
-  onResolved?: () => void;
+  /** Supplies a safe display receipt so legacy history can survive remounts. */
+  onResolved?: (response?: string) => void;
+  /** Work-log mode: pending prompt lives in BottomBox; resolved history includes it. */
+  timelineReceipt?: boolean;
 }
 
 export function isHumanInteractionReadOnly(input: {
@@ -66,16 +71,69 @@ const requestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `interaction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+function decisionDisplayText(
+  interaction: HumanInteractionPayload,
+  decision: Record<string, unknown>
+): string | null {
+  const selectedOptionId =
+    typeof decision.option_id === 'string' ? decision.option_id : null;
+  const selectedOption = selectedOptionId
+    ? interaction.options?.find(
+        (option) => (option.option_id || option.id) === selectedOptionId
+      )
+    : null;
+  if (selectedOption?.label) return selectedOption.label;
+
+  if (typeof decision.decision === 'string') {
+    const normalized = decision.decision.toLowerCase();
+    if (normalized === 'approved') {
+      const scope = typeof decision.scope === 'string' ? decision.scope : '';
+      if (scope === 'run') return 'Allowed for this Run';
+      if (scope === 'space') return 'Always allowed in this Space';
+      return 'Approved once';
+    }
+    if (normalized === 'rejected') return 'Rejected';
+    return decision.decision;
+  }
+
+  if (decision.values && typeof decision.values === 'object') {
+    const values = decision.values as Record<string, unknown>;
+    const fieldReceipts = (interaction.fields || []).map((field) => {
+      const rawValue = values[field.id];
+      const fieldType = (field.type || 'text').toLowerCase();
+      const sensitive = /password|secret|credential|token|key/.test(fieldType);
+      const displayValue = sensitive
+        ? '[redacted]'
+        : typeof rawValue === 'string' || typeof rawValue === 'number'
+          ? String(rawValue)
+          : typeof rawValue === 'boolean'
+            ? rawValue
+              ? 'Yes'
+              : 'No'
+            : '[submitted]';
+      return `${field.label}: ${displayValue}`;
+    });
+    return fieldReceipts.length ? fieldReceipts.join('\n') : 'Form submitted';
+  }
+
+  return null;
+}
+
 export function HumanInteractionCard({
   interaction,
+  response,
   readOnly = false,
   onResolved,
+  timelineReceipt = false,
 }: HumanInteractionCardProps) {
   const userId = useAuthStore((state) => state.user_id);
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
   const [durablyPending, setDurablyPending] = useState(false);
+  const [submittedResponse, setSubmittedResponse] = useState<string | null>(
+    null
+  );
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -83,6 +141,7 @@ export function HumanInteractionCard({
     setSubmitting(false);
     setResolved(false);
     setDurablyPending(false);
+    setSubmittedResponse(null);
     setSubmissionError(null);
     setFormValues({});
   }, [interaction.interaction_id]);
@@ -128,8 +187,10 @@ export function HumanInteractionCard({
         decision,
         actorId: userId,
       });
+      const decisionText = decisionDisplayText(interaction, decision);
+      setSubmittedResponse(decisionText);
       setResolved(true);
-      onResolved?.();
+      onResolved?.(decisionText || undefined);
     } catch (error) {
       console.error('[HumanInteractionCard] decision failed', error);
       const message =
@@ -146,19 +207,27 @@ export function HumanInteractionCard({
     }
   };
 
-  const disabled = effectiveReadOnly || resolved || submitting;
-  const title =
-    interaction.title ||
-    (interaction.interaction_type === 'approval'
-      ? 'Approval required'
-      : 'Input required');
+  const displayedResponse = response?.trim() || submittedResponse;
+  const disabled =
+    effectiveReadOnly || Boolean(displayedResponse) || resolved || submitting;
+  const title = timelineReceipt
+    ? 'Input required'
+    : interaction.title ||
+      (interaction.interaction_type === 'approval'
+        ? 'Approval required'
+        : 'Input required');
   const isToolMatcher =
     interaction.rule_matcher?.matcher_kind === 'literal_tool';
 
-  if (resolved) return null;
+  // Preserve the legacy card's remove-on-resolution behavior. Work-log
+  // receipts remain mounted so their submitted decision can be displayed.
+  if (resolved && !timelineReceipt) return null;
 
   return (
-    <div className="mx-6 my-3 rounded-2xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4">
+    <div
+      data-human-input-receipt={timelineReceipt ? '' : undefined}
+      className={`${timelineReceipt ? 'w-full' : 'mx-6 my-3'} rounded-2xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4`}
+    >
       <div className="flex items-start gap-3">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default" />
         <div className="min-w-0 flex-1 space-y-3">
@@ -166,14 +235,15 @@ export function HumanInteractionCard({
             <div className="text-sm font-semibold text-ds-text-neutral-default-default">
               {title}
             </div>
-            {interaction.question ? (
+            {interaction.question &&
+            (!timelineReceipt || Boolean(displayedResponse)) ? (
               <p className="mt-1 text-sm text-ds-text-neutral-subtle-default">
                 {interaction.question}
               </p>
             ) : null}
           </div>
 
-          {interaction.operation ? (
+          {!timelineReceipt && interaction.operation ? (
             <div className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
               <div>{interaction.operation}</div>
               {targets.slice(0, 3).map((target) => (
@@ -184,7 +254,8 @@ export function HumanInteractionCard({
             </div>
           ) : null}
 
-          {interaction.display_arguments &&
+          {!timelineReceipt &&
+          interaction.display_arguments &&
           Object.keys(interaction.display_arguments).length > 0 ? (
             <details className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
               <summary className="cursor-pointer font-medium">
@@ -196,7 +267,7 @@ export function HumanInteractionCard({
             </details>
           ) : null}
 
-          {interaction.rule_matcher?.resource_pattern ? (
+          {!timelineReceipt && interaction.rule_matcher?.resource_pattern ? (
             <div className="rounded-xl border border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
               <div className="font-medium">Persistent approval matcher</div>
               <div
@@ -210,7 +281,21 @@ export function HumanInteractionCard({
             </div>
           ) : null}
 
-          {interaction.interaction_type === 'form' ? (
+          {displayedResponse ? (
+            <div
+              data-interaction-response
+              className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2"
+            >
+              <div className="text-xs font-medium text-ds-text-neutral-muted-default">
+                Your response
+              </div>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ds-text-neutral-default-default">
+                {displayedResponse}
+              </p>
+            </div>
+          ) : null}
+
+          {!displayedResponse && interaction.interaction_type === 'form' ? (
             <div className="space-y-2">
               {(interaction.fields || []).map((field) => (
                 <label key={field.id} className="block text-xs">
@@ -233,95 +318,110 @@ export function HumanInteractionCard({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            {interaction.interaction_type === 'approval' ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={disabled}
-                  onClick={() =>
-                    void submit({ decision: 'approved', scope: 'once' })
-                  }
-                >
-                  {submitting ? 'Approving…' : 'Approve once'}
-                </Button>
-                {(interaction.allowed_scopes || []).includes('space') ? (
+          {!displayedResponse ? (
+            <div className="flex flex-wrap gap-2">
+              {interaction.interaction_type === 'approval' ? (
+                <>
                   <Button
                     type="button"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() =>
+                      void submit({ decision: 'approved', scope: 'once' })
+                    }
+                  >
+                    {submitting ? 'Approving…' : 'Approve once'}
+                  </Button>
+                  {(interaction.allowed_scopes || []).includes('space') ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={disabled}
+                      onClick={() =>
+                        void submit({ decision: 'approved', scope: 'space' })
+                      }
+                    >
+                      {isToolMatcher
+                        ? 'Always allow this tool in Space'
+                        : 'Always allow in Space'}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() =>
+                      void submit({ decision: 'rejected', scope: 'once' })
+                    }
+                  >
+                    Reject
+                  </Button>
+                </>
+              ) : interaction.interaction_type === 'choice' ? (
+                (interaction.options || []).map((option) => (
+                  <Button
+                    type="button"
+                    key={option.option_id || option.id || option.label}
                     size="sm"
                     variant="outline"
                     disabled={disabled}
                     onClick={() =>
-                      void submit({ decision: 'approved', scope: 'space' })
+                      void submit({
+                        option_id: option.option_id || option.id,
+                        value: option.value,
+                      })
                     }
                   >
-                    {isToolMatcher
-                      ? 'Always allow this tool in Space'
-                      : 'Always allow in Space'}
+                    {option.label}
                   </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={disabled}
-                  onClick={() =>
-                    void submit({ decision: 'rejected', scope: 'once' })
-                  }
-                >
-                  Reject
-                </Button>
-              </>
-            ) : interaction.interaction_type === 'choice' ? (
-              (interaction.options || []).map((option) => (
-                <Button
-                  type="button"
-                  key={option.option_id || option.id || option.label}
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() =>
-                    void submit({
-                      option_id: option.option_id || option.id,
-                      value: option.value,
-                    })
-                  }
-                >
-                  {option.label}
-                </Button>
-              ))
-            ) : interaction.interaction_type === 'form' ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={disabled}
-                onClick={() => void submit({ values: formValues })}
-              >
-                Submit
-              </Button>
-            ) : interaction.interaction_type !== 'question' ? (
-              <>
+                ))
+              ) : interaction.interaction_type === 'form' ? (
                 <Button
                   type="button"
                   size="sm"
                   disabled={disabled}
-                  onClick={() => void submit({ decision: 'approved' })}
+                  onClick={() => void submit({ values: formValues })}
                 >
-                  Confirm
+                  Submit
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={disabled}
-                  onClick={() => void submit({ decision: 'rejected' })}
-                >
-                  Reject
-                </Button>
-              </>
-            ) : null}
-          </div>
+              ) : interaction.interaction_type !== 'question' ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => void submit({ decision: 'approved' })}
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => void submit({ decision: 'rejected' })}
+                  >
+                    Reject
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {resolved ? (
+            <div className="text-xs text-ds-text-success-default-default">
+              Decision saved
+            </div>
+          ) : null}
+          {submitting ? (
+            <div
+              role="status"
+              className="text-xs text-ds-text-neutral-subtle-default"
+            >
+              Saving decision…
+            </div>
+          ) : null}
           {submissionError ? (
             <div
               role="alert"

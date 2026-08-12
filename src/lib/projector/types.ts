@@ -46,7 +46,16 @@ export type ProjectedLegacyStep = {
 
 export type ProjectedRun = {
   runId: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  status:
+    | 'unknown'
+    | 'pending'
+    | 'running'
+    | 'waiting_for_user'
+    | 'cancelling'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'interrupted';
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
@@ -107,6 +116,12 @@ export type ProjectSnapshotInput = {
     status: string;
     expected_next_run_sequence: number;
     updated_at: string;
+    /** RunJournal aggregate version; aliases the latest event run_version. */
+    run_version?: number;
+    /** Accepted for direct snapshots shaped like the existing GET /runs API. */
+    version?: number;
+    origin?: string | null;
+    resume_blocked_reason?: string | null;
   }>;
   recent_events: unknown[];
   artifact_events?: unknown[];

@@ -59,6 +59,8 @@ export interface InputboxProps {
   onSend?: () => void;
   /** Array of file attachments */
   files?: FileAttachment[];
+  /** Render attachment chips inside the input surface. BottomBox moves them to BoxHeader. */
+  showFileAttachments?: boolean;
   /** Callback when files are modified */
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
@@ -135,6 +137,7 @@ export const Inputbox = ({
   onChange,
   onSend,
   files = [],
+  showFileAttachments = true,
   onFilesChange,
   onAddFile,
   placeholder,
@@ -343,7 +346,7 @@ export const Inputbox = ({
         </div>
       )}
       {/* Layer 2: File attachments (only show if has files) */}
-      {files.length > 0 && (
+      {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;

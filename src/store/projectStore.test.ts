@@ -204,6 +204,44 @@ describe('projectStore runtime shape', () => {
     ]);
   });
 
+  it('reuses an optimistically seeded follow-up run without erasing it', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Test Project', undefined, 'project_seeded_followup');
+    const seeded = useProjectStore
+      .getState()
+      .appendInitChatStore(projectId, 'run_followup');
+    expect(seeded).not.toBeNull();
+
+    seeded?.chatStore.getState().addMessages('run_followup', {
+      id: 'followup-message',
+      role: 'user',
+      content: 'Use the CSV format',
+    });
+    seeded?.chatStore.getState().setIsPending('run_followup', true);
+
+    const confirmed = useProjectStore
+      .getState()
+      .appendInitChatStore(projectId, 'run_followup');
+
+    expect(confirmed?.taskId).toBe('run_followup');
+    expect(confirmed?.chatStore).toBe(seeded?.chatStore);
+    expect(confirmed?.chatStore.getState().tasks.run_followup).toMatchObject({
+      isPending: true,
+      messages: [
+        expect.objectContaining({
+          id: 'followup-message',
+          content: 'Use the CSV format',
+        }),
+      ],
+    });
+    expect(
+      Object.keys(confirmed?.chatStore.getState().tasks ?? {}).filter(
+        (taskId) => taskId === 'run_followup'
+      )
+    ).toHaveLength(1);
+  });
+
   it('stores and returns the per-project model selection', () => {
     const projectId = useProjectStore
       .getState()

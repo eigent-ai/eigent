@@ -24,28 +24,36 @@ import {
   isHumanInteractionReadOnly,
 } from './HumanInteractionCard';
 
+const mocks = vi.hoisted(() => ({
+  decideHumanInteraction: vi.fn(),
+  isHumanInteractionStillPending: vi.fn(),
+  toastError: vi.fn(),
+}));
+
 vi.mock('@/service/humanInteractionApi', async (importOriginal) => {
-  const actual =
+  const original =
     await importOriginal<typeof import('@/service/humanInteractionApi')>();
   return {
-    ...actual,
-    decideHumanInteraction: vi.fn(),
-    isHumanInteractionStillPending: vi.fn(),
+    ...original,
+    decideHumanInteraction: mocks.decideHumanInteraction,
+    isHumanInteractionStillPending: mocks.isHumanInteractionStillPending,
   };
 });
 
-vi.mock('@/store/authStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/store/authStore')>();
-  return {
-    ...actual,
-    useAuthStore: (selector: (state: { user_id: number }) => unknown) =>
-      selector({ user_id: 42 }),
-  };
-});
+vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => ({
+    language: 'en-US',
+    setLanguage: vi.fn(),
+  }),
+  useAuthStore: (selector: (state: { user_id: number }) => unknown): unknown =>
+    selector({ user_id: 42 }),
+}));
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({
+  toast: { error: mocks.toastError },
+}));
 
-const interaction: HumanInteractionPayload = {
+const approvalInteraction: HumanInteractionPayload = {
   interaction_id: 'approval-1',
   interaction_type: 'approval' as const,
   run_id: 'run-1',
@@ -55,17 +63,18 @@ const interaction: HumanInteractionPayload = {
   question: 'The agent wants to run todo_write.',
   allowed_scopes: ['once' as const],
 };
+const interaction = approvalInteraction;
 
-describe('HumanInteractionCard durable approval', () => {
+describe('HumanInteractionCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(decideHumanInteraction).mockResolvedValue({});
-    vi.mocked(isHumanInteractionStillPending).mockResolvedValue(false);
+    mocks.decideHumanInteraction.mockResolvedValue({ status: 'resolved' });
+    mocks.isHumanInteractionStillPending.mockResolvedValue(false);
   });
 
   it('keeps a waiting durable approval actionable after replay reattachment', async () => {
     const readOnly = isHumanInteractionReadOnly({
-      interaction,
+      interaction: approvalInteraction,
       activeTaskId: 'run-1',
       taskType: 'replay',
       taskStatus: 'finished',
@@ -76,7 +85,7 @@ describe('HumanInteractionCard durable approval', () => {
     const onResolved = vi.fn();
     render(
       <HumanInteractionCard
-        interaction={interaction}
+        interaction={approvalInteraction}
         readOnly={readOnly}
         onResolved={onResolved}
       />
@@ -85,15 +94,15 @@ describe('HumanInteractionCard durable approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
 
     await waitFor(() =>
-      expect(decideHumanInteraction).toHaveBeenCalledWith(
-        interaction,
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledWith(
+        approvalInteraction,
         expect.objectContaining({
           decision: { decision: 'approved', scope: 'once' },
           actorId: 42,
         })
       )
     );
-    expect(onResolved).toHaveBeenCalledOnce();
+    expect(onResolved).toHaveBeenCalledWith('Approved once');
     expect(screen.queryByText('Allow todo_write?')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Approve once' })
@@ -102,14 +111,17 @@ describe('HumanInteractionCard durable approval', () => {
 
   it('keeps terminal replay history read-only', async () => {
     const readOnly = isHumanInteractionReadOnly({
-      interaction,
+      interaction: approvalInteraction,
       activeTaskId: 'run-1',
       taskType: 'replay',
       taskStatus: 'finished',
       durableRunStatus: 'completed',
     });
     render(
-      <HumanInteractionCard interaction={interaction} readOnly={readOnly} />
+      <HumanInteractionCard
+        interaction={approvalInteraction}
+        readOnly={readOnly}
+      />
     );
 
     await waitFor(() =>
@@ -130,11 +142,44 @@ describe('HumanInteractionCard durable approval', () => {
     expect(readOnly).toBe(false);
   });
 
+  it('shows progress and keeps a timeline receipt mounted after approval', async () => {
+    let resolveDecision: (() => void) | undefined;
+    mocks.decideHumanInteraction.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDecision = resolve;
+        })
+    );
+    const onResolved = vi.fn();
+
+    render(
+      <HumanInteractionCard
+        interaction={approvalInteraction}
+        onResolved={onResolved}
+        timelineReceipt
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+
+    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Saving decision…');
+
+    resolveDecision?.();
+
+    await waitFor(() => {
+      expect(screen.getByText('Decision saved')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Approved once')).toBeInTheDocument();
+    expect(onResolved).toHaveBeenCalledWith('Approved once');
+  });
+
   it('offers a Space-scoped approval for an exact opaque tool matcher', async () => {
     const toolInteraction: HumanInteractionPayload = {
-      ...interaction,
-      // Legacy pending cards may still carry run. The current UI contract
-      // deliberately hides it because one Project contains multiple Runs.
+      ...approvalInteraction,
+      // Legacy cards deliberately hide Run scope because a Project can contain
+      // multiple Runs; event-native BottomBox owns Run-scoped decisions.
       allowed_scopes: ['once', 'run', 'space'] as const,
       rule_matcher: {
         action_pattern: 'action-identity:sha256:opaque-digest',
@@ -146,9 +191,7 @@ describe('HumanInteractionCard durable approval', () => {
     render(<HumanInteractionCard interaction={toolInteraction} />);
 
     expect(
-      screen.queryByRole('button', {
-        name: 'Allow this tool for this Run',
-      })
+      screen.queryByRole('button', { name: 'Allow for this Run' })
     ).not.toBeInTheDocument();
     expect(screen.getByText(/mcp\.tool\.write/)).toBeInTheDocument();
     expect(
@@ -162,7 +205,7 @@ describe('HumanInteractionCard durable approval', () => {
     );
 
     await waitFor(() =>
-      expect(decideHumanInteraction).toHaveBeenCalledWith(
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledWith(
         toolInteraction,
         expect.objectContaining({
           decision: { decision: 'approved', scope: 'space' },
@@ -171,18 +214,133 @@ describe('HumanInteractionCard durable approval', () => {
     );
   });
 
-  it('shows a durable API rejection inline and re-enables retry', async () => {
-    vi.mocked(decideHumanInteraction).mockRejectedValueOnce(
+  it('shows the durable API rejection inline and allows retrying', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    mocks.decideHumanInteraction.mockRejectedValueOnce(
       new Error('Approval version changed')
     );
-    render(<HumanInteractionCard interaction={interaction} />);
+    render(<HumanInteractionCard interaction={approvalInteraction} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Approval version changed'
     );
+    expect(mocks.toastError).toHaveBeenCalledWith('Approval version changed');
     expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
+    await waitFor(() => {
+      expect(mocks.decideHumanInteraction).toHaveBeenCalledTimes(2);
+    });
+    consoleError.mockRestore();
+  });
+
+  it('only renders persistent approval actions offered by the backend', () => {
+    render(<HumanInteractionCard interaction={approvalInteraction} />);
+
+    expect(
+      screen.queryByRole('button', { name: 'Allow for this Run' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Always allow in Space' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders a resolved question and its composer answer as one card', () => {
+    render(
+      <HumanInteractionCard
+        interaction={{
+          interaction_id: 'question-1',
+          interaction_type: 'question',
+          run_id: 'run-1',
+          title: 'Input required',
+          question: 'Which market should I use?',
+        }}
+        response="The UK market"
+      />
+    );
+
+    expect(screen.getByText('Which market should I use?')).toBeInTheDocument();
+    expect(screen.getByText('Your response')).toBeInTheDocument();
+    expect(screen.getByText('The UK market')).toBeInTheDocument();
+    expect(
+      screen.getByText('The UK market').closest('[data-interaction-response]')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the question and answer together in a timeline receipt', () => {
+    render(
+      <HumanInteractionCard
+        interaction={{
+          interaction_id: 'choice-timeline',
+          interaction_type: 'choice',
+          run_id: 'run-1',
+          question: 'Choose a private deployment region',
+          options: [{ option_id: 'uk', label: 'United Kingdom' }],
+        }}
+        response="United Kingdom"
+        timelineReceipt
+      />
+    );
+
+    expect(screen.getByText('Input required')).toBeInTheDocument();
+    expect(
+      screen.getByText('Choose a private deployment region')
+    ).toBeInTheDocument();
+    expect(screen.getByText('United Kingdom')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'United Kingdom' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the question out of a pending timeline receipt', () => {
+    render(
+      <HumanInteractionCard
+        interaction={{
+          interaction_id: 'choice-pending',
+          interaction_type: 'choice',
+          run_id: 'run-1',
+          question: 'Choose a pending deployment region',
+          options: [{ option_id: 'uk', label: 'United Kingdom' }],
+        }}
+        timelineReceipt
+      />
+    );
+
+    expect(screen.getByText('Input required')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Choose a pending deployment region')
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the selected choice label after submitting a timeline receipt', async () => {
+    const onResolved = vi.fn();
+
+    render(
+      <HumanInteractionCard
+        interaction={{
+          interaction_id: 'choice-1',
+          interaction_type: 'choice',
+          run_id: 'run-1',
+          question: 'Pick one',
+          options: [{ option_id: 'option-a', label: 'Option A', value: 'a' }],
+        }}
+        onResolved={onResolved}
+        timelineReceipt
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Option A' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Your response')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Option A')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Option A' })).toBeNull();
+    expect(onResolved).toHaveBeenCalledWith('Option A');
   });
 
   it('unlocks a legacy Project-keyed card only after Brain confirms it is still pending', async () => {

@@ -115,12 +115,12 @@ const ArtifactChangeList: React.FC<{
     : fileItems.slice(0, collapsedCount);
 
   return (
-    <section className="bg-ds-bg-neutral-primary-default my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default">
+    <section className="my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
       <div className="flex items-center gap-3 border-b border-ds-border-neutral-default-default px-4 py-3">
         <span className="bg-ds-bg-neutral-secondary-default flex size-8 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
           <FileText size={18} aria-hidden />
         </span>
-        <span className="text-body-md font-semibold text-ds-text-neutral-default-default">
+        <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
           Files changed
         </span>
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
@@ -147,7 +147,7 @@ const ArtifactChangeList: React.FC<{
               key={`artifact-${detail}-${fileIndex}`}
               title={detail}
               onClick={() => onOpen(file)}
-              className="group flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-ds-bg-neutral-default-hover"
+              className="group flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-ds-bg-neutral-subtle-default"
             >
               <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
                 {detail}
@@ -163,7 +163,7 @@ const ArtifactChangeList: React.FC<{
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((value) => !value)}
-            className="mt-1 flex items-center gap-1 rounded-lg px-2 py-2 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover"
+            className="mt-1 flex items-center gap-1 rounded-lg px-2 py-2 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-subtle-default"
           >
             {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
             <ChevronDown
@@ -199,11 +199,15 @@ function shouldUseLiveAgentTypewriter(
   return last.role === 'agent' && last.id === messageId;
 }
 
-interface QueryGroup {
+export interface QueryGroup {
   queryId: string;
   userMessage: any;
   taskMessage?: any;
   otherMessages: any[];
+  /** Structured ASK replies stay inside their Run instead of starting a turn. */
+  interactionResponses?: Record<string, any>;
+  /** Exactly one query group owns the Run-scoped task work log. */
+  ownsRunWorkLog?: boolean;
 }
 
 interface UserQueryGroupProps {
@@ -220,6 +224,27 @@ interface UserQueryGroupProps {
    * make every historic group repaint with the newest summary).
    */
   taskId?: string;
+}
+
+export function isUserMessageReplyToAsk(
+  messages: any[],
+  userMessageId: string
+): boolean {
+  const userMessageIndex = messages.findIndex(
+    (message: any) => message.id === userMessageId
+  );
+  if (userMessageIndex <= 0) return false;
+  const userMessage = messages[userMessageIndex];
+  const previousMessage = messages[userMessageIndex - 1];
+  const followsAsk =
+    previousMessage?.role === 'agent' &&
+    previousMessage?.step === AgentStep.ASK;
+  if (!followsAsk) return false;
+  if (!userMessage?.interactionResponseTo) return true;
+  return (
+    previousMessage?.interaction?.interaction_id ===
+    userMessage.interactionResponseTo
+  );
 }
 
 export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
@@ -257,29 +282,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     }
   );
 
-  // Show task if this query group has a task message OR if it's the most recent user query during splitting
-  // During splitting phase (no to_sub_tasks yet), show task for the most recent query only
-  // Exclude human-reply scenarios (when user is replying to an activeAsk)
+  // A human reply is scoped to the user message directly following its ASK.
+  // Do not use task.activeAsk here: that is Run-global state and used to make
+  // every historical user query look like a reply while input was pending.
   const isHumanReply =
     queryGroup.userMessage &&
     activeTaskId &&
     chatState.tasks[activeTaskId] &&
-    (chatState.tasks[activeTaskId].activeAsk ||
-      // Check if this user message follows an 'ask' message in the message sequence
-      (() => {
-        const messages = chatState.tasks[activeTaskId].messages;
-        const userMessageIndex = messages.findIndex(
-          (m: any) => m.id === queryGroup.userMessage.id
-        );
-        if (userMessageIndex > 0) {
-          // Check the previous message - if it's an agent message with step 'ask', this is a human-reply
-          const prevMessage = messages[userMessageIndex - 1];
-          return (
-            prevMessage?.role === 'agent' && prevMessage?.step === AgentStep.ASK
-          );
-        }
-        return false;
-      })());
+    isUserMessageReplyToAsk(
+      chatState.tasks[activeTaskId].messages,
+      queryGroup.userMessage.id
+    );
 
   const activeTask = activeTaskId ? chatState.tasks[activeTaskId] : undefined;
   const lastUserMessageId = activeTask?.messages
@@ -332,25 +345,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   // query and past planning, show its task-card area immediately — even while
   // PENDING — so the "Preparing to execute" item can render before the work
   // log. `TaskWorkLogAccordion` self-hides until the task reaches RUNNING.
-  const shouldShowSingleAgentWorkLog =
-    isCurrentUserQuery &&
+  const shouldShowRunWorkLog =
+    queryGroup.ownsRunWorkLog === true &&
     activeTaskId &&
     activeTask &&
-    isSingleAgentTask &&
-    !isPlanningPhase &&
-    !isHumanReply;
+    !isPlanningPhase;
 
   const task =
     (queryGroup.taskMessage ||
       shouldShowFallbackTask ||
-      shouldShowSingleAgentWorkLog) &&
+      shouldShowRunWorkLog) &&
     activeTaskId
       ? chatState.tasks[activeTaskId]
       : null;
   const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
   const hasVisibleAgentOutput = queryGroup.otherMessages.some(
     (message) =>
-      typeof message?.content === 'string' && message.content.trim().length > 0
+      message?.step !== AgentStep.ASK &&
+      typeof message?.content === 'string' &&
+      message.content.trim().length > 0
   );
   const showMissingFinalResponse = Boolean(
     task?.status === ChatTaskStatus.FINISHED &&
@@ -401,7 +414,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const taskCardVisible = Boolean(task) && !isSkeletonPhase && !isHumanReply;
   const showTaskPlanCard =
     taskCardVisible &&
-    !shouldShowSingleAgentWorkLog &&
+    !(shouldShowRunWorkLog && isSingleAgentTask) &&
     !isInitialTaskPreparation;
 
   const hasConfirmedSubTasks = Boolean(
@@ -416,7 +429,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       // Workforce: after the user confirms the plan, before the work log.
       (showTaskPlanCard && hasConfirmedSubTasks) ||
       // Single agent: from submit until the first `todo_state` arrives.
-      shouldShowSingleAgentWorkLog);
+      (shouldShowRunWorkLog && isSingleAgentTask));
   const shouldShowPlanTaskBox = Boolean(
     !hasConfirmedSubTasks && (isLastUserQuery || queryGroup.taskMessage)
   );
@@ -508,12 +521,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         </motion.div>
       )}
 
-      {taskCardVisible && activeTaskId && (
+      {taskCardVisible && activeTaskId && queryGroup.ownsRunWorkLog && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
-          className="px-6"
+          className="px-sm"
         >
           {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
@@ -530,17 +543,29 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           ) {
             return null;
           }
+        }
+
+        const isDurablyWaitingReplay =
+          message.step === AgentStep.ASK &&
+          message.interaction &&
+          activeTask?.type === 'replay' &&
+          !isHumanInteractionReadOnly({
+            interaction: message.interaction,
+            activeTaskId,
+            taskType: activeTask.type,
+            taskStatus: activeTask.status,
+            durableRunStatus: activeTask.durableRunStatus,
+          });
+
+        // A replay reattached to a live durable waiter remains actionable even
+        // though its legacy task is terminal. This is the only ASK that stays
+        // in the chat flow; normal live requests belong to BottomBox/work log.
+        if (isDurablyWaitingReplay) {
           return (
             <HumanInteractionCard
               key={`interaction-${message.id}`}
               interaction={message.interaction}
-              readOnly={isHumanInteractionReadOnly({
-                interaction: message.interaction,
-                activeTaskId,
-                taskType: activeTask?.type,
-                taskStatus: activeTask?.status,
-                durableRunStatus: activeTask?.durableRunStatus,
-              })}
+              readOnly={false}
               onResolved={() => {
                 if (!activeTaskId) return;
                 const state = chatStore.getState();
@@ -565,6 +590,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               }}
             />
           );
+        }
+
+        // ASK is a work-log interruption. The prompt is actionable only in
+        // BottomBox while pending; TaskWorkLogAccordion keeps one receipt at
+        // the matching Human Toolkit position and adds question + answer only
+        // after the interaction is resolved.
+        if (message.step === AgentStep.ASK) {
+          return null;
         }
         if (message.content.length > 0) {
           if (message.step === AgentStep.END) {
@@ -623,7 +656,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="px-6"
+                className="px-sm"
               >
                 <AgentResultCard
                   id={message.id}
@@ -702,7 +735,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="px-6"
+          className="px-sm"
         >
           <PlanTaskBox
             chatStore={chatStore}
