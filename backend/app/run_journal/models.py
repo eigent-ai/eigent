@@ -43,6 +43,20 @@ class RunRecord:
 
 
 @dataclass(frozen=True)
+class FollowUpRequestRecord:
+    request_id: str
+    project_id: str
+    content: str
+    attachment_paths: tuple[str, ...]
+    delivery_mode: str
+    status: str
+    admitted_run_id: str | None
+    last_error: str | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
 class CloudRunReplica:
     run_id: str
     status: str

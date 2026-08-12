@@ -9,6 +9,7 @@ from app.permission_policy.models import (
     PolicyEffect,
     PolicyRule,
     literal_resource_pattern,
+    redact_action_arguments,
 )
 from app.permission_policy.runtime import (
     ToolPermissionRejectedError,
@@ -40,4 +41,5 @@ __all__ = [
     "build_tool_action_descriptor",
     "operation_for_tool",
     "literal_resource_pattern",
+    "redact_action_arguments",
 ]

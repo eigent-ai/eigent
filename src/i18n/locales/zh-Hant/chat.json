@@ -86,6 +86,7 @@
   "expand-input": "展開輸入 (⌘P)",
   "collapse-input": "收起輸入 (⌘P)",
   "queued-tasks": "排隊任務",
+  "send-now": "立即傳送",
   "remove-queued-message": "移除排隊訊息",
   "no-agents-added": "未添加智能體",
   "open-in-ide": "開啟於",

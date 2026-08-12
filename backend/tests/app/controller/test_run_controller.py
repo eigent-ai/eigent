@@ -72,6 +72,21 @@ def test_deadline_reached_is_a_terminal_stream_event():
     assert _is_terminal(event) is True
 
 
+def test_assistant_final_renders_as_legacy_end_without_closing_run_stream():
+    event = CommittedRunEvent(
+        event_id="assistant-final:run-1",
+        run_id="run-1",
+        sequence=1,
+        event_type="assistant.final",
+        payload={"message": "Done"},
+        legacy_step="end",
+        created_at=1.0,
+        run_version=1,
+    )
+
+    assert _is_terminal(event) is False
+
+
 def _decode_sse(value: str) -> tuple[int | None, str, dict]:
     event_id = None
     event_name = ""

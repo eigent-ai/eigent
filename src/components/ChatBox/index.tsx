@@ -30,6 +30,13 @@ import {
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  cancelFollowUpRequest,
+  createFollowUpRequest,
+  listPendingFollowUpRequests,
+  markFollowUpRequestAdmitted,
+  prioritizeFollowUpRequest,
+} from '@/service/followUpQueueApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { buildProjectContinuationContext } from '@/store/chatStore';
@@ -404,8 +411,17 @@ export default function ChatBox(): JSX.Element {
   const skill_prompt = searchParams.get('skill_prompt');
 
   const handleSendRef = useRef<
-    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+    | ((
+        messageStr?: string,
+        taskId?: string,
+        executionId?: string,
+        queuedAttaches?: File[],
+        queuedRequestId?: string
+      ) => Promise<void>)
+    | null
   >(null);
+  const queuedDispatchRef = useRef<string | null>(null);
+  const hydratedFollowUpProjectsRef = useRef<Set<string>>(new Set());
   const autoReplyAttemptRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
@@ -537,8 +553,6 @@ export default function ChatBox(): JSX.Element {
     // If ask human is active, allow input
     if (task.activeAsk) return false;
 
-    if (isTaskBusy) return true;
-
     // Standard checks - check model
     if (isCloudUsageLimited) return true;
     if (!hasModel) return true;
@@ -552,7 +566,6 @@ export default function ChatBox(): JSX.Element {
     isCloudUsageLimited,
     hasModel,
     useCloudModelInDev,
-    isTaskBusy,
   ]);
 
   const handleSendShare = useCallback(
@@ -672,7 +685,9 @@ export default function ChatBox(): JSX.Element {
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
-    executionId?: string
+    executionId?: string,
+    queuedAttaches?: File[],
+    queuedRequestId?: string
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
@@ -703,6 +718,7 @@ export default function ChatBox(): JSX.Element {
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
+    const preserveComposer = queuedAttaches !== undefined;
 
     if (executionId && targetProjectId) {
       const project = projectStore.getProjectById(targetProjectId);
@@ -744,12 +760,31 @@ export default function ChatBox(): JSX.Element {
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isReplayChatStore = task?.type === 'replay';
     if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
-      toast.error(
-        'Current task is in progress. Please wait for it to finish before sending a new request.',
-        {
-          closeButton: true,
-        }
+      const queuedFiles = JSON.parse(
+        JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
       );
+      const requestId = generateUniqueId();
+      try {
+        await createFollowUpRequest({
+          projectId: targetProjectId,
+          requestId,
+          content: displayContent,
+          attachmentPaths: queuedFiles.map((file: File) => file.filePath),
+        });
+      } catch (error: any) {
+        console.error('[FollowUpQueue] Failed to persist message', error);
+        toast.error(error?.message || 'Failed to queue message.');
+        return;
+      }
+      projectStore.addQueuedMessage(
+        targetProjectId,
+        displayContent,
+        queuedFiles,
+        requestId
+      );
+      chatStore.setAttaches(_taskId, []);
+      setMessage('');
+      toast.success('Message queued. It will run after the current task.');
       return;
     }
 
@@ -766,7 +801,33 @@ export default function ChatBox(): JSX.Element {
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
-      if (requiresHumanReply) {
+      if (queuedRequestId) {
+        chatStore.setNextTaskId(queuedRequestId);
+        chatStore.setNextExecutionId(_taskId, undefined);
+        const queuedFiles = queuedAttaches || [];
+        await fetchPost(`/chat/${targetProjectId}`, {
+          question: tempMessageContent,
+          task_id: queuedRequestId,
+          attaches: queuedFiles.map((file) => file.filePath),
+          project_context: buildProjectContinuationContext(
+            targetProjectId,
+            queuedRequestId
+          ),
+          target: undefined,
+        });
+        await markFollowUpRequestAdmitted(
+          targetProjectId,
+          queuedRequestId,
+          queuedRequestId
+        );
+        chatStore.setIsPending(_taskId, true);
+        chatStore.addMessages(_taskId, {
+          id: generateUniqueId(),
+          role: 'user',
+          content: displayContent,
+          attaches: queuedFiles,
+        });
+      } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
           toast.error(
             'Use the approval card to approve or reject this action.'
@@ -876,9 +937,10 @@ export default function ChatBox(): JSX.Element {
             chatStore.tasks[_taskId].type === 'replay' ||
             hasErrorMessage
           ) {
-            setMessage('');
+            if (!preserveComposer) setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
             const attachesToSend =
+              queuedAttaches ||
               JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
               [];
             try {
@@ -894,11 +956,11 @@ export default function ChatBox(): JSX.Element {
                 targetProjectId,
                 effectiveSessionMode
               );
-              chatStore.setAttaches(_taskId, []);
+              if (!preserveComposer) chatStore.setAttaches(_taskId, []);
               // If activeTaskId changed (new task created), clear its draft too
               const newActiveId = chatStore.activeTaskId;
               if (newActiveId && newActiveId !== _taskId) {
-                chatStore.setAttaches(newActiveId, []);
+                if (!preserveComposer) chatStore.setAttaches(newActiveId, []);
               }
             } catch (err: any) {
               console.error('Failed to start task:', err);
@@ -906,14 +968,17 @@ export default function ChatBox(): JSX.Element {
                 err?.message ||
                   'Failed to start task. Please check your model configuration.'
               );
+              if (preserveComposer) throw err;
               return;
             }
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
-            const attachesForThisTurn = JSON.parse(
-              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
-            );
+            const attachesForThisTurn =
+              queuedAttaches ||
+              JSON.parse(
+                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+              );
             const improveAttaches =
               attachesForThisTurn.map(
                 (f: { filePath: string }) => f.filePath
@@ -925,7 +990,7 @@ export default function ChatBox(): JSX.Element {
             chatStore.setNextExecutionId(_taskId as string, executionId);
 
             // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            fetchPost(`/chat/${targetProjectId}`, {
+            await fetchPost(`/chat/${targetProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
               attaches: improveAttaches,
@@ -942,8 +1007,10 @@ export default function ChatBox(): JSX.Element {
               content: displayContent,
               attaches: attachesForThisTurn,
             });
-            chatStore.setAttaches(_taskId, []);
-            setMessage('');
+            if (!preserveComposer) {
+              chatStore.setAttaches(_taskId, []);
+              setMessage('');
+            }
           }
         } else {
           setTimeout(() => {
@@ -952,9 +1019,10 @@ export default function ChatBox(): JSX.Element {
 
           // For the very first message, add it to the current chatStore first, then call startTask
           const attachesToSend =
+            queuedAttaches ||
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [];
-          setMessage('');
+          if (!preserveComposer) setMessage('');
           try {
             ensureActiveProjectMode();
             await chatStore.startTask(
@@ -969,11 +1037,11 @@ export default function ChatBox(): JSX.Element {
               effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
-            chatStore.setAttaches(_taskId, []);
+            if (!preserveComposer) chatStore.setAttaches(_taskId, []);
             // If activeTaskId changed (new task created), clear its draft too
             const newActiveId2 = chatStore.activeTaskId;
             if (newActiveId2 && newActiveId2 !== _taskId) {
-              chatStore.setAttaches(newActiveId2, []);
+              if (!preserveComposer) chatStore.setAttaches(newActiveId2, []);
             }
           } catch (err: any) {
             console.error('Failed to start task:', err);
@@ -981,18 +1049,22 @@ export default function ChatBox(): JSX.Element {
               err?.message ||
                 'Failed to start task. Please check your model configuration.'
             );
+            if (preserveComposer) throw err;
             return;
           }
         }
       }
     } catch (error) {
       console.error('error:', error);
+      if (preserveComposer) throw error;
     } finally {
       scheduleUsageRefresh();
     }
   };
 
-  handleSendRef.current = handleSend;
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
 
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
@@ -1075,8 +1147,97 @@ export default function ChatBox(): JSX.Element {
       id: m.task_id,
       content: m.content,
       timestamp: m.timestamp,
+      processing: m.processing,
+      canSendNow: !m.executionId && !interruptedRun,
     }));
+  }, [interruptedRun, projectStore]);
+
+  useEffect(() => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId || hydratedFollowUpProjectsRef.current.has(projectId)) {
+      return;
+    }
+    hydratedFollowUpProjectsRef.current.add(projectId);
+    void listPendingFollowUpRequests(projectId)
+      .then((items) => {
+        for (const item of items) {
+          projectStore.restoreQueuedMessage(projectId, {
+            task_id: item.request_id,
+            run_id: item.request_id,
+            content: item.content,
+            timestamp: item.created_at * 1000,
+            attaches: item.attachment_paths.map((filePath) => ({
+              fileName: filePath.split(/[\\/]/).pop() || filePath,
+              filePath,
+              source: 'local',
+            })) as unknown as File[],
+            sendNow: item.delivery_mode === 'send_now',
+          });
+        }
+      })
+      .catch((error) => {
+        hydratedFollowUpProjectsRef.current.delete(projectId);
+        console.warn(
+          '[FollowUpQueue] Failed to restore pending messages',
+          error
+        );
+      });
   }, [projectStore]);
+
+  useEffect(() => {
+    const projectId = projectStore.activeProjectId;
+    const activeId = chatStore?.activeTaskId;
+    if (
+      !projectId ||
+      !activeId ||
+      isTaskBusy ||
+      activeAsk ||
+      interruptedRun ||
+      !hasModel ||
+      isCloudUsageLimited
+    )
+      return;
+    if (queuedDispatchRef.current) return;
+
+    const project = projectStore.getProjectById(projectId);
+    const candidates = (project?.queuedMessages || []).filter(
+      (item) => !item.executionId && !item.processing
+    );
+    const next = candidates.find((item) => item.sendNow) || candidates[0];
+    if (!next) return;
+    const sendQueuedMessage = handleSendRef.current;
+    if (!sendQueuedMessage) return;
+
+    queuedDispatchRef.current = next.task_id;
+    projectStore.setQueuedMessageProcessing(projectId, next.task_id, true);
+    void sendQueuedMessage(
+      next.content,
+      activeId,
+      undefined,
+      next.attaches,
+      next.task_id
+    )
+      .then(() => {
+        projectStore.removeQueuedMessage(projectId, next.task_id);
+      })
+      .catch((error) => {
+        console.error('[FollowUpQueue] Failed to admit queued message', error);
+        projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
+        toast.error(error?.message || 'Failed to send queued message.');
+      })
+      .finally(() => {
+        queuedDispatchRef.current = null;
+      });
+  }, [
+    activeAsk,
+    chatStore?.activeTaskId,
+    hasModel,
+    isCloudUsageLimited,
+    isTaskBusy,
+    interruptedRun,
+    projectStore,
+    queuedMessages,
+  ]);
 
   useEffect(() => {
     if (share_token && isConfigLoaded) {
@@ -1221,6 +1382,26 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleSendQueuedMessageNow = async (taskId: string) => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId) return;
+
+    try {
+      await prioritizeFollowUpRequest(projectId, taskId);
+      projectStore.prioritizeQueuedMessage(projectId, taskId);
+      if (!isTaskBusy) return;
+      await fetchPost(`/chat/${projectId}/skip-task`, {
+        project_id: projectId,
+      });
+      toast.success(
+        'Stopping the current task. Your queued message will start next.'
+      );
+    } catch (error: any) {
+      console.error('[FollowUpQueue] Failed to stop active Run', error);
+      toast.error(error?.message || 'Failed to send the queued message now.');
+    }
+  };
+
   // Edit query handler
   const handleEditQuery = async () => {
     const taskId = chatStore.activeTaskId as string;
@@ -1327,18 +1508,20 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
-    // Remove from projectStore's queuedMessages
-    const removed = projectStore.removeQueuedMessage(project_id, task_id);
-    if (!removed || !removed.task_id) {
+    const project = projectStore.getProjectById(project_id);
+    const queued = project?.queuedMessages.find(
+      (item) => item.task_id === task_id
+    );
+    if (!queued) {
       console.error(`Task with id ${task_id} not found in project queue`);
       return;
     }
 
     try {
       // Update the backend execution status if it has an executionId
-      if (removed.executionId) {
+      if (queued.executionId) {
         await proxyUpdateTriggerExecution(
-          removed.executionId,
+          queued.executionId,
           {
             status: ExecutionStatus.Cancelled,
             error_message: 'Task was removed from queue by user.',
@@ -1347,11 +1530,12 @@ export default function ChatBox(): JSX.Element {
             projectId: project_id,
           }
         );
+      } else {
+        await cancelFollowUpRequest(project_id, task_id);
       }
+      projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      // Restore the message if backend update failed
-      projectStore.restoreQueuedMessage(project_id, removed);
       toast.error('Failed to cancel task', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
@@ -1405,6 +1589,7 @@ export default function ChatBox(): JSX.Element {
                   state="input"
                   queuedMessages={queuedMessages}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  onSendQueuedMessageNow={handleSendQueuedMessageNow}
                   usageLimitBanner={usageLimitBanner}
                   noModelOverlay={!hasModel && !isCloudUsageLimited}
                   onSelectModel={handleSelectModel}
@@ -1477,6 +1662,7 @@ export default function ChatBox(): JSX.Element {
                 state={getBottomBoxState()}
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                onSendQueuedMessageNow={handleSendQueuedMessageNow}
                 usageLimitBanner={usageLimitBanner}
                 noModelOverlay={!hasModel && !isCloudUsageLimited}
                 onSelectModel={handleSelectModel}

@@ -86,6 +86,7 @@
   "expand-input": "Развернуть ввод (⌘P)",
   "collapse-input": "Свернуть ввод (⌘P)",
   "queued-tasks": "Задачи в очереди",
+  "send-now": "Отправить сейчас",
   "remove-queued-message": "Удалить сообщение из очереди",
   "no-agents-added": "Агенты не добавлены",
   "open-in-ide": "Открыть в",

@@ -139,6 +139,11 @@ def _sse(
 def _is_terminal(event: CommittedRunEvent | None) -> bool:
     if event is None:
         return False
+    if event.event_type == "assistant.final":
+        # This typed result carries legacy_step=end only so old UI projectors
+        # can render it. The Coordinator's run.completed event owns the
+        # lifecycle transition and must remain observable on this stream.
+        return False
     return (
         event.legacy_step == "end" or event.event_type in _TERMINAL_EVENT_TYPES
     )

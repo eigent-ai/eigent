@@ -81,7 +81,6 @@ async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
     task_lock.email = "u@example.com"
     task_lock.status = "OPEN"
     task_lock.conversation_history = []
-    task_lock.last_task_result = ""
     task_lock.agent_memory_history = []
     task_lock.memory_summary = ""
     task_lock.summary_generated = False
@@ -186,7 +185,6 @@ async def test_skip_task_emits_end_without_blocking_on_cancellation():
     task_lock.email = "u@example.com"
     task_lock.status = "OPEN"
     task_lock.conversation_history = []
-    task_lock.last_task_result = ""
     task_lock.agent_memory_history = []
     task_lock.memory_summary = ""
     task_lock.summary_generated = False
@@ -288,7 +286,6 @@ async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
     task_lock.resolved_runtime_environment = runtime_a
     task_lock.registered_toolkits = [stale_toolkit]
     task_lock.conversation_history = []
-    task_lock.last_task_result = ""
     task_lock.agent_memory_history = []
     task_lock.memory_summary = ""
     task_lock.summary_generated = False
@@ -344,6 +341,114 @@ async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
     release_stale_browser.assert_called_once_with(agent_a)
     assert agent_a._cdp_release_callback is None
     assert stale_toolkit not in task_lock.registered_toolkits
+
+
+@pytest.mark.asyncio
+async def test_follow_up_reuses_runtime_but_resets_camel_conversation():
+    from app.model.chat import Chat
+    from app.service.single_agent_service import single_agent_solve
+    from app.service.task import ActionImproveData, ImprovePayload
+
+    lifecycle: list[str] = []
+    agent = MagicMock()
+    agent.agent_id = "warm-agent"
+    agent._observable_todo_toolkit = None
+    agent._cdp_release_callback = None
+    agent._runtime_cleanup_toolkits = ()
+    agent.reset = MagicMock(side_effect=lambda: lifecycle.append("reset"))
+
+    async def astep(_prompt):
+        lifecycle.append("astep")
+        return object()
+
+    agent.astep = AsyncMock(side_effect=astep)
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put(
+        ActionImproveData(
+            data=ImprovePayload(question="first question", attaches=[]),
+            new_task_id="run-a",
+        )
+    )
+
+    task_lock = MagicMock()
+    task_lock.id = "project-warm-agent"
+    task_lock.email = "u@example.com"
+    task_lock.status = "OPEN"
+    task_lock.environment_spec_id = "env-stable"
+    task_lock.permission_profile_revision = "profile-1"
+    task_lock.resolved_runtime_environment = object()
+    task_lock.registered_toolkits = []
+    task_lock.conversation_history = []
+    task_lock.agent_memory_history = []
+    task_lock.memory_summary = ""
+    task_lock.summary_generated = False
+    task_lock.run_context = None
+    task_lock.processed_improve_request_ids = set()
+    task_lock.get_queue = queue.get
+    task_lock.add_background_task = MagicMock()
+    task_lock.add_conversation = MagicMock()
+
+    options = MagicMock(spec=Chat)
+    options.project_id = "project-warm-agent"
+    options.task_id = "run-a"
+    options.project_context = None
+
+    create_agent = AsyncMock(return_value=agent)
+    with (
+        patch(
+            "app.service.single_agent_service.single_agent",
+            new=create_agent,
+        ),
+        patch(
+            "app.service.single_agent_service.get_working_directory",
+            return_value="/workspace",
+        ),
+        patch("app.service.single_agent_service.set_current_task_id"),
+        patch("app.service.single_agent_service.record_agent_memory_snapshot"),
+        patch("app.service.single_agent_service._finalize_memory_for_turn"),
+        patch(
+            "app.service.single_agent_service._build_single_agent_prompt",
+            side_effect=lambda _lock, question, *_args: question,
+        ),
+        patch(
+            "app.service.single_agent_service._response_content",
+            new=AsyncMock(side_effect=[("answer-a", 1), ("answer-b", 1)]),
+        ),
+    ):
+        stream = single_agent_solve(options, MagicMock(), task_lock)
+        assert _parse_sse(await stream.__anext__())[0] == "confirmed"
+        assert _parse_sse(await stream.__anext__())[1]["message"] == "answer-a"
+
+        await queue.put(
+            ActionImproveData(
+                data=ImprovePayload(question="second question", attaches=[]),
+                new_task_id="run-b",
+            )
+        )
+        assert _parse_sse(await stream.__anext__())[0] == "confirmed"
+        assert _parse_sse(await stream.__anext__())[1]["message"] == "answer-b"
+        await stream.aclose()
+
+    assert create_agent.await_count == 1
+    assert lifecycle == ["astep", "reset", "astep"]
+    assert agent.process_task_id == "run-b"
+
+
+def test_current_user_question_is_appended_exactly_once():
+    from app.service.single_agent_service import _build_single_agent_prompt
+
+    with patch(
+        "app.service.single_agent_service._build_single_agent_context",
+        return_value="Previous answer: A\n\n",
+    ):
+        prompt = _build_single_agent_prompt(
+            MagicMock(),
+            "check unread email",
+            [],
+        )
+
+    assert prompt.count("check unread email") == 1
+    assert prompt.endswith("User task:\ncheck unread email")
 
 
 @pytest.mark.asyncio

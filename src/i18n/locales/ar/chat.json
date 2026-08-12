@@ -86,6 +86,7 @@
   "expand-input": "توسيع الإدخال (⌘P)",
   "collapse-input": "طي الإدخال (⌘P)",
   "queued-tasks": "المهام في قائمة الانتظار",
+  "send-now": "إرسال الآن",
   "remove-queued-message": "إزالة الرسالة من قائمة الانتظار",
   "no-agents-added": "لم تتم إضافة وكلاء",
   "open-in-ide": "فتح في",

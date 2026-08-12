@@ -86,6 +86,7 @@
   "expand-input": "Espandi input (⌘P)",
   "collapse-input": "Comprimi input (⌘P)",
   "queued-tasks": "Compiti in coda",
+  "send-now": "Invia ora",
   "remove-queued-message": "Rimuovi messaggio in coda",
   "no-agents-added": "Nessun agente aggiunto",
   "open-in-ide": "Apri in",

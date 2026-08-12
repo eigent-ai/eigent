@@ -104,6 +104,7 @@ def build_durable_context_for_task_lock(
     mode: ContextMode,
     current_user_prompt: str,
     token_budget: int | None = None,
+    include_conversation: bool = True,
 ) -> str | None:
     """Read the durable Project memory bundle for the run on this task lock.
 
@@ -147,6 +148,7 @@ def build_durable_context_for_task_lock(
             mode=mode,
             token_budget=budget,
             current_user_prompt=current_user_prompt,
+            include_conversation=include_conversation,
         )
     except Exception:  # noqa: BLE001 — best-effort read
         logger.warning(

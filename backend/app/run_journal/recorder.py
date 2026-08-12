@@ -102,3 +102,73 @@ class EventRecorder:
         )
         self._notify_commit()
         return event
+
+    async def record_assistant_final(
+        self,
+        *,
+        project_id: str,
+        run_id: str,
+        data: Any,
+        created_at: float | None = None,
+    ) -> CommittedRunEvent:
+        """Commit the one canonical successful assistant result for a Run.
+
+        ``legacy_step='end'`` keeps existing desktop/cloud projectors working
+        while ``assistant.final`` gives new readers a typed result contract.
+        The deterministic event id makes a lost response safe to retry.
+        """
+
+        if isinstance(data, dict):
+            payload = dict(data)
+        else:
+            payload = {"message": str(data)}
+        values: dict[str, Any] = {
+            "event_id": f"assistant-final:{run_id}",
+            "event_type": "assistant.final",
+            "payload": payload,
+            "legacy_step": "end",
+        }
+        if created_at is not None:
+            values["created_at"] = created_at
+        event = await asyncio.to_thread(
+            self._journal.append_event,
+            run_id,
+            RunEventDraft(**values),
+            expected_project_id=project_id,
+        )
+        self._notify_commit()
+        return event
+
+    async def record_user_message(
+        self,
+        *,
+        project_id: str,
+        run_id: str,
+        request_id: str,
+        content: str,
+        source: str,
+        attachment_names: list[str] | None = None,
+        created_at: float | None = None,
+    ) -> CommittedRunEvent:
+        """Commit the Run's canonical user instruction before execution."""
+
+        payload: dict[str, Any] = {
+            "content": content,
+            "source": source,
+            "attachment_names": list(attachment_names or []),
+        }
+        values: dict[str, Any] = {
+            "event_id": f"user-message:{request_id}",
+            "event_type": "user.message",
+            "payload": payload,
+        }
+        if created_at is not None:
+            values["created_at"] = created_at
+        event = await asyncio.to_thread(
+            self._journal.append_event,
+            run_id,
+            RunEventDraft(**values),
+            expected_project_id=project_id,
+        )
+        self._notify_commit()
+        return event

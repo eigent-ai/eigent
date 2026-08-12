@@ -86,6 +86,7 @@
   "expand-input": "Eingabe erweitern (⌘P)",
   "collapse-input": "Eingabe reduzieren (⌘P)",
   "queued-tasks": "Aufgaben in Warteschlange",
+  "send-now": "Jetzt senden",
   "remove-queued-message": "Nachricht aus Warteschlange entfernen",
   "no-agents-added": "Keine Agenten hinzugefügt",
   "open-in-ide": "Öffnen in",

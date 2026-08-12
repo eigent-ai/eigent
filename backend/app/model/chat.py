@@ -227,6 +227,17 @@ class SupplementChat(BaseModel):
     project_context: str | None = None
 
 
+class FollowUpRequestCreate(BaseModel):
+    request_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=200_000)
+    attachment_paths: list[str] = Field(default_factory=list, max_length=32)
+    delivery_mode: Literal["wait", "send_now"] = "wait"
+
+
+class FollowUpRequestAdmitted(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+
+
 class HumanReply(BaseModel):
     agent: str
     reply: str

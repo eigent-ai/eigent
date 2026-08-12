@@ -197,13 +197,25 @@ async def _record_local_step(args, value) -> None:
     # Preserve event order: a non-text step cannot commit ahead of text that
     # was already shown to the user.
     await _flush_local_text(run_id)
-    await get_default_event_recorder().record_legacy_step(
-        project_id=project_id,
-        run_id=run_id,
-        step=data["step"],
-        data=data["data"],
-        allow_terminal=data["step"] == "end",
-    )
+    if data["step"] == "end":
+        await get_default_event_recorder().record_assistant_final(
+            project_id=project_id,
+            run_id=run_id,
+            data=data["data"],
+        )
+        from app.run_runtime import get_default_run_coordinator
+
+        if not await get_default_run_coordinator().complete_turn(run_id):
+            raise RuntimeError(
+                f"RunCoordinator could not terminalize completed Run {run_id!r}"
+            )
+    else:
+        await get_default_event_recorder().record_legacy_step(
+            project_id=project_id,
+            run_id=run_id,
+            step=data["step"],
+            data=data["data"],
+        )
 
 
 async def _record_local_step_fail_open(args, value) -> None:

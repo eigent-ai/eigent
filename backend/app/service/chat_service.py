@@ -65,6 +65,8 @@ from app.memory import (
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
+from app.run_journal.context_projection import build_project_execution_context
+from app.run_journal.runtime import get_default_run_journal
 from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
@@ -439,22 +441,43 @@ def build_context_for_workforce(
 
     Prepends durable Project memory (from LocalMemoryStore) when available so
     Workforce recovers cross-restart context the same way Single Agent does
-    via _build_single_agent_context. The in-process conversation_history is
-    still appended afterward because it is the live state for the current
-    session and may contain turns not yet flushed to disk.
+    via _build_single_agent_context. Durable and in-process history are
+    alternative projections of the same facts; concatenating both duplicates
+    prior turns and gives two components ownership of conversation state.
     """
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            canonical_execution = build_project_execution_context(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+            )
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
     durable = build_durable_context_for_task_lock(
         task_lock,
         mode="workforce_coordinator",
         current_user_prompt=task_content or "",
+        include_conversation=not bool(canonical_execution),
     )
     in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
-    if durable and in_process:
-        return durable + "\n\n" + in_process
-    if durable:
-        return durable + "\n\n"
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        return "\n\n".join(durable_parts) + "\n\n"
     return in_process
 
 
@@ -481,8 +504,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Initialize task_lock attributes
     if not hasattr(task_lock, "conversation_history"):
         task_lock.conversation_history = []
-    if not hasattr(task_lock, "last_task_result"):
-        task_lock.last_task_result = ""
     if not hasattr(task_lock, "agent_memory_history"):
         task_lock.agent_memory_history = []
     if not hasattr(task_lock, "memory_summary"):
@@ -1162,8 +1183,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 end_message = (
                     "<summary>Task stopped</summary>Task stopped by user"
                 )
-                task_lock.last_task_result = end_message
-
                 # Add to conversation history (like normal end does)
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -1865,8 +1884,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     final_result: str = await get_result(camel_task, options)
 
                 task_lock.status = Status.done
-
-                task_lock.last_task_result = final_result
 
                 # Handle task content - use fallback if camel_task is None
                 if camel_task is not None:
