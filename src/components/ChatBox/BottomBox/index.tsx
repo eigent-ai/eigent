@@ -28,11 +28,7 @@ import {
 } from './UsageLimitBanner';
 
 export type BottomBoxState =
-  | 'input'
-  | 'confirm'
-  | 'save'
-  | 'running'
-  | 'finished';
+  'input' | 'confirm' | 'save' | 'running' | 'finished';
 
 /** Main-slot content, orthogonal to `state`. Future variants (e.g. 'multiSelect') plug in here. */
 export type BottomBoxVariant = 'input';
@@ -49,6 +45,7 @@ interface BottomBoxProps {
   // Queue-related props
   queuedMessages?: QueuedMessage[];
   onRemoveQueuedMessage?: (id: string) => void;
+  onSendQueuedMessageNow?: (id: string) => void;
 
   // Subtask-related props (confirm/save state)
   subtitle?: string;
@@ -84,6 +81,7 @@ export default function BottomBox({
   variant = 'input',
   queuedMessages = [],
   onRemoveQueuedMessage,
+  onSendQueuedMessageNow,
   subtitle,
   autoStartDeadline,
   onStartTask,
@@ -183,6 +181,7 @@ export default function BottomBox({
             <QueuedBox
               queuedMessages={queuedMessages}
               onRemoveQueuedMessage={onRemoveQueuedMessage}
+              onSendQueuedMessageNow={onSendQueuedMessageNow}
             />
           )}
           {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}

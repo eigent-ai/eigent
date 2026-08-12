@@ -368,6 +368,36 @@ class RunCoordinator:
             handle.deadline_changed_event.set()
             return True
 
+    async def complete_turn(self, run_id: str) -> bool:
+        """Terminalize one Run without disposing its warm Project runtime.
+
+        Compatibility chat generators intentionally stay alive across
+        follow-up Runs.  Their physical completion therefore cannot define a
+        logical Run boundary.  The end-step recorder calls this method after
+        assistant.final is durable; the same handle can then be rebound to
+        the next Run without retaining the previous Run as ``running``.
+        """
+
+        async with self._lock:
+            handle = self._handles.get(run_id)
+            if handle is None or not handle.consumer_alive:
+                return False
+            started_at = handle.started_at
+        await self._commit_run_terminal(
+            run_id=run_id,
+            started_at=started_at,
+            event_type="run.completed",
+            payload={"reason": "run_turn_completed"},
+        )
+        run = (
+            await asyncio.to_thread(self._journal.get_run, run_id)
+            if self._journal is not None
+            else None
+        )
+        return self._journal is None or (
+            run is not None and run.status == "completed"
+        )
+
     async def cancel(self, run_id: str) -> bool:
         async with self._lock:
             handle = self._handles.get(run_id)
@@ -574,21 +604,46 @@ class RunCoordinator:
         event_type: str,
         payload: dict[str, Any],
     ) -> None:
+        await self._commit_run_terminal(
+            run_id=handle.run_id,
+            started_at=handle.started_at,
+            event_type=event_type,
+            payload=payload,
+        )
+
+    async def _commit_run_terminal(
+        self,
+        *,
+        run_id: str,
+        started_at: float,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
         if self._journal is None:
             return
         from app.run_journal.models import RunEventDraft
 
-        run = await asyncio.to_thread(self._journal.get_run, handle.run_id)
+        run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None or run.status in {"completed", "failed", "cancelled"}:
             return
         try:
+            if event_type == "run.completed":
+                result_event = await asyncio.to_thread(
+                    self._journal.get_run_final_result_event,
+                    run_id,
+                )
+                if result_event is not None:
+                    payload = {
+                        **payload,
+                        "result_event_id": result_event.event_id,
+                    }
             await asyncio.to_thread(
                 self._journal.append_event,
-                handle.run_id,
+                run_id,
                 RunEventDraft(
                     event_id=(
-                        f"runtime-terminal:{handle.run_id}:"
-                        f"{int(handle.started_at * 1_000_000)}:{event_type}"
+                        f"runtime-terminal:{run_id}:"
+                        f"{int(started_at * 1_000_000)}:{event_type}"
                     ),
                     event_type=event_type,
                     payload=payload,
@@ -601,12 +656,12 @@ class RunCoordinator:
 
                 await asyncio.to_thread(
                     get_default_workspace_git_lifecycle().finalize_run,
-                    handle.run_id,
+                    run_id,
                 )
             except Exception:
                 logger.exception(
                     "Terminal Run Git finalization needs attention",
-                    extra={"run_id": handle.run_id},
+                    extra={"run_id": run_id},
                 )
             from app.run_sync.runtime import notify_default_cloud_sync_worker
 
@@ -614,7 +669,7 @@ class RunCoordinator:
         except Exception:
             logger.exception(
                 "Failed to commit execution terminal outcome",
-                extra={"run_id": handle.run_id, "event_type": event_type},
+                extra={"run_id": run_id, "event_type": event_type},
             )
 
     async def _watch_deadline(self, handle: RuntimeHandle) -> None:

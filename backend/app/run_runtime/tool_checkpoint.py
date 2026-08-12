@@ -113,6 +113,11 @@ class UnsafeToolOutcomeError(ToolCheckpointError):
 
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
+        # Imported lazily because permission_policy.runtime depends on this
+        # module for ToolCheckpointContext. At execution time the package is
+        # fully initialized and both paths share the exact same redactor.
+        from app.permission_policy.models import redact_action_arguments
+
         return {
             str(key): (
                 "[REDACTED]"
@@ -122,6 +127,9 @@ def _redact(value: Any) -> Any:
                     "sha256": hashlib.sha256(
                         json.dumps(item, ensure_ascii=False).encode("utf-8")
                     ).hexdigest(),
+                    "redacted_preview": redact_action_arguments(
+                        {"argv": list(item)}
+                    )["argv"],
                 }
                 if str(key).lower() == "argv"
                 and isinstance(item, (list, tuple))
@@ -131,7 +139,11 @@ def _redact(value: Any) -> Any:
         }
     if isinstance(value, (list, tuple)):
         return [_redact(item) for item in value]
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if isinstance(value, str):
+        from app.permission_policy.models import redact_action_arguments
+
+        return redact_action_arguments({"value": value})["value"]
+    if value is None or isinstance(value, (bool, int, float)):
         return value
     return repr(value)
 
@@ -354,14 +366,16 @@ def finish_tool_checkpoint(
     elif checkpoint.safety_class is ToolSafetyClass.UNSAFE_WRITE:
         status = "outcome_unknown"
         outcome = "outcome_unknown"
-        result_payload = {
-            "error": str(error),
-            "external_effect_may_have_occurred": True,
-        }
+        result_payload = _bounded_record(
+            {
+                "error": str(error),
+                "external_effect_may_have_occurred": True,
+            }
+        )
     else:
         status = "failed"
         outcome = "failed"
-        result_payload = {"error": str(error)}
+        result_payload = _bounded_record({"error": str(error)})
     try:
         store.checkpoint_tool_call(
             tool_call_id=checkpoint.tool_call_id,

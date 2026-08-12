@@ -86,6 +86,10 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
             argv = journal.list_tool_calls("run-1")[0].request["argv"]
             assert argv["argument_count"] == 2
             assert len(argv["sha256"]) == 64
+            assert argv["redacted_preview"] == [
+                "push",
+                "https://user:[REDACTED]@example.com/repo.git",
+            ]
             assert "password" not in str(argv)
             finish_tool_checkpoint(
                 checkpoint,
@@ -115,6 +119,32 @@ def test_unsafe_external_error_is_recorded_then_fails_closed(tmp_path):
         tool = journal.list_tool_calls("run-1")[0]
         assert tool.status == "outcome_unknown"
         assert tool.result["external_effect_may_have_occurred"] is True
+
+
+def test_tool_error_remains_useful_without_persisting_embedded_credentials(
+    tmp_path,
+):
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-error-redaction",
+                tool_name="read_file",
+                arguments={"path": "notes.md"},
+                journal=journal,
+            )
+            finish_tool_checkpoint(
+                checkpoint,
+                error=RuntimeError(
+                    "provider rejected Bearer abcdefghijklmnopqrstuv"
+                ),
+                journal=journal,
+            )
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.status == "failed"
+        assert tool.result == {
+            "error": "provider rejected Bearer [REDACTED]"
+        }
 
 
 def test_unsafe_tool_soft_error_is_known_failed_and_does_not_block_resume(

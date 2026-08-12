@@ -172,6 +172,33 @@ describe('projectStore runtime shape', () => {
     expect(firstRun?.chatStore.getState().activeTaskId).toBe('task_b');
   });
 
+  it('keeps Send now exclusive without changing trigger queue entries', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Queue Project', undefined, 'project_queue');
+    const store = useProjectStore.getState();
+    store.addQueuedMessage(projectId, 'First', [], 'follow-1');
+    store.addQueuedMessage(projectId, 'Second', [], 'follow-2');
+    store.addQueuedMessage(
+      projectId,
+      'Scheduled',
+      [],
+      'trigger-1',
+      'execution-1'
+    );
+
+    store.prioritizeQueuedMessage(projectId, 'follow-1');
+    store.prioritizeQueuedMessage(projectId, 'follow-2');
+
+    const queued =
+      useProjectStore.getState().projects[projectId].queuedMessages;
+    expect(queued.map(({ task_id, sendNow }) => [task_id, sendNow])).toEqual([
+      ['follow-1', false],
+      ['follow-2', true],
+      ['trigger-1', undefined],
+    ]);
+  });
+
   it('stores and returns the per-project model selection', () => {
     const projectId = useProjectStore
       .getState()

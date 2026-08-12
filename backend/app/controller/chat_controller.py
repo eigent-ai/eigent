@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.auth import require_local_control_principal
@@ -36,6 +36,8 @@ from app.memory import get_memory_service
 from app.model.chat import (
     AddTaskRequest,
     Chat,
+    FollowUpRequestAdmitted,
+    FollowUpRequestCreate,
     HumanReply,
     McpServers,
     Status,
@@ -49,8 +51,13 @@ from app.run_context import (
 )
 from app.run_journal import (
     AttemptEnvironmentBinding,
+    EventRecorder,
+    FollowUpRequestRecord,
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
     RunAttemptRecord,
     RunEventDraft,
+    RunNotFoundError,
     SQLiteRunJournal,
     configured_run_journal_path,
     get_default_run_journal,
@@ -122,6 +129,52 @@ class _PreparedChatRun:
     run_context: RunContext
     attempt_id: str
     initial_action: ActionImproveData
+
+
+def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
+    return {
+        "request_id": record.request_id,
+        "project_id": record.project_id,
+        "content": record.content,
+        "attachment_paths": list(record.attachment_paths),
+        "delivery_mode": record.delivery_mode,
+        "status": record.status,
+        "admitted_run_id": record.admitted_run_id,
+        "last_error": record.last_error,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _raise_follow_up_http_error(exc: Exception) -> None:
+    if isinstance(exc, RunNotFoundError):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if isinstance(exc, (IdempotencyConflictError, InvalidRunTransitionError)):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    raise exc
+
+
+async def _record_canonical_user_message(
+    journal: SQLiteRunJournal,
+    *,
+    run_context: RunContext,
+    request_id: str,
+    content: str,
+    source: str,
+    attaches: list[str],
+) -> None:
+    """Persist admission input against the injected journal instance."""
+
+    await EventRecorder(journal).record_user_message(
+        project_id=run_context.project_id,
+        run_id=run_context.run_id,
+        request_id=request_id,
+        content=content,
+        source=source,
+        attachment_names=[Path(path).name for path in attaches],
+    )
 
 
 def _workspace_bundle_admission_error(
@@ -990,6 +1043,14 @@ async def _prepare_chat_run(
             activate=False,
             environment=(environment.binding if environment else None),
         )
+        await _record_canonical_user_message(
+            journal,
+            run_context=run_context,
+            request_id=request_id,
+            content=data.question,
+            source="chat",
+            attaches=data.attaches or [],
+        )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -1360,6 +1421,94 @@ async def status(project_id: str):
 
 
 @router.post(
+    "/projects/{project_id}/follow-ups",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().put_follow_up_request,
+            request_id=data.request_id,
+            project_id=project_id,
+            content=data.content,
+            attachment_paths=data.attachment_paths,
+            delivery_mode=data.delivery_mode,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.get(
+    "/projects/{project_id}/follow-ups",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def pending_follow_ups(project_id: str):
+    try:
+        records = await asyncio.to_thread(
+            get_default_run_journal().list_follow_up_requests,
+            project_id=project_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return {"items": [_follow_up_response(record) for record in records]}
+
+
+@router.post(
+    "/projects/{project_id}/follow-ups/{request_id}/send-now",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def send_follow_up_now(project_id: str, request_id: str):
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().set_follow_up_delivery_mode,
+            request_id=request_id,
+            project_id=project_id,
+            delivery_mode="send_now",
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.delete(
+    "/projects/{project_id}/follow-ups/{request_id}",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def cancel_follow_up(project_id: str, request_id: str):
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().cancel_follow_up_request,
+            request_id=request_id,
+            project_id=project_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.post(
+    "/projects/{project_id}/follow-ups/{request_id}/admitted",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def mark_follow_up_admitted(
+    project_id: str,
+    request_id: str,
+    data: FollowUpRequestAdmitted,
+):
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().mark_follow_up_admitted,
+            request_id=request_id,
+            project_id=project_id,
+            run_id=data.run_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return _follow_up_response(record)
+
+
+@router.post(
     "/chat/{id}",
     name="improve chat",
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
@@ -1430,18 +1579,13 @@ async def _improve_chat(
         # Clear any existing background tasks since workforce was stopped
         if hasattr(task_lock, "background_tasks"):
             task_lock.background_tasks.clear()
-        # Note: conversation_history and last_task_result are preserved
+        # Durable Run events and Project memory preserve prior results.
 
         # Log context preservation
         if hasattr(task_lock, "conversation_history"):
             hist_len = len(task_lock.conversation_history)
             chat_logger.info(
                 f"[CONTEXT] Preserved {hist_len} conversation entries"
-            )
-        if hasattr(task_lock, "last_task_result"):
-            result_len = len(task_lock.last_task_result)
-            chat_logger.info(
-                f"[CONTEXT] Preserved task result: {result_len} chars"
             )
 
     # If task_id is provided, optimistically update
@@ -1643,6 +1787,14 @@ async def _improve_chat(
             reason="follow_up_execution",
             activate=False,
             environment=(environment.binding if environment else None),
+        )
+        await _record_canonical_user_message(
+            journal,
+            run_context=refreshed_context,
+            request_id=resolved_request_id,
+            content=data.question,
+            source="improve",
+            attaches=data.attaches or [],
         )
         await asyncio.to_thread(
             get_memory_service().on_run_start,
@@ -2001,7 +2153,7 @@ def skip_task(project_id: str):
     Behavior:
     - Stops workforce gracefully
     - Marks task as done
-    - Preserves conversation_history and last_task_result in task_lock
+    - Preserves prior results through durable Run events and Project memory
     - Sends 'end' event to frontend
     - Keeps SSE connection alive for multi-turn conversation
     """

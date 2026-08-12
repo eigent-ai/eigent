@@ -86,6 +86,7 @@
   "expand-input": "Développer l'entrée (⌘P)",
   "collapse-input": "Réduire l'entrée (⌘P)",
   "queued-tasks": "Tâches en file d'attente",
+  "send-now": "Envoyer maintenant",
   "remove-queued-message": "Supprimer le message en file d'attente",
   "no-agents-added": "Aucun agent ajouté",
   "open-in-ide": "Ouvrir dans",

@@ -44,6 +44,7 @@ from app.run_journal.models import (
     CommandResultSyncBatch,
     CommittedRunEvent,
     EffectiveEnvironmentSpecRecord,
+    FollowUpRequestRecord,
     GitAgentWorkspaceRecord,
     GitChangeSetItemRecord,
     GitChangeSetRecord,
@@ -102,7 +103,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 20
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1244,6 +1245,49 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (18, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 18;
+COMMIT;
+"""
+
+_MIGRATION_V19 = """
+BEGIN IMMEDIATE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS run_events_one_assistant_final_idx
+ON run_events(run_id)
+WHERE event_type = 'assistant.final';
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (19, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 19;
+COMMIT;
+"""
+
+_MIGRATION_V20 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE IF NOT EXISTS follow_up_requests(
+    request_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+    attachment_paths_json TEXT NOT NULL DEFAULT '[]',
+    delivery_mode TEXT NOT NULL DEFAULT 'wait'
+        CHECK(delivery_mode IN ('wait', 'send_now')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'admitted', 'cancelled')),
+    admitted_run_id TEXT REFERENCES runs(run_id) ON DELETE SET NULL,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS follow_up_requests_pending_idx
+ON follow_up_requests(project_id, delivery_mode DESC, created_at)
+WHERE status = 'pending';
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (20, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 20;
 COMMIT;
 """
 
@@ -6297,6 +6341,234 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._run_from_row(row) for row in rows]
 
+    def put_follow_up_request(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        content: str,
+        attachment_paths: list[str] | tuple[str, ...] = (),
+        delivery_mode: str = "wait",
+        now: float | None = None,
+    ) -> FollowUpRequestRecord:
+        """Durably enqueue one future Run instruction.
+
+        ``request_id`` is also used as the future Run id by the renderer. A
+        lost HTTP response can therefore retry both queue creation and Run
+        admission without creating a duplicate Run.
+        """
+
+        normalized_id = request_id.strip()
+        normalized_project = project_id.strip()
+        normalized_content = content.strip()
+        normalized_paths = tuple(str(path) for path in attachment_paths)
+        if not normalized_id or not normalized_project or not normalized_content:
+            raise ValueError("request_id, project_id and content are required")
+        if delivery_mode not in {"wait", "send_now"}:
+            raise ValueError("unsupported follow-up delivery mode")
+        if len(normalized_paths) > 32 or any(not path.strip() for path in normalized_paths):
+            raise ValueError("follow-up attachment paths are invalid")
+        paths_json = json.dumps(
+            normalized_paths,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (normalized_id,),
+            ).fetchone()
+            if existing is not None:
+                if (
+                    existing["project_id"] != normalized_project
+                    or existing["content"] != normalized_content
+                    or existing["attachment_paths_json"] != paths_json
+                ):
+                    raise IdempotencyConflictError(
+                        f"follow-up request_id {normalized_id!r} was reused"
+                    )
+                return self._follow_up_request_from_row(existing)
+            if delivery_mode == "send_now":
+                connection.execute(
+                    """UPDATE follow_up_requests
+                    SET delivery_mode = 'wait', updated_at = ?
+                    WHERE project_id = ? AND status = 'pending'
+                      AND delivery_mode = 'send_now'""",
+                    (timestamp, normalized_project),
+                )
+            connection.execute(
+                """
+                INSERT INTO follow_up_requests(
+                    request_id, project_id, content, attachment_paths_json,
+                    delivery_mode, status, admitted_run_id, last_error,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)
+                """,
+                (
+                    normalized_id,
+                    normalized_project,
+                    normalized_content,
+                    paths_json,
+                    delivery_mode,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (normalized_id,),
+            ).fetchone()
+            assert row is not None
+            return self._follow_up_request_from_row(row)
+
+    def list_follow_up_requests(
+        self,
+        *,
+        project_id: str,
+        statuses: tuple[str, ...] = ("pending",),
+    ) -> list[FollowUpRequestRecord]:
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        if not statuses:
+            return []
+        if any(status not in {"pending", "admitted", "cancelled"} for status in statuses):
+            raise ValueError("unsupported follow-up status")
+        placeholders = ",".join("?" for _ in statuses)
+        with self._lock:
+            rows = self._connection.execute(
+                f"""SELECT * FROM follow_up_requests
+                WHERE project_id = ? AND status IN ({placeholders})
+                ORDER BY CASE delivery_mode WHEN 'send_now' THEN 0 ELSE 1 END,
+                         created_at, request_id""",
+                (project_id, *statuses),
+            ).fetchall()
+            return [self._follow_up_request_from_row(row) for row in rows]
+
+    def set_follow_up_delivery_mode(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        delivery_mode: str,
+        now: float | None = None,
+    ) -> FollowUpRequestRecord:
+        if delivery_mode not in {"wait", "send_now"}:
+            raise ValueError("unsupported follow-up delivery mode")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if row is None or row["project_id"] != project_id:
+                raise RunNotFoundError(
+                    f"follow-up request_id {request_id!r} does not exist"
+                )
+            if row["status"] != "pending":
+                return self._follow_up_request_from_row(row)
+            if delivery_mode == "send_now":
+                # Only one message can own the interrupt-next position.  This
+                # keeps the durable ordering identical to the renderer after
+                # restart instead of letting an older send_now row win.
+                connection.execute(
+                    """UPDATE follow_up_requests
+                    SET delivery_mode = 'wait', updated_at = ?
+                    WHERE project_id = ? AND status = 'pending'
+                      AND delivery_mode = 'send_now' AND request_id != ?""",
+                    (timestamp, project_id, request_id),
+                )
+            connection.execute(
+                """UPDATE follow_up_requests
+                SET delivery_mode = ?, updated_at = ? WHERE request_id = ?""",
+                (delivery_mode, timestamp, request_id),
+            )
+            updated = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._follow_up_request_from_row(updated)
+
+    def cancel_follow_up_request(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        now: float | None = None,
+    ) -> FollowUpRequestRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if row is None or row["project_id"] != project_id:
+                raise RunNotFoundError(
+                    f"follow-up request_id {request_id!r} does not exist"
+                )
+            if row["status"] == "pending":
+                connection.execute(
+                    """UPDATE follow_up_requests
+                    SET status = 'cancelled', updated_at = ? WHERE request_id = ?""",
+                    (timestamp, request_id),
+                )
+            updated = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._follow_up_request_from_row(updated)
+
+    def mark_follow_up_admitted(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        run_id: str,
+        now: float | None = None,
+    ) -> FollowUpRequestRecord:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            run = connection.execute(
+                "SELECT project_id FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None or row["project_id"] != project_id:
+                raise RunNotFoundError(
+                    f"follow-up request_id {request_id!r} does not exist"
+                )
+            if run is None or run["project_id"] != project_id:
+                raise RunNotFoundError(
+                    f"follow-up Run {run_id!r} does not exist in this Project"
+                )
+            if row["status"] == "admitted":
+                if row["admitted_run_id"] != run_id:
+                    raise IdempotencyConflictError(
+                        "follow-up was admitted as a different Run"
+                    )
+                return self._follow_up_request_from_row(row)
+            if row["status"] != "pending":
+                raise InvalidRunTransitionError(
+                    "a cancelled follow-up cannot be admitted"
+                )
+            connection.execute(
+                """UPDATE follow_up_requests
+                SET status = 'admitted', admitted_run_id = ?, last_error = NULL,
+                    updated_at = ? WHERE request_id = ?""",
+                (run_id, timestamp, request_id),
+            )
+            updated = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._follow_up_request_from_row(updated)
+
     def list_all_runs(self) -> list[RunRecord]:
         """Return canonical Runs for startup projection reconciliation."""
 
@@ -6639,6 +6911,32 @@ class SQLiteRunJournal:
         with self._lock:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._event_from_row(row) for row in rows]
+
+    def get_run_final_result_event(
+        self, run_id: str
+    ) -> CommittedRunEvent | None:
+        """Return the canonical assistant result for one Run.
+
+        ``assistant.final`` is preferred.  The legacy fallback keeps Runs
+        created before schema v19 readable while callers migrate to the typed
+        contract.
+        """
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT event_id, run_id, sequence, run_version, event_type,
+                       payload_json, legacy_step, created_at
+                FROM run_events
+                WHERE run_id = ?
+                  AND (event_type = 'assistant.final' OR legacy_step = 'end')
+                ORDER BY CASE WHEN event_type = 'assistant.final' THEN 0 ELSE 1 END,
+                         sequence DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            return self._event_from_row(row) if row is not None else None
 
     def set_timeout_policy(
         self,
@@ -10291,6 +10589,10 @@ class SQLiteRunJournal:
 
     @staticmethod
     def _terminal_status_for_event(draft: RunEventDraft) -> str | None:
+        # assistant.final keeps legacy_step='end' for old projectors, but the
+        # Coordinator remains the sole owner of the Run terminal transition.
+        if draft.event_type == "assistant.final":
+            return None
         if draft.event_type == "run.completed" or draft.legacy_step == "end":
             return "completed"
         if draft.event_type in {"run.failed", "run.deadline_reached"}:
@@ -10501,6 +10803,10 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V17)
         if version < 18:
             self._connection.executescript(_MIGRATION_V18)
+        if version < 19:
+            self._connection.executescript(_MIGRATION_V19)
+        if version < 20:
+            self._connection.executescript(_MIGRATION_V20)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -11371,6 +11677,23 @@ class SQLiteRunJournal:
             legacy_step=row["legacy_step"],
             created_at=float(row["created_at"]),
             run_version=int(row["run_version"]),
+        )
+
+    @staticmethod
+    def _follow_up_request_from_row(
+        row: sqlite3.Row,
+    ) -> FollowUpRequestRecord:
+        return FollowUpRequestRecord(
+            request_id=row["request_id"],
+            project_id=row["project_id"],
+            content=row["content"],
+            attachment_paths=tuple(json.loads(row["attachment_paths_json"])),
+            delivery_mode=row["delivery_mode"],
+            status=row["status"],
+            admitted_run_id=row["admitted_run_id"],
+            last_error=row["last_error"],
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
         )
 
     @staticmethod

@@ -428,7 +428,6 @@ class TestBuildContextForWorkforce:
                 "content": "I will create a Python script for you",
             },
         ]
-        task_lock.last_task_result = "Script created successfully"
         task_lock.last_task_summary = "Python Script Creation"
 
         # Create mock Chat options
@@ -446,7 +445,6 @@ class TestBuildContextForWorkforce:
         """Test build_context_for_workforce with empty conversation history."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = ""
         task_lock.last_task_summary = ""
 
         options = MagicMock()
@@ -470,7 +468,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed successfully",
             },
         ]
-        task_lock.last_task_result = "Final result"
         task_lock.last_task_summary = "Task summary"
 
         options = MagicMock()
@@ -482,7 +479,7 @@ class TestBuildContextForWorkforce:
         assert "Full task context from previous task" in result
         assert "Task completed successfully" in result
 
-    def test_build_context_for_workforce_with_last_task_result(self, temp_dir):
+    def test_build_context_for_workforce_with_assistant_result(self, temp_dir):
         """Test build_context_for_workforce with assistant entries."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
@@ -491,7 +488,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed with output.txt",
             },
         ]
-        task_lock.last_task_result = "Task completed with output.txt"
         task_lock.last_task_summary = "File creation task"
 
         options = MagicMock()
@@ -1243,7 +1239,6 @@ class TestChatServiceIntegration:
             {"role": "user", "content": "Create a Python script"},
             {"role": "assistant", "content": "Script created successfully"},
         ]
-        task_lock.last_task_result = "def hello(): print('Hello World')"
         task_lock.last_task_summary = "Python Hello World Script"
 
         # Create some files in working directory
@@ -1423,7 +1418,6 @@ class TestChatServiceIntegration:
         mock_task_lock.conversation_history = []
         mock_task_lock.agent_memory_history = []
         mock_task_lock.memory_summary = ""
-        mock_task_lock.last_task_result = ""
         mock_task_lock.summary_generated = False
         mock_task_lock.memory_service = None
         mock_task_lock.run_context = None
@@ -1560,7 +1554,6 @@ class TestChatServiceErrorCases:
         # Create task_lock without required attributes
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = None  # Missing attribute
-        task_lock.last_task_result = None  # Missing attribute
         task_lock.last_task_summary = None  # Missing attribute
 
         options = MagicMock()
@@ -1575,7 +1568,6 @@ class TestChatServiceErrorCases:
         """Test build_context_for_workforce returns empty for empty conversation."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = "Test result"
         task_lock.last_task_summary = "Test summary"
 
         options = MagicMock()

@@ -18,6 +18,7 @@ import asyncio
 
 import pytest
 
+from app.run_journal import EventRecorder, SQLiteRunJournal
 from app.run_runtime import RunCoordinator, RunExecutionError
 
 
@@ -204,3 +205,73 @@ async def test_explicit_coordinator_close_cancels_execution():
     assert handle.execution_task is not None
     assert handle.execution_task.cancelled()
     assert handle.completed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_completed_run_references_its_canonical_assistant_result(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="run-result", project_id="project-1")
+        final = await EventRecorder(journal).record_assistant_final(
+            project_id="project-1",
+            run_id="run-result",
+            data="The durable answer",
+        )
+        coordinator = RunCoordinator(journal)
+
+        async def source():
+            yield "visible SSE frame"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-result",
+            stream_factory=source,
+        )
+        assert await subscription.__anext__() == "visible SSE frame"
+        with pytest.raises(StopAsyncIteration):
+            await subscription.__anext__()
+
+        completed = next(
+            event
+            for event in journal.list_events("run-result")
+            if event.event_type == "run.completed"
+        )
+        assert completed.payload["result_event_id"] == final.event_id
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_logical_turn_completes_without_disposing_warm_runtime(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    coordinator = RunCoordinator(journal)
+    release = asyncio.Event()
+    try:
+        journal.ensure_run(run_id="run-turn", project_id="project-1")
+
+        async def source():
+            await release.wait()
+            yield "later"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-turn",
+            stream_factory=source,
+        )
+        final = await EventRecorder(journal).record_assistant_final(
+            project_id="project-1",
+            run_id="run-turn",
+            data="Done",
+        )
+
+        assert await coordinator.complete_turn("run-turn") is True
+        assert journal.get_run("run-turn").status == "completed"
+        completed = next(
+            event
+            for event in journal.list_events("run-turn")
+            if event.event_type == "run.completed"
+        )
+        assert completed.payload["result_event_id"] == final.event_id
+        assert await coordinator.get_handle("run-turn") is subscription.handle
+    finally:
+        release.set()
+        await coordinator.close()
+        journal.close()

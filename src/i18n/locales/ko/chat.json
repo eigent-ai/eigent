@@ -86,6 +86,7 @@
   "expand-input": "입력 확장 (⌘P)",
   "collapse-input": "입력 접기 (⌘P)",
   "queued-tasks": "대기 중인 작업",
+  "send-now": "지금 보내기",
   "remove-queued-message": "대기 중인 메시지 제거",
   "no-agents-added": "에이전트가 추가되지 않았습니다",
   "open-in-ide": "열기",

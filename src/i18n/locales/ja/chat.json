@@ -86,6 +86,7 @@
   "expand-input": "入力を展開 (⌘P)",
   "collapse-input": "入力を折りたたむ (⌘P)",
   "queued-tasks": "キューに入れたタスク",
+  "send-now": "今すぐ送信",
   "remove-queued-message": "キューに入れたメッセージを削除",
   "no-agents-added": "エージェントが追加されていません",
   "open-in-ide": "開く",

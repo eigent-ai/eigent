@@ -30,6 +30,8 @@ from app.memory import (
 )
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
+from app.run_journal.context_projection import build_project_execution_context
+from app.run_journal.runtime import get_default_run_journal
 from app.run_runtime.admission import activate_improve_admission
 from app.run_runtime.coordinator import RunInterruptedError
 from app.service.task import (
@@ -131,6 +133,26 @@ async def _dispose_stale_agent_runtime(
         ) from failures[0]
 
 
+async def _reset_agent_for_run(
+    agent: Any,
+    *,
+    task_id: str,
+) -> None:
+    """Reset semantic state while retaining the compatible warm runtime."""
+
+    reset = getattr(agent, "reset", None)
+    if not callable(reset):
+        raise RuntimeError("Reusable Agent does not expose reset()")
+    outcome = reset()
+    if inspect.isawaitable(outcome):
+        await outcome
+    agent.process_task_id = task_id
+    stop_event = getattr(agent, "stop_event", None)
+    clear_stop = getattr(stop_event, "clear", None)
+    if callable(clear_stop):
+        clear_stop()
+
+
 # Char budget for the durable memory bundle (~32k chars at 4 chars/token).
 # Override via EIGENT_MEMORY_TOKEN_BUDGET if you need to tune in the field.
 try:
@@ -146,15 +168,40 @@ def _build_single_agent_context(
     project_context: str | None = None,
     current_user_prompt: str = "",
 ) -> str:
-    # 1. Durable cross-restart context from LocalMemoryStore (M4 path).
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            canonical_execution = build_project_execution_context(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+            )
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
+
+    # Project Memory owns durable summaries/facts/artifacts. Conversation and
+    # tool history come from the canonical RunJournal when it is available.
     durable = build_durable_context_for_task_lock(
         task_lock,
         mode="single_agent",
         current_user_prompt=current_user_prompt,
         token_budget=_MEMORY_TOKEN_BUDGET,
+        include_conversation=not bool(canonical_execution),
     )
-    if durable:
-        return durable + "\n\n"
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        return "\n\n".join(durable_parts) + "\n\n"
 
     # 2. In-process conversation history (hot follow-up turns).
     if getattr(task_lock, "conversation_history", None):
@@ -211,8 +258,11 @@ def _build_single_agent_prompt(
     attaches: list[str],
     project_context: str | None = None,
 ) -> str:
+    # The current instruction is appended below exactly once. Durable memory
+    # owns cross-Run history; it must not also render the current user message
+    # as a synthetic history section.
     context = _build_single_agent_context(
-        task_lock, project_context, current_user_prompt=question
+        task_lock, project_context, current_user_prompt=""
     )
     attachment_context = ""
     if attaches:
@@ -313,28 +363,32 @@ async def single_agent_solve(
     pause_event = asyncio.Event()
     pause_event.set()
     agent = None
-    agent_environment_spec_id: str | None = None
+    agent_run_id: str | None = None
+    agent_runtime_key: tuple[str | None, str, str | None] | None = None
     running_turn: asyncio.Task[tuple[str, int]] | None = None
     current_task_id = options.task_id
 
     async def ensure_agent(task_id: str):
-        nonlocal agent, agent_environment_spec_id
+        nonlocal agent, agent_run_id, agent_runtime_key
         current_environment_spec_id = getattr(
             task_lock,
             "environment_spec_id",
             None,
         )
-        if (
-            agent is not None
-            and agent_environment_spec_id != current_environment_spec_id
-        ):
+        current_runtime_key = (
+            current_environment_spec_id,
+            get_working_directory(options, task_lock),
+            getattr(task_lock, "permission_profile_revision", None),
+        )
+        if agent is not None and agent_runtime_key != current_runtime_key:
             await _dispose_stale_agent_runtime(
                 agent,
                 task_lock,
                 task_id=task_id,
             )
             agent = None
-            agent_environment_spec_id = None
+            agent_run_id = None
+            agent_runtime_key = None
         if agent is None:
             agent = await single_agent(
                 options,
@@ -347,7 +401,11 @@ async def single_agent_solve(
                     None,
                 ),
             )
-            agent_environment_spec_id = current_environment_spec_id
+            agent_run_id = task_id
+            agent_runtime_key = current_runtime_key
+        elif agent_run_id != task_id:
+            await _reset_agent_for_run(agent, task_id=task_id)
+            agent_run_id = task_id
         observable_todo = getattr(agent, "_observable_todo_toolkit", None)
         if observable_todo is not None:
             observable_todo.task_id = task_id

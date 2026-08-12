@@ -382,8 +382,6 @@ class TaskLock:
     """Serialized ChatAgent memory snapshots for session continuity"""
     memory_summary: str
     """Compressed summary of older serialized agent memory"""
-    last_task_result: str
-    """Store the last task execution result"""
     last_task_summary: str
     """Store the last generated task summary"""
     question_agent: Any | None
@@ -454,7 +452,6 @@ class TaskLock:
         self.conversation_history = []
         self.agent_memory_history = []
         self.memory_summary = ""
-        self.last_task_result = ""
         self.last_task_summary = ""
         self.question_agent = None
         self.summary_generated = False

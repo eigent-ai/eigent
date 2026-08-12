@@ -544,6 +544,20 @@ def _redacted_action_value(value: Any) -> Any:
     return _canonical_action_value(value)
 
 
+def redact_action_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Return the shared secret-safe, human-readable argument projection.
+
+    Permission cards, execution checkpoints, and model context must not grow
+    independent redaction rules.  Keeping one projection also lets the
+    RunJournal retain useful tool-call semantics without persisting raw
+    credentials.
+    """
+
+    redacted = _redacted_action_value(arguments)
+    assert isinstance(redacted, dict)
+    return redacted
+
+
 class PermissionProfileName(StrEnum):
     READ_ONLY = "read_only"
     REQUEST_APPROVAL = "request_approval"

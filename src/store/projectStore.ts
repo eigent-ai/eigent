@@ -143,10 +143,7 @@ export enum ProjectType {
 
 export type ProjectMode = 'single-agent' | 'workforce';
 export type ProjectWorkdirMode =
-  | 'worktree'
-  | 'copy'
-  | 'direct-write'
-  | 'artifact-only';
+  'worktree' | 'copy' | 'direct-write' | 'artifact-only';
 
 interface TaskQueue {
   task_id: string;
@@ -159,6 +156,7 @@ interface TaskQueue {
   triggerId?: number;
   triggerName?: string;
   processing?: boolean;
+  sendNow?: boolean;
 }
 
 /**
@@ -437,6 +435,12 @@ interface ProjectStore {
   restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
   clearQueuedMessages: (projectId: string) => void;
   markQueuedMessageAsProcessing: (projectId: string, taskId: string) => void;
+  setQueuedMessageProcessing: (
+    projectId: string,
+    taskId: string,
+    processing: boolean
+  ) => void;
+  prioritizeQueuedMessage: (projectId: string, taskId: string) => void;
 
   // Chat store state management
   createChatStore: (projectId: string, chatName?: string) => string | null;
@@ -2161,6 +2165,47 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     console.log(
       `[ProjectStore] Marked message as processing: ${taskId} in project ${projectId}`
     );
+  },
+
+  setQueuedMessageProcessing: (
+    projectId: string,
+    taskId: string,
+    processing: boolean
+  ) => {
+    const { projects } = get();
+    if (!projects[projectId]) return;
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          queuedMessages: state.projects[projectId].queuedMessages.map(
+            (item) => (item.task_id === taskId ? { ...item, processing } : item)
+          ),
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+  },
+
+  prioritizeQueuedMessage: (projectId: string, taskId: string) => {
+    const { projects } = get();
+    if (!projects[projectId]) return;
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          queuedMessages: state.projects[projectId].queuedMessages.map(
+            (item) => {
+              if (item.executionId) return item;
+              return { ...item, sendNow: item.task_id === taskId };
+            }
+          ),
+          updatedAt: Date.now(),
+        },
+      },
+    }));
   },
 
   getAllChatStores: (projectId: string) => {

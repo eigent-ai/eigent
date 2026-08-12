@@ -86,6 +86,7 @@
   "expand-input": "Expand input (⌘P)",
   "collapse-input": "Collapse input (⌘P)",
   "queued-tasks": "Queued Tasks",
+  "send-now": "Send now",
   "remove-queued-message": "Remove queued message",
   "no-agents-added": "No agents added",
   "open-in-ide": "Open in",
