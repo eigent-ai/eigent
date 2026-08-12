@@ -19,6 +19,7 @@ import {
 } from '@/lib/projector/control';
 import {
   getProjectEventStore,
+  type ProjectEventStore,
   type ProjectEventStoreSnapshot,
 } from '@/store/projectEventStore';
 import { useMemo, useSyncExternalStore } from 'react';
@@ -27,11 +28,26 @@ const EMPTY_HUMAN_CONTROL_PROJECTION = createHumanControlProjectionState('');
 const subscribeToNothing = () => () => undefined;
 const getEmptyHumanControlProjection = () => EMPTY_HUMAN_CONTROL_PROJECTION;
 
+export function useProjectEventStoreInstance(
+  projectId: string
+): ProjectEventStore;
+export function useProjectEventStoreInstance(
+  projectId: string | null | undefined
+): ProjectEventStore | null;
+export function useProjectEventStoreInstance(
+  projectId: string | null | undefined
+): ProjectEventStore | null {
+  return useMemo(
+    () => (projectId ? getProjectEventStore(projectId) : null),
+    [projectId]
+  );
+}
+
 /** Subscribe to one Project projection without coupling components to ChatStore. */
 export function useProjectEventView(
   projectId: string
 ): ProjectEventStoreSnapshot {
-  const store = useMemo(() => getProjectEventStore(projectId), [projectId]);
+  const store = useProjectEventStoreInstance(projectId);
   return useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -43,7 +59,7 @@ export function useProjectEventView(
 export function useProjectChatProjection(
   projectId: string
 ): ChatProjectionState {
-  const store = useMemo(() => getProjectEventStore(projectId), [projectId]);
+  const store = useProjectEventStoreInstance(projectId);
   return useSyncExternalStore(
     store.subscribe,
     store.getChatSnapshot,
@@ -55,10 +71,7 @@ export function useProjectChatProjection(
 export function useProjectHumanControlProjection(
   projectId: string | null | undefined
 ): HumanControlProjectionState {
-  const store = useMemo(
-    () => (projectId ? getProjectEventStore(projectId) : null),
-    [projectId]
-  );
+  const store = useProjectEventStoreInstance(projectId);
   return useSyncExternalStore(
     store?.subscribe ?? subscribeToNothing,
     store?.getControlSnapshot ?? getEmptyHumanControlProjection,

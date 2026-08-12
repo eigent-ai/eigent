@@ -69,14 +69,14 @@ function sameRunSummary(
 }
 
 /**
- * Cloud-restored Runs are historical projections, not actionable local
- * interruptions. Keep their provenance in the journal, but do not surface
- * them through the Resume/Cancel product state.
+ * Only an explicitly local, resumable Run can own Resume/Cancel controls.
+ * Missing provenance belongs to the legacy/past lane, while a blocked reason
+ * means RunJournal already knows the local execution context is incomplete.
  */
 export function actionableInterruptedRun(
   run: DurableRunSummary | null
 ): DurableRunSummary | null {
-  return run?.origin === 'cloud_restore' ? null : run;
+  return run?.origin === 'local' && !run.resume_blocked_reason ? run : null;
 }
 
 /**

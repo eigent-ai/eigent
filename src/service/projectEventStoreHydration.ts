@@ -18,6 +18,7 @@ import type {
   ProjectSnapshotInput,
 } from '@/lib/projector';
 import { normalizeLocalRunEvent } from '@/lib/projector';
+import { projectHumanControlEvents } from '@/lib/projector/control';
 import {
   getProjectEventStore,
   type ProjectEventStore,
@@ -53,6 +54,7 @@ type RunDescriptor = {
   status: string;
   version: number;
   updatedAt: string;
+  elapsedMs: number | null;
   origin: string | null;
   resumeBlockedReason: string | null;
 };
@@ -164,6 +166,21 @@ function limitExceeded(message: string): never {
   throw new ProjectEventStoreHydrationError(message, 'limit_exceeded');
 }
 
+function hasPendingHumanControl(
+  projectId: string,
+  events: readonly CanonicalProjectEvent[]
+): boolean {
+  const control = projectHumanControlEvents(projectId, events);
+  return control.orderedInteractionIds.some((interactionId) => {
+    const interaction = control.interactionById[interactionId];
+    return (
+      interaction?.status === 'requested' &&
+      (interaction.requestEventType === 'interaction.requested' ||
+        interaction.requestEventType === 'approval.requested')
+    );
+  });
+}
+
 function parseRunDescriptors(
   response: ProjectRunsResponse,
   projectId: string,
@@ -204,6 +221,17 @@ function parseRunDescriptors(
       invalidResponse('Project Run listing contained an invalid updated_at');
     }
     if (
+      item.total_attempt_elapsed_ms !== undefined &&
+      item.total_attempt_elapsed_ms !== null &&
+      (typeof item.total_attempt_elapsed_ms !== 'number' ||
+        !Number.isInteger(item.total_attempt_elapsed_ms) ||
+        item.total_attempt_elapsed_ms < 0)
+    ) {
+      invalidResponse(
+        'Project Run listing contained an invalid total attempt elapsed time'
+      );
+    }
+    if (
       item.origin !== undefined &&
       (typeof item.origin !== 'string' || !item.origin.trim())
     ) {
@@ -223,6 +251,10 @@ function parseRunDescriptors(
       status: item.status,
       version: item.version,
       updatedAt: isoTimestamp(item.updated_at),
+      elapsedMs:
+        typeof item.total_attempt_elapsed_ms === 'number'
+          ? item.total_attempt_elapsed_ms
+          : null,
       // Missing provenance is intentionally unknown. Command owners must only
       // treat the explicit local origin as actionable.
       origin: typeof item.origin === 'string' ? item.origin : null,
@@ -451,19 +483,62 @@ async function loadProjectSnapshot(
   const events: CanonicalProjectEvent[] = [];
   const seenEventIds = new Set<string>();
   const runSequences = new Map<string, number>();
+  const truncatedRunIds = new Set<string>();
+  const truncationRecoveryTargets = new Map<string, number>();
 
-  for (const run of runs) {
+  // A pending HumanInteraction is a user obligation, so waiting Runs get the
+  // bounded tail budget before background/completed Runs. Preserve at least
+  // one slot for every later waiting Run when the configured bound permits it.
+  const prioritizedRuns = [
+    ...runs.filter((run) => run.status === 'waiting_for_user'),
+    ...runs.filter((run) => run.status !== 'waiting_for_user'),
+  ];
+
+  for (let index = 0; index < prioritizedRuns.length; index += 1) {
+    const run = prioritizedRuns[index];
     const remainingEvents = options.maxEvents - budget.events;
     if (remainingEvents <= 0) {
-      runSequences.set(run.runId, run.version);
-      if (run.version > 0) eventsTruncated = true;
+      // The descriptor version is not proof that this frontend reconstructed
+      // the omitted journal. Advancing to it would silently swallow later live
+      // events, including a HumanInteraction resolution whose request is gone.
+      runSequences.set(run.runId, 0);
+      if (run.version > 0) {
+        eventsTruncated = true;
+        truncatedRunIds.add(run.runId);
+        truncationRecoveryTargets.set(run.runId, run.version);
+      }
       continue;
     }
+    const laterWaitingRuns = prioritizedRuns
+      .slice(index + 1)
+      .filter(
+        (candidate) =>
+          candidate.status === 'waiting_for_user' && candidate.version > 0
+      ).length;
+    const retainLimit =
+      run.status === 'waiting_for_user'
+        ? Math.max(1, remainingEvents - laterWaitingRuns)
+        : remainingEvents;
     // RunJournal increments `version` and event `sequence` atomically for each
     // append. Starting near the current version gives a bounded newest tail
     // without reading/projecting an arbitrarily long historical prefix.
-    const afterSequence = Math.max(0, run.version - remainingEvents);
-    if (afterSequence > 0) eventsTruncated = true;
+    const afterSequence = Math.max(0, run.version - retainLimit);
+    if (afterSequence > 0) {
+      eventsTruncated = true;
+      truncatedRunIds.add(run.runId);
+    }
+
+    if (run.status === 'waiting_for_user' && afterSequence > 0) {
+      // A newest-tail request cannot prove that an older unresolved request was
+      // not omitted. Do not spend the shared hydration budget fetching a tail
+      // that must be discarded; the stream owner replays this Run from zero in
+      // its bounded recovery lane before any live SSE may attach.
+      runSequences.set(run.runId, 0);
+      truncationRecoveryTargets.set(run.runId, run.version);
+      continue;
+    }
+
+    const retainedStart = events.length;
     const replay = await readRunEvents(run, {
       ...options,
       projectId,
@@ -471,7 +546,7 @@ async function loadProjectSnapshot(
       seenEventIds,
       events,
       afterSequence,
-      retainLimit: remainingEvents,
+      retainLimit,
       // A single response page of concurrent appends can extend beyond the
       // descriptor version. Validate and ring-retain that bounded race window.
       maxScannedEvents: options.maxEvents + options.eventPageSize,
@@ -479,7 +554,31 @@ async function loadProjectSnapshot(
     if (replay.lastSequence < run.version) {
       invalidResponse('Run event replay ended before the listed Run version');
     }
-    if (replay.truncated) eventsTruncated = true;
+    if (replay.truncated) {
+      eventsTruncated = true;
+      truncatedRunIds.add(run.runId);
+    }
+
+    if (
+      run.status === 'waiting_for_user' &&
+      (truncatedRunIds.has(run.runId) ||
+        !hasPendingHumanControl(projectId, events.slice(retainedStart)))
+    ) {
+      // A partial waiting journal cannot prove it contains every unresolved
+      // request. Drop the unproven tail and leave a zero watermark; the
+      // per-Run truncation marker drives the safe no-control UI, while a later
+      // live sequence forces bounded resync instead of vanishing.
+      const droppedEventCount = events.length - retainedStart;
+      events.splice(retainedStart, droppedEventCount);
+      budget.events -= droppedEventCount;
+      runSequences.set(run.runId, 0);
+      eventsTruncated = true;
+      truncatedRunIds.add(run.runId);
+      if (replay.lastSequence > 0) {
+        truncationRecoveryTargets.set(run.runId, replay.lastSequence);
+      }
+      continue;
+    }
     runSequences.set(run.runId, replay.lastSequence);
   }
 
@@ -502,6 +601,17 @@ async function loadProjectSnapshot(
         expected_next_run_sequence: (runSequences.get(run.runId) ?? 0) + 1,
         updated_at: run.updatedAt,
         run_version: run.version,
+        ...(run.elapsedMs !== null
+          ? { total_attempt_elapsed_ms: run.elapsedMs }
+          : {}),
+        ...(truncatedRunIds.has(run.runId) ? { events_truncated: true } : {}),
+        ...(truncationRecoveryTargets.has(run.runId)
+          ? {
+              truncation_recovery_target: truncationRecoveryTargets.get(
+                run.runId
+              ),
+            }
+          : {}),
         origin: run.origin,
         resume_blocked_reason: run.resumeBlockedReason,
       })),

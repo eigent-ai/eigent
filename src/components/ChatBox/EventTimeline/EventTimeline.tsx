@@ -14,7 +14,7 @@
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 import { EventRenderer } from './EventRenderer';
 import type { EventRendererErrorHandler } from './EventRendererBoundary';
@@ -39,6 +39,8 @@ interface EventTimelineProps {
   onRendererError?: EventRendererErrorHandler;
   presentationPolicies?: ChatTimelinePresentationPolicyRegistry;
   registry?: EventRendererRegistry;
+  renderAfterNode?: (node: ChatProjectionNode) => ReactNode;
+  renderAfterRun?: (runId: string) => ReactNode;
 }
 
 /**
@@ -57,6 +59,8 @@ export function EventTimeline({
   onRendererError,
   presentationPolicies = defaultChatTimelinePresentationPolicyRegistry,
   registry,
+  renderAfterNode,
+  renderAfterRun,
 }: EventTimelineProps) {
   const presentation = resolveChatTimelinePresentation(
     presentationPolicies,
@@ -66,6 +70,11 @@ export function EventTimeline({
 
   if (presentation.nodes.length === 0) return <>{emptyState}</>;
 
+  const lastPresentedNodeIdByRun = new Map<string, string>();
+  for (const node of presentation.nodes) {
+    lastPresentedNodeIdByRun.set(node.runId, node.id);
+  }
+
   return (
     <ol
       aria-label={ariaLabel}
@@ -73,38 +82,55 @@ export function EventTimeline({
       data-effective-detail-level={presentation.effectiveDetailLevel}
       data-requested-detail-level={presentation.requestedDetailLevel}
     >
-      {presentation.nodes.map((node) => (
-        <li
-          className="min-w-0"
-          data-event-node-id={node.id}
-          data-event-node-kind={node.kind}
-          data-interaction-id={
-            node.kind === 'interaction' ? node.interactionId : undefined
-          }
-          data-interaction-request-event-id={
-            node.kind === 'interaction'
-              ? node.requestEventId ||
-                (node.status === 'requested' ? node.eventId : undefined)
-              : undefined
-          }
-          data-interaction-resolution-event-id={
-            node.kind === 'interaction' ? node.resolutionEventId : undefined
-          }
-          data-interaction-status={
-            node.kind === 'interaction' ? node.status : undefined
-          }
-          data-run-id={node.runId}
-          key={node.id}
-        >
-          <EventRenderer
-            detailLevel={presentation.effectiveDetailLevel}
-            eventTypeRegistry={eventTypeRegistry}
-            node={node}
-            onRendererError={onRendererError}
-            registry={registry}
-          />
-        </li>
-      ))}
+      {presentation.nodes.map((node) => {
+        const afterNode =
+          renderAfterNode?.(node) ??
+          (lastPresentedNodeIdByRun.get(node.runId) === node.id
+            ? renderAfterRun?.(node.runId)
+            : null);
+        return (
+          <Fragment key={node.id}>
+            <li
+              className="min-w-0"
+              data-event-node-id={node.id}
+              data-event-node-kind={node.kind}
+              data-interaction-id={
+                node.kind === 'interaction' ? node.interactionId : undefined
+              }
+              data-interaction-request-event-id={
+                node.kind === 'interaction'
+                  ? node.requestEventId ||
+                    (node.status === 'requested' ? node.eventId : undefined)
+                  : undefined
+              }
+              data-interaction-resolution-event-id={
+                node.kind === 'interaction' ? node.resolutionEventId : undefined
+              }
+              data-interaction-status={
+                node.kind === 'interaction' ? node.status : undefined
+              }
+              data-run-id={node.runId}
+            >
+              <EventRenderer
+                detailLevel={presentation.effectiveDetailLevel}
+                eventTypeRegistry={eventTypeRegistry}
+                node={node}
+                onRendererError={onRendererError}
+                registry={registry}
+              />
+            </li>
+            {afterNode ? (
+              <li
+                className="min-w-0"
+                data-after-event-node-id={node.id}
+                data-run-id={node.runId}
+              >
+                {afterNode}
+              </li>
+            ) : null}
+          </Fragment>
+        );
+      })}
     </ol>
   );
 }

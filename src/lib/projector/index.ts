@@ -58,6 +58,24 @@ function snapshotRunVersion(
     : null;
 }
 
+function snapshotRunElapsedMs(
+  aggregate: NonNullable<ProjectSnapshotInput['runs']>[number]
+): number | undefined {
+  const value = aggregate.total_attempt_elapsed_ms;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function snapshotTruncationRecoveryTarget(
+  aggregate: NonNullable<ProjectSnapshotInput['runs']>[number]
+): number | undefined {
+  const value = aggregate.truncation_recovery_target;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
 export function projectRawEvents(
   projectId: string,
   rawEvents: unknown[],
@@ -91,6 +109,18 @@ export function projectSnapshot(
   for (const aggregate of snapshot.runs || []) {
     const recent = runs[aggregate.run_id];
     const aggregateRunVersion = snapshotRunVersion(aggregate);
+    const elapsedMs = snapshotRunElapsedMs(aggregate) ?? recent?.elapsedMs;
+    const truncationRecoveryTarget =
+      snapshotTruncationRecoveryTarget(aggregate) ??
+      recent?.truncationRecoveryTarget;
+    const recoveredTruncation = Boolean(
+      truncationRecoveryTarget &&
+      recent &&
+      recent.lastSequence >= truncationRecoveryTarget
+    );
+    const eventsTruncated =
+      !recoveredTruncation &&
+      (aggregate.events_truncated === true || recent?.eventsTruncated === true);
     // GET /runs is read before the event pages. If the Run changes while the
     // pages are loading, replay is the newer status authority; otherwise the
     // older aggregate could overwrite a terminal or decision event.
@@ -112,6 +142,11 @@ export function projectSnapshot(
       updatedAt: replayIsAtLeastAsFresh
         ? recent!.updatedAt
         : aggregate.updated_at,
+      ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+      ...(eventsTruncated ? { eventsTruncated: true } : {}),
+      ...(eventsTruncated && truncationRecoveryTarget
+        ? { truncationRecoveryTarget }
+        : {}),
       origin: aggregate.origin ?? recent?.origin ?? null,
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,

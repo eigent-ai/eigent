@@ -137,6 +137,33 @@ describe('hydrateProjectEventStore', () => {
     ]);
   });
 
+  it('retains the durable attempt duration for missing-event presentation', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock
+      .mockResolvedValueOnce(
+        runsResponse({
+          status: 'interrupted',
+          version: 0,
+          total_attempt_elapsed_ms: 42_000,
+        })
+      )
+      .mockResolvedValueOnce({
+        run_id: 'run-1',
+        next_sequence: 0,
+        has_more: false,
+        events: [],
+      });
+
+    await hydrateProjectEventStore({ projectId: 'project-1', store });
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      status: 'interrupted',
+      elapsedMs: 42_000,
+    });
+  });
+
   it('does not lose a live event received while a snapshot page is in flight', async () => {
     const store = new ProjectEventStore('project-1', {
       scheduleFlush: () => () => undefined,
@@ -177,6 +204,353 @@ describe('hydrateProjectEventStore', () => {
       'run-1-event-1',
       'run-1-event-2',
     ]);
+  });
+
+  it('prioritizes a waiting Run so its pending request survives a tight bound', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock
+      .mockResolvedValueOnce({
+        project_id: 'project-1',
+        runs: [
+          {
+            run_id: 'run-completed',
+            status: 'completed',
+            version: 2,
+            origin: 'local',
+            resume_blocked_reason: null,
+            updated_at: 1_786_441_602,
+          },
+          {
+            run_id: 'run-waiting',
+            status: 'waiting_for_user',
+            version: 1,
+            origin: 'local',
+            resume_blocked_reason: null,
+            updated_at: 1_786_441_603,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        run_id: 'run-waiting',
+        next_sequence: 1,
+        has_more: false,
+        events: [
+          localEvent(1, 'run-waiting', {
+            event_type: 'interaction.requested',
+            legacy_step: null,
+            payload: {
+              interaction_id: 'question-1',
+              interaction_type: 'question',
+              question: 'Continue?',
+            },
+          }),
+        ],
+      });
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        maxEvents: 1,
+      })
+    ).resolves.toMatchObject({ eventCount: 1, eventsTruncated: true });
+
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      2,
+      '/runs/run-waiting/events',
+      { after_sequence: 0, limit: 500 },
+      undefined,
+      { signal: undefined }
+    );
+    expect(
+      store.getSnapshot().control.interactionById['question-1']
+    ).toMatchObject({
+      runId: 'run-waiting',
+      status: 'requested',
+    });
+    expect(store.getSnapshot().view.runs['run-waiting'].lastSequence).toBe(1);
+    expect(store.getSnapshot().view.runs['run-completed']).toMatchObject({
+      lastSequence: 0,
+      runVersion: 2,
+    });
+  });
+
+  it('does not advance or expose controls when a waiting request is outside the retained tail', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockResolvedValueOnce(
+      runsResponse({ status: 'waiting_for_user', version: 2 })
+    );
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        maxEvents: 1,
+      })
+    ).resolves.toMatchObject({ eventCount: 0, eventsTruncated: true });
+
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      status: 'waiting_for_user',
+      lastSequence: 0,
+      runVersion: 2,
+    });
+    expect(store.getSnapshot().chat.nodes).toEqual([]);
+    expect(store.getSnapshot().control.orderedInteractionIds).toEqual([]);
+
+    expect(
+      store.enqueue(
+        normalizeLocalRunEvent(
+          localEvent(3, 'run-1', {
+            event_type: 'interaction.resolved',
+            legacy_step: null,
+            payload: {
+              interaction_id: 'question-1',
+              interaction_type: 'question',
+            },
+          }),
+          'project-1'
+        )
+      )
+    ).toBe(true);
+    store.flushAll();
+
+    expect(store.getSnapshot().view).toMatchObject({
+      needsResync: true,
+      resyncReason: 'run_sequence_gap:run-1:1:3',
+    });
+    expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(0);
+    expect(store.getSnapshot().control.orderedInteractionIds).toEqual([]);
+  });
+
+  it('restores control authority only after replay from zero reaches the recovery target', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockResolvedValueOnce(
+      runsResponse({ status: 'waiting_for_user', version: 2 })
+    );
+
+    await hydrateProjectEventStore({
+      projectId: 'project-1',
+      store,
+      maxEvents: 1,
+    });
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      lastSequence: 0,
+      eventsTruncated: true,
+      truncationRecoveryTarget: 2,
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+
+    store.enqueue(
+      normalizeLocalRunEvent(
+        localEvent(1, 'run-1', {
+          event_type: 'interaction.requested',
+          legacy_step: null,
+          payload: {
+            interaction_id: 'question-1',
+            interaction_type: 'question',
+            question: 'Continue?',
+          },
+        }),
+        'project-1'
+      )
+    );
+    store.flushAll();
+    expect(store.getSnapshot().view.runs['run-1'].eventsTruncated).toBe(true);
+
+    store.enqueue(
+      normalizeLocalRunEvent(
+        localEvent(2, 'run-1', {
+          event_type: 'activity.updated',
+          legacy_step: null,
+          payload: { label: 'Still waiting' },
+        }),
+        'project-1'
+      )
+    );
+    store.flushAll();
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      lastSequence: 2,
+      runVersion: 2,
+    });
+    expect(store.getSnapshot().view.runs['run-1'].eventsTruncated).toBe(
+      undefined
+    );
+    expect(
+      store.getSnapshot().control.interactionById['question-1']
+    ).toMatchObject({
+      status: 'requested',
+      requestEventType: 'interaction.requested',
+    });
+  });
+
+  it('skips a known-partial waiting tail even when its newest event is a request', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockResolvedValueOnce(
+      runsResponse({ status: 'waiting_for_user', version: 3 })
+    );
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        maxEvents: 1,
+      })
+    ).resolves.toMatchObject({ eventCount: 0, eventsTruncated: true });
+
+    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
+      lastSequence: 0,
+      eventsTruncated: true,
+      truncationRecoveryTarget: 3,
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().control.orderedInteractionIds).toEqual([]);
+  });
+
+  it('marks every known-partial waiting Run without spending the tail budget', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockResolvedValueOnce({
+      project_id: 'project-1',
+      runs: [
+        {
+          run_id: 'waiting-1',
+          status: 'waiting_for_user',
+          version: 8,
+          origin: 'local',
+          resume_blocked_reason: null,
+          updated_at: 1_786_441_603,
+        },
+        {
+          run_id: 'waiting-2',
+          status: 'waiting_for_user',
+          version: 7,
+          origin: 'local',
+          resume_blocked_reason: null,
+          updated_at: 1_786_441_602,
+        },
+      ],
+    });
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        maxEvents: 2,
+      })
+    ).resolves.toMatchObject({ eventCount: 0, eventsTruncated: true });
+
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().view.runs).toMatchObject({
+      'waiting-1': {
+        lastSequence: 0,
+        eventsTruncated: true,
+        truncationRecoveryTarget: 8,
+      },
+      'waiting-2': {
+        lastSequence: 0,
+        eventsTruncated: true,
+        truncationRecoveryTarget: 7,
+      },
+    });
+  });
+
+  it('does not treat a legacy ASK mirror as durable request authority', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock
+      .mockResolvedValueOnce(
+        runsResponse({ status: 'waiting_for_user', version: 1 })
+      )
+      .mockResolvedValueOnce({
+        run_id: 'run-1',
+        next_sequence: 1,
+        has_more: false,
+        events: [
+          localEvent(1, 'run-1', {
+            event_type: 'legacy.step',
+            legacy_step: 'ask',
+            payload: {
+              interaction_id: 'question-1',
+              question: 'Continue?',
+            },
+          }),
+        ],
+      });
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        maxEvents: 1,
+      })
+    ).resolves.toMatchObject({ eventCount: 0, eventsTruncated: true });
+
+    expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(0);
+    expect(store.getSnapshot().control.orderedInteractionIds).toEqual([]);
+  });
+
+  it('upgrades a legacy ASK mirror to its typed durable request', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock
+      .mockResolvedValueOnce(
+        runsResponse({ status: 'waiting_for_user', version: 2 })
+      )
+      .mockResolvedValueOnce({
+        run_id: 'run-1',
+        next_sequence: 2,
+        has_more: false,
+        events: [
+          localEvent(1, 'run-1', {
+            event_type: 'legacy.step',
+            legacy_step: 'ask',
+            payload: {
+              interaction_id: 'question-1',
+              question: 'Continue?',
+            },
+          }),
+          localEvent(2, 'run-1', {
+            event_type: 'interaction.requested',
+            legacy_step: null,
+            payload: {
+              interaction_id: 'question-1',
+              interaction_type: 'question',
+              question: 'Continue?',
+            },
+          }),
+        ],
+      });
+
+    await hydrateProjectEventStore({
+      projectId: 'project-1',
+      store,
+      maxEvents: 2,
+    });
+
+    expect(
+      store.getSnapshot().control.interactionById['question-1']
+    ).toMatchObject({
+      requestEventId: 'run-1-event-2',
+      requestEventType: 'interaction.requested',
+      requestSource: 'canonical',
+      status: 'requested',
+    });
   });
 
   it('cancels the generation with AbortSignal and resumes buffered delivery', async () => {

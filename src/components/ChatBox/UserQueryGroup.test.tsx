@@ -27,8 +27,18 @@ vi.mock('@/store/pageTabStore', () => ({
 
 vi.mock('./MessageItem/TaskWorkLogAccordion', () => ({
   getTaskRunDisplayStatus: () => undefined,
-  TaskWorkLogAccordion: ({ taskId }: { taskId: string }) => (
-    <div data-testid="task-work-log" data-task-id={taskId} />
+  TaskWorkLogAccordion: ({
+    historical,
+    taskId,
+  }: {
+    historical?: boolean;
+    taskId: string;
+  }) => (
+    <div
+      data-historical={historical ? 'true' : 'false'}
+      data-testid="task-work-log"
+      data-task-id={taskId}
+    />
   ),
 }));
 
@@ -156,7 +166,9 @@ describe('UserQueryGroup Run work-log ownership', () => {
 
     renderGroups(messages);
 
-    expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
+    const workLogs = screen.getAllByTestId('task-work-log');
+    expect(workLogs).toHaveLength(1);
+    expect(workLogs[0]).toHaveAttribute('data-historical', 'true');
   });
 
   it('moves a structured choice out of the chat flow and into the work log', () => {

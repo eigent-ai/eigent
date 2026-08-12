@@ -228,6 +228,11 @@ export function reduceProjectView(
     (event.legacyStep === 'end'
       ? 'completed'
       : previousRun?.status || 'running');
+  const recoveredTruncation = Boolean(
+    previousRun?.truncationRecoveryTarget &&
+    event.source === 'canonical' &&
+    event.runSequence >= previousRun.truncationRecoveryTarget
+  );
   const run: ProjectedRun = {
     runId: event.runId,
     status,
@@ -242,6 +247,15 @@ export function reduceProjectView(
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
     updatedAt: event.createdAt,
+    ...(previousRun?.elapsedMs !== undefined
+      ? { elapsedMs: previousRun.elapsedMs }
+      : {}),
+    ...(previousRun?.eventsTruncated && !recoveredTruncation
+      ? { eventsTruncated: true }
+      : {}),
+    ...(previousRun?.truncationRecoveryTarget && !recoveredTruncation
+      ? { truncationRecoveryTarget: previousRun.truncationRecoveryTarget }
+      : {}),
     origin: previousRun?.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
   };

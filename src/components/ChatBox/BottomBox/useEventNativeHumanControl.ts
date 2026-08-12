@@ -13,11 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useProjectHumanControlProjection } from '@/hooks/useProjectEventView';
-import {
-  selectActiveHumanControl,
-  selectPendingHumanControlCount,
-  type HumanControlInteraction,
-} from '@/lib/projector/control';
+import { type HumanControlInteraction } from '@/lib/projector/control';
 import {
   decideHumanInteraction,
   type HumanInteractionPayload,
@@ -34,6 +30,10 @@ import type {
 const DECISION_STORAGE_PREFIX = 'eigent:human-control-decision:v1';
 const DECISION_STORAGE_INDEX_KEY = `${DECISION_STORAGE_PREFIX}:index`;
 export const STABLE_DECISION_REQUEST_ID_CACHE_LIMIT = 128;
+const TYPED_DURABLE_REQUEST_EVENT_TYPES = new Set([
+  'interaction.requested',
+  'approval.requested',
+]);
 
 type ControlledBottomBoxVariant = Exclude<BottomBoxVariant, { kind: 'input' }>;
 
@@ -443,6 +443,23 @@ function formFieldType(
   }
 }
 
+/** Legacy ASK mirrors may share a canonical transport envelope, but only a
+ * typed durable request is authoritative enough to expose a decision UI. */
+function isAuthoritativePendingControl(
+  interaction: HumanControlInteraction,
+  runId: string
+): boolean {
+  return (
+    interaction.runId === runId &&
+    interaction.status === 'requested' &&
+    interaction.requestSource === 'canonical' &&
+    Boolean(
+      interaction.requestEventType &&
+      TYPED_DURABLE_REQUEST_EVENT_TYPES.has(interaction.requestEventType)
+    )
+  );
+}
+
 export function useEventNativeHumanControl({
   projectId,
   activeRunId,
@@ -452,20 +469,21 @@ export function useEventNativeHumanControl({
 }: UseEventNativeHumanControlInput): EventNativeHumanControlController {
   const authenticatedUserId = useAuthStore((state) => state.user_id);
   const control = useProjectHumanControlProjection(projectId);
-  const interaction = useMemo(
+  const pendingInteractions = useMemo(
     () =>
       enabled && activeRunId
-        ? selectActiveHumanControl(control, activeRunId)
-        : null,
+        ? control.orderedInteractionIds.flatMap((interactionId) => {
+            const candidate = control.interactionById[interactionId];
+            return candidate &&
+              isAuthoritativePendingControl(candidate, activeRunId)
+              ? [candidate]
+              : [];
+          })
+        : [],
     [activeRunId, control, enabled]
   );
-  const pendingCount = useMemo(
-    () =>
-      enabled && activeRunId
-        ? selectPendingHumanControlCount(control, activeRunId)
-        : 0,
-    [activeRunId, control, enabled]
-  );
+  const interaction = pendingInteractions[0] ?? null;
+  const pendingCount = pendingInteractions.length;
   const controlKey = interaction
     ? `${interaction.runId}:${interaction.interactionId}:${interaction.version ?? 0}`
     : '';
@@ -586,9 +604,9 @@ export function useEventNativeHumanControl({
       header.eyebrow = `Agent input required · ${pendingCount} pending`;
     }
     const common = { header, submitting };
-    const hasDurableIdentity = !(
-      interaction.requestSource !== 'canonical' &&
-      interaction.interactionId.startsWith('legacy:')
+    const hasDurableIdentity = isAuthoritativePendingControl(
+      interaction,
+      interaction.runId
     );
 
     if (!hasDurableIdentity) {
@@ -596,7 +614,7 @@ export function useEventNativeHumanControl({
         kind: 'blocked',
         ...common,
         message:
-          'This older request has no durable interaction ID and cannot be submitted safely in the event-native view.',
+          'This request does not have typed durable authority and cannot be submitted safely in the event-native view.',
       };
     }
 

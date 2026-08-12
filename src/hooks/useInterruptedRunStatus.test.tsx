@@ -91,6 +91,30 @@ describe('useInterruptedRunStatus', () => {
     expect(actionableInterruptedRun(localRun)).toBe(localRun);
   });
 
+  it('suppresses legacy interruptions without explicit local provenance', () => {
+    expect(
+      actionableInterruptedRun({
+        run_id: 'legacy_run',
+        project_id: 'project_one',
+        status: 'interrupted',
+        updated_at: 123,
+      })
+    ).toBeNull();
+  });
+
+  it('suppresses a local interruption whose recovery context was lost', () => {
+    expect(
+      actionableInterruptedRun({
+        run_id: 'blocked_run',
+        project_id: 'project_one',
+        status: 'interrupted',
+        updated_at: 123,
+        origin: 'local',
+        resume_blocked_reason: 'local_workspace_missing',
+      })
+    ).toBeNull();
+  });
+
   it('refreshes at lifecycle boundaries without installing a polling timer', async () => {
     const intervalSpy = vi.spyOn(window, 'setInterval');
     const { result } = renderHook(

@@ -13,10 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
+import type { ProjectViewState, ProjectedRun } from '@/lib/projector';
 import type {
   ChatInteractionNode,
   ChatMessageNode,
   ChatProjectionState,
+  ChatRunStatusNode,
   ChatUnknownNode,
 } from '@/lib/projector/chat';
 import { render, screen } from '@testing-library/react';
@@ -25,10 +27,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EventNativeProjectTimeline,
   prepareEventNativeTimelineWindow,
+  selectUnavailableAgentStepRuns,
 } from './EventNativeProjectTimeline';
 
 const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
+  view: null as ProjectViewState | null,
   hydration: {
     status: 'ready',
     errorCode: null,
@@ -36,8 +40,22 @@ const mocks = vi.hoisted(() => ({
   } as ProjectEventStoreHydrationState,
 }));
 
+vi.mock('react-i18next', () => ({
+  Trans: ({
+    i18nKey,
+    values,
+  }: {
+    i18nKey: string;
+    values?: { time?: string };
+  }) =>
+    `${i18nKey === 'chat.worked-for' ? 'Worked for' : i18nKey} ${values?.time || ''}`,
+}));
+
 vi.mock('@/hooks/useProjectEventView', () => ({
-  useProjectChatProjection: () => mocks.projection,
+  useProjectEventView: () => ({
+    chat: mocks.projection,
+    view: mocks.view,
+  }),
 }));
 vi.mock('@/hooks/useProjectEventStoreHydration', () => ({
   useProjectEventStoreHydration: () => mocks.hydration,
@@ -84,6 +102,22 @@ function interactionNode(
   };
 }
 
+function runStatusNode(runId: string): ChatRunStatusNode {
+  return {
+    id: `${runId}:started`,
+    eventId: `${runId}:started`,
+    projectId: 'project-1',
+    runId,
+    createdAt: null,
+    runSequence: 1,
+    cloudCursor: null,
+    eventType: 'run.attempt_started',
+    legacyStep: null,
+    kind: 'run_status',
+    status: 'running',
+  };
+}
+
 function projection(nodes: ChatProjectionState['nodes']): ChatProjectionState {
   return {
     projectId: 'project-1',
@@ -95,9 +129,30 @@ function projection(nodes: ChatProjectionState['nodes']): ChatProjectionState {
   };
 }
 
+function projectView(
+  runs: Record<string, ProjectedRun> = {},
+  eventsTruncated = false
+): ProjectViewState {
+  return {
+    projectId: 'project-1',
+    mode: 'rehydrate',
+    seenEventIds: {},
+    currentCursor: 0,
+    eventsTruncated,
+    lastSyncedAt: null,
+    needsResync: false,
+    resyncReason: null,
+    resyncTargetCursor: null,
+    runs,
+    legacySteps: [],
+    unknownEvents: [],
+  };
+}
+
 describe('EventNativeProjectTimeline', () => {
   beforeEach(() => {
     mocks.projection = projection([]);
+    mocks.view = projectView();
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
@@ -261,7 +316,226 @@ describe('EventNativeProjectTimeline', () => {
     );
   });
 
+  it('renders a normal ready-empty Project without implying a lost Run', () => {
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('No activity yet.');
+    expect(
+      screen.queryByText('Agent step is not available at the moment.')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Loading durable history/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a fresh eventless local Run in the normal ready state', () => {
+    mocks.view = projectView({
+      'run-fresh': {
+        runId: 'run-fresh',
+        status: 'pending',
+        lastSequence: 0,
+        runVersion: 0,
+        updatedAt: '2026-08-11T10:00:42Z',
+        origin: 'local',
+        resumeBlockedReason: null,
+      },
+    });
+
+    render(
+      <EventNativeProjectTimeline
+        activeRunId="run-fresh"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('No activity yet.');
+    expect(
+      screen.queryByText('Agent step is not available at the moment.')
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a static unavailable-step receipt when a ready Run lost its events', () => {
+    mocks.view = projectView({
+      'run-lost': {
+        runId: 'run-lost',
+        status: 'interrupted',
+        lastSequence: 4,
+        runVersion: 4,
+        updatedAt: '2026-08-11T10:00:42Z',
+        elapsedMs: 42_000,
+        origin: 'cloud_restore',
+        resumeBlockedReason: 'restored_run_requires_local_workspace',
+      },
+    });
+
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    const receipt = screen.getByRole('status');
+    expect(receipt).toHaveTextContent('Worked for 42s');
+    expect(receipt).toHaveTextContent(
+      'Agent step is not available at the moment.'
+    );
+    expect(receipt.querySelectorAll('button')).toHaveLength(0);
+    expect(receipt).not.toHaveTextContent('Loading durable history');
+  });
+
+  it('shows a per-Run fallback when another Run still has visible events', () => {
+    mocks.projection = projection([
+      { ...messageNode(1), runId: 'run-visible' },
+    ]);
+    mocks.view = projectView({
+      'run-visible': {
+        runId: 'run-visible',
+        status: 'completed',
+        lastSequence: 1,
+        runVersion: 1,
+        updatedAt: '2026-08-11T10:00:40Z',
+        origin: 'local',
+        resumeBlockedReason: null,
+      },
+      'run-lost': {
+        runId: 'run-lost',
+        status: 'running',
+        lastSequence: 0,
+        runVersion: 3,
+        updatedAt: '2026-08-11T10:00:42Z',
+        elapsedMs: 18_000,
+        eventsTruncated: true,
+        origin: 'local',
+        resumeBlockedReason: null,
+      },
+    });
+
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByText('Message 1')).toBeInTheDocument();
+    const receipt = screen.getByRole('status', {
+      name: 'Unavailable agent step',
+    });
+    expect(receipt).toHaveTextContent('Worked for 18s');
+    expect(receipt.closest('li')).toHaveAttribute('data-run-id', 'run-lost');
+  });
+
+  it('does not classify an event-native live Run first status as lost history', () => {
+    const liveRun: ProjectedRun = {
+      runId: 'typed-live',
+      status: 'running',
+      lastSequence: 1,
+      runVersion: 1,
+      updatedAt: '2026-08-12T10:00:00Z',
+      origin: 'local',
+      resumeBlockedReason: null,
+    };
+
+    expect(
+      selectUnavailableAgentStepRuns(
+        [liveRun],
+        [runStatusNode(liveRun.runId)],
+        null
+      )
+    ).toEqual([]);
+  });
+
+  it('places the fallback after the affected Run last retained node', () => {
+    mocks.projection = projection([
+      {
+        ...messageNode(1),
+        runId: 'run-partial',
+        role: 'user',
+        content: 'Continue the report',
+      },
+    ]);
+    mocks.view = projectView({
+      'run-partial': {
+        runId: 'run-partial',
+        status: 'interrupted',
+        lastSequence: 1,
+        runVersion: 4,
+        updatedAt: '2026-08-11T10:00:42Z',
+        elapsedMs: 27_000,
+        eventsTruncated: true,
+        origin: 'local',
+        resumeBlockedReason: null,
+      },
+    });
+
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    const receipt = screen.getByRole('status', {
+      name: 'Unavailable agent step',
+    });
+    expect(receipt).toHaveTextContent('Worked for 27s');
+    expect(receipt.closest('li')).toHaveAttribute(
+      'data-after-event-node-id',
+      'message-1'
+    );
+  });
+
+  it('places a hidden-prefix Run fallback at the history boundary', () => {
+    mocks.projection = projection([
+      { ...messageNode(0), runId: 'run-hidden' },
+      ...Array.from({ length: 250 }, (_, index) => ({
+        ...messageNode(index + 1),
+        runId: 'run-visible',
+      })),
+    ]);
+    mocks.view = projectView({
+      'run-hidden': {
+        runId: 'run-hidden',
+        status: 'interrupted',
+        lastSequence: 1,
+        runVersion: 4,
+        updatedAt: '2026-08-11T10:00:42Z',
+        elapsedMs: 31_000,
+        eventsTruncated: true,
+        origin: 'local',
+        resumeBlockedReason: null,
+      },
+    });
+
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    const boundary = screen.getByRole('list', {
+      name: 'Unavailable agent steps in earlier history',
+    });
+    const timeline = screen.getByRole('list', {
+      name: 'Chat event timeline',
+    });
+    expect(
+      boundary.compareDocumentPosition(timeline) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(boundary).toHaveTextContent('Worked for 31s');
+  });
+
   it('discloses when the existing Run-list API produced a partial window', () => {
+    mocks.projection = projection([messageNode(1)]);
     mocks.hydration = {
       status: 'ready',
       errorCode: null,

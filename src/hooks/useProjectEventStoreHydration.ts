@@ -16,8 +16,8 @@ import {
   hydrateProjectEventStore,
   ProjectEventStoreHydrationError,
 } from '@/service/projectEventStoreHydration';
-import { getProjectEventStore } from '@/store/projectEventStore';
 import { useEffect, useState } from 'react';
+import { useProjectEventStoreInstance } from './useProjectEventView';
 
 const RETRY_DELAY_MS = 1_000;
 
@@ -66,9 +66,10 @@ export function useProjectEventStoreHydration({
       errorCode: null,
       eventsTruncated: false,
     });
+  const store = useProjectEventStoreInstance(enabled ? projectId : null);
 
   useEffect(() => {
-    if (!enabled || !projectId) {
+    if (!enabled || !projectId || !store) {
       setHydrationState({
         status: 'idle',
         errorCode: null,
@@ -77,12 +78,14 @@ export function useProjectEventStoreHydration({
       return;
     }
 
-    const store = getProjectEventStore(projectId);
     const controller = new AbortController();
     let mounted = true;
     let running = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let blockedByContract = false;
+    let blockedIncarnation: number | null = null;
+
+    const isBlockedByContract = () =>
+      blockedIncarnation === store.getSnapshot().incarnation;
 
     const needsHydration = () => {
       const snapshot = store.getSnapshot();
@@ -94,7 +97,7 @@ export function useProjectEventStoreHydration({
     };
 
     const scheduleRetry = () => {
-      if (!mounted || retryTimer || blockedByContract) return;
+      if (!mounted || retryTimer || isBlockedByContract()) return;
       retryTimer = setTimeout(() => {
         retryTimer = null;
         requestHydration();
@@ -102,9 +105,10 @@ export function useProjectEventStoreHydration({
     };
 
     const requestHydration = () => {
-      if (!mounted || running || blockedByContract || !needsHydration()) {
+      if (!mounted || running || isBlockedByContract() || !needsHydration()) {
         return;
       }
+      const requestIncarnation = store.getSnapshot().incarnation;
       running = true;
       setHydrationState({
         status: 'loading',
@@ -128,7 +132,7 @@ export function useProjectEventStoreHydration({
         .catch((error: unknown) => {
           if (!mounted || isAbortError(error)) return;
           if (isNonRetryable(error)) {
-            blockedByContract = true;
+            blockedIncarnation = requestIncarnation;
             setHydrationState({
               status: 'error',
               errorCode: error.code,
@@ -151,6 +155,9 @@ export function useProjectEventStoreHydration({
         })
         .finally(() => {
           running = false;
+          if (store.getSnapshot().incarnation !== requestIncarnation) {
+            requestHydration();
+          }
         });
     };
 
@@ -170,7 +177,7 @@ export function useProjectEventStoreHydration({
       unsubscribe();
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [enabled, projectId]);
+  }, [enabled, projectId, store]);
 
   return hydrationState;
 }
