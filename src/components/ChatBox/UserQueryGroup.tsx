@@ -28,6 +28,10 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import {
+  HumanInteractionCard,
+  isHumanInteractionReadOnly,
+} from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
 import {
@@ -506,21 +510,59 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           className="px-sm"
         >
           {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
-          <TaskWorkLogAccordion
-            chatStore={chatStore}
-            historical={!isLastUserQuery}
-            taskId={activeTaskId}
-          />
+          <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
         </motion.div>
       )}
 
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
+        const isDurablyWaitingReplay =
+          message.step === AgentStep.ASK &&
+          message.interaction &&
+          activeTask?.type === 'replay' &&
+          !isHumanInteractionReadOnly({
+            interaction: message.interaction,
+            activeTaskId,
+            taskType: activeTask.type,
+            taskStatus: activeTask.status,
+            durableRunStatus: activeTask.durableRunStatus,
+          });
+
+        // A replay reattached to a live durable waiter remains actionable even
+        // though its legacy task is terminal. This is the only ASK that stays
+        // in the chat flow; normal live requests belong to BottomBox/work log.
+        if (isDurablyWaitingReplay) {
+          return (
+            <HumanInteractionCard
+              key={`interaction-${message.id}`}
+              interaction={message.interaction}
+              readOnly={false}
+              onResolved={() => {
+                if (!activeTaskId) return;
+                const state = chatStore.getState();
+                const current = state.tasks[activeTaskId];
+                state.removeMessage(activeTaskId, message.id);
+                const [nextAsk, ...remainingAsks] = current.askList;
+                state.setActiveAskList(activeTaskId, remainingAsks);
+                state.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
+                state.setIsPending(activeTaskId, false);
+                state.setDurableRunStatus(
+                  activeTaskId,
+                  nextAsk ? 'waiting_for_user' : 'running'
+                );
+                state.setStatus(activeTaskId, ChatTaskStatus.RUNNING);
+                if (nextAsk) {
+                  state.addMessages(activeTaskId, nextAsk);
+                }
+              }}
+            />
+          );
+        }
+
         // ASK is a work-log interruption. The prompt is actionable only in
-        // BottomBox when a typed durable request proves authority. A legacy or
-        // historical ASK never regains controls from this compatibility row;
-        // TaskWorkLogAccordion either keeps a read-only receipt beside a real
-        // AgentStep or renders the unavailable-step fallback.
+        // BottomBox while pending; TaskWorkLogAccordion keeps one receipt at
+        // the matching Human Toolkit position and adds question + answer only
+        // after the interaction is resolved.
         if (message.step === AgentStep.ASK) {
           return null;
         }

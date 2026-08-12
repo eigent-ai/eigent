@@ -23,7 +23,6 @@ import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
-import { useProjectEventStoreInstance } from '@/hooks/useProjectEventView';
 import { useProjectRunEventStreams } from '@/hooks/useProjectRunEventStreams';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
@@ -45,6 +44,10 @@ import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  getProjectEventStore,
+  type ProjectEventStoreSnapshot,
+} from '@/store/projectEventStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -72,11 +75,6 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { ProjectChatContainer } from './ProjectChatContainer';
-import {
-  isEventNativeRunActionable,
-  selectActionableInterruptedRun,
-  selectEventNativeActiveRunId,
-} from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -86,8 +84,94 @@ const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
+const ELIGIBLE_EVENT_NATIVE_RUN_STATUSES = new Set([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+  'interrupted',
+]);
 
 const subscribeToNothing = () => () => undefined;
+
+type EventNativeProjectedRun =
+  ProjectEventStoreSnapshot['view']['runs'][string];
+
+function isEventNativeRunActionable(run: EventNativeProjectedRun): boolean {
+  return run.origin === 'local' && !run.resumeBlockedReason;
+}
+
+function isEventNativeRunReadOnly(run: EventNativeProjectedRun): boolean {
+  return (
+    (run.origin !== null && run.origin !== 'local') ||
+    Boolean(run.resumeBlockedReason)
+  );
+}
+
+function compareProjectedRunsByRecency(
+  left: EventNativeProjectedRun,
+  right: EventNativeProjectedRun
+): number {
+  const timeDelta =
+    (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0);
+  if (timeDelta !== 0) return timeDelta;
+  if (right.lastSequence !== left.lastSequence) {
+    return right.lastSequence - left.lastSequence;
+  }
+  return right.runId.localeCompare(left.runId);
+}
+
+function selectLatestReadOnlyEventNativeRun(
+  snapshot: ProjectEventStoreSnapshot | null
+): EventNativeProjectedRun | null {
+  if (!snapshot) return null;
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunReadOnly(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0] ?? null
+  );
+}
+
+/**
+ * Bridge legacy ownership during cutover, then fall back to durable state for
+ * typed-only cold hydration. Pending control order is backend/event order.
+ */
+function selectEventNativeActiveRunId(
+  snapshot: ProjectEventStoreSnapshot | null,
+  legacyActiveRunId: string | null | undefined
+): string | null {
+  if (legacyActiveRunId) return legacyActiveRunId;
+  if (!snapshot) return null;
+
+  for (const interactionId of snapshot.control.orderedInteractionIds) {
+    const interaction = snapshot.control.interactionById[interactionId];
+    const projectedRun = interaction
+      ? snapshot.view.runs[interaction.runId]
+      : undefined;
+    if (
+      interaction?.status === 'requested' &&
+      projectedRun &&
+      ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedRun.status) &&
+      isEventNativeRunActionable(projectedRun)
+    ) {
+      return interaction.runId;
+    }
+  }
+
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunActionable(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0]?.runId ?? null
+  );
+}
 
 interface SubscriptionLimitInfo {
   plan_key?: string | null;
@@ -264,8 +348,12 @@ export default function ChatBox(): JSX.Element {
   );
   const activeProjectId = projectStore.activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
-  const eventNativeProjectStore = useProjectEventStoreInstance(
-    eventNativeTimelineEnabled ? activeProjectId : null
+  const eventNativeProjectStore = useMemo(
+    () =>
+      eventNativeTimelineEnabled && activeProjectId
+        ? getProjectEventStore(activeProjectId)
+        : null,
+    [activeProjectId, eventNativeTimelineEnabled]
   );
   const subscribeToEventNativeProject = useCallback(
     (listener: () => void) =>
@@ -286,6 +374,9 @@ export default function ChatBox(): JSX.Element {
     snapshot: eventNativeProjectSnapshot,
     enabled: eventNativeTimelineEnabled,
   });
+  const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
+    eventNativeProjectSnapshot
+  );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -478,18 +569,20 @@ export default function ChatBox(): JSX.Element {
   const projectedLegacyRun = activeTaskId
     ? eventNativeProjectSnapshot?.view.runs[activeTaskId]
     : undefined;
-  const legacyOwnedActiveRunId =
+  const eligibleLegacyActiveRunId =
     activeTaskId &&
     activeAskTask &&
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
     activeAskTask.status !== ChatTaskStatus.FINISHED &&
-    projectedLegacyRun
+    projectedLegacyRun &&
+    ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedLegacyRun.status) &&
+    isEventNativeRunActionable(projectedLegacyRun)
       ? activeTaskId
       : null;
   const eventNativeActiveRunId = selectEventNativeActiveRunId(
     eventNativeProjectSnapshot,
-    legacyOwnedActiveRunId
+    eligibleLegacyActiveRunId
   );
   const eventNativeActiveTask = eventNativeActiveRunId
     ? chatStore?.tasks[eventNativeActiveRunId]
@@ -497,10 +590,6 @@ export default function ChatBox(): JSX.Element {
   const eventNativeActiveProjectedRun = eventNativeActiveRunId
     ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
     : undefined;
-  const eventNativeInterruptedRun = selectActionableInterruptedRun(
-    eventNativeProjectSnapshot,
-    interruptedRun?.run_id
-  );
   const activeAsk = activeAskTask?.activeAsk;
   const activeAskMessage = activeAskTask?.messages.findLast(
     (item) => item.step === AgentStep.ASK
@@ -590,9 +679,10 @@ export default function ChatBox(): JSX.Element {
     Boolean(
       chatStore?.activeTaskId ||
       (eventNativeTimelineEnabled &&
-        (eventNativeHumanControl.variant ||
+        (interruptedRun ||
+          eventNativeHumanControl.variant ||
           eventNativeActiveRunId ||
-          eventNativeInterruptedRun))
+          eventNativeReadOnlyRun))
     );
 
   useLayoutEffect(() => {
@@ -1704,7 +1794,7 @@ export default function ChatBox(): JSX.Element {
   const handleEventNativeStopRun = async (runId: string) => {
     const currentRunId = selectEventNativeActiveRunId(
       eventNativeProjectStore?.getSnapshot() ?? null,
-      legacyOwnedActiveRunId
+      eligibleLegacyActiveRunId
     );
     if (runId !== currentRunId) return;
 
@@ -1735,15 +1825,56 @@ export default function ChatBox(): JSX.Element {
     void handleCancelInterruptedRun();
   };
 
-  const eventNativeSelectedRun = eventNativeActiveRunId
-    ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
-    : undefined;
   let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
-  if (
+  if (eventNativeTimelineEnabled && interruptedRun) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          isCloudRestoredRun
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+        description: isCloudRestoredRun
+          ? undefined
+          : t('chat.run-interrupted-description'),
+      },
+      runId: interruptedRun.run_id,
+      state: isCloudRestoredRun
+        ? 'read_only'
+        : (durableRunAction ?? 'interrupted'),
+      resumeLabel: t('chat.run-resume'),
+      resumingLabel: t('chat.run-resuming'),
+      cancelLabel: t('chat.run-cancel'),
+      cancellingLabel: t('chat.run-cancelling'),
+      readOnlyLabel: t('chat.run-cloud-restored-description'),
+      onResume: isCloudRestoredRun ? undefined : handleEventNativeResumeRun,
+      onCancel: isCloudRestoredRun ? undefined : handleEventNativeCancelRun,
+    };
+  } else if (eventNativeTimelineEnabled && eventNativeReadOnlyRun) {
+    const restoredFromCloud = eventNativeReadOnlyRun.origin === 'cloud_restore';
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          restoredFromCloud
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+      },
+      runId: eventNativeReadOnlyRun.runId,
+      state: 'read_only',
+      readOnlyLabel: restoredFromCloud
+        ? t('chat.run-cloud-restored-description')
+        : undefined,
+    };
+  } else if (
     eventNativeTimelineEnabled &&
-    eventNativeSelectedRun &&
-    (eventNativeSelectedRun.status === 'running' ||
-      eventNativeSelectedRun.status === 'cancelling')
+    eventNativeActiveRunId &&
+    (eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]?.status ===
+      'running' ||
+      (eventNativeActiveRunId === activeTaskId &&
+        activeTask?.status === ChatTaskStatus.RUNNING))
   ) {
     eventNativeRunControlVariant = {
       kind: 'run_control',
@@ -1753,34 +1884,10 @@ export default function ChatBox(): JSX.Element {
             ? activeTask?.summaryTask
             : undefined) || t('layout.stop-task'),
       },
-      runId: eventNativeSelectedRun.runId,
-      state:
-        eventNativeSelectedRun.status === 'cancelling' || isPauseResumeLoading
-          ? 'stopping'
-          : 'running',
+      runId: eventNativeActiveRunId,
+      state: isPauseResumeLoading ? 'stopping' : 'running',
       stopLabel: t('layout.stop-task'),
       onStop: (runId) => void handleEventNativeStopRun(runId),
-    };
-  } else if (
-    eventNativeTimelineEnabled &&
-    !eventNativeHumanControl.variant &&
-    interruptedRun &&
-    eventNativeInterruptedRun
-  ) {
-    eventNativeRunControlVariant = {
-      kind: 'run_control',
-      header: {
-        title: t('chat.run-interrupted-title'),
-        description: t('chat.run-interrupted-description'),
-      },
-      runId: eventNativeInterruptedRun.runId,
-      state: durableRunAction ?? 'interrupted',
-      resumeLabel: t('chat.run-resume'),
-      resumingLabel: t('chat.run-resuming'),
-      cancelLabel: t('chat.run-cancel'),
-      cancellingLabel: t('chat.run-cancelling'),
-      onResume: handleEventNativeResumeRun,
-      onCancel: handleEventNativeCancelRun,
     };
   }
 
@@ -1815,14 +1922,6 @@ export default function ChatBox(): JSX.Element {
           eventNativeTimelineEnabled &&
           activeProjectId ? (
             <EventNativeProjectTimeline
-              activeRunId={
-                eventNativeActiveRunId ??
-                eventNativeInterruptedRun?.runId ??
-                (activeAskTask?.status === ChatTaskStatus.RUNNING ||
-                activeAskTask?.status === ChatTaskStatus.PENDING
-                  ? activeTaskId
-                  : null)
-              }
               projectId={activeProjectId}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}

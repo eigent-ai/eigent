@@ -61,7 +61,6 @@ function interaction(
     cloudCursor: null,
     lastCloudCursor: null,
     requestEventId: 'request-1',
-    requestEventType: 'approval.requested',
     requestSource: 'canonical',
     lastEventId: 'request-1',
     requestedAt: '2026-08-11T10:00:03.000Z',
@@ -122,26 +121,6 @@ describe('useEventNativeHumanControl', () => {
 
     expect(result.current.interaction?.interactionId).toBe('oldest');
     expect(result.current.pendingCount).toBe(2);
-  });
-
-  it('ignores legacy ASK mirrors when selecting and counting typed controls', () => {
-    mocks.projection = projection([
-      interaction({
-        interactionId: 'legacy-first',
-        requestEventType: 'legacy.step',
-      }),
-      interaction({ interactionId: 'typed-request', sequence: 4 }),
-    ]);
-
-    const { result } = renderHook(() =>
-      useEventNativeHumanControl({
-        projectId: 'project-1',
-        activeRunId: 'run-1',
-      })
-    );
-
-    expect(result.current.interaction?.interactionId).toBe('typed-request');
-    expect(result.current.pendingCount).toBe(1);
   });
 
   it('maps approval scopes exactly as offered and reconciles through durable events', async () => {
@@ -217,13 +196,9 @@ describe('useEventNativeHumanControl', () => {
     );
   });
 
-  it('does not expose a noncanonical request even when it claims a typed event name', () => {
+  it('does not use a legacy connection ordinal as a durable replay cursor', async () => {
     mocks.projection = projection([
-      interaction({
-        sequence: 48,
-        requestSource: 'chat_step_v1',
-        requestEventType: 'approval.requested',
-      }),
+      interaction({ sequence: 48, requestSource: 'chat_step_v1' }),
     ]);
     const { result } = renderHook(() =>
       useEventNativeHumanControl({
@@ -232,10 +207,16 @@ describe('useEventNativeHumanControl', () => {
       })
     );
 
-    expect(result.current.interaction).toBeNull();
-    expect(result.current.variant).toBeNull();
-    expect(result.current.pendingCount).toBe(0);
-    expect(mocks.decide).not.toHaveBeenCalled();
+    act(() => {
+      if (result.current.variant?.kind === 'approval') {
+        result.current.variant.onApprove('once');
+      }
+    });
+
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledOnce());
+    expect(mocks.reconcile).toHaveBeenCalledWith(
+      expect.objectContaining({ afterSequence: 0 })
+    );
   });
 
   it('keeps a failed decision retryable with the same request id across remount', async () => {
@@ -517,19 +498,12 @@ describe('useEventNativeHumanControl', () => {
     expect(mocks.decide).not.toHaveBeenCalled();
   });
 
-  it('does not expose canonical-transport legacy ASK controls', () => {
+  it('does not submit a frontend-synthesized legacy interaction id', () => {
     mocks.projection = projection([
       interaction({
         interactionId: 'legacy:run-1:legacy-ask-1',
         interactionType: 'question',
-        requestSource: 'canonical',
-        requestEventType: 'legacy.step',
-      }),
-      interaction({
-        interactionId: 'explicit-legacy-id',
-        interactionType: 'question',
-        requestSource: 'canonical',
-        requestEventType: 'legacy.ask',
+        requestSource: 'chat_step_v1',
       }),
     ]);
 
@@ -540,9 +514,7 @@ describe('useEventNativeHumanControl', () => {
       })
     );
 
-    expect(result.current.interaction).toBeNull();
-    expect(result.current.variant).toBeNull();
-    expect(result.current.pendingCount).toBe(0);
+    expect(result.current.variant).toMatchObject({ kind: 'blocked' });
     expect(mocks.decide).not.toHaveBeenCalled();
   });
 

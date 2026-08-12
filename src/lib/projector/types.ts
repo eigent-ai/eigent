@@ -58,12 +58,6 @@ export type ProjectedRun = {
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
-  /** Durable attempt execution time, excluding offline gaps between attempts. */
-  elapsedMs?: number;
-  /** This frontend did not retain the Run's complete durable event history. */
-  eventsTruncated?: boolean;
-  /** Sequence that a replay from zero must reach before controls are trusted. */
-  truncationRecoveryTarget?: number;
   origin: string | null;
   resumeBlockedReason: string | null;
 };
@@ -99,9 +93,6 @@ export type ProjectSnapshotInput = {
     run_version?: number;
     /** Accepted for direct snapshots shaped like the existing GET /runs API. */
     version?: number;
-    total_attempt_elapsed_ms?: number | null;
-    events_truncated?: boolean;
-    truncation_recovery_target?: number;
     origin?: string | null;
     resume_blocked_reason?: string | null;
   }>;

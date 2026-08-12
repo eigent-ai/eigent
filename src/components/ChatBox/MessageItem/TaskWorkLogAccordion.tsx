@@ -39,7 +39,6 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { AgentStepUnavailableFallback } from './AgentStepUnavailableFallback';
 import { HumanInteractionCard } from './HumanInteractionCard';
 import { formatSplittingElapsed } from './TokenUtils';
 
@@ -960,48 +959,6 @@ function useTaskWorkLogData(
   return { task: t, groups };
 }
 
-const UNFINISHED_DURABLE_RUN_STATUSES = new Set<DurableRunDisplayStatus>([
-  'pending',
-  'running',
-  'waiting_for_user',
-  'interrupted',
-]);
-
-/**
- * Historical transports can retain a Run shell while the AgentStep rows that
- * built its work log have been pruned or were never persisted. Do not invent
- * a live agent/tool row in that case. The unavailable receipt is limited to
- * historical playback or explicit durable unfinished state so a genuinely
- * new legacy task can continue showing its normal preparation UI.
- */
-export function shouldShowAgentStepUnavailableFallback(
-  task: {
-    type?: string;
-    status: ChatTaskStatusType;
-    durableRunStatus?: DurableRunDisplayStatus;
-  },
-  groups: readonly GroupedEntry[],
-  historical = false
-): boolean {
-  // An ASK-only compatibility row is not proof that its AgentStep survived.
-  // Historical ASK shells must fail closed instead of manufacturing a stale
-  // decision surface from the legacy message alone.
-  const hasUsableGroup = groups.some((group) =>
-    group.items.some((item) => item.kind !== 'human-input')
-  );
-  if (hasUsableGroup) return false;
-
-  return (
-    historical ||
-    task.type === 'replay' ||
-    task.type === 'share' ||
-    ((task.status === ChatTaskStatus.FINISHED ||
-      task.status === ChatTaskStatus.PAUSE) &&
-      task.durableRunStatus !== undefined &&
-      UNFINISHED_DURABLE_RUN_STATUSES.has(task.durableRunStatus))
-  );
-}
-
 function useWorkLogElapsedMs(
   chatStore: VanillaChatStore,
   taskId: string | null,
@@ -1673,8 +1630,6 @@ export interface TaskWorkLogAccordionProps {
   chatStore: VanillaChatStore;
   taskId: string | null;
   className?: string;
-  /** True when the owning query is no longer the current live turn. */
-  historical?: boolean;
 }
 
 /** Bottom-only separator for the outer “Working on tasks for …” trigger. */
@@ -1685,7 +1640,6 @@ export function TaskWorkLogAccordion({
   chatStore,
   taskId,
   className,
-  historical = false,
 }: TaskWorkLogAccordionProps) {
   const { t: _t } = useTranslation();
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
@@ -1694,15 +1648,11 @@ export function TaskWorkLogAccordion({
   const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
   const taskRunning = status === ChatTaskStatus.RUNNING;
-  const showAgentStepUnavailable = Boolean(
-    task && shouldShowAgentStepUnavailableFallback(task, groups, historical)
-  );
   const isSingleAgent = task?.sessionMode === SessionMode.SINGLE_AGENT;
   const singleAgentActiveForm = isSingleAgent
     ? getSingleAgentActiveForm(task)
     : '';
   const humanInputReadOnly =
-    historical ||
     task?.type === 'replay' ||
     task?.type === 'share' ||
     task?.status === ChatTaskStatus.FINISHED;
@@ -1780,15 +1730,7 @@ export function TaskWorkLogAccordion({
     status === ChatTaskStatus.FINISHED ||
     status === ChatTaskStatus.PAUSE;
 
-  if (!allowed && !showAgentStepUnavailable) return null;
-  if (showAgentStepUnavailable) {
-    return (
-      <AgentStepUnavailableFallback
-        className={className}
-        elapsedMs={elapsedMs}
-      />
-    );
-  }
+  if (!allowed) return null;
   if (!taskRunning && effectiveGroups.length === 0) return null;
 
   const timeLabel = formatSplittingElapsed(elapsedMs);

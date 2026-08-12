@@ -67,8 +67,6 @@ export type ProjectEventStoreSnapshot = {
   chat: ChatProjectionState;
   /** Pending actions are non-evictable; completed receipts are bounded separately. */
   control: HumanControlProjectionState;
-  /** Changes only when a same-id Project runtime is intentionally reset. */
-  incarnation: number;
   revision: number;
   /** True only after an authoritative GET/snapshot replacement has committed. */
   hasHydratedSnapshot: boolean;
@@ -609,7 +607,6 @@ export class ProjectEventStore {
       view: createProjectViewState(projectId, this.mode),
       chat: createChatProjectionState(projectId),
       control: createHumanControlProjectionState(projectId),
-      incarnation: 0,
       revision: 0,
       hasHydratedSnapshot: false,
       overflowed: false,
@@ -902,24 +899,6 @@ export class ProjectEventStore {
     );
   }
 
-  /** Clear one runtime projection while preserving same-id subscribers. */
-  reset(): void {
-    if (this.disposed) return;
-    this.cancelScheduledFlush?.();
-    this.cancelScheduledFlush = null;
-    this.activeSnapshotReplacement = null;
-    this.clearQueue();
-    this.publish(
-      createProjectViewState(this.projectId, this.mode),
-      createChatProjectionState(this.projectId),
-      createHumanControlProjectionState(this.projectId),
-      [],
-      false,
-      false,
-      this.snapshot.incarnation + 1
-    );
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -1025,14 +1004,12 @@ export class ProjectEventStore {
     control: HumanControlProjectionState,
     effects: readonly ProjectorEffect[],
     overflowed: boolean,
-    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot,
-    incarnation = this.snapshot.incarnation
+    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot
   ): void {
     this.snapshot = {
       view,
       chat,
       control,
-      incarnation,
       revision: this.snapshot.revision + 1,
       hasHydratedSnapshot,
       overflowed,
@@ -1054,11 +1031,6 @@ export function getProjectEventStore(
   const created = new ProjectEventStore(projectId, options);
   projectEventStores.set(projectId, created);
   return created;
-}
-
-/** Reset an overwritten same-id Project without stranding mounted consumers. */
-export function resetProjectEventStore(projectId: string): void {
-  projectEventStores.get(projectId)?.reset();
 }
 
 export function releaseProjectEventStore(projectId: string): void {

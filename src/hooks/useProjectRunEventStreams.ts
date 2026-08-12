@@ -17,9 +17,11 @@ import {
   ProjectRunEventStreamOwner,
   type ProjectRunEventStreamOwnerOptions,
 } from '@/service/projectRunEventStream';
-import { type ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import {
+  getProjectEventStore,
+  type ProjectEventStoreSnapshot,
+} from '@/store/projectEventStore';
 import { useEffect, useRef } from 'react';
-import { useProjectEventStoreInstance } from './useProjectEventView';
 
 type EventStreamTransport = (options: SSETransportOptions) => Promise<void>;
 
@@ -46,10 +48,9 @@ export function useProjectRunEventStreams({
   transport,
 }: UseProjectRunEventStreamsOptions): void {
   const ownerRef = useRef<ProjectRunEventStreamOwner | null>(null);
-  const store = useProjectEventStoreInstance(enabled ? projectId : null);
 
   useEffect(() => {
-    if (!enabled || !projectId || !store) {
+    if (!enabled || !projectId) {
       ownerRef.current?.dispose();
       ownerRef.current = null;
       return;
@@ -57,7 +58,7 @@ export function useProjectRunEventStreams({
 
     const options: ProjectRunEventStreamOwnerOptions = {
       projectId,
-      store,
+      store: getProjectEventStore(projectId),
       maxStreams,
       reconnectDelayMs,
       transport,
@@ -69,7 +70,7 @@ export function useProjectRunEventStreams({
       if (ownerRef.current === owner) ownerRef.current = null;
       owner.dispose();
     };
-  }, [enabled, maxStreams, projectId, reconnectDelayMs, store, transport]);
+  }, [enabled, maxStreams, projectId, reconnectDelayMs, transport]);
 
   useEffect(() => {
     if (snapshot) ownerRef.current?.updateSnapshot(snapshot);

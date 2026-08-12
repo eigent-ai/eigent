@@ -16,10 +16,6 @@ import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
-import {
-  getProjectEventStore,
-  resetProjectEventStoresForTests,
-} from './projectEventStore';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
@@ -90,7 +86,6 @@ describe('projectStore runtime shape', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetProjectEventStoresForTests();
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
@@ -155,53 +150,6 @@ describe('projectStore runtime shape', () => {
     expect(
       usePageTabStore.getState().sessionPreviewByProject[projectId]
     ).toBeUndefined();
-  });
-
-  it('releases the event store when an auto-created empty Project is cleaned up', () => {
-    const projectId = useProjectStore
-      .getState()
-      .createProject(
-        'New Project',
-        'Auto-created project',
-        'project_auto_created'
-      );
-    const releasedStore = getProjectEventStore(projectId);
-
-    useProjectStore.getState().cleanupAutoCreatedEmptyProjects();
-
-    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
-    expect(releasedStore.beginSnapshotReplacement()).toBeNull();
-  });
-
-  it('preserves the event store when replay overwrites the same Project id', async () => {
-    const projectId = useProjectStore
-      .getState()
-      .createProject('Original Project', undefined, 'project_same_id_replay');
-    const store = getProjectEventStore(projectId);
-
-    const replayedProjectId = useProjectStore
-      .getState()
-      .replayProject(['run-1'], 'Replay prompt', projectId);
-
-    expect(replayedProjectId).toBe(projectId);
-    expect(getProjectEventStore(projectId)).toBe(store);
-    await vi.waitFor(() => expect(replayMock).toHaveBeenCalled());
-  });
-
-  it('preserves the event store when history reloads the same Project id', async () => {
-    const projectId = useProjectStore
-      .getState()
-      .createProject('Original Project', undefined, 'project_same_id_load');
-    const store = getProjectEventStore(projectId);
-
-    await useProjectStore
-      .getState()
-      .loadProjectFromHistory([], 'History prompt', projectId);
-
-    expect(getProjectEventStore(projectId)).toBe(store);
-    const replacement = store.beginSnapshotReplacement();
-    expect(replacement).not.toBeNull();
-    if (replacement) store.cancelSnapshotReplacement(replacement);
   });
 
   it('appends project runs into the same primary chat store', () => {

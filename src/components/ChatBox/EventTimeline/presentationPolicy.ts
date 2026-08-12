@@ -110,10 +110,7 @@ function safeInteractionResponse(
 function isLegacyInteractionRequest(node: InteractionNode): boolean {
   // Canonical migration events may retain `legacyStep: "ask"` as provenance;
   // the event namespace, not that metadata, identifies the shadow lane.
-  return (
-    node.legacyStep === 'ask' &&
-    (node.eventType === 'legacy.ask' || node.eventType === 'legacy.step')
-  );
+  return node.eventType === 'legacy.ask';
 }
 
 /**

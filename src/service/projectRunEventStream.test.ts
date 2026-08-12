@@ -23,7 +23,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectRunEventStreamOwner,
   selectCanonicalLiveRuns,
-  type EventRecoveryFetch,
   type EventStreamTransport,
 } from './projectRunEventStream';
 
@@ -35,8 +34,6 @@ type RunInput = {
   updatedAt?: string;
   origin?: string | null;
   resumeBlockedReason?: string | null;
-  eventsTruncated?: boolean;
-  truncationRecoveryTarget?: number;
 };
 
 function snapshotInput(
@@ -52,10 +49,6 @@ function snapshotInput(
       expected_next_run_sequence: (run.sequence ?? 0) + 1,
       updated_at: run.updatedAt ?? '2026-08-11T10:00:00.000Z',
       version: run.version ?? run.sequence ?? 0,
-      ...(run.eventsTruncated ? { events_truncated: true } : {}),
-      ...(run.truncationRecoveryTarget !== undefined
-        ? { truncation_recovery_target: run.truncationRecoveryTarget }
-        : {}),
       origin: run.origin === undefined ? 'local' : run.origin,
       resume_blocked_reason: run.resumeBlockedReason ?? null,
     })),
@@ -84,9 +77,7 @@ function runEvent(
     event_type: eventType,
     legacy_step: null,
     payload: { display_title: `Event ${sequence}` },
-    created_at: new Date(
-      Date.UTC(2026, 7, 11, 10, 0, 0) + sequence * 1_000
-    ).toISOString(),
+    created_at: `2026-08-11T10:00:${String(sequence).padStart(2, '0')}.000Z`,
   };
 }
 
@@ -111,14 +102,6 @@ function unresolvedTransport() {
       })
   );
   return { signals, transport };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -351,293 +334,6 @@ describe('ProjectRunEventStreamOwner', () => {
     owner.dispose();
   });
 
-  it('keeps normal SSE detached until recovery reaches the Run target', async () => {
-    const store = hydratedStore('project-1', [
-      {
-        runId: 'run-1',
-        status: 'waiting_for_user',
-        version: 1,
-        eventsTruncated: true,
-        truncationRecoveryTarget: 1,
-      },
-    ]);
-    const page = deferred<unknown>();
-    let recoverySignal: AbortSignal | undefined;
-    const recoveryFetch = vi.fn((...args: Parameters<EventRecoveryFetch>) => {
-      recoverySignal = args[3]?.signal;
-      return page.promise;
-    });
-    const pending = unresolvedTransport();
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      transport: pending.transport,
-      recoveryFetch,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-    await vi.waitFor(() => expect(recoveryFetch).toHaveBeenCalledTimes(1));
-
-    expect(owner.getActiveRunIds()).toEqual([]);
-    expect(pending.transport).not.toHaveBeenCalled();
-    expect(recoverySignal?.aborted).toBe(false);
-
-    page.resolve({
-      run_id: 'run-1',
-      next_sequence: 1,
-      has_more: false,
-      events: [runEvent(1)],
-    });
-
-    await vi.waitFor(() =>
-      expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(1)
-    );
-    await vi.waitFor(() => expect(pending.transport).toHaveBeenCalledTimes(1));
-    expect(pending.transport.mock.calls[0][0].url).toBe(
-      '/runs/run-1/stream?after_sequence=1'
-    );
-    expect(
-      store.getSnapshot().view.runs['run-1'].truncationRecoveryTarget
-    ).toBeUndefined();
-
-    owner.dispose();
-  });
-
-  it('recovers every target sequentially even when more than four Runs need replay', async () => {
-    const runs = Array.from({ length: 6 }, (_, index) => ({
-      runId: `run-${index + 1}`,
-      status: 'waiting_for_user',
-      version: 1,
-      eventsTruncated: true,
-      truncationRecoveryTarget: 1,
-    }));
-    const store = hydratedStore('project-1', runs);
-    let activeFetches = 0;
-    let maxActiveFetches = 0;
-    const recoveryFetch = vi.fn(
-      async (...args: Parameters<EventRecoveryFetch>) => {
-        activeFetches += 1;
-        maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
-        await Promise.resolve();
-        const runId = decodeURIComponent(args[0].split('/')[2]);
-        activeFetches -= 1;
-        return {
-          run_id: runId,
-          next_sequence: 1,
-          has_more: false,
-          events: [runEvent(1, runId)],
-        };
-      }
-    );
-    const pending = unresolvedTransport();
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      transport: pending.transport,
-      recoveryFetch,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-
-    await vi.waitFor(() =>
-      expect(
-        runs.every(
-          ({ runId }) => store.getSnapshot().view.runs[runId].lastSequence === 1
-        )
-      ).toBe(true)
-    );
-    expect(recoveryFetch).toHaveBeenCalledTimes(6);
-    expect(maxActiveFetches).toBe(1);
-    expect(store.getSnapshot().overflowed).toBe(false);
-    await vi.waitFor(() => expect(pending.transport).toHaveBeenCalledTimes(4));
-
-    owner.dispose();
-  });
-
-  it('pages a history longer than the store queue without overflowing it', async () => {
-    const target = 1_205;
-    const store = hydratedStore('project-1', [
-      {
-        runId: 'long-run',
-        status: 'waiting_for_user',
-        version: target,
-        eventsTruncated: true,
-        truncationRecoveryTarget: target,
-      },
-    ]);
-    const recoveryFetch = vi.fn(
-      async (...args: Parameters<EventRecoveryFetch>) => {
-        const afterSequence = args[1]?.after_sequence ?? 0;
-        const limit = args[1]?.limit ?? 0;
-        const nextSequence = Math.min(afterSequence + limit, target);
-        return {
-          run_id: 'long-run',
-          next_sequence: nextSequence,
-          has_more: nextSequence < target,
-          events: Array.from(
-            { length: nextSequence - afterSequence },
-            (_, index) => runEvent(afterSequence + index + 1, 'long-run')
-          ),
-        };
-      }
-    );
-    const pending = unresolvedTransport();
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      transport: pending.transport,
-      recoveryFetch,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-
-    await vi.waitFor(
-      () =>
-        expect(store.getSnapshot().view.runs['long-run'].lastSequence).toBe(
-          target
-        ),
-      { timeout: 5_000 }
-    );
-    expect(recoveryFetch).toHaveBeenCalledTimes(13);
-    expect(store.getPendingEventCount()).toBe(0);
-    expect(store.getSnapshot()).toMatchObject({
-      overflowed: false,
-      view: { needsResync: false },
-    });
-
-    owner.dispose();
-  });
-
-  it('aborts an in-flight recovery when the store incarnation resets', async () => {
-    const store = hydratedStore('project-1', [
-      {
-        runId: 'run-1',
-        version: 1,
-        eventsTruncated: true,
-        truncationRecoveryTarget: 1,
-      },
-    ]);
-    const page = deferred<unknown>();
-    let recoverySignal: AbortSignal | undefined;
-    const recoveryFetch = vi.fn((...args: Parameters<EventRecoveryFetch>) => {
-      recoverySignal = args[3]?.signal;
-      return page.promise;
-    });
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      recoveryFetch,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-    await vi.waitFor(() => expect(recoveryFetch).toHaveBeenCalledTimes(1));
-    store.reset();
-    owner.updateSnapshot(store.getSnapshot());
-
-    expect(recoverySignal?.aborted).toBe(true);
-    page.resolve({
-      run_id: 'run-1',
-      next_sequence: 1,
-      has_more: false,
-      events: [runEvent(1)],
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(store.getSnapshot()).toMatchObject({
-      incarnation: 1,
-      hasHydratedSnapshot: false,
-      view: { runs: {} },
-    });
-    expect(store.getPendingEventCount()).toBe(0);
-
-    owner.dispose();
-  });
-
-  it('aborts an in-flight recovery when the store requires resync', async () => {
-    const store = hydratedStore('project-1', [
-      {
-        runId: 'run-1',
-        version: 1,
-        eventsTruncated: true,
-        truncationRecoveryTarget: 1,
-      },
-    ]);
-    const page = deferred<unknown>();
-    let recoverySignal: AbortSignal | undefined;
-    const recoveryFetch = vi.fn((...args: Parameters<EventRecoveryFetch>) => {
-      recoverySignal = args[3]?.signal;
-      return page.promise;
-    });
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      recoveryFetch,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-    await vi.waitFor(() => expect(recoveryFetch).toHaveBeenCalledTimes(1));
-    store.enqueue(normalizeLocalRunEvent(runEvent(2, 'run-1'), 'project-1'));
-    store.flushAll();
-    owner.updateSnapshot(store.getSnapshot());
-
-    expect(store.getSnapshot().view.needsResync).toBe(true);
-    expect(recoverySignal?.aborted).toBe(true);
-    page.resolve({
-      run_id: 'run-1',
-      next_sequence: 1,
-      has_more: false,
-      events: [runEvent(1)],
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(store.getSnapshot().view.runs['run-1'].lastSequence).toBe(0);
-
-    owner.dispose();
-  });
-
-  it('leaves the truncation marker fail-closed when a recovery bound is exceeded', async () => {
-    const store = hydratedStore('project-1', [
-      {
-        runId: 'run-1',
-        status: 'waiting_for_user',
-        version: 3,
-        eventsTruncated: true,
-        truncationRecoveryTarget: 3,
-      },
-    ]);
-    const recoveryFetch = vi.fn(async () => ({
-      run_id: 'run-1',
-      next_sequence: 3,
-      has_more: false,
-      events: [runEvent(1), runEvent(2), runEvent(3)],
-    }));
-    const pending = unresolvedTransport();
-    const owner = new ProjectRunEventStreamOwner({
-      projectId: 'project-1',
-      store,
-      transport: pending.transport,
-      recoveryFetch,
-      maxRecoveryEvents: 2,
-    });
-
-    owner.updateSnapshot(store.getSnapshot());
-    await vi.waitFor(() => expect(recoveryFetch).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
-    await Promise.resolve();
-    owner.updateSnapshot(store.getSnapshot());
-
-    expect(recoveryFetch).toHaveBeenCalledTimes(1);
-    expect(pending.transport).not.toHaveBeenCalled();
-    expect(store.getSnapshot().view.runs['run-1']).toMatchObject({
-      lastSequence: 0,
-      eventsTruncated: true,
-      truncationRecoveryTarget: 3,
-    });
-    expect(store.getSnapshot().overflowed).toBe(false);
-
-    owner.dispose();
-  });
-
   it('bounds concurrent streams and prioritizes waiting user controls', () => {
     const store = hydratedStore('project-1', [
       {
@@ -649,14 +345,6 @@ describe('ProjectRunEventStreamOwner', () => {
         runId: 'waiting',
         status: 'waiting_for_user',
         updatedAt: '2026-08-11T10:00:00.000Z',
-      },
-      {
-        runId: 'recovering-waiting',
-        status: 'waiting_for_user',
-        version: 3,
-        eventsTruncated: true,
-        truncationRecoveryTarget: 3,
-        updatedAt: '2026-08-11T14:00:00.000Z',
       },
       {
         runId: 'pending',

@@ -12,11 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { normalizeEvent } from '@/lib/projector';
-import {
-  adaptChatProjectionEvent,
-  type ChatProjectionNode,
-} from '@/lib/projector/chat';
+import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -411,46 +407,6 @@ describe('EventTimeline', () => {
     expect(item).toHaveAttribute(
       'data-event-node-id',
       'pending-canonical-request'
-    );
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(1);
-  });
-
-  it('recognizes the normalized legacy.step ASK dual-write mirror', () => {
-    const normalizedLegacyRequest = adaptChatProjectionEvent(
-      normalizeEvent({
-        event_id: 'event-normalized-legacy-request',
-        project_id: 'project-1',
-        run_id: 'run-1',
-        run_sequence: 1,
-        run_version: 1,
-        event_type: 'legacy.step',
-        legacy_step: 'ask',
-        payload: {
-          interaction_id: 'normalized-dual-request',
-          question: 'Which format should I use?',
-        },
-        created_at: '2026-08-11T10:00:00Z',
-      })
-    );
-
-    render(
-      <EventTimeline
-        nodes={[
-          normalizedLegacyRequest,
-          interactionNode(
-            'normalized-canonical-request',
-            'requested',
-            'normalized-dual-request',
-            { prompt: 'Which format should I use?' }
-          ),
-        ]}
-      />
-    );
-
-    const item = screen.getByRole('listitem');
-    expect(item).toHaveAttribute(
-      'data-event-node-id',
-      'normalized-canonical-request'
     );
     expect(screen.getAllByLabelText('Agent input')).toHaveLength(1);
   });
