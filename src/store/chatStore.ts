@@ -69,6 +69,7 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
+import { enqueueChatEventProjection } from './chatEventProjectionBridge';
 import { getCloudModelStore } from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
@@ -160,6 +161,101 @@ export interface CanonicalRunEventCursor {
   lastSequence: number;
   recentEventIds: Set<string>;
   eventIdOrder: string[];
+}
+
+export interface LegacyChatProjectionCursor {
+  runId: string;
+  sourceId: string;
+  sequence: number;
+}
+
+/**
+ * Legacy `/chat` keeps one transport open while a Project advances through
+ * multiple durable Runs. Synthetic projection identity must therefore rotate
+ * with the Run, even though the network connection itself does not reconnect.
+ */
+export function createLegacyChatProjectionCursor(
+  runId: string,
+  sourceId = generateUniqueId()
+): LegacyChatProjectionCursor {
+  return { runId, sourceId, sequence: 0 };
+}
+
+export function advanceLegacyChatProjectionCursor(
+  cursor: LegacyChatProjectionCursor,
+  runId: string,
+  sourceId?: string
+): LegacyChatProjectionCursor {
+  if (runId !== cursor.runId) {
+    return { runId, sourceId: sourceId ?? generateUniqueId(), sequence: 1 };
+  }
+  return { ...cursor, sequence: cursor.sequence + 1 };
+}
+
+/**
+ * Canonical replay envelopes carry the RunJournal sequence under `sequence`.
+ * Accept the normalized aliases as well so imported/cached canonical events
+ * keep their authoritative chronology. Legacy chat frames use the caller's
+ * per-Run shadow projection sequence instead.
+ */
+export function resolveCanonicalTimelineSequence(
+  value: unknown,
+  fallback: number
+): number {
+  if (value && typeof value === 'object') {
+    const envelope = value as {
+      runSequence?: unknown;
+      run_sequence?: unknown;
+      sequence?: unknown;
+    };
+    for (const candidate of [
+      envelope.runSequence,
+      envelope.run_sequence,
+      envelope.sequence,
+    ]) {
+      if (
+        typeof candidate === 'number' &&
+        Number.isInteger(candidate) &&
+        candidate > 0
+      ) {
+        return candidate;
+      }
+    }
+  }
+  return fallback;
+}
+
+export function stampAgentMessageTimeline(
+  message: AgentMessage,
+  timelineSequence: number
+): AgentMessage {
+  return { ...message, timelineSequence };
+}
+
+/**
+ * Resolve the exact legacy frame that starts a prepared follow-up Run.
+ *
+ * Single-agent continuations start with CONFIRMED. Workforce continuations
+ * finish the preceding Run first, then emit NEW_TASK_STATE with the prepared
+ * Run id; simple workforce answers may never emit CONFIRMED at all.
+ */
+export function resolveLegacyChatProjectionRunId(input: {
+  step: unknown;
+  currentRunId: string;
+  nextRunId: string | null | undefined;
+  eventTaskId?: unknown;
+}): string {
+  if (!input.nextRunId || input.nextRunId === input.currentRunId) {
+    return input.currentRunId;
+  }
+  if (input.step === AgentStep.CONFIRMED) return input.nextRunId;
+  if (
+    input.step === AgentStep.NEW_TASK_STATE &&
+    input.eventTaskId === input.nextRunId
+  ) {
+    return input.nextRunId;
+  }
+  return input.currentRunId;
 }
 
 const CANONICAL_EVENT_ID_WINDOW = 2048;
@@ -1493,6 +1589,37 @@ const resolveProcessTaskIdForToolkitEvent = (
   if (direct) return direct;
   return '';
 };
+
+export const resolveToolkitEventAgentIndex = (
+  taskAssigning: Agent[],
+  identity: {
+    agentId?: string;
+    assigneeId?: string;
+    agentName?: string;
+  },
+  processTaskId: string
+): number => {
+  const emittedAgentId = identity.agentId || identity.assigneeId;
+  if (emittedAgentId) {
+    const byId = taskAssigning.findIndex(
+      (agent) => agent.agent_id === emittedAgentId
+    );
+    if (byId !== -1) return byId;
+  }
+
+  const emittedAgentName = identity.agentName?.split('.').at(-1);
+  if (emittedAgentName) {
+    const byName = taskAssigning.findIndex(
+      (agent) =>
+        agent.type === emittedAgentName || agent.name === emittedAgentName
+    );
+    if (byName !== -1) return byName;
+  }
+
+  return taskAssigning.findIndex((agent) =>
+    agent.tasks.some((task) => task.id === processTaskId)
+  );
+};
 // Throttle streaming decompose text updates to prevent excessive re-renders
 const streamingDecomposeTextBuffer: Record<string, string> = {};
 const streamingDecomposeTextTimers: Record<
@@ -2002,6 +2129,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? window.location.origin
         : import.meta.env.VITE_BASE_URL;
       const canonicalReplayCursor = createCanonicalRunEventCursor();
+      let shadowProjectionCursor = createLegacyChatProjectionCursor(newTaskId);
       const api =
         type == 'share'
           ? `${serverBaseUrl}/api/v1/chat/share/playback/${shareToken}?delay_time=${delayTime}`
@@ -2436,7 +2564,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Lock the chatStore reference at the start of SSE session to prevent focus changes
       // during active message processing
-      let lockedChatStore = targetChatStore;
+      let lockedChatStore: VanillaChatStore =
+        targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
 
       // Create AbortController for this task's SSE connection
@@ -2485,6 +2614,72 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ) => {
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
+      };
+
+      /**
+       * Follow-up Runs share the original `/chat` SSE transport. Move the
+       * reducer lock at the same exact event where the shadow projection
+       * changes Run, otherwise a direct WAIT_CONFIRM answer is reduced into
+       * the completed preceding task.
+       */
+      const activatePreparedFollowUpRun = (
+        runId: string,
+        prompt: string | null,
+        createIfMissing: boolean
+      ): boolean => {
+        if (lockedTaskId === runId) return true;
+
+        const sourceChatStore = lockedChatStore;
+        const sourceState = sourceChatStore.getState();
+        const sourceTaskId = lockedTaskId;
+        let targetChatStore: VanillaChatStore | null = sourceState.tasks[runId]
+          ? sourceChatStore
+          : null;
+
+        if (!targetChatStore && project_id) {
+          const activeProjectChatStore =
+            projectStore.getChatStore?.(project_id);
+          if (activeProjectChatStore?.getState().tasks[runId]) {
+            targetChatStore = activeProjectChatStore;
+          }
+        }
+
+        if (!targetChatStore && createIfMissing && project_id) {
+          targetChatStore =
+            projectStore.appendInitChatStore(project_id, runId)?.chatStore ??
+            null;
+        }
+        if (!targetChatStore?.getState().tasks[runId]) return false;
+
+        const targetState = targetChatStore.getState();
+        const targetTask = targetState.tasks[runId];
+        const hasPrompt = targetTask.messages.some(
+          (message) => message.role === 'user'
+        );
+        if (!hasPrompt && prompt) {
+          const sourceMessage = sourceState.tasks[
+            sourceTaskId
+          ]?.messages.findLast(
+            (message) => message.role === 'user' && message.content === prompt
+          );
+          if (sourceMessage?.id) {
+            sourceState.removeMessage(sourceTaskId, sourceMessage.id);
+            targetChatStore.getState().addMessages(runId, sourceMessage);
+          } else {
+            targetChatStore.getState().addMessages(runId, {
+              id: generateUniqueId(),
+              role: 'user',
+              content: prompt,
+            });
+          }
+        }
+
+        const preparedState = targetChatStore.getState();
+        preparedState.setActiveTaskId(runId);
+        preparedState.setIsPending(runId, true);
+        preparedState.setHasMessages(runId, true);
+        updateLockedReferences(targetChatStore, runId);
+        return true;
       };
 
       const requestBody = !type
@@ -2564,6 +2759,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           try {
             const parsed = JSON.parse(event.data);
             if (startOptions.replaySource === 'local_durable') {
+              shadowProjectionCursor = advanceLegacyChatProjectionCursor(
+                shadowProjectionCursor,
+                shadowProjectionCursor.runId,
+                shadowProjectionCursor.sourceId
+              );
               if (
                 !acceptCanonicalRunEvent(
                   canonicalReplayCursor,
@@ -2573,6 +2773,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ) {
                 return;
               }
+              enqueueChatEventProjection({
+                raw: parsed,
+                projectId: project_id,
+                runId: shadowProjectionCursor.runId,
+                sequence: shadowProjectionCursor.sequence,
+                sourceId: shadowProjectionCursor.sourceId,
+                transport: 'local_run',
+              });
               // /runs/{id}/stream returns the canonical RunEvent envelope.
               // The existing Desktop reducer remains legacy-shaped during
               // migration, so typed-only/control events advance the stream
@@ -2582,9 +2790,51 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 return;
               }
               localDurableLegacyEventCount += 1;
-              agentMessages = projected;
+              agentMessages = stampAgentMessageTimeline(
+                projected,
+                resolveCanonicalTimelineSequence(
+                  parsed,
+                  shadowProjectionCursor.sequence
+                )
+              );
             } else {
-              agentMessages = parsed;
+              // A follow-up Run reuses this SSE connection. Scope CONFIRMED
+              // itself (and every later frame) to the prepared next task; if
+              // we wait for the legacy reducer to switch ChatStores, the
+              // first event of the new Run is permanently attributed to the
+              // preceding Run. Rotate the synthetic source as well as its
+              // sequence so `(run, source, sequence)` stays unambiguous.
+              const projectionRunId = resolveLegacyChatProjectionRunId({
+                step: parsed?.step,
+                currentRunId: shadowProjectionCursor.runId,
+                nextRunId: getCurrentChatStore().nextTaskId,
+                eventTaskId: parsed?.data?.task_id,
+              });
+              if (projectionRunId !== shadowProjectionCursor.runId) {
+                activatePreparedFollowUpRun(
+                  projectionRunId,
+                  nonEmptyString(
+                    parsed?.data?.content ?? parsed?.data?.question
+                  ) ?? null,
+                  parsed?.step === AgentStep.NEW_TASK_STATE
+                );
+              }
+              shadowProjectionCursor = advanceLegacyChatProjectionCursor(
+                shadowProjectionCursor,
+                projectionRunId
+              );
+              enqueueChatEventProjection({
+                raw: parsed,
+                projectId: project_id,
+                runId: shadowProjectionCursor.runId,
+                sequence: shadowProjectionCursor.sequence,
+                sourceId: shadowProjectionCursor.sourceId,
+                transport: 'legacy_chat',
+              });
+              agentMessages = stampAgentMessageTimeline(
+                parsed,
+                shadowProjectionCursor.sequence
+              );
             }
           } catch (error) {
             console.error('Failed to parse SSE message:', error);
@@ -2702,10 +2952,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                * as it has been skipped earlier in startTask.
                */
               const nextTaskId = previousChatStore.nextTaskId || undefined;
-              const newChatResult = projectStore.appendInitChatStore(
-                project_id || projectStore.activeProjectId!,
-                nextTaskId
+              const isPreparedFollowUp = Boolean(
+                nextTaskId &&
+                currentTaskId === nextTaskId &&
+                previousChatStore.tasks[currentTaskId]
               );
+              const newChatResult: {
+                taskId: string;
+                chatStore: VanillaChatStore;
+              } | null = isPreparedFollowUp
+                ? { taskId: currentTaskId, chatStore: lockedChatStore }
+                : projectStore.appendInitChatStore(
+                    project_id || projectStore.activeProjectId!,
+                    nextTaskId
+                  );
 
               if (newChatResult) {
                 const { taskId: newTaskId, chatStore: newChatStore } =
@@ -2735,7 +2995,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const isFollowUpConfirm = Boolean(previousChatStore.nextTaskId);
                 const lastMessage =
                   previousChatStore.tasks[currentTaskId]?.messages.at(-1);
-                if (lastMessage?.role === 'user' && lastMessage?.id) {
+                if (
+                  !isPreparedFollowUp &&
+                  lastMessage?.role === 'user' &&
+                  lastMessage?.id
+                ) {
                   previousChatStore.removeMessage(
                     currentTaskId,
                     lastMessage.id
@@ -2775,12 +3039,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   question,
                   isFollowUpConfirm,
                 });
-                newChatStore.getState().addMessages(newTaskId, {
-                  id: generateUniqueId(),
-                  role: 'user',
-                  content: userMessageContent,
-                  attaches: attachesForNewMessage,
-                });
+                if (!isPreparedFollowUp) {
+                  newChatStore.getState().addMessages(newTaskId, {
+                    id: generateUniqueId(),
+                    role: 'user',
+                    content: userMessageContent,
+                    attaches: attachesForNewMessage,
+                  });
+                }
                 console.log('[NEW CHATSTORE] Created for ', project_id);
 
                 //Create a new history point
@@ -3745,10 +4011,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               agentMessages.data.agent_name,
               agentMessages.data.process_task_id
             );
-            let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) =>
-              agent.tasks.find(
-                (task: TaskInfo) => task.id === resolvedProcessTaskId
-              )
+            let assigneeAgentIndex = resolveToolkitEventAgentIndex(
+              taskAssigning,
+              {
+                agentId: agentMessages.data.agent_id,
+                assigneeId: agentMessages.data.assignee_id,
+                agentName: agentMessages.data.agent_name,
+              },
+              resolvedProcessTaskId
             );
 
             // Fallback: if task ID not found, try finding by agent type
@@ -3883,10 +4153,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               agentMessages.data.process_task_id
             );
 
-            let assigneeAgentIndex = taskAssigning!.findIndex((agent: Agent) =>
-              agent.tasks.find(
-                (task: TaskInfo) => task.id === resolvedProcessTaskId
-              )
+            let assigneeAgentIndex = resolveToolkitEventAgentIndex(
+              taskAssigning,
+              {
+                agentId: agentMessages.data.agent_id,
+                assigneeId: agentMessages.data.assignee_id,
+                agentName: agentMessages.data.agent_name,
+              },
+              resolvedProcessTaskId
             );
             if (
               assigneeAgentIndex === -1 &&
@@ -4681,6 +4955,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 id: generateUniqueId(),
                 role: 'user',
                 content: reply,
+                interactionResponseTo:
+                  agentMessages.data?.interaction_id || undefined,
               });
             }
 

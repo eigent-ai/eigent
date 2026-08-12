@@ -43,6 +43,7 @@ import {
   type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
+import { releaseProjectEventStore } from './projectEventStore';
 import {
   projectMetaFromServer,
   useSpaceStore,
@@ -152,7 +153,10 @@ export enum ProjectType {
 
 export type ProjectMode = 'single-agent' | 'workforce';
 export type ProjectWorkdirMode =
-  'worktree' | 'copy' | 'direct-write' | 'artifact-only';
+  | 'worktree'
+  | 'copy'
+  | 'direct-write'
+  | 'artifact-only';
 
 interface TaskQueue {
   task_id: string;
@@ -1003,8 +1007,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
-    // Create a new task in the new chat store with the queued content
-    const newTaskId = newChatStore.getState().create(customTaskId);
+    // Follow-up turns are seeded optimistically so their pending timeline is
+    // visible before the long-lived /chat stream emits CONFIRMED.  When that
+    // event arrives it calls this helper again with the same Run id.  Reuse
+    // the seeded task instead of recreating it (which would erase the user
+    // message and the pending task-log state).
+    const existingTaskId =
+      customTaskId && newChatStore.getState().tasks[customTaskId]
+        ? customTaskId
+        : null;
+    const newTaskId =
+      existingTaskId || newChatStore.getState().create(customTaskId);
 
     //Set the initTask as the active taskId
     newChatStore.getState().setActiveTaskId(newTaskId);
@@ -1113,6 +1126,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // helper is in the middle of a transition and will overwrite it.
       return update;
     });
+    releaseProjectEventStore(projectId);
   },
 
   _evictStaleOnTransition: (nextProjectId: string | null) => {
@@ -1170,6 +1184,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         staleProjectIds: nextStale,
       };
     });
+    releaseProjectEventStore(projectId);
     usePageTabStore.getState().removeSessionPreviewProject(projectId);
     useSpaceStore.getState().removeProjectMeta(projectId);
   },

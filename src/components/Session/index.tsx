@@ -409,11 +409,14 @@ export default function Session({ isNewProject = false }: SessionProps) {
           !isResizingPreview && 'transition-[width] duration-200 ease-out'
         )}
       >
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <HeaderBox
-            totalTokens={chatStore.tasks[chatStore.activeTaskId]?.tokens || 0}
-          />
-        )}
+        <HeaderBox
+          projectName={activeProjectMeta?.name}
+          totalTokens={
+            chatStore.activeTaskId
+              ? chatStore.tasks[chatStore.activeTaskId]?.tokens || 0
+              : 0
+          }
+        />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ChatBox />
         </div>

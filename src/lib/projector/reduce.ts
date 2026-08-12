@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import type {
   CanonicalProjectEvent,
   ProjectViewState,
@@ -6,8 +20,17 @@ import type {
 } from './types';
 
 const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
-  'run.attempt_created': 'running',
+  'run.attempt_created': 'pending',
   'run.attempt_started': 'running',
+  'run.cancel_requested': 'cancelling',
+  'interaction.requested': 'waiting_for_user',
+  // A persisted decision only resumes the Attempt when the command explicitly
+  // continued it. Interrupted is therefore the safe/default projection.
+  'interaction.resolved': 'interrupted',
+  'interaction.expired': 'interrupted',
+  'approval.requested': 'waiting_for_user',
+  'approval.decided': 'interrupted',
+  'approval.expired_rejected': 'interrupted',
   'run.completed': 'completed',
   'run.failed': 'failed',
   'run.deadline_reached': 'failed',
@@ -145,6 +168,17 @@ export function reduceProjectView(
       resyncTargetCursor: null,
     };
   }
+  const previousRun = state.runs[event.runId];
+  if (
+    event.source === 'canonical' &&
+    previousRun &&
+    event.runSequence <= previousRun.lastSequence
+  ) {
+    // Durable Run sequences are monotonic and unique. This watermark remains
+    // authoritative after bounded event-ID eviction, especially for the local
+    // Run stream where no cloud cursor exists.
+    return state;
+  }
 
   if (
     event.cloudCursor !== null &&
@@ -165,7 +199,6 @@ export function reduceProjectView(
   ) {
     gapReason = `cloud_cursor_gap:${state.currentCursor + 1}:${event.cloudCursor}`;
   }
-  const previousRun = state.runs[event.runId];
   if (
     event.source === 'canonical' &&
     event.runSequence > (previousRun?.lastSequence || 0) + 1 &&
@@ -184,8 +217,14 @@ export function reduceProjectView(
     };
   }
 
+  const interactionDecisionContinued =
+    (event.eventType === 'interaction.resolved' ||
+      event.eventType === 'approval.decided') &&
+    event.payload.continued_attempt === true;
   const status =
-    RUN_STATUS_BY_EVENT[event.eventType] ||
+    (interactionDecisionContinued
+      ? 'running'
+      : RUN_STATUS_BY_EVENT[event.eventType]) ||
     (event.legacyStep === 'end'
       ? 'completed'
       : previousRun?.status || 'running');
@@ -203,6 +242,8 @@ export function reduceProjectView(
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
     updatedAt: event.createdAt,
+    origin: previousRun?.origin ?? null,
+    resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
   };
   const legacyStepId =
     (event.payload.__legacy_step_id as number | string | undefined) ||

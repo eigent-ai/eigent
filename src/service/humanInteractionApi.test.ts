@@ -25,6 +25,7 @@ vi.mock('@/api/http', () => ({
 import {
   decideHumanInteraction,
   humanInteractionDecisionPath,
+  type HumanInteractionPayload,
 } from './humanInteractionApi';
 
 describe('local HumanInteraction API', () => {
@@ -64,5 +65,53 @@ describe('local HumanInteraction API', () => {
     expect(humanInteractionDecisionPath('run-1', 'interaction-1')).toBe(
       '/runs/run-1/interactions/interaction-1/decisions'
     );
+  });
+
+  it('posts a decision to the local durable Run route', async () => {
+    fetchPostMock.mockResolvedValue({ status: 'resolved' });
+    const interaction: HumanInteractionPayload = {
+      interaction_id: 'approval:todo/write',
+      interaction_type: 'approval',
+      run_id: 'run/123',
+      version: 4,
+      action_digest: 'digest-1',
+    };
+
+    await decideHumanInteraction(interaction, {
+      decisionRequestId: 'decision-1',
+      decision: { decision: 'approved', scope: 'once' },
+      actorId: 42,
+    });
+
+    expect(fetchPostMock).toHaveBeenCalledWith(
+      '/runs/run%2F123/interactions/approval%3Atodo%2Fwrite/decisions',
+      {
+        decision_request_id: 'decision-1',
+        decision: { decision: 'approved', scope: 'once' },
+        expected_version: 4,
+        action_digest: 'digest-1',
+        actor_type: 'user',
+        actor_id: '42',
+        source: 'desktop',
+        continue_active_attempt: true,
+      }
+    );
+  });
+
+  it('rejects an interaction without a durable Run id', async () => {
+    await expect(
+      decideHumanInteraction(
+        {
+          interaction_id: 'interaction-1',
+          interaction_type: 'approval',
+        },
+        {
+          decisionRequestId: 'decision-1',
+          decision: { decision: 'approved', scope: 'once' },
+        }
+      )
+    ).rejects.toThrow('Missing durable Run id');
+
+    expect(fetchPostMock).not.toHaveBeenCalled();
   });
 });

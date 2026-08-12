@@ -18,29 +18,33 @@ import { TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BoxFooter } from './BoxFooter';
-import { BoxHeaderConfirm, BoxHeaderSave } from './BoxHeader';
-import { FileAttachment, Inputbox, InputboxProps } from './InputBox';
+import { BoxHeaderConfirm, BoxHeaderDisplay, BoxHeaderSave } from './BoxHeader';
+import { ControlInputRouter } from './ControlInput';
+import type { FileAttachment, InputboxProps } from './InputBox';
 import { ConnectorPickerPanel, SkillPickerPanel } from './PickerPanel';
-import { QueuedBox, QueuedMessage } from './QueuedBox';
+import { QueuedBox, type QueuedMessage } from './QueuedBox';
+import type {
+  BottomBoxContextItem,
+  BottomBoxVariant,
+  LegacyBottomBoxVariant,
+} from './types';
 import {
   UsageLimitBanner,
   type UsageLimitBannerProps,
 } from './UsageLimitBanner';
 
 export type BottomBoxState =
-  'input' | 'confirm' | 'save' | 'running' | 'finished';
-
-/** Main-slot content, orthogonal to `state`. Future variants (e.g. 'multiSelect') plug in here. */
-export type BottomBoxVariant = 'input';
+  | 'input'
+  | 'confirm'
+  | 'save'
+  | 'running'
+  | 'finished';
 
 type PickerPanelKind = 'connector' | 'skill';
 
-interface BottomBoxProps {
+interface BottomBoxCommonProps {
   // General state
   state: BottomBoxState;
-
-  /** Main-slot variant; defaults to the input composer. */
-  variant?: BottomBoxVariant;
 
   // Queue-related props
   queuedMessages?: QueuedMessage[];
@@ -56,8 +60,6 @@ interface BottomBoxProps {
   onSavePlan?: () => void;
   onEdit?: () => void;
 
-  // Input props
-  inputProps: Omit<InputboxProps, 'className'> & { className?: string };
   usageLimitBanner?: UsageLimitBannerProps | null;
 
   // BoxFooter (project-setup controls: mode + model); omit sessionMode to hide the row.
@@ -76,6 +78,13 @@ interface BottomBoxProps {
   onSelectModel?: () => void;
 }
 
+export type BottomBoxProps = BottomBoxCommonProps & {
+  /** Defaults to the composer; event-derived variants contain display data and callbacks. */
+  variant?: LegacyBottomBoxVariant | BottomBoxVariant;
+  /** Required by composer owners and safely ignored by controlled variants. */
+  inputProps?: Omit<InputboxProps, 'className'> & { className?: string };
+};
+
 export default function BottomBox({
   state,
   variant = 'input',
@@ -87,7 +96,7 @@ export default function BottomBox({
   onStartTask,
   onSavePlan,
   onEdit,
-  inputProps,
+  inputProps: providedInputProps,
   usageLimitBanner,
   sessionMode,
   onSessionModeChange,
@@ -99,6 +108,9 @@ export default function BottomBox({
 }: BottomBoxProps) {
   const { t } = useTranslation();
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
+  const inputProps: InputboxProps = providedInputProps ?? {};
+  const normalizedVariant: BottomBoxVariant =
+    variant === 'input' ? { kind: 'input' } : variant;
 
   // Picker panels (connector/skill) float above BoxMain and are mutually exclusive.
   const [openPanel, setOpenPanel] = useState<PickerPanelKind | null>(null);
@@ -124,6 +136,10 @@ export default function BottomBox({
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [openPanel]);
+
+  useEffect(() => {
+    if (normalizedVariant.kind !== 'input') setOpenPanel(null);
+  }, [normalizedVariant.kind]);
 
   const inputValue = inputProps.value ?? '';
 
@@ -170,27 +186,78 @@ export default function BottomBox({
     backgroundClass = 'bg-ds-bg-completed-default-default';
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
-  const hasOverlay = showQueuedBox || !!usageLimitBanner || !!openPanel;
+  const activePickerPanel =
+    normalizedVariant.kind === 'input' ? openPanel : null;
+  const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
+
+  const variantHeader = normalizedVariant.header;
+  const attachedFiles =
+    normalizedVariant.kind === 'input' ? (inputProps.files ?? []) : [];
+  const attachmentContext: BottomBoxContextItem[] = attachedFiles.map(
+    (file) => ({
+      id: `attachment:${file.filePath}`,
+      label: file.fileName,
+      description: file.filePath,
+      kind: 'file',
+      removable: typeof inputProps.onFilesChange === 'function',
+    })
+  );
+  const headerContextItems = [
+    ...(variantHeader?.contextItems ?? []),
+    ...attachmentContext,
+  ];
+  const resolvedHeader =
+    variantHeader || headerContextItems.length > 0
+      ? {
+          ...variantHeader,
+          contextItems: headerContextItems,
+          onRemoveContextItem:
+            inputProps.onFilesChange || variantHeader?.onRemoveContextItem
+              ? (id: string) => {
+                  if (id.startsWith('attachment:')) {
+                    const filePath = id.slice('attachment:'.length);
+                    inputProps.onFilesChange?.(
+                      attachedFiles.filter((file) => file.filePath !== filePath)
+                    );
+                    return;
+                  }
+                  variantHeader?.onRemoveContextItem?.(id);
+                }
+              : undefined,
+        }
+      : undefined;
+
+  const variantDisabled =
+    normalizedVariant.kind === 'input'
+      ? inputProps.disabled
+      : normalizedVariant.disabled || normalizedVariant.submitting;
 
   return (
-    <div className="relative z-50 flex w-full flex-col rounded-3xl bg-ds-bg-neutral-default-default">
-      {/* Floating overlays: never affect BoxMain layout */}
+    <div
+      data-bottom-box
+      className="relative z-50 flex w-full flex-col gap-1 rounded-3xl bg-ds-bg-neutral-default-default"
+    >
+      {/* QueryBox — queued user requests remain separate from BoxMain. */}
+      {showQueuedBox && (
+        <div data-bottom-box-query>
+          <QueuedBox
+            queuedMessages={queuedMessages}
+            onRemoveQueuedMessage={onRemoveQueuedMessage}
+            onSendQueuedMessageNow={onSendQueuedMessageNow}
+          />
+        </div>
+      )}
+
+      {/* Floating utility overlays: never affect BoxMain layout. */}
       {hasOverlay && (
         <div className="pointer-events-auto absolute inset-x-0 bottom-full z-[60] mb-1 flex flex-col gap-1">
-          {showQueuedBox && (
-            <QueuedBox
-              queuedMessages={queuedMessages}
-              onRemoveQueuedMessage={onRemoveQueuedMessage}
-              onSendQueuedMessageNow={onSendQueuedMessageNow}
-            />
-          )}
           {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
-          {openPanel && (
+          {activePickerPanel && (
             <div
               ref={panelRef}
               className="duration-150 animate-in fade-in-0 slide-in-from-bottom-1"
             >
-              {openPanel === 'connector' ? (
+              {activePickerPanel === 'connector' ? (
                 <ConnectorPickerPanel
                   inputValue={inputValue}
                   onToggleItem={(item) => toggleToken(item.token)}
@@ -203,14 +270,15 @@ export default function BottomBox({
               )}
             </div>
           )}
-          {/* future: human-in-the-loop approval cards mount here */}
         </div>
       )}
+
       {/* BoxMain */}
       <div
+        data-bottom-box-main
         className={`relative flex w-full flex-col rounded-3xl ${backgroundClass}`}
       >
-        {/* BoxHeader variants — project confirmation */}
+        {/* BoxHeader — context/question display only. */}
         {state === 'confirm' && (
           <BoxHeaderConfirm
             subtitle={subtitle}
@@ -228,30 +296,34 @@ export default function BottomBox({
             loading={loading}
           />
         )}
+        {resolvedHeader && <BoxHeaderDisplay {...resolvedHeader} />}
 
-        {/* Main box — variant slot */}
-        {variant === 'input' && (
-          <Inputbox
-            {...inputProps}
-            connectorPanelOpen={openPanel === 'connector'}
-            onToggleConnectorPanel={() => togglePanel('connector')}
-            skillPanelOpen={openPanel === 'skill'}
-            onToggleSkillPanel={() => togglePanel('skill')}
-          />
-        )}
+        {/* InputBox — controlled router selected by event-derived variant. */}
+        <ControlInputRouter
+          variant={normalizedVariant}
+          inputProps={inputProps}
+          connectorPanelOpen={activePickerPanel === 'connector'}
+          onToggleConnectorPanel={() => togglePanel('connector')}
+          skillPanelOpen={activePickerPanel === 'skill'}
+          onToggleSkillPanel={() => togglePanel('skill')}
+        />
 
-        {/* Box footer — project-setup controls (mode + model); read-only once started */}
-        {sessionMode !== undefined && (
-          <BoxFooter
-            sessionMode={sessionMode}
-            onSessionModeChange={onSessionModeChange}
-            projectId={modelSelectProjectId}
-            interactive={sessionModeSelectInteractive}
-            disabled={inputProps.disabled}
-          />
-        )}
+        {/* BoxFooter remains the stable project-setup region for every variant. */}
+        <div data-bottom-box-footer>
+          {sessionMode !== undefined && (
+            <BoxFooter
+              sessionMode={sessionMode}
+              onSessionModeChange={onSessionModeChange}
+              projectId={modelSelectProjectId}
+              interactive={sessionModeSelectInteractive}
+              disabled={variantDisabled}
+            />
+          )}
+        </div>
 
-        {noModelOverlay && onSelectModel ? (
+        {noModelOverlay &&
+        onSelectModel &&
+        normalizedVariant.kind === 'input' ? (
           <div
             className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
             role="alert"
@@ -282,4 +354,21 @@ export default function BottomBox({
   );
 }
 
+export type {
+  BottomBoxApprovalOption,
+  BottomBoxApprovalScope,
+  BottomBoxApprovalVariant,
+  BottomBoxBlockedVariant,
+  BottomBoxConfirmationVariant,
+  BottomBoxContextItem,
+  BottomBoxFeedbackVariant,
+  BottomBoxFormField,
+  BottomBoxFormVariant,
+  BottomBoxHeaderContent,
+  BottomBoxHeaderDetail,
+  BottomBoxInputVariant,
+  BottomBoxSelectionOption,
+  BottomBoxSelectionVariant,
+  BottomBoxVariant,
+} from './types';
 export { type FileAttachment, type QueuedMessage };

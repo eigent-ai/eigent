@@ -23,6 +23,7 @@ import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useProjectRunEventStreams } from '@/hooks/useProjectRunEventStreams';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
 import {
@@ -40,8 +41,13 @@ import {
 } from '@/service/followUpQueueApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  getProjectEventStore,
+  type ProjectEventStoreSnapshot,
+} from '@/store/projectEventStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -52,11 +58,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import type {
+  BottomBoxInputVariant,
+  BottomBoxRunControlVariant,
+} from './BottomBox/types';
+import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
 import {
   InterruptedRunBanner,
   InterruptedRunBannerAction,
@@ -71,6 +84,94 @@ const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
+const ELIGIBLE_EVENT_NATIVE_RUN_STATUSES = new Set([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+  'interrupted',
+]);
+
+const subscribeToNothing = () => () => undefined;
+
+type EventNativeProjectedRun =
+  ProjectEventStoreSnapshot['view']['runs'][string];
+
+function isEventNativeRunActionable(run: EventNativeProjectedRun): boolean {
+  return run.origin === 'local' && !run.resumeBlockedReason;
+}
+
+function isEventNativeRunReadOnly(run: EventNativeProjectedRun): boolean {
+  return (
+    (run.origin !== null && run.origin !== 'local') ||
+    Boolean(run.resumeBlockedReason)
+  );
+}
+
+function compareProjectedRunsByRecency(
+  left: EventNativeProjectedRun,
+  right: EventNativeProjectedRun
+): number {
+  const timeDelta =
+    (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0);
+  if (timeDelta !== 0) return timeDelta;
+  if (right.lastSequence !== left.lastSequence) {
+    return right.lastSequence - left.lastSequence;
+  }
+  return right.runId.localeCompare(left.runId);
+}
+
+function selectLatestReadOnlyEventNativeRun(
+  snapshot: ProjectEventStoreSnapshot | null
+): EventNativeProjectedRun | null {
+  if (!snapshot) return null;
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunReadOnly(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0] ?? null
+  );
+}
+
+/**
+ * Bridge legacy ownership during cutover, then fall back to durable state for
+ * typed-only cold hydration. Pending control order is backend/event order.
+ */
+function selectEventNativeActiveRunId(
+  snapshot: ProjectEventStoreSnapshot | null,
+  legacyActiveRunId: string | null | undefined
+): string | null {
+  if (legacyActiveRunId) return legacyActiveRunId;
+  if (!snapshot) return null;
+
+  for (const interactionId of snapshot.control.orderedInteractionIds) {
+    const interaction = snapshot.control.interactionById[interactionId];
+    const projectedRun = interaction
+      ? snapshot.view.runs[interaction.runId]
+      : undefined;
+    if (
+      interaction?.status === 'requested' &&
+      projectedRun &&
+      ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedRun.status) &&
+      isEventNativeRunActionable(projectedRun)
+    ) {
+      return interaction.runId;
+    }
+  }
+
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunActionable(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0]?.runId ?? null
+  );
+}
 
 interface SubscriptionLimitInfo {
   plan_key?: string | null;
@@ -246,6 +347,36 @@ export default function ChatBox(): JSX.Element {
     (s) => s.workspaceChatFocusRequestId
   );
   const activeProjectId = projectStore.activeProjectId;
+  const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
+  const eventNativeProjectStore = useMemo(
+    () =>
+      eventNativeTimelineEnabled && activeProjectId
+        ? getProjectEventStore(activeProjectId)
+        : null,
+    [activeProjectId, eventNativeTimelineEnabled]
+  );
+  const subscribeToEventNativeProject = useCallback(
+    (listener: () => void) =>
+      eventNativeProjectStore?.subscribe(listener) ?? subscribeToNothing(),
+    [eventNativeProjectStore]
+  );
+  const getEventNativeProjectSnapshot = useCallback(
+    () => eventNativeProjectStore?.getSnapshot() ?? null,
+    [eventNativeProjectStore]
+  );
+  const eventNativeProjectSnapshot = useSyncExternalStore(
+    subscribeToEventNativeProject,
+    getEventNativeProjectSnapshot,
+    getEventNativeProjectSnapshot
+  );
+  useProjectRunEventStreams({
+    projectId: activeProjectId,
+    snapshot: eventNativeProjectSnapshot,
+    enabled: eventNativeTimelineEnabled,
+  });
+  const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
+    eventNativeProjectSnapshot
+  );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -435,11 +566,83 @@ export default function ChatBox(): JSX.Element {
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeAskTask = chatStore?.tasks[activeTaskId as string];
+  const projectedLegacyRun = activeTaskId
+    ? eventNativeProjectSnapshot?.view.runs[activeTaskId]
+    : undefined;
+  const eligibleLegacyActiveRunId =
+    activeTaskId &&
+    activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED &&
+    projectedLegacyRun &&
+    ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedLegacyRun.status) &&
+    isEventNativeRunActionable(projectedLegacyRun)
+      ? activeTaskId
+      : null;
+  const eventNativeActiveRunId = selectEventNativeActiveRunId(
+    eventNativeProjectSnapshot,
+    eligibleLegacyActiveRunId
+  );
+  const eventNativeActiveTask = eventNativeActiveRunId
+    ? chatStore?.tasks[eventNativeActiveRunId]
+    : undefined;
+  const eventNativeActiveProjectedRun = eventNativeActiveRunId
+    ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
+    : undefined;
   const activeAsk = activeAskTask?.activeAsk;
   const activeAskMessage = activeAskTask?.messages.findLast(
     (item) => item.step === AgentStep.ASK
   );
   const activeInteraction = activeAskMessage?.interaction;
+  const isInteractiveHumanReply =
+    !!activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED;
+
+  const handleDurableHumanControlResolved = useCallback(
+    (resolved: { interactionId: string; runId: string }) => {
+      if (!activeTaskId || resolved.runId !== activeTaskId) return;
+      const current = chatStore?.tasks[activeTaskId];
+      if (!current) return;
+
+      const activeAskInteractionId = current.messages.findLast(
+        (message) => message.step === AgentStep.ASK
+      )?.interaction?.interaction_id;
+      if (
+        activeAskInteractionId &&
+        activeAskInteractionId !== resolved.interactionId
+      ) {
+        return;
+      }
+
+      // Migration-only compatibility: the durable terminal event is already
+      // loaded at this point. Keep the legacy task queue coherent until all
+      // send/disable logic reads HumanControlProjection directly.
+      const [nextAsk, ...remainingAsks] = current.askList;
+      chatStore.setActiveAskList(activeTaskId, remainingAsks);
+      chatStore.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
+      chatStore.setIsPending(activeTaskId, false);
+      if (nextAsk) chatStore.addMessages(activeTaskId, nextAsk);
+    },
+    [activeTaskId, chatStore]
+  );
+
+  const eventNativeHumanControl = useEventNativeHumanControl({
+    projectId: eventNativeTimelineEnabled ? activeProjectId : null,
+    activeRunId: eventNativeActiveRunId,
+    enabled:
+      eventNativeTimelineEnabled &&
+      Boolean(activeProjectId) &&
+      eventNativeActiveTask?.type !== 'share' &&
+      Boolean(
+        eventNativeActiveProjectedRun &&
+        isEventNativeRunActionable(eventNativeActiveProjectedRun)
+      ) &&
+      !share_token,
+    onDurableResolution: handleDurableHumanControlResolved,
+  });
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -465,8 +668,25 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  // With the event-native read path enabled, typed-only durable events can be
+  // the first visible records. Timeline presence must not depend on whether a
+  // legacy ChatStore message happened to be created for the same event.
+  const shouldRenderChatTimeline = eventNativeTimelineEnabled
+    ? Boolean(activeProjectId)
+    : hasAnyMessages;
+  const shouldRenderBottomBoxOverlay =
+    shouldRenderChatTimeline &&
+    Boolean(
+      chatStore?.activeTaskId ||
+      (eventNativeTimelineEnabled &&
+        (interruptedRun ||
+          eventNativeHumanControl.variant ||
+          eventNativeActiveRunId ||
+          eventNativeReadOnlyRun))
+    );
+
   useLayoutEffect(() => {
-    if (!chatStore?.activeTaskId || !hasAnyMessages) return;
+    if (!shouldRenderBottomBoxOverlay) return;
 
     const el = bottomBoxOverlayRef.current;
     if (!el) return;
@@ -485,7 +705,7 @@ export default function ChatBox(): JSX.Element {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [chatStore?.activeTaskId, hasAnyMessages]);
+  }, [shouldRenderBottomBoxOverlay]);
 
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -802,10 +1022,12 @@ export default function ChatBox(): JSX.Element {
           );
           return;
         }
+        const humanReplyMessageId = generateUniqueId();
         chatStore.addMessages(_taskId, {
-          id: generateUniqueId(),
+          id: humanReplyMessageId,
           role: 'user',
           content: displayContent,
+          interactionResponseTo: activeInteraction?.interaction_id,
           attaches:
             JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
             [],
@@ -819,21 +1041,35 @@ export default function ChatBox(): JSX.Element {
 
         chatStore.setIsPending(_taskId, true);
 
-        const replyResult = await fetchPost(
-          `/chat/${targetProjectId}/human-reply`,
-          {
-            agent: chatStore.tasks[_taskId].activeAsk,
-            reply: tempMessageContent,
-            interaction_id: activeInteraction?.interaction_id,
-            decision_request_id: activeInteraction?.interaction_id
-              ? `desktop-reply:${activeInteraction.interaction_id}`
-              : undefined,
-          }
-        );
+        let replyResult: any;
+        try {
+          replyResult = await fetchPost(
+            `/chat/${targetProjectId}/human-reply`,
+            {
+              agent: chatStore.tasks[_taskId].activeAsk,
+              reply: tempMessageContent,
+              interaction_id: activeInteraction?.interaction_id,
+              decision_request_id: activeInteraction?.interaction_id
+                ? `desktop-reply:${activeInteraction.interaction_id}`
+                : undefined,
+            }
+          );
+        } catch (error: any) {
+          // The optimistic answer must not become a historical receipt unless
+          // the backend accepted it. Keep the active request available for a
+          // retry and restore the draft on transport failure.
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
+          chatStore.setIsPending(_taskId, false);
+          setMessage(tempMessageContent);
+          toast.error(error?.message || 'Failed to send your reply.');
+          return;
+        }
         if (replyResult?.code === 1) {
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
           chatStore.setIsPending(_taskId, false);
           chatStore.setActiveAskList(_taskId, []);
           chatStore.setActiveAsk(_taskId, '');
+          setMessage(tempMessageContent);
           toast.error(
             replyResult.text || 'This task is no longer waiting for a reply.'
           );
@@ -949,24 +1185,36 @@ export default function ChatBox(): JSX.Element {
                 (f: { filePath: string }) => f.filePath
               ) || [];
 
-            //Generate nextId in case new chatStore is created to sync with the backend beforehand
+            // A normal follow-up is a new durable Run. Seed it before the
+            // admission request completes so the reply and its pending work
+            // log are visible immediately, while the completed Run remains a
+            // stable history section above it.
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
             chatStore.setNextExecutionId(_taskId as string, executionId);
+            const nextChatResult = projectStore.appendInitChatStore(
+              targetProjectId,
+              nextTaskId
+            );
+            if (!nextChatResult) {
+              throw new Error('Unable to prepare the follow-up task.');
+            }
 
-            // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            await fetchPost(`/chat/${targetProjectId}`, {
-              question: tempMessageContent,
-              task_id: nextTaskId,
-              attaches: improveAttaches,
-              project_context: buildProjectContinuationContext(
-                targetProjectId,
-                nextTaskId
-              ),
-              target: undefined,
-            });
-            chatStore.setIsPending(_taskId, true);
-            chatStore.addMessages(_taskId, {
+            const nextChatState = nextChatResult.chatStore.getState();
+            // During the remaining multi-store migration window the prepared
+            // Run can live in a different store from the completed Run. Keep
+            // the boundary token on both sides so CONFIRMED reuses this exact
+            // task instead of creating a duplicate.
+            nextChatState.setNextTaskId(nextTaskId);
+            nextChatState.setTaskSessionMode(nextTaskId, effectiveSessionMode);
+            nextChatState.setTaskSource(
+              nextTaskId,
+              executionId ? 'trigger' : 'user'
+            );
+            nextChatState.setExecutionId(nextTaskId, executionId);
+            nextChatState.setIsPending(nextTaskId, true);
+            nextChatState.setHasMessages(nextTaskId, true);
+            nextChatState.addMessages(nextTaskId, {
               id: generateUniqueId(),
               role: 'user',
               content: displayContent,
@@ -975,6 +1223,34 @@ export default function ChatBox(): JSX.Element {
             if (!preserveComposer) {
               chatStore.setAttaches(_taskId, []);
               setMessage('');
+            }
+
+            try {
+              // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+              await fetchPost(`/chat/${targetProjectId}`, {
+                question: tempMessageContent,
+                task_id: nextTaskId,
+                attaches: improveAttaches,
+                project_context: buildProjectContinuationContext(
+                  targetProjectId,
+                  nextTaskId
+                ),
+                target: undefined,
+              });
+            } catch (error: any) {
+              // Keep the failed turn as a traceable receipt instead of moving
+              // the reply back into (or mutating) the completed history Run.
+              nextChatState.setIsPending(nextTaskId, false);
+              nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+              nextChatState.addMessages(nextTaskId, {
+                id: generateUniqueId(),
+                role: 'agent',
+                content:
+                  error?.message ||
+                  '❌ **Error**: Failed to start the follow-up task.',
+              });
+              toast.error(error?.message || 'Failed to send follow-up.');
+              if (preserveComposer) throw error;
             }
           }
         } else {
@@ -1515,6 +1791,125 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleEventNativeStopRun = async (runId: string) => {
+    const currentRunId = selectEventNativeActiveRunId(
+      eventNativeProjectStore?.getSnapshot() ?? null,
+      eligibleLegacyActiveRunId
+    );
+    if (runId !== currentRunId) return;
+
+    setIsPauseResumeLoading(true);
+    try {
+      await fetchPost(`/runs/${encodeURIComponent(runId)}/cancel`, {
+        request_id: runActionRequestId('cancel', runId),
+        reason: 'explicit_stop_from_event_native_chatbox',
+      });
+      clearRunActionRequestId('cancel', runId);
+      if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
+      toast.success('Run stopped successfully', { closeButton: true });
+    } catch (error: any) {
+      console.error('[RunControl] Failed to stop Run', error);
+      toast.error(error?.message || 'Failed to stop this Run.');
+    } finally {
+      setIsPauseResumeLoading(false);
+    }
+  };
+
+  const handleEventNativeResumeRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleResumeInterruptedRun();
+  };
+
+  const handleEventNativeCancelRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleCancelInterruptedRun();
+  };
+
+  let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
+  if (eventNativeTimelineEnabled && interruptedRun) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          isCloudRestoredRun
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+        description: isCloudRestoredRun
+          ? undefined
+          : t('chat.run-interrupted-description'),
+      },
+      runId: interruptedRun.run_id,
+      state: isCloudRestoredRun
+        ? 'read_only'
+        : (durableRunAction ?? 'interrupted'),
+      resumeLabel: t('chat.run-resume'),
+      resumingLabel: t('chat.run-resuming'),
+      cancelLabel: t('chat.run-cancel'),
+      cancellingLabel: t('chat.run-cancelling'),
+      readOnlyLabel: t('chat.run-cloud-restored-description'),
+      onResume: isCloudRestoredRun ? undefined : handleEventNativeResumeRun,
+      onCancel: isCloudRestoredRun ? undefined : handleEventNativeCancelRun,
+    };
+  } else if (eventNativeTimelineEnabled && eventNativeReadOnlyRun) {
+    const restoredFromCloud = eventNativeReadOnlyRun.origin === 'cloud_restore';
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          restoredFromCloud
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+      },
+      runId: eventNativeReadOnlyRun.runId,
+      state: 'read_only',
+      readOnlyLabel: restoredFromCloud
+        ? t('chat.run-cloud-restored-description')
+        : undefined,
+    };
+  } else if (
+    eventNativeTimelineEnabled &&
+    eventNativeActiveRunId &&
+    (eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]?.status ===
+      'running' ||
+      (eventNativeActiveRunId === activeTaskId &&
+        activeTask?.status === ChatTaskStatus.RUNNING))
+  ) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title:
+          (eventNativeActiveRunId === activeTaskId
+            ? activeTask?.summaryTask
+            : undefined) || t('layout.stop-task'),
+      },
+      runId: eventNativeActiveRunId,
+      state: isPauseResumeLoading ? 'stopping' : 'running',
+      stopLabel: t('layout.stop-task'),
+      onStop: (runId) => void handleEventNativeStopRun(runId),
+    };
+  }
+
+  const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
+    activeAsk && isInteractiveHumanReply && activeAskMessage
+      ? {
+          kind: 'input',
+          header: {
+            eyebrow: 'Input required',
+            title:
+              activeInteraction?.question || activeAskMessage.content.trim(),
+          },
+        }
+      : 'input';
+  const bottomBoxVariant = eventNativeTimelineEnabled
+    ? (eventNativeHumanControl.variant ??
+      eventNativeRunControlVariant ??
+      'input')
+    : legacyHumanInputVariant;
+  const hasEventNativeBottomBoxControl =
+    eventNativeTimelineEnabled && bottomBoxVariant !== 'input';
+
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
@@ -1523,7 +1918,15 @@ export default function ChatBox(): JSX.Element {
           ref={scrollContainerRef}
           className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
         >
-          {hasAnyMessages ? (
+          {shouldRenderChatTimeline &&
+          eventNativeTimelineEnabled &&
+          activeProjectId ? (
+            <EventNativeProjectTimeline
+              projectId={activeProjectId}
+              scrollContainerRef={scrollContainerRef}
+              scrollBottomInsetPx={scrollBottomInsetPx}
+            />
+          ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
@@ -1534,7 +1937,7 @@ export default function ChatBox(): JSX.Element {
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
-              {interruptedRun && (
+              {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   title={t(
                     isCloudRestoredRun
@@ -1597,17 +2000,19 @@ export default function ChatBox(): JSX.Element {
           )}
         </div>
 
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
-        )}
-        {chatStore.activeTaskId && hasAnyMessages && (
+        {chatStore.activeTaskId &&
+          hasAnyMessages &&
+          !eventNativeTimelineEnabled && (
+            <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+          )}
+        {shouldRenderBottomBoxOverlay && (
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
-              {interruptedRun && (
+              {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact
                   title={t(
@@ -1632,7 +2037,12 @@ export default function ChatBox(): JSX.Element {
                 />
               )}
               <BottomBox
-                state={getBottomBoxState()}
+                state={
+                  hasEventNativeBottomBoxControl
+                    ? 'running'
+                    : getBottomBoxState()
+                }
+                variant={bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                 onSendQueuedMessageNow={handleSendQueuedMessageNow}
@@ -1643,23 +2053,18 @@ export default function ChatBox(): JSX.Element {
                   getBottomBoxState() === 'confirm' ||
                   getBottomBoxState() === 'save'
                     ? (() => {
-                        const messages =
-                          chatStore.tasks[chatStore.activeTaskId]?.messages ||
-                          [];
+                        const messages = activeTask?.messages || [];
                         const lastUserMessage = messages
                           .slice()
                           .reverse()
                           .find((msg) => msg.role === 'user');
                         return (
-                          lastUserMessage?.content ||
-                          chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                          lastUserMessage?.content || activeTask?.summaryTask
                         );
                       })()
-                    : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                    : activeTask?.summaryTask
                 }
-                autoStartDeadline={
-                  chatStore.tasks[chatStore.activeTaskId]?.autoConfirmDeadline
-                }
+                autoStartDeadline={activeTask?.autoConfirmDeadline}
                 onStartTask={() => handleConfirmTask()}
                 onSavePlan={async () => {
                   if (chatStore.activeTaskId) {
@@ -1675,17 +2080,14 @@ export default function ChatBox(): JSX.Element {
                   onChange: setMessage,
                   onSend: handleSend,
                   files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
+                    activeTask?.attaches?.map((f) => ({
+                      fileName: f.fileName,
+                      filePath: f.filePath,
+                    })) || [],
+                  onFilesChange: (files) => {
+                    if (!chatStore.activeTaskId) return;
+                    chatStore.setAttaches(chatStore.activeTaskId, files as any);
+                  },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
                   disabled: isInputDisabled,

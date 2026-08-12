@@ -15,7 +15,10 @@
 import { fetchGet, fetchPut } from '@/api/http';
 
 export type PermissionProfileName =
-  'read_only' | 'request_approval' | 'auto_reviewer' | 'full_access';
+  | 'read_only'
+  | 'request_approval'
+  | 'auto_reviewer'
+  | 'full_access';
 
 export interface SpacePermissionProfile {
   space_id: string;

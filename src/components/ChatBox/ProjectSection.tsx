@@ -17,7 +17,7 @@ import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
 import { FloatingAction } from './MessageItem/FloatingAction';
-import { UserQueryGroup } from './UserQueryGroup';
+import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
   chatId: string;
@@ -143,13 +143,8 @@ export const ProjectSection = React.forwardRef<
 ProjectSection.displayName = 'ProjectSection';
 
 // Helper function to group messages by query cycles
-function groupMessagesByQuery(messages: any[]) {
-  const groups: Array<{
-    queryId: string;
-    userMessage: any;
-    taskMessage?: any;
-    otherMessages: any[];
-  }> = [];
+export function groupMessagesByQuery(messages: any[]): QueryGroup[] {
+  const groups: QueryGroup[] = [];
 
   let currentGroup: any = null;
 
@@ -158,6 +153,28 @@ function groupMessagesByQuery(messages: any[]) {
 
   messages.forEach((message, index) => {
     if (message.role === 'user') {
+      const previousMessage = messages[index - 1];
+
+      // An explicit ASK is an interruption inside the current Run, not a new
+      // query turn. Structured replies correlate by interaction id; legacy
+      // ASK frames use only strict adjacency so an ordinary follow-up can
+      // never be guessed into a human-input receipt.
+      if (
+        currentGroup &&
+        previousMessage?.role === 'agent' &&
+        previousMessage?.step === AgentStep.ASK &&
+        (!message.interactionResponseTo ||
+          (previousMessage?.interaction?.interaction_id &&
+            message.interactionResponseTo ===
+              previousMessage.interaction.interaction_id))
+      ) {
+        currentGroup.interactionResponses = {
+          ...currentGroup.interactionResponses,
+          [previousMessage.id]: message,
+        };
+        return;
+      }
+
       // Start a new query group
       if (currentGroup) {
         groups.push(currentGroup);
@@ -243,6 +260,15 @@ function groupMessagesByQuery(messages: any[]) {
   // Add the last group if it exists
   if (currentGroup) {
     groups.push(currentGroup);
+  }
+
+  // The work log belongs to the Run, not whichever user message happens to
+  // be last. Give it one stable owner so appending an ASK reply cannot move,
+  // duplicate, or temporarily hide the log. A separate Run gets its own
+  // groups and therefore its own owner.
+  const workLogOwner = groups.find((group) => group.userMessage);
+  if (workLogOwner) {
+    workLogOwner.ownsRunWorkLog = true;
   }
 
   return groups;

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 export type ProjectorMode = 'live' | 'rehydrate' | 'playback';
 
 export type CanonicalProjectEvent = {
@@ -31,10 +45,21 @@ export type ProjectedLegacyStep = {
 
 export type ProjectedRun = {
   runId: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  status:
+    | 'unknown'
+    | 'pending'
+    | 'running'
+    | 'waiting_for_user'
+    | 'cancelling'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'interrupted';
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
+  origin: string | null;
+  resumeBlockedReason: string | null;
 };
 
 export type ProjectViewState = {
@@ -64,6 +89,12 @@ export type ProjectSnapshotInput = {
     status: string;
     expected_next_run_sequence: number;
     updated_at: string;
+    /** RunJournal aggregate version; aliases the latest event run_version. */
+    run_version?: number;
+    /** Accepted for direct snapshots shaped like the existing GET /runs API. */
+    version?: number;
+    origin?: string | null;
+    resume_blocked_reason?: string | null;
   }>;
   recent_events: unknown[];
   events_truncated?: boolean;
