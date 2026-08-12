@@ -24,7 +24,10 @@ unknown-outcome markers.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+from dataclasses import dataclass
 from typing import Any
 
 from app.run_journal.models import CommittedRunEvent
@@ -42,6 +45,15 @@ _TOOL_EVENT_PREFIX = "tool."
 _DEFAULT_MAX_RUNS = 8
 _DEFAULT_CHAR_BUDGET = 18_000
 _MAX_EVENT_VALUE_CHARS = 3_000
+logger = logging.getLogger("run_journal.context_projection")
+
+
+@dataclass(frozen=True)
+class ExecutionContextProjection:
+    text: str
+    source_event_ids: tuple[str, ...]
+    projection_digest: str
+    token_count: int
 
 
 def _json(value: Any, *, limit: int = _MAX_EVENT_VALUE_CHARS) -> str:
@@ -83,7 +95,9 @@ def _latest_tool_events(
 def _render_tool(event: CommittedRunEvent) -> list[str]:
     payload = event.payload
     name = str(payload.get("tool_name") or "unknown")
-    status = str(payload.get("status") or event.event_type.removeprefix("tool."))
+    status = str(
+        payload.get("status") or event.event_type.removeprefix("tool.")
+    )
     request = payload.get("request")
     result = payload.get("result")
     lines = [f"Assistant tool call: {name}({_json(request or {})})"]
@@ -103,24 +117,31 @@ def _render_tool(event: CommittedRunEvent) -> list[str]:
     return lines
 
 
-def _render_run(events: list[CommittedRunEvent], run_id: str) -> list[str]:
+def _render_run(
+    events: list[CommittedRunEvent], run_id: str
+) -> tuple[list[str], list[str]]:
     latest_tools = _latest_tool_events(events)
-    has_typed_user = any(event.event_type == "user.message" for event in events)
+    has_typed_user = any(
+        event.event_type == "user.message" for event in events
+    )
     has_typed_final = any(
         event.event_type == "assistant.final" for event in events
     )
     lines = [f"Run {run_id}:"]
+    source_event_ids: list[str] = []
     for event in events:
         event_type = event.event_type
         payload = event.payload
         if event_type == "user.message":
             lines.append(f"User: {_message(payload)}")
+            source_event_ids.append(event.event_id)
         elif (
             not has_typed_user
             and event_type == "legacy.confirmed"
             and isinstance(payload.get("question"), str)
         ):
             lines.append(f"User: {payload['question'].strip()}")
+            source_event_ids.append(event.event_id)
         elif event_type.startswith(_TOOL_EVENT_PREFIX):
             tool_call_id = payload.get("tool_call_id")
             if (
@@ -128,27 +149,114 @@ def _render_run(events: list[CommittedRunEvent], run_id: str) -> list[str]:
                 and latest_tools.get(tool_call_id) is event
             ):
                 lines.extend(_render_tool(event))
+                source_event_ids.append(event.event_id)
         elif event_type == "interaction.resolved":
             decision = payload.get("decision")
             if decision is not None:
                 lines.append(f"User interaction response: {_json(decision)}")
+                source_event_ids.append(event.event_id)
         elif event_type == "approval.decided":
             lines.append(f"User approval decision: {_json(payload)}")
+            source_event_ids.append(event.event_id)
         elif event_type == "assistant.final":
             lines.append(f"Assistant: {_message(payload)}")
+            source_event_ids.append(event.event_id)
         elif (
             not has_typed_final
             and event.legacy_step == "end"
             and event_type != "assistant.final"
         ):
             lines.append(f"Assistant: {_message(payload)}")
+            source_event_ids.append(event.event_id)
         elif event_type in {
             "run.failed",
             "run.cancelled",
             "run.deadline_reached",
         }:
             lines.append(f"Run outcome [{event_type}]: {_json(payload)}")
-    return lines if len(lines) > 1 else []
+            source_event_ids.append(event.event_id)
+    if len(lines) <= 1:
+        return [], []
+    return lines, source_event_ids
+
+
+def build_project_execution_context_projection(
+    journal: SQLiteRunJournal,
+    *,
+    project_id: str,
+    current_run_id: str,
+    max_runs: int = _DEFAULT_MAX_RUNS,
+    char_budget: int = _DEFAULT_CHAR_BUDGET,
+) -> ExecutionContextProjection:
+    """Build a bounded, oldest-to-newest projection of prior Project Runs."""
+
+    if max_runs < 1 or char_budget < 1:
+        return ExecutionContextProjection(
+            text="",
+            source_event_ids=(),
+            projection_digest=hashlib.sha256(b"").hexdigest(),
+            token_count=0,
+        )
+    recent_runs = [
+        run
+        for run in journal.list_runs(project_id=project_id, limit=max_runs + 1)
+        if run.run_id != current_run_id
+    ][:max_runs]
+    rendered_runs: list[tuple[list[str], list[str]]] = []
+    for run in reversed(recent_runs):
+        rendered, event_ids = _render_run(
+            journal.list_events(run.run_id), run.run_id
+        )
+        if rendered:
+            rendered_runs.append((rendered, event_ids))
+    if not rendered_runs:
+        return ExecutionContextProjection(
+            text="",
+            source_event_ids=(),
+            projection_digest=hashlib.sha256(b"").hexdigest(),
+            token_count=0,
+        )
+
+    # Prefer the newest complete Runs.  If the budget is exhausted, discard
+    # older Runs as a unit so a tool call is not separated from its result.
+    selected: list[tuple[list[str], list[str]]] = []
+    used = 0
+    for rendered, event_ids in reversed(rendered_runs):
+        cost = sum(len(line) + 1 for line in rendered)
+        if selected and used + cost > char_budget:
+            break
+        if not selected and cost > char_budget:
+            # The newest Run alone is oversized. Keep its tail, which contains
+            # the most recent tool outcome and final answer.
+            body = "\n".join(rendered[1:])
+            selected.append(
+                (
+                    [
+                        rendered[0],
+                        "... [older execution context truncated]",
+                        body[-max(1, char_budget - len(rendered[0]) - 80) :],
+                    ],
+                    event_ids,
+                )
+            )
+            used = char_budget
+            break
+        selected.append((rendered, event_ids))
+        used += cost
+    selected.reverse()
+    lines = ["=== Canonical Project Execution Context ==="]
+    selected_event_ids: list[str] = []
+    for rendered, event_ids in selected:
+        lines.extend(rendered)
+        selected_event_ids.extend(event_ids)
+    lines.append("=== End Canonical Project Execution Context ===")
+    text = "\n".join(lines)
+    return ExecutionContextProjection(
+        text=text,
+        source_event_ids=tuple(selected_event_ids),
+        projection_digest=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        token_count=(len(text) + 3) // 4,
+    )
 
 
 def build_project_execution_context(
@@ -159,49 +267,47 @@ def build_project_execution_context(
     max_runs: int = _DEFAULT_MAX_RUNS,
     char_budget: int = _DEFAULT_CHAR_BUDGET,
 ) -> str:
-    """Build a bounded, oldest-to-newest projection of prior Project Runs."""
+    """Compatibility wrapper returning only the rendered prompt text."""
 
-    if max_runs < 1 or char_budget < 1:
-        return ""
-    recent_runs = [
-        run
-        for run in journal.list_runs(project_id=project_id, limit=max_runs + 1)
-        if run.run_id != current_run_id
-    ][:max_runs]
-    rendered_runs: list[list[str]] = []
-    for run in reversed(recent_runs):
-        rendered = _render_run(journal.list_events(run.run_id), run.run_id)
-        if rendered:
-            rendered_runs.append(rendered)
-    if not rendered_runs:
-        return ""
+    return build_project_execution_context_projection(
+        journal,
+        project_id=project_id,
+        current_run_id=current_run_id,
+        max_runs=max_runs,
+        char_budget=char_budget,
+    ).text
 
-    # Prefer the newest complete Runs.  If the budget is exhausted, discard
-    # older Runs as a unit so a tool call is not separated from its result.
-    selected: list[list[str]] = []
-    used = 0
-    for rendered in reversed(rendered_runs):
-        cost = sum(len(line) + 1 for line in rendered)
-        if selected and used + cost > char_budget:
-            break
-        if not selected and cost > char_budget:
-            # The newest Run alone is oversized. Keep its tail, which contains
-            # the most recent tool outcome and final answer.
-            body = "\n".join(rendered[1:])
-            selected.append(
-                [
-                    rendered[0],
-                    "... [older execution context truncated]",
-                    body[-max(1, char_budget - len(rendered[0]) - 80) :],
-                ]
-            )
-            used = char_budget
-            break
-        selected.append(rendered)
-        used += cost
-    selected.reverse()
-    lines = ["=== Canonical Project Execution Context ==="]
-    for rendered in selected:
-        lines.extend(rendered)
-    lines.append("=== End Canonical Project Execution Context ===")
-    return "\n".join(lines)
+
+def persist_context_projection_diagnostic(
+    journal: SQLiteRunJournal,
+    *,
+    project_id: str,
+    run_id: str,
+    projected_text: str,
+    source_event_ids: list[str] | tuple[str, ...] = (),
+    source_memory_ids: list[str] | tuple[str, ...] = (),
+) -> None:
+    """Persist a secret-free derived envelope for one model projection."""
+
+    digest = hashlib.sha256(projected_text.encode("utf-8")).hexdigest()
+    identity = hashlib.sha256(
+        f"{project_id}\0{run_id}\0{digest}".encode()
+    ).hexdigest()[:32]
+    try:
+        state = journal.get_project_execution_state(project_id)
+        journal.put_context_projection_diagnostic(
+            projection_id=f"ctxproj_{identity}",
+            project_id=project_id,
+            run_id=run_id,
+            source_event_ids=source_event_ids,
+            source_memory_ids=source_memory_ids,
+            project_state_version=state.state_version,
+            projection_digest=digest,
+            token_count=(len(projected_text) + 3) // 4,
+        )
+    except Exception:
+        logger.warning(
+            "Context projection diagnostics could not be persisted",
+            extra={"project_id": project_id, "run_id": run_id},
+            exc_info=True,
+        )

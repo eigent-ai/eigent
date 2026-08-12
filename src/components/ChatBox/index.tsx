@@ -36,6 +36,7 @@ import {
   listPendingFollowUpRequests,
   markFollowUpRequestAdmitted,
   prioritizeFollowUpRequest,
+  terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
@@ -1222,6 +1223,14 @@ export default function ChatBox(): JSX.Element {
       })
       .catch((error) => {
         console.error('[FollowUpQueue] Failed to admit queued message', error);
+        const rejection = terminalContinuationAdmissionRejection(error);
+        if (rejection) {
+          // Brain has durably cancelled this queue row. Remove only the
+          // renderer projection and leave the typed explanation visible.
+          projectStore.removeQueuedMessage(projectId, next.task_id);
+          toast.error(rejection.message);
+          return;
+        }
         projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
         toast.error(error?.message || 'Failed to send queued message.');
       })

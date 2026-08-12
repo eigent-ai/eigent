@@ -103,10 +103,33 @@ export const canonicalRunEventToLegacyMessage = (
 ): AgentMessage | null => {
   if (!value || typeof value !== 'object') return null;
   const event = value as {
+    event_type?: unknown;
     legacy_step?: unknown;
     payload?: unknown;
     created_at?: unknown;
   };
+  // Approval decisions are canonical-only events. Project their durable
+  // interaction id into the legacy reducer so reconnect/replay closes the
+  // corresponding ASK card instead of resurrecting an already-decided card.
+  if (event.event_type === 'approval.decided') {
+    const payload =
+      event.payload && typeof event.payload === 'object'
+        ? (event.payload as Record<string, unknown>)
+        : null;
+    if (typeof payload?.interaction_id !== 'string') return null;
+    return {
+      step: AgentStep.HUMAN_REPLY,
+      data: {
+        ...payload,
+        __durable_interaction_resolution: true,
+      },
+      timestamp:
+        typeof event.created_at === 'number' &&
+        Number.isFinite(event.created_at)
+          ? event.created_at
+          : undefined,
+    } as AgentMessage;
+  }
   if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
     return null;
   }
@@ -122,6 +145,16 @@ export const canonicalRunEventToLegacyMessage = (
         : undefined,
   } as AgentMessage;
 };
+
+/** Remove only the card resolved by a durable interaction decision. */
+export function removeResolvedInteractionMessages(
+  messages: Message[],
+  interactionId: string
+): Message[] {
+  return messages.filter(
+    (message) => message.interaction?.interaction_id !== interactionId
+  );
+}
 
 export interface CanonicalRunEventCursor {
   lastSequence: number;
@@ -463,7 +496,9 @@ async function resolveCdpBrowsersForRequest(
 }
 
 export type DurableRunDisplayStatus =
+  | 'pending'
   | 'running'
+  | 'waiting_for_user'
   | 'completed'
   | 'failed'
   | 'cancelled'
@@ -843,6 +878,8 @@ export interface StartTaskOptions {
   resumeRequestId?: string;
   /** Reconstruct replay UI from the canonical local RunJournal. */
   replaySource?: 'cloud' | 'local_durable';
+  /** Resolve only after Brain has accepted the initial SSE request. */
+  awaitAdmission?: boolean;
 }
 
 export interface ChatStore {
@@ -2503,12 +2540,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
-      const resumeStreamOpenPromise = startOptions.resumeRequestId
-        ? new Promise<void>((resolve, reject) => {
-            resolveResumeStreamOpen = resolve;
-            rejectResumeStreamOpen = reject;
-          })
-        : null;
+      const resumeStreamOpenPromise =
+        startOptions.resumeRequestId || startOptions.awaitAdmission
+          ? new Promise<void>((resolve, reject) => {
+              resolveResumeStreamOpen = resolve;
+              rejectResumeStreamOpen = reject;
+            })
+          : null;
 
       const ssePromise = sseTransport({
         url: api,
@@ -4615,6 +4653,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (agentMessages.step === AgentStep.SYNC) return;
           if (agentMessages.step === AgentStep.HUMAN_REPLY) {
+            const resolvedInteractionId =
+              typeof agentMessages.data?.interaction_id === 'string'
+                ? agentMessages.data.interaction_id
+                : null;
+            if (resolvedInteractionId) {
+              const currentStore = getCurrentChatStore();
+              const currentTask = currentStore.tasks[currentTaskId];
+              if (currentTask) {
+                currentStore.setMessages(
+                  currentTaskId,
+                  removeResolvedInteractionMessages(
+                    currentTask.messages,
+                    resolvedInteractionId
+                  )
+                );
+              }
+            }
             const reply =
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
@@ -4629,7 +4684,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               });
             }
 
-            const [nextAsk, ...remainingAsks] = tasks[currentTaskId].askList;
+            const latestTask =
+              getCurrentChatStore().tasks[currentTaskId] ||
+              tasks[currentTaskId];
+            const [nextAsk, ...remainingAsks] = latestTask.askList;
             setActiveAskList(currentTaskId, remainingAsks);
             if (nextAsk) {
               setActiveAsk(currentTaskId, nextAsk.agent_name || '');

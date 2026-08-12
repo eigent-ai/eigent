@@ -42,6 +42,7 @@ from app.permission_policy import (
     ToolPermissionRejectedError,
     authorize_tool_checkpoint,
 )
+from app.run_runtime.active_timeout import ActiveExecutionTimeout
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
     declared_tool_safety,
@@ -187,6 +188,37 @@ class ListenChatAgent(ChatAgent):
         self._model_reload_lock = threading.Lock()
 
     process_task_id: str = ""
+
+    async def _astep_with_active_timeout(
+        self,
+        input_message: BaseMessage | str,
+        response_format: type[BaseModel] | None = None,
+    ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
+        """Run CAMEL while excluding durable human waits from its timeout.
+
+        CAMEL's built-in non-streaming ``astep`` wraps the entire tool loop in
+        one ``asyncio.wait_for``.  That timer cannot be paused from the
+        permission gate, so call the same internal task under our pause-aware
+        timeout. Streaming steps retain CAMEL's native path (which does not
+        apply ``step_timeout`` around the returned stream).
+        """
+
+        stream = self.model_backend.model_config_dict.get("stream", False)
+        if stream:
+            return await super().astep(input_message, response_format)
+        if self.step_timeout is None:
+            return await super()._astep_non_streaming_task(
+                input_message, response_format
+            )
+        try:
+            async with ActiveExecutionTimeout(self.step_timeout):
+                return await super()._astep_non_streaming_task(
+                    input_message, response_format
+                )
+        except TimeoutError as error:
+            raise TimeoutError(
+                f"Async step timed out after {self.step_timeout}s"
+            ) from error
 
     def _reset_tool_checkpoint_error(self) -> None:
         with self._tool_checkpoint_error_lock:
@@ -625,7 +657,9 @@ class ListenChatAgent(ChatAgent):
         )
 
         try:
-            res = await super().astep(input_message, response_format)
+            res = await self._astep_with_active_timeout(
+                input_message, response_format
+            )
             if isinstance(res, AsyncStreamingChatAgentResponse):
                 # Use reusable async stream wrapper to send chunks to frontend
                 return AsyncStreamingChatAgentResponse(
@@ -639,7 +673,9 @@ class ListenChatAgent(ChatAgent):
         except ModelProcessingError as e:
             if await self._areload_model_after_auth_error(e):
                 try:
-                    res = await super().astep(input_message, response_format)
+                    res = await self._astep_with_active_timeout(
+                        input_message, response_format
+                    )
                     if isinstance(res, AsyncStreamingChatAgentResponse):
                         return AsyncStreamingChatAgentResponse(
                             self._astream_chunks(

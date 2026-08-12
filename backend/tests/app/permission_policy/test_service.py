@@ -1,9 +1,24 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from app.permission_policy import (
     ActionDescriptor,
     PermissionPolicyService,
     PolicyEffect,
+    build_tool_action_descriptor,
 )
 from app.run_journal import AttemptEnvironmentBinding, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
@@ -156,7 +171,7 @@ def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
             space_id="space-1",
             prompt={"title": "write"},
         )
-        journal.ensure_run(run_id="run-2", project_id="project-1")
+        journal.ensure_run(run_id="run-2", project_id="project-2")
         shell_attempt = journal.create_run_attempt(
             "run-2",
             request_id="shell",
@@ -182,11 +197,35 @@ def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
             space_id="space-1",
             prompt={"title": "shell"},
         )
+        journal.ensure_run(run_id="run-3", project_id="project-3")
+        mcp_attempt = journal.create_run_attempt(
+            "run-3",
+            request_id="mcp",
+            reason="initial_execution",
+            activate=True,
+            now=3,
+        )
+        mcp_result = PermissionPolicyService(
+            journal
+        ).evaluate_and_request_approval(
+            build_tool_action_descriptor(
+                action_id="mcp-action",
+                tool_name="search_actions",
+                toolkit_name="MCPToolkit",
+                safety_class=ToolSafetyClass.UNSAFE_WRITE,
+                arguments={"query": "calendar"},
+                run_id="run-3",
+                attempt_id=mcp_attempt.attempt_id,
+                environment_spec_digest="e" * 64,
+                idempotency_key=None,
+            ),
+            space_id="space-1",
+            prompt={"title": "search actions"},
+        )
 
         assert file_result.approval is not None
         assert file_result.approval.prompt["allowed_scopes"] == [
             "once",
-            "run",
             "space",
         ]
         assert file_result.approval.prompt["rule_matcher"] == {
@@ -197,6 +236,17 @@ def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
         assert terminal_result.approval is not None
         assert terminal_result.approval.prompt["allowed_scopes"] == ["once"]
         assert terminal_result.approval.prompt["rule_matcher"] is None
+        assert mcp_result.approval is not None
+        assert mcp_result.approval.prompt["allowed_scopes"] == [
+            "once",
+            "space",
+        ]
+        mcp_matcher = mcp_result.approval.prompt["rule_matcher"]
+        assert mcp_matcher["action_pattern"] == "mcp.tool.write"
+        assert mcp_matcher["resource_pattern"].startswith(
+            "tool-identity:sha256:"
+        )
+        assert mcp_matcher["matcher_kind"] == "literal_tool"
 
 
 def test_large_approval_projection_is_bounded_but_digest_is_full(tmp_path):
@@ -238,6 +288,74 @@ def test_large_approval_projection_is_bounded_but_digest_is_full(tmp_path):
         assert persisted["truncated"] is True
         assert persisted["size_bytes"] > 16 * 1024
         assert result.approval.action_digest == descriptor.action_digest
+
+
+def test_space_tool_rule_allows_only_the_same_opaque_tool(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        search = build_tool_action_descriptor(
+            action_id="search-1",
+            tool_name="search_actions",
+            toolkit_name="MCPToolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"query": "calendar"},
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+        )
+        journal.create_approval_rule(
+            rule_id="allow-search-actions",
+            space_id="space-1",
+            effect="allow",
+            action_pattern="mcp.tool.write",
+            resource_pattern=search.target_resources[0],
+            scope="space",
+            run_id=None,
+            source_interaction_id=None,
+            expires_at=None,
+            created_by="user-1",
+            now=2,
+        )
+        repeated_search = build_tool_action_descriptor(
+            action_id="search-2",
+            tool_name="search_actions",
+            toolkit_name="MCPToolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"query": "email"},
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+        )
+        execute = build_tool_action_descriptor(
+            action_id="execute-1",
+            tool_name="execute_action",
+            toolkit_name="MCPToolkit",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            arguments={"action": "send"},
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+            idempotency_key=None,
+        )
+        service = PermissionPolicyService(journal)
+
+        assert (
+            service.evaluate(repeated_search, space_id="space-1").effect
+            is PolicyEffect.ALLOW
+        )
+        assert (
+            service.evaluate(execute, space_id="space-1").effect
+            is PolicyEffect.PROMPT
+        )
 
 
 def test_policy_service_uses_pinned_profile_revision(tmp_path):

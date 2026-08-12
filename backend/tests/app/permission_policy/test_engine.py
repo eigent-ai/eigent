@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import math
@@ -635,6 +649,49 @@ def test_non_terminal_argv_is_not_treated_as_a_shell_command(tmp_path):
     assert "policy_control_plane" not in descriptor.risk_tags
 
 
+def test_opaque_mcp_write_gets_an_exact_stable_tool_identity(tmp_path):
+    first = build_tool_action_descriptor(
+        action_id="mcp-search-1",
+        tool_name="search_actions",
+        toolkit_name="MCPToolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"query": "calendar"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    repeated = build_tool_action_descriptor(
+        action_id="mcp-search-2",
+        tool_name="search_actions",
+        toolkit_name="MCPToolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"query": "email"},
+        run_id="run-2",
+        attempt_id="attempt-2",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+    other_tool = build_tool_action_descriptor(
+        action_id="mcp-execute",
+        tool_name="execute_action",
+        toolkit_name="MCPToolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"action": "send"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert first.target_resources == repeated.target_resources
+    assert first.target_resources[0].startswith("tool-identity:sha256:")
+    assert first.target_resources != other_tool.target_resources
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -833,7 +890,9 @@ def test_non_bearer_auth_headers_are_redacted_without_hiding_documentation_headi
         (["sudo", "-U", "root", "curl", "-u", "alice:pw"], "pw"),
     ],
 )
-def test_additional_command_wrappers_cannot_hide_argv_credentials(argv, secret):
+def test_additional_command_wrappers_cannot_hide_argv_credentials(
+    argv, secret
+):
     display = _action(arguments={"argv": argv}).persistence_payload()[
         "normalized_arguments"
     ]["argv"]
@@ -895,7 +954,9 @@ def test_shell_segments_only_mark_real_eigent_control_plane_targets(tmp_path):
         "pytest -q",
     ),
 )
-def test_terminal_writes_and_executes_auto_loaded_workspace_files(tmp_path, command):
+def test_terminal_writes_and_executes_auto_loaded_workspace_files(
+    tmp_path, command
+):
     descriptor = build_tool_action_descriptor(
         action_id="terminal-auto-loaded-script",
         tool_name="shell_exec",

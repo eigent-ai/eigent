@@ -31,11 +31,11 @@ const STORE_NAME = 'projectCache';
 const DB_VERSION = 1;
 
 /**
- * Bump when CachedProject shape or projection semantics change. Version 6
- * invalidates snapshots that could capture a terminal message before the
- * Run-scoped artifact index was attached to it.
+ * Bump when CachedProject shape or projection semantics change. Version 7
+ * invalidates snapshots that could retain an approval card after its
+ * canonical approval.decided event had already been persisted.
  */
-export const PROJECT_CACHE_SCHEMA_VERSION = 6;
+export const PROJECT_CACHE_SCHEMA_VERSION = 7;
 
 export interface CachedTask {
   /** Anything stored on `chatStore.tasks[taskId]` that's safe to serialize. */

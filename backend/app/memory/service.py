@@ -35,6 +35,7 @@ import hashlib
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -53,6 +54,12 @@ from app.run_context import RunContext
 from app.utils.workspace_paths import task_dir_name
 
 logger = logging.getLogger("memory.service")
+
+
+@dataclass(frozen=True)
+class DurableMemoryProjection:
+    text: str
+    source_memory_ids: tuple[str, ...]
 
 
 def _utc_now() -> str:
@@ -98,14 +105,14 @@ def _default_memory_token_budget() -> int:
         return 8000
 
 
-def build_durable_context_for_task_lock(
+def build_durable_context_projection_for_task_lock(
     task_lock: Any,
     *,
     mode: ContextMode,
     current_user_prompt: str,
     token_budget: int | None = None,
     include_conversation: bool = True,
-) -> str | None:
+) -> DurableMemoryProjection | None:
     """Read the durable Project memory bundle for the run on this task lock.
 
     Returns a rendered prompt fragment (string) when the bundle has any
@@ -164,7 +171,40 @@ def build_durable_context_for_task_lock(
 
     if bundle.is_empty():
         return None
-    return bundle.to_prompt(mode)
+    source_ids = {event.event_id for event in bundle.recent_conversation}
+    source_ids.update(fact.fact_id for fact in bundle.relevant_facts)
+    source_ids.update(
+        artifact.artifact_id for artifact in bundle.relevant_artifacts
+    )
+    for todo in bundle.open_todos:
+        if isinstance(todo, dict):
+            value = todo.get("todo_id") or todo.get("id")
+            if isinstance(value, str) and value:
+                source_ids.add(value)
+    return DurableMemoryProjection(
+        text=bundle.to_prompt(mode),
+        source_memory_ids=tuple(sorted(source_ids)),
+    )
+
+
+def build_durable_context_for_task_lock(
+    task_lock: Any,
+    *,
+    mode: ContextMode,
+    current_user_prompt: str,
+    token_budget: int | None = None,
+    include_conversation: bool = True,
+) -> str | None:
+    """Compatibility wrapper returning only the rendered Memory text."""
+
+    projection = build_durable_context_projection_for_task_lock(
+        task_lock,
+        mode=mode,
+        current_user_prompt=current_user_prompt,
+        token_budget=token_budget,
+        include_conversation=include_conversation,
+    )
+    return projection.text if projection is not None else None
 
 
 def finalize_task_lock_run_memory(

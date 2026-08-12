@@ -140,6 +140,8 @@ def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
         "delivery_mode": record.delivery_mode,
         "status": record.status,
         "admitted_run_id": record.admitted_run_id,
+        "source": record.source,
+        "source_command_id": record.source_command_id,
         "last_error": record.last_error,
         "created_at": record.created_at,
         "updated_at": record.updated_at,
@@ -518,6 +520,194 @@ async def _classify_persisted_admission(
     return "duplicate", matching
 
 
+_WEAK_CONTINUATION_MESSAGES = frozenset(
+    {
+        "continue",
+        "continue.",
+        "go on",
+        "go on.",
+        "keep going",
+        "keep going.",
+        "proceed",
+        "proceed.",
+        "继续",
+        "继续。",
+        "继续吧",
+        "接着继续",
+    }
+)
+
+
+def _is_weak_continuation(content: str) -> bool:
+    return " ".join(content.strip().lower().split()) in (
+        _WEAK_CONTINUATION_MESSAGES
+    )
+
+
+def _continuation_http_error(
+    *, code_value: str, message: str, project_state_version: int
+) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": code_value,
+            "message": message,
+            "project_state_version": project_state_version,
+            "interaction_type": "continuation_clarification",
+        },
+    )
+
+
+async def _reject_pending_continuation(
+    journal: SQLiteRunJournal,
+    *,
+    project_id: str,
+    request_id: str,
+    code_value: str,
+    message: str,
+) -> None:
+    """Stop durable retries for a continuation needing new user intent."""
+
+    try:
+        await asyncio.to_thread(
+            journal.reject_follow_up_request,
+            request_id=request_id,
+            project_id=project_id,
+            error=f"{code_value}: {message}",
+        )
+    except RunNotFoundError:
+        # Direct messages are resolved before a queue row exists. The typed
+        # HTTP response is their complete clarification contract.
+        return
+
+
+async def _resolve_continuation_admission(
+    journal: SQLiteRunJournal,
+    *,
+    data: Chat | SupplementChat,
+    project_id: str,
+    run_id: str,
+) -> Chat | SupplementChat:
+    """Resolve weak continuation intent before any model inference."""
+
+    if not _is_weak_continuation(data.question):
+        return data
+    active = await asyncio.to_thread(
+        journal.get_active_project_run, project_id
+    )
+    state = await asyncio.to_thread(
+        journal.get_project_execution_state, project_id
+    )
+    if active is not None and active.run_id != run_id:
+        raise _continuation_http_error(
+            code_value="follow_up_must_queue",
+            message="The active Run must finish or be stopped before this message is admitted.",
+            project_state_version=state.state_version,
+        )
+
+    recent = await asyncio.to_thread(
+        journal.list_runs,
+        project_id=project_id,
+        limit=1,
+    )
+    latest = recent[0] if recent else None
+    if latest is not None and latest.status == "interrupted":
+        unknown = any(
+            tool.status == "outcome_unknown"
+            for tool in await asyncio.to_thread(
+                journal.list_tool_calls, latest.run_id
+            )
+        )
+        message = (
+            "The interrupted Run has an unknown external side effect. Review it and explicitly Resume or Cancel."
+            if unknown
+            else "The latest Run was interrupted. Use the explicit Resume action; the word continue never resumes it."
+        )
+        code_value = (
+            "continuation_outcome_unknown"
+            if unknown
+            else "continuation_resume_required"
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value=code_value,
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value=code_value,
+            message=message,
+            project_state_version=state.state_version,
+        )
+
+    frontier = state.frontier or {}
+    next_action = frontier.get("next_action")
+    remaining = frontier.get("remaining")
+    if not isinstance(next_action, str) or not next_action.strip():
+        message = (
+            "The saved Project frontier has no unfinished next action. "
+            "Say what new work you want to continue."
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value="continuation_clarification_required",
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value="continuation_clarification_required",
+            message=message,
+            project_state_version=state.state_version,
+        )
+    if not isinstance(remaining, list):
+        remaining = []
+    claim, created = await asyncio.to_thread(
+        journal.claim_continuation,
+        # The future Run id is the durable transport idempotency key. The
+        # payload-derived admission request id is intentionally not used as
+        # semantic Project identity.
+        request_id=run_id,
+        project_id=project_id,
+        intent="continue_project",
+        base_run_id=state.frontier_run_id,
+        next_action=next_action.strip(),
+    )
+    if not created and claim.request_id != run_id:
+        message = (
+            "The Project has not advanced since the previous continue "
+            "request. Clarify what should change instead of repeating it."
+        )
+        await _reject_pending_continuation(
+            journal,
+            project_id=project_id,
+            request_id=run_id,
+            code_value="continuation_duplicate_without_progress",
+            message=message,
+        )
+        raise _continuation_http_error(
+            code_value="continuation_duplicate_without_progress",
+            message=message,
+            project_state_version=state.state_version,
+        )
+    directive = (
+        "=== Durable Continuation Intent ===\n"
+        "intent: continue_project\n"
+        f"project_state_version: {state.state_version}\n"
+        f"base_run_id: {state.frontier_run_id or ''}\n"
+        f"next_action: {next_action.strip()}\n"
+        f"remaining: {json.dumps(remaining, ensure_ascii=False)}\n"
+        "Continue from this frontier. Do not repeat the prior final answer.\n"
+        "=== End Durable Continuation Intent ==="
+    )
+    current_context = (data.project_context or "").strip()
+    combined = (
+        f"{current_context}\n\n{directive}" if current_context else directive
+    )
+    return data.model_copy(update={"project_context": combined})
+
+
 def _is_remote_browser_hands(request: Request | None) -> bool:
     hands = getattr(getattr(request, "state", None), "hands", None)
     if hands is None:
@@ -811,6 +1001,7 @@ async def _prepare_chat_run(
     request: Request,
     *,
     resume_attempt: RunAttemptRecord | None = None,
+    admission_request_id: str | None = None,
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     # TODO(brain-auth): Phase B should derive canonical user_id from
@@ -970,7 +1161,7 @@ async def _prepare_chat_run(
             project_id=run_context.project_id,
             status="pending",
         )
-        request_id = _admission_request_id(
+        request_id = admission_request_id or _admission_request_id(
             run_context.run_id,
             question=data.question,
             attaches=data.attaches or [],
@@ -1361,7 +1552,25 @@ async def start_chat_stream(data: Chat, request: Request):
             )
             return _replay_persisted_run(run_id)
 
-        prepared = await _prepare_chat_run(data, request)
+        data = await _resolve_continuation_admission(
+            journal,
+            data=data,
+            project_id=data.project_id,
+            run_id=run_id,
+        )
+        try:
+            prepared = await _prepare_chat_run(
+                data,
+                request,
+                admission_request_id=request_id,
+            )
+        except Exception:
+            if _is_weak_continuation(data.question):
+                await asyncio.to_thread(
+                    journal.release_unadmitted_continuation,
+                    request_id=run_id,
+                )
+            raise
         await prepared.task_lock.put_queue(prepared.initial_action)
         execution_stream = step_solve(data, request, prepared.task_lock)
         subscription = await coordinator.start_with_subscription(
@@ -1433,6 +1642,8 @@ async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
             content=data.content,
             attachment_paths=data.attachment_paths,
             delivery_mode=data.delivery_mode,
+            source=data.source,
+            source_command_id=data.source_command_id,
         )
     except Exception as exc:
         _raise_follow_up_http_error(exc)
@@ -1452,6 +1663,42 @@ async def pending_follow_ups(project_id: str):
     except Exception as exc:
         _raise_follow_up_http_error(exc)
     return {"items": [_follow_up_response(record) for record in records]}
+
+
+@router.get(
+    "/follow-ups/pending",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def pending_follow_ups_by_source(
+    source: str = "remote_control",
+):
+    try:
+        records = await asyncio.to_thread(
+            get_default_run_journal().list_pending_follow_up_requests_by_source,
+            source=source,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    return {"items": [_follow_up_response(record) for record in records]}
+
+
+@router.get(
+    "/follow-ups/source-command/{source_command_id}",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def follow_up_by_source_command(source_command_id: str):
+    """Resolve a Remote Control enqueue after a renderer restart."""
+
+    try:
+        record = await asyncio.to_thread(
+            get_default_run_journal().get_follow_up_request_by_source_command_id,
+            source_command_id=source_command_id,
+        )
+    except Exception as exc:
+        _raise_follow_up_http_error(exc)
+    if record is None:
+        raise HTTPException(status_code=404, detail="follow-up not found")
+    return _follow_up_response(record)
 
 
 @router.post(
@@ -1540,9 +1787,23 @@ async def improve(id: str, data: SupplementChat, request: Request):
                     extra={"project_id": id, "run_id": data.task_id},
                 )
                 return Response(status_code=201)
-            return await _improve_chat(
-                id, data, request, admission_request_id=request_id
+            data = await _resolve_continuation_admission(
+                get_default_run_journal(),
+                data=data,
+                project_id=id,
+                run_id=data.task_id,
             )
+            try:
+                return await _improve_chat(
+                    id, data, request, admission_request_id=request_id
+                )
+            except Exception:
+                if _is_weak_continuation(data.question):
+                    await asyncio.to_thread(
+                        get_default_run_journal().release_unadmitted_continuation,
+                        request_id=data.task_id,
+                    )
+                raise
     return await _improve_chat(id, data, request)
 
 
@@ -2032,19 +2293,23 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         )
 
     current_context = getattr(task_lock, "run_context", None)
-    cloud_task_id = (
-        current_context.run_id
-        if isinstance(current_context, RunContext)
-        else (getattr(task_lock, "current_task_id", None) or id)
-    )
-    await sync_step_event(
-        task_id=cloud_task_id,
-        project_id=id,
-        run_id=cloud_task_id,
-        step="human_reply",
-        data={"agent": data.agent, "reply": data.reply},
-        authorization=request.headers.get("authorization"),
-    )
+    if isinstance(current_context, RunContext):
+        await sync_step_event(
+            task_id=current_context.run_id,
+            project_id=id,
+            run_id=current_context.run_id,
+            step="human_reply",
+            data={"agent": data.agent, "reply": data.reply},
+            authorization=request.headers.get("authorization"),
+        )
+    else:
+        # A mutable Project TaskLock cannot prove which Run owns the event.
+        # Keep the in-process reply working for a legacy live task, but never
+        # attribute it to whichever task id happens to be current now.
+        chat_logger.warning(
+            "Skipped legacy human-reply event sync without immutable RunContext",
+            extra={"project_id": id, "agent": data.agent},
+        )
     chat_logger.debug("Human reply processed", extra={"task_id": id})
     return Response(status_code=201)
 

@@ -27,6 +27,7 @@ from camel.types.agents import ToolCallingRecord
 
 from app.agent.listen_chat_agent import ListenChatAgent, _reported_tool_error
 from app.model.chat import Chat
+from app.run_runtime.active_timeout import pause_active_execution_timeout
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
     UnsafeToolOutcomeError,
@@ -44,6 +45,29 @@ def test_reported_tool_error_detects_adapter_error_mapping():
     assert isinstance(error, RuntimeError)
     assert str(error) == "remote write failed"
     assert _reported_tool_error({"result": "ok"}) is None
+
+
+@pytest.mark.asyncio
+async def test_agent_step_timeout_excludes_durable_human_wait():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = 0.02
+    response = MagicMock(spec=ChatAgentResponse)
+
+    async def parent_step(_agent, _message, _response_format):
+        async with pause_active_execution_timeout():
+            await asyncio.sleep(0.04)
+        return response
+
+    with patch.object(
+        ChatAgent,
+        "_astep_non_streaming_task",
+        new=parent_step,
+    ):
+        result = await agent._astep_with_active_timeout("wait for approval")
+
+    assert result is response
 
 
 def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
@@ -329,15 +353,19 @@ class TestListenChatAgent:
                 api_task_id=api_task_id, agent_name=agent_name, model="gpt-4"
             )
             agent.process_task_id = "test_process_task"
+            agent.model_backend.model_config_dict = {"stream": False}
 
-            # Mock the parent astep method
+            # Mock CAMEL's non-streaming task. ListenChatAgent owns the outer
+            # pause-aware timeout so durable approval waits do not consume it.
             mock_response = MagicMock()
             mock_response.msg = MagicMock()
             mock_response.msg.content = "Test response message"
             mock_response.info = {"usage": {"total_tokens": 100}}
 
             with patch.object(
-                ChatAgent, "astep", return_value=mock_response
+                ChatAgent,
+                "_astep_non_streaming_task",
+                return_value=mock_response,
             ) as mock_parent_astep:
                 result = await agent.astep("Test async input")
 

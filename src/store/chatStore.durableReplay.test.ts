@@ -20,6 +20,7 @@ import {
   createCanonicalRunEventCursor,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
+  removeResolvedInteractionMessages,
 } from './chatStore';
 
 describe('canonical Run replay projection', () => {
@@ -38,7 +39,7 @@ describe('canonical Run replay projection', () => {
     });
   });
 
-  it('unwraps legacy UI events and ignores typed-only/control events', () => {
+  it('unwraps legacy UI events and projects approval decisions', () => {
     expect(
       canonicalRunEventToLegacyMessage({
         event_type: 'legacy.end',
@@ -53,6 +54,25 @@ describe('canonical Run replay projection', () => {
     });
     expect(
       canonicalRunEventToLegacyMessage({
+        event_type: 'approval.decided',
+        legacy_step: null,
+        payload: {
+          interaction_id: 'approval-1',
+          decision: 'approved',
+        },
+        created_at: 1_786_026_415,
+      })
+    ).toEqual({
+      step: 'human_reply',
+      data: {
+        interaction_id: 'approval-1',
+        decision: 'approved',
+        __durable_interaction_resolution: true,
+      },
+      timestamp: 1_786_026_415,
+    });
+    expect(
+      canonicalRunEventToLegacyMessage({
         event_type: 'tool.completed',
         legacy_step: null,
         payload: { outcome: 'completed' },
@@ -64,6 +84,37 @@ describe('canonical Run replay projection', () => {
         after_sequence: 3,
       })
     ).toBeNull();
+  });
+
+  it('removes only the message for the resolved interaction', () => {
+    const messages = [
+      {
+        id: 'approval-card',
+        role: 'agent' as const,
+        content: 'Approve?',
+        interaction: {
+          interaction_id: 'approval-1',
+          interaction_type: 'approval' as const,
+          run_id: 'run-1',
+          version: 0,
+        },
+      },
+      {
+        id: 'other-card',
+        role: 'agent' as const,
+        content: 'Other question',
+        interaction: {
+          interaction_id: 'question-2',
+          interaction_type: 'question' as const,
+          run_id: 'run-1',
+          version: 0,
+        },
+      },
+    ];
+
+    expect(removeResolvedInteractionMessages(messages, 'approval-1')).toEqual([
+      messages[1],
+    ]);
   });
 
   it('deduplicates reconnect replay by sequence and event_id', () => {

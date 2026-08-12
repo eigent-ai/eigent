@@ -60,12 +60,15 @@ from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.hands.interface import IHands
 from app.memory import (
-    build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
-from app.run_journal.context_projection import build_project_execution_context
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+    persist_context_projection_diagnostic,
+)
 from app.run_journal.runtime import get_default_run_journal
 from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
@@ -447,38 +450,60 @@ def build_context_for_workforce(
     """
     run_context = getattr(task_lock, "run_context", None)
     canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
     project_id = getattr(run_context, "project_id", None)
     run_id = getattr(run_context, "run_id", None)
     if isinstance(project_id, str) and isinstance(run_id, str):
         try:
-            canonical_execution = build_project_execution_context(
+            execution_projection = build_project_execution_context_projection(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
             )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",
                 extra={"project_id": project_id, "run_id": run_id},
                 exc_info=True,
             )
-    durable = build_durable_context_for_task_lock(
+    memory_projection = build_durable_context_projection_for_task_lock(
         task_lock,
         mode="workforce_coordinator",
         current_user_prompt=task_content or "",
         include_conversation=not bool(canonical_execution),
     )
+    durable = memory_projection.text if memory_projection is not None else None
     in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
     durable_parts = [
         part.strip()
         for part in (durable, canonical_execution)
         if isinstance(part, str) and part.strip()
     ]
     if durable_parts:
-        return "\n\n".join(durable_parts) + "\n\n"
-    return in_process
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
+    return record_projection(in_process)
 
 
 @sync_step

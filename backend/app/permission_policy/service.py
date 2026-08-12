@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Persistence-aware policy evaluation and Approval creation."""
 
 from __future__ import annotations
@@ -134,8 +148,9 @@ class PermissionPolicyService:
                     spec_record.spec
                 )
                 if isinstance(
-                    spec.semantic_spec.get("runtime_capability_manifest", {})
-                    .get("workspace_bundle"),
+                    spec.semantic_spec.get(
+                        "runtime_capability_manifest", {}
+                    ).get("workspace_bundle"),
                     dict,
                 ):
                     bundle_rules = (
@@ -146,9 +161,7 @@ class PermissionPolicyService:
                     )
                     rules += tuple(
                         PolicyRule(
-                            rule_id=(
-                                f"bundle:{spec.manifest_digest}:{index}"
-                            ),
+                            rule_id=(f"bundle:{spec.manifest_digest}:{index}"),
                             # A shared Bundle may only make local policy more
                             # restrictive. Explicit Space/Run approval rules
                             # remain the sole source of durable allow grants.
@@ -163,8 +176,7 @@ class PermissionPolicyService:
                         )
                         for index, item in enumerate(bundle_rules)
                         if isinstance(item, dict)
-                        and item.get("effect")
-                        in {"allow", "prompt", "deny"}
+                        and item.get("effect") in {"allow", "prompt", "deny"}
                         and isinstance(item.get("action"), str)
                     )
         return self._engine.evaluate(
@@ -245,6 +257,14 @@ class PermissionPolicyService:
             if persistent_scopes_allowed
             else None
         )
+        matcher_kind = (
+            "literal_tool"
+            if descriptor.target_resources
+            and descriptor.target_resources[0].startswith(
+                "tool-identity:sha256:"
+            )
+            else "literal_resource"
+        )
         approval = self._journal.create_approval(
             approval_id=identifier,
             run_id=descriptor.run_id,
@@ -254,18 +274,18 @@ class PermissionPolicyService:
                 "space_id": space_id,
                 "action": descriptor.persistence_payload(),
                 # Persistent rules are only sound when the approved action
-                # has one exact code-owned resource matcher. Shell commands,
-                # broad multi-file calls, and opaque MCP actions remain
-                # approve-once until a typed matcher exists for them.
+                # has one exact code-owned matcher. This may be a concrete
+                # resource or a registered opaque-tool identity. Shell
+                # commands and broad multi-file calls remain approve-once.
                 "allowed_scopes": (
-                    ["once", "run", "space"]
+                    ["once", "space"]
                     if persistent_scopes_allowed
                     else ["once"]
                 ),
                 "rule_matcher": {
                     "action_pattern": descriptor.operation,
                     "resource_pattern": resource_matcher,
-                    "matcher_kind": "literal_resource",
+                    "matcher_kind": matcher_kind,
                 }
                 if resource_matcher is not None
                 else None,

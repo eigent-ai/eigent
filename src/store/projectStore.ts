@@ -71,7 +71,16 @@ import {
 const HISTORY_STATUS_DONE = 2;
 const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
 const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
+  'pending',
   'running',
+  'waiting_for_user',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'stopped',
+]);
+const TERMINAL_DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'completed',
   'failed',
   'cancelled',
@@ -1494,7 +1503,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               const localRun = localRunsById.get(cachedTaskId);
               if (localRun) {
                 const canonicalElapsed =
-                  localRun.status !== 'running'
+                  localRun.status &&
+                  TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status)
                     ? resolveHistoricalRunElapsedMs({
                         totalAttemptElapsedMs: localRun.totalAttemptElapsedMs,
                         createdAt: localRun.createdAt,
@@ -1603,16 +1613,27 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             try {
               const replay = chatStore.getState().replay;
               if (localRunsById.has(taskId)) {
-                await replay(
+                const localRun = localRunsById.get(taskId);
+                // An active durable stream can stay attached while waiting
+                // for approval. `replay()` creates the Task synchronously
+                // before its first await, so start it first and then publish
+                // the canonical status before awaiting the attached stream.
+                // Otherwise `setDurableRunStatus` would target a Task that
+                // does not exist yet and the approval card becomes read-only.
+                const replayPromise = replay(
                   taskId,
                   taskQuestionsById?.[taskId] || question,
                   0,
                   loadProjectId,
                   'local_durable'
                 );
-                const localRun = localRunsById.get(taskId);
+                chatStore
+                  .getState()
+                  .setDurableRunStatus(taskId, localRun?.status);
+                await replayPromise;
                 const canonicalElapsed =
-                  localRun?.status !== 'running'
+                  localRun?.status &&
+                  TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status)
                     ? resolveHistoricalRunElapsedMs({
                         totalAttemptElapsedMs: localRun?.totalAttemptElapsedMs,
                         createdAt: localRun?.createdAt,

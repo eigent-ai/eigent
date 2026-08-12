@@ -162,7 +162,13 @@ class TestChatController:
             handle = await coordinator.get_handle(run_id)
             assert handle is not None
             assert handle.subscriber_count == 2
-            prepare.assert_awaited_once_with(chat_data, mock_request)
+            prepare.assert_awaited_once_with(
+                chat_data,
+                mock_request,
+                admission_request_id=(
+                    "initial:test_task_123:91e462c4441b73410837efd3"
+                ),
+            )
             assert execution.call_count == 1
 
             first_next = asyncio.create_task(first_stream.__anext__())
@@ -1204,17 +1210,7 @@ class TestChatController:
                 "human_reply",
                 {"agent": "test_agent", "reply": "This is my reply"},
             )
-            mock_sync_step.assert_awaited_once_with(
-                task_id=task_id,
-                project_id=task_id,
-                run_id=task_id,
-                step="human_reply",
-                data={
-                    "agent": "test_agent",
-                    "reply": "This is my reply",
-                },
-                authorization="Bearer test",
-            )
+            mock_sync_step.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_human_reply_missing_task_lock_returns_user_error(

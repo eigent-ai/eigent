@@ -25,12 +25,15 @@ from fastapi import Request
 from app.agent.factory.single_agent import single_agent
 from app.hands.interface import IHands
 from app.memory import (
-    build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
-from app.run_journal.context_projection import build_project_execution_context
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+    persist_context_projection_diagnostic,
+)
 from app.run_journal.runtime import get_default_run_journal
 from app.run_runtime.admission import activate_improve_admission
 from app.run_runtime.coordinator import RunInterruptedError
@@ -170,15 +173,18 @@ def _build_single_agent_context(
 ) -> str:
     run_context = getattr(task_lock, "run_context", None)
     canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
     project_id = getattr(run_context, "project_id", None)
     run_id = getattr(run_context, "run_id", None)
     if isinstance(project_id, str) and isinstance(run_id, str):
         try:
-            canonical_execution = build_project_execution_context(
+            execution_projection = build_project_execution_context_projection(
                 get_default_run_journal(),
                 project_id=project_id,
                 current_run_id=run_id,
             )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
         except Exception:
             logger.warning(
                 "Canonical execution context unavailable; using Memory fallback",
@@ -188,20 +194,39 @@ def _build_single_agent_context(
 
     # Project Memory owns durable summaries/facts/artifacts. Conversation and
     # tool history come from the canonical RunJournal when it is available.
-    durable = build_durable_context_for_task_lock(
+    memory_projection = build_durable_context_projection_for_task_lock(
         task_lock,
         mode="single_agent",
         current_user_prompt=current_user_prompt,
         token_budget=_MEMORY_TOKEN_BUDGET,
         include_conversation=not bool(canonical_execution),
     )
+    durable = memory_projection.text if memory_projection is not None else None
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
     durable_parts = [
         part.strip()
         for part in (durable, canonical_execution)
         if isinstance(part, str) and part.strip()
     ]
     if durable_parts:
-        return "\n\n".join(durable_parts) + "\n\n"
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
 
     # 2. In-process conversation history (hot follow-up turns).
     if getattr(task_lock, "conversation_history", None):
@@ -222,13 +247,13 @@ def _build_single_agent_context(
         if memory_context:
             lines.append(memory_context.rstrip())
         lines.append("=== End Previous Conversation ===")
-        return "\n".join(lines) + "\n\n"
+        return record_projection("\n".join(lines) + "\n\n")
 
     # 3. Phase-0 bridge fallback (frontend-sent project_context).
     durable_context = (project_context or "").strip()
     if not durable_context:
-        return ""
-    return (
+        return record_projection("")
+    return record_projection(
         "=== Persisted Project Context ===\n"
         f"{durable_context}\n"
         "=== End Persisted Project Context ===\n\n"

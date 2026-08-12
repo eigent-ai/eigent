@@ -268,3 +268,23 @@ def test_event_attribution_prefers_immutable_run_context(monkeypatch):
     chat = SimpleNamespace(task_id="chat-task", project_id="project-1")
 
     assert sync_step_module._get_task_id((chat,)) == "immutable-run"
+
+
+def test_event_attribution_never_falls_back_to_mutable_task_lock(monkeypatch):
+    monkeypatch.setattr(
+        sync_step_module,
+        "get_current_run_context",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        sync_step_module,
+        "get_task_lock_if_exists",
+        lambda _project_id: SimpleNamespace(current_task_id="wrong-run"),
+    )
+    chat = SimpleNamespace(
+        run_id="immutable-request-run",
+        task_id="legacy-request-run",
+        project_id="project-1",
+    )
+
+    assert sync_step_module._get_task_id((chat,)) == "immutable-request-run"

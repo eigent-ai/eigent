@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Runtime gate between durable tool preparation and dispatch."""
 
 from __future__ import annotations
@@ -16,6 +30,7 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_policy import TimeoutOutcome, TimeoutScope
+from app.run_runtime.active_timeout import pause_active_execution_timeout
 from app.run_runtime.tool_checkpoint import ToolCheckpointContext
 from app.service.task import TASK_LOCK_CLEANUP_SENTINEL, Action, ActionAskData
 
@@ -116,9 +131,7 @@ async def authorize_tool_checkpoint(
                     "allowed_scopes": result.approval.prompt.get(
                         "allowed_scopes", ["once"]
                     ),
-                    "rule_matcher": result.approval.prompt.get(
-                        "rule_matcher"
-                    ),
+                    "rule_matcher": result.approval.prompt.get("rule_matcher"),
                     "operation": descriptor.operation,
                     "target_resources": list(descriptor.target_resources),
                     "display_arguments": result.approval.prompt.get(
@@ -137,10 +150,15 @@ async def authorize_tool_checkpoint(
                 "approval has no persisted expiry; refusing tool dispatch"
             )
         try:
-            reply = await asyncio.wait_for(
-                human_input_task,
-                timeout=max(0.0, approval_expires_at - time.time()),
-            )
+            # The persisted approval expiry owns this wait. Human decision
+            # latency must not consume CAMEL's model/tool execution timeout;
+            # otherwise every valid 24-hour Approval is cancelled at the
+            # default 30-minute Agent step deadline.
+            async with pause_active_execution_timeout():
+                reply = await asyncio.wait_for(
+                    human_input_task,
+                    timeout=max(0.0, approval_expires_at - time.time()),
+                )
         except TimeoutError:
             run = store.get_run(checkpoint.run_id)
             try:
@@ -148,7 +166,9 @@ async def authorize_tool_checkpoint(
                     TimeoutOutcome(
                         scope=TimeoutScope.APPROVAL_EXPIRY,
                         policy_version=(
-                            run.timeout_policy_version if run is not None else "v1"
+                            run.timeout_policy_version
+                            if run is not None
+                            else "v1"
                         ),
                         reason="tool_approval_expired",
                         started_at=result.approval.created_at,

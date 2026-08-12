@@ -382,22 +382,14 @@ def _get_task_id(args):
     if run_context is not None:
         return run_context.run_id
 
-    if not args or not hasattr(args[0], "task_id"):
+    if not args:
         return None
 
     chat = args[0]
-    task_lock = get_task_lock_if_exists(chat.project_id)
-
-    if task_lock and getattr(task_lock, "current_task_id", None):
-        return task_lock.current_task_id
-
-    if not task_lock:
-        logger.warning(
-            f"Task lock not found for project_id {chat.project_id}, "
-            f"using chat.task_id"
-        )
-
-    return chat.task_id
+    # Outside the scoped execution context, only immutable request ownership
+    # is accepted. TaskLock.current_task_id is Project-global mutable UI state
+    # and can be rebound while a warm generator is still flushing events.
+    return getattr(chat, "run_id", None) or getattr(chat, "task_id", None)
 
 
 def _get_auth_headers(args) -> dict[str, str] | None:

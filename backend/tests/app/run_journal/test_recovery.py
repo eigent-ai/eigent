@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import pytest
@@ -42,7 +56,9 @@ def test_attempt_admission_is_idempotent_and_startup_interrupts_it(tmp_path):
         )
 
 
-def test_startup_interruption_ends_attempt_at_last_consumer_heartbeat(tmp_path):
+def test_startup_interruption_ends_attempt_at_last_consumer_heartbeat(
+    tmp_path,
+):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
@@ -523,10 +539,14 @@ def test_terminal_run_expired_approval_does_not_abort_other_startup_recovery(
         )
 
 
-def test_startup_reconciliation_isolates_one_run_failure(tmp_path, monkeypatch):
+def test_startup_reconciliation_isolates_one_run_failure(
+    tmp_path, monkeypatch
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         for run_id in ("bad", "good"):
-            journal.ensure_run(run_id=run_id, project_id="project-1", now=1)
+            journal.ensure_run(
+                run_id=run_id, project_id=f"project-{run_id}", now=1
+            )
             journal.create_run_attempt(
                 run_id,
                 request_id=f"initial:{run_id}",
@@ -542,7 +562,9 @@ def test_startup_reconciliation_isolates_one_run_failure(tmp_path, monkeypatch):
                 raise RuntimeError("corrupt run")
             return append(connection, run_id, draft, **kwargs)
 
-        monkeypatch.setattr(journal, "_append_event_in_transaction", fail_one_run)
+        monkeypatch.setattr(
+            journal, "_append_event_in_transaction", fail_one_run
+        )
 
         result = journal.reconcile_startup(now=2)
 
@@ -605,7 +627,8 @@ def test_approval_rejects_non_running_attempt_without_orphaning_it(tmp_path):
         )
 
         with pytest.raises(
-            InvalidRunTransitionError, match="must be the active running attempt"
+            InvalidRunTransitionError,
+            match="must be the active running attempt",
         ):
             journal.create_approval(
                 approval_id="approval-1",
@@ -736,7 +759,9 @@ def test_unsafe_write_cannot_enter_replayable_timed_out_state(tmp_path):
             journal.checkpoint_tool_call(status="timed_out", now=4, **values)
 
 
-def test_approval_timeout_cannot_mutate_approval_owned_by_another_run(tmp_path):
+def test_approval_timeout_cannot_mutate_approval_owned_by_another_run(
+    tmp_path,
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         journal.ensure_run(run_id="run-2", project_id="project-1")

@@ -51,9 +51,46 @@ class FollowUpRequestRecord:
     delivery_mode: str
     status: str
     admitted_run_id: str | None
+    source: str
+    source_command_id: str | None
     last_error: str | None
     created_at: float
     updated_at: float
+
+
+@dataclass(frozen=True)
+class ProjectExecutionStateRecord:
+    project_id: str
+    state_version: int
+    frontier: dict[str, Any] | None
+    frontier_digest: str | None
+    frontier_run_id: str | None
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class ContinuationClaimRecord:
+    fingerprint: str
+    request_id: str
+    project_id: str
+    project_state_version: int
+    intent: str
+    base_run_id: str | None
+    next_action: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
+class ContextProjectionDiagnosticRecord:
+    projection_id: str
+    project_id: str
+    run_id: str
+    source_event_ids: tuple[str, ...]
+    source_memory_ids: tuple[str, ...]
+    project_state_version: int
+    projection_digest: str
+    token_count: int
+    created_at: float
 
 
 @dataclass(frozen=True)

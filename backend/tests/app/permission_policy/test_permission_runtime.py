@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +28,7 @@ from app.permission_policy import (
 from app.permission_policy.service import PermissionPolicyService
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import SQLiteRunJournal
+from app.run_runtime.active_timeout import ActiveExecutionTimeout
 from app.run_runtime.tool_checkpoint import (
     dispatch_tool_checkpoint,
     prepare_tool_checkpoint,
@@ -91,6 +106,61 @@ async def test_unsafe_tool_is_not_dispatched_until_digest_bound_approval(
             dispatch_tool_checkpoint(checkpoint, journal=journal)
 
         assert journal.list_tool_calls("run-1")[0].status == "dispatched"
+
+
+@pytest.mark.asyncio
+async def test_durable_approval_wait_outlives_agent_execution_timeout(
+    tmp_path,
+):
+    task_lock = TaskLock("project-1", asyncio.Queue(), {})
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="call-long-approval",
+                tool_name="write_file",
+                arguments={"path": "report.md", "content": "hello"},
+                dispatch_immediately=False,
+                journal=journal,
+            )
+            assert checkpoint is not None
+            async with ActiveExecutionTimeout(0.02):
+                waiter = asyncio.create_task(
+                    authorize_tool_checkpoint(
+                        checkpoint,
+                        arguments={
+                            "path": "report.md",
+                            "content": "hello",
+                        },
+                        toolkit_name="File Toolkit",
+                        agent_name="worker",
+                        task_lock=task_lock,
+                        journal=journal,
+                    )
+                )
+                ask = await task_lock.get_queue()
+                # This exceeds the active Agent budget but remains below the
+                # durable Approval expiry. It must not cancel the tool loop.
+                await asyncio.sleep(0.04)
+                approval = journal.list_approvals("run-1")[0]
+                journal.decide_approval(
+                    approval.approval_id,
+                    decision="approved",
+                    expected_version=0,
+                    action_digest=ask.data["action_digest"],
+                    decision_request_id="decision-after-long-wait",
+                    continue_active_attempt=True,
+                    now=2,
+                )
+                await task_lock.put_human_input("worker", "approved")
+                await waiter
 
 
 @pytest.mark.asyncio

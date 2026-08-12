@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,6 +29,22 @@ interface HumanInteractionCardProps {
   onResolved?: () => void;
 }
 
+export function isHumanInteractionReadOnly(input: {
+  interaction: HumanInteractionPayload;
+  activeTaskId?: string | null;
+  taskType?: string;
+  taskStatus?: string;
+  durableRunStatus?: string;
+}): boolean {
+  if (input.taskType === 'share') return true;
+  const isDurablyWaiting =
+    input.durableRunStatus === 'waiting_for_user' &&
+    Boolean(input.interaction.run_id) &&
+    input.interaction.run_id === input.activeTaskId;
+  if (isDurablyWaiting) return false;
+  return input.taskType === 'replay' || input.taskStatus === 'finished';
+}
+
 const requestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `interaction-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -28,11 +58,13 @@ export function HumanInteractionCard({
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   useEffect(() => {
     decisionRequestId.current = requestId();
     setSubmitting(false);
     setResolved(false);
+    setSubmissionError(null);
     setFormValues({});
   }, [interaction.interaction_id]);
   const targets = useMemo(
@@ -43,6 +75,7 @@ export function HumanInteractionCard({
   const submit = async (decision: Record<string, unknown>) => {
     if (readOnly || resolved || submitting) return;
     setSubmitting(true);
+    setSubmissionError(null);
     try {
       await decideHumanInteraction(interaction, {
         decisionRequestId: decisionRequestId.current,
@@ -53,7 +86,15 @@ export function HumanInteractionCard({
       onResolved?.();
     } catch (error) {
       console.error('[HumanInteractionCard] decision failed', error);
-      toast.error('Could not save your decision. Please try again.');
+      const message =
+        (error as any)?.response?.data?.detail?.message ||
+        (error as any)?.response?.data?.detail ||
+        (error as Error)?.message ||
+        'Could not save your decision. Please try again.';
+      const readableMessage =
+        typeof message === 'string' ? message : JSON.stringify(message);
+      setSubmissionError(readableMessage);
+      toast.error(readableMessage);
     } finally {
       setSubmitting(false);
     }
@@ -65,6 +106,10 @@ export function HumanInteractionCard({
     (interaction.interaction_type === 'approval'
       ? 'Approval required'
       : 'Input required');
+  const isToolMatcher =
+    interaction.rule_matcher?.matcher_kind === 'literal_tool';
+
+  if (resolved) return null;
 
   return (
     <div className="mx-6 my-3 rounded-2xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4">
@@ -145,28 +190,18 @@ export function HumanInteractionCard({
             {interaction.interaction_type === 'approval' ? (
               <>
                 <Button
+                  type="button"
                   size="sm"
                   disabled={disabled}
                   onClick={() =>
                     void submit({ decision: 'approved', scope: 'once' })
                   }
                 >
-                  Approve once
+                  {submitting ? 'Approving…' : 'Approve once'}
                 </Button>
-                {(interaction.allowed_scopes || []).includes('run') ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled}
-                    onClick={() =>
-                      void submit({ decision: 'approved', scope: 'run' })
-                    }
-                  >
-                    Allow for this Run
-                  </Button>
-                ) : null}
                 {(interaction.allowed_scopes || []).includes('space') ? (
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     disabled={disabled}
@@ -174,10 +209,13 @@ export function HumanInteractionCard({
                       void submit({ decision: 'approved', scope: 'space' })
                     }
                   >
-                    Always allow in Space
+                    {isToolMatcher
+                      ? 'Always allow this tool in Space'
+                      : 'Always allow in Space'}
                   </Button>
                 ) : null}
                 <Button
+                  type="button"
                   size="sm"
                   variant="ghost"
                   disabled={disabled}
@@ -191,6 +229,7 @@ export function HumanInteractionCard({
             ) : interaction.interaction_type === 'choice' ? (
               (interaction.options || []).map((option) => (
                 <Button
+                  type="button"
                   key={option.option_id || option.id || option.label}
                   size="sm"
                   variant="outline"
@@ -207,6 +246,7 @@ export function HumanInteractionCard({
               ))
             ) : interaction.interaction_type === 'form' ? (
               <Button
+                type="button"
                 size="sm"
                 disabled={disabled}
                 onClick={() => void submit({ values: formValues })}
@@ -216,6 +256,7 @@ export function HumanInteractionCard({
             ) : interaction.interaction_type !== 'question' ? (
               <>
                 <Button
+                  type="button"
                   size="sm"
                   disabled={disabled}
                   onClick={() => void submit({ decision: 'approved' })}
@@ -223,6 +264,7 @@ export function HumanInteractionCard({
                   Confirm
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="ghost"
                   disabled={disabled}
@@ -233,9 +275,12 @@ export function HumanInteractionCard({
               </>
             ) : null}
           </div>
-          {resolved ? (
-            <div className="text-xs text-ds-text-success-default-default">
-              Decision saved
+          {submissionError ? (
+            <div
+              role="alert"
+              className="text-xs text-ds-text-error-default-default"
+            >
+              {submissionError}
             </div>
           ) : null}
         </div>

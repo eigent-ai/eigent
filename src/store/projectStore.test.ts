@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
@@ -79,6 +80,10 @@ vi.mock('./chatStore', async (importOriginal) => {
 });
 
 describe('projectStore runtime shape', () => {
+  it('invalidates cache snapshots predating durable approval resolution projection', () => {
+    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(7);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     deleteCachedProjectMock.mockResolvedValue(undefined);
@@ -475,6 +480,55 @@ describe('projectStore runtime shape', () => {
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }
+  });
+
+  it('projects waiting_for_user before an attached durable replay stream settles', async () => {
+    fetchGetMock.mockResolvedValue({
+      runs: [
+        {
+          run_id: 'task_waiting_approval',
+          status: 'waiting_for_user',
+          created_at: 100,
+          updated_at: 300,
+          total_attempt_elapsed_ms: null,
+        },
+      ],
+    });
+    let releaseReplay: (() => void) | undefined;
+    replayMock.mockImplementationOnce((taskId: string) => {
+      const project = useProjectStore.getState().projects.project_waiting;
+      const chatStore = project.chatStores[project.activeChatId];
+      chatStore.getState().create(taskId, 'replay');
+      chatStore.getState().setStatus(taskId, 'finished');
+      return new Promise<void>((resolve) => {
+        releaseReplay = resolve;
+      });
+    });
+
+    const loadPromise = useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_waiting_approval'],
+        'approval prompt',
+        'project_waiting',
+        'history_waiting',
+        'Waiting project',
+        'space_test',
+        { task_waiting_approval: 'approval prompt' },
+        200
+      );
+
+    await vi.waitFor(() => expect(releaseReplay).toBeDefined());
+    const project = useProjectStore.getState().projects.project_waiting;
+    const task =
+      project.chatStores[project.activeChatId].getState().tasks
+        .task_waiting_approval;
+    expect(task.type).toBe('replay');
+    expect(task.status).toBe('finished');
+    expect(task.durableRunStatus).toBe('waiting_for_user');
+
+    releaseReplay?.();
+    await loadPromise;
   });
 
   it('projects cloud-restored duration and interrupted status without attempt rows', async () => {

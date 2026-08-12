@@ -232,6 +232,10 @@ class FollowUpRequestCreate(BaseModel):
     content: str = Field(min_length=1, max_length=200_000)
     attachment_paths: list[str] = Field(default_factory=list, max_length=32)
     delivery_mode: Literal["wait", "send_now"] = "wait"
+    source: Literal["local", "remote_control", "scheduled"] = "local"
+    source_command_id: str | None = Field(
+        default=None, min_length=1, max_length=128
+    )
 
 
 class FollowUpRequestAdmitted(BaseModel):

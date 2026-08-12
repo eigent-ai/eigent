@@ -28,7 +28,10 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
-import { HumanInteractionCard } from './MessageItem/HumanInteractionCard';
+import {
+  HumanInteractionCard,
+  isHumanInteractionReadOnly,
+} from './MessageItem/HumanInteractionCard';
 import { NoticeCard } from './MessageItem/NoticeCard';
 import { PreparingToExecuteTasks } from './MessageItem/PreparingToExecuteTasks';
 import {
@@ -505,24 +508,29 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             <HumanInteractionCard
               key={`interaction-${message.id}`}
               interaction={message.interaction}
-              readOnly={
-                activeTask?.type === 'replay' ||
-                activeTask?.type === 'share' ||
-                activeTask?.status === ChatTaskStatus.FINISHED
-              }
+              readOnly={isHumanInteractionReadOnly({
+                interaction: message.interaction,
+                activeTaskId,
+                taskType: activeTask?.type,
+                taskStatus: activeTask?.status,
+                durableRunStatus: activeTask?.durableRunStatus,
+              })}
               onResolved={() => {
                 if (!activeTaskId) return;
-                const current = chatStore.getState().tasks[activeTaskId];
+                const state = chatStore.getState();
+                const current = state.tasks[activeTaskId];
+                state.removeMessage(activeTaskId, message.id);
                 const [nextAsk, ...remainingAsks] = current.askList;
-                chatStore
-                  .getState()
-                  .setActiveAskList(activeTaskId, remainingAsks);
-                chatStore
-                  .getState()
-                  .setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
-                chatStore.getState().setIsPending(activeTaskId, false);
+                state.setActiveAskList(activeTaskId, remainingAsks);
+                state.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
+                state.setIsPending(activeTaskId, false);
+                state.setDurableRunStatus(
+                  activeTaskId,
+                  nextAsk ? 'waiting_for_user' : 'running'
+                );
+                state.setStatus(activeTaskId, ChatTaskStatus.RUNNING);
                 if (nextAsk) {
-                  chatStore.getState().addMessages(activeTaskId, nextAsk);
+                  state.addMessages(activeTaskId, nextAsk);
                 }
               }}
             />

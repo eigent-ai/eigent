@@ -43,6 +43,8 @@ from app.run_journal.models import (
     CommandResultEvent,
     CommandResultSyncBatch,
     CommittedRunEvent,
+    ContextProjectionDiagnosticRecord,
+    ContinuationClaimRecord,
     EffectiveEnvironmentSpecRecord,
     FollowUpRequestRecord,
     GitAgentWorkspaceRecord,
@@ -55,6 +57,7 @@ from app.run_journal.models import (
     HumanInteractionDecisionRecord,
     HumanInteractionOptionRecord,
     HumanInteractionRecord,
+    ProjectExecutionStateRecord,
     ProjectGitStateRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
@@ -103,7 +106,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 logger = logging.getLogger("run_journal")
 
 _MIGRATION_V1 = """
@@ -1288,6 +1291,98 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (20, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 20;
+COMMIT;
+"""
+
+_MIGRATION_V21 = """
+BEGIN IMMEDIATE;
+
+-- The execution lease is the cross-writer enforcement point for the
+-- one-executing-Run-per-Project invariant. A pending historical Run row is
+-- not an execution owner; creating an Attempt is what acquires the lease.
+CREATE TABLE IF NOT EXISTS project_run_execution_leases(
+    project_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL UNIQUE REFERENCES runs(run_id) ON DELETE CASCADE,
+    attempt_id TEXT NOT NULL UNIQUE REFERENCES run_attempts(attempt_id)
+        ON DELETE CASCADE,
+    acquired_at REAL NOT NULL
+);
+
+-- Existing databases may contain more than one active Attempt for a Project
+-- because v20 had no cross-Run constraint. Keep the newest Attempt as owner;
+-- startup reconciliation will interrupt the remaining orphaned Attempts.
+INSERT OR IGNORE INTO project_run_execution_leases(
+    project_id, run_id, attempt_id, acquired_at
+)
+SELECT runs.project_id, attempts.run_id, attempts.attempt_id,
+       attempts.started_at
+FROM run_attempts AS attempts
+JOIN runs ON runs.run_id = attempts.run_id
+WHERE attempts.status IN ('pending', 'running', 'waiting_for_user')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM run_attempts AS newer
+      JOIN runs AS newer_run ON newer_run.run_id = newer.run_id
+      WHERE newer_run.project_id = runs.project_id
+        AND newer.status IN ('pending', 'running', 'waiting_for_user')
+        AND (
+            newer.started_at > attempts.started_at
+            OR (newer.started_at = attempts.started_at
+                AND newer.attempt_id > attempts.attempt_id)
+        )
+  );
+
+ALTER TABLE follow_up_requests
+ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
+    CHECK(source IN ('local', 'remote_control', 'scheduled'));
+ALTER TABLE follow_up_requests ADD COLUMN source_command_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS follow_up_requests_source_command_idx
+ON follow_up_requests(source_command_id)
+WHERE source_command_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS project_execution_states(
+    project_id TEXT PRIMARY KEY,
+    state_version INTEGER NOT NULL DEFAULT 0 CHECK(state_version >= 0),
+    frontier_json TEXT,
+    frontier_digest TEXT CHECK(
+        frontier_digest IS NULL OR length(frontier_digest) = 64
+    ),
+    frontier_run_id TEXT REFERENCES runs(run_id) ON DELETE SET NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS continuation_claims(
+    fingerprint TEXT PRIMARY KEY CHECK(length(fingerprint) = 64),
+    request_id TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL,
+    project_state_version INTEGER NOT NULL CHECK(project_state_version >= 0),
+    intent TEXT NOT NULL,
+    base_run_id TEXT REFERENCES runs(run_id) ON DELETE SET NULL,
+    next_action TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS continuation_claims_project_idx
+ON continuation_claims(project_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS context_projection_diagnostics(
+    projection_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    source_event_ids_json TEXT NOT NULL,
+    source_memory_ids_json TEXT NOT NULL,
+    project_state_version INTEGER NOT NULL CHECK(project_state_version >= 0),
+    projection_digest TEXT NOT NULL CHECK(length(projection_digest) = 64),
+    token_count INTEGER NOT NULL CHECK(token_count >= 0),
+    created_at REAL NOT NULL,
+    UNIQUE(run_id, projection_digest)
+);
+CREATE INDEX IF NOT EXISTS context_projection_diagnostics_project_idx
+ON context_projection_diagnostics(project_id, created_at DESC);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (21, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 21;
 COMMIT;
 """
 
@@ -6341,6 +6436,273 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._run_from_row(row) for row in rows]
 
+    def get_active_project_run(self, project_id: str) -> RunRecord | None:
+        """Return the Run that owns the Project execution lease, if any."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT runs.*
+                FROM project_run_execution_leases AS lease
+                JOIN runs ON runs.run_id = lease.run_id
+                WHERE lease.project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            return self._run_from_row(row) if row is not None else None
+
+    def get_project_execution_state(
+        self, project_id: str
+    ) -> ProjectExecutionStateRecord:
+        """Return the latest semantic frontier for a Project.
+
+        ``state_version`` increments only when a terminal Run changes the
+        canonical frontier digest. Transport retries and Runs that reproduce
+        the same frontier do not count as Project progress.
+        """
+
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM project_execution_states WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            if row is not None:
+                return self._project_execution_state_from_row(row)
+
+        # Schema v20 already contains canonical terminal history. Lazily
+        # derive its first Project frontier after upgrading instead of making
+        # a real v1.0.2 Project look empty until another Run completes.
+        with self._write_transaction() as connection:
+            self._backfill_project_execution_state_in_transaction(
+                connection, project_id=project_id
+            )
+            row = connection.execute(
+                "SELECT * FROM project_execution_states WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            if row is not None:
+                return self._project_execution_state_from_row(row)
+        return ProjectExecutionStateRecord(
+            project_id=project_id,
+            state_version=0,
+            frontier=None,
+            frontier_digest=None,
+            frontier_run_id=None,
+            updated_at=0.0,
+        )
+
+    def claim_continuation(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        intent: str,
+        base_run_id: str | None,
+        next_action: str | None,
+        now: float | None = None,
+    ) -> tuple[ContinuationClaimRecord, bool]:
+        """Claim one semantic continuation at the current Project version.
+
+        Returns ``(claim, created)``. A different transport request attempting
+        the same fingerprint receives the existing claim with ``created=False``
+        and must not invoke the model again.
+        """
+
+        if (
+            not request_id.strip()
+            or not project_id.strip()
+            or not intent.strip()
+        ):
+            raise ValueError("continuation identity is required")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            self._backfill_project_execution_state_in_transaction(
+                connection, project_id=project_id
+            )
+            state = connection.execute(
+                "SELECT * FROM project_execution_states WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            state_version = int(state["state_version"]) if state else 0
+            canonical = canonical_json(
+                {
+                    "project_id": project_id,
+                    "project_state_version": state_version,
+                    "intent": intent,
+                    "base_run_id": base_run_id,
+                    "next_action": next_action,
+                }
+            )
+            fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            by_request = connection.execute(
+                "SELECT * FROM continuation_claims WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if by_request is not None:
+                if by_request["fingerprint"] != fingerprint:
+                    raise IdempotencyConflictError(
+                        f"continuation request_id {request_id!r} was reused"
+                    )
+                return self._continuation_claim_from_row(by_request), False
+            existing = connection.execute(
+                "SELECT * FROM continuation_claims WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            if existing is not None:
+                return self._continuation_claim_from_row(existing), False
+            connection.execute(
+                """
+                INSERT INTO continuation_claims(
+                    fingerprint, request_id, project_id,
+                    project_state_version, intent, base_run_id, next_action,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fingerprint,
+                    request_id,
+                    project_id,
+                    state_version,
+                    intent,
+                    base_run_id,
+                    next_action,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM continuation_claims WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            assert row is not None
+            return self._continuation_claim_from_row(row), True
+
+    def release_unadmitted_continuation(self, *, request_id: str) -> bool:
+        """Release a reservation only when admission created no Attempt.
+
+        Environment or workspace preflight can fail after semantic admission
+        has claimed a continuation fingerprint. Keeping that reservation would
+        make a corrected retry with a new transport id look like duplicate
+        work even though the model never ran.
+        """
+
+        if not request_id.strip():
+            raise ValueError("continuation request_id is required")
+        with self._write_transaction() as connection:
+            claim = connection.execute(
+                "SELECT request_id FROM continuation_claims WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if claim is None:
+                return False
+            admitted = connection.execute(
+                "SELECT 1 FROM run_attempts WHERE run_id = ? LIMIT 1",
+                (request_id,),
+            ).fetchone()
+            if admitted is not None:
+                return False
+            deleted = connection.execute(
+                "DELETE FROM continuation_claims WHERE request_id = ?",
+                (request_id,),
+            )
+            return deleted.rowcount == 1
+
+    def put_context_projection_diagnostic(
+        self,
+        *,
+        projection_id: str,
+        project_id: str,
+        run_id: str,
+        source_event_ids: list[str] | tuple[str, ...],
+        source_memory_ids: list[str] | tuple[str, ...],
+        project_state_version: int,
+        projection_digest: str,
+        token_count: int,
+        now: float | None = None,
+    ) -> ContextProjectionDiagnosticRecord:
+        if len(projection_digest) != 64:
+            raise ValueError("projection_digest must be sha256 hex")
+        if project_state_version < 0 or token_count < 0:
+            raise ValueError("projection counters must be non-negative")
+        event_ids_json = canonical_json(sorted(set(source_event_ids)))
+        memory_ids_json = canonical_json(sorted(set(source_memory_ids)))
+        timestamp = now if now is not None else time.time()
+        expected = (
+            project_id,
+            run_id,
+            event_ids_json,
+            memory_ids_json,
+            project_state_version,
+            projection_digest,
+            token_count,
+        )
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                """SELECT * FROM context_projection_diagnostics
+                WHERE projection_id = ? OR (
+                    run_id = ? AND projection_digest = ?
+                )""",
+                (projection_id, run_id, projection_digest),
+            ).fetchone()
+            if existing is not None:
+                actual = (
+                    existing["project_id"],
+                    existing["run_id"],
+                    existing["source_event_ids_json"],
+                    existing["source_memory_ids_json"],
+                    int(existing["project_state_version"]),
+                    existing["projection_digest"],
+                    int(existing["token_count"]),
+                )
+                if actual != expected:
+                    raise IdempotencyConflictError(
+                        f"projection_id {projection_id!r} was reused"
+                    )
+                return self._context_projection_diagnostic_from_row(existing)
+            connection.execute(
+                """
+                INSERT INTO context_projection_diagnostics(
+                    projection_id, project_id, run_id,
+                    source_event_ids_json, source_memory_ids_json,
+                    project_state_version, projection_digest, token_count,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    projection_id,
+                    project_id,
+                    run_id,
+                    event_ids_json,
+                    memory_ids_json,
+                    project_state_version,
+                    projection_digest,
+                    token_count,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                """SELECT * FROM context_projection_diagnostics
+                WHERE projection_id = ?""",
+                (projection_id,),
+            ).fetchone()
+            assert row is not None
+            return self._context_projection_diagnostic_from_row(row)
+
+    def list_context_projection_diagnostics(
+        self, *, run_id: str
+    ) -> list[ContextProjectionDiagnosticRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT * FROM context_projection_diagnostics
+                WHERE run_id = ? ORDER BY created_at, projection_id""",
+                (run_id,),
+            ).fetchall()
+            return [
+                self._context_projection_diagnostic_from_row(row)
+                for row in rows
+            ]
+
     def put_follow_up_request(
         self,
         *,
@@ -6349,6 +6711,8 @@ class SQLiteRunJournal:
         content: str,
         attachment_paths: list[str] | tuple[str, ...] = (),
         delivery_mode: str = "wait",
+        source: str = "local",
+        source_command_id: str | None = None,
         now: float | None = None,
     ) -> FollowUpRequestRecord:
         """Durably enqueue one future Run instruction.
@@ -6362,11 +6726,32 @@ class SQLiteRunJournal:
         normalized_project = project_id.strip()
         normalized_content = content.strip()
         normalized_paths = tuple(str(path) for path in attachment_paths)
-        if not normalized_id or not normalized_project or not normalized_content:
+        if (
+            not normalized_id
+            or not normalized_project
+            or not normalized_content
+        ):
             raise ValueError("request_id, project_id and content are required")
         if delivery_mode not in {"wait", "send_now"}:
             raise ValueError("unsupported follow-up delivery mode")
-        if len(normalized_paths) > 32 or any(not path.strip() for path in normalized_paths):
+        if source not in {"local", "remote_control", "scheduled"}:
+            raise ValueError("unsupported follow-up source")
+        normalized_command_id = (
+            source_command_id.strip()
+            if isinstance(source_command_id, str) and source_command_id.strip()
+            else None
+        )
+        if source == "remote_control" and normalized_command_id is None:
+            raise ValueError(
+                "remote_control follow-ups require source_command_id"
+            )
+        if source != "remote_control" and normalized_command_id is not None:
+            raise ValueError(
+                "source_command_id is reserved for remote_control"
+            )
+        if len(normalized_paths) > 32 or any(
+            not path.strip() for path in normalized_paths
+        ):
             raise ValueError("follow-up attachment paths are invalid")
         paths_json = json.dumps(
             normalized_paths,
@@ -6375,6 +6760,27 @@ class SQLiteRunJournal:
         )
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            if normalized_command_id is not None:
+                command_row = connection.execute(
+                    """SELECT * FROM follow_up_requests
+                    WHERE source_command_id = ?""",
+                    (normalized_command_id,),
+                ).fetchone()
+                if command_row is not None:
+                    if command_row["request_id"] != normalized_id:
+                        raise IdempotencyConflictError(
+                            f"remote command {normalized_command_id!r} was "
+                            "already mapped to another follow-up"
+                        )
+                    if (
+                        command_row["project_id"] != normalized_project
+                        or command_row["content"] != normalized_content
+                        or command_row["attachment_paths_json"] != paths_json
+                    ):
+                        raise IdempotencyConflictError(
+                            f"remote command {normalized_command_id!r} was reused"
+                        )
+                    return self._follow_up_request_from_row(command_row)
             existing = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (normalized_id,),
@@ -6384,6 +6790,8 @@ class SQLiteRunJournal:
                     existing["project_id"] != normalized_project
                     or existing["content"] != normalized_content
                     or existing["attachment_paths_json"] != paths_json
+                    or existing["source"] != source
+                    or existing["source_command_id"] != normalized_command_id
                 ):
                     raise IdempotencyConflictError(
                         f"follow-up request_id {normalized_id!r} was reused"
@@ -6402,8 +6810,8 @@ class SQLiteRunJournal:
                 INSERT INTO follow_up_requests(
                     request_id, project_id, content, attachment_paths_json,
                     delivery_mode, status, admitted_run_id, last_error,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)
+                    created_at, updated_at, source, source_command_id
+                ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?)
                 """,
                 (
                     normalized_id,
@@ -6413,6 +6821,8 @@ class SQLiteRunJournal:
                     delivery_mode,
                     timestamp,
                     timestamp,
+                    source,
+                    normalized_command_id,
                 ),
             )
             row = connection.execute(
@@ -6432,18 +6842,75 @@ class SQLiteRunJournal:
             raise ValueError("project_id is required")
         if not statuses:
             return []
-        if any(status not in {"pending", "admitted", "cancelled"} for status in statuses):
+        if any(
+            status not in {"pending", "admitted", "cancelled"}
+            for status in statuses
+        ):
             raise ValueError("unsupported follow-up status")
-        placeholders = ",".join("?" for _ in statuses)
+        selected_statuses = set(statuses)
         with self._lock:
             rows = self._connection.execute(
-                f"""SELECT * FROM follow_up_requests
-                WHERE project_id = ? AND status IN ({placeholders})
+                """SELECT * FROM follow_up_requests
+                WHERE project_id = ?
+                  AND (
+                    (status = 'pending' AND ?)
+                    OR (status = 'admitted' AND ?)
+                    OR (status = 'cancelled' AND ?)
+                  )
                 ORDER BY CASE delivery_mode WHEN 'send_now' THEN 0 ELSE 1 END,
                          created_at, request_id""",
-                (project_id, *statuses),
+                (
+                    project_id,
+                    "pending" in selected_statuses,
+                    "admitted" in selected_statuses,
+                    "cancelled" in selected_statuses,
+                ),
             ).fetchall()
             return [self._follow_up_request_from_row(row) for row in rows]
+
+    def list_pending_follow_up_requests_by_source(
+        self, *, source: str
+    ) -> list[FollowUpRequestRecord]:
+        if source not in {"local", "remote_control", "scheduled"}:
+            raise ValueError("unsupported follow-up source")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM follow_up_requests
+                WHERE source = ? AND status = 'pending'
+                ORDER BY project_id,
+                         CASE delivery_mode WHEN 'send_now' THEN 0 ELSE 1 END,
+                         created_at, request_id
+                """,
+                (source,),
+            ).fetchall()
+            return [self._follow_up_request_from_row(row) for row in rows]
+
+    def get_follow_up_request_by_source_command_id(
+        self, *, source_command_id: str
+    ) -> FollowUpRequestRecord | None:
+        """Return the durable queue outcome owned by one remote command.
+
+        This lookup is intentionally not limited to pending rows.  The Remote
+        Control bridge uses it after a renderer restart to reconstruct the
+        enqueue acknowledgement even when the follow-up was already admitted
+        or rejected by Run admission.
+        """
+
+        normalized_command_id = source_command_id.strip()
+        if not normalized_command_id:
+            raise ValueError("source_command_id is required")
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT * FROM follow_up_requests
+                WHERE source = 'remote_control' AND source_command_id = ?""",
+                (normalized_command_id,),
+            ).fetchone()
+            return (
+                self._follow_up_request_from_row(row)
+                if row is not None
+                else None
+            )
 
     def set_follow_up_delivery_mode(
         self,
@@ -6512,6 +6979,49 @@ class SQLiteRunJournal:
                     """UPDATE follow_up_requests
                     SET status = 'cancelled', updated_at = ? WHERE request_id = ?""",
                     (timestamp, request_id),
+                )
+            updated = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._follow_up_request_from_row(updated)
+
+    def reject_follow_up_request(
+        self,
+        *,
+        request_id: str,
+        project_id: str,
+        error: str,
+        now: float | None = None,
+    ) -> FollowUpRequestRecord:
+        """Close a pending request that cannot be semantically admitted.
+
+        Network and active-Run conflicts remain pending and retryable. This
+        transition is reserved for durable admission outcomes that require a
+        different user instruction, such as an ambiguous or duplicate weak
+        continuation. The cancelled row remains the audit record.
+        """
+
+        normalized_error = error.strip()
+        if not normalized_error:
+            raise ValueError("follow-up rejection error is required")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM follow_up_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if row is None or row["project_id"] != project_id:
+                raise RunNotFoundError(
+                    f"follow-up request_id {request_id!r} does not exist"
+                )
+            if row["status"] == "pending":
+                connection.execute(
+                    """UPDATE follow_up_requests
+                    SET status = 'cancelled', last_error = ?, updated_at = ?
+                    WHERE request_id = ? AND status = 'pending'""",
+                    (normalized_error[:4000], timestamp, request_id),
                 )
             updated = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
@@ -7067,6 +7577,28 @@ class SQLiteRunJournal:
                 raise InvalidRunTransitionError(
                     f"run {run_id!r} already has active attempt {active['attempt_id']!r}"
                 )
+            project_lease = connection.execute(
+                """
+                SELECT run_id, attempt_id
+                FROM project_run_execution_leases
+                WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            if project_lease is not None:
+                if project_lease["run_id"] != run_id:
+                    raise InvalidRunTransitionError(
+                        f"project {run['project_id']!r} already executes Run "
+                        f"{project_lease['run_id']!r}"
+                    )
+                # A same-Run lease without an active Attempt is stale. This
+                # can only be left by a pre-v21 crash or manual DB repair;
+                # reclaim it inside the same writer transaction.
+                connection.execute(
+                    """DELETE FROM project_run_execution_leases
+                    WHERE project_id = ? AND run_id = ?""",
+                    (run["project_id"], run_id),
+                )
             pending_approvals = connection.execute(
                 """
                 SELECT approval_id FROM approvals
@@ -7176,6 +7708,26 @@ class SQLiteRunJournal:
                     *environment_values,
                 ),
             )
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO project_run_execution_leases(
+                        project_id, run_id, attempt_id, acquired_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (run["project_id"], run_id, identifier, timestamp),
+                )
+            except sqlite3.IntegrityError as exc:
+                owner = connection.execute(
+                    """SELECT run_id FROM project_run_execution_leases
+                    WHERE project_id = ?""",
+                    (run["project_id"],),
+                ).fetchone()
+                owner_id = owner["run_id"] if owner is not None else "unknown"
+                raise InvalidRunTransitionError(
+                    f"project {run['project_id']!r} already executes Run "
+                    f"{owner_id!r}"
+                ) from exc
             environment_payload = (
                 {
                     "environment_spec_id": environment.environment_spec_id,
@@ -10603,6 +11155,270 @@ class SQLiteRunJournal:
             return "interrupted"
         return None
 
+    @staticmethod
+    def _bounded_frontier_text(value: Any, *, limit: int = 1000) -> str:
+        text = str(value or "").strip()
+        return text if len(text) <= limit else text[:limit] + "…"
+
+    @classmethod
+    def _project_frontier_for_terminal_run(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        terminal_status: str,
+        terminal_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        rows = connection.execute(
+            """
+            SELECT event_type, payload_json, legacy_step
+            FROM run_events WHERE run_id = ? ORDER BY sequence
+            """,
+            (run_id,),
+        ).fetchall()
+        objective = ""
+        latest_todos: list[dict[str, Any]] = []
+        saw_todo_state = False
+        artifact_ids: set[str] = set()
+        outcome_unknown = False
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            if row["event_type"] == "user.message" and not objective:
+                objective = cls._bounded_frontier_text(
+                    payload.get("content") or payload.get("message")
+                )
+            if row["legacy_step"] == "todo_state":
+                candidate = payload.get("todos")
+                if isinstance(candidate, list):
+                    saw_todo_state = True
+                    latest_todos = [
+                        item for item in candidate if isinstance(item, dict)
+                    ][:100]
+            if row["event_type"] == "tool.outcome_unknown":
+                outcome_unknown = True
+            artifact_id = payload.get("artifact_id")
+            if isinstance(artifact_id, str) and artifact_id.strip():
+                artifact_ids.add(artifact_id.strip())
+            many = payload.get("artifact_ids")
+            if isinstance(many, list):
+                artifact_ids.update(
+                    value.strip()
+                    for value in many
+                    if isinstance(value, str) and value.strip()
+                )
+            artifacts = payload.get("artifacts")
+            if isinstance(artifacts, list):
+                for artifact in artifacts:
+                    if isinstance(artifact, dict):
+                        value = artifact.get("artifact_id") or artifact.get(
+                            "id"
+                        )
+                        if isinstance(value, str) and value.strip():
+                            artifact_ids.add(value.strip())
+
+        completed: list[str] = []
+        remaining: list[str] = []
+        in_progress: str | None = None
+        next_action: str | None = None
+        for todo in latest_todos:
+            content = cls._bounded_frontier_text(todo.get("content"))
+            active_form = cls._bounded_frontier_text(todo.get("active_form"))
+            if not content:
+                continue
+            status = str(todo.get("status") or "pending")
+            if status == "completed":
+                completed.append(content)
+            elif status == "in_progress" and in_progress is None:
+                in_progress = active_form or content
+                next_action = in_progress
+            else:
+                remaining.append(content)
+        if next_action is None and remaining:
+            next_action = remaining[0]
+        owner = connection.execute(
+            "SELECT project_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        previous_state = (
+            connection.execute(
+                "SELECT frontier_json FROM project_execution_states WHERE project_id = ?",
+                (owner["project_id"],),
+            ).fetchone()
+            if owner is not None
+            else None
+        )
+        previous_frontier = (
+            json.loads(previous_state["frontier_json"])
+            if previous_state is not None
+            and previous_state["frontier_json"] is not None
+            else None
+        )
+        continuation = connection.execute(
+            "SELECT * FROM continuation_claims WHERE request_id = ?",
+            (run_id,),
+        ).fetchone()
+        if continuation is not None and isinstance(previous_frontier, dict):
+            objective = cls._bounded_frontier_text(
+                previous_frontier.get("objective")
+            )
+            artifact_ids.update(
+                value
+                for value in previous_frontier.get("artifact_ids", [])
+                if isinstance(value, str) and value
+            )
+            if not saw_todo_state:
+                completed = [
+                    cls._bounded_frontier_text(value)
+                    for value in previous_frontier.get("completed", [])
+                    if cls._bounded_frontier_text(value)
+                ]
+                remaining = [
+                    cls._bounded_frontier_text(value)
+                    for value in previous_frontier.get("remaining", [])
+                    if cls._bounded_frontier_text(value)
+                ]
+                claimed_action = cls._bounded_frontier_text(
+                    continuation["next_action"]
+                )
+                if terminal_status == "completed" and claimed_action:
+                    if claimed_action not in completed:
+                        completed.append(claimed_action)
+                    remaining = [
+                        value for value in remaining if value != claimed_action
+                    ]
+                in_progress = None
+                next_action = remaining[0] if remaining else None
+        elif terminal_status == "completed" and not latest_todos and objective:
+            completed = [objective]
+
+        blocked_by: str | None = None
+        if outcome_unknown:
+            blocked_by = "external_tool_outcome_unknown"
+        elif terminal_status != "completed":
+            blocked_by = cls._bounded_frontier_text(
+                terminal_payload.get("reason")
+                or terminal_payload.get("error")
+                or terminal_status
+            )
+        return {
+            "objective": objective,
+            "completed": completed,
+            "in_progress": in_progress,
+            "remaining": remaining,
+            "next_action": next_action,
+            "blocked_by": blocked_by,
+            "artifact_ids": sorted(artifact_ids),
+        }
+
+    @classmethod
+    def _refresh_project_execution_state_in_transaction(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        terminal_status: str,
+        terminal_payload: dict[str, Any],
+        updated_at: float,
+    ) -> None:
+        run = connection.execute(
+            "SELECT project_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+        frontier = cls._project_frontier_for_terminal_run(
+            connection,
+            run_id=run_id,
+            terminal_status=terminal_status,
+            terminal_payload=terminal_payload,
+        )
+        frontier_json = canonical_json(frontier)
+        frontier_digest = hashlib.sha256(
+            frontier_json.encode("utf-8")
+        ).hexdigest()
+        current = connection.execute(
+            "SELECT * FROM project_execution_states WHERE project_id = ?",
+            (run["project_id"],),
+        ).fetchone()
+        if (
+            current is not None
+            and current["frontier_digest"] == frontier_digest
+        ):
+            return
+        next_version = int(current["state_version"]) + 1 if current else 1
+        connection.execute(
+            """
+            INSERT INTO project_execution_states(
+                project_id, state_version, frontier_json, frontier_digest,
+                frontier_run_id, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+                state_version = excluded.state_version,
+                frontier_json = excluded.frontier_json,
+                frontier_digest = excluded.frontier_digest,
+                frontier_run_id = excluded.frontier_run_id,
+                updated_at = excluded.updated_at
+            """,
+            (
+                run["project_id"],
+                next_version,
+                frontier_json,
+                frontier_digest,
+                run_id,
+                updated_at,
+            ),
+        )
+
+    @classmethod
+    def _backfill_project_execution_state_in_transaction(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        project_id: str,
+    ) -> None:
+        existing = connection.execute(
+            "SELECT 1 FROM project_execution_states WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        if existing is not None:
+            return
+        run = connection.execute(
+            """
+            SELECT run_id, status, updated_at
+            FROM runs
+            WHERE project_id = ?
+              AND status IN ('completed', 'failed', 'cancelled', 'interrupted')
+            ORDER BY updated_at DESC, created_at DESC, run_id DESC
+            LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+        if run is None:
+            return
+        terminal_payload: dict[str, Any] = {}
+        events = connection.execute(
+            """
+            SELECT event_type, payload_json, legacy_step
+            FROM run_events WHERE run_id = ? ORDER BY sequence DESC
+            """,
+            (run["run_id"],),
+        ).fetchall()
+        for event in events:
+            candidate = RunEventDraft(
+                event_id="historical-frontier-probe",
+                event_type=event["event_type"],
+                payload=json.loads(event["payload_json"]),
+                legacy_step=event["legacy_step"],
+            )
+            if cls._terminal_status_for_event(candidate) == run["status"]:
+                terminal_payload = dict(candidate.payload)
+                break
+        cls._refresh_project_execution_state_in_transaction(
+            connection,
+            run_id=run["run_id"],
+            terminal_status=run["status"],
+            terminal_payload=terminal_payload,
+            updated_at=float(run["updated_at"]),
+        )
+
     def _append_event_in_transaction(
         self,
         connection: sqlite3.Connection,
@@ -10747,6 +11563,24 @@ class SQLiteRunJournal:
             raise OptimisticConcurrencyError(
                 f"run_id {run_id!r} changed while appending event"
             )
+        if run_status is not None and run_status in {
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled",
+        }:
+            connection.execute(
+                "DELETE FROM project_run_execution_leases WHERE run_id = ?",
+                (run_id,),
+            )
+            if draft.payload.get("advance_project_state", True) is not False:
+                self._refresh_project_execution_state_in_transaction(
+                    connection,
+                    run_id=run_id,
+                    terminal_status=run_status,
+                    terminal_payload=dict(draft.payload),
+                    updated_at=draft.created_at,
+                )
         return CommittedRunEvent(
             event_id=draft.event_id,
             run_id=run_id,
@@ -10807,6 +11641,29 @@ class SQLiteRunJournal:
             self._connection.executescript(_MIGRATION_V19)
         if version < 20:
             self._connection.executescript(_MIGRATION_V20)
+        if version < 21:
+            migration = _MIGRATION_V21
+            follow_up_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(follow_up_requests)"
+                ).fetchall()
+            }
+            if "source" in follow_up_columns:
+                migration = migration.replace(
+                    """ALTER TABLE follow_up_requests
+ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
+    CHECK(source IN ('local', 'remote_control', 'scheduled'));
+""",
+                    "",
+                )
+            if "source_command_id" in follow_up_columns:
+                migration = migration.replace(
+                    """ALTER TABLE follow_up_requests ADD COLUMN source_command_id TEXT;
+""",
+                    "",
+                )
+            self._connection.executescript(migration)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -11691,9 +12548,59 @@ class SQLiteRunJournal:
             delivery_mode=row["delivery_mode"],
             status=row["status"],
             admitted_run_id=row["admitted_run_id"],
+            source=row["source"],
+            source_command_id=row["source_command_id"],
             last_error=row["last_error"],
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _project_execution_state_from_row(
+        row: sqlite3.Row,
+    ) -> ProjectExecutionStateRecord:
+        return ProjectExecutionStateRecord(
+            project_id=row["project_id"],
+            state_version=int(row["state_version"]),
+            frontier=(
+                json.loads(row["frontier_json"])
+                if row["frontier_json"] is not None
+                else None
+            ),
+            frontier_digest=row["frontier_digest"],
+            frontier_run_id=row["frontier_run_id"],
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _continuation_claim_from_row(
+        row: sqlite3.Row,
+    ) -> ContinuationClaimRecord:
+        return ContinuationClaimRecord(
+            fingerprint=row["fingerprint"],
+            request_id=row["request_id"],
+            project_id=row["project_id"],
+            project_state_version=int(row["project_state_version"]),
+            intent=row["intent"],
+            base_run_id=row["base_run_id"],
+            next_action=row["next_action"],
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _context_projection_diagnostic_from_row(
+        row: sqlite3.Row,
+    ) -> ContextProjectionDiagnosticRecord:
+        return ContextProjectionDiagnosticRecord(
+            projection_id=row["projection_id"],
+            project_id=row["project_id"],
+            run_id=row["run_id"],
+            source_event_ids=tuple(json.loads(row["source_event_ids_json"])),
+            source_memory_ids=tuple(json.loads(row["source_memory_ids_json"])),
+            project_state_version=int(row["project_state_version"]),
+            projection_digest=row["projection_digest"],
+            token_count=int(row["token_count"]),
+            created_at=float(row["created_at"]),
         )
 
     @staticmethod

@@ -14,6 +14,43 @@
 
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
 
+const TERMINAL_CONTINUATION_ADMISSION_CODES = new Set([
+  'continuation_resume_required',
+  'continuation_outcome_unknown',
+  'continuation_clarification_required',
+  'continuation_duplicate_without_progress',
+]);
+
+export interface ContinuationAdmissionRejection {
+  code: string;
+  message: string;
+  interaction_type: 'continuation_clarification';
+  project_state_version?: number;
+}
+
+export function terminalContinuationAdmissionRejection(
+  error: unknown
+): ContinuationAdmissionRejection | null {
+  const detail = (error as any)?.response?.data?.detail;
+  if (
+    !detail ||
+    typeof detail !== 'object' ||
+    detail.interaction_type !== 'continuation_clarification' ||
+    !TERMINAL_CONTINUATION_ADMISSION_CODES.has(String(detail.code))
+  ) {
+    return null;
+  }
+  return {
+    code: String(detail.code),
+    message: String(detail.message || detail.code),
+    interaction_type: 'continuation_clarification',
+    project_state_version:
+      typeof detail.project_state_version === 'number'
+        ? detail.project_state_version
+        : undefined,
+  };
+}
+
 export interface DurableFollowUpRequest {
   request_id: string;
   project_id: string;
@@ -22,6 +59,8 @@ export interface DurableFollowUpRequest {
   delivery_mode: 'wait' | 'send_now';
   status: 'pending' | 'admitted' | 'cancelled';
   admitted_run_id?: string | null;
+  source: 'local' | 'remote_control' | 'scheduled';
+  source_command_id?: string | null;
   last_error?: string | null;
   created_at: number;
   updated_at: number;
@@ -36,13 +75,34 @@ export function createFollowUpRequest(input: {
   requestId: string;
   content: string;
   attachmentPaths: string[];
+  source?: 'local' | 'remote_control' | 'scheduled';
+  sourceCommandId?: string;
 }): Promise<DurableFollowUpRequest> {
   return fetchPost(basePath(input.projectId), {
     request_id: input.requestId,
     content: input.content,
     attachment_paths: input.attachmentPaths,
     delivery_mode: 'wait',
+    source: input.source || 'local',
+    source_command_id: input.sourceCommandId,
   });
+}
+
+export async function listPendingRemoteFollowUpRequests(): Promise<
+  DurableFollowUpRequest[]
+> {
+  const response = await fetchGet('/follow-ups/pending', {
+    source: 'remote_control',
+  });
+  return Array.isArray(response?.items) ? response.items : [];
+}
+
+export function getRemoteFollowUpByCommandId(
+  sourceCommandId: string
+): Promise<DurableFollowUpRequest> {
+  return fetchGet(
+    `/follow-ups/source-command/${encodeURIComponent(sourceCommandId)}`
+  );
 }
 
 export async function listPendingFollowUpRequests(

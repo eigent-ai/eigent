@@ -1,11 +1,29 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 from app.run_journal import EventRecorder, SQLiteRunJournal
-from app.run_journal.models import RunEventDraft
 from app.run_journal.context_projection import build_project_execution_context
+from app.run_journal.models import RunEventDraft
 from app.run_policy import ToolSafetyClass
+from app.service.single_agent_service import _build_single_agent_context
 
 pytestmark = pytest.mark.unit
 
@@ -186,7 +204,9 @@ async def test_projection_keeps_user_assistant_and_success_and_error_tools(
     assert "external_effect_may_have_occurred" in projected
     assert "User approval decision" in projected
     assert "use a draft instead" in projected
-    assert "Assistant: Calendar checked; Gmail needs reconnection." in projected
+    assert (
+        "Assistant: Calendar checked; Gmail needs reconnection." in projected
+    )
     # Only the latest state of each tool is projected, not prepared/dispatched
     # duplicates from the execution ledger.
     assert projected.count("Assistant tool call:") == 4
@@ -225,3 +245,58 @@ async def test_typed_events_are_idempotent_and_final_result_is_discoverable(
         "user.message",
         "assistant.final",
     ]
+
+
+@pytest.mark.asyncio
+async def test_model_context_persists_secret_free_projection_diagnostics(
+    journal,
+):
+    recorder = EventRecorder(journal)
+    journal.ensure_run(
+        run_id="run-previous", project_id="project-1", status="pending"
+    )
+    user_event = await recorder.record_user_message(
+        project_id="project-1",
+        run_id="run-previous",
+        request_id="request-previous",
+        content="Prior durable instruction",
+        source="chat",
+    )
+    await recorder.record_assistant_final(
+        project_id="project-1",
+        run_id="run-previous",
+        data="Prior durable answer",
+    )
+    journal.append_event(
+        "run-previous",
+        RunEventDraft(
+            event_id="completed:run-previous",
+            event_type="run.completed",
+            payload={"reason": "test"},
+        ),
+    )
+    journal.ensure_run(
+        run_id="run-current", project_id="project-1", status="pending"
+    )
+    task_lock = SimpleNamespace(
+        run_context=SimpleNamespace(
+            project_id="project-1",
+            run_id="run-current",
+        ),
+        memory_service=None,
+    )
+
+    with patch(
+        "app.service.single_agent_service.get_default_run_journal",
+        return_value=journal,
+    ):
+        projected = _build_single_agent_context(task_lock)
+
+    assert "Prior durable answer" in projected
+    diagnostics = journal.list_context_projection_diagnostics(
+        run_id="run-current"
+    )
+    assert len(diagnostics) == 1
+    assert user_event.event_id in diagnostics[0].source_event_ids
+    assert diagnostics[0].project_state_version == 1
+    assert not hasattr(diagnostics[0], "prompt")

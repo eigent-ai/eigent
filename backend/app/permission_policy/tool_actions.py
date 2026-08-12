@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Code-owned mapping from assembled tools to permission operations."""
 
 from __future__ import annotations
@@ -11,6 +25,7 @@ from typing import Any
 
 from app.permission_policy.models import ActionDescriptor
 from app.run_policy import ToolSafetyClass
+from app.workspace_config import canonical_json
 
 _PATH_KEYS = (
     "path",
@@ -170,6 +185,18 @@ def build_tool_action_descriptor(
         operation=operation,
         arguments=arguments,
     )
+    if not resources and operation in {"mcp.tool.write", "connector.write"}:
+        # Opaque MCP/connector calls often have no path or URL to bind a
+        # durable rule to. Give them a code-owned, exact tool identity target
+        # so the user can allow this one registered tool for a Run or Space
+        # without granting every mcp.tool.write operation.
+        resources = (
+            _opaque_tool_identity_resource(
+                operation=operation,
+                tool_name=tool_name,
+                toolkit_name=toolkit_name,
+            ),
+        )
     risk_tags = _risk_tags(
         operation=operation,
         arguments=arguments,
@@ -188,6 +215,22 @@ def build_tool_action_descriptor(
         attempt_id=attempt_id,
         environment_spec_digest=environment_spec_digest,
         risk_tags=risk_tags,
+    )
+
+
+def _opaque_tool_identity_resource(
+    *, operation: str, tool_name: str, toolkit_name: str | None
+) -> str:
+    identity = canonical_json(
+        {
+            "operation": operation,
+            "tool_name": tool_name.strip(),
+            "toolkit_name": (toolkit_name or "").strip(),
+        }
+    )
+    return (
+        "tool-identity:sha256:"
+        + hashlib.sha256(identity.encode("utf-8")).hexdigest()
     )
 
 
@@ -297,8 +340,7 @@ def _nested_command_sequences(
                 option = token.split("=", 1)[0]
                 index += 1
                 if (
-                    option
-                    in {"-u", "--user", "-g", "--group", "-h", "--host"}
+                    option in {"-u", "--user", "-g", "--group", "-h", "--host"}
                     and "=" not in token
                 ):
                     index += 1
@@ -307,9 +349,7 @@ def _nested_command_sequences(
                 index += 1
     if index >= len(words):
         return tuple(sequences)
-    executable = (
-        words[index].replace(chr(92), "/").rsplit("/", 1)[-1].lower()
-    )
+    executable = words[index].replace(chr(92), "/").rsplit("/", 1)[-1].lower()
     if executable in _SHELL_EXECUTABLES:
         for option_index in range(index + 1, len(words) - 1):
             option = words[option_index]
@@ -346,7 +386,9 @@ def _shell_segments(words: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
     return tuple(segments)
 
 
-def _expanded_shell_words(words: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+def _expanded_shell_words(
+    words: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
     assignments: dict[str, str] = {}
     expanded_segments: list[tuple[str, ...]] = []
     for segment in _shell_segments(words):
@@ -391,13 +433,17 @@ def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
 
 
 def _auto_executed_path(value: str) -> bool:
-    normalized = value.strip("\"\x27").replace(chr(92), "/").lower()
+    normalized = value.strip('"\x27').replace(chr(92), "/").lower()
     if normalized.rsplit("/", 1)[-1] in _AUTO_EXECUTED_WORKSPACE_FILENAMES:
         return True
-    return any(marker in normalized for marker in _AUTO_EXECUTED_WORKSPACE_PATHS)
+    return any(
+        marker in normalized for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
+    )
 
 
-def _terminal_executes_untrusted_workspace_code(words: tuple[str, ...]) -> bool:
+def _terminal_executes_untrusted_workspace_code(
+    words: tuple[str, ...],
+) -> bool:
     for segment in _shell_segments(words):
         if not segment:
             continue
@@ -413,7 +459,9 @@ def _terminal_executes_untrusted_workspace_code(words: tuple[str, ...]) -> bool:
             if token in {">", ">>", "1>", "1>>"} and index + 1 < len(segment):
                 if _auto_executed_path(segment[index + 1]):
                     return True
-            if token.startswith(">") and _auto_executed_path(token.lstrip(">")):
+            if token.startswith(">") and _auto_executed_path(
+                token.lstrip(">")
+            ):
                 return True
     return False
 
