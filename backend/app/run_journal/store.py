@@ -6931,6 +6931,158 @@ class SQLiteRunJournal:
             )
             return resolved
 
+    def bind_pending_attempt_environment(
+        self,
+        attempt_id: str,
+        *,
+        run_id: str,
+        request_id: str,
+        environment: AttemptEnvironmentBinding,
+        now: float | None = None,
+    ) -> RunAttemptRecord:
+        """Attach the explicitly selected environment before an Attempt starts.
+
+        The Run control endpoint durably reserves a pending Resume Attempt
+        before ``/chat`` receives the fresh local credentials and Workspace
+        bindings needed to resolve an EnvironmentSpec. Legacy Runs can have no
+        prior spec to inherit, so Resume silently backfills that compatibility
+        snapshot exactly once. Running or terminal Attempts are immutable and
+        can never be rebound.
+        """
+
+        timestamp = now if now is not None else time.time()
+        environment_values = self._attempt_environment_values(environment)
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM run_attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(
+                    f"attempt_id {attempt_id!r} does not exist"
+                )
+            if (
+                row["run_id"] != run_id
+                or row["resume_request_id"] != request_id
+            ):
+                raise IdempotencyConflictError(
+                    "pending Attempt does not match the Resume request"
+                )
+            persisted_environment = (
+                row["environment_spec_id"],
+                row["environment_spec_digest"],
+                row["bundle_revision_id"],
+                row["permission_profile_revision"],
+                row["thinking_effort_requested"],
+                row["thinking_effort_effective"],
+                row["provider_capability_revision"],
+            )
+            if row["environment_spec_id"] is not None:
+                if persisted_environment != environment_values:
+                    raise IdempotencyConflictError(
+                        "pending Attempt is already bound to a different environment"
+                    )
+                return self._attempt_from_row(row)
+            if row["status"] != "pending":
+                raise InvalidRunTransitionError(
+                    "only a pending Attempt can receive an environment binding"
+                )
+
+            spec = connection.execute(
+                """
+                SELECT * FROM effective_environment_specs
+                WHERE environment_spec_id = ?
+                """,
+                (environment.environment_spec_id,),
+            ).fetchone()
+            if spec is None:
+                raise RunNotFoundError(
+                    f"EnvironmentSpec {environment.environment_spec_id!r} does not exist"
+                )
+            expected_owner_id = (
+                run_id if spec["owner_type"] == "run" else attempt_id
+            )
+            if spec["owner_id"] != expected_owner_id:
+                raise IdempotencyConflictError(
+                    "EnvironmentSpec belongs to another Run/Attempt"
+                )
+            persisted_spec_values = (
+                spec["environment_spec_digest"],
+                spec["bundle_revision_id"],
+                spec["permission_profile_revision"],
+                spec["provider_capability_revision"],
+            )
+            binding_spec_values = (
+                environment.environment_spec_digest,
+                environment.bundle_revision_id,
+                environment.permission_profile_revision,
+                environment.provider_capability_revision,
+            )
+            if persisted_spec_values != binding_spec_values:
+                raise IdempotencyConflictError(
+                    "Attempt environment binding does not match its immutable "
+                    "EnvironmentSpec"
+                )
+
+            updated = connection.execute(
+                """
+                UPDATE run_attempts
+                SET environment_spec_id = ?, environment_spec_digest = ?,
+                    bundle_revision_id = ?, permission_profile_revision = ?,
+                    thinking_effort_requested = ?, thinking_effort_effective = ?,
+                    provider_capability_revision = ?
+                WHERE attempt_id = ? AND run_id = ? AND resume_request_id = ?
+                  AND status = 'pending' AND environment_spec_id IS NULL
+                """,
+                (*environment_values, attempt_id, run_id, request_id),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    "pending Attempt changed while binding its environment"
+                )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"attempt:{attempt_id}:environment-bound",
+                    event_type="run.attempt_environment_bound",
+                    payload={
+                        "attempt_id": attempt_id,
+                        "environment_spec_id": environment.environment_spec_id,
+                        "environment_spec_digest": (
+                            environment.environment_spec_digest
+                        ),
+                        "bundle_revision_id": environment.bundle_revision_id,
+                        "permission_profile_revision": (
+                            environment.permission_profile_revision
+                        ),
+                        "thinking_effort_requested": (
+                            environment.thinking_effort_requested
+                        ),
+                        "thinking_effort_effective": (
+                            environment.thinking_effort_effective
+                        ),
+                        "provider_capability_revision": (
+                            environment.provider_capability_revision
+                        ),
+                        "reason": "legacy_environment_backfill",
+                    },
+                    created_at=timestamp,
+                ),
+                run_status="pending",
+                active_attempt_id=attempt_id,
+            )
+            rebound = connection.execute(
+                "SELECT * FROM run_attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+            assert rebound is not None
+            resolved = self._attempt_from_row(rebound)
+            self._trusted_attempt_permission_profiles.add(
+                (resolved.attempt_id, resolved.permission_profile_revision)
+            )
+            return resolved
+
     def get_run_attempt(self, attempt_id: str) -> RunAttemptRecord | None:
         with self._lock:
             row = self._connection.execute(

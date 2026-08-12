@@ -411,9 +411,7 @@ class TestChatController:
                     "app.controller.chat_controller._prepare_chat_run",
                     new=AsyncMock(side_effect=RuntimeError("binding failed")),
                 ),
-                patch(
-                    "app.controller.chat_controller.step_solve"
-                ) as solve,
+                patch("app.controller.chat_controller.step_solve") as solve,
                 patch(
                     "app.controller.chat_controller.get_memory_service"
                 ) as memory_service,
@@ -444,7 +442,7 @@ class TestChatController:
         await coordinator.close()
 
     @pytest.mark.asyncio
-    async def test_legacy_resume_without_environment_spec_fails_closed(
+    async def test_resume_silently_backfills_legacy_environment_spec(
         self,
         sample_chat_data,
         mock_request,
@@ -455,7 +453,8 @@ class TestChatController:
         chat_data = Chat(
             **sample_chat_data,
             run_id=run_id,
-            resume_request_id="resume-needs-upgrade",
+            resume_request_id="resume-with-current-environment",
+            session_mode="single-agent",
         )
         resolver = MagicMock()
         resolver.freeze_task_directories.return_value = SimpleNamespace(
@@ -467,19 +466,20 @@ class TestChatController:
             workdir_mode=None,
         )
         resolver.space_root.return_value = tmp_path
-        mock_task_lock.resolved_runtime_environment = object()
+        git_coordinator = MagicMock()
 
         with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-            journal.ensure_run(run_id=run_id, project_id=chat_data.project_id)
-            journal.create_run_attempt(
-                run_id,
-                request_id="initial-request",
-                reason="initial_execution",
-                activate=True,
-                now=1,
+            journal.ensure_run(
+                run_id=run_id,
+                project_id=chat_data.project_id,
+                status="interrupted",
             )
-            journal.reconcile_startup(now=2)
-            planned_attempt = journal.list_run_attempts(run_id)[0]
+            resume_attempt = journal.create_run_attempt(
+                run_id,
+                request_id=chat_data.resume_request_id,
+                reason="explicit_resume",
+                activate=False,
+            )
             with (
                 patch(
                     "app.controller.chat_controller.get_default_run_journal",
@@ -495,25 +495,46 @@ class TestChatController:
                 ),
                 patch(
                     "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=git_coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller."
                     "_prepare_browser_for_request_with_timeout",
                     new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    return_value=None,
                 ),
                 patch(
                     "app.controller.chat_controller._camel_log_dir",
                     return_value=tmp_path / "camel-log",
                 ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.get_memory_service"),
                 patch("app.controller.chat_controller.load_dotenv"),
             ):
-                with pytest.raises(UserException) as error:
-                    await _prepare_chat_run(
-                        chat_data,
-                        mock_request,
-                        resume_attempt=planned_attempt,
-                    )
+                prepared = await _prepare_chat_run(
+                    chat_data,
+                    mock_request,
+                    resume_attempt=resume_attempt,
+                )
 
-        assert error.value.error_code == "environment_setup_required"
-        assert "resume_environment_upgrade_required" in str(error.value)
-        assert mock_task_lock.resolved_runtime_environment is None
+            rebound = journal.get_run_attempt(resume_attempt.attempt_id)
+            assert rebound is not None
+            assert rebound.environment_spec_id is not None
+            assert prepared.attempt_id == resume_attempt.attempt_id
+            assert mock_task_lock.environment_spec_id == (
+                rebound.environment_spec_id
+            )
+            assert journal.list_events(run_id)[-1].event_type == (
+                "run.attempt_environment_bound"
+            )
+            assert journal.list_events(run_id)[-1].payload["reason"] == (
+                "legacy_environment_backfill"
+            )
+            git_coordinator.admit_run.assert_called_once()
 
     def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
         with pytest.raises(EnvironmentSetupRequiredError) as error:
@@ -521,7 +542,9 @@ class TestChatController:
 
         assert error.value.issues == ("bundle_session_mode_unsupported",)
 
-    def test_bundle_runtime_accepts_persisted_follow_up_single_agent_mode(self):
+    def test_bundle_runtime_accepts_persisted_follow_up_single_agent_mode(
+        self,
+    ):
         from app.model.chat import SupplementChat
 
         follow_up = SupplementChat(question="continue from the pinned files")
@@ -1711,9 +1734,7 @@ class TestChatControllerErrorCases:
                     ["mcp_destination_confirmation_required"]
                 ),
             ),
-            patch(
-                "app.controller.chat_controller.step_solve"
-            ) as solve,
+            patch("app.controller.chat_controller.step_solve") as solve,
             patch(
                 "app.agent.factory.toolkit_assembler.assemble_single_agent_toolkits",
                 new=AsyncMock(),
@@ -1723,9 +1744,10 @@ class TestChatControllerErrorCases:
                 await start_chat_stream(chat_data, mock_request)
 
         assert error.value.error_code == "environment_setup_required"
-        assert journal.list_run_attempts(
-            chat_data.run_id or chat_data.task_id
-        ) == []
+        assert (
+            journal.list_run_attempts(chat_data.run_id or chat_data.task_id)
+            == []
+        )
         solve.assert_not_called()
         assemble_toolkits.assert_not_awaited()
         journal.close()

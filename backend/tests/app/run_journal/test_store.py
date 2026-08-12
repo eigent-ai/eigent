@@ -538,6 +538,101 @@ def test_attempt_binds_environment_once_and_emits_resolved_values(journal):
         )
 
 
+def test_pending_resume_can_bind_legacy_environment_backfill_once(journal):
+    _, spec, _ = _persist_environment_spec(journal)
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="interrupted",
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="resume-upgrade-1",
+        reason="explicit_resume",
+        attempt_id="attempt-upgrade-1",
+    )
+    environment = AttemptEnvironmentBinding(
+        environment_spec_id=spec.spec_id,
+        environment_spec_digest=spec.digest,
+        bundle_revision_id=spec.bundle_revision_id,
+        permission_profile_revision=spec.permission_profile_revision,
+        thinking_effort_requested=spec.thinking_effort_requested.value,
+        thinking_effort_effective=spec.thinking_effort_effective.value,
+        provider_capability_revision=spec.provider_capability_revision,
+    )
+
+    bound = journal.bind_pending_attempt_environment(
+        attempt.attempt_id,
+        run_id="run-1",
+        request_id="resume-upgrade-1",
+        environment=environment,
+        now=3,
+    )
+    replay = journal.bind_pending_attempt_environment(
+        attempt.attempt_id,
+        run_id="run-1",
+        request_id="resume-upgrade-1",
+        environment=environment,
+        now=4,
+    )
+
+    assert replay == bound
+    assert bound.environment_spec_id == spec.spec_id
+    events = journal.list_events("run-1")
+    assert [event.event_type for event in events] == [
+        "run.attempt_created",
+        "run.attempt_environment_bound",
+    ]
+    assert events[-1].payload["reason"] == "legacy_environment_backfill"
+
+    with pytest.raises(
+        IdempotencyConflictError, match="different environment"
+    ):
+        journal.bind_pending_attempt_environment(
+            attempt.attempt_id,
+            run_id="run-1",
+            request_id="resume-upgrade-1",
+            environment=AttemptEnvironmentBinding(
+                **{
+                    **environment.__dict__,
+                    "environment_spec_digest": "different",
+                }
+            ),
+        )
+
+
+def test_legacy_environment_backfill_never_mutates_running_attempt(journal):
+    _, spec, _ = _persist_environment_spec(journal)
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="running-attempt",
+        reason="initial_execution",
+        activate=True,
+    )
+    environment = AttemptEnvironmentBinding(
+        environment_spec_id=spec.spec_id,
+        environment_spec_digest=spec.digest,
+        bundle_revision_id=spec.bundle_revision_id,
+        permission_profile_revision=spec.permission_profile_revision,
+        thinking_effort_requested=spec.thinking_effort_requested.value,
+        thinking_effort_effective=spec.thinking_effort_effective.value,
+        provider_capability_revision=spec.provider_capability_revision,
+    )
+
+    with pytest.raises(
+        InvalidRunTransitionError, match="only a pending Attempt"
+    ):
+        journal.bind_pending_attempt_environment(
+            attempt.attempt_id,
+            run_id="run-1",
+            request_id="running-attempt",
+            environment=environment,
+        )
+
+    assert journal.get_run_attempt(attempt.attempt_id) == attempt
+
+
 def test_ensure_run_rejects_policy_and_deadline_drift(journal):
     first = journal.ensure_run(
         run_id="run-1",

@@ -86,6 +86,11 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
+from app.workspace_bundle.runtime import (
+    EnvironmentSetupRequiredError,
+    ResolvedRuntimeEnvironment,
+    RuntimeEnvironmentAssembler,
+)
 from app.workspace_config import (
     EffectiveEnvironmentSpec,
     WorkspaceBundleReconfigurationPendingError,
@@ -97,11 +102,6 @@ from app.workspace_config.admission import (
     LegacyEnvironmentImporter,
 )
 from app.workspace_git import get_default_workspace_git_coordinator
-from app.workspace_bundle.runtime import (
-    EnvironmentSetupRequiredError,
-    ResolvedRuntimeEnvironment,
-    RuntimeEnvironmentAssembler,
-)
 
 router = APIRouter()
 _CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
@@ -218,9 +218,12 @@ def _planned_resume_attempt(
 ) -> RunAttemptRecord:
     if existing_attempt is not None:
         return existing_attempt
-    attempt_id = "resume-" + hashlib.sha256(
-        f"{run_id}\0{resume_request_id}".encode("utf-8")
-    ).hexdigest()[:32]
+    attempt_id = (
+        "resume-"
+        + hashlib.sha256(
+            f"{run_id}\0{resume_request_id}".encode()
+        ).hexdigest()[:32]
+    )
     if binding_source is not None:
         return replace(
             binding_source,
@@ -287,9 +290,7 @@ def _assemble_runtime_environment(
 ) -> ResolvedRuntimeEnvironment | None:
     return RuntimeEnvironmentAssembler(
         journal,
-        state_root=(
-            configured_run_journal_path().parent / "workspace-git"
-        ),
+        state_root=(configured_run_journal_path().parent / "workspace-git"),
     ).assemble(
         spec,
         space_id=run_context.space_id,
@@ -301,10 +302,7 @@ def _require_supported_bundle_session_mode(
     session_mode: str | None,
     runtime_environment: ResolvedRuntimeEnvironment | None,
 ) -> None:
-    if (
-        runtime_environment is not None
-        and session_mode != "single-agent"
-    ):
+    if runtime_environment is not None and session_mode != "single-agent":
         raise EnvironmentSetupRequiredError(
             ["bundle_session_mode_unsupported"]
         )
@@ -828,46 +826,90 @@ async def _prepare_chat_run(
     is_resume = data.resume_request_id is not None
     if is_resume:
         request_id = str(data.resume_request_id)
-        if isinstance(journal, SQLiteRunJournal) and resume_attempt is not None:
+        if (
+            isinstance(journal, SQLiteRunJournal)
+            and resume_attempt is not None
+        ):
+            attempt = resume_attempt
             persisted_spec = await asyncio.to_thread(
                 _load_attempt_environment_spec,
                 journal,
                 resume_attempt,
             )
-            if persisted_spec is None:
-                raise _environment_setup_error(
-                    EnvironmentSetupRequiredError(
-                        ["resume_environment_upgrade_required"]
+            needs_legacy_environment_backfill = persisted_spec is None
+            backfilled_environment = None
+            if needs_legacy_environment_backfill:
+                template = _legacy_environment_template(data)
+                try:
+                    backfilled_environment = await asyncio.to_thread(
+                        EnvironmentAdmissionService(journal).persist_for_run,
+                        run_id=run_context.run_id,
+                        space_id=run_context.space_id,
+                        working_directory=run_context.working_directory,
+                        space_root=_space_root_for_run(run_context),
+                        created_by=(run_context.user_id or "local-user"),
+                        template=template,
                     )
-                )
-            if persisted_spec is not None:
+                except WorkspaceBundleReconfigurationPendingError as exc:
+                    raise _workspace_bundle_admission_error(exc) from exc
+                except EnvironmentSetupRequiredError as exc:
+                    raise _environment_setup_error(exc) from exc
+                persisted_spec = backfilled_environment.spec
+            else:
                 template = _validate_resume_model_capability(
                     data,
                     persisted_spec,
                 )
-                try:
-                    runtime_environment = await asyncio.to_thread(
-                        _assemble_runtime_environment,
-                        journal,
-                        persisted_spec,
-                        run_context,
-                    )
-                except EnvironmentSetupRequiredError as exc:
-                    raise _environment_setup_error(exc) from exc
-                try:
-                    _require_supported_bundle_session_mode(
-                        data.session_mode,
-                        runtime_environment,
-                    )
-                except EnvironmentSetupRequiredError as exc:
-                    raise _environment_setup_error(exc) from exc
-                _apply_environment_to_task_lock(
-                    task_lock,
+            try:
+                runtime_environment = await asyncio.to_thread(
+                    _assemble_runtime_environment,
+                    journal,
                     persisted_spec,
-                    template=template,
-                    runtime_environment=runtime_environment,
+                    run_context,
                 )
-        attempt = resume_attempt
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            try:
+                _require_supported_bundle_session_mode(
+                    data.session_mode,
+                    runtime_environment,
+                )
+            except EnvironmentSetupRequiredError as exc:
+                raise _environment_setup_error(exc) from exc
+            if backfilled_environment is not None:
+                attempt = await asyncio.to_thread(
+                    journal.bind_pending_attempt_environment,
+                    resume_attempt.attempt_id,
+                    run_id=run_context.run_id,
+                    request_id=request_id,
+                    environment=backfilled_environment.binding,
+                )
+            _apply_environment_to_task_lock(
+                task_lock,
+                persisted_spec,
+                template=template,
+                runtime_environment=runtime_environment,
+            )
+            if needs_legacy_environment_backfill:
+                try:
+                    await asyncio.to_thread(
+                        get_default_workspace_git_coordinator().admit_run,
+                        space_id=run_context.space_id,
+                        project_id=run_context.project_id,
+                        run_id=run_context.run_id,
+                    )
+                except Exception:
+                    chat_logger.warning(
+                        "Failed to pin optional backfilled Resume Git workspace",
+                        extra={
+                            "space_id": run_context.space_id,
+                            "project_id": run_context.project_id,
+                            "run_id": run_context.run_id,
+                        },
+                        exc_info=True,
+                    )
+        else:
+            attempt = resume_attempt
     else:
         await asyncio.to_thread(
             journal.ensure_run,
@@ -1106,10 +1148,14 @@ async def start_chat_stream(data: Chat, request: Request):
                 existing_attempt=existing_attempt,
                 binding_source=binding_source,
             )
-            if existing_attempt is not None and existing_attempt.status not in {
-                "pending",
-                "running",
-            }:
+            if (
+                existing_attempt is not None
+                and existing_attempt.status
+                not in {
+                    "pending",
+                    "running",
+                }
+            ):
                 raise UserException(
                     code.error,
                     "This Resume request already ended; start a new Resume action.",
@@ -1137,7 +1183,7 @@ async def start_chat_stream(data: Chat, request: Request):
                         journal.create_run_attempt,
                         run_id,
                         request_id=data.resume_request_id,
-                        reason="explicit_resume",
+                        reason=planned_attempt.resume_reason,
                         activate=False,
                         attempt_id=planned_attempt.attempt_id,
                         environment=_attempt_environment_binding(
@@ -1180,8 +1226,7 @@ async def start_chat_stream(data: Chat, request: Request):
                         (
                             item
                             for item in attempts_after_failure
-                            if item.resume_request_id
-                            == data.resume_request_id
+                            if item.resume_request_id == data.resume_request_id
                             and item.status in {"pending", "running"}
                         ),
                         None,
@@ -1191,7 +1236,7 @@ async def start_chat_stream(data: Chat, request: Request):
                             journal.create_run_attempt,
                             run_id,
                             request_id=data.resume_request_id,
-                            reason="explicit_resume",
+                            reason=planned_attempt.resume_reason,
                             activate=False,
                             attempt_id=planned_attempt.attempt_id,
                             environment=_attempt_environment_binding(
