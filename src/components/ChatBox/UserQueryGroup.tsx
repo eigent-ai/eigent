@@ -97,19 +97,19 @@ const ArtifactChangeList: React.FC<{
   const visibleFiles = isExpanded ? files : files.slice(0, collapsedCount);
 
   return (
-    <section className="my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
-      <div className="flex items-center gap-3 border-b border-ds-border-neutral-default-default px-4 py-3">
-        <span className="bg-ds-bg-neutral-secondary-default flex size-8 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
+    <section className="my-3 overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
+      <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-default-default px-4 py-3">
+        <span className="bg-ds-bg-neutral-secondary-default flex size-4 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
           <FileText size={18} aria-hidden />
         </span>
         <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
           Files changed
         </span>
-        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+        <span className="text-body-sm font-medium text-ds-text-success-default-default">
           {files.length}
         </span>
       </div>
-      <div className="px-4 py-2">
+      <div className="flex flex-col">
         {visibleFiles.map((file, fileIndex) => {
           const detail = getWorkspaceRelativeFilePath(file);
           const changeLabel =
@@ -124,12 +124,12 @@ const ArtifactChangeList: React.FC<{
               key={`artifact-${detail}-${fileIndex}`}
               title={detail}
               onClick={() => onOpen(file)}
-              className="group flex w-full min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-ds-bg-neutral-subtle-default"
+              className="group flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
             >
               <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
                 {detail}
               </span>
-              <span className="shrink-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
+              <span className="shrink-0 text-body-sm font-medium text-ds-text-success-default-default">
                 {changeLabel}
               </span>
             </button>
@@ -140,7 +140,7 @@ const ArtifactChangeList: React.FC<{
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((value) => !value)}
-            className="mt-1 flex items-center gap-1 rounded-lg px-2 py-2 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-subtle-default"
+            className="mt-1 flex items-center gap-1 px-4 py-3 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-default"
           >
             {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
             <ChevronDown
