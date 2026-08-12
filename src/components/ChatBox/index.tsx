@@ -423,7 +423,6 @@ export default function ChatBox(): JSX.Element {
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
   const hydratedFollowUpProjectsRef = useRef<Set<string>>(new Set());
-  const autoReplyAttemptRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -440,39 +439,7 @@ export default function ChatBox(): JSX.Element {
   const activeAskMessage = activeAskTask?.messages.findLast(
     (item) => item.step === AgentStep.ASK
   );
-  const activeAskMessageId = activeAskMessage?.id;
   const activeInteraction = activeAskMessage?.interaction;
-  const isInteractiveHumanReply =
-    activeAskTask?.type !== 'replay' &&
-    activeAskTask?.type !== 'share' &&
-    activeAskTask?.status !== ChatTaskStatus.FINISHED;
-  const activeHumanReplyKey =
-    activeTaskId &&
-    activeAsk &&
-    isInteractiveHumanReply &&
-    activeInteraction?.interaction_type !== 'approval'
-      ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
-      : null;
-
-  useEffect(() => {
-    if (!activeHumanReplyKey || !activeTaskId) {
-      autoReplyAttemptRef.current = null;
-      return;
-    }
-    if (message.trim() || autoReplyAttemptRef.current === activeHumanReplyKey) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      // A failed request must not create an endless 30-second retry loop for
-      // the same question. The prompt remains visible so the user can retry.
-      if (autoReplyAttemptRef.current === activeHumanReplyKey) return;
-      autoReplyAttemptRef.current = activeHumanReplyKey;
-      void handleSendRef.current?.('skip', activeTaskId);
-    }, 30000);
-
-    return () => window.clearTimeout(timer);
-  }, [activeHumanReplyKey, activeTaskId, message]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -834,9 +801,6 @@ export default function ChatBox(): JSX.Element {
             'Use the approval card to approve or reject this action.'
           );
           return;
-        }
-        if (activeHumanReplyKey) {
-          autoReplyAttemptRef.current = activeHumanReplyKey;
         }
         chatStore.addMessages(_taskId, {
           id: generateUniqueId(),
