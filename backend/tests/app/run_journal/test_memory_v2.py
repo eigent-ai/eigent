@@ -307,3 +307,203 @@ def test_confirm_preserves_untrusted_source_instead_of_laundering(journal):
     assert confirmed.entry is not None
     assert confirmed.entry.confirmed_by_user is True
     assert confirmed.entry.source_trust == "external_untrusted"
+
+
+def test_memory_outbox_keeps_each_exact_full_memory_projection(journal):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Create the preference",
+        content="Use concise answers.",
+        kind="preference",
+        token_count=4,
+        created_by="user",
+        source_trust="user_confirmed",
+        source_refs=("event-1",),
+        now=1,
+    )
+    journal.apply_memory_mutation(
+        mutation_id="mutation-update",
+        idempotency_key="request-update",
+        operation="replace",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Clarify the preference",
+        content="Use concise Chinese answers.",
+        kind="preference",
+        token_count=5,
+        created_by="user",
+        source_trust="user_confirmed",
+        source_refs=("event-2",),
+        expected_version=1,
+        now=2,
+    )
+
+    batch = journal.claim_ready_memory_mutation_batches(now=3, batch_size=10)[
+        0
+    ]
+
+    assert batch.scope["sync_scope"] == "full_memory"
+    assert batch.source_revision == 2
+    assert [item.payload["entry"]["content"] for item in batch.items] == [
+        "Use concise answers.",
+        "Use concise Chinese answers.",
+    ]
+    assert [item.payload["entry"]["version"] for item in batch.items] == [
+        1,
+        2,
+    ]
+    assert [item.payload["scope_revision"] for item in batch.items] == [1, 2]
+    assert batch.items[0].payload["entry"]["source_refs"][0].startswith("ref:")
+
+
+def test_memory_sync_scope_is_enforced_by_sqlite(journal):
+    journal.ensure_memory_scope_state("project", "project-1")
+
+    with pytest.raises(sqlite3.IntegrityError, match="full_memory"):
+        journal._connection.execute(  # noqa: SLF001 - storage invariant test
+            """
+            UPDATE memory_scope_state SET sync_scope = 'local_only'
+            WHERE scope_type = 'project' AND scope_id = 'project-1'
+            """
+        )
+
+
+def test_memory_outbox_fifo_uses_scope_revision_not_timestamp_or_id(journal):
+    journal.apply_memory_mutation(
+        mutation_id="z-add",
+        idempotency_key="request-z-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Create",
+        content="First",
+        kind="fact",
+        token_count=1,
+        created_by="user",
+        source_trust="user_confirmed",
+        now=1,
+    )
+    journal.apply_memory_mutation(
+        mutation_id="a-update",
+        idempotency_key="request-a-update",
+        operation="replace",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Update",
+        content="Second",
+        kind="fact",
+        token_count=1,
+        created_by="user",
+        source_trust="user_confirmed",
+        expected_version=1,
+        now=1,
+    )
+
+    batch = journal.claim_ready_memory_mutation_batches(now=2)[0]
+
+    assert [item.mutation_id for item in batch.items] == [
+        "z-add",
+        "a-update",
+    ]
+
+
+def test_memory_outbox_splits_across_scope_setting_revision_gap(journal):
+    first = journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Create",
+        content="First",
+        kind="fact",
+        token_count=1,
+        created_by="user",
+        source_trust="user_confirmed",
+        now=1,
+    )
+    journal.update_memory_scope_settings(
+        "project",
+        "project-1",
+        expected_revision=first.scope_state.revision,
+        use_enabled=False,
+        now=2,
+    )
+    journal.apply_memory_mutation(
+        mutation_id="mutation-update",
+        idempotency_key="request-update",
+        operation="replace",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Update",
+        content="Third revision",
+        kind="fact",
+        token_count=2,
+        created_by="user",
+        source_trust="user_confirmed",
+        expected_version=1,
+        now=3,
+    )
+
+    first_batch = journal.claim_ready_memory_mutation_batches(now=4)[0]
+
+    assert first_batch.source_revision == 3
+    assert [item.payload["scope_revision"] for item in first_batch.items] == [
+        1
+    ]
+    journal.mark_memory_mutation_batch_sent(first_batch, now=5)
+    second_batch = journal.claim_ready_memory_mutation_batches(now=6)[0]
+    assert [item.payload["scope_revision"] for item in second_batch.items] == [
+        3
+    ]
+
+
+def test_memory_sync_snapshot_is_always_full_and_includes_tombstones(journal):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="user",
+        scope_id="user-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Create Memory",
+        content="Prefer compact replies.",
+        kind="preference",
+        token_count=4,
+        created_by="user",
+        source_trust="user_confirmed",
+    )
+    journal.apply_memory_mutation(
+        mutation_id="mutation-remove",
+        idempotency_key="request-remove",
+        operation="remove",
+        scope_type="user",
+        scope_id="user-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Forget it",
+        expected_version=1,
+    )
+
+    snapshot = journal.list_memory_sync_snapshots()[0]
+
+    assert snapshot["scope"]["sync_scope"] == "full_memory"
+    assert snapshot["entries"][0]["content"] == "Prefer compact replies."
+    assert snapshot["entries"][0]["deleted_at"] is not None

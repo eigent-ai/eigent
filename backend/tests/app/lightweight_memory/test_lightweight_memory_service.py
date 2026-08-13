@@ -24,7 +24,11 @@ from app.lightweight_memory import (
     LightweightMemoryService,
 )
 from app.memory.service import build_durable_context_projection_for_task_lock
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
 from app.workspace_config import SecretValueInManifestError
 
 
@@ -187,6 +191,132 @@ def test_incremental_maintainer_advances_cursor_and_is_idempotent(service):
     assert [entry.content for entry in entries] == ["reports use ISO dates."]
     assert entries[0].source_refs == ("message-1",)
     assert entries[0].source_trust == "user_asserted"
+
+
+def test_incremental_maintainer_records_noop_before_advancing_cursor(service):
+    journal = service.journal
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="message-1",
+            event_type="user.message",
+            payload={"content": "What time is it?"},
+        ),
+    )
+
+    state = IncrementalMemoryMaintainer(service).process_project("project-1")
+
+    mutations = journal.list_memory_mutations("project", "project-1")
+    assert state.processed_through_watermark == "sqlite-project-v1:1"
+    assert [mutation.operation for mutation in mutations] == ["noop"]
+    assert service.list_entries("project", "project-1") == ()
+
+
+def test_space_and_user_capture_default_off_and_cannot_be_enabled(service):
+    assert service.scope("project", "project-1").capture_enabled is True
+    for scope_type in ("space", "user"):
+        state = service.scope(scope_type, f"{scope_type}-1")
+        assert state.capture_enabled is False
+        with pytest.raises(ValueError, match="only supported for Project"):
+            service.journal.update_memory_scope_settings(
+                scope_type,
+                f"{scope_type}-1",
+                expected_revision=state.revision,
+                capture_enabled=True,
+            )
+
+
+def test_consolidation_only_removes_exact_unreviewed_machine_duplicates(
+    service,
+):
+    first = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="Reports use ISO dates.",
+        actor_type="agent",
+        reason="first observation",
+        source_trust="model_inferred",
+        request_id="first",
+    ).entry
+    duplicate = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="  reports   use ISO dates.  ",
+        actor_type="extractor",
+        reason="same observation",
+        source_trust="model_inferred",
+        request_id="duplicate",
+    ).entry
+    user_entry = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="REPORTS USE ISO DATES.",
+        actor_type="user",
+        reason="explicit user Memory",
+        source_trust="user_confirmed",
+        request_id="user-entry",
+    ).entry
+    assert first is not None
+    assert duplicate is not None
+    assert user_entry is not None
+
+    result = service.consolidate_scope(
+        scope_type="project",
+        scope_id="project-1",
+        reason="organize exact duplicates",
+        request_id="consolidate-1",
+        actor_type="user",
+    )
+
+    active_ids = {
+        entry.memory_id
+        for entry in service.list_entries("project", "project-1")
+    }
+    assert user_entry.memory_id in active_ids
+    assert active_ids & {first.memory_id, duplicate.memory_id} == set()
+    assert set(result.removed_memory_ids) == {
+        first.memory_id,
+        duplicate.memory_id,
+    }
+    assert result.tokens_released > 0
+    assert result.scope_state.last_consolidated_at is not None
+
+
+def test_agent_add_at_ninety_percent_requires_memory_cleanup(
+    service, monkeypatch
+):
+    service.journal.ensure_memory_scope_state(
+        "project", "project-1", token_limit=10
+    )
+    monkeypatch.setattr(
+        "app.lightweight_memory.service.count_tokens", lambda _value: 9
+    )
+    service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="User-owned capacity",
+        actor_type="user",
+        reason="fill the bounded Memory",
+        source_trust="user_confirmed",
+        request_id="fill-memory",
+    )
+
+    with pytest.raises(InvalidRunTransitionError, match="90% full"):
+        service.create_entry(
+            scope_type="project",
+            scope_id="project-1",
+            kind="fact",
+            content="Another inferred item",
+            actor_type="agent",
+            reason="should organize first",
+            source_trust="model_inferred",
+            request_id="blocked-add",
+        )
 
 
 def test_failed_maintainer_does_not_advance_watermark(service):

@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
@@ -24,6 +25,7 @@ from typing import Any, Literal
 
 from app.permission_policy import redact_action_arguments
 from app.run_journal import (
+    InvalidRunTransitionError,
     MemoryEntryRecord,
     MemoryMutationResult,
     MemoryScopeStateRecord,
@@ -68,6 +70,14 @@ class HistoryQueryPage:
     items: tuple[HistoryQueryResult, ...]
     next_cursor: str
     redactions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MemoryConsolidationResult:
+    scope_state: MemoryScopeStateRecord
+    removed_memory_ids: tuple[str, ...]
+    retained_memory_ids: tuple[str, ...]
+    tokens_released: int
 
 
 class LightweightMemoryService:
@@ -133,6 +143,16 @@ class LightweightMemoryService:
             actor_type=actor_type,
             source_trust=source_trust,
         )
+        state = self.scope(scope_type, scope_id)
+        if (
+            actor_type in {"agent", "extractor"}
+            and state.current_token_count >= state.token_limit * 0.9
+        ):
+            raise InvalidRunTransitionError(
+                "Memory is at least 90% full. Search the current Memory and "
+                "replace, remove, or consolidate an existing item before "
+                "adding another one. Canonical History remains searchable."
+            )
         resolved_request_id = request_id or f"memreq_{uuid.uuid4().hex}"
         resolved_memory_id = memory_id or stable_memory_id(
             "entry", scope_type, scope_id, resolved_request_id
@@ -157,6 +177,84 @@ class LightweightMemoryService:
             source_refs=source_refs,
             run_id=run_id,
             activity_id=activity_id,
+        )
+
+    def consolidate_scope(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        reason: str,
+        request_id: str,
+        actor_type: Literal["user", "extractor"] = "extractor",
+    ) -> MemoryConsolidationResult:
+        """Safely remove exact duplicate, unreviewed machine-created items.
+
+        Consolidation is intentionally conservative: it does not summarize
+        History, semantically merge unrelated statements, or alter anything
+        the user created, confirmed, or pinned. More subjective changes remain
+        explicit user edits/HumanInteractions.
+        """
+
+        if not request_id.strip():
+            raise ValueError("Memory consolidation request_id is required")
+        entries = self.list_entries(scope_type, scope_id)
+        groups: dict[tuple[str, str], list[MemoryEntryRecord]] = {}
+        for entry in entries:
+            key = (entry.kind, _normalized_memory_content(entry.content))
+            groups.setdefault(key, []).append(entry)
+
+        removed: list[str] = []
+        retained: list[str] = []
+        released = 0
+        for duplicates in groups.values():
+            if len(duplicates) < 2:
+                continue
+            ordered = sorted(duplicates, key=_memory_retention_key)
+            keeper = ordered[0]
+            retained.append(keeper.memory_id)
+            for candidate in ordered[1:]:
+                if (
+                    candidate.created_by == "user"
+                    or candidate.confirmed_by_user
+                    or candidate.pinned_by_user
+                ):
+                    retained.append(candidate.memory_id)
+                    continue
+                result = self._journal.apply_memory_mutation(
+                    mutation_id=stable_memory_id(
+                        "mutation", request_id, candidate.memory_id
+                    ),
+                    idempotency_key=(
+                        f"{request_id}:remove-exact-duplicate:"
+                        f"{candidate.memory_id}"
+                    ),
+                    operation="remove",
+                    scope_type=scope_type,
+                    scope_id=scope_id,
+                    memory_id=candidate.memory_id,
+                    expected_version=candidate.version,
+                    actor_type=actor_type,
+                    reason=(
+                        f"{reason}; exact duplicate of {keeper.memory_id}"
+                    ),
+                    source_refs=candidate.source_refs,
+                )
+                if result.entry is not None and result.entry.deleted_at:
+                    removed.append(candidate.memory_id)
+                    released += candidate.token_count
+
+        current = self.scope(scope_type, scope_id)
+        final_state = self._journal.record_memory_consolidation_result(
+            scope_type,
+            scope_id,
+            expected_revision=current.revision,
+        )
+        return MemoryConsolidationResult(
+            scope_state=final_state,
+            removed_memory_ids=tuple(removed),
+            retained_memory_ids=tuple(dict.fromkeys(retained)),
+            tokens_released=released,
         )
 
     def update_entry(
@@ -360,7 +458,9 @@ class LightweightMemoryService:
                     break
                 selected.append(
                     HistoryQueryResult(
-                        citation_id=f"history:{project_id}:{item.journal_cursor}",
+                        citation_id=(
+                            f"history:{project_id}:{item.journal_cursor}"
+                        ),
                         journal_cursor=item.journal_cursor,
                         event_id=item.event.event_id,
                         run_id=item.event.run_id,
@@ -458,6 +558,31 @@ def stable_memory_id(namespace: str, *parts: str) -> str:
     ).hexdigest()
     prefix = "mut" if namespace == "mutation" else "mem"
     return f"{prefix}_{digest[:32]}"
+
+
+def _normalized_memory_content(value: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+
+
+def _memory_retention_key(entry: MemoryEntryRecord) -> tuple:
+    trust_rank = {
+        "user_confirmed": 0,
+        "user_asserted": 1,
+        "system_verified": 2,
+        "tool_observed": 3,
+        "model_inferred": 4,
+        "external_untrusted": 5,
+        "legacy_unverified": 6,
+    }
+    return (
+        not entry.pinned_by_user,
+        not entry.confirmed_by_user,
+        entry.created_by != "user",
+        entry.priority != "high",
+        trust_rank.get(entry.source_trust, 99),
+        -entry.updated_at,
+        entry.memory_id,
+    )
 
 
 def format_project_cursor(value: int) -> str:

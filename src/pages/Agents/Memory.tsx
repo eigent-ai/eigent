@@ -27,22 +27,32 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
   confirmMemoryEntry,
+  consolidateMemoryScope,
   createMemoryEntry,
   deleteMemoryEntry,
   listMemoryEntries,
   pinMemoryEntry,
+  restoreMemoryEntry,
   updateMemoryEntry,
   updateMemoryScopeSettings,
   type MemoryEntry,
   type MemoryKind,
   type MemoryScopeState,
   type MemoryScopeType,
-  type MemorySyncScope,
 } from '@/service/memoryApi';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
 import { DEFAULT_LOCAL_USER_ID, useSpaceStore } from '@/store/spaceStore';
-import { Brain, Check, Pin, Plus, Save, Trash2 } from 'lucide-react';
+import {
+  ArchiveRestore,
+  Brain,
+  Check,
+  Pin,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const KINDS: MemoryKind[] = [
@@ -77,6 +87,7 @@ export default function Memory() {
   const [draftKind, setDraftKind] = useState<MemoryKind>('fact');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   const scopeIds = useMemo(
     () => ({
@@ -97,7 +108,11 @@ export default function Memory() {
     setLoading(true);
     setError('');
     try {
-      const response = await listMemoryEntries(scopeType, scopeId);
+      const response = await listMemoryEntries(
+        scopeType,
+        scopeId,
+        showArchived
+      );
       setEntries(response.items);
       setScopeState(response.scope_state);
     } catch (caught) {
@@ -105,7 +120,7 @@ export default function Memory() {
     } finally {
       setLoading(false);
     }
-  }, [scopeId, scopeType]);
+  }, [scopeId, scopeType, showArchived]);
 
   useEffect(() => {
     void reload();
@@ -124,7 +139,6 @@ export default function Memory() {
   const updateSettings = (patch: {
     captureEnabled?: boolean;
     useEnabled?: boolean;
-    syncScope?: MemorySyncScope;
   }) => {
     if (!scopeId || !scopeState) return;
     void runAndReload(() =>
@@ -188,6 +202,7 @@ export default function Memory() {
                 </span>
                 <Switch
                   checked={scopeState?.capture_enabled ?? false}
+                  disabled={scopeType !== 'project'}
                   onCheckedChange={(value) =>
                     updateSettings({ captureEnabled: value })
                   }
@@ -207,24 +222,11 @@ export default function Memory() {
                   }
                 />
               </label>
-              <div>
-                <strong className="mb-2 block text-body-sm">Memory Sync</strong>
-                <Select
-                  value={scopeState?.sync_scope ?? 'local_only'}
-                  onValueChange={(value) =>
-                    updateSettings({ syncScope: value as MemorySyncScope })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local_only">Local only</SelectItem>
-                    <SelectItem value="metadata_only">Metadata only</SelectItem>
-                    <SelectItem value="summary_only">Summary only</SelectItem>
-                    <SelectItem value="full_memory">Full Memory</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="text-body-sm">
+                <strong className="block">Memory Sync</strong>
+                <span className="text-xs text-ds-text-neutral-muted-default">
+                  Synced to your Eigent account for use across devices
+                </span>
               </div>
             </div>
             <div className="mt-5">
@@ -236,11 +238,29 @@ export default function Memory() {
                 </span>
               </div>
               <Progress value={capacity} />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-xs text-ds-text-neutral-muted-default">
+                  At 75%, Eigent safely consolidates exact machine-created
+                  duplicates. History is never changed.
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() =>
+                    void runAndReload(() =>
+                      consolidateMemoryScope(scopeType, scopeId)
+                    )
+                  }
+                >
+                  <RefreshCw className="mr-1 h-4 w-4" /> Organize
+                </Button>
+              </div>
             </div>
           </section>
 
           <section className="rounded-2xl bg-ds-bg-neutral-default-default p-5">
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <Select
                 value={draftKind}
                 onValueChange={(value) => setDraftKind(value as MemoryKind)}
@@ -277,6 +297,13 @@ export default function Memory() {
               >
                 <Plus className="mr-1 h-4 w-4" /> Add
               </Button>
+              <label className="ml-auto flex items-center gap-2 text-xs text-ds-text-neutral-muted-default">
+                <Switch
+                  checked={showArchived}
+                  onCheckedChange={setShowArchived}
+                />
+                Show archived
+              </label>
             </div>
             {error && (
               <div className="mb-3 text-body-sm text-red-600">{error}</div>
@@ -295,7 +322,7 @@ export default function Memory() {
                 {entries.map((entry) => (
                   <article
                     key={entry.memory_id}
-                    className="border-ds-border-neutral-default rounded-xl border p-4"
+                    className={`border-ds-border-neutral-default rounded-xl border p-4 ${entry.deleted_at ? 'opacity-70' : ''}`}
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="bg-ds-bg-neutral-subtle rounded-full px-2 py-1">
@@ -306,6 +333,7 @@ export default function Memory() {
                         <span className="text-green-600">Confirmed</span>
                       )}
                       {entry.pinned_by_user && <span>📌 Pinned</span>}
+                      {entry.deleted_at && <span>Archived</span>}
                     </div>
                     {editingId === entry.memory_id ? (
                       <Textarea
@@ -318,65 +346,81 @@ export default function Memory() {
                       </p>
                     )}
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {editingId === entry.memory_id ? (
+                      {entry.deleted_at ? (
                         <Button
                           size="sm"
-                          disabled={!editingText.trim()}
+                          variant="outline"
                           onClick={() =>
-                            void runAndReload(() =>
-                              updateMemoryEntry(entry, {
-                                content: editingText.trim(),
-                                kind: entry.kind,
-                                reason: 'Edited in Memory Center',
-                              }).then(() => setEditingId(null))
-                            )
+                            void runAndReload(() => restoreMemoryEntry(entry))
                           }
                         >
-                          <Save className="mr-1 h-4 w-4" /> Save
+                          <ArchiveRestore className="mr-1 h-4 w-4" /> Restore
                         </Button>
                       ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingId(entry.memory_id);
-                            setEditingText(entry.content);
-                          }}
-                        >
-                          Edit
-                        </Button>
+                        <>
+                          {editingId === entry.memory_id ? (
+                            <Button
+                              size="sm"
+                              disabled={!editingText.trim()}
+                              onClick={() =>
+                                void runAndReload(() =>
+                                  updateMemoryEntry(entry, {
+                                    content: editingText.trim(),
+                                    kind: entry.kind,
+                                    reason: 'Edited in Memory Center',
+                                  }).then(() => setEditingId(null))
+                                )
+                              }
+                            >
+                              <Save className="mr-1 h-4 w-4" /> Save
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setEditingId(entry.memory_id);
+                                setEditingText(entry.content);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                          {!entry.confirmed_by_user && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                void runAndReload(() =>
+                                  confirmMemoryEntry(entry)
+                                )
+                              }
+                            >
+                              <Check className="mr-1 h-4 w-4" /> Confirm
+                            </Button>
+                          )}
+                          {!entry.pinned_by_user && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                void runAndReload(() => pinMemoryEntry(entry))
+                              }
+                            >
+                              <Pin className="mr-1 h-4 w-4" /> Pin
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              void runAndReload(() => deleteMemoryEntry(entry))
+                            }
+                          >
+                            <Trash2 className="mr-1 h-4 w-4" /> Delete
+                          </Button>
+                        </>
                       )}
-                      {!entry.confirmed_by_user && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void runAndReload(() => confirmMemoryEntry(entry))
-                          }
-                        >
-                          <Check className="mr-1 h-4 w-4" /> Confirm
-                        </Button>
-                      )}
-                      {!entry.pinned_by_user && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void runAndReload(() => pinMemoryEntry(entry))
-                          }
-                        >
-                          <Pin className="mr-1 h-4 w-4" /> Pin
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          void runAndReload(() => deleteMemoryEntry(entry))
-                        }
-                      >
-                        <Trash2 className="mr-1 h-4 w-4" /> Delete
-                      </Button>
                     </div>
                   </article>
                 ))}

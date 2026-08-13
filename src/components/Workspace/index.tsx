@@ -28,6 +28,7 @@ import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectP
 import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useProjectMemorySetting } from '@/hooks/useProjectMemorySetting';
 import { useHost } from '@/host';
 import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
@@ -52,15 +53,6 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
-
-const MEMORY_STORAGE_KEY = 'eigent-sidebar-instructions-memory-on';
-
-function readMemoryInitial(): boolean {
-  if (typeof window === 'undefined') return true;
-  const v = window.localStorage.getItem(MEMORY_STORAGE_KEY);
-  if (v === null) return true;
-  return v === 'true';
-}
 
 interface WorkspaceProps {
   /**
@@ -228,12 +220,8 @@ export default function Workspace({
     'all-sessions': t('layout.projects'),
     'instruction-md': t('layout.instructions-rules-tone'),
   };
-  const [memoryOn, setMemoryOn] = useState(readMemoryInitial);
+  const projectMemory = useProjectMemorySetting(activeProjectId);
   const textareaRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    window.localStorage.setItem(MEMORY_STORAGE_KEY, String(memoryOn));
-  }, [memoryOn]);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
@@ -373,7 +361,7 @@ export default function Workspace({
     }
   }, [host, t]);
 
-  const buildComposerInputProps = () => ({
+  const composerInputProps = {
     value: message,
     onChange: setMessage,
     onSend: handleSend,
@@ -390,7 +378,7 @@ export default function Workspace({
             'Legacy Spaces are read-only. Create a new Space to start a Project.',
         })
       : t('layout.project-task-placeholder'),
-  });
+  };
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -422,9 +410,12 @@ export default function Workspace({
     [chatStore, host]
   );
 
-  const onEditWorkerFromMenu = useCallback((agent: Agent) => {
-    setEditingWorkerAgent(agent);
-  }, []);
+  const onEditWorkerFromMenu = useCallback(
+    (agent: Agent) => {
+      setEditingWorkerAgent(agent);
+    },
+    [setEditingWorkerAgent]
+  );
 
   const onDuplicateUserAgent = useCallback(
     (agent: Agent) => {
@@ -511,7 +502,7 @@ export default function Workspace({
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
           onSelectModel={() => navigate('/history?tab=agents')}
-          inputProps={buildComposerInputProps()}
+          inputProps={composerInputProps}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive
@@ -572,8 +563,19 @@ export default function Workspace({
           )}
         >
           <WorkspaceCoworkPanel
-            memoryOn={memoryOn}
-            onMemoryToggle={() => setMemoryOn((v) => !v)}
+            memoryOn={projectMemory.enabled}
+            memoryAvailable={projectMemory.available}
+            memoryLoading={projectMemory.loading}
+            onMemoryToggle={() => {
+              void projectMemory.toggle().catch((caught) => {
+                toast.error(
+                  caught instanceof Error ? caught.message : String(caught)
+                );
+              });
+            }}
+            onMemoryManage={() =>
+              navigate('/history?tab=agents&section=memory')
+            }
           />
         </div>
       </div>

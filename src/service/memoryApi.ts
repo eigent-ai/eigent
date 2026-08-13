@@ -18,8 +18,7 @@ import { fetchDelete, fetchGet, fetchPatch, fetchPost } from '@/api/http';
 export type MemoryScopeType = 'project' | 'space' | 'user';
 export type MemoryKind =
   'fact' | 'decision' | 'constraint' | 'preference' | 'todo' | 'lesson';
-export type MemorySyncScope =
-  'local_only' | 'metadata_only' | 'summary_only' | 'full_memory';
+export type MemorySyncScope = 'full_memory';
 
 export interface MemoryScopeState {
   scope_type: MemoryScopeType;
@@ -31,8 +30,10 @@ export interface MemoryScopeState {
   sync_scope: MemorySyncScope;
   token_limit: number;
   current_token_count: number;
+  consolidate_threshold: number;
   processed_through_watermark: string | null;
   extractor_version: string;
+  last_consolidated_at: number | null;
   last_error: string | null;
   updated_at: number;
 }
@@ -90,14 +91,21 @@ export const updateMemoryScopeSettings = (
     expectedRevision: number;
     captureEnabled?: boolean;
     useEnabled?: boolean;
-    syncScope?: MemorySyncScope;
   }
 ): Promise<MemoryScopeState> =>
   fetchPatch(`${scopePath(scopeType, scopeId)}/settings`, {
     expected_revision: input.expectedRevision,
     capture_enabled: input.captureEnabled,
     use_enabled: input.useEnabled,
-    sync_scope: input.syncScope,
+  });
+
+export const consolidateMemoryScope = (
+  scopeType: MemoryScopeType,
+  scopeId: string
+) =>
+  fetchPost(`${scopePath(scopeType, scopeId)}/consolidate`, {
+    request_id: crypto.randomUUID(),
+    reason: 'Organized in Memory Center',
   });
 
 export const createMemoryEntry = (

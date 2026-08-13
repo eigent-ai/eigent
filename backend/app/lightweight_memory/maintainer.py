@@ -27,6 +27,7 @@ from typing import Protocol
 from app.lightweight_memory.service import (
     HistoryQueryResult,
     LightweightMemoryService,
+    count_tokens,
     format_project_cursor,
     parse_project_cursor,
 )
@@ -140,6 +141,20 @@ class IncrementalMemoryMaintainer:
         if not state.capture_enabled:
             return state
         try:
+            ratio = state.current_token_count / state.token_limit
+            if ratio >= state.consolidate_threshold and (
+                state.last_consolidated_at is None
+                or state.updated_at > state.last_consolidated_at
+            ):
+                state = self._service.consolidate_scope(
+                    scope_type="project",
+                    scope_id=project_id,
+                    reason="automatic bounded Memory consolidation",
+                    request_id=(
+                        f"memory-auto-consolidate:{project_id}:"
+                        f"{state.revision}"
+                    ),
+                ).scope_state
             after = state.processed_through_watermark
             page = self._service.search_history(
                 project_id=project_id,
@@ -157,11 +172,47 @@ class IncrementalMemoryMaintainer:
                 active_memory=active,
                 history_delta=page.items,
             )[:3]
+            projected_tokens = state.current_token_count
+            bounded_proposals: list[ProposedMemoryMutation] = []
+            for proposal in proposals:
+                proposal_tokens = count_tokens(proposal.content)
+                if (
+                    projected_tokens + proposal_tokens
+                    > state.token_limit * 0.9
+                ):
+                    continue
+                bounded_proposals.append(proposal)
+                projected_tokens += proposal_tokens
+            proposals = tuple(bounded_proposals)
             cursor_from = after or format_project_cursor(0)
+            if not proposals:
+                identity = hashlib.sha256(
+                    (
+                        f"{self._extractor.version}|{project_id}|"
+                        f"{cursor_from}|{page.next_cursor}|noop"
+                    ).encode()
+                ).hexdigest()
+                self._service.journal.apply_memory_mutation(
+                    mutation_id=f"mut_{identity[:32]}",
+                    idempotency_key=f"memory-extract-noop:{identity}",
+                    operation="noop",
+                    scope_type="project",
+                    scope_id=project_id,
+                    memory_id=None,
+                    actor_type="extractor",
+                    reason=(
+                        "incremental extraction found no durable Memory "
+                        f"in {cursor_from}..{page.next_cursor}"
+                    ),
+                    source_refs=tuple(
+                        item.event_id for item in page.items[:32]
+                    ),
+                )
             for index, proposal in enumerate(proposals):
                 identity = hashlib.sha256(
                     (
-                        f"{self._extractor.version}|{project_id}|{cursor_from}|"
+                        f"{self._extractor.version}|{project_id}|"
+                        f"{cursor_from}|"
                         f"{page.next_cursor}|{index}|{proposal.kind}|"
                         f"{proposal.content}"
                     ).encode()
@@ -173,7 +224,8 @@ class IncrementalMemoryMaintainer:
                     content=proposal.content,
                     actor_type="extractor",
                     reason=(
-                        f"incremental extraction {cursor_from}..{page.next_cursor}"
+                        "incremental extraction "
+                        f"{cursor_from}..{page.next_cursor}"
                     ),
                     source_trust=proposal.source_trust,
                     source_refs=proposal.source_event_ids,

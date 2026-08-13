@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Durable per-Run FIFO replication from SQLite to the Cloud API."""
 
 from __future__ import annotations
@@ -18,6 +32,7 @@ import httpx
 from app.run_journal import (
     CloudRunEventReplica,
     CloudRunReplica,
+    MemoryMutationSyncBatch,
     OutboxLeaseLostError,
     RunEventSyncBatch,
     SQLiteRunJournal,
@@ -125,6 +140,18 @@ class RunEventSyncTransport(Protocol):
         *,
         after_cursor: int,
         limit: int,
+    ) -> dict[str, Any]: ...
+
+    async def ingest_memory_mutations(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    async def put_memory_snapshot(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
     async def close(self) -> None: ...
@@ -299,6 +326,32 @@ class HttpRunEventSyncTransport:
             configuration,
         )
 
+    async def ingest_memory_mutations(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        return await self._json_request(
+            "POST",
+            f"{self._sync_base(configuration)}/memory/mutations:ingest",
+            configuration,
+            payload,
+        )
+
+    async def put_memory_snapshot(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        return await self._json_request(
+            "PUT",
+            f"{self._sync_base(configuration)}/memory/snapshot",
+            configuration,
+            payload,
+        )
+
     async def close(self) -> None:
         await self._client.aclose()
 
@@ -334,12 +387,14 @@ class CloudSyncWorker:
         self._bootstrap_lock = asyncio.Lock()
         self._bootstrap_attempt_count = 0
         self._bootstrap_next_attempt_at = 0.0
+        self._memory_snapshot_revisions: dict[tuple[str, str], int] = {}
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         if configuration != self._configuration:
             self._bootstrap_pending = True
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
+            self._memory_snapshot_revisions.clear()
         self._configuration = configuration
         self.notify()
 
@@ -373,6 +428,33 @@ class CloudSyncWorker:
                 # Restore freshness must not block the durable outbound lane.
                 # Keep the flag set so the normal poll loop retries.
                 logger.exception("Cloud Run history bootstrap failed")
+        memory_count = 0
+        memory_snapshot_ready = False
+        if not self._bootstrap_pending:
+            try:
+                await self._sync_memory_snapshots_if_changed(configuration)
+                memory_snapshot_ready = True
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Memory replication is independent of Run durability. A
+                # snapshot failure delays only the Memory lane.
+                logger.exception("Cloud Memory snapshot sync failed")
+        if memory_snapshot_ready:
+            memory_batches = await asyncio.to_thread(
+                self._journal.claim_ready_memory_mutation_batches,
+                max_scopes=self._max_parallel_runs,
+                batch_size=self._batch_size,
+                lease_seconds=self._lease_seconds,
+            )
+            if memory_batches:
+                memory_results = await asyncio.gather(
+                    *(
+                        self._sync_memory_batch(batch, configuration)
+                        for batch in memory_batches
+                    )
+                )
+                memory_count = sum(memory_results)
         batches = await asyncio.to_thread(
             self._journal.claim_ready_outbox_batches,
             max_runs=self._max_parallel_runs,
@@ -380,13 +462,13 @@ class CloudSyncWorker:
             lease_seconds=self._lease_seconds,
         )
         if not batches:
-            return 0
+            return memory_count
         results = await asyncio.gather(
             *(self._sync_batch(batch, configuration) for batch in batches)
         )
         # Drain another slice without waiting when more Runs or events are ready.
         self.notify()
-        return sum(results)
+        return memory_count + sum(results)
 
     async def bootstrap_once(self) -> None:
         """Synchronously repair the local read replica once per credential set."""
@@ -525,10 +607,45 @@ class CloudSyncWorker:
                 raise RunEventSyncProtocolError(
                     f"Run sync snapshot for {project_id!r} did not stabilize"
                 )
+        await self._sync_memory_snapshots_if_changed(configuration)
         if self._configuration == configuration:
             self._bootstrap_pending = False
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
+
+    async def _sync_memory_snapshots_if_changed(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> None:
+        put_snapshot = getattr(self._transport, "put_memory_snapshot", None)
+        if not callable(put_snapshot):
+            return
+        snapshots = await asyncio.to_thread(
+            self._journal.list_memory_sync_snapshots
+        )
+        for snapshot in snapshots:
+            key = (str(snapshot["scope_type"]), str(snapshot["scope_id"]))
+            revision = int(snapshot["revision"])
+            if self._memory_snapshot_revisions.get(key) == revision:
+                continue
+            payload = {
+                "scope_type": key[0],
+                "scope_id": key[1],
+                "scope": snapshot["scope"],
+                "source_revision": revision,
+                "entries": snapshot["entries"],
+            }
+            response = await put_snapshot(configuration, payload)
+            if (
+                response.get("scope_type") != key[0]
+                or response.get("scope_id") != key[1]
+                or not isinstance(response.get("source_revision"), int)
+                or int(response["source_revision"]) < revision
+            ):
+                raise RunEventSyncProtocolError(
+                    "Memory snapshot response does not acknowledge the source revision"
+                )
+            self._memory_snapshot_revisions[key] = revision
 
     @staticmethod
     def _timestamp(value: Any) -> float:
@@ -609,6 +726,153 @@ class CloudSyncWorker:
                 )
             except TimeoutError:
                 pass
+
+    async def _sync_memory_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        configuration: CloudSyncConfiguration,
+    ) -> int:
+        ingest_memory = getattr(
+            self._transport, "ingest_memory_mutations", None
+        )
+        if not callable(ingest_memory):
+            await self._retry_memory_batch(
+                batch, "Memory sync transport is unavailable"
+            )
+            return 0
+        payload = {
+            "scope_type": batch.scope_type,
+            "scope_id": batch.scope_id,
+            "scope": batch.scope,
+            "source_revision": batch.source_revision,
+            "mutations": [item.payload for item in batch.items],
+        }
+        try:
+            response = await ingest_memory(configuration, payload)
+            if (
+                response.get("scope_type") != batch.scope_type
+                or response.get("scope_id") != batch.scope_id
+            ):
+                raise RunEventSyncProtocolError(
+                    "Memory mutation response scope does not match request"
+                )
+            items = response.get("items")
+            if not isinstance(items, list) or len(items) != len(batch.items):
+                raise RunEventSyncProtocolError(
+                    "Memory mutation response item count does not match request"
+                )
+            for expected, item in zip(batch.items, items, strict=True):
+                if (
+                    not isinstance(item, dict)
+                    or item.get("mutation_id") != expected.mutation_id
+                    or not isinstance(item.get("inserted"), bool)
+                    or item.get("scope_revision")
+                    != expected.payload.get("scope_revision")
+                ):
+                    raise RunEventSyncProtocolError(
+                        f"Invalid Memory acknowledgement for {expected.mutation_id}"
+                    )
+            await asyncio.to_thread(
+                self._journal.mark_memory_mutation_batch_sent, batch
+            )
+            return len(batch.items)
+        except RunEventSyncHttpError as exc:
+            if self._is_permanent_event_error(exc.status_code):
+                await self._block_memory_batch(
+                    batch,
+                    self._failed_memory_mutation_id(exc.detail, batch),
+                    str(exc),
+                )
+            else:
+                await self._retry_memory_batch(batch, str(exc))
+        except OutboxLeaseLostError:
+            logger.info(
+                "Ignoring stale Memory sync result after lease handoff",
+                extra={
+                    "scope_type": batch.scope_type,
+                    "scope_id": batch.scope_id,
+                },
+            )
+        except (httpx.HTTPError, RunEventSyncProtocolError) as exc:
+            await self._retry_memory_batch(batch, str(exc))
+        except Exception as exc:
+            await self._retry_memory_batch(
+                batch, f"{type(exc).__name__}: {exc}"
+            )
+        return 0
+
+    async def _retry_memory_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        error: str,
+    ) -> None:
+        delay = min(
+            2 ** min(batch.attempt_count + 1, 8),
+            self._max_retry_seconds,
+        )
+        try:
+            await asyncio.to_thread(
+                self._journal.retry_memory_mutation_batch,
+                batch,
+                error=error,
+                next_attempt_at=time.time() + delay,
+            )
+        except OutboxLeaseLostError:
+            logger.info("Retry result lost its Memory sync lease")
+
+    async def _block_memory_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        failed_mutation_id: str,
+        error: str,
+    ) -> None:
+        try:
+            await asyncio.to_thread(
+                self._journal.block_memory_mutation_batch,
+                batch,
+                failed_mutation_id=failed_mutation_id,
+                error=error,
+            )
+        except OutboxLeaseLostError:
+            logger.info("Permanent error lost its Memory sync lease")
+            return
+        logger.error(
+            "Memory sync scope blocked by permanent mutation error",
+            extra={
+                "scope_type": batch.scope_type,
+                "scope_id": batch.scope_id,
+                "mutation_id": failed_mutation_id,
+                "error": error,
+            },
+        )
+
+    @staticmethod
+    def _failed_memory_mutation_id(
+        detail: Any,
+        batch: MemoryMutationSyncBatch,
+    ) -> str:
+        body = detail.get("detail", detail) if isinstance(detail, dict) else {}
+        candidate = body.get("mutation_id") if isinstance(body, dict) else None
+        mutation_ids = {item.mutation_id for item in batch.items}
+        if candidate in mutation_ids:
+            return str(candidate)
+        if isinstance(body, list):
+            for validation_error in body:
+                location = (
+                    validation_error.get("loc")
+                    if isinstance(validation_error, dict)
+                    else None
+                )
+                if not isinstance(location, (list, tuple)):
+                    continue
+                try:
+                    marker = location.index("mutations")
+                    index = location[marker + 1]
+                except (ValueError, IndexError):
+                    continue
+                if isinstance(index, int) and 0 <= index < len(batch.items):
+                    return batch.items[index].mutation_id
+        return batch.items[0].mutation_id
 
     async def _sync_batch(
         self,

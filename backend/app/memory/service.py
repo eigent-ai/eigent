@@ -51,7 +51,6 @@ from app.memory.events import (
 from app.memory.local_store import LocalMemoryStore
 from app.memory.paths import canonical_user_id
 from app.run_context import RunContext
-from app.utils.workspace_paths import task_dir_name
 
 logger = logging.getLogger("memory.service")
 
@@ -206,51 +205,14 @@ def finalize_task_lock_run_memory(
     summary: str | None = None,
     error: str | None = None,
 ) -> bool:
-    """Finalize durable memory for the Run currently attached to a TaskLock.
+    """Compatibility no-op.
 
-    Shared by Single Agent and Workforce paths. The helper is intentionally
-    best-effort and idempotent per run id so duplicate SSE end/finally paths do
-    not rewrite a successful `done` as `cancelled`.
+    RunCoordinator commits terminal facts to RunJournal and schedules the
+    bounded incremental Memory maintainer. LocalMemory V1 must not receive a
+    second transcript/status projection from this legacy hook.
     """
 
-    service = getattr(task_lock, "memory_service", None)
-    run_context = getattr(task_lock, "run_context", None)
-    if service is None or run_context is None:
-        return False
-
-    finalized = getattr(task_lock, "_memory_finalized_runs", None)
-    if finalized is None:
-        finalized = set()
-        task_lock._memory_finalized_runs = finalized
-    if run_context.run_id in finalized:
-        return False
-
-    try:
-        service.register_runtime_log_artifact(
-            run_context=run_context,
-            relative_path=f"{task_dir_name(run_context.run_id)}/camel_logs",
-        )
-        service.on_run_end(
-            run_context=run_context,
-            state=state,
-            final_result=final_result,
-            summary=summary,
-            error=error,
-        )
-        return True
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "memory finalize for task lock failed",
-            extra={
-                "project_id": getattr(run_context, "project_id", None),
-                "run_id": getattr(run_context, "run_id", None),
-                "state": state,
-            },
-            exc_info=True,
-        )
-        return False
-    finally:
-        finalized.add(run_context.run_id)
+    return False
 
 
 class MemoryService:

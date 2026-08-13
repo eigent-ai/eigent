@@ -21,9 +21,11 @@ const api = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   settings: vi.fn(),
+  consolidate: vi.fn(),
   remove: vi.fn(),
   confirm: vi.fn(),
   pin: vi.fn(),
+  restore: vi.fn(),
 }));
 
 vi.mock('@/service/memoryApi', async (importOriginal) => ({
@@ -32,9 +34,11 @@ vi.mock('@/service/memoryApi', async (importOriginal) => ({
   createMemoryEntry: api.create,
   updateMemoryEntry: api.update,
   updateMemoryScopeSettings: api.settings,
+  consolidateMemoryScope: api.consolidate,
   deleteMemoryEntry: api.remove,
   confirmMemoryEntry: api.confirm,
   pinMemoryEntry: api.pin,
+  restoreMemoryEntry: api.restore,
 }));
 vi.mock('@/store/projectStore', () => ({
   useProjectStore: (selector: (state: object) => unknown) =>
@@ -60,11 +64,13 @@ const scopeState = {
   revision: 1,
   capture_enabled: true,
   use_enabled: true,
-  sync_scope: 'local_only',
+  sync_scope: 'full_memory',
   token_limit: 1024,
   current_token_count: 10,
+  consolidate_threshold: 0.75,
   processed_through_watermark: 'sqlite-project-v1:4',
   extractor_version: 'memory-v2',
+  last_consolidated_at: null,
   last_error: null,
   updated_at: 1,
 };
@@ -74,6 +80,18 @@ describe('Memory Center', () => {
     vi.clearAllMocks();
     api.list.mockResolvedValue({ scope_state: scopeState, items: [] });
     api.create.mockResolvedValue({});
+    api.consolidate.mockResolvedValue({});
+  });
+
+  it('offers bounded organization without exposing a sync chooser', async () => {
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    await screen.findByText(/Synced to your Eigent account/);
+    expect(screen.queryByRole('combobox', { name: /sync/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Organize/ }));
+
+    expect(api.consolidate).toHaveBeenCalledWith('project', 'project-1');
   });
 
   it('explains the History boundary and creates editable Memory', async () => {
@@ -84,7 +102,7 @@ describe('Memory Center', () => {
       screen.getByText(/Canonical task history is stored separately/)
     ).toBeInTheDocument();
     await waitFor(() =>
-      expect(api.list).toHaveBeenCalledWith('project', 'project-1')
+      expect(api.list).toHaveBeenCalledWith('project', 'project-1', false)
     );
 
     await user.type(
@@ -99,5 +117,43 @@ describe('Memory Center', () => {
         expect.objectContaining({ content: 'Use ISO dates.' })
       )
     );
+  });
+
+  it('shows archived entries only on request and restores them', async () => {
+    const archived = {
+      memory_id: 'memory-1',
+      scope_type: 'project',
+      scope_id: 'project-1',
+      kind: 'fact',
+      content: 'Old fact',
+      priority: 'normal',
+      version: 2,
+      token_count: 2,
+      pinned_by_user: false,
+      confirmed_by_user: false,
+      created_by: 'user',
+      source_trust: 'user_confirmed',
+      sensitivity: 'normal',
+      source_refs: [],
+      deleted_at: 2,
+      created_at: 1,
+      updated_at: 2,
+    };
+    api.list.mockImplementation(
+      (_scopeType: string, _scopeId: string, includeDeleted: boolean) =>
+        Promise.resolve({
+          scope_state: scopeState,
+          items: includeDeleted ? [archived] : [],
+        })
+    );
+    api.restore.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    await user.click(screen.getByRole('switch', { name: 'Show archived' }));
+    expect(await screen.findByText('Old fact')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Restore/ }));
+
+    expect(api.restore).toHaveBeenCalledWith(archived);
   });
 });

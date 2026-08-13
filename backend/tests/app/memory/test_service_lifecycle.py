@@ -327,7 +327,7 @@ class TestCamelLogsArtifact:
 
 
 class TestTaskLockFinalizer:
-    def test_finalize_task_lock_run_memory_writes_done_once(
+    def test_legacy_task_lock_finalizer_is_retired_noop(
         self, service, run_context
     ):
         class DummyTaskLock:
@@ -346,7 +346,7 @@ class TestTaskLockFinalizer:
             user_prompt="q",
         )
 
-        assert finalize_task_lock_run_memory(
+        assert not finalize_task_lock_run_memory(
             task_lock,
             state="done",
             final_result="answer",
@@ -364,11 +364,11 @@ class TestTaskLockFinalizer:
             run_context.run_id,
         )
         assert status is not None
-        assert status.state == "done"
+        assert status.state == "running"
         tail = service.store.read_conversation_tail(
             "user_42", run_context.space_id, run_context.project_id, limit=10
         )
-        assert [event.content for event in tail] == ["q", "answer"]
+        assert [event.content for event in tail] == ["q"]
 
 
 class TestCrossRestartRecovery:

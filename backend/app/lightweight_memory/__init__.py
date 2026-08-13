@@ -14,6 +14,11 @@
 
 """Lightweight, bounded Memory and canonical History retrieval."""
 
+from app.lightweight_memory.legacy_importer import (
+    LegacyMemoryImportResult,
+    LegacyMemoryV1Importer,
+    migrate_legacy_memory_v1_on_startup,
+)
 from app.lightweight_memory.maintainer import (
     ConservativeMemoryExtractor,
     IncrementalMemoryMaintainer,
@@ -24,6 +29,7 @@ from app.lightweight_memory.service import (
     HistoryQueryPage,
     HistoryQueryResult,
     LightweightMemoryService,
+    MemoryConsolidationResult,
     get_lightweight_memory_service,
 )
 
@@ -32,8 +38,12 @@ __all__ = [
     "HistoryQueryResult",
     "ConservativeMemoryExtractor",
     "IncrementalMemoryMaintainer",
+    "LegacyMemoryImportResult",
+    "LegacyMemoryV1Importer",
     "LightweightMemoryService",
+    "MemoryConsolidationResult",
     "ProposedMemoryMutation",
     "schedule_project_memory_maintenance",
     "get_lightweight_memory_service",
+    "migrate_legacy_memory_v1_on_startup",
 ]

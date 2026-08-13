@@ -418,9 +418,6 @@ class TestChatController:
                     new=AsyncMock(side_effect=RuntimeError("binding failed")),
                 ),
                 patch("app.controller.chat_controller.step_solve") as solve,
-                patch(
-                    "app.controller.chat_controller.get_memory_service"
-                ) as memory_service,
             ):
                 with pytest.raises(RuntimeError, match="binding failed"):
                     await start_chat_stream(chat_data, mock_request)
@@ -439,11 +436,6 @@ class TestChatController:
             )
             assert journal.list_events(run_id)[-1].payload["reason"] == (
                 "resume_admission_failed"
-            )
-            memory_service.return_value.project_canonical_run_status.assert_called_once_with(
-                run_id,
-                state="interrupted",
-                error="resume_admission_failed",
             )
         await coordinator.close()
 
@@ -518,7 +510,6 @@ class TestChatController:
                     return_value=tmp_path / "camel-log",
                 ),
                 patch("app.controller.chat_controller.set_current_task_id"),
-                patch("app.controller.chat_controller.get_memory_service"),
                 patch("app.controller.chat_controller.load_dotenv"),
             ):
                 prepared = await _prepare_chat_run(
@@ -851,7 +842,6 @@ class TestChatController:
         )
         resolver = MagicMock()
         resolver.freeze_task_directories_for.return_value = frozen_dirs
-        memory_service = MagicMock()
         admission_service = MagicMock()
         follow_up_spec = SimpleNamespace(
             spec_id="envspec-follow-up",
@@ -879,10 +869,6 @@ class TestChatController:
             patch(
                 "app.controller.chat_controller.get_workspace_resolver",
                 return_value=resolver,
-            ),
-            patch(
-                "app.controller.chat_controller.get_memory_service",
-                return_value=memory_service,
             ),
             patch(
                 "app.controller.chat_controller.SQLiteRunJournal",
@@ -995,8 +981,6 @@ class TestChatController:
         )
         resolver = MagicMock()
         resolver.freeze_task_directories_for.return_value = frozen_dirs
-        memory_service = MagicMock()
-
         with (
             patch(
                 "app.controller.chat_controller.get_default_run_coordinator",
@@ -1009,10 +993,6 @@ class TestChatController:
             patch(
                 "app.controller.chat_controller.get_workspace_resolver",
                 return_value=resolver,
-            ),
-            patch(
-                "app.controller.chat_controller.get_memory_service",
-                return_value=memory_service,
             ),
             patch(
                 "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
@@ -1035,7 +1015,6 @@ class TestChatController:
 
         controller_run_journal.ensure_run.assert_not_called()
         controller_run_journal.create_run_attempt.assert_not_called()
-        memory_service.on_run_start.assert_not_called()
         mock_task_lock.put_queue.assert_not_awaited()
         assert mock_task_lock.run_context is old_context
 
@@ -1065,16 +1044,10 @@ class TestChatController:
             assert response.status_code == 201
 
     @pytest.mark.asyncio
-    async def test_improve_skips_durable_on_run_start_when_rotation_failed(
+    async def test_improve_rejects_follow_up_when_run_rotation_failed(
         self, mock_task_lock, mock_request
     ):
-        """R27-1 regression: if run_context did not rotate to data.task_id
-        (e.g. freeze_task_directories_for raised inside the swallowing
-        try/except), we must NOT call MemoryService.on_run_start against the
-        previous, already-finalized run id -- doing so would reset its
-        status.json back to "running" and the finalize dedup set then blocks
-        future end-of-turn writers from closing it again.
-        """
+        """A failed directory rotation must not admit the follow-up Run."""
 
         # Use a real RunContext-shaped stand-in so getattr access works.
         stale_run = SimpleNamespace(
@@ -1092,7 +1065,6 @@ class TestChatController:
         mock_task_lock.status = Status.processing
         mock_task_lock.email = "u@example.com"
 
-        memory_service = MagicMock()
         supplement_data = SupplementChat(
             question="next turn", task_id="brand_new_task_id"
         )
@@ -1113,21 +1085,14 @@ class TestChatController:
                 ),
             ),
             patch(
-                "app.controller.chat_controller.get_memory_service",
-                return_value=memory_service,
-            ),
-            patch(
                 "app.controller.chat_controller._prepare_browser_for_request_with_timeout",
                 new=AsyncMock(return_value=True),
             ),
         ):
             with pytest.raises(UserException, match="durably prepare"):
                 await improve("project_x", supplement_data, mock_request)
-
-            # Critical assertion: on_run_start was NOT called against the stale
-            # context. The R26 fix only checked data.task_id; R27 strengthens
-            # it to compare refreshed_context.run_id == data.task_id.
-            memory_service.on_run_start.assert_not_called()
+            mock_task_lock.put_queue.assert_not_awaited()
+            assert mock_task_lock.run_context is stale_run
 
     def test_supplement_chat_success(self, mock_task_lock):
         """Test successful chat supplementation."""

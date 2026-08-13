@@ -104,12 +104,18 @@ function StepCard({ id, title, subtitle, checked, onClick }: StepCardProps) {
 
 export interface WorkspaceCoworkPanelProps {
   memoryOn: boolean;
+  memoryAvailable: boolean;
+  memoryLoading: boolean;
   onMemoryToggle: () => void;
+  onMemoryManage: () => void;
 }
 
 export function WorkspaceCoworkPanel({
   memoryOn,
+  memoryAvailable,
+  memoryLoading,
   onMemoryToggle,
+  onMemoryManage,
 }: WorkspaceCoworkPanelProps) {
   const { t } = useTranslation();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -168,17 +174,29 @@ export function WorkspaceCoworkPanel({
           <span className="min-w-0 text-body-sm font-medium text-ds-text-neutral-muted-default">
             {memoryLabel}
           </span>
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            className="no-drag shrink-0"
-            onClick={onMemoryToggle}
-            aria-pressed={memoryOn}
-            aria-label={`${memoryLabel}: ${memoryOn ? memoryOnLabel : memoryOffLabel}`}
-          >
-            {memoryOn ? memoryOnLabel : memoryOffLabel}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="no-drag shrink-0"
+              onClick={onMemoryManage}
+            >
+              Manage
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              className="no-drag shrink-0"
+              disabled={!memoryAvailable || memoryLoading}
+              onClick={onMemoryToggle}
+              aria-pressed={memoryOn}
+              aria-label={`${memoryLabel}: ${memoryOn ? memoryOnLabel : memoryOffLabel}`}
+            >
+              {memoryLoading ? '…' : memoryOn ? memoryOnLabel : memoryOffLabel}
+            </Button>
+          </div>
         </div>
       </div>
 

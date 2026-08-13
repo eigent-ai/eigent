@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +41,8 @@ class FakeTransport:
         self.projects: list[dict[str, Any]] = []
         self.snapshots: dict[str, dict[str, Any]] = {}
         self.project_events: dict[str, list[dict[str, Any]]] = {}
+        self.memory_snapshots: list[dict[str, Any]] = []
+        self.memory_payloads: list[dict[str, Any]] = []
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -89,6 +105,31 @@ class FakeTransport:
             "items": items,
         }
 
+    async def put_memory_snapshot(self, configuration, payload):
+        self.memory_snapshots.append(payload)
+        return {
+            "scope_type": payload["scope_type"],
+            "scope_id": payload["scope_id"],
+            "source_revision": payload["source_revision"],
+            "entry_count": len(payload["entries"]),
+        }
+
+    async def ingest_memory_mutations(self, configuration, payload):
+        self.memory_payloads.append(payload)
+        return {
+            "scope_type": payload["scope_type"],
+            "scope_id": payload["scope_id"],
+            "revision": payload["source_revision"],
+            "items": [
+                {
+                    "mutation_id": mutation["mutation_id"],
+                    "inserted": True,
+                    "scope_revision": mutation["scope_revision"],
+                }
+                for mutation in payload["mutations"]
+            ],
+        }
+
     async def close(self):
         self.closed = True
 
@@ -141,6 +182,46 @@ async def test_worker_sends_fifo_batch_and_marks_it_sent(journal):
     assert journal.list_pending_outbox(now=100) == []
     await worker.close()
     assert transport.closed is True
+
+
+@pytest.mark.asyncio
+async def test_worker_syncs_full_memory_snapshot_and_independent_outbox(
+    journal,
+):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-1",
+        idempotency_key="request-1",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Created in Memory Center",
+        content="Use Chinese.",
+        kind="preference",
+        token_count=3,
+        created_by="user",
+        source_trust="user_confirmed",
+    )
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+
+    assert (
+        transport.memory_snapshots[0]["scope"]["sync_scope"] == "full_memory"
+    )
+    assert (
+        transport.memory_snapshots[0]["entries"][0]["content"]
+        == "Use Chinese."
+    )
+    assert (
+        transport.memory_payloads[0]["mutations"][0]["entry"]["content"]
+        == "Use Chinese."
+    )
+    assert transport.memory_payloads[0]["mutations"][0]["scope_revision"] == 1
+    assert journal.claim_ready_memory_mutation_batches(now=float("inf")) == []
+    await worker.close()
 
 
 @pytest.mark.asyncio

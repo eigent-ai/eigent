@@ -166,13 +166,8 @@ async def startup_event():
     git_observation = await asyncio.to_thread(
         WorkspaceGitObserver(get_default_run_journal()).inspect_all
     )
-    # LocalMemory is a compatibility/context projection, never an execution
-    # status authority. Repair its status files from the canonical journal so
-    # a hard process exit cannot leave UI/context consumers seeing "running"
-    # or "cancelled" for an interrupted Run.
-    from app.memory import get_memory_service
-
     journal = get_default_run_journal()
+    from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
         migrate_legacy_workspace_bundle_on_startup,
     )
@@ -187,34 +182,15 @@ async def startup_event():
             "startup: %s",
             legacy_bundle_migration.error,
         )
-    canonical_runs = await asyncio.to_thread(journal.list_all_runs)
-    memory_states = {
-        run.run_id: (
-            {
-                "pending": "running",
-                "running": "running",
-                "waiting_for_user": "running",
-                "completed": "done",
-                "failed": "failed",
-                "cancelled": "cancelled",
-                "interrupted": "interrupted",
-            }[run.status],
-            (
-                "brain_restart"
-                if run.status == "interrupted"
-                else (
-                    "run_deadline_reached"
-                    if run.run_id in reconciliation.deadline_run_ids
-                    else None
-                )
-            ),
-        )
-        for run in canonical_runs
-    }
-    await asyncio.to_thread(
-        get_memory_service().project_canonical_run_statuses,
-        memory_states,
+    legacy_memory_migration = await asyncio.to_thread(
+        migrate_legacy_memory_v1_on_startup
     )
+    if legacy_memory_migration.status == "degraded":
+        app_logger.warning(
+            "Legacy Memory V1 migration degraded without blocking startup: "
+            "%s files",
+            legacy_memory_migration.degraded_files,
+        )
     app_logger.info(
         "RunJournal startup reconciliation complete",
         extra={
@@ -251,6 +227,8 @@ async def startup_event():
             "git_observation_failures": len(
                 git_observation.failed_repository_ids
             ),
+            "legacy_memory_imported": (legacy_memory_migration.imported_count),
+            "legacy_memory_skipped": legacy_memory_migration.skipped_count,
         },
     )
 

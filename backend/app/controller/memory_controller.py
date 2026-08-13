@@ -69,10 +69,11 @@ class MemoryScopeSettingsBody(BaseModel):
     expected_revision: int = Field(ge=0)
     capture_enabled: bool | None = None
     use_enabled: bool | None = None
-    sync_scope: (
-        Literal["local_only", "metadata_only", "summary_only", "full_memory"]
-        | None
-    ) = None
+
+
+class ConsolidateMemoryBody(BaseModel):
+    request_id: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=1000)
 
 
 def _serialize_result(result) -> dict:
@@ -113,11 +114,35 @@ async def update_memory_scope_settings(
             expected_revision=body.expected_revision,
             capture_enabled=body.capture_enabled,
             use_enabled=body.use_enabled,
-            sync_scope=body.sync_scope,
         )
     except Exception as exc:  # noqa: BLE001 - typed translation below
         raise _translate_error(exc) from exc
     return asdict(result)
+
+
+@router.post("/memory/scopes/{scope_type}/{scope_id}/consolidate")
+async def consolidate_memory_scope(
+    scope_type: ScopeType,
+    scope_id: str,
+    body: ConsolidateMemoryBody,
+):
+    service = get_lightweight_memory_service()
+    try:
+        result = service.consolidate_scope(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            reason=body.reason,
+            request_id=body.request_id,
+            actor_type="user",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate_error(exc) from exc
+    return {
+        "scope_state": asdict(result.scope_state),
+        "removed_memory_ids": list(result.removed_memory_ids),
+        "retained_memory_ids": list(result.retained_memory_ids),
+        "tokens_released": result.tokens_released,
+    }
 
 
 @router.get("/memory/entries")

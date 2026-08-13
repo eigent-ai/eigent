@@ -32,7 +32,6 @@ from app.auth import require_local_control_principal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
-from app.memory import get_memory_service
 from app.model.chat import (
     AddTaskRequest,
     Chat,
@@ -1245,37 +1244,9 @@ async def _prepare_chat_run(
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
-    # Local memory: write Space/Project/Run scaffolding + append user prompt.
-    # Best-effort; MemoryService swallows write errors so chat keeps working.
-    memory_service = get_memory_service()
-    memory_mode = (
-        "single_agent" if data.session_mode == "single-agent" else "workforce"
-    )
-    memory_space_source = (
-        "legacy"
-        if data.space_id and data.space_id.startswith("legacy_")
-        else ("folder" if data.space_root_path else "blank")
-    )
-    if is_resume:
-        memory_service.on_run_resume(run_context=run_context)
-        # A prior consumer may have finalized the projection as interrupted in
-        # this process. The new Attempt owns its own future finalization.
-        finalized = getattr(task_lock, "_memory_finalized_runs", None)
-        if finalized is not None:
-            finalized.discard(run_context.run_id)
-    else:
-        memory_service.on_run_start(
-            run_context=run_context,
-            space_name=None,
-            project_name=None,
-            space_source_type=memory_space_source,
-            mode=memory_mode,
-            user_prompt=data.question,
-            prompt_source="chat",
-            conversation_event_id=f"memory:{request_id}",
-        )
-    task_lock.memory_service = memory_service
-
+    # Canonical conversation and Run continuity live in SQLite RunJournal.
+    # Lightweight Memory is maintained from that cursor after terminal events;
+    # never duplicate the transcript into LocalMemory V1 here.
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
@@ -1516,11 +1487,6 @@ async def start_chat_stream(data: Chat, request: Request):
                         )
 
                         notify_default_cloud_sync_worker()
-                        get_memory_service().project_canonical_run_status(
-                            run_id,
-                            state="interrupted",
-                            error="resume_admission_failed",
-                        )
                 except Exception:
                     chat_logger.exception(
                         "Failed to close a partial Resume admission",
@@ -1941,20 +1907,13 @@ async def _improve_chat(
                 f" {e}"
             )
 
-    # Local memory: this is a follow-up turn within the same Project. The
-    # original on_run_start ran when the chat first started; here we open a
-    # new Run record for the supplement turn so its conversation events are
-    # bound to the right run_id.
-    #
-    # Strict guard: only open a new durable Run when run_context was actually
+    # This is a follow-up turn within the same Project. Strictly open its
+    # canonical Run only when run_context was actually
     # rotated to the supplied task_id. The workspace-rotation block above is
     # wrapped in a best-effort try/except, so a missing email, a resolver
     # failure, or any other swallowed exception can leave task_lock.run_context
-    # pointing at the previous (finalized) run id. Calling on_run_start in
-    # that state would reset the old run's status.json back to "running" and
-    # the finalize dedup set then blocks the next end-of-turn writer from
-    # closing it again -- leaving durable memory permanently divergent from
-    # the visible chat flow.
+    # pointing at the previous finalized Run. Admission in that state would
+    # attach new Project History events to the wrong immutable run_id.
     refreshed_context = getattr(task_lock, "run_context", None)
     rotation_succeeded = (
         data.task_id
@@ -2056,21 +2015,6 @@ async def _improve_chat(
             content=data.question,
             source="improve",
             attaches=data.attaches or [],
-        )
-        await asyncio.to_thread(
-            get_memory_service().on_run_start,
-            run_context=refreshed_context,
-            space_name=None,
-            project_name=None,
-            space_source_type=(
-                "legacy"
-                if refreshed_context.space_id.startswith("legacy_")
-                else "blank"
-            ),
-            mode=None,  # mode unchanged; preserve existing project.json value
-            user_prompt=data.question,
-            prompt_source="improve",
-            conversation_event_id=f"memory:{resolved_request_id}",
         )
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
@@ -2285,13 +2229,6 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         "human_reply",
         {"agent": data.agent, "reply": data.reply},
     )
-    memory_service = getattr(task_lock, "memory_service", None)
-    if memory_service is not None and run_context is not None:
-        memory_service.on_human_reply(
-            run_context=run_context,
-            content=data.reply,
-        )
-
     current_context = getattr(task_lock, "run_context", None)
     if isinstance(current_context, RunContext):
         await sync_step_event(

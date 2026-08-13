@@ -31,6 +31,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,8 @@ from app.run_journal.models import (
     MemoryEntryRecord,
     MemoryMutationRecord,
     MemoryMutationResult,
+    MemoryMutationSyncBatch,
+    MemoryMutationSyncItem,
     MemoryScopeStateRecord,
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
@@ -111,7 +114,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 25
 logger = logging.getLogger("run_journal")
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
@@ -1581,6 +1584,89 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (22, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 22;
+COMMIT;
+"""
+
+_MIGRATION_V23 = """
+BEGIN IMMEDIATE;
+
+-- The independent Memory lane must retain the exact post-mutation projection.
+-- Reading the current entry at drain time would make an older mutation appear
+-- to contain a later version after multiple offline edits.
+ALTER TABLE memory_mutation_outbox
+ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}';
+
+-- revision is the canonical per-scope order. Timestamps and UUIDs are not a
+-- safe FIFO when multiple mutations commit inside the same clock tick.
+ALTER TABLE memory_mutation_outbox
+ADD COLUMN scope_revision INTEGER NOT NULL DEFAULT 0;
+
+-- Memory Sync is a product-level invariant rather than a user preference.
+UPDATE memory_scope_state SET sync_scope = 'full_memory';
+
+CREATE INDEX IF NOT EXISTS memory_mutation_outbox_scope_revision_idx
+ON memory_mutation_outbox(scope_type, scope_id, status, scope_revision);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (23, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 23;
+COMMIT;
+"""
+
+_MIGRATION_V24 = """
+BEGIN IMMEDIATE;
+
+CREATE TABLE IF NOT EXISTS legacy_memory_import_batches(
+    source_path TEXT NOT NULL,
+    source_checksum TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('completed', 'degraded')),
+    imported_count INTEGER NOT NULL DEFAULT 0 CHECK(imported_count >= 0),
+    skipped_count INTEGER NOT NULL DEFAULT 0 CHECK(skipped_count >= 0),
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(source_path, source_checksum)
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (24, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 24;
+COMMIT;
+"""
+
+_MIGRATION_V25 = """
+BEGIN IMMEDIATE;
+
+-- Memory content sync is mandatory.  Keep the invariant at the storage
+-- boundary as well as in the API so no old caller can silently opt a scope
+-- out and strand its independent mutation lane.
+CREATE TRIGGER IF NOT EXISTS memory_scope_state_full_sync_insert
+BEFORE INSERT ON memory_scope_state
+WHEN NEW.sync_scope != 'full_memory'
+BEGIN
+    SELECT RAISE(ABORT, 'Memory sync is fixed to full_memory');
+END;
+
+CREATE TRIGGER IF NOT EXISTS memory_scope_state_full_sync_update
+BEFORE UPDATE OF sync_scope ON memory_scope_state
+WHEN NEW.sync_scope != 'full_memory'
+BEGIN
+    SELECT RAISE(ABORT, 'Memory sync is fixed to full_memory');
+END;
+
+-- Automatic extraction is Project-scoped in V2. Space/User Memory remains
+-- editable and injectable, but cannot pretend to scan multiple Project
+-- History streams with one cursor.
+UPDATE memory_scope_state
+SET capture_enabled = 0
+WHERE scope_type IN ('space', 'user');
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (25, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 25;
 COMMIT;
 """
 
@@ -7737,13 +7823,12 @@ class SQLiteRunJournal:
         now: float | None = None,
     ) -> MemoryScopeStateRecord:
         self._validate_memory_scope(scope_type, scope_id)
-        if sync_scope is not None and sync_scope not in {
-            "local_only",
-            "metadata_only",
-            "summary_only",
-            "full_memory",
-        }:
-            raise ValueError("invalid Memory sync_scope")
+        if sync_scope is not None and sync_scope != "full_memory":
+            raise ValueError("Memory sync is fixed to full_memory")
+        if scope_type != "project" and capture_enabled:
+            raise ValueError(
+                "Automatic Memory capture is only supported for Project scope"
+            )
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
             row = self._ensure_memory_scope_state_in_transaction(
@@ -7874,6 +7959,59 @@ class SQLiteRunJournal:
             if updated.rowcount != 1:
                 raise OptimisticConcurrencyError(
                     "Memory scope changed during maintenance"
+                )
+            result = connection.execute(
+                """SELECT * FROM memory_scope_state
+                WHERE scope_type = ? AND scope_id = ?""",
+                (scope_type, scope_id),
+            ).fetchone()
+            assert result is not None
+            return self._memory_scope_state_from_row(result)
+
+    def record_memory_consolidation_result(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        expected_revision: int,
+        now: float | None = None,
+    ) -> MemoryScopeStateRecord:
+        """CAS-record a completed bounded consolidation pass."""
+
+        self._validate_memory_scope(scope_type, scope_id)
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind="desktop",
+                token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                now=timestamp,
+            )
+            if int(row["revision"]) != expected_revision:
+                raise OptimisticConcurrencyError(
+                    f"Memory scope {scope_type}:{scope_id} expected revision "
+                    f"{expected_revision}, found {row['revision']}"
+                )
+            updated = connection.execute(
+                """
+                UPDATE memory_scope_state
+                SET last_consolidated_at = ?, last_error = NULL,
+                    revision = revision + 1, updated_at = ?
+                WHERE scope_type = ? AND scope_id = ? AND revision = ?
+                """,
+                (
+                    timestamp,
+                    timestamp,
+                    scope_type,
+                    scope_id,
+                    expected_revision,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    "Memory scope changed during consolidation"
                 )
             result = connection.execute(
                 """SELECT * FROM memory_scope_state
@@ -8331,13 +8469,64 @@ class SQLiteRunJournal:
                 (scope_type, scope_id),
             ).fetchone()
             assert state is not None
-            if state["sync_scope"] != "local_only":
+            if state["sync_scope"] == "full_memory":
+                entry_projection = None
+                if final_entry is not None:
+                    entry_projection = {
+                        "memory_id": final_entry["memory_id"],
+                        "kind": final_entry["kind"],
+                        "content": final_entry["content"],
+                        "priority": final_entry["priority"],
+                        "version": int(final_entry["version"]),
+                        "token_count": int(final_entry["token_count"]),
+                        "pinned_by_user": bool(final_entry["pinned_by_user"]),
+                        "confirmed_by_user": bool(
+                            final_entry["confirmed_by_user"]
+                        ),
+                        "created_by": final_entry["created_by"],
+                        "source_trust": final_entry["source_trust"],
+                        "sensitivity": final_entry["sensitivity"],
+                        "source_refs": json.loads(
+                            final_entry["source_refs_json"]
+                        ),
+                        "deleted_at": (
+                            datetime.fromtimestamp(
+                                float(final_entry["deleted_at"]), tz=UTC
+                            ).isoformat()
+                            if final_entry["deleted_at"] is not None
+                            else None
+                        ),
+                        "created_at": datetime.fromtimestamp(
+                            float(final_entry["created_at"]), tz=UTC
+                        ).isoformat(),
+                        "updated_at": datetime.fromtimestamp(
+                            float(final_entry["updated_at"]), tz=UTC
+                        ).isoformat(),
+                    }
+                outbox_payload = {
+                    "mutation_id": mutation_id,
+                    "memory_id": memory_id,
+                    "operation": operation,
+                    "expected_version": expected_version,
+                    "actor_type": actor_type,
+                    "actor_id": actor_id,
+                    "run_id": run_id,
+                    "reason": reason,
+                    "idempotency_key": idempotency_key,
+                    "request_digest": request_digest,
+                    "decision_id": decision_id,
+                    "created_at": datetime.fromtimestamp(
+                        timestamp, tz=UTC
+                    ).isoformat(),
+                    "entry": entry_projection,
+                }
                 connection.execute(
                     """
                     INSERT INTO memory_mutation_outbox(
                         mutation_id, scope_type, scope_id, status,
-                        attempt_count, next_attempt_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)
+                        attempt_count, next_attempt_at, created_at, updated_at,
+                        payload_json, scope_revision
+                    ) VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)
                     """,
                     (
                         mutation_id,
@@ -8346,6 +8535,13 @@ class SQLiteRunJournal:
                         timestamp,
                         timestamp,
                         timestamp,
+                        json.dumps(
+                            outbox_payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        int(state["revision"]),
                     ),
                 )
             mutation_row = connection.execute(
@@ -12081,6 +12277,436 @@ class SQLiteRunJournal:
             )
 
     @staticmethod
+    def _memory_entry_cloud_projection(
+        entry: dict[str, Any] | None,
+        sync_scope: str,
+    ) -> dict[str, Any] | None:
+        if entry is None:
+            return None
+        if sync_scope != "full_memory":
+            raise InvalidRunTransitionError(
+                "Memory sync is fixed to full_memory"
+            )
+        projected = dict(entry)
+        content = str(projected.get("content") or "")
+        projected["content"] = content
+        projected["content_digest"] = hashlib.sha256(
+            content.encode("utf-8")
+        ).hexdigest()
+        projected["source_refs"] = [
+            "ref:"
+            + hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:20]
+            for value in projected.get("source_refs", [])[:20]
+        ]
+        return projected
+
+    def list_memory_sync_snapshots(self) -> list[dict[str, Any]]:
+        """Return bounded derived snapshots for anti-entropy bootstrap."""
+
+        with self._lock:
+            states = self._connection.execute(
+                """
+                SELECT * FROM memory_scope_state
+                WHERE sync_scope = 'full_memory'
+                ORDER BY scope_type, scope_id
+                """
+            ).fetchall()
+            snapshots: list[dict[str, Any]] = []
+            for state in states:
+                entries = self._connection.execute(
+                    """
+                    SELECT * FROM memory_entries
+                    WHERE scope_type = ? AND scope_id = ?
+                    ORDER BY created_at, memory_id
+                    """,
+                    (state["scope_type"], state["scope_id"]),
+                ).fetchall()
+                sync_scope = str(state["sync_scope"])
+                snapshots.append(
+                    {
+                        "scope_type": state["scope_type"],
+                        "scope_id": state["scope_id"],
+                        "scope": {
+                            "capture_enabled": bool(state["capture_enabled"]),
+                            "use_enabled": bool(state["use_enabled"]),
+                            "sync_scope": sync_scope,
+                            "token_limit": int(state["token_limit"]),
+                            "processed_through_watermark": state[
+                                "processed_through_watermark"
+                            ],
+                            "watermark_kind": state["watermark_kind"],
+                            "updated_at": datetime.fromtimestamp(
+                                float(state["updated_at"]), tz=UTC
+                            ).isoformat(),
+                        },
+                        "revision": int(state["revision"]),
+                        "entries": [
+                            self._memory_entry_cloud_projection(
+                                {
+                                    "memory_id": row["memory_id"],
+                                    "kind": row["kind"],
+                                    "content": row["content"],
+                                    "priority": row["priority"],
+                                    "version": int(row["version"]),
+                                    "token_count": int(row["token_count"]),
+                                    "pinned_by_user": bool(
+                                        row["pinned_by_user"]
+                                    ),
+                                    "confirmed_by_user": bool(
+                                        row["confirmed_by_user"]
+                                    ),
+                                    "created_by": row["created_by"],
+                                    "source_trust": row["source_trust"],
+                                    "sensitivity": row["sensitivity"],
+                                    "source_refs": json.loads(
+                                        row["source_refs_json"]
+                                    ),
+                                    "deleted_at": (
+                                        datetime.fromtimestamp(
+                                            float(row["deleted_at"]), tz=UTC
+                                        ).isoformat()
+                                        if row["deleted_at"] is not None
+                                        else None
+                                    ),
+                                    "created_at": datetime.fromtimestamp(
+                                        float(row["created_at"]), tz=UTC
+                                    ).isoformat(),
+                                    "updated_at": datetime.fromtimestamp(
+                                        float(row["updated_at"]), tz=UTC
+                                    ).isoformat(),
+                                },
+                                sync_scope,
+                            )
+                            for row in entries
+                        ],
+                    }
+                )
+            return snapshots
+
+    def has_legacy_memory_import(
+        self, source_path: str, source_checksum: str
+    ) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT 1 FROM legacy_memory_import_batches
+                WHERE source_path = ? AND source_checksum = ?
+                  AND status = 'completed'
+                """,
+                (source_path, source_checksum),
+            ).fetchone()
+        return row is not None
+
+    def record_legacy_memory_import(
+        self,
+        *,
+        source_path: str,
+        source_checksum: str,
+        status: str,
+        imported_count: int,
+        skipped_count: int,
+        error: str | None = None,
+        now: float | None = None,
+    ) -> None:
+        if status not in {"completed", "degraded"}:
+            raise ValueError("invalid legacy Memory import status")
+        if imported_count < 0 or skipped_count < 0:
+            raise ValueError(
+                "legacy Memory import counts must be non-negative"
+            )
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO legacy_memory_import_batches(
+                    source_path, source_checksum, status, imported_count,
+                    skipped_count, last_error, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_path, source_checksum) DO UPDATE SET
+                    status = excluded.status,
+                    imported_count = excluded.imported_count,
+                    skipped_count = excluded.skipped_count,
+                    last_error = excluded.last_error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    source_path,
+                    source_checksum,
+                    status,
+                    imported_count,
+                    skipped_count,
+                    error[:4000] if error else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+    def claim_ready_memory_mutation_batches(
+        self,
+        *,
+        now: float | None = None,
+        max_scopes: int = 4,
+        batch_size: int = 100,
+        lease_seconds: float = 30.0,
+    ) -> list[MemoryMutationSyncBatch]:
+        if max_scopes < 1 or batch_size < 1 or lease_seconds <= 0:
+            raise ValueError("Memory outbox claim limits must be positive")
+        timestamp = now if now is not None else time.time()
+        batches: list[MemoryMutationSyncBatch] = []
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                UPDATE memory_mutation_outbox
+                SET status = 'pending', lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE status = 'sending'
+                  AND (lease_until IS NULL OR lease_until <= ?)
+                """,
+                (timestamp, timestamp),
+            )
+            candidates = connection.execute(
+                """
+                SELECT outbox.scope_type, outbox.scope_id,
+                       MIN(outbox.scope_revision) AS head_scope_revision
+                FROM memory_mutation_outbox AS outbox
+                WHERE outbox.status = 'pending'
+                  AND outbox.next_attempt_at <= ?
+                  AND outbox.scope_revision = (
+                      SELECT MIN(head.scope_revision)
+                      FROM memory_mutation_outbox AS head
+                      WHERE head.scope_type = outbox.scope_type
+                        AND head.scope_id = outbox.scope_id
+                        AND head.status != 'sent'
+                  )
+                GROUP BY outbox.scope_type, outbox.scope_id
+                ORDER BY head_scope_revision, outbox.scope_type, outbox.scope_id
+                LIMIT ?
+                """,
+                (timestamp, max_scopes),
+            ).fetchall()
+            for candidate in candidates:
+                state = connection.execute(
+                    """
+                    SELECT * FROM memory_scope_state
+                    WHERE scope_type = ? AND scope_id = ?
+                    """,
+                    (candidate["scope_type"], candidate["scope_id"]),
+                ).fetchone()
+                if state is None or state["sync_scope"] != "full_memory":
+                    continue
+                rows = connection.execute(
+                    """
+                    SELECT * FROM memory_mutation_outbox
+                    WHERE scope_type = ? AND scope_id = ?
+                      AND status != 'sent' AND scope_revision >= ?
+                    ORDER BY scope_revision
+                    LIMIT ?
+                    """,
+                    (
+                        candidate["scope_type"],
+                        candidate["scope_id"],
+                        candidate["head_scope_revision"],
+                        batch_size,
+                    ),
+                ).fetchall()
+                ready: list[sqlite3.Row] = []
+                expected_scope_revision = int(rows[0]["scope_revision"])
+                for row in rows:
+                    if (
+                        row["status"] != "pending"
+                        or float(row["next_attempt_at"]) > timestamp
+                        or row["payload_json"] == "{}"
+                        or int(row["scope_revision"])
+                        != expected_scope_revision
+                    ):
+                        break
+                    ready.append(row)
+                    expected_scope_revision += 1
+                if not ready:
+                    continue
+                lease_token = uuid.uuid4().hex
+                mutation_ids = [row["mutation_id"] for row in ready]
+                claimed = connection.execute(
+                    """
+                    UPDATE memory_mutation_outbox
+                    SET status = 'sending', lease_token = ?, lease_until = ?,
+                        updated_at = ?
+                    WHERE status = 'pending' AND mutation_id IN (
+                        SELECT value FROM json_each(?)
+                    )
+                    """,
+                    (
+                        lease_token,
+                        timestamp + lease_seconds,
+                        timestamp,
+                        json.dumps(mutation_ids, separators=(",", ":")),
+                    ),
+                )
+                if claimed.rowcount != len(ready):
+                    raise OutboxLeaseLostError(
+                        "failed to lease all Memory mutations"
+                    )
+                sync_scope = str(state["sync_scope"])
+                items: list[MemoryMutationSyncItem] = []
+                for row in ready:
+                    payload = json.loads(row["payload_json"])
+                    payload["scope_revision"] = int(row["scope_revision"])
+                    payload["entry"] = self._memory_entry_cloud_projection(
+                        payload.get("entry"), sync_scope
+                    )
+                    items.append(
+                        MemoryMutationSyncItem(
+                            mutation_id=row["mutation_id"],
+                            payload=payload,
+                        )
+                    )
+                batches.append(
+                    MemoryMutationSyncBatch(
+                        scope_type=candidate["scope_type"],
+                        scope_id=candidate["scope_id"],
+                        scope={
+                            "capture_enabled": bool(state["capture_enabled"]),
+                            "use_enabled": bool(state["use_enabled"]),
+                            "sync_scope": sync_scope,
+                            "token_limit": int(state["token_limit"]),
+                            "processed_through_watermark": state[
+                                "processed_through_watermark"
+                            ],
+                            "watermark_kind": state["watermark_kind"],
+                            "updated_at": datetime.fromtimestamp(
+                                float(state["updated_at"]), tz=UTC
+                            ).isoformat(),
+                        },
+                        source_revision=int(state["revision"]),
+                        lease_token=lease_token,
+                        attempt_count=int(ready[0]["attempt_count"]),
+                        items=tuple(items),
+                    )
+                )
+        return batches
+
+    def _finish_memory_mutation_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        status: str,
+        *,
+        error: str | None = None,
+        next_attempt_at: float | None = None,
+        increment_attempt: bool = False,
+        now: float | None = None,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        mutation_ids = [item.mutation_id for item in batch.items]
+        with self._write_transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT mutation_id FROM memory_mutation_outbox
+                WHERE status = 'sending' AND lease_token = ?
+                  AND mutation_id IN (SELECT value FROM json_each(?))
+                """,
+                (
+                    batch.lease_token,
+                    json.dumps(mutation_ids, separators=(",", ":")),
+                ),
+            ).fetchall()
+            if {row["mutation_id"] for row in rows} != set(mutation_ids):
+                raise OutboxLeaseLostError("Memory mutation lease was lost")
+            connection.execute(
+                """
+                UPDATE memory_mutation_outbox
+                SET status = ?, attempt_count = attempt_count + ?,
+                    next_attempt_at = COALESCE(?, next_attempt_at),
+                    last_error = ?, lease_token = NULL, lease_until = NULL,
+                    updated_at = ?
+                WHERE lease_token = ?
+                  AND mutation_id IN (SELECT value FROM json_each(?))
+                """,
+                (
+                    status,
+                    int(increment_attempt),
+                    next_attempt_at,
+                    error[:4000] if error else None,
+                    timestamp,
+                    batch.lease_token,
+                    json.dumps(mutation_ids, separators=(",", ":")),
+                ),
+            )
+
+    def mark_memory_mutation_batch_sent(
+        self, batch: MemoryMutationSyncBatch, *, now: float | None = None
+    ) -> None:
+        self._finish_memory_mutation_batch(batch, "sent", now=now)
+
+    def retry_memory_mutation_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        *,
+        error: str,
+        next_attempt_at: float,
+        now: float | None = None,
+    ) -> None:
+        self._finish_memory_mutation_batch(
+            batch,
+            "pending",
+            error=error,
+            next_attempt_at=next_attempt_at,
+            increment_attempt=True,
+            now=now,
+        )
+
+    def block_memory_mutation_batch(
+        self,
+        batch: MemoryMutationSyncBatch,
+        *,
+        failed_mutation_id: str,
+        error: str,
+        now: float | None = None,
+    ) -> None:
+        if failed_mutation_id not in {
+            item.mutation_id for item in batch.items
+        }:
+            raise ValueError("failed mutation must belong to batch")
+        timestamp = now if now is not None else time.time()
+        mutation_ids = [item.mutation_id for item in batch.items]
+        with self._write_transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT mutation_id FROM memory_mutation_outbox
+                WHERE status = 'sending' AND lease_token = ?
+                  AND mutation_id IN (SELECT value FROM json_each(?))
+                """,
+                (
+                    batch.lease_token,
+                    json.dumps(mutation_ids, separators=(",", ":")),
+                ),
+            ).fetchall()
+            if {row["mutation_id"] for row in rows} != set(mutation_ids):
+                raise OutboxLeaseLostError("Memory mutation lease was lost")
+            connection.execute(
+                """
+                UPDATE memory_mutation_outbox
+                SET status = 'pending', lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE lease_token = ?
+                  AND mutation_id IN (SELECT value FROM json_each(?))
+                """,
+                (
+                    timestamp,
+                    batch.lease_token,
+                    json.dumps(mutation_ids, separators=(",", ":")),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE memory_mutation_outbox
+                SET status = 'dead_letter', attempt_count = attempt_count + 1,
+                    last_error = ?, updated_at = ?
+                WHERE mutation_id = ?
+                """,
+                (error[:4000], timestamp, failed_mutation_id),
+            )
+
+    @staticmethod
     def _terminal_status_for_event(draft: RunEventDraft) -> str | None:
         # assistant.final keeps legacy_step='end' for old projectors, but the
         # Coordinator remains the sole owner of the Run terminal transition.
@@ -12668,6 +13294,31 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(migration)
         if version < 22:
             self._connection.executescript(_MIGRATION_V22)
+        if version < 23:
+            columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(memory_mutation_outbox)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V23
+            if "payload_json" in columns:
+                migration = migration.replace(
+                    "ALTER TABLE memory_mutation_outbox\n"
+                    "ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}';\n",
+                    "",
+                )
+            if "scope_revision" in columns:
+                migration = migration.replace(
+                    "ALTER TABLE memory_mutation_outbox\n"
+                    "ADD COLUMN scope_revision INTEGER NOT NULL DEFAULT 0;\n",
+                    "",
+                )
+            self._connection.executescript(migration)
+        if version < 24:
+            self._connection.executescript(_MIGRATION_V24)
+        if version < 25:
+            self._connection.executescript(_MIGRATION_V25)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -13577,10 +14228,17 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                 capture_enabled, use_enabled, sync_scope, token_limit,
                 current_token_count, consolidate_threshold,
                 extractor_version, updated_at
-            ) VALUES (?, ?, ?, 0, 1, 1, 'local_only', ?, 0, 0.75,
+            ) VALUES (?, ?, ?, 0, ?, 1, 'full_memory', ?, 0, 0.75,
                       'memory-v2', ?)
             """,
-            (scope_type, scope_id, owner_kind, token_limit, now),
+            (
+                scope_type,
+                scope_id,
+                owner_kind,
+                int(scope_type == "project"),
+                token_limit,
+                now,
+            ),
         )
         row = connection.execute(
             """

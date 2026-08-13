@@ -174,6 +174,23 @@ class MemoryMutationResult:
 
 
 @dataclass(frozen=True)
+class MemoryMutationSyncItem:
+    mutation_id: str
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class MemoryMutationSyncBatch:
+    scope_type: str
+    scope_id: str
+    scope: dict[str, Any]
+    source_revision: int
+    lease_token: str
+    attempt_count: int
+    items: tuple[MemoryMutationSyncItem, ...]
+
+
+@dataclass(frozen=True)
 class CloudRunReplica:
     run_id: str
     status: str
