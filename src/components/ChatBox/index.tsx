@@ -31,7 +31,10 @@ import {
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
-import { buildProjectContinuationContext } from '@/store/chatStore';
+import {
+  buildProjectContinuationContext,
+  resolveChatModelForProject,
+} from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
@@ -886,7 +889,11 @@ export default function ChatBox(): JSX.Element {
             chatStore.setNextTaskId(nextTaskId);
             chatStore.setNextExecutionId(_taskId as string, executionId);
 
-            // Use improve endpoint (POST /chat/{id}) - {id} is project_id
+            // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+            // Resolve the currently selected model so a mid-conversation switch
+            // (e.g. model A -> model B) is honored on this follow-up turn.
+            const improveModel =
+              await resolveChatModelForProject(targetProjectId);
             fetchPost(`/chat/${targetProjectId}`, {
               question: tempMessageContent,
               task_id: nextTaskId,
@@ -896,6 +903,17 @@ export default function ChatBox(): JSX.Element {
                 nextTaskId
               ),
               target: undefined,
+              ...(improveModel
+                ? {
+                    model_platform: improveModel.model_platform,
+                    model_type: improveModel.model_type,
+                    api_key: improveModel.api_key,
+                    api_url: improveModel.api_url,
+                    auth_source: improveModel.auth_source,
+                    model_config_dict: improveModel.model_config_dict,
+                    extra_params: improveModel.extra_params,
+                  }
+                : {}),
             });
             chatStore.setIsPending(_taskId, true);
             chatStore.addMessages(_taskId, {
@@ -954,6 +972,7 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  // eslint-disable-next-line react-hooks/refs
   handleSendRef.current = handleSend;
 
   // Reactive queuedMessages for the active project

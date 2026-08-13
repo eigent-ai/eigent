@@ -718,6 +718,13 @@ async def improve(id: str, data: SupplementChat, request: Request):
                 question=data.question,
                 attaches=data.attaches or [],
                 project_context=data.project_context,
+                model_platform=data.model_platform,
+                model_type=data.model_type,
+                api_key=data.api_key,
+                api_url=data.api_url,
+                auth_source=data.auth_source,
+                model_config_dict=data.model_config_dict,
+                extra_params=data.extra_params,
             ),
             new_task_id=data.task_id,
         )

@@ -65,7 +65,10 @@ from app.memory import (
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
-from app.service.single_agent_service import single_agent_solve
+from app.service.single_agent_service import (
+    _apply_model_override,
+    single_agent_solve,
+)
 from app.service.task import (
     Action,
     ActionDecomposeProgressData,
@@ -74,6 +77,7 @@ from app.service.task import (
     ActionInstallMcpData,
     ActionNewAgent,
     Agents,
+    ImprovePayload,
     TaskLock,
     delete_task_lock,
     set_current_task_id,
@@ -641,6 +645,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         if item.data.attaches
                         else options.attaches
                     )
+                    # If the user switched the model mid-conversation, rebuild
+                    # the cached question agent so the new model is used from
+                    # this turn onward while keeping conversation context.
+                    if _apply_model_override(options, item.data):
+                        task_lock.question_agent = None
+                        question_agent = question_confirm_agent(options)
                     logger.info(
                         "[NEW-QUESTION] Follow-up "
                         "question from "

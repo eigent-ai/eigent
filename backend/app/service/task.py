@@ -82,6 +82,15 @@ class ImprovePayload(BaseModel):
     question: str
     attaches: list[str] = []
     project_context: str | None = None
+    # Optional model override so switching models mid-conversation lets the
+    # backend rebuild the agent with the new model while keeping context.
+    model_platform: str | None = None
+    model_type: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    auth_source: str | None = None
+    model_config_dict: dict[str, Any] | None = None
+    extra_params: dict | None = None
 
 
 class ActionImproveData(BaseModel):

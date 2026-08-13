@@ -33,6 +33,7 @@ from app.service.task import (
     Action,
     ActionData,
     ActionImproveData,
+    ImprovePayload,
     TaskLock,
     delete_task_lock,
     set_current_task_id,
@@ -53,6 +54,68 @@ try:
     )
 except ValueError:
     _MEMORY_TOKEN_BUDGET = 8000
+
+
+def _apply_model_override(options: Chat, payload: ImprovePayload) -> bool:
+    """Apply a user-selected model override to options for a follow-up turn.
+
+    Returns True when the model actually changed (so the caller knows to
+    rebuild the cached agent), False when there is no override or it matches
+    the current configuration.
+
+    The frontend sends the full resolved model config on the improve request so
+    a mid-conversation model switch is honored even though the conversation's
+    project pin / history still references the original model.
+    """
+    if not payload.model_platform and not payload.model_type:
+        # No override supplied on this turn.
+        return False
+
+    # "changed" reflects a change to the model identity (platform / type /
+    # auth_source) which is what the cached agent was built from. Only these
+    # force a rebuild. Credentials and extra config are still applied so a
+    # custom/local provider switch propagates correctly, but they do not by
+    # themselves invalidate the cached agent (e.g. sending `{}` where the
+    # current config is `None` should not trigger a pointless rebuild).
+    changed = False
+
+    if (
+        payload.model_platform
+        and payload.model_platform != options.model_platform
+    ):
+        options.model_platform = payload.model_platform
+        changed = True
+    if payload.model_type and payload.model_type != options.model_type:
+        options.model_type = payload.model_type
+        changed = True
+    if (
+        getattr(options, "auth_source", None) != payload.auth_source
+        and payload.auth_source is not None
+    ):
+        options.auth_source = payload.auth_source
+        changed = True
+
+    if payload.api_key is not None and payload.api_key != options.api_key:
+        options.api_key = payload.api_key
+    if payload.api_url is not None and payload.api_url != options.api_url:
+        options.api_url = payload.api_url
+    if payload.model_config_dict is not None:
+        # Avoid treating a populated config replacing an empty one as no-op.
+        options.model_config_dict = payload.model_config_dict
+    if payload.extra_params is not None:
+        options.extra_params = payload.extra_params
+
+    if changed:
+        logger.info(
+            "Model override applied for follow-up turn",
+            extra={
+                "project_id": options.project_id,
+                "model_platform": options.model_platform,
+                "model_type": options.model_type,
+                "auth_source": getattr(options, "auth_source", None),
+            },
+        )
+    return changed
 
 
 def _build_single_agent_context(
@@ -320,6 +383,22 @@ async def single_agent_solve(
                         set_current_task_id(
                             options.project_id, current_task_id
                         )
+
+                    # If the user switched the model mid-conversation, rebuild
+                    # the cached agent so the new model is used from this turn
+                    # onward while preserving conversation context.
+                    if _apply_model_override(options, item.data):
+                        if agent is not None:
+                            logger.info(
+                                "Model changed on follow-up turn; rebuilding "
+                                "single agent",
+                                extra={
+                                    "project_id": options.project_id,
+                                    "model_platform": options.model_platform,
+                                    "model_type": options.model_type,
+                                },
+                            )
+                        agent = None
 
                     if running_turn is not None and not running_turn.done():
                         yield sse_json(
