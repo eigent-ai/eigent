@@ -12,104 +12,114 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { ProjectType, useProjectStore } from '@/store/projectStore';
-import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { buildProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
+import {
+  createChatProjectionState,
+  type ChatMessageNode,
+} from '@/lib/projector/chat';
+import {
+  createHumanControlProjectionState,
+  type HumanControlProjectionState,
+} from '@/lib/projector/control';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { describe, expect, it } from 'vitest';
 
-describe('useProjectSessionOverview', () => {
-  beforeEach(() => {
-    useProjectStore.setState({
-      activeProjectId: null,
-      projects: {},
-      navLeadByProjectId: {},
-      historyLoadingProjectIds: {},
-    });
-    usePageTabStore.setState({
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
-    });
-  });
+function message(runId: string, sequence: number): ChatMessageNode {
+  return {
+    id: `${runId}:${sequence}`,
+    eventId: `${runId}:${sequence}`,
+    projectId: 'project-1',
+    runId,
+    createdAt: new Date(sequence * 1_000).toISOString(),
+    runSequence: sequence,
+    cloudCursor: null,
+    eventType: 'message.completed',
+    legacyStep: null,
+    kind: 'message',
+    role: 'assistant',
+    content: runId,
+    status: 'complete',
+  };
+}
 
-  it('keeps the active run current while exposing every historical run', () => {
-    const projectStore = useProjectStore.getState();
-    const projectId = projectStore.createProject(
-      'History',
-      undefined,
-      'project-history',
-      ProjectType.REPLAY
-    );
-    const oldChatId = projectStore.createChatStore(projectId, 'Old');
-    const latestChatId = projectStore.createChatStore(projectId, 'Latest');
-    const oldStore = projectStore.getChatStore(projectId, oldChatId!);
-    const latestStore = projectStore.getChatStore(projectId, latestChatId!);
-    const oldTaskId = oldStore!.getState().create('task-old');
-    const latestTaskId = latestStore!.getState().create('task-latest');
-    oldStore!.getState().addMessages(oldTaskId, {
-      id: 'old-user',
-      role: 'user',
-      content: 'Old prompt',
-    });
-    latestStore!.getState().addMessages(latestTaskId, {
-      id: 'latest-user',
-      role: 'user',
-      content: 'Latest prompt',
-    });
-    projectStore.setActiveChatStore(projectId, latestChatId!);
-
-    act(() => {
-      usePageTabStore.getState().setSidePanelSelectedTurn(projectId, oldTaskId);
-    });
-
-    const { result } = renderHook(() => useProjectSessionOverview(projectId));
-
-    expect(result.current.currentRun?.taskId).toBe(latestTaskId);
-    expect(result.current.runs.map((run) => run.taskId)).toEqual(
-      expect.arrayContaining([oldTaskId, latestTaskId])
-    );
-    expect(
-      result.current.historicalRuns.some((run) => run.taskId === oldTaskId)
-    ).toBe(true);
-  });
-
-  it('keeps a newly created empty active run current', () => {
-    const projectStore = useProjectStore.getState();
-    const projectId = projectStore.createProject(
-      'New run',
-      undefined,
-      'project-new-run',
-      ProjectType.REPLAY
-    );
-    const chatStore = projectStore.getActiveChatStore(projectId)!;
-    const historicalTaskId = chatStore.getState().create('task-historical');
-    chatStore.getState().addMessages(historicalTaskId, {
-      id: 'historical-user',
-      role: 'user',
-      content: 'Previous prompt',
-    });
-    const emptyActiveTaskId = chatStore.getState().create('task-empty-active');
-    chatStore.setState((state) => ({
-      tasks: {
-        ...state.tasks,
-        [historicalTaskId]: {
-          ...state.tasks[historicalTaskId],
-          createdAt: 100,
+function snapshot(): ProjectEventStoreSnapshot {
+  const nodes = [message('run-complete', 4), message('run-live', 1)];
+  return {
+    view: {
+      projectId: 'project-1',
+      mode: 'live',
+      seenEventIds: {},
+      currentCursor: 0,
+      eventsTruncated: false,
+      lastSyncedAt: null,
+      needsResync: false,
+      resyncReason: null,
+      resyncTargetCursor: null,
+      runs: {
+        'run-complete': {
+          runId: 'run-complete',
+          status: 'completed',
+          lastSequence: 4,
+          runVersion: 4,
+          updatedAt: new Date(4_000).toISOString(),
+          origin: 'local',
+          resumeBlockedReason: null,
         },
-        [emptyActiveTaskId]: {
-          ...state.tasks[emptyActiveTaskId],
-          createdAt: 200,
+        'run-live': {
+          runId: 'run-live',
+          status: 'running',
+          lastSequence: 1,
+          runVersion: 1,
+          updatedAt: new Date(1_000).toISOString(),
+          origin: 'local',
+          resumeBlockedReason: null,
         },
       },
-    }));
+      legacySteps: [],
+      unknownEvents: [],
+    },
+    chat: {
+      ...createChatProjectionState('project-1'),
+      nodes,
+      nodeById: Object.fromEntries(nodes.map((node) => [node.id, node])),
+      seenEventIds: Object.fromEntries(
+        nodes.map((node) => [node.eventId, true as const])
+      ),
+    },
+    control: createHumanControlProjectionState(
+      'project-1'
+    ) as HumanControlProjectionState,
+    revision: 1,
+    hasHydratedSnapshot: true,
+    overflowed: false,
+    lastEffects: [],
+  };
+}
 
-    const { result } = renderHook(() => useProjectSessionOverview(projectId));
+describe('buildProjectSessionOverview', () => {
+  it('keeps an active durable Run current even when history is newer', () => {
+    const overview = buildProjectSessionOverview(snapshot());
 
-    expect(result.current.currentRun?.taskId).toBe(emptyActiveTaskId);
-    expect(result.current.runs[0]?.taskId).toBe(emptyActiveTaskId);
-    expect(result.current.historicalRuns.map((run) => run.taskId)).toContain(
-      historicalTaskId
+    expect(overview.currentRun?.runId).toBe('run-live');
+    expect(overview.historicalRuns.map((run) => run.runId)).toContain(
+      'run-complete'
     );
+  });
+
+  it('groups semantic nodes by Run without consulting ChatStore', () => {
+    const overview = buildProjectSessionOverview(snapshot());
+
+    expect(overview.runs).toHaveLength(2);
+    expect(
+      overview.runs.find((run) => run.runId === 'run-complete')?.nodes
+    ).toMatchObject([{ content: 'run-complete' }]);
+  });
+
+  it('returns an empty view before durable hydration has a snapshot', () => {
+    expect(buildProjectSessionOverview(null)).toEqual({
+      currentRun: null,
+      historicalRuns: [],
+      runs: [],
+    });
   });
 });

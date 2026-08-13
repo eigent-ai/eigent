@@ -28,16 +28,13 @@ export type ChatEventProjectionInput = {
 };
 
 /**
- * Shadowing is opt-in everywhere, including development.
- *
- * It was previously on for every dev build. Shadow ingestion builds a full
- * parallel per-Project event store (multi-megabyte queue, legacy and chat
- * budgets) that no visible UI reads while the timeline flag is off, so paying
- * that cost in every dev session is not worth the parity signal. Set
- * VITE_CHATBOX_EVENT_SHADOW=true to measure parity.
+ * The Session side panel is event-native, so the migration bridge is enabled
+ * by default even while the ChatBox renderer remains behind its own cutover
+ * flag. Set VITE_SESSION_SIDE_PANEL_EVENT_BUS=false only for emergency rollback.
  */
 export function isChatEventProjectionEnabled(): boolean {
   return (
+    import.meta.env.VITE_SESSION_SIDE_PANEL_EVENT_BUS !== 'false' ||
     import.meta.env.VITE_CHATBOX_EVENT_SHADOW === 'true' ||
     // The visible read path still needs not-yet-migrated legacy families.
     // Canonical-owned families are filtered below before they can become a

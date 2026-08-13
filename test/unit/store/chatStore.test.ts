@@ -118,6 +118,10 @@ vi.mock('../../../src/store/projectStore', () => ({
     getState: vi.fn(() => ({
       activeProjectId: null,
       getHistoryId: () => null,
+      getProjectById: (projectId: string) => ({
+        id: projectId,
+        mode: 'single-agent',
+      }),
     })),
   },
 }));

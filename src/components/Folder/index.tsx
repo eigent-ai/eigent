@@ -57,7 +57,7 @@ import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
-import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
