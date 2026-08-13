@@ -436,7 +436,7 @@ export function ControlInputRouter({
       content = (
         <Inputbox
           {...inputProps}
-          showFileAttachments={false}
+          header={variant.header}
           connectorPanelOpen={connectorPanelOpen}
           onToggleConnectorPanel={onToggleConnectorPanel}
           skillPanelOpen={skillPanelOpen}

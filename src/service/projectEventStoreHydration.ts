@@ -261,7 +261,12 @@ async function readRunEvents(
   }
 ): Promise<{ lastSequence: number; truncated: boolean }> {
   let cursor = input.afterSequence;
+  // Ring buffer over the newest `retainLimit` events. `retainStart` is the
+  // oldest slot once the buffer is full; it stays 0 while it is still filling.
+  // The caller guarantees retainLimit >= 1 (it skips Runs with no remaining
+  // budget), so the modulo below is always well defined.
   const retainedEvents: CanonicalProjectEvent[] = [];
+  let retainStart = 0;
   let truncated = false;
 
   while (true) {
@@ -385,9 +390,13 @@ async function readRunEvents(
       input.budget.scannedEvents += 1;
       input.budget.bytes += bytes;
       // The hydrated projection never needs to retain the transport envelope.
-      retainedEvents.push({ ...event, raw: null });
-      if (retainedEvents.length > input.retainLimit) {
-        retainedEvents.shift();
+      // Retain the newest tail in a ring so a long Run does not pay a shift()
+      // per event once the retain limit is reached.
+      if (retainedEvents.length < input.retainLimit) {
+        retainedEvents.push({ ...event, raw: null });
+      } else {
+        retainedEvents[retainStart] = { ...event, raw: null };
+        retainStart = (retainStart + 1) % input.retainLimit;
         truncated = true;
       }
     }
@@ -401,7 +410,11 @@ async function readRunEvents(
       invalidResponse('Run event replay returned an invalid next_sequence');
     }
     if (response.has_more !== true) {
-      input.events.push(...retainedEvents);
+      // Unroll the ring back into ascending sequence order before publishing.
+      input.events.push(
+        ...retainedEvents.slice(retainStart),
+        ...retainedEvents.slice(0, retainStart)
+      );
       input.budget.events += retainedEvents.length;
       return { lastSequence, truncated };
     }

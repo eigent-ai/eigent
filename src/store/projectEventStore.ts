@@ -241,6 +241,39 @@ function estimateChatNodeBytes(
   return bytes;
 }
 
+/**
+ * Retain the newest `max` dedupe ids.
+ *
+ * This relies on `Object.keys` returning plain string keys in insertion order,
+ * which holds for every id the system currently mints (uuid4, `chat_step_v1:…`,
+ * `assistant-final:…`). It would NOT hold for an integer-like id such as
+ * `"1042"`: V8 emits those first in ascending numeric order regardless of
+ * insertion, so eviction would drop arbitrary ids and weaken dedupe rather than
+ * dropping the oldest. Guard the invariant in dev so a future id scheme cannot
+ * regress this silently.
+ */
+function retainNewestEventIds(
+  seenEventIds: Record<string, true>,
+  max: number
+): string[] {
+  const eventIds = Object.keys(seenEventIds);
+  if (import.meta.env.DEV && eventIds.length > max) {
+    const integerLike = eventIds.find((eventId) =>
+      /^(0|[1-9]\d*)$/.test(eventId)
+    );
+    if (integerLike !== undefined) {
+      console.warn(
+        '[ProjectEventStore] Integer-like event id breaks insertion-order ' +
+          'eviction; dedupe may drop the wrong ids',
+        { eventId: integerLike }
+      );
+    }
+  }
+  return eventIds.length > max
+    ? eventIds.slice(eventIds.length - max)
+    : eventIds;
+}
+
 function compactView(
   view: ProjectViewState,
   maxSeenEventIds: number,
@@ -249,10 +282,10 @@ function compactView(
   maxLegacyBytes: number
 ): ProjectViewState {
   const eventIds = Object.keys(view.seenEventIds);
-  const retainedEventIds =
-    eventIds.length > maxSeenEventIds
-      ? eventIds.slice(eventIds.length - maxSeenEventIds)
-      : eventIds;
+  const retainedEventIds = retainNewestEventIds(
+    view.seenEventIds,
+    maxSeenEventIds
+  );
   const seenEventIds =
     retainedEventIds.length === eventIds.length
       ? view.seenEventIds
@@ -301,10 +334,10 @@ function compactChatProjection(
   maxUnknownEvents: number
 ): ChatProjectionState {
   const eventIds = Object.keys(state.seenEventIds);
-  const retainedEventIds =
-    eventIds.length > maxSeenEventIds
-      ? eventIds.slice(eventIds.length - maxSeenEventIds)
-      : eventIds;
+  const retainedEventIds = retainNewestEventIds(
+    state.seenEventIds,
+    maxSeenEventIds
+  );
   const seenEventIds =
     retainedEventIds.length === eventIds.length
       ? state.seenEventIds
@@ -531,6 +564,7 @@ export class ProjectEventStore {
   private queueBytes = 0;
   private cancelScheduledFlush: CancelScheduledFlush | null = null;
   private disposed = false;
+  private incarnation = 0;
   private snapshotReplacementGeneration = 0;
   private activeSnapshotReplacement: {
     generation: number;
@@ -619,6 +653,10 @@ export class ProjectEventStore {
   getChatSnapshot = (): ChatProjectionState => this.snapshot.chat;
 
   getControlSnapshot = (): HumanControlProjectionState => this.snapshot.control;
+
+  getIncarnation(): number {
+    return this.incarnation;
+  }
 
   getPendingEventCount(): number {
     return this.queue.length;
@@ -899,6 +937,24 @@ export class ProjectEventStore {
     );
   }
 
+  /** Clear one runtime projection while preserving same-id subscribers. */
+  reset(): void {
+    if (this.disposed) return;
+    this.cancelScheduledFlush?.();
+    this.cancelScheduledFlush = null;
+    this.activeSnapshotReplacement = null;
+    this.clearQueue();
+    this.incarnation += 1;
+    this.publish(
+      createProjectViewState(this.projectId, this.mode),
+      createChatProjectionState(this.projectId),
+      createHumanControlProjectionState(this.projectId),
+      [],
+      false,
+      false
+    );
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -1031,6 +1087,11 @@ export function getProjectEventStore(
   const created = new ProjectEventStore(projectId, options);
   projectEventStores.set(projectId, created);
   return created;
+}
+
+/** Reset an overwritten same-id Project without stranding mounted consumers. */
+export function resetProjectEventStore(projectId: string): void {
+  projectEventStores.get(projectId)?.reset();
 }
 
 export function releaseProjectEventStore(projectId: string): void {

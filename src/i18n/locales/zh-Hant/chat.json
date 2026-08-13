@@ -127,5 +127,17 @@
   "run-cancel": "結束任務",
   "run-cancelling": "正在結束…",
   "run-resume-failed": "恢復任務失敗，請重試。",
-  "run-cancel-failed": "結束任務失敗，請重試。"
+  "run-cancel-failed": "結束任務失敗，請重試。",
+  "repeated-tool-events": "{{tool}} · {{count}} 個事件",
+  "repeated-tool-calls-label": "重複的工具呼叫：{{tool}}",
+  "repeated-tool-failed": "{{count}} 個失敗",
+  "repeated-tool-completed-progress": "已完成 {{completed}}/{{count}}",
+  "repeated-tool-cancelled": "{{count}} 個已取消",
+  "tool-status-completed": "已完成",
+  "tool-status-failed": "失敗",
+  "tool-status-cancelled": "已取消",
+  "tool-status-running": "執行中",
+  "tool-status-pending": "等待中",
+  "tool-status-unknown": "未知",
+  "follow-up-prepare-failed": "無法準備後續任務。"
 }

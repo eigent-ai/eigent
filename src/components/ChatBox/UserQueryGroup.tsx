@@ -18,7 +18,7 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
-import { ChevronDown, FileText } from 'lucide-react';
+import { ChevronDown, FileText, InfoIcon } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
@@ -426,7 +426,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         duration: 0.3,
         delay: index * 0.1, // Stagger animation for multiple groups
       }}
-      className="relative"
+      className="relative flex flex-col gap-3"
     >
       {/* User query: always rendered as a regular component in the chat flow. */}
       {queryGroup.userMessage && (
@@ -434,7 +434,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="px-sm py-sm"
+          className="px-2 py-2"
         >
           <UserMessageCard
             id={queryGroup.userMessage.id}
@@ -507,7 +507,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.05 }}
-          className="px-sm"
+          className="px-2"
         >
           {showPreparingExecute ? <PreparingToExecuteTasks /> : null}
           <TaskWorkLogAccordion chatStore={chatStore} taskId={activeTaskId} />
@@ -574,7 +574,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
@@ -599,7 +599,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -616,7 +616,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="px-sm"
+                className="px-2"
               >
                 <AgentResultCard
                   id={message.id}
@@ -634,7 +634,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col"
               >
                 <AgentMessageCard
                   key={message.id}
@@ -654,7 +654,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex flex-col gap-4"
+              className="flex flex-col"
             >
               <ArtifactChangeList
                 files={message.fileList}
@@ -681,8 +681,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-ds-bg-neutral-secondary-default mx-6 my-3 rounded-xl border border-ds-border-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default"
+          className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default"
         >
+          <InfoIcon className="size-4 text-ds-icon-neutral-default-default" />
           {t('chat.run-no-final-response')}
         </motion.div>
       ) : null}
@@ -693,7 +694,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="px-sm"
+          className="px-2"
         >
           <PlanTaskBox
             chatStore={chatStore}

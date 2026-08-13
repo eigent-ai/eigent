@@ -127,5 +127,17 @@
   "run-cancel": "Cancelar ejecución",
   "run-cancelling": "Cancelando…",
   "run-resume-failed": "No se pudo reanudar esta ejecución.",
-  "run-cancel-failed": "No se pudo cancelar esta ejecución."
+  "run-cancel-failed": "No se pudo cancelar esta ejecución.",
+  "repeated-tool-events": "{{tool}} · {{count}} eventos",
+  "repeated-tool-calls-label": "Llamadas repetidas a la herramienta: {{tool}}",
+  "repeated-tool-failed": "{{count}} con error",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}} completadas",
+  "repeated-tool-cancelled": "{{count}} canceladas",
+  "tool-status-completed": "Completada",
+  "tool-status-failed": "Con error",
+  "tool-status-cancelled": "Cancelada",
+  "tool-status-running": "En curso",
+  "tool-status-pending": "Pendiente",
+  "tool-status-unknown": "Desconocida",
+  "follow-up-prepare-failed": "No se pudo preparar la tarea de seguimiento."
 }

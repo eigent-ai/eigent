@@ -127,5 +127,17 @@
   "run-cancel": "Завершить запуск",
   "run-cancelling": "Завершение…",
   "run-resume-failed": "Не удалось возобновить этот запуск.",
-  "run-cancel-failed": "Не удалось завершить этот запуск."
+  "run-cancel-failed": "Не удалось завершить этот запуск.",
+  "repeated-tool-events": "{{tool}} · событий: {{count}}",
+  "repeated-tool-calls-label": "Повторные вызовы инструмента: {{tool}}",
+  "repeated-tool-failed": "С ошибкой: {{count}}",
+  "repeated-tool-completed-progress": "Завершено: {{completed}}/{{count}}",
+  "repeated-tool-cancelled": "Отменено: {{count}}",
+  "tool-status-completed": "Завершено",
+  "tool-status-failed": "Ошибка",
+  "tool-status-cancelled": "Отменено",
+  "tool-status-running": "Выполняется",
+  "tool-status-pending": "Ожидает",
+  "tool-status-unknown": "Неизвестно",
+  "follow-up-prepare-failed": "Не удалось подготовить следующую задачу."
 }

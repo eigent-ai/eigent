@@ -19,7 +19,7 @@ import { vi } from 'vitest';
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options: Record<string, unknown> = {}) => {
       // Map translation keys to English text
       const translations: Record<string, string> = {
         'chat.welcome-to-eigent': 'Welcome to Eigent',
@@ -40,8 +40,23 @@ vi.mock('react-i18next', () => ({
           'Please Help Organize My Desktop',
         'chat.no-reply-received-task-continue':
           'No reply received, task will continue',
+        'chat.repeated-tool-events': '{{tool}} · {{count}} events',
+        'chat.repeated-tool-calls-label': 'Repeated tool calls: {{tool}}',
+        'chat.repeated-tool-failed': '{{count}} failed',
+        'chat.repeated-tool-completed-progress':
+          '{{completed}}/{{count}} completed',
+        'chat.repeated-tool-cancelled': '{{count}} cancelled',
+        'chat.tool-status-completed': 'Completed',
+        'chat.tool-status-failed': 'Failed',
+        'chat.tool-status-cancelled': 'Cancelled',
+        'chat.tool-status-running': 'Running',
+        'chat.tool-status-pending': 'Pending',
+        'chat.tool-status-unknown': 'Unknown',
       };
-      return translations[key] || key;
+      return (translations[key] || String(options.defaultValue || key)).replace(
+        /{{(\w+)}}/g,
+        (_match, name: string) => String(options[name] ?? '')
+      );
     },
     i18n: {
       language: 'en',

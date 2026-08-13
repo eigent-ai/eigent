@@ -165,6 +165,10 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   taskId?: string;
   toolkitName?: string;
   methodName?: string;
+  /** Backend correlation for one tool invocation when the transport supplies it. */
+  toolCallId?: string;
+  /** Typed transports may name a tool without a toolkit/method pair. */
+  toolName?: string;
 }
 
 export interface ChatArtifactNode extends ChatProjectionNodeBase {

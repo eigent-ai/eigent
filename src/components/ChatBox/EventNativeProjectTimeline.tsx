@@ -18,13 +18,33 @@ import {
   selectRenderableChatNodes,
   type ChatProjectionNode,
 } from '@/lib/projector/chat';
-import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type RefObject,
+} from 'react';
 
+import {
+  animateChatTimelineAnchor,
+  type ChatTimelineScrollAnimation,
+} from './chatTimelineScroll';
 import { EventTimeline, type ChatTimelineDetailLevel } from './EventTimeline';
 import { presentHumanInteractionReceipts } from './EventTimeline/presentationPolicy';
 
 /** Temporary DOM window until the event timeline has variable-height virtualization. */
 const MAX_MOUNTED_EVENT_NODES = 250;
+/** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
+const NEAR_BOTTOM_SLACK_PX = 48;
+
+export function isChatTimelineNearBottom(
+  distanceFromBottom: number,
+  bottomInsetPx: number,
+  slackPx = NEAR_BOTTOM_SLACK_PX
+): boolean {
+  return distanceFromBottom <= Math.max(0, bottomInsetPx) + slackPx;
+}
 
 interface EventNativeTimelineWindow {
   hiddenNodeCount: number;
@@ -92,25 +112,121 @@ export function EventNativeProjectTimeline({
   );
   const { hiddenNodeCount, nodes: visibleNodes } = timelineWindow;
   const previousScrollHeightRef = useRef(0);
+  const previousLatestUserEventIdRef = useRef<string | undefined>(undefined);
+  const previousProjectIdRef = useRef(projectId);
+  const pinToBottomRef = useRef(true);
+  const ignoreAnchorScrollRef = useRef(false);
+  const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const latestNode = visibleNodes.at(-1);
+  const latestEventId = latestNode?.eventId;
+  const userMessageNodes = visibleNodes.filter(
+    (node) => node.kind === 'message' && node.role === 'user'
+  );
+  const latestUserEventId = userMessageNodes.at(-1)?.eventId;
 
   useLayoutEffect(() => {
     const container = scrollContainerRef?.current;
     if (!container) return;
+    const content = contentRef.current;
+    if (previousProjectIdRef.current !== projectId) {
+      previousProjectIdRef.current = projectId;
+      previousLatestUserEventIdRef.current = undefined;
+      pinToBottomRef.current = true;
+      ignoreAnchorScrollRef.current = false;
+      anchorAnimationRef.current?.stop();
+      anchorAnimationRef.current = null;
+      if (content) content.style.minHeight = '';
+    }
+
+    const updatePinFromScroll = () => {
+      if (ignoreAnchorScrollRef.current) return;
+      pinToBottomRef.current = isChatTimelineNearBottom(
+        container.scrollHeight - container.scrollTop - container.clientHeight,
+        scrollBottomInsetPx
+      );
+    };
+    container.addEventListener('scroll', updatePinFromScroll, {
+      passive: true,
+    });
+
     const previousHeight = previousScrollHeightRef.current;
     const wasNearBottom =
       previousHeight === 0 ||
-      previousHeight - container.scrollTop - container.clientHeight <= 120;
-    if (wasNearBottom) {
+      (pinToBottomRef.current &&
+        isChatTimelineNearBottom(
+          previousHeight - container.scrollTop - container.clientHeight,
+          scrollBottomInsetPx
+        ));
+    const hadRenderedUserMessage =
+      previousLatestUserEventIdRef.current !== undefined;
+    const isNewUserMessage =
+      latestUserEventId !== undefined &&
+      latestUserEventId !== previousLatestUserEventIdRef.current;
+    const shouldAnchorNewQuery =
+      isNewUserMessage &&
+      hadRenderedUserMessage &&
+      userMessageNodes.length >= 2;
+
+    // A follow-up query starts a new reading viewport: its user row aligns just
+    // below the Session header and streaming output grows beneath it. The first
+    // query keeps the original bottom reveal behavior.
+    if (shouldAnchorNewQuery) {
+      const target = Array.from(
+        contentRef.current?.querySelectorAll<HTMLElement>(
+          '[data-message-role="user"]'
+        ) || []
+      ).at(-1);
+      if (target) {
+        anchorAnimationRef.current?.stop();
+        ignoreAnchorScrollRef.current = true;
+        pinToBottomRef.current = false;
+        anchorAnimationRef.current = animateChatTimelineAnchor(
+          container,
+          target,
+          content,
+          () => {
+            ignoreAnchorScrollRef.current = false;
+            pinToBottomRef.current = false;
+          }
+        );
+      }
+    } else if (isNewUserMessage || wasNearBottom) {
+      pinToBottomRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
     }
+    previousLatestUserEventIdRef.current = latestUserEventId;
     previousScrollHeightRef.current = container.scrollHeight;
+
+    const resizeObserver =
+      content &&
+      new ResizeObserver(() => {
+        if (!pinToBottomRef.current) return;
+        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+        previousScrollHeightRef.current = container.scrollHeight;
+      });
+    if (content) resizeObserver?.observe(content);
+
+    return () => {
+      container.removeEventListener('scroll', updatePinFromScroll);
+      resizeObserver?.disconnect();
+    };
   }, [
-    latestNode?.eventId,
+    latestEventId,
+    latestUserEventId,
     latestNode?.runSequence,
+    projectId,
     scrollBottomInsetPx,
     scrollContainerRef,
+    userMessageNodes.length,
   ]);
+
+  useEffect(
+    () => () => {
+      anchorAnimationRef.current?.stop();
+    },
+    []
+  );
 
   return (
     <div
@@ -118,6 +234,7 @@ export function EventNativeProjectTimeline({
       data-chat-timeline-source="durable-events"
     >
       <div
+        ref={contentRef}
         className="mx-auto w-full max-w-[600px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >

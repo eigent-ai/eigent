@@ -42,7 +42,8 @@ export function BoxHeaderDisplay({
   contextItems = [],
   details = [],
   onRemoveContextItem,
-}: BottomBoxHeaderContent) {
+  className,
+}: BottomBoxHeaderContent & { className?: string }) {
   const hasCopy = Boolean(eyebrow || title || description);
   if (!hasCopy && contextItems.length === 0 && details.length === 0)
     return null;
@@ -51,7 +52,7 @@ export function BoxHeaderDisplay({
     <section
       data-bottom-box-header
       aria-label={title || eyebrow || 'Input context'}
-      className="flex w-full flex-col gap-2 px-3 pt-3"
+      className={cn('flex w-full flex-col gap-2 px-4 py-2', className)}
     >
       {hasCopy && (
         <div className="flex min-w-0 flex-col gap-0.5">

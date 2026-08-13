@@ -127,5 +127,17 @@
   "run-cancel": "Cancel Run",
   "run-cancelling": "Cancelling…",
   "run-resume-failed": "Failed to resume this Run.",
-  "run-cancel-failed": "Failed to cancel this Run."
+  "run-cancel-failed": "Failed to cancel this Run.",
+  "repeated-tool-events": "{{tool}} · {{count}} events",
+  "repeated-tool-calls-label": "Repeated tool calls: {{tool}}",
+  "repeated-tool-failed": "{{count}} failed",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}} completed",
+  "repeated-tool-cancelled": "{{count}} cancelled",
+  "tool-status-completed": "Completed",
+  "tool-status-failed": "Failed",
+  "tool-status-cancelled": "Cancelled",
+  "tool-status-running": "Running",
+  "tool-status-pending": "Pending",
+  "tool-status-unknown": "Unknown",
+  "follow-up-prepare-failed": "Unable to prepare the follow-up task."
 }

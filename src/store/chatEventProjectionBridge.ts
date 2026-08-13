@@ -28,13 +28,16 @@ export type ChatEventProjectionInput = {
 };
 
 /**
- * Shadowing defaults on in development and remains opt-in in packaged builds
- * until semantic parity has been measured. The future renderer cutover gets a
- * separate flag; transport ingestion must stay centralized here.
+ * Shadowing is opt-in everywhere, including development.
+ *
+ * It was previously on for every dev build. Shadow ingestion builds a full
+ * parallel per-Project event store (multi-megabyte queue, legacy and chat
+ * budgets) that no visible UI reads while the timeline flag is off, so paying
+ * that cost in every dev session is not worth the parity signal. Set
+ * VITE_CHATBOX_EVENT_SHADOW=true to measure parity.
  */
 export function isChatEventProjectionEnabled(): boolean {
   return (
-    import.meta.env.DEV ||
     import.meta.env.VITE_CHATBOX_EVENT_SHADOW === 'true' ||
     // The visible read path still needs the legacy /chat source bridge while
     // the canonical companion owns typed Run events. Keep the flags
@@ -52,19 +55,34 @@ export function isChatEventTimelineEnabled(): boolean {
   return import.meta.env.VITE_CHATBOX_EVENT_BUS === 'true';
 }
 
+/**
+ * Outcome of one ingest attempt.
+ *
+ * `overflowed` is deliberately distinct from `disabled`/`rejected`: it means
+ * the store dropped its queue and entered needsResync, which also suspends the
+ * canonical live streams until a fresh snapshot commits. Collapsing it into a
+ * bare `false` hides a recoverable-but-degraded state behind the same value as
+ * "the feature is switched off".
+ */
+export type ChatEventProjectionOutcome =
+  | 'accepted'
+  | 'disabled'
+  | 'rejected'
+  | 'overflowed';
+
 /** Never allow migration projection failures to affect the legacy UI path. */
 export function enqueueChatEventProjection(
   input: ChatEventProjectionInput,
   enabled = isChatEventProjectionEnabled()
-): boolean {
-  if (!enabled || !input.projectId) return false;
+): ChatEventProjectionOutcome {
+  if (!enabled || !input.projectId) return 'disabled';
   if (
     input.transport === 'legacy_chat' &&
     (!input.raw ||
       typeof input.raw !== 'object' ||
       typeof (input.raw as { step?: unknown }).step !== 'string')
   ) {
-    return false;
+    return 'rejected';
   }
 
   try {
@@ -77,11 +95,13 @@ export function enqueueChatEventProjection(
             sequence: input.sequence,
             sourceId: input.sourceId,
           });
-    return getProjectEventStore(input.projectId).enqueue(event);
+    const store = getProjectEventStore(input.projectId);
+    if (store.enqueue(event)) return 'accepted';
+    return store.getSnapshot().overflowed ? 'overflowed' : 'rejected';
   } catch (error) {
     if (import.meta.env.DEV) {
       console.warn('[ChatEventProjection] Shadow event was rejected', error);
     }
-    return false;
+    return 'rejected';
   }
 }

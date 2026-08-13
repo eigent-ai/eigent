@@ -114,7 +114,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`flex w-full flex-col rounded-xl bg-transparent px-sm py-3 ${className || ''} overflow-hidden`}
+      className={`flex w-full flex-col rounded-xl bg-transparent px-2 py-3 ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}
@@ -123,7 +123,7 @@ export function AgentMessageCard({
         enableTypewriter={enableTypewriter && typewriter}
       />
       {showDeferredFileUi && attaches && attaches.length > 0 && (
-        <div className="mt-[10px] flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {attaches?.map((file) => {
             return (
               <div
@@ -151,7 +151,7 @@ export function AgentMessageCard({
         </div>
       )}
       {showDeferredFileUi && deferredFooter != null && (
-        <div className="mt-[10px] w-full">{deferredFooter}</div>
+        <div className="mt-2.5 w-full">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
         <div className="mt-3 flex shrink-0 justify-start gap-1">

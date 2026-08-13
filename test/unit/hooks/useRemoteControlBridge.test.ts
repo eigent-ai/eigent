@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
@@ -31,29 +31,29 @@ vi.mock('@/api/http', () => ({
   waitForBackendReady: vi.fn(() => Promise.resolve(true)),
 }));
 
-import { __remoteControlBridgeTestHooks } from '@/hooks/useRemoteControlBridge';
+import { fetchGet, fetchPost } from '@/api/http';
+import {
+  __remoteControlBridgeTestHooks,
+  ackFromDurableExecution,
+} from '@/hooks/useRemoteControlBridge';
 import { useProjectStore } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 
-function jsonResponse(payload: unknown): Response {
-  return {
-    ok: true,
-    status: 200,
-    headers: {
-      get: (name: string) =>
-        name.toLowerCase() === 'content-type' ? 'application/json' : '',
-    },
-    json: () => Promise.resolve(payload),
-    text: () => Promise.resolve(JSON.stringify(payload)),
-  } as Response;
-}
-
 describe('useRemoteControlBridge internals', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
+    vi.mocked(fetchPost).mockImplementation(async (_url, body: any) => ({
+      request_id: body?.request_id || 'request-id',
+      project_id: 'project-target',
+      content: body?.content || '',
+      attachment_paths: body?.attachment_paths || [],
+      delivery_mode: 'wait',
+      status: 'pending',
+      source: body?.source || 'remote_control',
+      source_command_id: body?.source_command_id || null,
+      created_at: 1,
+      updated_at: 1,
+    }));
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
@@ -81,20 +81,31 @@ describe('useRemoteControlBridge internals', () => {
     });
   });
 
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
   it('allows user_message commands for a non-active Project without switching foreground Project', async () => {
     const activeProjectId = useProjectStore
       .getState()
       .createProject('Active Project', undefined, 'project-active');
 
-    fetchSpy
-      .mockResolvedValueOnce(
-        jsonResponse({ has_lock: true, status: 'running' })
-      )
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.mocked(fetchGet).mockImplementation(async (url) =>
+      url === '/projects/project-target/follow-ups'
+        ? {
+            items: [
+              {
+                request_id: 'task-target-next',
+                project_id: 'project-target',
+                content: 'Continue the target project in the background',
+                attachment_paths: [],
+                delivery_mode: 'wait',
+                status: 'pending',
+                source: 'remote_control',
+                source_command_id: 'rc_cmd_cross_project',
+                created_at: 1,
+                updated_at: 1,
+              },
+            ],
+          }
+        : { has_lock: true, status: 'running' }
+    );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
       {
@@ -118,19 +129,14 @@ describe('useRemoteControlBridge internals', () => {
       type: 'command_ack',
       command_id: 'rc_cmd_cross_project',
       status: 'acknowledged',
+      result: { queued: true },
     });
     expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
     expect(useProjectStore.getState().projects['project-target']).toBeDefined();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
-    expect(fetchSpy.mock.calls[1]?.[0]).toBe('/chat/project-target');
-    expect(fetchSpy.mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'X-Eigent-Local-Capability': 'renderer-capability',
-        }),
-      })
+    expect(fetchGet).toHaveBeenCalledWith(
+      '/projects/project-target/follow-ups'
     );
+    expect(fetchGet).toHaveBeenCalledWith('/chat/project-target/status');
   });
 
   it('starts local user_message tasks against the target Project without switching foreground Project', async () => {
@@ -154,8 +160,25 @@ describe('useRemoteControlBridge internals', () => {
     const startTask = vi.fn(() => Promise.resolve());
     targetChatStore?.setState({ startTask } as any);
 
-    fetchSpy.mockResolvedValueOnce(
-      jsonResponse({ has_lock: false, status: 'idle' })
+    vi.mocked(fetchGet).mockImplementation(async (url) =>
+      url === '/projects/project-target/follow-ups'
+        ? {
+            items: [
+              {
+                request_id: 'task-target-next',
+                project_id: 'project-target',
+                content: 'Start local background task',
+                attachment_paths: [],
+                delivery_mode: 'wait',
+                status: 'pending',
+                source: 'remote_control',
+                source_command_id: 'rc_cmd_local_start',
+                created_at: 1,
+                updated_at: 1,
+              },
+            ],
+          }
+        : { has_lock: false, status: 'idle' }
     );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
@@ -192,8 +215,7 @@ describe('useRemoteControlBridge internals', () => {
       skipHistoryCreate: false,
       historyId: null,
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
+    expect(fetchGet).toHaveBeenCalledWith('/chat/project-target/status');
   });
 
   it('keeps remote history metadata on inactive background Projects', () => {
@@ -223,5 +245,81 @@ describe('useRemoteControlBridge internals', () => {
     expect(project).toBeDefined();
     expect(project.metadata?.historyId).toBe('remote-history-id');
     expect(project.metadata?.remoteHistoryHydrationPending).toBe(true);
+  });
+});
+
+describe('remote command durable ACK replay', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('replays the canonical completed outcome without executing again', () => {
+    expect(
+      ackFromDurableExecution('command-1', {
+        event_type: 'execution.completed',
+        payload: { result: { run_id: 'run-1' } },
+      })
+    ).toEqual({
+      type: 'command_ack',
+      command_id: 'command-1',
+      status: 'acknowledged',
+      result: { run_id: 'run-1' },
+      replayed_from_cache: true,
+    });
+  });
+
+  it('replays the canonical failure rather than an upload error', () => {
+    expect(
+      ackFromDurableExecution('command-1', {
+        event_type: 'execution.failed',
+        payload: { error_code: 'TOOL_FAILED', error: 'original failure' },
+      })
+    ).toMatchObject({
+      status: 'failed',
+      error_code: 'TOOL_FAILED',
+      error: 'original failure',
+    });
+  });
+
+  it('preserves a queued execution result when restart reconciliation races it', () => {
+    const command = {
+      id: 'command-1',
+      session_id: 'session-1',
+      user_id: 1,
+      source_channel: 'remote_control' as const,
+      type: 'user_message',
+      target_project_id: 'project-1',
+      payload: {},
+    };
+    const completed = {
+      status: 'completed' as const,
+      event_id: 'command-1:execution-result',
+      result: { run_id: 'run-1' },
+    };
+
+    __remoteControlBridgeTestHooks.queuePendingCommandResult({
+      command,
+      body: completed,
+    });
+    const durable = __remoteControlBridgeTestHooks.queuePendingCommandResult({
+      command,
+      body: {
+        status: 'failed',
+        event_id: 'command-1:recovery-outcome-unknown',
+        result: {},
+        error_code: 'COMMAND_OUTCOME_UNKNOWN_AFTER_RESTART',
+      },
+    });
+
+    expect(durable.body).toEqual(completed);
+    expect(
+      __remoteControlBridgeTestHooks.ackFromPendingCommandResult(
+        command.id,
+        durable.body
+      )
+    ).toMatchObject({
+      status: 'acknowledged',
+      result: { run_id: 'run-1' },
+    });
   });
 });

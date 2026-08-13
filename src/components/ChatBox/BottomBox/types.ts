@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Context displayed above the active human-control input. */
+/** Context displayed with the active human-control question. */
 export interface BottomBoxContextItem {
   id: string;
   label: string;
@@ -28,7 +28,7 @@ export interface BottomBoxHeaderDetail {
   content: string;
 }
 
-/** Display-only content for the BoxHeader region. */
+/** Display-only question/details. Composer variants render this inside InputBox. */
 export interface BottomBoxHeaderContent {
   eyebrow?: string;
   title?: string;

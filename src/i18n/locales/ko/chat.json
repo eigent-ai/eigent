@@ -127,5 +127,17 @@
   "run-cancel": "실행 종료",
   "run-cancelling": "종료 중…",
   "run-resume-failed": "이 실행을 재개하지 못했습니다.",
-  "run-cancel-failed": "이 실행을 종료하지 못했습니다."
+  "run-cancel-failed": "이 실행을 종료하지 못했습니다.",
+  "repeated-tool-events": "{{tool}} · 이벤트 {{count}}개",
+  "repeated-tool-calls-label": "반복된 도구 호출: {{tool}}",
+  "repeated-tool-failed": "{{count}}개 실패",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}}개 완료",
+  "repeated-tool-cancelled": "{{count}}개 취소됨",
+  "tool-status-completed": "완료",
+  "tool-status-failed": "실패",
+  "tool-status-cancelled": "취소됨",
+  "tool-status-running": "실행 중",
+  "tool-status-pending": "대기 중",
+  "tool-status-unknown": "알 수 없음",
+  "follow-up-prepare-failed": "후속 작업을 준비하지 못했습니다."
 }

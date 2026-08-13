@@ -127,5 +127,17 @@
   "run-cancel": "実行を終了",
   "run-cancelling": "終了中…",
   "run-resume-failed": "この実行を再開できませんでした。",
-  "run-cancel-failed": "この実行を終了できませんでした。"
+  "run-cancel-failed": "この実行を終了できませんでした。",
+  "repeated-tool-events": "{{tool}} · {{count}}件のイベント",
+  "repeated-tool-calls-label": "繰り返しのツール呼び出し: {{tool}}",
+  "repeated-tool-failed": "{{count}}件失敗",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}}件完了",
+  "repeated-tool-cancelled": "{{count}}件キャンセル",
+  "tool-status-completed": "完了",
+  "tool-status-failed": "失敗",
+  "tool-status-cancelled": "キャンセル済み",
+  "tool-status-running": "実行中",
+  "tool-status-pending": "保留中",
+  "tool-status-unknown": "不明",
+  "follow-up-prepare-failed": "フォローアップタスクを準備できませんでした。"
 }

@@ -12,6 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+export { groupRepeatedToolCalls } from './activityGrouping';
+export type {
+  ChatTimelineDisplayRow,
+  PresentedToolCall,
+  RepeatedToolCallGroupRow,
+} from './activityGrouping';
 export { EventRenderer } from './EventRenderer';
 export type { EventRendererProps } from './EventRenderer';
 export {
@@ -47,4 +53,5 @@ export type {
   EventRendererRegistry,
   EventTypeRendererRegistry,
 } from './rendererRegistry';
+export { RepeatedToolCallGroup } from './RepeatedToolCallGroup';
 export { UnknownEventFallback } from './UnknownEventFallback';

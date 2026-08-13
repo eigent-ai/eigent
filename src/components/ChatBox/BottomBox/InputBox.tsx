@@ -35,7 +35,9 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { BoxHeaderDisplay } from './BoxHeader';
 import { RichChatInput } from './RichChatInput';
+import type { BottomBoxHeaderContent } from './types';
 
 /**
  * File attachment object
@@ -59,8 +61,10 @@ export interface InputboxProps {
   onSend?: () => void;
   /** Array of file attachments */
   files?: FileAttachment[];
-  /** Render attachment chips inside the input surface. BottomBox moves them to BoxHeader. */
+  /** Render attachment chips inside the input surface (layer 2). */
   showFileAttachments?: boolean;
+  /** Input-required question, details, and non-file context (layer 1). */
+  header?: BottomBoxHeaderContent;
   /** Callback when files are modified */
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
@@ -96,14 +100,11 @@ export interface InputboxProps {
 /**
  * Inputbox Component
  *
- * A multi-state input component with two visual states:
- * - **Default**: Empty state with placeholder text and disabled send button
- * - **Focus/Input**: Active state with content, file attachments, and active send button
- *
- * Features:
- * - Auto-expanding rich text input (links + #skills, up to 200px height)
- * - File attachment display (shows up to 5 files + count indicator)
- * - Action buttons (add file on left, send on right)
+ * A multi-state input component with four stacked layers:
+ * - **Layer 1**: Input-required question / details (when provided)
+ * - **Layer 2**: File attachment chips (original design, up to 5 + overflow)
+ * - **Layer 3**: Auto-expanding rich text input
+ * - **Layer 4**: Action buttons (attach, connectors, skills, send)
  * - Send button changes color based on content (gray when empty, green when has content)
  * - Arrow icon rotates when there's content
  * - Supports Enter to send, Shift+Enter for new line
@@ -138,6 +139,7 @@ export const Inputbox = ({
   onSend,
   files = [],
   showFileAttachments = true,
+  header,
   onFilesChange,
   onAddFile,
   placeholder,
@@ -345,6 +347,8 @@ export const Inputbox = ({
           </div>
         </div>
       )}
+      {/* Layer 1: Input-required question / details */}
+      {header && <BoxHeaderDisplay {...header} className="px-0 pb-2 pt-0" />}
       {/* Layer 2: File attachments (only show if has files) */}
       {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">

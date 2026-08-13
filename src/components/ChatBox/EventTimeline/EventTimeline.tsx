@@ -16,6 +16,7 @@ import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
+import { groupRepeatedToolCalls } from './activityGrouping';
 import { EventRenderer } from './EventRenderer';
 import type { EventRendererErrorHandler } from './EventRendererBoundary';
 import {
@@ -28,6 +29,7 @@ import type {
   EventRendererRegistry,
   EventTypeRendererRegistry,
 } from './rendererRegistry';
+import { RepeatedToolCallGroup } from './RepeatedToolCallGroup';
 
 interface EventTimelineProps {
   ariaLabel?: string;
@@ -63,8 +65,9 @@ export function EventTimeline({
     detailLevel,
     nodes
   );
+  const displayRows = groupRepeatedToolCalls(presentation.nodes);
 
-  if (presentation.nodes.length === 0) return <>{emptyState}</>;
+  if (displayRows.length === 0) return <>{emptyState}</>;
 
   return (
     <ol
@@ -73,38 +76,57 @@ export function EventTimeline({
       data-effective-detail-level={presentation.effectiveDetailLevel}
       data-requested-detail-level={presentation.requestedDetailLevel}
     >
-      {presentation.nodes.map((node) => (
-        <li
-          className="min-w-0"
-          data-event-node-id={node.id}
-          data-event-node-kind={node.kind}
-          data-interaction-id={
-            node.kind === 'interaction' ? node.interactionId : undefined
-          }
-          data-interaction-request-event-id={
-            node.kind === 'interaction'
-              ? node.requestEventId ||
-                (node.status === 'requested' ? node.eventId : undefined)
-              : undefined
-          }
-          data-interaction-resolution-event-id={
-            node.kind === 'interaction' ? node.resolutionEventId : undefined
-          }
-          data-interaction-status={
-            node.kind === 'interaction' ? node.status : undefined
-          }
-          data-run-id={node.runId}
-          key={node.id}
-        >
-          <EventRenderer
-            detailLevel={presentation.effectiveDetailLevel}
-            eventTypeRegistry={eventTypeRegistry}
-            node={node}
-            onRendererError={onRendererError}
-            registry={registry}
-          />
-        </li>
-      ))}
+      {displayRows.map((row) => {
+        if (row.rowKind === 'repeated-tool-calls') {
+          return (
+            <li
+              className="min-w-0"
+              data-event-node-id={row.id}
+              data-event-node-kind="activity"
+              data-run-id={row.runId}
+              data-tool-call-count={row.calls.length}
+              key={row.id}
+            >
+              <RepeatedToolCallGroup group={row} />
+            </li>
+          );
+        }
+
+        const node = row.node;
+        return (
+          <li
+            className="min-w-0"
+            data-event-node-id={node.id}
+            data-event-node-kind={node.kind}
+            data-message-role={node.kind === 'message' ? node.role : undefined}
+            data-interaction-id={
+              node.kind === 'interaction' ? node.interactionId : undefined
+            }
+            data-interaction-request-event-id={
+              node.kind === 'interaction'
+                ? node.requestEventId ||
+                  (node.status === 'requested' ? node.eventId : undefined)
+                : undefined
+            }
+            data-interaction-resolution-event-id={
+              node.kind === 'interaction' ? node.resolutionEventId : undefined
+            }
+            data-interaction-status={
+              node.kind === 'interaction' ? node.status : undefined
+            }
+            data-run-id={node.runId}
+            key={row.id}
+          >
+            <EventRenderer
+              detailLevel={presentation.effectiveDetailLevel}
+              eventTypeRegistry={eventTypeRegistry}
+              node={node}
+              onRendererError={onRendererError}
+              registry={registry}
+            />
+          </li>
+        );
+      })}
     </ol>
   );
 }
