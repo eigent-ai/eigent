@@ -75,4 +75,33 @@ describe('ProjectEventRuntimeProvider', () => {
       })
     );
   });
+
+  it('detaches the previous Project snapshot when the Session has no scope', () => {
+    const { rerender } = render(
+      <ProjectEventRuntimeProvider projectId="project-previous">
+        <Consumer />
+      </ProjectEventRuntimeProvider>
+    );
+
+    expect(screen.getByText('project-previous:0:ready')).toBeInTheDocument();
+
+    rerender(
+      <ProjectEventRuntimeProvider projectId={null}>
+        <Consumer />
+      </ProjectEventRuntimeProvider>
+    );
+
+    expect(screen.getByText(':none:ready')).toBeInTheDocument();
+    expect(mocks.hydration).toHaveBeenLastCalledWith({
+      projectId: null,
+      enabled: false,
+    });
+    expect(mocks.streams).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        projectId: null,
+        enabled: false,
+        snapshot: null,
+      })
+    );
+  });
 });

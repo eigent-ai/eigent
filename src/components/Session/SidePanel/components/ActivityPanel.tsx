@@ -48,6 +48,7 @@ import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/u
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
 import { useHost } from '@/host';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -401,10 +402,14 @@ export function SessionActivityPanel({
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
-  const projectId = projectStore.activeProjectId;
+  const { projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
-  const activeTaskId = chatStore?.activeTaskId ?? null;
-  const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
+  const scopedChatStore =
+    projectId && projectStore.activeProjectId === projectId ? chatStore : null;
+  const activeTaskId = scopedChatStore?.activeTaskId ?? null;
+  const activeTask = activeTaskId
+    ? scopedChatStore?.tasks[activeTaskId]
+    : undefined;
   const skills = useSkillsStore((state) => state.skills);
   const [connectors, setConnectors] = useState<ConnectorProvider[]>([]);
   const requestTaskBoxFocus = usePageTabStore(
@@ -470,11 +475,11 @@ export function SessionActivityPanel({
   );
 
   const attachToRun = (selectedFiles: File[]) => {
-    if (selectedFiles.length === 0 || !chatStore || !activeTaskId) return;
+    if (selectedFiles.length === 0 || !scopedChatStore || !activeTaskId) return;
     // Read attaches at merge time so files added while the picker was open
     // are not clobbered.
-    const existingFiles = chatStore.tasks[activeTaskId]?.attaches ?? [];
-    chatStore.setAttaches(activeTaskId, [
+    const existingFiles = scopedChatStore.tasks[activeTaskId]?.attaches ?? [];
+    scopedChatStore.setAttaches(activeTaskId, [
       ...existingFiles,
       ...selectedFiles.filter(
         (selected) =>
@@ -486,7 +491,7 @@ export function SessionActivityPanel({
   };
 
   const addFiles = async () => {
-    if (!chatStore || !activeTaskId || addingFiles) return;
+    if (!scopedChatStore || !activeTaskId || addingFiles) return;
 
     if (isWeb()) {
       // A dismissed file dialog has no dependable signal (`cancel` is not
@@ -613,7 +618,9 @@ export function SessionActivityPanel({
                       size="sm"
                       buttonContent="icon-only"
                       buttonRadius="lg"
-                      disabled={addingFiles || !chatStore || !activeTaskId}
+                      disabled={
+                        addingFiles || !scopedChatStore || !activeTaskId
+                      }
                       aria-label={addFilesLabel}
                       onClick={() => void addFiles()}
                     >

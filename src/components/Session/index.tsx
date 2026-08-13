@@ -352,7 +352,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   if (isNewProject) {
     return (
-      <ProjectEventRuntimeProvider projectId={activeProjectId}>
+      // The new-project tab deliberately preserves the last active Project in
+      // ProjectStore until the first message creates its replacement. Do not
+      // let that navigation convenience scope the SidePanel to the old Run.
+      <ProjectEventRuntimeProvider projectId={null}>
         <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <HeaderBox empty />
