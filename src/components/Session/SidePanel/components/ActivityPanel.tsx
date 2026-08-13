@@ -105,12 +105,14 @@ function SectionList({ children }: { children: ReactNode }) {
   );
 }
 
-function AgentsSection({
+function AgentCategorySection({
+  title,
   items,
   scope,
   headerAction,
   onSelect,
 }: {
+  title: string;
   items: SessionAgentItem[];
   scope: SessionPanelScope;
   headerAction?: ReactNode;
@@ -134,9 +136,11 @@ function AgentsSection({
           onClick={() => onSelect(item)}
         >
           {item.name ||
-            t('layout.session-panel-remote-subagent', {
-              defaultValue: 'Remote subagent',
-            })}
+            (item.subagent
+              ? t('layout.session-panel-remote-subagent', {
+                  defaultValue: 'Remote subagent',
+                })
+              : t('agents.agent', { defaultValue: 'Agent' }))}
         </SidePanelListRow>
       )}
     />
@@ -144,7 +148,7 @@ function AgentsSection({
 
   return (
     <SidePanelAccordionBox
-      title={t('layout.agents')}
+      title={title}
       titleSuffix={<CountPill count={primary.length} />}
       headerAction={headerAction}
       defaultOpen={false}
@@ -451,6 +455,14 @@ export function SessionActivityPanel({
     () => buildProjectSessionPanelData(scopedRuns, skills, connectors),
     [connectors, scopedRuns, skills]
   );
+  const agents = useMemo(
+    () => panelData.agents.filter((agent) => !agent.subagent),
+    [panelData.agents]
+  );
+  const subagents = useMemo(
+    () => panelData.agents.filter((agent) => agent.subagent),
+    [panelData.agents]
+  );
   const projectFiles = useProjectOutputFiles(
     projectId,
     activeTask,
@@ -562,11 +574,22 @@ export function SessionActivityPanel({
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden">
           <SectionList>
-            {panelData.agents.length > 0 ? (
-              <AgentsSection
-                items={panelData.agents}
+            {agents.length > 0 ? (
+              <AgentCategorySection
+                title={t('layout.agents')}
+                items={agents}
                 scope={scope}
                 headerAction={agentHeaderAction}
+                onSelect={setSelectedAgent}
+              />
+            ) : null}
+            {subagents.length > 0 ? (
+              <AgentCategorySection
+                title={t('agents.sub-agents', {
+                  defaultValue: 'Sub Agents',
+                })}
+                items={subagents}
+                scope={scope}
                 onSelect={setSelectedAgent}
               />
             ) : null}

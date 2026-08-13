@@ -247,6 +247,8 @@ function collectAgents(
   calls: SessionToolCall[]
 ): SessionAgentItem[] {
   const agents = new Map<string, SessionAgentItem>();
+  const isInternalAgent = (name: string) =>
+    normalizeContextKey(name) === 'questionconfirmagent';
   const put = (
     run: ProjectSessionRun,
     identity: string,
@@ -284,19 +286,24 @@ function collectAgents(
     for (const node of run.nodes) {
       if (node.kind !== 'activity') continue;
       if (node.activityType === 'agent') {
-        const text = `${node.eventType} ${node.title}`.toLowerCase();
+        const name = node.agentName || node.title;
+        if (isInternalAgent(name)) continue;
+        const text = `${node.eventType} ${node.title} ${name}`.toLowerCase();
         const subagent = /sub.?agent|remote/.test(text);
         put(
           run,
-          node.agentId || node.agentName || node.title,
-          node.agentName || node.title,
+          // Agent UUIDs are process instances and change on every Run. The
+          // stable semantic name identifies the logical agent in the panel.
+          name || node.agentId || 'agent',
+          name,
           node.detail || '',
           subagent
         );
       } else if (node.agentId || node.agentName) {
+        if (isInternalAgent(node.agentName || '')) continue;
         put(
           run,
-          node.agentId || node.agentName || 'agent',
+          node.agentName || node.agentId || 'agent',
           node.agentName || '',
           '',
           false
@@ -310,7 +317,11 @@ function collectAgents(
     if (!run) continue;
     const callText = `${call.toolkitName} ${call.method}`.toLowerCase();
     const subagent = /sub.?agent|remote/.test(callText);
-    const identity = call.agentName || (subagent ? 'remote-subagent' : 'agent');
+    // Typed tool lifecycle events may not carry agent identity. They are not
+    // independent agents and must not create a phantom "Remote subagent" row.
+    if (!call.agentName && !subagent) continue;
+    if (isInternalAgent(call.agentName)) continue;
+    const identity = call.agentName || 'remote-subagent';
     put(run, identity, call.agentName, '', subagent);
     const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
       identity
