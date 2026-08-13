@@ -117,6 +117,27 @@ export interface ProjectSessionPanelData {
 
 const ACTIVE_TOOL_STATUSES = new Set(['pending', 'running']);
 const TERMINAL_TOOL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const SKILL_LOAD_METHOD = 'load skill';
+const SKILL_LIST_METHOD = 'list skills';
+
+function normalizedMethodName(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ');
+}
+
+function skillOperation(
+  call: Pick<SessionToolCall, 'method' | 'toolkitName'>
+): 'load' | 'list' | null {
+  const method = normalizedMethodName(call.method);
+  if (method === SKILL_LOAD_METHOD) return 'load';
+  if (method === SKILL_LIST_METHOD) return 'list';
+
+  // Canonical tool lifecycle events currently expose tool_name as both the
+  // toolkit and method when no toolkit metadata is available.
+  const toolkitOperation = normalizedMethodName(call.toolkitName);
+  if (toolkitOperation === SKILL_LOAD_METHOD) return 'load';
+  if (toolkitOperation === SKILL_LIST_METHOD) return 'list';
+  return null;
+}
 
 function nodeTime(node: ChatProjectionNode, fallback = 0): number {
   const parsed = node.createdAt ? Date.parse(node.createdAt) : Number.NaN;
@@ -230,7 +251,7 @@ export function collectSessionToolCalls(
   }
 
   for (const call of calls) {
-    if (/skill/i.test(call.toolkitName)) {
+    if (skillOperation(call) === 'load') {
       call.skillNames = extractLoadedSkillNames(
         [call.input, call.output].filter(Boolean).join('\n')
       );
@@ -492,9 +513,14 @@ function collectContext(
   };
 
   for (const call of calls) {
-    if (/skill/i.test(call.toolkitName)) {
-      const names = call.skillNames.length > 0 ? call.skillNames : ['Skill'];
-      for (const name of names) {
+    const operation = skillOperation(call);
+    if (operation) {
+      // list_skills is discovery only. Its result contains every installed
+      // skill's name and description and must never be presented as usage.
+      // A load_skill call without a safely parsed name is also omitted rather
+      // than inventing an umbrella "Skill" row.
+      if (operation !== 'load') continue;
+      for (const name of call.skillNames) {
         put('skill', displaySkillName(name, skills), undefined, call);
       }
       continue;
