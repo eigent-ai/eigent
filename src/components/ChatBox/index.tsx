@@ -24,7 +24,7 @@ import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
-import { useProjectRunEventStreams } from '@/hooks/useProjectRunEventStreams';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
 import {
@@ -46,10 +46,7 @@ import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import {
-  getProjectEventStore,
-  type ProjectEventStoreSnapshot,
-} from '@/store/projectEventStore';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -60,7 +57,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -100,8 +96,6 @@ const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
   'cancelling',
   'interrupted',
 ]);
-
-const subscribeToNothing = () => () => undefined;
 
 type EventNativeProjectedRun =
   ProjectEventStoreSnapshot['view']['runs'][string];
@@ -316,32 +310,12 @@ export default function ChatBox(): JSX.Element {
   );
   const activeProjectId = projectStore.activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
-  const eventNativeProjectStore = useMemo(
-    () =>
-      eventNativeTimelineEnabled && activeProjectId
-        ? getProjectEventStore(activeProjectId)
-        : null,
-    [activeProjectId, eventNativeTimelineEnabled]
-  );
-  const subscribeToEventNativeProject = useCallback(
-    (listener: () => void) =>
-      eventNativeProjectStore?.subscribe(listener) ?? subscribeToNothing(),
-    [eventNativeProjectStore]
-  );
-  const getEventNativeProjectSnapshot = useCallback(
-    () => eventNativeProjectStore?.getSnapshot() ?? null,
-    [eventNativeProjectStore]
-  );
-  const eventNativeProjectSnapshot = useSyncExternalStore(
-    subscribeToEventNativeProject,
-    getEventNativeProjectSnapshot,
-    getEventNativeProjectSnapshot
-  );
-  useProjectRunEventStreams({
-    projectId: activeProjectId,
-    snapshot: eventNativeProjectSnapshot,
-    enabled: eventNativeTimelineEnabled,
-  });
+  const { snapshot: sharedProjectEventSnapshot } = useProjectEventRuntime();
+  const eventNativeProjectSnapshot =
+    eventNativeTimelineEnabled &&
+    sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot
+      : null;
   const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
     eventNativeProjectSnapshot
   );
@@ -1862,7 +1836,7 @@ export default function ChatBox(): JSX.Element {
 
   const handleEventNativeStopRun = async (runId: string) => {
     const currentRunId = selectEventNativeActiveRunId(
-      eventNativeProjectStore?.getSnapshot() ?? null,
+      eventNativeProjectSnapshot,
       eligibleLegacyActiveRunId
     );
     if (runId !== currentRunId) return;

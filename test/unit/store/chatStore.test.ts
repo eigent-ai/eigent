@@ -118,6 +118,10 @@ vi.mock('../../../src/store/projectStore', () => ({
     getState: vi.fn(() => ({
       activeProjectId: null,
       getHistoryId: () => null,
+      getProjectById: (projectId: string) => ({
+        id: projectId,
+        mode: 'single-agent',
+      }),
     })),
   },
 }));
@@ -1252,6 +1256,7 @@ describe('ChatStore - Core Functionality', () => {
   describe('SSE onerror - no retry when task already finished (issue #1212)', () => {
     it('should stop retry when task is already FINISHED (avoids duplicate execution)', async () => {
       const mockFetchEventSource = vi.mocked(fetchEventSource);
+      vi.mocked(proxyFetchGet).mockResolvedValue([]);
       mockFetchEventSource.mockImplementation((_url, opts) => {
         // Simulate connection error; when onerror runs, store checks task status
         // and throws to stop retry (issue #1212 fix)
@@ -1281,7 +1286,18 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       await act(async () => {
-        await result.current.getState().startTask(taskId!);
+        await result.current
+          .getState()
+          .startTask(
+            taskId!,
+            'share',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined
+          );
       });
 
       expect(mockFetchEventSource).toHaveBeenCalledTimes(1);

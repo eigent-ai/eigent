@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useProjectOutputFiles } from '@/components/Session/SidePanelSections/useProjectOutputFiles';
+import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/useProjectOutputFiles';
 import { HostProvider } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { ChatTaskStatus } from '@/types/constants';

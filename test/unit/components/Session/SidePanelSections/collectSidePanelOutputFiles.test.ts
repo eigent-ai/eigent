@@ -15,7 +15,7 @@
 import {
   collectSidePanelOutputFiles,
   getSidePanelOutputFilesRevision,
-} from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+} from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import { describe, expect, it } from 'vitest';
 
 const reportFile = (): FileInfo => ({

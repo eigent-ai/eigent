@@ -12,15 +12,25 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { ChatStore, VanillaChatStore } from '@/store/chatStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useEffect, useMemo, useReducer } from 'react';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import type { ProjectedRun } from '@/lib/projector';
+import type { ChatProjectionNode } from '@/lib/projector/chat';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { useMemo } from 'react';
+
+const LIVE_RUN_STATUSES = new Set<ProjectedRun['status']>([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+]);
 
 export interface ProjectSessionRun {
-  chatId: string;
-  chatStore: VanillaChatStore;
-  task: ChatStore['tasks'][string];
+  /** Durable Run identity. `taskId` remains as a UI compatibility alias. */
+  runId: string;
   taskId: string;
+  status: ProjectedRun['status'];
+  nodes: ChatProjectionNode[];
   createdAt: number;
   updatedAt: number;
   isCurrent: boolean;
@@ -32,102 +42,100 @@ export interface ProjectSessionOverview {
   runs: ProjectSessionRun[];
 }
 
-function persistedEventTime(event: AgentMessage): number | null {
-  if (typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)) {
-    return event.timestamp < 1_000_000_000_000
-      ? event.timestamp * 1000
-      : event.timestamp;
-  }
-  if (event.created_at) {
-    const parsed = Date.parse(event.created_at);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
+function timestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function taskUpdatedAt(task: ChatStore['tasks'][string]): number {
-  const createdAt = task.createdAt || 0;
-  let updatedAt = createdAt;
-
-  if (task.taskTime > 0) updatedAt = Math.max(updatedAt, task.taskTime);
-  if (createdAt > 0 && task.elapsed > 0) {
-    updatedAt = Math.max(updatedAt, createdAt + task.elapsed);
+function compareNodes(left: ChatProjectionNode, right: ChatProjectionNode) {
+  const byTime = timestamp(left.createdAt) - timestamp(right.createdAt);
+  if (byTime !== 0) return byTime;
+  if (left.runId === right.runId && left.runSequence !== right.runSequence) {
+    return left.runSequence - right.runSequence;
   }
-  for (const agent of task.taskAssigning ?? []) {
-    for (const event of agent.log ?? []) {
-      updatedAt = Math.max(updatedAt, persistedEventTime(event) ?? 0);
-    }
+  return left.eventId.localeCompare(right.eventId);
+}
+
+function compareRuns(left: ProjectSessionRun, right: ProjectSessionRun) {
+  return (
+    right.updatedAt - left.updatedAt ||
+    right.createdAt - left.createdAt ||
+    right.runId.localeCompare(left.runId)
+  );
+}
+
+/** Build the SidePanel Run view exclusively from the bounded durable bus. */
+export function buildProjectSessionOverview(
+  snapshot: ProjectEventStoreSnapshot | null
+): ProjectSessionOverview {
+  if (!snapshot) {
+    return { currentRun: null, historicalRuns: [], runs: [] };
   }
 
-  return updatedAt;
+  const nodesByRun = new Map<string, ChatProjectionNode[]>();
+  for (const node of snapshot.chat.nodes) {
+    const nodes = nodesByRun.get(node.runId) ?? [];
+    nodes.push(node);
+    nodesByRun.set(node.runId, nodes);
+  }
+
+  const runIds = new Set([
+    ...Object.keys(snapshot.view.runs),
+    ...nodesByRun.keys(),
+  ]);
+  const runs = [...runIds].map<ProjectSessionRun>((runId) => {
+    const projectedRun = snapshot.view.runs[runId];
+    const nodes = [...(nodesByRun.get(runId) ?? [])].sort(compareNodes);
+    const nodeTimes = nodes
+      .map((node) => timestamp(node.createdAt))
+      .filter((value) => value > 0);
+    const aggregateTime = timestamp(projectedRun?.updatedAt);
+    const createdAt =
+      nodeTimes.length > 0 ? Math.min(...nodeTimes) : aggregateTime;
+    const updatedAt = Math.max(aggregateTime, ...nodeTimes, createdAt);
+
+    return {
+      runId,
+      taskId: runId,
+      status: projectedRun?.status ?? 'unknown',
+      nodes,
+      createdAt,
+      updatedAt,
+      isCurrent: false,
+    };
+  });
+
+  runs.sort(compareRuns);
+  const current =
+    runs
+      .filter((run) => LIVE_RUN_STATUSES.has(run.status))
+      .sort(compareRuns)[0] ??
+    runs[0] ??
+    null;
+  const normalizedRuns = runs.map((run) => ({
+    ...run,
+    isCurrent: run.runId === current?.runId,
+  }));
+  const currentRun =
+    normalizedRuns.find((run) => run.isCurrent) ?? current ?? null;
+
+  return {
+    currentRun,
+    historicalRuns: normalizedRuns.filter((run) => !run.isCurrent),
+    runs: normalizedRuns,
+  };
 }
 
 /**
- * Project-level view of every run. Unlike `useSelectedProjectTurn`, this hook
- * is deliberately independent from chat scroll position and TurnTabs.
+ * Project-level SidePanel view backed by the SQLite journal projection.
+ * ChatStore is intentionally not consulted here.
  */
 export function useProjectSessionOverview(
   projectId: string | null | undefined
 ): ProjectSessionOverview {
-  const projectStore = useProjectRuntimeStore();
-  const [, refresh] = useReducer((value: number) => value + 1, 0);
-
-  const stores = useMemo(
-    () => (projectId ? projectStore.getAllChatStores(projectId) : []),
-    [projectId, projectStore]
-  );
-
-  useEffect(() => {
-    const unsubscribers = stores.map(({ chatStore }) =>
-      chatStore.subscribe(refresh)
-    );
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [stores]);
-
-  const activeStore = projectId
-    ? projectStore.getActiveChatStore(projectId)
-    : null;
-  const activeTaskId = activeStore?.getState().activeTaskId ?? null;
-  const seen = new Set<string>();
-  const runs: ProjectSessionRun[] = [];
-
-  for (const { chatId, chatStore } of stores) {
-    const state = chatStore.getState();
-    for (const [taskId, task] of Object.entries(state.tasks)) {
-      if (seen.has(taskId)) continue;
-      const hasProjectContent =
-        task.messages.some((message) => message.role === 'user') ||
-        task.taskInfo.length > 0 ||
-        task.taskRunning.length > 0 ||
-        task.taskAssigning.length > 0;
-      const isActiveTask = chatStore === activeStore && taskId === activeTaskId;
-      if (!hasProjectContent && !isActiveTask) continue;
-      seen.add(taskId);
-      const createdAt = task.createdAt || 0;
-      runs.push({
-        chatId,
-        chatStore,
-        task,
-        taskId,
-        createdAt,
-        updatedAt: taskUpdatedAt(task),
-        isCurrent: isActiveTask,
-      });
-    }
-  }
-
-  runs.sort((a, b) => b.createdAt - a.createdAt || b.updatedAt - a.updatedAt);
-  const currentRun =
-    runs.find((run) => run.isCurrent) ?? (runs.length > 0 ? runs[0]! : null);
-  const normalizedRuns = runs.map((run) => ({
-    ...run,
-    isCurrent: run.taskId === currentRun?.taskId,
-  }));
-
-  return {
-    currentRun:
-      normalizedRuns.find((run) => run.isCurrent) ?? currentRun ?? null,
-    historicalRuns: normalizedRuns.filter((run) => !run.isCurrent),
-    runs: normalizedRuns,
-  };
+  const runtime = useProjectEventRuntime();
+  const snapshot =
+    projectId && runtime.projectId === projectId ? runtime.snapshot : null;
+  return useMemo(() => buildProjectSessionOverview(snapshot), [snapshot]);
 }
