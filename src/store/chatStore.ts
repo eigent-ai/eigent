@@ -130,6 +130,22 @@ export const canonicalRunEventToLegacyMessage = (
           : undefined,
     } as AgentMessage;
   }
+  if (event.event_type === 'artifact.manifest.finalized') {
+    const payload =
+      event.payload && typeof event.payload === 'object'
+        ? (event.payload as Record<string, unknown>)
+        : null;
+    if (!payload || !Array.isArray(payload.artifacts)) return null;
+    return {
+      step: AgentStep.ARTIFACT_MANIFEST,
+      data: payload,
+      timestamp:
+        typeof event.created_at === 'number' &&
+        Number.isFinite(event.created_at)
+          ? event.created_at
+          : undefined,
+    } as AgentMessage;
+  }
   if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
     return null;
   }
@@ -516,6 +532,9 @@ interface Task {
   taskRunning: TaskInfo[];
   taskAssigning: Agent[];
   fileList: FileInfo[];
+  /** Files from the authoritative typed Artifact manifest during replay. */
+  artifactManifestFiles?: FileInfo[];
+  artifactManifestFinalized?: boolean;
   webViewUrls: { url: string; processTaskId: string }[];
   activeAsk: string;
   askList: Message[];
@@ -4033,6 +4052,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          if (agentMessages.step === AgentStep.ARTIFACT_MANIFEST) {
+            const lockedTaskId = getCurrentTaskId();
+            const lockedTask = getCurrentChatStore().tasks[lockedTaskId];
+            if (!lockedTask) return;
+            lockedTask.artifactManifestFiles = normalizeTaskArtifactFileList(
+              agentMessages.data.artifacts
+            );
+            // A finalized manifest is the durable barrier even when discovery
+            // explicitly records workspace_unavailable. Re-querying the live
+            // filesystem during replay would invent a second, non-canonical
+            // history and produces noisy 404s after Cloud restore.
+            lockedTask.artifactManifestFinalized = true;
+            setUpdateCount();
+            return;
+          }
+
           if (agentMessages.step === AgentStep.BUDGET_NOT_ENOUGH) {
             console.log('error', agentMessages.data);
             showCreditsToast();
@@ -4380,12 +4415,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
             const outputProjectId =
               project_id || projectStore.activeProjectId || undefined;
-            const taskArtifactFileList = await loadTaskArtifactFileList({
-              taskId: currentTaskId,
-              projectId: outputProjectId,
-              email: email || undefined,
-              userId: user_id,
-            });
+            const taskArtifactFileList =
+              completedTask.artifactManifestFinalized === true
+                ? {
+                    canonical: true,
+                    files: completedTask.artifactManifestFiles || [],
+                  }
+                : await loadTaskArtifactFileList({
+                    taskId: currentTaskId,
+                    projectId: outputProjectId,
+                    email: email || undefined,
+                    userId: user_id,
+                  });
             const outputBaseURL = await getBaseURL().catch(() => '');
             const finalOutputFileList = extractFinalOutputFileList(
               endMessage,

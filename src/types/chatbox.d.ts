@@ -182,6 +182,10 @@ declare global {
       operation?: string;
       safety_class?: string;
       target_resources?: string[];
+      artifacts?: Array<Record<string, unknown>>;
+      artifact_count?: number;
+      scan_status?: string;
+      manifest_digest?: string;
       allowed_scopes?: import('@/service/humanInteractionApi').InteractionDecisionScope[];
       options?: import('@/service/humanInteractionApi').HumanInteractionPayload['options'];
       fields?: import('@/service/humanInteractionApi').HumanInteractionPayload['fields'];

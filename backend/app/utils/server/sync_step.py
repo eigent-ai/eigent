@@ -198,6 +198,19 @@ async def _record_local_step(args, value) -> None:
     # was already shown to the user.
     await _flush_local_text(run_id)
     if data["step"] == "end":
+        # Finalize the authoritative Artifact manifest before the legacy
+        # assistant.final/end projection. Durable replay can therefore build
+        # the Files changed UI before END terminalizes the legacy reducer.
+        from app.artifacts import finalize_run_artifacts
+        from app.run_journal.runtime import get_default_run_journal
+
+        journal = get_default_run_journal()
+        run = await asyncio.to_thread(journal.get_run, run_id)
+        if run is None:
+            raise RuntimeError(
+                f"Run {run_id!r} disappeared before finalization"
+            )
+        await asyncio.to_thread(finalize_run_artifacts, journal, run)
         await get_default_event_recorder().record_assistant_final(
             project_id=project_id,
             run_id=run_id,

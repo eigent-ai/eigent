@@ -34,6 +34,10 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.artifacts import (
+    scan_task_changed_files,
+    task_modification_windows,
+)
 from app.auth import require_local_control_principal
 from app.component.environment import env
 from app.run_journal import get_default_run_journal
@@ -216,101 +220,18 @@ def _resolve_file_root(
     return _resolve_project_root(email, project_id, user_id)
 
 
-def _task_change_roots(snapshot) -> list[tuple[Path, bool]]:
-    """Return task roots as ``(path, include_all)`` tuples.
-
-    The output root is Run-owned, so every file there is an artifact even when
-    a copy operation preserves an old mtime. A distinct working directory may
-    contain user files; only files modified after Run admission are surfaced.
-    """
-    output_root = Path(snapshot.task_output_root).expanduser().resolve()
-    working_root = Path(snapshot.working_directory).expanduser().resolve()
-    roots: list[tuple[Path, bool]] = []
-    if output_root.is_dir():
-        roots.append((output_root, True))
-    if working_root != output_root and working_root.is_dir():
-        roots.append((working_root, False))
-    return roots
-
-
 def _list_task_changed_files(
     snapshot,
     max_entries: int = 500,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
 ) -> list[dict]:
     """List files generated or modified by one Run without uploading them."""
-    result: list[dict] = []
-    seen_paths: set[str] = set()
-    remaining = max_entries
-    # Account for filesystems whose mtimes have one-second resolution. Run
-    # attempt windows prevent a historical direct-write Run from absorbing
-    # files created by every later Run in the same selected Space folder.
-    windows = modification_windows or ((snapshot.task_start_time - 1.0, None),)
-
-    for root, include_all in _task_change_roots(snapshot):
-        if remaining <= 0:
-            break
-        if include_all:
-            paths = list_files(
-                str(root),
-                base=str(root),
-                max_entries=remaining,
-            )
-        else:
-            paths = []
-            window_seen: set[str] = set()
-            for modified_after, modified_before in windows:
-                if len(paths) >= remaining:
-                    break
-                window_paths = list_files(
-                    str(root),
-                    base=str(root),
-                    max_entries=remaining - len(paths),
-                    modified_after=modified_after,
-                    modified_before=modified_before,
-                )
-                for window_path in window_paths:
-                    if window_path in window_seen:
-                        continue
-                    window_seen.add(window_path)
-                    paths.append(window_path)
-        for abs_path in paths:
-            try:
-                path = Path(abs_path).resolve()
-                if not path.is_file():
-                    continue
-                identity = str(path)
-                if identity in seen_paths:
-                    continue
-                relative_path = path.relative_to(root).as_posix()
-            except (OSError, ValueError):
-                continue
-
-            try:
-                stat_result = path.stat()
-            except OSError:
-                # The artifact list races with tools that atomically replace or
-                # remove generated files. One vanished file must not fail the
-                # whole Files changed panel.
-                continue
-
-            seen_paths.add(identity)
-            remaining -= 1
-            result.append(
-                {
-                    "filename": path.name,
-                    "path": identity,
-                    "relativePath": relative_path,
-                    "changeType": "generated" if include_all else "changed",
-                    "size": stat_result.st_size,
-                    "modifiedAt": stat_result.st_mtime * 1000,
-                    "supportsRanges": True,
-                }
-            )
-            if remaining <= 0:
-                break
-
-    return sorted(result, key=lambda item: item["relativePath"])
+    return scan_task_changed_files(
+        snapshot,
+        max_entries,
+        modification_windows,
+        list_files_fn=list_files,
+    )
 
 
 def _task_modification_windows(
@@ -322,32 +243,9 @@ def _task_modification_windows(
     ``None`` means the RunJournal has no matching canonical Run and callers
     should retain the legacy start-time-only behavior.
     """
-    journal = get_default_run_journal()
-    run = journal.get_run(task_id)
-    if run is None or run.project_id != project_id:
-        return None, False
-
-    attempts = journal.list_run_attempts(task_id)
-    windows: list[tuple[float, float | None]] = []
-    for attempt in attempts:
-        end = attempt.ended_at
-        if end is None and run.status not in {
-            "pending",
-            "running",
-            "waiting_for_user",
-        }:
-            end = run.updated_at
-        windows.append((attempt.started_at - 1.0, end))
-
-    if not windows:
-        end = (
-            run.updated_at
-            if run.status not in {"pending", "running", "waiting_for_user"}
-            else None
-        )
-        windows.append((run.created_at - 1.0, end))
-
-    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+    return task_modification_windows(
+        get_default_run_journal(), task_id, project_id
+    )
 
 
 @router.get(
@@ -363,6 +261,15 @@ async def list_task_changed_files(
     ),
 ) -> list[dict]:
     """Return the Desktop-local preview index for one Run's changed files."""
+    manifest_event = await run_in_threadpool(
+        get_default_run_journal().get_run_artifact_manifest_event,
+        task_id,
+    )
+    if manifest_event is not None:
+        artifacts = manifest_event.payload.get("artifacts", [])
+        if isinstance(artifacts, list):
+            return [dict(item) for item in artifacts if isinstance(item, dict)]
+
     snapshot = get_workspace_resolver().store.get_snapshot(
         email, task_id, user_id
     )

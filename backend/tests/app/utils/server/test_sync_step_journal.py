@@ -159,6 +159,68 @@ async def test_stream_end_flushes_sub_threshold_text_tail(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_end_finalizes_artifacts_before_assistant_result_and_terminal(
+    monkeypatch,
+):
+    order: list[str] = []
+    recorder = SimpleNamespace(
+        record_assistant_final=AsyncMock(
+            side_effect=lambda **_kwargs: order.append("assistant.final")
+        )
+    )
+    journal = SimpleNamespace(
+        get_run=lambda _run_id: SimpleNamespace(
+            run_id="run-1", project_id="project-1"
+        )
+    )
+
+    from app import artifacts, run_runtime
+    from app.run_journal import runtime as journal_runtime
+
+    monkeypatch.setattr(
+        artifacts,
+        "finalize_run_artifacts",
+        lambda _journal, _run: order.append("artifact.manifest.finalized"),
+    )
+    monkeypatch.setattr(
+        journal_runtime, "get_default_run_journal", lambda: journal
+    )
+    monkeypatch.setattr(
+        run_runtime,
+        "get_default_run_coordinator",
+        lambda: SimpleNamespace(
+            complete_turn=AsyncMock(
+                side_effect=lambda _run_id: (
+                    order.append("run.completed") or True
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        sync_step_module, "get_default_event_recorder", lambda: recorder
+    )
+    monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+
+    @sync_step_module.sync_step
+    async def stream(chat, _request):
+        yield 'data: {"step":"end","data":{"message":"done"}}'
+
+    chat = SimpleNamespace(task_id="run-1", project_id="project-1")
+    values = [
+        value async for value in stream(chat, SimpleNamespace(headers={}))
+    ]
+    order.append("yielded")
+
+    assert len(values) == 1
+    assert order == [
+        "artifact.manifest.finalized",
+        "assistant.final",
+        "run.completed",
+        "yielded",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_journal_failure_marks_degraded_but_does_not_stop_sse(
     monkeypatch,
 ):

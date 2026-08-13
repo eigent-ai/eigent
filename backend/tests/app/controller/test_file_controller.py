@@ -298,6 +298,98 @@ def test_task_changes_endpoint_freezes_completed_run_manifest(
     )
 
 
+def test_task_changes_endpoint_reads_canonical_manifest_without_filesystem_scan(
+    monkeypatch,
+):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    resolver = MagicMock()
+    journal = MagicMock()
+    journal.get_run_artifact_manifest_event.return_value = SimpleNamespace(
+        payload={
+            "scan_status": "complete",
+            "artifacts": [
+                {
+                    "artifact_id": "art-1",
+                    "filename": "report.csv",
+                    "path": "/workspace/report.csv",
+                    "relativePath": "report.csv",
+                    "changeType": "generated",
+                    "size": 12,
+                    "modifiedAt": 1234,
+                    "supportsRanges": True,
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(
+        file_controller, "get_workspace_resolver", lambda: resolver
+    )
+    monkeypatch.setattr(
+        file_controller, "get_default_run_journal", lambda: journal
+    )
+    monkeypatch.setattr(
+        file_controller,
+        "_list_task_changed_files",
+        MagicMock(side_effect=AssertionError("filesystem scan must not run")),
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    response = client.get(
+        "/files/changes",
+        params={
+            "task_id": "task-1",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+        headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["artifact_id"] == "art-1"
+    resolver.store.get_snapshot.assert_not_called()
+
+
+def test_task_changes_treats_unavailable_manifest_as_finalized_history(
+    monkeypatch,
+):
+    monkeypatch.setenv("EIGENT_RUNTIME", "electron")
+    monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
+    resolver = MagicMock()
+    journal = MagicMock()
+    journal.get_run_artifact_manifest_event.return_value = SimpleNamespace(
+        payload={
+            "scan_status": "workspace_unavailable",
+            "artifacts": [],
+        }
+    )
+    monkeypatch.setattr(
+        file_controller, "get_workspace_resolver", lambda: resolver
+    )
+    monkeypatch.setattr(
+        file_controller, "get_default_run_journal", lambda: journal
+    )
+
+    app = FastAPI()
+    app.include_router(file_controller.router)
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    response = client.get(
+        "/files/changes",
+        params={
+            "task_id": "task-1",
+            "project_id": "project-1",
+            "email": "user@example.com",
+        },
+        headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    resolver.store.get_snapshot.assert_not_called()
+
+
 def test_stream_file_supports_byte_ranges(monkeypatch, tmp_path):
     project_root = tmp_path / "project"
     project_root.mkdir()

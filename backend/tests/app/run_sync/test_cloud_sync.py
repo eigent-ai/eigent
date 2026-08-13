@@ -372,6 +372,33 @@ async def test_worker_bootstraps_missing_history_without_upload_echo(journal):
     await worker.close()
 
 
+def test_artifact_cloud_projection_removes_machine_local_paths():
+    from app.run_sync.cloud_sync import _cloud_event_payload
+
+    projected = _cloud_event_payload(
+        "artifact.manifest.finalized",
+        {
+            "artifact_count": 1,
+            "artifacts": [
+                {
+                    "artifact_id": "art-1",
+                    "path": "/Users/alice/private/report.csv",
+                    "relativePath": "reports/report.csv",
+                }
+            ],
+        },
+    )
+
+    assert projected["localPathAvailable"] is False
+    assert projected["artifacts"] == [
+        {
+            "artifact_id": "art-1",
+            "relativePath": "reports/report.csv",
+            "localPathAvailable": False,
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_worker_sends_different_runs_in_parallel(journal):
     _append(journal, "run-1")

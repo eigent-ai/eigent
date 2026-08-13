@@ -60,6 +60,16 @@ def _cloud_event_payload(
     """Project a local canonical event into its Cloud-safe representation."""
 
     projected = copy.deepcopy(payload)
+    if event_type.startswith("artifact."):
+        projected.pop("path", None)
+        projected["localPathAvailable"] = False
+        artifacts = projected.get("artifacts")
+        if isinstance(artifacts, list):
+            for artifact in artifacts:
+                if isinstance(artifact, dict):
+                    artifact.pop("path", None)
+                    artifact["localPathAvailable"] = False
+        return projected
     if event_type != "approval.requested":
         return projected
     prompt = projected.get("prompt")

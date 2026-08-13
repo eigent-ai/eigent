@@ -628,10 +628,28 @@ class RunCoordinator:
             return
         try:
             if event_type == "run.completed":
+                from app.artifacts import finalize_run_artifacts
+
+                artifact_manifest_event = await asyncio.to_thread(
+                    finalize_run_artifacts,
+                    self._journal,
+                    run,
+                )
                 result_event = await asyncio.to_thread(
                     self._journal.get_run_final_result_event,
                     run_id,
                 )
+                payload = {
+                    **payload,
+                    "artifact_manifest_event_id": (
+                        artifact_manifest_event.event_id
+                    ),
+                    "artifact_count": int(
+                        artifact_manifest_event.payload.get(
+                            "artifact_count", 0
+                        )
+                    ),
+                }
                 if result_event is not None:
                     payload = {
                         **payload,

@@ -7682,6 +7682,62 @@ class SQLiteRunJournal:
                 )
             return event
 
+    def append_artifact_manifest_events(
+        self,
+        run_id: str,
+        drafts: list[RunEventDraft] | tuple[RunEventDraft, ...],
+        *,
+        expected_project_id: str | None = None,
+    ) -> CommittedRunEvent:
+        """Commit one Run's Artifact lifecycle and manifest barrier once.
+
+        Artifact discovery runs before this transaction and two terminal paths
+        may race to publish its result. ``BEGIN IMMEDIATE`` plus the in-lock
+        barrier lookup makes the first finalized manifest authoritative; a
+        later scanner observes and returns it without appending a second view
+        of the same Run's filesystem.
+        """
+
+        if (
+            not drafts
+            or drafts[-1].event_type != "artifact.manifest.finalized"
+        ):
+            raise ValueError(
+                "artifact batch must end with a finalized manifest"
+            )
+        if any(
+            self._terminal_status_for_event(draft) is not None
+            for draft in drafts
+        ):
+            raise ValueError("artifact batches cannot contain terminal events")
+
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                """
+                SELECT event_id, run_id, sequence, run_version, event_type,
+                       payload_json, legacy_step, created_at
+                FROM run_events
+                WHERE run_id = ? AND event_type = 'artifact.manifest.finalized'
+                ORDER BY sequence DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if existing is not None:
+                return self._event_from_row(existing)
+
+            committed: list[CommittedRunEvent] = []
+            for draft in drafts:
+                committed.append(
+                    self._append_event_in_transaction(
+                        connection,
+                        run_id,
+                        draft,
+                        expected_project_id=expected_project_id,
+                    )
+                )
+            return committed[-1]
+
     def list_events(
         self,
         run_id: str,
@@ -8606,6 +8662,26 @@ class SQLiteRunJournal:
                   AND (event_type = 'assistant.final' OR legacy_step = 'end')
                 ORDER BY CASE WHEN event_type = 'assistant.final' THEN 0 ELSE 1 END,
                          sequence DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            return self._event_from_row(row) if row is not None else None
+
+    def get_run_artifact_manifest_event(
+        self, run_id: str
+    ) -> CommittedRunEvent | None:
+        """Return the latest finalized canonical Artifact manifest."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT event_id, run_id, sequence, run_version, event_type,
+                       payload_json, legacy_step, created_at
+                FROM run_events
+                WHERE run_id = ?
+                  AND event_type = 'artifact.manifest.finalized'
+                ORDER BY sequence DESC
                 LIMIT 1
                 """,
                 (run_id,),

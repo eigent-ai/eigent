@@ -208,7 +208,9 @@ async def test_explicit_coordinator_close_cancels_execution():
 
 
 @pytest.mark.asyncio
-async def test_completed_run_references_its_canonical_assistant_result(tmp_path):
+async def test_completed_run_references_its_canonical_assistant_result(
+    tmp_path,
+):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     try:
         journal.ensure_run(run_id="run-result", project_id="project-1")
@@ -235,6 +237,14 @@ async def test_completed_run_references_its_canonical_assistant_result(tmp_path)
             for event in journal.list_events("run-result")
             if event.event_type == "run.completed"
         )
+        manifest = journal.get_run_artifact_manifest_event("run-result")
+        assert manifest is not None
+        assert manifest.sequence < completed.sequence
+        assert (
+            completed.payload["artifact_manifest_event_id"]
+            == manifest.event_id
+        )
+        assert completed.payload["artifact_count"] == 0
         assert completed.payload["result_event_id"] == final.event_id
     finally:
         journal.close()

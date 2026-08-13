@@ -73,6 +73,36 @@ describe('canonical Run replay projection', () => {
     });
     expect(
       canonicalRunEventToLegacyMessage({
+        event_type: 'artifact.manifest.finalized',
+        legacy_step: null,
+        payload: {
+          scan_status: 'complete',
+          artifacts: [
+            {
+              path: '/workspace/report.csv',
+              relativePath: 'report.csv',
+              filename: 'report.csv',
+            },
+          ],
+        },
+        created_at: 1_786_026_414.9,
+      })
+    ).toEqual({
+      step: 'artifact_manifest',
+      data: {
+        scan_status: 'complete',
+        artifacts: [
+          {
+            path: '/workspace/report.csv',
+            relativePath: 'report.csv',
+            filename: 'report.csv',
+          },
+        ],
+      },
+      timestamp: 1_786_026_414.9,
+    });
+    expect(
+      canonicalRunEventToLegacyMessage({
         event_type: 'tool.completed',
         legacy_step: null,
         payload: { outcome: 'completed' },
