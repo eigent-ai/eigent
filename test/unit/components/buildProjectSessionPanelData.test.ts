@@ -126,6 +126,26 @@ function todoPlan(
   };
 }
 
+function skillToolkitNode(
+  eventId: string,
+  sequence: number,
+  status: ChatActivityNode['status'],
+  methodName: 'list_skills' | 'load_skill',
+  detail: string
+): ChatActivityNode {
+  const active = status === 'running';
+  return {
+    ...toolNode('run-current', eventId, sequence, status, detail),
+    eventType: active ? 'legacy.activate_toolkit' : 'legacy.deactivate_toolkit',
+    legacyStep: active ? 'activate_toolkit' : 'deactivate_toolkit',
+    title: detail,
+    toolkitName: 'SkillToolkit',
+    methodName,
+    toolName: undefined,
+    toolCallId: undefined,
+  };
+}
+
 function makeRun(
   runId: string,
   isCurrent: boolean,
@@ -469,6 +489,51 @@ describe('buildProjectSessionPanelData', () => {
       },
     ]);
     expect(JSON.stringify(data)).not.toContain('__legacy_data');
+  });
+
+  it('shows only explicitly loaded skills and ignores skill discovery', () => {
+    const availableSkills =
+      "[{'name': 'skill-security-auditor', 'description': " +
+      "'Security auditing for code, configs, and infrastructure.'}]";
+    const run = makeRun('run-current', true, [
+      skillToolkitNode(
+        'list-start',
+        1,
+        'running',
+        'list_skills',
+        JSON.stringify({ message_title: 'List Skills' })
+      ),
+      skillToolkitNode(
+        'list-end',
+        2,
+        'completed',
+        'list_skills',
+        availableSkills
+      ),
+      skillToolkitNode(
+        'load-start',
+        3,
+        'running',
+        'load_skill',
+        JSON.stringify({ name: 'pdf', message_title: 'Load Skill' })
+      ),
+      skillToolkitNode(
+        'load-end',
+        4,
+        'completed',
+        'load_skill',
+        '## Skill: pdf\n\n# PDF Processing Guide'
+      ),
+    ]);
+
+    expect(buildProjectSessionPanelData([run], []).contextItems).toMatchObject([
+      {
+        id: 'skill:pdf',
+        label: 'pdf',
+        category: 'skill',
+        historical: false,
+      },
+    ]);
   });
 
   it('extracts unique searched URLs without trailing punctuation', () => {
