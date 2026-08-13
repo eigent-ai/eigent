@@ -350,18 +350,51 @@ function activityTaskStatus(node: ChatActivityNode): TaskStatusType {
   return planStatus(node.status === 'cancelled' ? 'skipped' : node.status);
 }
 
+function isLegacyTodoState(node: ChatProjectionNode): boolean {
+  return (
+    node.kind === 'plan' &&
+    (node.legacyStep === 'todo_state' || node.eventType === 'legacy.todo_state')
+  );
+}
+
+function startsTodoWrite(node: ChatProjectionNode): boolean {
+  if (node.kind !== 'activity' || node.activityType !== 'tool') return false;
+  return (
+    ACTIVE_TOOL_STATUSES.has(node.status) &&
+    [node.toolName, node.methodName, node.title].some(
+      (value) => normalizeContextKey(value || '') === 'todowrite'
+    )
+  );
+}
+
 function collectProgress(runs: ProjectSessionRun[]): SessionProgressItem[] {
   const progress: SessionProgressItem[] = [];
   for (const run of runs) {
     const tasks = new Map<string, SessionProgressItem>();
+    const todoTaskKeys = new Set<string>();
+    let observedTodoWrite = false;
     for (const node of run.nodes) {
       const time = nodeTime(node, run.createdAt);
+      if (startsTodoWrite(node)) observedTodoWrite = true;
       if (node.kind === 'plan') {
+        const todoState = isLegacyTodoState(node);
+        if (todoState) {
+          // todo_state is a full-list replacement emitted by todo_write. Old
+          // backends also emitted workspace-loaded todos at Run startup with
+          // no TodoToolkit call; quarantine those already-durable bad events.
+          if (!observedTodoWrite) continue;
+          // Replace only TodoToolkit progress. Typed plans and task activity
+          // are independent sources and must survive a todo list update.
+          for (const key of todoTaskKeys) tasks.delete(key);
+          todoTaskKeys.clear();
+          observedTodoWrite = false;
+        }
         for (const task of node.tasks) {
           const key = task.id || `${node.eventId}:${task.title}`;
-          const existing = tasks.get(key);
-          tasks.set(key, {
-            key: `${run.runId}:${key}`,
+          const mapKey = todoState ? `todo:${key}` : key;
+          const existing = tasks.get(mapKey);
+          tasks.set(mapKey, {
+            key: `${run.runId}:${mapKey}`,
             task: {
               id: key,
               content: task.title,
@@ -372,6 +405,7 @@ function collectProgress(runs: ProjectSessionRun[]): SessionProgressItem[] {
             createdAt: existing?.createdAt ?? time,
             updatedAt: time,
           });
+          if (todoState) todoTaskKeys.add(mapKey);
         }
       }
       if (node.kind !== 'activity' || node.activityType !== 'task') continue;
