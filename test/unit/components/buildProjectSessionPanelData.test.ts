@@ -67,6 +67,30 @@ function toolNode(
   };
 }
 
+function agentNode(
+  runId: string,
+  eventId: string,
+  sequence: number,
+  agentId: string,
+  agentName: string,
+  eventType = 'legacy.create_agent',
+  title = agentName
+): ChatActivityNode {
+  return {
+    ...baseNode(runId, eventId, sequence),
+    eventType,
+    legacyStep: eventType.startsWith('legacy.')
+      ? eventType.replace('legacy.', '')
+      : null,
+    kind: 'activity',
+    activityType: 'agent',
+    status: 'running',
+    title,
+    agentId,
+    agentName,
+  };
+}
+
 function todoActivity(
   eventId: string,
   sequence: number,
@@ -119,6 +143,93 @@ function makeRun(
 }
 
 describe('buildProjectSessionPanelData', () => {
+  it('deduplicates logical agents across Runs and skips anonymous tool frames', () => {
+    const oldRun = makeRun('run-old', false, [
+      agentNode(
+        'run-old',
+        'question-confirm',
+        1,
+        'confirm-agent-id',
+        'question_confirm_agent'
+      ),
+      agentNode(
+        'run-old',
+        'single-agent-old',
+        2,
+        'single-agent-instance-a',
+        'single_agent'
+      ),
+    ]);
+    const currentRun = makeRun('run-current', true, [
+      agentNode(
+        'run-current',
+        'single-agent-current',
+        1,
+        'single-agent-instance-b',
+        'single_agent'
+      ),
+      {
+        ...toolNode(
+          'run-current',
+          'named-tool-frame',
+          2,
+          'running',
+          'Registering agent'
+        ),
+        agentId: undefined,
+        agentName: 'single_agent',
+      },
+      {
+        ...toolNode(
+          'run-current',
+          'anonymous-canonical-tool',
+          3,
+          'running',
+          'Tool without agent identity'
+        ),
+        agentId: undefined,
+        agentName: undefined,
+      },
+    ]);
+
+    const data = buildProjectSessionPanelData([oldRun, currentRun], []);
+
+    expect(data.agents).toMatchObject([
+      {
+        id: 'agent:singleagent',
+        name: 'single_agent',
+        historical: false,
+        subagent: false,
+      },
+    ]);
+  });
+
+  it('classifies remote delegated agents separately from primary agents', () => {
+    const run = makeRun('run-current', true, [
+      agentNode(
+        'run-current',
+        'primary-agent',
+        1,
+        'primary-instance',
+        'single_agent'
+      ),
+      agentNode(
+        'run-current',
+        'remote-agent',
+        2,
+        'remote-instance',
+        'research_helper',
+        'agent.remote_started',
+        'Remote subagent research_helper'
+      ),
+    ]);
+
+    expect(buildProjectSessionPanelData([run], []).agents).toMatchObject([
+      { name: 'single_agent', type: 'agent', subagent: false },
+      { name: 'research_helper', type: 'subagent', subagent: true },
+    ]);
+  });
+
   it('pairs semantic tool lifecycle events by durable call id', () => {
     const run = makeRun('run-1', true, [
       toolNode('run-1', 'tool-start', 1, 'running', 'Searching', 'call-1'),
