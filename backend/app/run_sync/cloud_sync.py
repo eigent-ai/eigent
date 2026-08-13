@@ -331,7 +331,12 @@ class HttpRunEventSyncTransport:
         configuration: CloudSyncConfiguration,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        await self._ensure_device(configuration)
+        if str(payload.get("scope_type")) == "project":
+            await self._ensure_device_and_route(
+                configuration, str(payload["scope_id"])
+            )
+        else:
+            await self._ensure_device(configuration)
         return await self._json_request(
             "POST",
             f"{self._sync_base(configuration)}/memory/mutations:ingest",
@@ -344,7 +349,12 @@ class HttpRunEventSyncTransport:
         configuration: CloudSyncConfiguration,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        await self._ensure_device(configuration)
+        if str(payload.get("scope_type")) == "project":
+            await self._ensure_device_and_route(
+                configuration, str(payload["scope_id"])
+            )
+        else:
+            await self._ensure_device(configuration)
         return await self._json_request(
             "PUT",
             f"{self._sync_base(configuration)}/memory/snapshot",
@@ -388,6 +398,7 @@ class CloudSyncWorker:
         self._bootstrap_attempt_count = 0
         self._bootstrap_next_attempt_at = 0.0
         self._memory_snapshot_revisions: dict[tuple[str, str], int] = {}
+        self._memory_snapshot_verified_at: dict[tuple[str, str], float] = {}
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         if configuration != self._configuration:
@@ -395,6 +406,7 @@ class CloudSyncWorker:
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
             self._memory_snapshot_revisions.clear()
+            self._memory_snapshot_verified_at.clear()
         self._configuration = configuration
         self.notify()
 
@@ -429,23 +441,18 @@ class CloudSyncWorker:
                 # Keep the flag set so the normal poll loop retries.
                 logger.exception("Cloud Run history bootstrap failed")
         memory_count = 0
-        memory_snapshot_ready = False
+        memory_snapshot_ready: set[tuple[str, str]] = set()
         if not self._bootstrap_pending:
-            try:
+            memory_snapshot_ready = (
                 await self._sync_memory_snapshots_if_changed(configuration)
-                memory_snapshot_ready = True
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # Memory replication is independent of Run durability. A
-                # snapshot failure delays only the Memory lane.
-                logger.exception("Cloud Memory snapshot sync failed")
+            )
         if memory_snapshot_ready:
             memory_batches = await asyncio.to_thread(
                 self._journal.claim_ready_memory_mutation_batches,
                 max_scopes=self._max_parallel_runs,
                 batch_size=self._batch_size,
                 lease_seconds=self._lease_seconds,
+                eligible_scopes=memory_snapshot_ready,
             )
             if memory_batches:
                 memory_results = await asyncio.gather(
@@ -616,17 +623,24 @@ class CloudSyncWorker:
     async def _sync_memory_snapshots_if_changed(
         self,
         configuration: CloudSyncConfiguration,
-    ) -> None:
+    ) -> set[tuple[str, str]]:
         put_snapshot = getattr(self._transport, "put_memory_snapshot", None)
         if not callable(put_snapshot):
-            return
+            return set()
         snapshots = await asyncio.to_thread(
             self._journal.list_memory_sync_snapshots
         )
+        ready: set[tuple[str, str]] = set()
+        now = time.monotonic()
         for snapshot in snapshots:
             key = (str(snapshot["scope_type"]), str(snapshot["scope_id"]))
             revision = int(snapshot["revision"])
-            if self._memory_snapshot_revisions.get(key) == revision:
+            if (
+                self._memory_snapshot_revisions.get(key) == revision
+                and now - self._memory_snapshot_verified_at.get(key, 0.0)
+                < 30.0
+            ):
+                ready.add(key)
                 continue
             payload = {
                 "scope_type": key[0],
@@ -635,17 +649,31 @@ class CloudSyncWorker:
                 "source_revision": revision,
                 "entries": snapshot["entries"],
             }
-            response = await put_snapshot(configuration, payload)
-            if (
-                response.get("scope_type") != key[0]
-                or response.get("scope_id") != key[1]
-                or not isinstance(response.get("source_revision"), int)
-                or int(response["source_revision"]) < revision
-            ):
-                raise RunEventSyncProtocolError(
-                    "Memory snapshot response does not acknowledge the source revision"
+            try:
+                response = await put_snapshot(configuration, payload)
+                if (
+                    response.get("scope_type") != key[0]
+                    or response.get("scope_id") != key[1]
+                    or not isinstance(response.get("source_revision"), int)
+                    or int(response["source_revision"]) < revision
+                ):
+                    raise RunEventSyncProtocolError(
+                        "Memory snapshot response does not acknowledge the "
+                        "source revision"
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Scope isolation is deliberate: one malformed or stale scope
+                # must not stop unrelated Memory outboxes from draining.
+                logger.exception(
+                    "Cloud Memory snapshot sync failed for %s/%s", *key
                 )
+                continue
             self._memory_snapshot_revisions[key] = revision
+            self._memory_snapshot_verified_at[key] = now
+            ready.add(key)
+        return ready
 
     @staticmethod
     def _timestamp(value: Any) -> float:

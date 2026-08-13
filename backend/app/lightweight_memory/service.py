@@ -135,7 +135,9 @@ class LightweightMemoryService:
         actor_id: str | None = None,
         run_id: str | None = None,
         activity_id: str | None = None,
+        decision_id: str | None = None,
     ) -> MemoryMutationResult:
+        source_refs = tuple(dict.fromkeys(source_refs))
         self._assert_mutation_policy(
             scope_type=scope_type,
             kind=kind,
@@ -143,6 +145,13 @@ class LightweightMemoryService:
             actor_type=actor_type,
             source_trust=source_trust,
         )
+        if actor_type == "agent":
+            self._assert_agent_provenance(
+                scope_type=scope_type,
+                scope_id=scope_id,
+                source_trust=source_trust,
+                source_refs=source_refs,
+            )
         state = self.scope(scope_type, scope_id)
         if (
             actor_type in {"agent", "extractor"}
@@ -177,6 +186,7 @@ class LightweightMemoryService:
             source_refs=source_refs,
             run_id=run_id,
             activity_id=activity_id,
+            decision_id=decision_id,
         )
 
     def consolidate_scope(
@@ -274,9 +284,16 @@ class LightweightMemoryService:
         actor_id: str | None = None,
         run_id: str | None = None,
         activity_id: str | None = None,
+        decision_id: str | None = None,
     ) -> MemoryMutationResult:
         existing = self._require_entry(memory_id)
-        trust = source_trust or existing.source_trust
+        # Rewritten model text is a new claim. It must not inherit a stronger
+        # user/tool provenance merely because it replaced an older entry.
+        trust = (
+            "model_inferred"
+            if actor_type == "agent"
+            else source_trust or existing.source_trust
+        )
         self._assert_mutation_policy(
             scope_type=existing.scope_type,
             kind=kind,
@@ -305,6 +322,7 @@ class LightweightMemoryService:
             source_refs=source_refs,
             run_id=run_id,
             activity_id=activity_id,
+            decision_id=decision_id,
         )
 
     def transition_entry(
@@ -319,10 +337,12 @@ class LightweightMemoryService:
         actor_id: str | None = None,
         run_id: str | None = None,
         activity_id: str | None = None,
+        decision_id: str | None = None,
     ) -> MemoryMutationResult:
         existing = self._require_entry(memory_id)
         if actor_type == "agent" and (
             existing.scope_type != "project"
+            or existing.created_by != "agent"
             or existing.confirmed_by_user
             or existing.pinned_by_user
             or operation in {"confirm", "pin"}
@@ -344,6 +364,7 @@ class LightweightMemoryService:
             reason=reason,
             run_id=run_id,
             activity_id=activity_id,
+            decision_id=decision_id,
         )
 
     def search_memory(
@@ -532,6 +553,39 @@ class LightweightMemoryService:
         if entry is None:
             raise KeyError(memory_id)
         return entry
+
+    def _assert_agent_provenance(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        source_trust: str,
+        source_refs: tuple[str, ...],
+    ) -> None:
+        """Prevent model-authored Memory from laundering source authority."""
+
+        if source_trust != "user_asserted":
+            return
+        if scope_type != "project" or not source_refs:
+            raise PermissionError(
+                "Agent user_asserted Memory requires cited user History events"
+            )
+        events = self._journal.get_events_by_id(source_refs)
+        valid = len(events) == len(source_refs)
+        for event in events:
+            run = self._journal.get_run(event.run_id)
+            if (
+                event.event_type != "user.message"
+                or run is None
+                or run.project_id != scope_id
+            ):
+                valid = False
+                break
+        if not valid:
+            raise PermissionError(
+                "Agent user_asserted Memory citations must be user.message "
+                "events from the same Project"
+            )
 
 
 def event_source_trust(event_type: str) -> str:

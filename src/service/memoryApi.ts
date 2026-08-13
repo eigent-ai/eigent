@@ -68,6 +68,13 @@ export interface MemoryEntry {
 export interface MemoryListResponse {
   scope_state: MemoryScopeState;
   items: MemoryEntry[];
+  sync_status?: {
+    state: 'synced' | 'pending' | 'blocked';
+    pending_count: number;
+    blocked_count: number;
+    last_error: string | null;
+    last_synced_at: number | null;
+  };
 }
 
 const scopePath = (scopeType: MemoryScopeType, scopeId: string) =>

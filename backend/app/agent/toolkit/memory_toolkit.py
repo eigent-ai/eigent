@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import uuid
 from dataclasses import asdict
 
 from camel.toolkits import BaseToolkit, FunctionTool
@@ -23,8 +26,16 @@ from camel.toolkits import BaseToolkit, FunctionTool
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.lightweight_memory import get_lightweight_memory_service
 from app.run_policy import ToolSafetyClass
-from app.run_runtime.tool_checkpoint import declare_tool_safety
-from app.service.task import get_task_lock
+from app.run_runtime.tool_checkpoint import (
+    declare_tool_safety,
+    get_current_tool_checkpoint,
+)
+from app.service.task import (
+    TASK_LOCK_CLEANUP_SENTINEL,
+    Action,
+    ActionAskData,
+    get_task_lock,
+)
 
 
 class MemoryToolkit(BaseToolkit, AbstractToolkit):
@@ -89,6 +100,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         }:
             raise ValueError("invalid Memory source trust")
         context = self._run_context()
+        activity_id, decision_id = self._audit_link()
         result = get_lightweight_memory_service().create_entry(
             scope_type="project",
             scope_id=context.project_id,
@@ -100,6 +112,8 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             source_refs=tuple(source_event_ids or ()),
             actor_id=self.agent_name,
             run_id=context.run_id,
+            activity_id=activity_id,
+            decision_id=decision_id,
         )
         return {
             "entry": asdict(result.entry)
@@ -108,7 +122,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             "scope_state": asdict(result.scope_state),
         }
 
-    def update_project_memory(
+    async def update_project_memory(
         self,
         memory_id: str,
         expected_version: int,
@@ -134,28 +148,46 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         )
         if existing is None or existing.scope_id != context.project_id:
             raise ValueError("Memory entry is outside the current Project")
-        if existing.confirmed_by_user or existing.pinned_by_user:
-            raise PermissionError(
-                "Confirmed or pinned Memory requires user review"
+        activity_id, decision_id = self._audit_link()
+        actor_type = "agent"
+        actor_id: str | None = self.agent_name
+        source_trust = "model_inferred"
+        if (
+            existing.created_by != "agent"
+            or existing.confirmed_by_user
+            or existing.pinned_by_user
+        ):
+            decision_id = await self._request_memory_review(
+                operation="replace",
+                existing=existing,
+                proposed={"kind": kind, "content": content},
+                reason=reason,
             )
+            if decision_id is None:
+                return {"status": "rejected", "entry": asdict(existing)}
+            actor_type = "user"
+            actor_id = None
+            source_trust = "user_confirmed"
         result = get_lightweight_memory_service().update_entry(
             memory_id=memory_id,
             expected_version=expected_version,
             content=content,
             kind=kind,
-            actor_type="agent",
+            actor_type=actor_type,
             reason=reason,
             request_id=(
                 f"agent-update:{context.run_id}:{memory_id}:{expected_version}"
             ),
-            source_trust=existing.source_trust,
+            source_trust=source_trust,
             source_refs=existing.source_refs,
-            actor_id=self.agent_name,
+            actor_id=actor_id,
             run_id=context.run_id,
+            activity_id=activity_id,
+            decision_id=decision_id,
         )
         return {"entry": asdict(result.entry)}
 
-    def forget_project_memory(
+    async def forget_project_memory(
         self,
         memory_id: str,
         expected_version: int,
@@ -178,19 +210,114 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         )
         if existing is None or existing.scope_id != context.project_id:
             raise ValueError("Memory entry is outside the current Project")
+        activity_id, decision_id = self._audit_link()
+        actor_type = "agent"
+        actor_id: str | None = self.agent_name
+        if (
+            existing.created_by != "agent"
+            or existing.confirmed_by_user
+            or existing.pinned_by_user
+        ):
+            decision_id = await self._request_memory_review(
+                operation="remove",
+                existing=existing,
+                proposed=None,
+                reason=reason,
+            )
+            if decision_id is None:
+                return {"status": "rejected", "entry": asdict(existing)}
+            actor_type = "user"
+            actor_id = None
         result = get_lightweight_memory_service().transition_entry(
             memory_id=memory_id,
             expected_version=expected_version,
             operation="remove",
-            actor_type="agent",
+            actor_type=actor_type,
             reason=reason,
             request_id=(
                 f"agent-remove:{context.run_id}:{memory_id}:{expected_version}"
             ),
-            actor_id=self.agent_name,
+            actor_id=actor_id,
             run_id=context.run_id,
+            activity_id=activity_id,
+            decision_id=decision_id,
         )
         return {"entry": asdict(result.entry)}
+
+    async def promote_project_memory(
+        self,
+        memory_id: str,
+        expected_version: int,
+        target_scope: str,
+        reason: str,
+    ) -> dict:
+        """Propose adopting Project Memory into the current Space or User scope.
+
+        Args:
+            memory_id: Stable identifier of the Project Memory entry.
+            expected_version: Version currently visible to the Agent.
+            target_scope: Destination scope, either ``space`` or ``user``.
+            reason: Human-readable reason shown in the review card.
+        """
+
+        if target_scope not in {"space", "user"}:
+            raise ValueError("target_scope must be space or user")
+        context = self._run_context()
+        service = get_lightweight_memory_service()
+        existing = service.journal.get_memory_entry(memory_id)
+        if (
+            existing is None
+            or existing.scope_type != "project"
+            or existing.scope_id != context.project_id
+        ):
+            raise ValueError("Memory entry is outside the current Project")
+        if existing.version != expected_version:
+            raise ValueError("Memory entry version changed")
+        target_scope_id = (
+            context.space_id
+            if target_scope == "space"
+            else str(context.user_id)
+        )
+        if not target_scope_id or target_scope_id == "None":
+            raise ValueError(f"Run has no {target_scope} scope")
+        decision_id = await self._request_memory_review(
+            operation="promote",
+            existing=existing,
+            proposed={
+                "target_scope": target_scope,
+                "target_scope_id": target_scope_id,
+                "kind": existing.kind,
+                "content": existing.content,
+            },
+            reason=reason,
+        )
+        if decision_id is None:
+            return {"status": "rejected", "entry": asdict(existing)}
+        activity_id, _ = self._audit_link()
+        result = service.create_entry(
+            scope_type=target_scope,
+            scope_id=target_scope_id,
+            kind=existing.kind,
+            content=existing.content,
+            actor_type="user",
+            reason=reason,
+            source_trust="user_confirmed",
+            source_refs=existing.source_refs,
+            priority=existing.priority,
+            sensitivity=existing.sensitivity,
+            request_id=(
+                f"memory-promote:{context.run_id}:{memory_id}:"
+                f"{expected_version}:{target_scope}"
+            ),
+            actor_id=None,
+            run_id=context.run_id,
+            activity_id=activity_id,
+            decision_id=decision_id,
+        )
+        return {
+            "status": "promoted",
+            "entry": asdict(result.entry) if result.entry else None,
+        }
 
     def search_project_history(
         self,
@@ -225,11 +352,12 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             FunctionTool(self.remember_project_memory),
             FunctionTool(self.update_project_memory),
             FunctionTool(self.forget_project_memory),
+            FunctionTool(self.promote_project_memory),
             FunctionTool(self.search_project_history),
         ]
-        for tool in (tools[0], tools[4]):
+        for tool in (tools[0], tools[5]):
             declare_tool_safety(tool, ToolSafetyClass.SAFE_READ)
-        for tool in tools[1:4]:
+        for tool in tools[1:5]:
             declare_tool_safety(tool, ToolSafetyClass.UNSAFE_WRITE)
         for tool in tools:
             try:
@@ -244,6 +372,106 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         if context is None:
             raise RuntimeError("Memory tools require an admitted RunContext")
         return context
+
+    def _audit_link(self) -> tuple[str | None, str | None]:
+        checkpoint = get_current_tool_checkpoint()
+        if checkpoint is None:
+            return None, None
+        decisions = get_lightweight_memory_service().journal.list_human_interaction_decisions(
+            f"approval:{checkpoint.tool_call_id}"
+        )
+        return (
+            checkpoint.tool_call_id,
+            decisions[-1].decision_id if decisions else None,
+        )
+
+    async def _request_memory_review(
+        self,
+        *,
+        operation: str,
+        existing,
+        proposed: dict | None,
+        reason: str,
+    ) -> str | None:
+        context = self._run_context()
+        service = get_lightweight_memory_service()
+        run = service.journal.get_run(context.run_id)
+        if run is None or run.active_attempt_id is None:
+            raise RuntimeError("Memory review requires an active RunAttempt")
+        interaction_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"eigent:memory-review:{context.run_id}:{existing.memory_id}:"
+                f"{existing.version}:{operation}:"
+                f"{json.dumps(proposed, sort_keys=True, separators=(',', ':'))}",
+            )
+        )
+        question = (
+            f"Allow the Agent to {operation} Memory '{existing.content}'?"
+        )
+        service.journal.create_human_interaction(
+            interaction_id=interaction_id,
+            run_id=context.run_id,
+            attempt_id=run.active_attempt_id,
+            interaction_type="memory_change_review",
+            request={
+                "title": "Review Memory change",
+                "question": question,
+                "agent": self.agent_name,
+                "memory_change": {
+                    "operation": operation,
+                    "memory_id": existing.memory_id,
+                    "expected_version": existing.version,
+                    "before": asdict(existing),
+                    "after": proposed,
+                    "reason": reason,
+                },
+            },
+            response_schema={
+                "type": "object",
+                "properties": {"decision": {"enum": ["approved", "rejected"]}},
+                "required": ["decision"],
+                "additionalProperties": False,
+            },
+            requested_by=f"agent:{self.agent_name}",
+        )
+        try:
+            from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+            notify_default_cloud_sync_worker()
+        except Exception:
+            pass
+        task_lock = get_task_lock(self.api_task_id)
+        await task_lock.put_queue(
+            ActionAskData(
+                action=Action.ask,
+                data={
+                    "question": question,
+                    "title": "Review Memory change",
+                    "agent": self.agent_name,
+                    "interaction_id": interaction_id,
+                    "interaction_type": "memory_change_review",
+                    "run_id": context.run_id,
+                    "version": 0,
+                    "display_arguments": {
+                        "before": asdict(existing),
+                        "after": proposed,
+                        "reason": reason,
+                    },
+                },
+            )
+        )
+        reply = await task_lock.get_human_input(self.agent_name)
+        if reply == TASK_LOCK_CLEANUP_SENTINEL:
+            raise asyncio.CancelledError("Memory review interrupted")
+        if str(reply).casefold() != "approved":
+            return None
+        decisions = service.journal.list_human_interaction_decisions(
+            interaction_id
+        )
+        if not decisions:
+            raise RuntimeError("Memory review decision was not persisted")
+        return decisions[-1].decision_id
 
     @classmethod
     def toolkit_name(cls) -> str:

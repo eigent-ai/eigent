@@ -117,6 +117,79 @@ def test_user_confirmed_source_cannot_be_laundered_by_agent(service):
         )
 
 
+def test_agent_user_asserted_memory_requires_same_project_user_event(service):
+    journal = service.journal
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="assistant-1",
+            event_type="assistant.final",
+            payload={"content": "The user said this."},
+        ),
+    )
+
+    with pytest.raises(PermissionError, match="user.message"):
+        service.create_entry(
+            scope_type="project",
+            scope_id="project-1",
+            kind="fact",
+            content="The user said this.",
+            actor_type="agent",
+            reason="invalid provenance",
+            source_trust="user_asserted",
+            source_refs=("assistant-1",),
+        )
+
+
+def test_agent_cannot_delete_user_memory_or_keep_its_trust_on_rewrite(service):
+    user_entry = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="User-owned fact.",
+        actor_type="user",
+        reason="user authored",
+        source_trust="user_confirmed",
+        request_id="user-memory",
+    ).entry
+    assert user_entry is not None and user_entry.confirmed_by_user is True
+
+    with pytest.raises(PermissionError, match="unconfirmed Project"):
+        service.transition_entry(
+            memory_id=user_entry.memory_id,
+            expected_version=user_entry.version,
+            operation="remove",
+            actor_type="agent",
+            reason="agent tried to forget user Memory",
+            request_id="agent-delete-user-memory",
+        )
+
+    inferred = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="Initial inference.",
+        actor_type="agent",
+        reason="initial model inference",
+        source_trust="model_inferred",
+        request_id="agent-memory",
+    ).entry
+    assert inferred is not None
+    rewritten = service.update_entry(
+        memory_id=inferred.memory_id,
+        expected_version=inferred.version,
+        content="Replacement model text.",
+        kind="fact",
+        actor_type="agent",
+        reason="rewrite",
+        request_id="agent-rewrite",
+        source_trust="user_asserted",
+    ).entry
+    assert rewritten is not None
+    assert rewritten.source_trust == "model_inferred"
+
+
 def test_search_memory_respects_total_budget_and_scope_specificity(service):
     for scope_type, scope_id, content in (
         ("user", "user-1", "Use concise answers."),
@@ -191,6 +264,24 @@ def test_incremental_maintainer_advances_cursor_and_is_idempotent(service):
     assert [entry.content for entry in entries] == ["reports use ISO dates."]
     assert entries[0].source_refs == ("message-1",)
     assert entries[0].source_trust == "user_asserted"
+
+
+def test_incremental_maintainer_consumes_more_than_one_history_page(service):
+    journal = service.journal
+    journal.ensure_run(run_id="long-run", project_id="project-1")
+    for index in range(150):
+        journal.append_event(
+            "long-run",
+            RunEventDraft(
+                event_id=f"tool-{index}",
+                event_type="tool.completed",
+                payload={"content": f"observation {index}"},
+            ),
+        )
+
+    state = IncrementalMemoryMaintainer(service).process_project("project-1")
+
+    assert state.processed_through_watermark == "sqlite-project-v1:150"
 
 
 def test_incremental_maintainer_records_noop_before_advancing_cursor(service):

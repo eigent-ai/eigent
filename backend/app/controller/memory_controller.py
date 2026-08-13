@@ -164,6 +164,9 @@ async def list_memory_entries(
     return {
         "scope_state": asdict(state),
         "items": [asdict(item) for item in entries],
+        "sync_status": service.journal.get_memory_sync_status(
+            scope_type, scope_id
+        ),
     }
 
 

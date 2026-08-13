@@ -78,7 +78,17 @@ const scopeState = {
 describe('Memory Center', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.list.mockResolvedValue({ scope_state: scopeState, items: [] });
+    api.list.mockResolvedValue({
+      scope_state: scopeState,
+      items: [],
+      sync_status: {
+        state: 'synced',
+        pending_count: 0,
+        blocked_count: 0,
+        last_error: null,
+        last_synced_at: 1,
+      },
+    });
     api.create.mockResolvedValue({});
     api.consolidate.mockResolvedValue({});
   });
@@ -92,6 +102,58 @@ describe('Memory Center', () => {
     await user.click(screen.getByRole('button', { name: /Organize/ }));
 
     expect(api.consolidate).toHaveBeenCalledWith('project', 'project-1');
+  });
+
+  it('ignores a stale scope response after the user switches scope', async () => {
+    let resolveProject!: (value: unknown) => void;
+    api.list.mockImplementation((scopeType: string) => {
+      if (scopeType === 'project') {
+        return new Promise((resolve) => {
+          resolveProject = resolve;
+        });
+      }
+      return Promise.resolve({
+        scope_state: {
+          ...scopeState,
+          scope_type: 'space',
+          scope_id: 'space-1',
+        },
+        items: [
+          {
+            memory_id: 'space-memory',
+            scope_type: 'space',
+            scope_id: 'space-1',
+            kind: 'fact',
+            content: 'Space response',
+            priority: 'normal',
+            version: 1,
+            token_count: 2,
+            pinned_by_user: false,
+            confirmed_by_user: true,
+            created_by: 'user',
+            source_trust: 'user_confirmed',
+            sensitivity: 'normal',
+            source_refs: [],
+            deleted_at: null,
+            created_at: 1,
+            updated_at: 1,
+          },
+        ],
+      });
+    });
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    await user.click(screen.getByRole('button', { name: 'Space' }));
+    expect(await screen.findByText('Space response')).toBeInTheDocument();
+    resolveProject({
+      scope_state: scopeState,
+      items: [{ content: 'Stale project response' }],
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText('Stale project response')).toBeNull()
+    );
   });
 
   it('explains the History boundary and creates editable Memory', async () => {

@@ -419,6 +419,67 @@ def test_memory_outbox_fifo_uses_scope_revision_not_timestamp_or_id(journal):
     ]
 
 
+def test_memory_outbox_claim_can_isolate_snapshot_verified_scopes(journal):
+    for scope_type, scope_id in (
+        ("project", "project-1"),
+        ("user", "user-1"),
+    ):
+        journal.apply_memory_mutation(
+            mutation_id=f"mutation-{scope_type}",
+            idempotency_key=f"request-{scope_type}",
+            operation="add",
+            scope_type=scope_type,
+            scope_id=scope_id,
+            memory_id=f"memory-{scope_type}",
+            actor_type="user",
+            reason="Create",
+            content=scope_type,
+            kind="fact",
+            token_count=1,
+            created_by="user",
+            source_trust="user_confirmed",
+            now=1,
+        )
+
+    batches = journal.claim_ready_memory_mutation_batches(
+        now=2,
+        eligible_scopes={("user", "user-1")},
+    )
+
+    assert [(batch.scope_type, batch.scope_id) for batch in batches] == [
+        ("user", "user-1")
+    ]
+
+
+def test_memory_sync_status_reports_pending_and_sent_truthfully(journal):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-status",
+        idempotency_key="request-status",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-status",
+        actor_type="user",
+        reason="Create",
+        content="Status",
+        kind="fact",
+        token_count=1,
+        created_by="user",
+        source_trust="user_confirmed",
+        now=1,
+    )
+    assert journal.get_memory_sync_status("project", "project-1")["state"] == (
+        "pending"
+    )
+    batch = journal.claim_ready_memory_mutation_batches(now=2)[0]
+    journal.mark_memory_mutation_batch_sent(batch, now=3)
+
+    status = journal.get_memory_sync_status("project", "project-1")
+
+    assert status["state"] == "synced"
+    assert status["last_synced_at"] == 3
+
+
 def test_memory_outbox_splits_across_scope_setting_revision_gap(journal):
     first = journal.apply_memory_mutation(
         mutation_id="mutation-add",

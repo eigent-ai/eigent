@@ -7706,6 +7706,29 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._event_from_row(row) for row in rows]
 
+    def get_events_by_id(
+        self, event_ids: tuple[str, ...] | list[str]
+    ) -> list[CommittedRunEvent]:
+        """Return canonical events in caller order for provenance checks."""
+
+        identifiers = tuple(dict.fromkeys(event_ids))
+        if not identifiers:
+            return []
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT event_id, run_id, sequence, run_version, event_type,
+                       payload_json, legacy_step, created_at
+                FROM run_events
+                WHERE event_id IN (SELECT value FROM json_each(?))
+                """,
+                (json.dumps(identifiers, separators=(",", ":")),),
+            ).fetchall()
+        by_id = {row["event_id"]: self._event_from_row(row) for row in rows}
+        return [
+            by_id[event_id] for event_id in identifiers if event_id in by_id
+        ]
+
     def get_project_history_cursor(self, project_id: str) -> int:
         """Return the last committed Project History cursor."""
 
@@ -8251,7 +8274,7 @@ class SQLiteRunJournal:
                         confirmed_by_user, created_by, source_trust,
                         sensitivity, source_refs_json, usage_count,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 0, 0, ?, ?, ?, ?, 0, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?, ?, ?, 0, ?, ?)
                     """,
                     (
                         memory_id,
@@ -8261,6 +8284,7 @@ class SQLiteRunJournal:
                         content.strip() if content else content,
                         priority,
                         token_count,
+                        int(actor_type == "user"),
                         created_by,
                         source_trust,
                         sensitivity,
@@ -8326,6 +8350,8 @@ class SQLiteRunJournal:
                         SET kind = ?, content = ?, priority = ?,
                             token_count = ?, created_by = ?, source_trust = ?,
                             sensitivity = ?, source_refs_json = ?,
+                            confirmed_by_user = CASE
+                                WHEN ? THEN 1 ELSE confirmed_by_user END,
                             version = version + 1, updated_at = ?
                         WHERE memory_id = ? AND version = ?
                         """,
@@ -8338,6 +8364,7 @@ class SQLiteRunJournal:
                             resolved_trust,
                             sensitivity,
                             replacement_refs,
+                            int(actor_type == "user"),
                             timestamp,
                             memory_id,
                             expected_version,
@@ -9624,6 +9651,7 @@ class SQLiteRunJournal:
             "diff_review",
             "merge_conflict",
             "credential_binding",
+            "memory_change_review",
         }:
             if interaction_type == "approval":
                 raise ValueError(
@@ -12383,6 +12411,40 @@ class SQLiteRunJournal:
                 )
             return snapshots
 
+    def get_memory_sync_status(
+        self, scope_type: str, scope_id: str
+    ) -> dict[str, Any]:
+        """Return truthful local delivery state for the Memory Center."""
+
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN status IN ('pending', 'sending')
+                             THEN 1 ELSE 0 END) AS pending_count,
+                    SUM(CASE WHEN status = 'dead_letter'
+                             THEN 1 ELSE 0 END) AS blocked_count,
+                    MAX(CASE WHEN status != 'sent' THEN last_error END)
+                        AS last_error,
+                    MAX(CASE WHEN status = 'sent' THEN updated_at END)
+                        AS last_synced_at
+                FROM memory_mutation_outbox
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+        pending = int(row["pending_count"] or 0)
+        blocked = int(row["blocked_count"] or 0)
+        return {
+            "state": (
+                "blocked" if blocked else "pending" if pending else "synced"
+            ),
+            "pending_count": pending,
+            "blocked_count": blocked,
+            "last_error": row["last_error"],
+            "last_synced_at": row["last_synced_at"],
+        }
+
     def has_legacy_memory_import(
         self, source_path: str, source_checksum: str
     ) -> bool:
@@ -12448,6 +12510,7 @@ class SQLiteRunJournal:
         max_scopes: int = 4,
         batch_size: int = 100,
         lease_seconds: float = 30.0,
+        eligible_scopes: set[tuple[str, str]] | None = None,
     ) -> list[MemoryMutationSyncBatch]:
         if max_scopes < 1 or batch_size < 1 or lease_seconds <= 0:
             raise ValueError("Memory outbox claim limits must be positive")
@@ -12480,11 +12543,21 @@ class SQLiteRunJournal:
                   )
                 GROUP BY outbox.scope_type, outbox.scope_id
                 ORDER BY head_scope_revision, outbox.scope_type, outbox.scope_id
-                LIMIT ?
                 """,
-                (timestamp, max_scopes),
+                (timestamp,),
             ).fetchall()
             for candidate in candidates:
+                scope_key = (
+                    str(candidate["scope_type"]),
+                    str(candidate["scope_id"]),
+                )
+                if (
+                    eligible_scopes is not None
+                    and scope_key not in eligible_scopes
+                ):
+                    continue
+                if len(batches) >= max_scopes:
+                    break
                 state = connection.execute(
                     """
                     SELECT * FROM memory_scope_state

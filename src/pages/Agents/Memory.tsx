@@ -53,7 +53,7 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const KINDS: MemoryKind[] = [
   'fact',
@@ -88,6 +88,11 @@ export default function Memory() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState('');
+  const [syncStatus, setSyncStatus] = useState<
+    'synced' | 'pending' | 'blocked' | 'unknown'
+  >('unknown');
+  const requestGeneration = useRef(0);
 
   const scopeIds = useMemo(
     () => ({
@@ -100,9 +105,11 @@ export default function Memory() {
   const scopeId = scopeIds[scopeType];
 
   const reload = useCallback(async () => {
+    const generation = ++requestGeneration.current;
     if (!scopeId) {
       setEntries([]);
       setScopeState(null);
+      setSyncStatus('unknown');
       return;
     }
     setLoading(true);
@@ -113,12 +120,15 @@ export default function Memory() {
         scopeId,
         showArchived
       );
+      if (generation !== requestGeneration.current) return;
       setEntries(response.items);
       setScopeState(response.scope_state);
+      setSyncStatus(response.sync_status?.state ?? 'unknown');
     } catch (caught) {
+      if (generation !== requestGeneration.current) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }, [scopeId, scopeType, showArchived]);
 
@@ -157,6 +167,16 @@ export default function Memory() {
         )
       )
     : 0;
+  const visibleEntries = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) return entries;
+    return entries.filter(
+      (entry) =>
+        entry.content.toLocaleLowerCase().includes(needle) ||
+        entry.kind.includes(needle) ||
+        TRUST_LABELS[entry.source_trust].toLocaleLowerCase().includes(needle)
+    );
+  }, [entries, search]);
 
   return (
     <div className="flex w-full flex-1 flex-col gap-5 px-6 pb-12 pt-8">
@@ -225,7 +245,13 @@ export default function Memory() {
               <div className="text-body-sm">
                 <strong className="block">Memory Sync</strong>
                 <span className="text-xs text-ds-text-neutral-muted-default">
-                  Synced to your Eigent account for use across devices
+                  {syncStatus === 'synced'
+                    ? 'Synced to your Eigent account'
+                    : syncStatus === 'pending'
+                      ? 'Waiting to sync automatically'
+                      : syncStatus === 'blocked'
+                        ? 'Sync needs attention; local Memory is safe'
+                        : 'Sync status is not available yet'}
                 </span>
               </div>
             </div>
@@ -305,6 +331,13 @@ export default function Memory() {
                 Show archived
               </label>
             </div>
+            <Input
+              className="mb-3"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search Memory"
+              aria-label="Search Memory"
+            />
             {error && (
               <div className="mb-3 text-body-sm text-red-600">{error}</div>
             )}
@@ -312,14 +345,14 @@ export default function Memory() {
               <div className="py-8 text-center text-body-sm">
                 Loading Memory…
               </div>
-            ) : entries.length === 0 ? (
+            ) : visibleEntries.length === 0 ? (
               <div className="py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
                 No saved Memory for this {scopeType}. That is okay—History
                 remains available to the Agent.
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {entries.map((entry) => (
+                {visibleEntries.map((entry) => (
                   <article
                     key={entry.memory_id}
                     className={`border-ds-border-neutral-default rounded-xl border p-4 ${entry.deleted_at ? 'opacity-70' : ''}`}
@@ -335,6 +368,18 @@ export default function Memory() {
                       {entry.pinned_by_user && <span>📌 Pinned</span>}
                       {entry.deleted_at && <span>Archived</span>}
                     </div>
+                    <details className="mb-2 text-xs text-ds-text-neutral-muted-default">
+                      <summary>Source and provenance</summary>
+                      <div className="mt-1">
+                        Created by {entry.created_by}; trust:{' '}
+                        {TRUST_LABELS[entry.source_trust]}
+                      </div>
+                      {entry.source_refs.length > 0 ? (
+                        <div className="mt-1 break-all">
+                          Sources: {entry.source_refs.join(', ')}
+                        </div>
+                      ) : null}
+                    </details>
                     {editingId === entry.memory_id ? (
                       <Textarea
                         value={editingText}

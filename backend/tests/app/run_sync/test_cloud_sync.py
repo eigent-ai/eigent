@@ -43,6 +43,7 @@ class FakeTransport:
         self.project_events: dict[str, list[dict[str, Any]]] = {}
         self.memory_snapshots: list[dict[str, Any]] = []
         self.memory_payloads: list[dict[str, Any]] = []
+        self.memory_snapshot_failures: set[tuple[str, str]] = set()
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -107,6 +108,10 @@ class FakeTransport:
 
     async def put_memory_snapshot(self, configuration, payload):
         self.memory_snapshots.append(payload)
+        if (payload["scope_type"], payload["scope_id"]) in (
+            self.memory_snapshot_failures
+        ):
+            raise RuntimeError("malformed Memory scope")
         return {
             "scope_type": payload["scope_type"],
             "scope_id": payload["scope_id"],
@@ -221,6 +226,41 @@ async def test_worker_syncs_full_memory_snapshot_and_independent_outbox(
     )
     assert transport.memory_payloads[0]["mutations"][0]["scope_revision"] == 1
     assert journal.claim_ready_memory_mutation_batches(now=float("inf")) == []
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_bad_memory_snapshot_does_not_block_an_unrelated_scope(journal):
+    for scope_type, scope_id, suffix in (
+        ("project", "project-1", "project"),
+        ("user", "user-1", "user"),
+    ):
+        journal.apply_memory_mutation(
+            mutation_id=f"mutation-{suffix}",
+            idempotency_key=f"request-{suffix}",
+            operation="add",
+            scope_type=scope_type,
+            scope_id=scope_id,
+            memory_id=f"memory-{suffix}",
+            actor_type="user",
+            reason="Created in Memory Center",
+            content=f"{suffix} preference",
+            kind="preference",
+            token_count=3,
+            created_by="user",
+            source_trust="user_confirmed",
+        )
+    transport = FakeTransport()
+    transport.memory_snapshot_failures.add(("project", "project-1"))
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+
+    assert [item["scope_id"] for item in transport.memory_payloads] == [
+        "user-1"
+    ]
+    remaining = journal.claim_ready_memory_mutation_batches(now=float("inf"))
+    assert [batch.scope_id for batch in remaining] == ["project-1"]
     await worker.close()
 
 

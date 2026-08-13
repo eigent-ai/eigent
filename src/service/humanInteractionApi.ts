@@ -26,7 +26,8 @@ export interface HumanInteractionPayload {
     | 'approval'
     | 'diff_review'
     | 'merge_conflict'
-    | 'credential_binding';
+    | 'credential_binding'
+    | 'memory_change_review';
   run_id?: string;
   version?: number;
   approval_id?: string;

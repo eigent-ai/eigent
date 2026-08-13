@@ -155,92 +155,99 @@ class IncrementalMemoryMaintainer:
                         f"{state.revision}"
                     ),
                 ).scope_state
-            after = state.processed_through_watermark
-            page = self._service.search_history(
-                project_id=project_id,
-                after_cursor=after,
-                limit=100,
-                byte_budget=256 * 1024,
-                token_budget=16384,
-            )
-            if parse_project_cursor(page.next_cursor) == parse_project_cursor(
-                after
-            ):
-                return state
-            active = self._service.list_entries("project", project_id)
-            proposals = self._extractor.extract(
-                active_memory=active,
-                history_delta=page.items,
-            )[:3]
-            projected_tokens = state.current_token_count
-            bounded_proposals: list[ProposedMemoryMutation] = []
-            for proposal in proposals:
-                proposal_tokens = count_tokens(proposal.content)
-                if (
-                    projected_tokens + proposal_tokens
-                    > state.token_limit * 0.9
-                ):
-                    continue
-                bounded_proposals.append(proposal)
-                projected_tokens += proposal_tokens
-            proposals = tuple(bounded_proposals)
-            cursor_from = after or format_project_cursor(0)
-            if not proposals:
-                identity = hashlib.sha256(
-                    (
-                        f"{self._extractor.version}|{project_id}|"
-                        f"{cursor_from}|{page.next_cursor}|noop"
-                    ).encode()
-                ).hexdigest()
-                self._service.journal.apply_memory_mutation(
-                    mutation_id=f"mut_{identity[:32]}",
-                    idempotency_key=f"memory-extract-noop:{identity}",
-                    operation="noop",
-                    scope_type="project",
-                    scope_id=project_id,
-                    memory_id=None,
-                    actor_type="extractor",
-                    reason=(
-                        "incremental extraction found no durable Memory "
-                        f"in {cursor_from}..{page.next_cursor}"
-                    ),
-                    source_refs=tuple(
-                        item.event_id for item in page.items[:32]
-                    ),
+            # One terminal trigger may represent a very long Run. Process a
+            # bounded number of pages instead of silently stopping after the
+            # first 100 events. The scheduler queues another bounded pass when
+            # history still remains.
+            for _ in range(10):
+                after = state.processed_through_watermark
+                page = self._service.search_history(
+                    project_id=project_id,
+                    after_cursor=after,
+                    limit=100,
+                    byte_budget=256 * 1024,
+                    token_budget=16384,
                 )
-            for index, proposal in enumerate(proposals):
-                identity = hashlib.sha256(
-                    (
-                        f"{self._extractor.version}|{project_id}|"
-                        f"{cursor_from}|"
-                        f"{page.next_cursor}|{index}|{proposal.kind}|"
-                        f"{proposal.content}"
-                    ).encode()
-                ).hexdigest()
-                self._service.create_entry(
-                    scope_type="project",
-                    scope_id=project_id,
-                    kind=proposal.kind,
-                    content=proposal.content,
-                    actor_type="extractor",
-                    reason=(
-                        "incremental extraction "
-                        f"{cursor_from}..{page.next_cursor}"
-                    ),
-                    source_trust=proposal.source_trust,
-                    source_refs=proposal.source_event_ids,
-                    sensitivity=proposal.sensitivity,
-                    request_id=f"memory-extract:{identity}",
+                if parse_project_cursor(
+                    page.next_cursor
+                ) == parse_project_cursor(after):
+                    return state
+                active = self._service.list_entries("project", project_id)
+                proposals = self._extractor.extract(
+                    active_memory=active,
+                    history_delta=page.items,
+                )[:3]
+                projected_tokens = state.current_token_count
+                bounded_proposals: list[ProposedMemoryMutation] = []
+                for proposal in proposals:
+                    proposal_tokens = count_tokens(proposal.content)
+                    if (
+                        projected_tokens + proposal_tokens
+                        > state.token_limit * 0.9
+                    ):
+                        continue
+                    bounded_proposals.append(proposal)
+                    projected_tokens += proposal_tokens
+                proposals = tuple(bounded_proposals)
+                cursor_from = after or format_project_cursor(0)
+                if not proposals:
+                    identity = hashlib.sha256(
+                        (
+                            f"{self._extractor.version}|{project_id}|"
+                            f"{cursor_from}|{page.next_cursor}|noop"
+                        ).encode()
+                    ).hexdigest()
+                    self._service.journal.apply_memory_mutation(
+                        mutation_id=f"mut_{identity[:32]}",
+                        idempotency_key=f"memory-extract-noop:{identity}",
+                        operation="noop",
+                        scope_type="project",
+                        scope_id=project_id,
+                        memory_id=None,
+                        actor_type="extractor",
+                        reason=(
+                            "incremental extraction found no durable Memory "
+                            f"in {cursor_from}..{page.next_cursor}"
+                        ),
+                        source_refs=tuple(
+                            item.event_id for item in page.items[:32]
+                        ),
+                    )
+                for index, proposal in enumerate(proposals):
+                    identity = hashlib.sha256(
+                        (
+                            f"{self._extractor.version}|{project_id}|"
+                            f"{cursor_from}|{page.next_cursor}|{index}|"
+                            f"{proposal.kind}|{proposal.content}"
+                        ).encode()
+                    ).hexdigest()
+                    self._service.create_entry(
+                        scope_type="project",
+                        scope_id=project_id,
+                        kind=proposal.kind,
+                        content=proposal.content,
+                        actor_type="extractor",
+                        reason=(
+                            "incremental extraction "
+                            f"{cursor_from}..{page.next_cursor}"
+                        ),
+                        source_trust=proposal.source_trust,
+                        source_refs=proposal.source_event_ids,
+                        sensitivity=proposal.sensitivity,
+                        request_id=f"memory-extract:{identity}",
+                    )
+                current = self._service.scope("project", project_id)
+                state = self._service.journal.record_memory_maintenance_result(
+                    "project",
+                    project_id,
+                    expected_revision=current.revision,
+                    processed_through_watermark=page.next_cursor,
+                    watermark_kind="journal_cursor",
+                    extractor_version=self._extractor.version,
                 )
-            current = self._service.scope("project", project_id)
-            return self._service.journal.record_memory_maintenance_result(
-                "project",
-                project_id,
-                expected_revision=current.revision,
-                processed_through_watermark=page.next_cursor,
-                watermark_kind="journal_cursor",
-                extractor_version=self._extractor.version,
-            )
+                if page.complete:
+                    return state
+            return state
         except Exception as exc:
             current = self._service.scope("project", project_id)
             try:
@@ -274,7 +281,14 @@ def schedule_project_memory_maintenance(project_id: str) -> None:
     def _done(completed: Future) -> None:
         _FUTURES.discard(completed)
         try:
-            completed.result()
+            state = completed.result()
+            if (
+                parse_project_cursor(state.processed_through_watermark)
+                < get_lightweight_memory_service().journal.get_project_history_cursor(
+                    project_id
+                )
+            ):
+                schedule_project_memory_maintenance(project_id)
         except Exception:
             logger.exception(
                 "Incremental Memory maintenance failed",

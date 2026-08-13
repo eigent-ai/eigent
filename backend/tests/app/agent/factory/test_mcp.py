@@ -82,6 +82,7 @@ async def test_mcp_agent_creation(sample_chat_data):
             "remember_project_memory",
             "update_project_memory",
             "forget_project_memory",
+            "promote_project_memory",
             "search_project_history",
         }
         assert call_args[0][1] == "MCP system prompt"
