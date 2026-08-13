@@ -30,6 +30,7 @@ from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.google_drive_mcp_toolkit import GoogleDriveMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.markitdown_toolkit import MarkItDownToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -151,6 +152,12 @@ async def document_agent(
         tool_names.append(SearchToolkit.toolkit_name())
     else:
         search_tools = []
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.document_agent,
+    )
     system_message = DOCUMENT_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),

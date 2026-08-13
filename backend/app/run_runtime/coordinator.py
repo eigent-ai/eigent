@@ -666,6 +666,17 @@ class RunCoordinator:
             from app.run_sync.runtime import notify_default_cloud_sync_worker
 
             notify_default_cloud_sync_worker()
+            try:
+                from app.lightweight_memory import (
+                    schedule_project_memory_maintenance,
+                )
+
+                schedule_project_memory_maintenance(run.project_id)
+            except Exception:
+                logger.exception(
+                    "Failed to schedule non-blocking Memory maintenance",
+                    extra={"run_id": run_id, "project_id": run.project_id},
+                )
         except Exception:
             logger.exception(
                 "Failed to commit execution terminal outcome",

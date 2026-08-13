@@ -27,6 +27,7 @@ from app.agent.prompt import (
     append_connected_app_mcp_notice,
 )
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -111,6 +112,12 @@ async def developer_agent(
     ]
     if search_tools:
         tool_names.append(SearchToolkit.toolkit_name())
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.developer_agent,
+    )
     if hands is None or hands.can_execute_terminal():
         terminal_toolkit = TerminalToolkit(
             options.project_id,

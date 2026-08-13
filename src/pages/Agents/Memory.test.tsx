@@ -1,0 +1,103 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const api = vi.hoisted(() => ({
+  list: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  settings: vi.fn(),
+  remove: vi.fn(),
+  confirm: vi.fn(),
+  pin: vi.fn(),
+}));
+
+vi.mock('@/service/memoryApi', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listMemoryEntries: api.list,
+  createMemoryEntry: api.create,
+  updateMemoryEntry: api.update,
+  updateMemoryScopeSettings: api.settings,
+  deleteMemoryEntry: api.remove,
+  confirmMemoryEntry: api.confirm,
+  pinMemoryEntry: api.pin,
+}));
+vi.mock('@/store/projectStore', () => ({
+  useProjectStore: (selector: (state: object) => unknown) =>
+    selector({ activeProjectId: 'project-1' }),
+}));
+vi.mock('@/store/spaceStore', () => ({
+  DEFAULT_LOCAL_USER_ID: 'local',
+  useSpaceStore: (selector: (state: object) => unknown) =>
+    selector({ activeSpaceId: 'space-1' }),
+}));
+vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => ({ user_id: 'user-1', token: null }),
+  useAuthStore: (selector: (state: object) => unknown) =>
+    selector({ user_id: 'user-1' }),
+}));
+
+import Memory from './Memory';
+
+const scopeState = {
+  scope_type: 'project',
+  scope_id: 'project-1',
+  owner_kind: 'desktop',
+  revision: 1,
+  capture_enabled: true,
+  use_enabled: true,
+  sync_scope: 'local_only',
+  token_limit: 1024,
+  current_token_count: 10,
+  processed_through_watermark: 'sqlite-project-v1:4',
+  extractor_version: 'memory-v2',
+  last_error: null,
+  updated_at: 1,
+};
+
+describe('Memory Center', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.list.mockResolvedValue({ scope_state: scopeState, items: [] });
+    api.create.mockResolvedValue({});
+  });
+
+  it('explains the History boundary and creates editable Memory', async () => {
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    expect(
+      screen.getByText(/Canonical task history is stored separately/)
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.list).toHaveBeenCalledWith('project', 'project-1')
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Add a short Memory note'),
+      'Use ISO dates.'
+    );
+    await user.click(screen.getByRole('button', { name: /Add/ }));
+    await waitFor(() =>
+      expect(api.create).toHaveBeenCalledWith(
+        'project',
+        'project-1',
+        expect.objectContaining({ content: 'Use ISO dates.' })
+      )
+    );
+  });
+});

@@ -36,6 +36,7 @@ from app.agent.toolkit.depth_limited_agent_toolkit import (
 from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
@@ -304,7 +305,9 @@ def _mcp_config(
     *,
     exact_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    source = exact_config if exact_config is not None else options.installed_mcp
+    source = (
+        exact_config if exact_config is not None else options.installed_mcp
+    )
     servers = dict((source or {}).get("mcpServers", {}))
     if not servers:
         return None
@@ -390,6 +393,15 @@ async def assemble_single_agent_toolkits(
         assembly.add_tools(
             human_toolkit.get_tools(), HumanToolkit.toolkit_name()
         )
+
+    # Protocol capability: settings may disable Memory capture/use, but the
+    # typed management tools and bounded canonical History Search stay present.
+    add_memory_tools(
+        tools=assembly.tools,
+        tool_names=assembly.tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.single_agent,
+    )
 
     if _enabled(config, "file"):
         file_options = {
@@ -616,9 +628,7 @@ async def assemble_single_agent_toolkits(
             mcp_config = _mcp_config(
                 options,
                 hands,
-                exact_config=(
-                    exact_mcp_config or {"mcpServers": {}}
-                ),
+                exact_config=(exact_mcp_config or {"mcpServers": {}}),
             )
         if mcp_config is not None:
             mcp_options = {

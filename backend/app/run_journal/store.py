@@ -7807,6 +7807,82 @@ class SQLiteRunJournal:
                 self._memory_entry_from_row(row) if row is not None else None
             )
 
+    def record_memory_maintenance_result(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        expected_revision: int,
+        processed_through_watermark: str | None,
+        watermark_kind: str | None,
+        extractor_version: str,
+        last_error: str | None = None,
+        now: float | None = None,
+    ) -> MemoryScopeStateRecord:
+        """CAS-persist a bounded maintainer outcome.
+
+        A failed pass records only its error. A successful pass advances the
+        opaque History cursor after all idempotent mutations were applied.
+        """
+
+        self._validate_memory_scope(scope_type, scope_id)
+        if not extractor_version.strip():
+            raise ValueError("Memory extractor_version is required")
+        if last_error is None and (
+            processed_through_watermark is None or watermark_kind is None
+        ):
+            raise ValueError("successful maintenance requires a watermark")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind="desktop",
+                token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                now=timestamp,
+            )
+            if int(row["revision"]) != expected_revision:
+                raise OptimisticConcurrencyError(
+                    f"Memory scope {scope_type}:{scope_id} expected revision "
+                    f"{expected_revision}, found {row['revision']}"
+                )
+            updated = connection.execute(
+                """
+                UPDATE memory_scope_state
+                SET processed_through_watermark = CASE
+                        WHEN ? IS NULL THEN processed_through_watermark ELSE ? END,
+                    watermark_kind = CASE
+                        WHEN ? IS NULL THEN watermark_kind ELSE ? END,
+                    extractor_version = ?, last_error = ?,
+                    revision = revision + 1, updated_at = ?
+                WHERE scope_type = ? AND scope_id = ? AND revision = ?
+                """,
+                (
+                    processed_through_watermark,
+                    processed_through_watermark,
+                    watermark_kind,
+                    watermark_kind,
+                    extractor_version,
+                    last_error[:2000] if last_error else None,
+                    timestamp,
+                    scope_type,
+                    scope_id,
+                    expected_revision,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    "Memory scope changed during maintenance"
+                )
+            result = connection.execute(
+                """SELECT * FROM memory_scope_state
+                WHERE scope_type = ? AND scope_id = ?""",
+                (scope_type, scope_id),
+            ).fetchone()
+            assert result is not None
+            return self._memory_scope_state_from_row(result)
+
     def list_memory_entries(
         self,
         scope_type: str,

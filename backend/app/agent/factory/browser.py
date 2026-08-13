@@ -31,6 +31,7 @@ from app.agent.prompt import (
 )
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -364,6 +365,12 @@ def browser_agent(
     if use_terminal and terminal_toolkit:
         tools.extend(terminal_toolkit)
         tool_names.append(TerminalToolkit.toolkit_name())
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.browser_agent,
+    )
 
     # Build external browser notice
     external_browser_notice = ""

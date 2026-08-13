@@ -27,6 +27,7 @@ from app.controller import (
     file_controller,
     health_controller,
     mcp_controller,
+    memory_controller,
     message_controller,
     model_controller,
     permission_controller,
@@ -99,6 +100,12 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "router": permission_controller.router,
             "tags": ["Permissions"],
             "description": "Authenticated local Space permission profiles",
+            "self_authenticated": True,
+        },
+        {
+            "router": memory_controller.router,
+            "tags": ["Memory"],
+            "description": "Authenticated local Lightweight Memory CRUD",
             "self_authenticated": True,
         },
         {

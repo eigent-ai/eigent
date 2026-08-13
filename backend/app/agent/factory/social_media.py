@@ -27,6 +27,7 @@ from app.agent.toolkit.google_calendar_toolkit import GoogleCalendarToolkit
 from app.agent.toolkit.google_gmail_mcp_toolkit import GoogleGmailMCPToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.linkedin_toolkit import LinkedInToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -110,6 +111,12 @@ async def social_media_agent(options: Chat):
         SkillToolkit.toolkit_name(),
         SearchToolkit.toolkit_name(),
     ]
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.social_media_agent,
+    )
     system_message = SOCIAL_MEDIA_SYS_PROMPT.format(
         working_directory=working_directory, now_str=NOW_STR
     )
