@@ -94,6 +94,86 @@ class ContextProjectionDiagnosticRecord:
 
 
 @dataclass(frozen=True)
+class ProjectHistoryEventRecord:
+    project_id: str
+    journal_cursor: int
+    event: CommittedRunEvent
+    source_kind: str
+
+
+@dataclass(frozen=True)
+class MemoryScopeStateRecord:
+    scope_type: str
+    scope_id: str
+    owner_kind: str
+    revision: int
+    capture_enabled: bool
+    use_enabled: bool
+    sync_scope: str
+    token_limit: int
+    current_token_count: int
+    consolidate_threshold: float
+    processed_through_watermark: str | None
+    watermark_kind: str | None
+    extractor_version: str
+    last_consolidated_at: float | None
+    last_error: str | None
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class MemoryEntryRecord:
+    memory_id: str
+    scope_type: str
+    scope_id: str
+    kind: str
+    content: str
+    priority: str
+    version: int
+    token_count: int
+    pinned_by_user: bool
+    confirmed_by_user: bool
+    created_by: str
+    source_trust: str
+    sensitivity: str
+    source_refs: tuple[str, ...]
+    last_used_at: float | None
+    usage_count: int
+    deleted_at: float | None
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class MemoryMutationRecord:
+    mutation_id: str
+    memory_id: str | None
+    scope_type: str
+    scope_id: str
+    operation: str
+    expected_version: int | None
+    before_hash: str | None
+    after_hash: str | None
+    actor_type: str
+    actor_id: str | None
+    run_id: str | None
+    activity_id: str | None
+    reason: str
+    source_refs: tuple[str, ...]
+    idempotency_key: str
+    request_digest: str
+    decision_id: str | None
+    created_at: float
+
+
+@dataclass(frozen=True)
+class MemoryMutationResult:
+    mutation: MemoryMutationRecord
+    entry: MemoryEntryRecord | None
+    scope_state: MemoryScopeStateRecord
+
+
+@dataclass(frozen=True)
 class CloudRunReplica:
     run_id: str
     status: str

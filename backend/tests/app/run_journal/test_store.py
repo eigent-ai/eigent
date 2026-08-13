@@ -86,6 +86,12 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "space_permission_profile_revisions",
         "approval_rules",
         "security_audit_events",
+        "project_history_cursors",
+        "project_history_events",
+        "memory_scope_state",
+        "memory_entries",
+        "memory_mutations",
+        "memory_mutation_outbox",
     } <= tables
 
 

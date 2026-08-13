@@ -57,8 +57,13 @@ from app.run_journal.models import (
     HumanInteractionDecisionRecord,
     HumanInteractionOptionRecord,
     HumanInteractionRecord,
+    MemoryEntryRecord,
+    MemoryMutationRecord,
+    MemoryMutationResult,
+    MemoryScopeStateRecord,
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
+    ProjectHistoryEventRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -106,8 +111,28 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 logger = logging.getLogger("run_journal")
+
+_MEMORY_SCOPE_TYPES = {"project", "space", "user"}
+_MEMORY_KINDS = {
+    "fact",
+    "decision",
+    "constraint",
+    "preference",
+    "todo",
+    "lesson",
+}
+_MEMORY_SOURCE_TRUST = {
+    "user_confirmed",
+    "user_asserted",
+    "system_verified",
+    "tool_observed",
+    "external_untrusted",
+    "model_inferred",
+    "legacy_unverified",
+}
+_MEMORY_DEFAULT_TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
 
 _MIGRATION_V1 = """
 BEGIN IMMEDIATE;
@@ -1383,6 +1408,179 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (21, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 21;
+COMMIT;
+"""
+
+_MIGRATION_V22 = """
+BEGIN IMMEDIATE;
+
+-- History owns the durable, Project-wide order.  Run sequence remains the
+-- causal order inside one Run; journal_cursor is only for cross-Run paging.
+CREATE TABLE IF NOT EXISTS project_history_cursors(
+    project_id TEXT PRIMARY KEY,
+    next_cursor INTEGER NOT NULL DEFAULT 1 CHECK(next_cursor >= 1),
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_history_events(
+    project_id TEXT NOT NULL,
+    journal_cursor INTEGER NOT NULL CHECK(journal_cursor >= 1),
+    event_id TEXT NOT NULL UNIQUE REFERENCES run_events(event_id)
+        ON DELETE CASCADE,
+    source_kind TEXT NOT NULL DEFAULT 'native' CHECK(
+        source_kind IN ('native', 'legacy_cursor_backfill')
+    ),
+    created_at REAL NOT NULL,
+    PRIMARY KEY(project_id, journal_cursor)
+);
+CREATE INDEX IF NOT EXISTS project_history_events_page_idx
+ON project_history_events(project_id, journal_cursor);
+
+-- Deterministic compatibility order for canonical events created before the
+-- Project cursor existed.  It promises stable paging, not real-time order
+-- between concurrent historical Runs.
+INSERT OR IGNORE INTO project_history_events(
+    project_id, journal_cursor, event_id, source_kind, created_at
+)
+SELECT project_id, project_cursor, event_id,
+       'legacy_cursor_backfill', created_at
+FROM (
+    SELECT runs.project_id AS project_id,
+           ROW_NUMBER() OVER (
+               PARTITION BY runs.project_id
+               ORDER BY run_events.created_at, run_events.run_id,
+                        run_events.sequence, run_events.event_id
+           ) AS project_cursor,
+           run_events.event_id AS event_id,
+           run_events.created_at AS created_at
+    FROM run_events
+    JOIN runs ON runs.run_id = run_events.run_id
+);
+
+INSERT OR REPLACE INTO project_history_cursors(
+    project_id, next_cursor, updated_at
+)
+SELECT project_id, MAX(journal_cursor) + 1, MAX(created_at)
+FROM project_history_events
+GROUP BY project_id;
+
+CREATE TABLE IF NOT EXISTS memory_scope_state(
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    owner_kind TEXT NOT NULL CHECK(owner_kind IN ('desktop', 'cloud')),
+    revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+    capture_enabled INTEGER NOT NULL DEFAULT 1 CHECK(capture_enabled IN (0, 1)),
+    use_enabled INTEGER NOT NULL DEFAULT 1 CHECK(use_enabled IN (0, 1)),
+    sync_scope TEXT NOT NULL DEFAULT 'local_only' CHECK(
+        sync_scope IN ('local_only', 'metadata_only', 'summary_only', 'full_memory')
+    ),
+    token_limit INTEGER NOT NULL CHECK(token_limit > 0),
+    current_token_count INTEGER NOT NULL DEFAULT 0 CHECK(current_token_count >= 0),
+    consolidate_threshold REAL NOT NULL DEFAULT 0.75 CHECK(
+        consolidate_threshold > 0 AND consolidate_threshold <= 1
+    ),
+    processed_through_watermark TEXT,
+    watermark_kind TEXT CHECK(
+        watermark_kind IS NULL OR watermark_kind IN ('journal_cursor', 'cloud_cursor')
+    ),
+    extractor_version TEXT NOT NULL DEFAULT 'memory-v2',
+    last_consolidated_at REAL,
+    last_error TEXT,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_entries(
+    memory_id TEXT PRIMARY KEY,
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(
+        kind IN ('fact', 'decision', 'constraint', 'preference', 'todo', 'lesson')
+    ),
+    content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal', 'high')),
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+    token_count INTEGER NOT NULL CHECK(token_count > 0),
+    pinned_by_user INTEGER NOT NULL DEFAULT 0 CHECK(pinned_by_user IN (0, 1)),
+    confirmed_by_user INTEGER NOT NULL DEFAULT 0 CHECK(confirmed_by_user IN (0, 1)),
+    created_by TEXT NOT NULL CHECK(
+        created_by IN ('extractor', 'agent', 'user', 'importer')
+    ),
+    source_trust TEXT NOT NULL CHECK(
+        source_trust IN (
+            'user_confirmed', 'user_asserted', 'system_verified',
+            'tool_observed', 'external_untrusted', 'model_inferred',
+            'legacy_unverified'
+        )
+    ),
+    sensitivity TEXT NOT NULL DEFAULT 'normal' CHECK(
+        sensitivity IN ('normal', 'personal', 'sensitive')
+    ),
+    source_refs_json TEXT NOT NULL DEFAULT '[]',
+    last_used_at REAL,
+    usage_count INTEGER NOT NULL DEFAULT 0 CHECK(usage_count >= 0),
+    deleted_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memory_entries_scope_active_idx
+ON memory_entries(scope_type, scope_id, deleted_at, pinned_by_user DESC,
+                  priority DESC, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_mutations(
+    mutation_id TEXT PRIMARY KEY,
+    memory_id TEXT,
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK(
+        operation IN ('add', 'replace', 'remove', 'restore', 'confirm',
+                      'pin', 'consolidate', 'noop')
+    ),
+    expected_version INTEGER,
+    before_hash TEXT,
+    after_hash TEXT,
+    actor_type TEXT NOT NULL CHECK(
+        actor_type IN ('extractor', 'agent', 'user', 'importer', 'system')
+    ),
+    actor_id TEXT,
+    run_id TEXT,
+    activity_id TEXT,
+    reason TEXT NOT NULL,
+    source_refs_json TEXT NOT NULL DEFAULT '[]',
+    idempotency_key TEXT NOT NULL UNIQUE,
+    request_digest TEXT NOT NULL CHECK(length(request_digest) = 64),
+    decision_id TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memory_mutations_scope_idx
+ON memory_mutations(scope_type, scope_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS memory_mutations_entry_idx
+ON memory_mutations(memory_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_mutation_outbox(
+    mutation_id TEXT PRIMARY KEY REFERENCES memory_mutations(mutation_id)
+        ON DELETE CASCADE,
+    scope_type TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'sending', 'sent', 'dead_letter')
+    ),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+    next_attempt_at REAL NOT NULL,
+    lease_token TEXT,
+    lease_until REAL,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memory_mutation_outbox_pending_idx
+ON memory_mutation_outbox(status, next_attempt_at, lease_until,
+                          scope_type, scope_id, created_at);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (22, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 22;
 COMMIT;
 """
 
@@ -7422,6 +7620,673 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._event_from_row(row) for row in rows]
 
+    def get_project_history_cursor(self, project_id: str) -> int:
+        """Return the last committed Project History cursor."""
+
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT next_cursor - 1 AS current_cursor
+                FROM project_history_cursors
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            return int(row["current_cursor"]) if row is not None else 0
+
+    def list_project_history_events(
+        self,
+        project_id: str,
+        *,
+        after_cursor: int = 0,
+        limit: int = 100,
+    ) -> list[ProjectHistoryEventRecord]:
+        """Read a bounded cross-Run Project History page."""
+
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        if after_cursor < 0:
+            raise ValueError("after_cursor must be non-negative")
+        if limit < 1 or limit > 500:
+            raise ValueError("history query limit must be between 1 and 500")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT history.project_id, history.journal_cursor,
+                       history.source_kind,
+                       events.event_id, events.run_id, events.sequence,
+                       events.run_version, events.event_type,
+                       events.payload_json, events.legacy_step,
+                       events.created_at
+                FROM project_history_events AS history
+                JOIN run_events AS events ON events.event_id = history.event_id
+                WHERE history.project_id = ? AND history.journal_cursor > ?
+                ORDER BY history.journal_cursor
+                LIMIT ?
+                """,
+                (project_id, after_cursor, limit),
+            ).fetchall()
+            return [
+                ProjectHistoryEventRecord(
+                    project_id=row["project_id"],
+                    journal_cursor=int(row["journal_cursor"]),
+                    event=self._event_from_row(row),
+                    source_kind=row["source_kind"],
+                )
+                for row in rows
+            ]
+
+    def ensure_memory_scope_state(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        owner_kind: str = "desktop",
+        token_limit: int | None = None,
+        now: float | None = None,
+    ) -> MemoryScopeStateRecord:
+        self._validate_memory_scope(scope_type, scope_id)
+        if owner_kind not in {"desktop", "cloud"}:
+            raise ValueError("invalid Memory owner_kind")
+        resolved_limit = (
+            token_limit or _MEMORY_DEFAULT_TOKEN_LIMITS[scope_type]
+        )
+        if resolved_limit < 1:
+            raise ValueError("Memory token_limit must be positive")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind=owner_kind,
+                token_limit=resolved_limit,
+                now=timestamp,
+            )
+            return self._memory_scope_state_from_row(row)
+
+    def get_memory_scope_state(
+        self, scope_type: str, scope_id: str
+    ) -> MemoryScopeStateRecord | None:
+        self._validate_memory_scope(scope_type, scope_id)
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM memory_scope_state
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+            return (
+                self._memory_scope_state_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def update_memory_scope_settings(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        expected_revision: int,
+        capture_enabled: bool | None = None,
+        use_enabled: bool | None = None,
+        sync_scope: str | None = None,
+        now: float | None = None,
+    ) -> MemoryScopeStateRecord:
+        self._validate_memory_scope(scope_type, scope_id)
+        if sync_scope is not None and sync_scope not in {
+            "local_only",
+            "metadata_only",
+            "summary_only",
+            "full_memory",
+        }:
+            raise ValueError("invalid Memory sync_scope")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind="desktop",
+                token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                now=timestamp,
+            )
+            if int(row["revision"]) != expected_revision:
+                raise OptimisticConcurrencyError(
+                    f"Memory scope {scope_type}:{scope_id} expected revision "
+                    f"{expected_revision}, found {row['revision']}"
+                )
+            updated = connection.execute(
+                """
+                UPDATE memory_scope_state
+                SET capture_enabled = COALESCE(?, capture_enabled),
+                    use_enabled = COALESCE(?, use_enabled),
+                    sync_scope = COALESCE(?, sync_scope),
+                    revision = revision + 1,
+                    updated_at = ?
+                WHERE scope_type = ? AND scope_id = ? AND revision = ?
+                """,
+                (
+                    int(capture_enabled)
+                    if capture_enabled is not None
+                    else None,
+                    int(use_enabled) if use_enabled is not None else None,
+                    sync_scope,
+                    timestamp,
+                    scope_type,
+                    scope_id,
+                    expected_revision,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    "Memory scope changed during update"
+                )
+            result = connection.execute(
+                """
+                SELECT * FROM memory_scope_state
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+            assert result is not None
+            return self._memory_scope_state_from_row(result)
+
+    def get_memory_entry(self, memory_id: str) -> MemoryEntryRecord | None:
+        if not memory_id.strip():
+            raise ValueError("memory_id is required")
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM memory_entries WHERE memory_id = ?",
+                (memory_id,),
+            ).fetchone()
+            return (
+                self._memory_entry_from_row(row) if row is not None else None
+            )
+
+    def list_memory_entries(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        include_deleted: bool = False,
+        limit: int = 200,
+    ) -> list[MemoryEntryRecord]:
+        self._validate_memory_scope(scope_type, scope_id)
+        if limit < 1 or limit > 500:
+            raise ValueError("Memory list limit must be between 1 and 500")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM memory_entries
+                WHERE scope_type = ? AND scope_id = ?
+                  AND (? OR deleted_at IS NULL)
+                ORDER BY pinned_by_user DESC,
+                         CASE priority WHEN 'high' THEN 0 ELSE 1 END,
+                         updated_at DESC, memory_id
+                LIMIT ?
+                """,
+                (scope_type, scope_id, include_deleted, limit),
+            ).fetchall()
+            return [self._memory_entry_from_row(row) for row in rows]
+
+    def list_memory_mutations(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        memory_id: str | None = None,
+        limit: int = 100,
+    ) -> list[MemoryMutationRecord]:
+        self._validate_memory_scope(scope_type, scope_id)
+        if limit < 1 or limit > 500:
+            raise ValueError("Memory mutation limit must be between 1 and 500")
+        query = """
+            SELECT * FROM memory_mutations
+            WHERE scope_type = ? AND scope_id = ?
+        """
+        parameters: list[Any] = [scope_type, scope_id]
+        if memory_id is not None:
+            query += " AND memory_id = ?"
+            parameters.append(memory_id)
+        query += " ORDER BY created_at DESC, mutation_id DESC LIMIT ?"
+        parameters.append(limit)
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+            return [self._memory_mutation_from_row(row) for row in rows]
+
+    def apply_memory_mutation(
+        self,
+        *,
+        mutation_id: str,
+        idempotency_key: str,
+        operation: str,
+        scope_type: str,
+        scope_id: str,
+        memory_id: str | None,
+        actor_type: str,
+        reason: str,
+        content: str | None = None,
+        kind: str | None = None,
+        priority: str = "normal",
+        token_count: int | None = None,
+        created_by: str | None = None,
+        source_trust: str | None = None,
+        sensitivity: str = "normal",
+        source_refs: tuple[str, ...] = (),
+        expected_version: int | None = None,
+        actor_id: str | None = None,
+        run_id: str | None = None,
+        activity_id: str | None = None,
+        decision_id: str | None = None,
+        now: float | None = None,
+    ) -> MemoryMutationResult:
+        """Apply one canonical, CAS-guarded lightweight Memory mutation."""
+
+        self._validate_memory_scope(scope_type, scope_id)
+        if not mutation_id.strip() or not idempotency_key.strip():
+            raise ValueError("mutation_id and idempotency_key are required")
+        if operation not in {
+            "add",
+            "replace",
+            "remove",
+            "restore",
+            "confirm",
+            "pin",
+            "consolidate",
+            "noop",
+        }:
+            raise ValueError("invalid Memory operation")
+        if actor_type not in {
+            "extractor",
+            "agent",
+            "user",
+            "importer",
+            "system",
+        }:
+            raise ValueError("invalid Memory actor_type")
+        if not reason.strip():
+            raise ValueError("Memory mutation reason is required")
+        if len(source_refs) > 32 or any(
+            len(value) > 256 for value in source_refs
+        ):
+            raise ValueError("Memory source_refs exceed the bounded limit")
+        timestamp = now if now is not None else time.time()
+        encoded_refs = json.dumps(list(source_refs), separators=(",", ":"))
+        request_digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "mutation_id": mutation_id,
+                    "memory_id": memory_id,
+                    "scope_type": scope_type,
+                    "scope_id": scope_id,
+                    "operation": operation,
+                    "actor_type": actor_type,
+                    "reason": reason,
+                    "content": content,
+                    "kind": kind,
+                    "priority": priority,
+                    "token_count": token_count,
+                    "created_by": created_by,
+                    "source_trust": source_trust,
+                    "sensitivity": sensitivity,
+                    "source_refs": list(source_refs),
+                    "expected_version": expected_version,
+                    "actor_id": actor_id,
+                    "run_id": run_id,
+                    "activity_id": activity_id,
+                    "decision_id": decision_id,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        with self._write_transaction() as connection:
+            duplicate = connection.execute(
+                "SELECT * FROM memory_mutations WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if duplicate is not None:
+                if (
+                    duplicate["mutation_id"] != mutation_id
+                    or duplicate["request_digest"] != request_digest
+                ):
+                    raise IdempotencyConflictError(
+                        "Memory idempotency key was reused with different data"
+                    )
+                entry_row = (
+                    connection.execute(
+                        "SELECT * FROM memory_entries WHERE memory_id = ?",
+                        (memory_id,),
+                    ).fetchone()
+                    if memory_id is not None
+                    else None
+                )
+                state_row = self._ensure_memory_scope_state_in_transaction(
+                    connection,
+                    scope_type=scope_type,
+                    scope_id=scope_id,
+                    owner_kind="desktop",
+                    token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                    now=timestamp,
+                )
+                return MemoryMutationResult(
+                    mutation=self._memory_mutation_from_row(duplicate),
+                    entry=(
+                        self._memory_entry_from_row(entry_row)
+                        if entry_row is not None
+                        else None
+                    ),
+                    scope_state=self._memory_scope_state_from_row(state_row),
+                )
+
+            state_row = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind="desktop",
+                token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                now=timestamp,
+            )
+            entry_row = (
+                connection.execute(
+                    "SELECT * FROM memory_entries WHERE memory_id = ?",
+                    (memory_id,),
+                ).fetchone()
+                if memory_id is not None
+                else None
+            )
+            before_hash = (
+                self._memory_entry_digest(entry_row)
+                if entry_row is not None
+                else None
+            )
+            token_delta = 0
+
+            if operation == "noop":
+                if memory_id is not None:
+                    raise ValueError(
+                        "noop mutation must not target a memory_id"
+                    )
+            elif operation == "add":
+                if memory_id is None or entry_row is not None:
+                    raise IdempotencyConflictError(
+                        "add requires a new, explicit memory_id"
+                    )
+                self._validate_memory_entry_values(
+                    content=content,
+                    kind=kind,
+                    priority=priority,
+                    token_count=token_count,
+                    created_by=created_by,
+                    source_trust=source_trust,
+                    sensitivity=sensitivity,
+                )
+                token_delta = int(token_count or 0)
+                self._assert_memory_capacity(state_row, token_delta)
+                connection.execute(
+                    """
+                    INSERT INTO memory_entries(
+                        memory_id, scope_type, scope_id, kind, content,
+                        priority, version, token_count, pinned_by_user,
+                        confirmed_by_user, created_by, source_trust,
+                        sensitivity, source_refs_json, usage_count,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 0, 0, ?, ?, ?, ?, 0, ?, ?)
+                    """,
+                    (
+                        memory_id,
+                        scope_type,
+                        scope_id,
+                        kind,
+                        content.strip() if content else content,
+                        priority,
+                        token_count,
+                        created_by,
+                        source_trust,
+                        sensitivity,
+                        encoded_refs,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            else:
+                if memory_id is None or entry_row is None:
+                    raise RunNotFoundError("Memory entry does not exist")
+                if (
+                    entry_row["scope_type"] != scope_type
+                    or entry_row["scope_id"] != scope_id
+                ):
+                    raise IdempotencyConflictError(
+                        "Memory entry belongs to a different scope"
+                    )
+                if expected_version is None:
+                    raise ValueError("expected_version is required")
+                if int(entry_row["version"]) != expected_version:
+                    raise OptimisticConcurrencyError(
+                        f"Memory entry expected version {expected_version}, "
+                        f"found {entry_row['version']}"
+                    )
+                was_active = entry_row["deleted_at"] is None
+                old_tokens = int(entry_row["token_count"]) if was_active else 0
+                if operation in {"replace", "consolidate"}:
+                    if not was_active:
+                        raise InvalidRunTransitionError(
+                            "deleted Memory must be restored before replacement"
+                        )
+                    resolved_kind = kind or str(entry_row["kind"])
+                    resolved_content = content or str(entry_row["content"])
+                    resolved_tokens = token_count or int(
+                        entry_row["token_count"]
+                    )
+                    resolved_created_by = created_by or str(
+                        entry_row["created_by"]
+                    )
+                    resolved_trust = source_trust or str(
+                        entry_row["source_trust"]
+                    )
+                    self._validate_memory_entry_values(
+                        content=resolved_content,
+                        kind=resolved_kind,
+                        priority=priority,
+                        token_count=resolved_tokens,
+                        created_by=resolved_created_by,
+                        source_trust=resolved_trust,
+                        sensitivity=sensitivity,
+                    )
+                    token_delta = resolved_tokens - old_tokens
+                    self._assert_memory_capacity(state_row, token_delta)
+                    replacement_refs = (
+                        encoded_refs
+                        if source_refs
+                        else str(entry_row["source_refs_json"])
+                    )
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET kind = ?, content = ?, priority = ?,
+                            token_count = ?, created_by = ?, source_trust = ?,
+                            sensitivity = ?, source_refs_json = ?,
+                            version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (
+                            resolved_kind,
+                            resolved_content.strip(),
+                            priority,
+                            resolved_tokens,
+                            resolved_created_by,
+                            resolved_trust,
+                            sensitivity,
+                            replacement_refs,
+                            timestamp,
+                            memory_id,
+                            expected_version,
+                        ),
+                    )
+                elif operation == "remove":
+                    if not was_active:
+                        raise InvalidRunTransitionError(
+                            "Memory is already deleted"
+                        )
+                    token_delta = -old_tokens
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET deleted_at = ?, version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (timestamp, timestamp, memory_id, expected_version),
+                    )
+                elif operation == "restore":
+                    if was_active:
+                        raise InvalidRunTransitionError(
+                            "Memory is not deleted"
+                        )
+                    token_delta = int(entry_row["token_count"])
+                    self._assert_memory_capacity(state_row, token_delta)
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET deleted_at = NULL, version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (timestamp, memory_id, expected_version),
+                    )
+                elif operation == "confirm":
+                    if not was_active:
+                        raise InvalidRunTransitionError(
+                            "deleted Memory cannot be confirmed"
+                        )
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET confirmed_by_user = 1,
+                            version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (timestamp, memory_id, expected_version),
+                    )
+                elif operation == "pin":
+                    if not was_active:
+                        raise InvalidRunTransitionError(
+                            "deleted Memory cannot be pinned"
+                        )
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET pinned_by_user = 1,
+                            version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (timestamp, memory_id, expected_version),
+                    )
+
+            if token_delta:
+                connection.execute(
+                    """
+                    UPDATE memory_scope_state
+                    SET current_token_count = current_token_count + ?
+                    WHERE scope_type = ? AND scope_id = ?
+                    """,
+                    (token_delta, scope_type, scope_id),
+                )
+            connection.execute(
+                """
+                UPDATE memory_scope_state
+                SET revision = revision + 1, updated_at = ?
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (timestamp, scope_type, scope_id),
+            )
+            final_entry = (
+                connection.execute(
+                    "SELECT * FROM memory_entries WHERE memory_id = ?",
+                    (memory_id,),
+                ).fetchone()
+                if memory_id is not None
+                else None
+            )
+            after_hash = (
+                self._memory_entry_digest(final_entry)
+                if final_entry is not None
+                else None
+            )
+            connection.execute(
+                """
+                INSERT INTO memory_mutations(
+                    mutation_id, memory_id, scope_type, scope_id, operation,
+                    expected_version, before_hash, after_hash, actor_type,
+                    actor_id, run_id, activity_id, reason, source_refs_json,
+                    idempotency_key, request_digest, decision_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mutation_id,
+                    memory_id,
+                    scope_type,
+                    scope_id,
+                    operation,
+                    expected_version,
+                    before_hash,
+                    after_hash,
+                    actor_type,
+                    actor_id,
+                    run_id,
+                    activity_id,
+                    reason,
+                    encoded_refs,
+                    idempotency_key,
+                    request_digest,
+                    decision_id,
+                    timestamp,
+                ),
+            )
+            state = connection.execute(
+                """
+                SELECT * FROM memory_scope_state
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+            assert state is not None
+            if state["sync_scope"] != "local_only":
+                connection.execute(
+                    """
+                    INSERT INTO memory_mutation_outbox(
+                        mutation_id, scope_type, scope_id, status,
+                        attempt_count, next_attempt_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)
+                    """,
+                    (
+                        mutation_id,
+                        scope_type,
+                        scope_id,
+                        timestamp,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            mutation_row = connection.execute(
+                "SELECT * FROM memory_mutations WHERE mutation_id = ?",
+                (mutation_id,),
+            ).fetchone()
+            assert mutation_row is not None
+            return MemoryMutationResult(
+                mutation=self._memory_mutation_from_row(mutation_row),
+                entry=(
+                    self._memory_entry_from_row(final_entry)
+                    if final_entry is not None
+                    else None
+                ),
+                scope_state=self._memory_scope_state_from_row(state),
+            )
+
     def get_run_final_result_event(
         self, run_id: str
     ) -> CommittedRunEvent | None:
@@ -11521,6 +12386,12 @@ class SQLiteRunJournal:
                 draft.created_at,
             ),
         )
+        self._allocate_project_history_cursor_in_transaction(
+            connection,
+            project_id=str(run["project_id"]),
+            event_id=draft.event_id,
+            created_at=draft.created_at,
+        )
         connection.execute(
             """
             INSERT INTO run_event_sync_outbox(
@@ -11591,6 +12462,61 @@ class SQLiteRunJournal:
             created_at=draft.created_at,
             run_version=current_version + 1,
         )
+
+    @staticmethod
+    def _allocate_project_history_cursor_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        project_id: str,
+        event_id: str,
+        created_at: float,
+    ) -> int:
+        existing = connection.execute(
+            """
+            SELECT journal_cursor FROM project_history_events
+            WHERE event_id = ?
+            """,
+            (event_id,),
+        ).fetchone()
+        if existing is not None:
+            return int(existing["journal_cursor"])
+
+        cursor_row = connection.execute(
+            """
+            SELECT next_cursor FROM project_history_cursors
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+        if cursor_row is None:
+            cursor = 1
+            connection.execute(
+                """
+                INSERT INTO project_history_cursors(
+                    project_id, next_cursor, updated_at
+                ) VALUES (?, 2, ?)
+                """,
+                (project_id, created_at),
+            )
+        else:
+            cursor = int(cursor_row["next_cursor"])
+            connection.execute(
+                """
+                UPDATE project_history_cursors
+                SET next_cursor = ?, updated_at = ?
+                WHERE project_id = ?
+                """,
+                (cursor + 1, created_at, project_id),
+            )
+        connection.execute(
+            """
+            INSERT INTO project_history_events(
+                project_id, journal_cursor, event_id, source_kind, created_at
+            ) VALUES (?, ?, ?, 'native', ?)
+            """,
+            (project_id, cursor, event_id, created_at),
+        )
+        return cursor
 
     def _migrate(self) -> None:
         version = int(
@@ -11664,6 +12590,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                     "",
                 )
             self._connection.executescript(migration)
+        if version < 22:
+            self._connection.executescript(_MIGRATION_V22)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -12520,6 +13448,202 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             actor_id=row["actor_id"],
             action_digest=row["action_digest"],
             details=json.loads(row["details_json"]),
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _validate_memory_scope(scope_type: str, scope_id: str) -> None:
+        if scope_type not in _MEMORY_SCOPE_TYPES:
+            raise ValueError("invalid Memory scope_type")
+        if not scope_id.strip() or len(scope_id) > 256:
+            raise ValueError("Memory scope_id is required and bounded")
+
+    @staticmethod
+    def _validate_memory_entry_values(
+        *,
+        content: str | None,
+        kind: str | None,
+        priority: str,
+        token_count: int | None,
+        created_by: str | None,
+        source_trust: str | None,
+        sensitivity: str,
+    ) -> None:
+        if content is None or not content.strip() or len(content) > 8192:
+            raise ValueError("Memory content is required and bounded")
+        if kind not in _MEMORY_KINDS:
+            raise ValueError("invalid Memory kind")
+        if priority not in {"normal", "high"}:
+            raise ValueError("invalid Memory priority")
+        if token_count is None or token_count < 1:
+            raise ValueError("Memory token_count must be positive")
+        if created_by not in {"extractor", "agent", "user", "importer"}:
+            raise ValueError("invalid Memory created_by")
+        if source_trust not in _MEMORY_SOURCE_TRUST:
+            raise ValueError("invalid Memory source_trust")
+        if sensitivity not in {"normal", "personal", "sensitive"}:
+            raise ValueError("invalid Memory sensitivity")
+
+    @staticmethod
+    def _ensure_memory_scope_state_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        scope_type: str,
+        scope_id: str,
+        owner_kind: str,
+        token_limit: int,
+        now: float,
+    ) -> sqlite3.Row:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO memory_scope_state(
+                scope_type, scope_id, owner_kind, revision,
+                capture_enabled, use_enabled, sync_scope, token_limit,
+                current_token_count, consolidate_threshold,
+                extractor_version, updated_at
+            ) VALUES (?, ?, ?, 0, 1, 1, 'local_only', ?, 0, 0.75,
+                      'memory-v2', ?)
+            """,
+            (scope_type, scope_id, owner_kind, token_limit, now),
+        )
+        row = connection.execute(
+            """
+            SELECT * FROM memory_scope_state
+            WHERE scope_type = ? AND scope_id = ?
+            """,
+            (scope_type, scope_id),
+        ).fetchone()
+        assert row is not None
+        if row["owner_kind"] != owner_kind:
+            raise InvalidRunTransitionError(
+                f"Memory scope is owned by {row['owner_kind']!r}, not {owner_kind!r}"
+            )
+        return row
+
+    @staticmethod
+    def _assert_memory_capacity(state: sqlite3.Row, token_delta: int) -> None:
+        resulting = int(state["current_token_count"]) + token_delta
+        limit = int(state["token_limit"])
+        if resulting < 0:
+            raise RunJournalError(
+                "Memory token accounting would become negative"
+            )
+        if resulting > limit:
+            raise InvalidRunTransitionError(
+                f"Memory capacity exceeded by {resulting - limit} tokens"
+            )
+
+    @staticmethod
+    def _memory_entry_digest(row: sqlite3.Row) -> str:
+        payload = {
+            "memory_id": row["memory_id"],
+            "scope_type": row["scope_type"],
+            "scope_id": row["scope_id"],
+            "kind": row["kind"],
+            "content": row["content"],
+            "priority": row["priority"],
+            "version": int(row["version"]),
+            "token_count": int(row["token_count"]),
+            "pinned_by_user": bool(row["pinned_by_user"]),
+            "confirmed_by_user": bool(row["confirmed_by_user"]),
+            "created_by": row["created_by"],
+            "source_trust": row["source_trust"],
+            "sensitivity": row["sensitivity"],
+            "source_refs": json.loads(row["source_refs_json"]),
+            "deleted_at": row["deleted_at"],
+        }
+        return hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    @staticmethod
+    def _memory_scope_state_from_row(
+        row: sqlite3.Row,
+    ) -> MemoryScopeStateRecord:
+        return MemoryScopeStateRecord(
+            scope_type=row["scope_type"],
+            scope_id=row["scope_id"],
+            owner_kind=row["owner_kind"],
+            revision=int(row["revision"]),
+            capture_enabled=bool(row["capture_enabled"]),
+            use_enabled=bool(row["use_enabled"]),
+            sync_scope=row["sync_scope"],
+            token_limit=int(row["token_limit"]),
+            current_token_count=int(row["current_token_count"]),
+            consolidate_threshold=float(row["consolidate_threshold"]),
+            processed_through_watermark=row["processed_through_watermark"],
+            watermark_kind=row["watermark_kind"],
+            extractor_version=row["extractor_version"],
+            last_consolidated_at=(
+                float(row["last_consolidated_at"])
+                if row["last_consolidated_at"] is not None
+                else None
+            ),
+            last_error=row["last_error"],
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _memory_entry_from_row(row: sqlite3.Row) -> MemoryEntryRecord:
+        return MemoryEntryRecord(
+            memory_id=row["memory_id"],
+            scope_type=row["scope_type"],
+            scope_id=row["scope_id"],
+            kind=row["kind"],
+            content=row["content"],
+            priority=row["priority"],
+            version=int(row["version"]),
+            token_count=int(row["token_count"]),
+            pinned_by_user=bool(row["pinned_by_user"]),
+            confirmed_by_user=bool(row["confirmed_by_user"]),
+            created_by=row["created_by"],
+            source_trust=row["source_trust"],
+            sensitivity=row["sensitivity"],
+            source_refs=tuple(json.loads(row["source_refs_json"])),
+            last_used_at=(
+                float(row["last_used_at"])
+                if row["last_used_at"] is not None
+                else None
+            ),
+            usage_count=int(row["usage_count"]),
+            deleted_at=(
+                float(row["deleted_at"])
+                if row["deleted_at"] is not None
+                else None
+            ),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _memory_mutation_from_row(row: sqlite3.Row) -> MemoryMutationRecord:
+        return MemoryMutationRecord(
+            mutation_id=row["mutation_id"],
+            memory_id=row["memory_id"],
+            scope_type=row["scope_type"],
+            scope_id=row["scope_id"],
+            operation=row["operation"],
+            expected_version=(
+                int(row["expected_version"])
+                if row["expected_version"] is not None
+                else None
+            ),
+            before_hash=row["before_hash"],
+            after_hash=row["after_hash"],
+            actor_type=row["actor_type"],
+            actor_id=row["actor_id"],
+            run_id=row["run_id"],
+            activity_id=row["activity_id"],
+            reason=row["reason"],
+            source_refs=tuple(json.loads(row["source_refs_json"])),
+            idempotency_key=row["idempotency_key"],
+            request_digest=row["request_digest"],
+            decision_id=row["decision_id"],
             created_at=float(row["created_at"]),
         )
 

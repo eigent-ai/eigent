@@ -1,0 +1,309 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+
+import pytest
+
+from app.run_journal import (
+    IdempotencyConflictError,
+    InvalidRunTransitionError,
+    OptimisticConcurrencyError,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
+
+
+@pytest.fixture
+def journal(tmp_path):
+    with SQLiteRunJournal(tmp_path / "run-journal.sqlite3") as value:
+        yield value
+
+
+def test_project_history_cursor_pages_across_runs_and_reuses_duplicate(
+    journal,
+):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.ensure_run(run_id="run-2", project_id="project-1")
+    first = RunEventDraft(
+        event_id="event-1",
+        event_type="user.message",
+        payload={"content": "one"},
+        created_at=1,
+    )
+    journal.append_event("run-1", first)
+    journal.append_event(
+        "run-2",
+        RunEventDraft(
+            event_id="event-2",
+            event_type="user.message",
+            payload={"content": "two"},
+            created_at=2,
+        ),
+    )
+
+    duplicate = journal.append_event("run-1", first)
+    page = journal.list_project_history_events(
+        "project-1", after_cursor=0, limit=1
+    )
+    next_page = journal.list_project_history_events(
+        "project-1", after_cursor=page[-1].journal_cursor, limit=10
+    )
+
+    assert duplicate.event_id == "event-1"
+    assert [item.journal_cursor for item in page + next_page] == [1, 2]
+    assert [item.event.event_id for item in page + next_page] == [
+        "event-1",
+        "event-2",
+    ]
+    assert journal.get_project_history_cursor("project-1") == 2
+
+
+def test_project_history_cursor_is_continuous_under_concurrent_runs(journal):
+    for index in range(8):
+        journal.ensure_run(
+            run_id=f"run-{index}", project_id="project-concurrent"
+        )
+    barrier = threading.Barrier(8)
+    failures: list[BaseException] = []
+
+    def append(index: int) -> None:
+        try:
+            barrier.wait()
+            journal.append_event(
+                f"run-{index}",
+                RunEventDraft(
+                    event_id=f"event-{index}",
+                    event_type="message.created",
+                    payload={"index": index},
+                ),
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+
+    threads = [
+        threading.Thread(target=append, args=(index,)) for index in range(8)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    page = journal.list_project_history_events("project-concurrent", limit=100)
+    assert [item.journal_cursor for item in page] == list(range(1, 9))
+
+
+def test_v21_events_receive_deterministic_cursor_backfill(tmp_path):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        journal.ensure_run(run_id="run-b", project_id="project-1")
+        journal.ensure_run(run_id="run-a", project_id="project-1")
+        journal.append_event(
+            "run-b",
+            RunEventDraft(
+                event_id="later-id",
+                event_type="message.created",
+                payload={},
+                created_at=5,
+            ),
+        )
+        journal.append_event(
+            "run-a",
+            RunEventDraft(
+                event_id="earlier-id",
+                event_type="message.created",
+                payload={},
+                created_at=1,
+            ),
+        )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE memory_mutation_outbox")
+        connection.execute("DROP TABLE memory_mutations")
+        connection.execute("DROP TABLE memory_entries")
+        connection.execute("DROP TABLE memory_scope_state")
+        connection.execute("DROP TABLE project_history_events")
+        connection.execute("DROP TABLE project_history_cursors")
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 22"
+        )
+        connection.execute("PRAGMA user_version = 21")
+
+    with SQLiteRunJournal(path) as upgraded:
+        page = upgraded.list_project_history_events("project-1")
+        assert [item.event.event_id for item in page] == [
+            "earlier-id",
+            "later-id",
+        ]
+        assert {item.source_kind for item in page} == {
+            "legacy_cursor_backfill"
+        }
+
+
+def test_memory_mutations_enforce_capacity_cas_tombstone_and_idempotency(
+    journal,
+):
+    state = journal.ensure_memory_scope_state(
+        "project", "project-1", token_limit=10
+    )
+    assert state.current_token_count == 0
+
+    added = journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="agent",
+        reason="Remember the stable project constraint",
+        content="Use PostgreSQL for cloud history.",
+        kind="decision",
+        token_count=6,
+        created_by="agent",
+        source_trust="model_inferred",
+        source_refs=("event-1",),
+        now=1,
+    )
+    assert added.entry is not None
+    assert added.entry.version == 1
+    assert added.scope_state.current_token_count == 6
+
+    replay = journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="agent",
+        reason="Remember the stable project constraint",
+        content="Use PostgreSQL for cloud history.",
+        kind="decision",
+        token_count=6,
+        created_by="agent",
+        source_trust="model_inferred",
+        source_refs=("event-1",),
+        now=1,
+    )
+    assert replay.mutation.mutation_id == "mutation-add"
+    assert len(journal.list_memory_mutations("project", "project-1")) == 1
+
+    with pytest.raises(IdempotencyConflictError):
+        journal.apply_memory_mutation(
+            mutation_id="mutation-other",
+            idempotency_key="request-add",
+            operation="noop",
+            scope_type="project",
+            scope_id="project-1",
+            memory_id=None,
+            actor_type="system",
+            reason="different payload",
+        )
+    with pytest.raises(OptimisticConcurrencyError):
+        journal.apply_memory_mutation(
+            mutation_id="mutation-stale",
+            idempotency_key="request-stale",
+            operation="replace",
+            scope_type="project",
+            scope_id="project-1",
+            memory_id="memory-1",
+            actor_type="user",
+            reason="stale edit",
+            content="stale",
+            kind="decision",
+            token_count=1,
+            created_by="user",
+            source_trust="user_confirmed",
+            expected_version=0,
+        )
+    with pytest.raises(InvalidRunTransitionError, match="capacity exceeded"):
+        journal.apply_memory_mutation(
+            mutation_id="mutation-too-large",
+            idempotency_key="request-too-large",
+            operation="replace",
+            scope_type="project",
+            scope_id="project-1",
+            memory_id="memory-1",
+            actor_type="user",
+            reason="too large",
+            content="too large",
+            kind="decision",
+            token_count=11,
+            created_by="user",
+            source_trust="user_confirmed",
+            expected_version=1,
+        )
+
+    removed = journal.apply_memory_mutation(
+        mutation_id="mutation-remove",
+        idempotency_key="request-remove",
+        operation="remove",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Forget this current Memory entry",
+        expected_version=1,
+        now=2,
+    )
+    assert removed.entry is not None and removed.entry.deleted_at == 2
+    assert removed.scope_state.current_token_count == 0
+    assert journal.list_memory_entries("project", "project-1") == []
+    assert (
+        len(
+            journal.list_memory_entries(
+                "project", "project-1", include_deleted=True
+            )
+        )
+        == 1
+    )
+
+
+def test_confirm_preserves_untrusted_source_instead_of_laundering(journal):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-add",
+        idempotency_key="request-add",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-web",
+        actor_type="extractor",
+        reason="candidate from a web page",
+        content="The external page claims this API is stable.",
+        kind="fact",
+        token_count=9,
+        created_by="extractor",
+        source_trust="external_untrusted",
+        source_refs=("event-web",),
+    )
+    confirmed = journal.apply_memory_mutation(
+        mutation_id="mutation-confirm",
+        idempotency_key="request-confirm",
+        operation="confirm",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-web",
+        actor_type="user",
+        reason="User reviewed the candidate",
+        expected_version=1,
+    )
+
+    assert confirmed.entry is not None
+    assert confirmed.entry.confirmed_by_user is True
+    assert confirmed.entry.source_trust == "external_untrusted"

@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from app.run_journal import (
+    SCHEMA_VERSION,
     InvalidRunTransitionError,
     RunEventDraft,
     SQLiteRunJournal,
@@ -388,7 +389,7 @@ def test_v20_schema_migrates_execution_lease_and_follow_up_source(tmp_path):
         connection.execute("PRAGMA user_version = 20")
 
     with SQLiteRunJournal(path) as upgraded:
-        assert upgraded.schema_version == 21
+        assert upgraded.schema_version == SCHEMA_VERSION
         assert upgraded.get_active_project_run("project-v20").run_id == (
             "run-v20"
         )
