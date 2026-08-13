@@ -209,7 +209,7 @@
   "are-you-sure-you-want-to-delete": "本当に削除しますか",
   "deleting": "削除中...",
   "delete": "削除",
-  "configure {name} Toolkit": "{name}ツールキットを構成",
+  "configure {name} Toolkit": "{{name}}ツールキットを構成",
   "get-it-from": "から入手",
   "google-custom-search-api": "Googleカスタム検索API",
   "google-cloud-console": "Google Cloud Console",

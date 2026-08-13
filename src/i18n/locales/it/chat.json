@@ -127,5 +127,17 @@
   "run-cancel": "Annulla esecuzione",
   "run-cancelling": "Annullamento…",
   "run-resume-failed": "Impossibile riprendere questa esecuzione.",
-  "run-cancel-failed": "Impossibile annullare questa esecuzione."
+  "run-cancel-failed": "Impossibile annullare questa esecuzione.",
+  "repeated-tool-events": "{{tool}} · {{count}} eventi",
+  "repeated-tool-calls-label": "Chiamate ripetute allo strumento: {{tool}}",
+  "repeated-tool-failed": "{{count}} non riuscite",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}} completate",
+  "repeated-tool-cancelled": "{{count}} annullate",
+  "tool-status-completed": "Completata",
+  "tool-status-failed": "Non riuscita",
+  "tool-status-cancelled": "Annullata",
+  "tool-status-running": "In corso",
+  "tool-status-pending": "In attesa",
+  "tool-status-unknown": "Sconosciuta",
+  "follow-up-prepare-failed": "Impossibile preparare l’attività di follow-up."
 }

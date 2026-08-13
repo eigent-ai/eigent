@@ -76,6 +76,8 @@ export interface HumanControlInteraction {
   cloudCursor: number | null;
   lastCloudCursor: number | null;
   requestEventId?: string;
+  /** Typed event that established the request; legacy ASK mirrors are not command authority. */
+  requestEventType?: string;
   /** Source lane of the request; only canonical sequences are replay cursors. */
   requestSource: CanonicalProjectEvent['source'];
   lastEventId: string;

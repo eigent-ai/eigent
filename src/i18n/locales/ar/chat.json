@@ -127,5 +127,17 @@
   "run-cancel": "إنهاء التشغيل",
   "run-cancelling": "جارٍ الإنهاء…",
   "run-resume-failed": "تعذرت متابعة هذا التشغيل.",
-  "run-cancel-failed": "تعذر إنهاء هذا التشغيل."
+  "run-cancel-failed": "تعذر إنهاء هذا التشغيل.",
+  "repeated-tool-events": "{{tool}} · {{count}} أحداث",
+  "repeated-tool-calls-label": "استدعاءات الأداة المتكررة: {{tool}}",
+  "repeated-tool-failed": "فشل {{count}}",
+  "repeated-tool-completed-progress": "اكتمل {{completed}}/{{count}}",
+  "repeated-tool-cancelled": "أُلغي {{count}}",
+  "tool-status-completed": "مكتمل",
+  "tool-status-failed": "فشل",
+  "tool-status-cancelled": "ملغى",
+  "tool-status-running": "قيد التشغيل",
+  "tool-status-pending": "قيد الانتظار",
+  "tool-status-unknown": "غير معروف",
+  "follow-up-prepare-failed": "تعذر إعداد مهمة المتابعة."
 }

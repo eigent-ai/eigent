@@ -54,7 +54,7 @@ export function NoticeCard() {
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 py-sm">
+      <div className="flex h-auto w-full flex-col gap-2 py-2">
         <div className="relative h-auto w-full overflow-hidden rounded-xl py-3 pr-5 backdrop-blur-[5px]">
           <div className="relative">
             <Button
@@ -85,7 +85,7 @@ export function NoticeCard() {
                   : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
               }}
             >
-              <div className="mt-sm flex flex-col gap-2 px-2">
+              <div className="mt-2 flex flex-col gap-2 px-2">
                 {cotList.map((cot: string, index: number) => {
                   return (
                     <div

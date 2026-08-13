@@ -23,11 +23,7 @@ import { ControlInputRouter } from './ControlInput';
 import type { FileAttachment, InputboxProps } from './InputBox';
 import { ConnectorPickerPanel, SkillPickerPanel } from './PickerPanel';
 import { QueuedBox, type QueuedMessage } from './QueuedBox';
-import type {
-  BottomBoxContextItem,
-  BottomBoxVariant,
-  LegacyBottomBoxVariant,
-} from './types';
+import type { BottomBoxVariant, LegacyBottomBoxVariant } from './types';
 import {
   UsageLimitBanner,
   type UsageLimitBannerProps,
@@ -191,41 +187,10 @@ export default function BottomBox({
   const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
 
   const variantHeader = normalizedVariant.header;
-  const attachedFiles =
-    normalizedVariant.kind === 'input' ? (inputProps.files ?? []) : [];
-  const attachmentContext: BottomBoxContextItem[] = attachedFiles.map(
-    (file) => ({
-      id: `attachment:${file.filePath}`,
-      label: file.fileName,
-      description: file.filePath,
-      kind: 'file',
-      removable: typeof inputProps.onFilesChange === 'function',
-    })
-  );
-  const headerContextItems = [
-    ...(variantHeader?.contextItems ?? []),
-    ...attachmentContext,
-  ];
-  const resolvedHeader =
-    variantHeader || headerContextItems.length > 0
-      ? {
-          ...variantHeader,
-          contextItems: headerContextItems,
-          onRemoveContextItem:
-            inputProps.onFilesChange || variantHeader?.onRemoveContextItem
-              ? (id: string) => {
-                  if (id.startsWith('attachment:')) {
-                    const filePath = id.slice('attachment:'.length);
-                    inputProps.onFilesChange?.(
-                      attachedFiles.filter((file) => file.filePath !== filePath)
-                    );
-                    return;
-                  }
-                  variantHeader?.onRemoveContextItem?.(id);
-                }
-              : undefined,
-        }
-      : undefined;
+  // Composer question/details live inside InputBox. Other variants keep the
+  // display header above their control surface.
+  const externalHeader =
+    normalizedVariant.kind === 'input' ? undefined : variantHeader;
 
   const variantDisabled =
     normalizedVariant.kind === 'input'
@@ -296,7 +261,7 @@ export default function BottomBox({
             loading={loading}
           />
         )}
-        {resolvedHeader && <BoxHeaderDisplay {...resolvedHeader} />}
+        {externalHeader && <BoxHeaderDisplay {...externalHeader} />}
 
         {/* InputBox — controlled router selected by event-derived variant. */}
         <ControlInputRouter

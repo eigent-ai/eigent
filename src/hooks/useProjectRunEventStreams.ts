@@ -72,7 +72,13 @@ export function useProjectRunEventStreams({
     };
   }, [enabled, maxStreams, projectId, reconnectDelayMs, transport]);
 
+  // `projectId`/`enabled` are dependencies even though they are unused here:
+  // they are what construct a new owner above, and effects run in declaration
+  // order within one commit. Without them a freshly created owner would be fed
+  // only when the snapshot reference happened to change too, so a Project
+  // switch that reuses a snapshot reference would open no streams at all until
+  // the next unrelated store publish.
   useEffect(() => {
     if (snapshot) ownerRef.current?.updateSnapshot(snapshot);
-  }, [snapshot]);
+  }, [snapshot, projectId, enabled]);
 }

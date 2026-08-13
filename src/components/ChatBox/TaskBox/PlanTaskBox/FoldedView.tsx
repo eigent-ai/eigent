@@ -80,7 +80,7 @@ export function FoldedView({
       exit={planBlurFadeMotion.exit}
       transition={planBlurFadeMotion.transition}
       className={cn(
-        'relative mx-sm flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
+        'relative mx-2 flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
       <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2">

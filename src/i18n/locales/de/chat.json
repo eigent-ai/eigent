@@ -127,5 +127,17 @@
   "run-cancel": "Ausführung beenden",
   "run-cancelling": "Wird beendet…",
   "run-resume-failed": "Die Ausführung konnte nicht fortgesetzt werden.",
-  "run-cancel-failed": "Die Ausführung konnte nicht beendet werden."
+  "run-cancel-failed": "Die Ausführung konnte nicht beendet werden.",
+  "repeated-tool-events": "{{tool}} · {{count}} Ereignisse",
+  "repeated-tool-calls-label": "Wiederholte Tool-Aufrufe: {{tool}}",
+  "repeated-tool-failed": "{{count}} fehlgeschlagen",
+  "repeated-tool-completed-progress": "{{completed}}/{{count}} abgeschlossen",
+  "repeated-tool-cancelled": "{{count}} abgebrochen",
+  "tool-status-completed": "Abgeschlossen",
+  "tool-status-failed": "Fehlgeschlagen",
+  "tool-status-cancelled": "Abgebrochen",
+  "tool-status-running": "Läuft",
+  "tool-status-pending": "Ausstehend",
+  "tool-status-unknown": "Unbekannt",
+  "follow-up-prepare-failed": "Die Folgeaufgabe konnte nicht vorbereitet werden."
 }

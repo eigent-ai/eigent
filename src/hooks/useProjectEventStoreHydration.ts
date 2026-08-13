@@ -20,6 +20,11 @@ import { getProjectEventStore } from '@/store/projectEventStore';
 import { useEffect, useState } from 'react';
 
 const RETRY_DELAY_MS = 1_000;
+/**
+ * Ceiling for exponential retry backoff. A retryable failure that never clears
+ * (backend down) otherwise re-fetched the whole Project snapshot every second.
+ */
+const MAX_RETRY_DELAY_MS = 30_000;
 
 export type UseProjectEventStoreHydrationOptions = {
   projectId: string | null | undefined;
@@ -82,7 +87,11 @@ export function useProjectEventStoreHydration({
     let mounted = true;
     let running = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let blockedByContract = false;
+    let blockedIncarnation: number | null = null;
+    let consecutiveFailures = 0;
+
+    const isBlockedByContract = () =>
+      blockedIncarnation === store.getIncarnation();
 
     const needsHydration = () => {
       const snapshot = store.getSnapshot();
@@ -94,17 +103,31 @@ export function useProjectEventStoreHydration({
     };
 
     const scheduleRetry = () => {
-      if (!mounted || retryTimer || blockedByContract) return;
+      if (!mounted || retryTimer || isBlockedByContract()) return;
+      const delay = Math.min(
+        RETRY_DELAY_MS * 2 ** Math.max(0, consecutiveFailures - 1),
+        MAX_RETRY_DELAY_MS
+      );
       retryTimer = setTimeout(() => {
         retryTimer = null;
         requestHydration();
-      }, RETRY_DELAY_MS);
+      }, delay);
     };
 
     const requestHydration = () => {
-      if (!mounted || running || blockedByContract || !needsHydration()) {
+      // A pending retry owns the next attempt. Without this the store
+      // subscription below could re-enter immediately on any unrelated publish
+      // and defeat the backoff entirely.
+      if (
+        !mounted ||
+        running ||
+        isBlockedByContract() ||
+        retryTimer ||
+        !needsHydration()
+      ) {
         return;
       }
+      const requestIncarnation = store.getIncarnation();
       running = true;
       setHydrationState({
         status: 'loading',
@@ -117,6 +140,7 @@ export function useProjectEventStoreHydration({
         store,
       })
         .then((result) => {
+          consecutiveFailures = 0;
           if (mounted) {
             setHydrationState({
               status: 'ready',
@@ -127,8 +151,9 @@ export function useProjectEventStoreHydration({
         })
         .catch((error: unknown) => {
           if (!mounted || isAbortError(error)) return;
+          consecutiveFailures += 1;
           if (isNonRetryable(error)) {
-            blockedByContract = true;
+            blockedIncarnation = requestIncarnation;
             setHydrationState({
               status: 'error',
               errorCode: error.code,
@@ -151,6 +176,9 @@ export function useProjectEventStoreHydration({
         })
         .finally(() => {
           running = false;
+          if (store.getIncarnation() !== requestIncarnation) {
+            requestHydration();
+          }
         });
     };
 

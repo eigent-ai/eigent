@@ -105,10 +105,10 @@ export const ProjectSection = React.forwardRef<
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3 }}
-        className="relative"
+        className="relative mb-8"
       >
         {/* User Query Groups */}
-        <div className="space-y-0">
+        <div className="space-y-3">
           {queryGroups.map((group, index) => (
             <UserQueryGroup
               key={`${chatId}-${group.queryId}`}

@@ -67,13 +67,13 @@ export function TaskItem({
     <div key={`task-item-${taskIndex}`} className="w-full">
       <div
         onDoubleClick={(e) => handleFocus(e, true)}
-        className={`group relative mb-2 flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-sm hover:bg-ds-bg-neutral-default-hover ${
+        className={`group relative mb-2 flex min-h-2 w-full items-start gap-0 rounded-lg border border-solid p-2 hover:bg-ds-bg-neutral-default-hover ${
           isFocus
             ? 'border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default'
             : 'border-ds-border-neutral-subtle-default group-hover:border-transparent'
         }`}
       >
-        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-sm pt-0.5">
+        <div className="flex h-4 w-7 flex-shrink-0 cursor-pointer items-center justify-center pr-2 pt-0.5">
           {taskInfo.id === '' ? (
             <CircleDashed
               size={13}
@@ -105,7 +105,7 @@ export function TaskItem({
           )}
         </div>
         <div
-          className={`absolute right-2 top-2 flex items-center gap-xs group-hover:opacity-100 ${
+          className={`absolute right-2 top-2 flex items-center gap-1 group-hover:opacity-100 ${
             isFocus ? 'opacity-100' : 'opacity-0'
           } transition-opacity duration-300`}
         >

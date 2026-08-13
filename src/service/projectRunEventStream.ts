@@ -23,6 +23,12 @@ import {
 
 const DEFAULT_MAX_LIVE_RUN_STREAMS = 4;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
+/**
+ * Ceiling for exponential reconnect backoff. Without it, an endpoint that is
+ * permanently unavailable (backend down, Run deleted server-side) produced one
+ * request per second per stream forever.
+ */
+const MAX_RECONNECT_DELAY_MS = 30_000;
 
 const LIVE_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'pending',
@@ -265,6 +271,7 @@ export class ProjectRunEventStreamOwner {
   }
 
   private async consumeStream(stream: LiveRunStream): Promise<void> {
+    let consecutiveFailures = 0;
     while (
       !this.disposed &&
       !stream.controller.signal.aborted &&
@@ -272,6 +279,7 @@ export class ProjectRunEventStreamOwner {
       this.streams.get(stream.runId) === stream
     ) {
       const url = `/runs/${encodeURIComponent(stream.runId)}/stream?after_sequence=${stream.cursor}`;
+      const cursorBeforeAttempt = stream.cursor;
       try {
         await this.transport({
           url,
@@ -313,7 +321,17 @@ export class ProjectRunEventStreamOwner {
       ) {
         break;
       }
-      await waitForReconnect(stream.controller.signal, this.reconnectDelayMs);
+      // Any forward progress means the connection is healthy, so reset the
+      // backoff; only repeated no-progress attempts are throttled.
+      consecutiveFailures =
+        stream.cursor > cursorBeforeAttempt ? 0 : consecutiveFailures + 1;
+      await waitForReconnect(
+        stream.controller.signal,
+        Math.min(
+          this.reconnectDelayMs * 2 ** Math.max(0, consecutiveFailures - 1),
+          MAX_RECONNECT_DELAY_MS
+        )
+      );
     }
   }
 

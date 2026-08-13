@@ -26,6 +26,12 @@ const TERMINAL_STATUSES = new Set<HumanControlInteraction['status']>([
   'cancelled',
 ]);
 
+function isTypedRequestEvent(eventType: string | undefined): boolean {
+  return (
+    eventType === 'interaction.requested' || eventType === 'approval.requested'
+  );
+}
+
 export function createHumanControlProjectionState(
   projectId: string
 ): HumanControlProjectionState {
@@ -84,6 +90,8 @@ function createInteraction(
     cloudCursor: update.cloudCursor,
     lastCloudCursor: update.cloudCursor,
     requestEventId: update.status === 'requested' ? update.eventId : undefined,
+    requestEventType:
+      update.status === 'requested' ? update.eventType : undefined,
     requestSource: update.source,
     lastEventId: update.eventId,
     requestedAt: update.status === 'requested' ? update.createdAt : undefined,
@@ -116,7 +124,10 @@ function mergeInteraction(
 ): HumanControlInteraction {
   const existingIsTerminal = TERMINAL_STATUSES.has(existing.status);
   const requestSuppliesIdentity =
-    update.status === 'requested' && !existing.requestEventId;
+    update.status === 'requested' &&
+    (!existing.requestEventId ||
+      (isTypedRequestEvent(update.eventType) &&
+        !isTypedRequestEvent(existing.requestEventType)));
   const updateIsLatest = update.sequence >= existing.lastSequence;
 
   return {
@@ -132,10 +143,12 @@ function mergeInteraction(
       updateIsLatest && update.cloudCursor !== null
         ? update.cloudCursor
         : existing.lastCloudCursor,
-    requestEventId:
-      update.status === 'requested'
-        ? existing.requestEventId || update.eventId
-        : existing.requestEventId,
+    requestEventId: requestSuppliesIdentity
+      ? update.eventId
+      : existing.requestEventId,
+    requestEventType: requestSuppliesIdentity
+      ? update.eventType
+      : existing.requestEventType,
     requestSource: requestSuppliesIdentity
       ? update.source
       : existing.requestSource,

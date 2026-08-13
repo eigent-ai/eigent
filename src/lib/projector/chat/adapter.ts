@@ -603,10 +603,43 @@ function activityNode(
   fallbackStatus: ChatActivityStatus
 ): ChatActivityNode {
   const payload = asRecord(data);
+  const tool = asRecord(payload.tool);
   const isTypedActivity = !base.eventType.startsWith('legacy.');
-  const toolkitName = firstText(payload.toolkit_name, payload.toolkitName);
-  const methodName = firstText(payload.method_name, payload.methodName);
-  const toolName = firstText(payload.tool_name, payload.toolName);
+  const toolkitName = firstText(
+    payload.toolkit_name,
+    payload.toolkitName,
+    tool.toolkit_name,
+    tool.toolkitName
+  );
+  const methodName = firstText(
+    payload.method_name,
+    payload.methodName,
+    tool.method_name,
+    tool.methodName
+  );
+  const toolName = firstText(
+    payload.tool_name,
+    payload.toolName,
+    tool.tool_name,
+    tool.toolName,
+    tool.name
+  );
+  const toolCallId = firstText(
+    payload.tool_call_id,
+    payload.toolCallId,
+    payload.call_id,
+    payload.callId,
+    payload.invocation_id,
+    payload.invocationId,
+    payload.tool_use_id,
+    payload.toolUseId,
+    tool.tool_call_id,
+    tool.toolCallId,
+    tool.call_id,
+    tool.callId,
+    tool.invocation_id,
+    tool.invocationId
+  );
   const isHumanInputActivity = isHumanInputToolkitActivity(
     toolkitName,
     methodName,
@@ -644,6 +677,8 @@ function activityNode(
       undefined,
     toolkitName: toolkitName || undefined,
     methodName: methodName || undefined,
+    toolCallId: toolCallId || undefined,
+    toolName: toolName || undefined,
   };
 }
 

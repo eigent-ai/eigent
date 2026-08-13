@@ -76,6 +76,11 @@ import {
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { ProjectChatContainer } from './ProjectChatContainer';
+import {
+  isEventNativeRunActionable,
+  selectActionableInterruptedRun,
+  selectEventNativeActiveRunId,
+} from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -85,7 +90,7 @@ const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
-const ELIGIBLE_EVENT_NATIVE_RUN_STATUSES = new Set([
+const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
   'pending',
   'running',
   'waiting_for_user',
@@ -97,10 +102,6 @@ const subscribeToNothing = () => () => undefined;
 
 type EventNativeProjectedRun =
   ProjectEventStoreSnapshot['view']['runs'][string];
-
-function isEventNativeRunActionable(run: EventNativeProjectedRun): boolean {
-  return run.origin === 'local' && !run.resumeBlockedReason;
-}
 
 function isEventNativeRunReadOnly(run: EventNativeProjectedRun): boolean {
   return (
@@ -130,47 +131,10 @@ function selectLatestReadOnlyEventNativeRun(
     Object.values(snapshot.view.runs)
       .filter(
         (run) =>
-          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          READ_ONLY_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
           isEventNativeRunReadOnly(run)
       )
       .sort(compareProjectedRunsByRecency)[0] ?? null
-  );
-}
-
-/**
- * Bridge legacy ownership during cutover, then fall back to durable state for
- * typed-only cold hydration. Pending control order is backend/event order.
- */
-function selectEventNativeActiveRunId(
-  snapshot: ProjectEventStoreSnapshot | null,
-  legacyActiveRunId: string | null | undefined
-): string | null {
-  if (legacyActiveRunId) return legacyActiveRunId;
-  if (!snapshot) return null;
-
-  for (const interactionId of snapshot.control.orderedInteractionIds) {
-    const interaction = snapshot.control.interactionById[interactionId];
-    const projectedRun = interaction
-      ? snapshot.view.runs[interaction.runId]
-      : undefined;
-    if (
-      interaction?.status === 'requested' &&
-      projectedRun &&
-      ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedRun.status) &&
-      isEventNativeRunActionable(projectedRun)
-    ) {
-      return interaction.runId;
-    }
-  }
-
-  return (
-    Object.values(snapshot.view.runs)
-      .filter(
-        (run) =>
-          ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
-          isEventNativeRunActionable(run)
-      )
-      .sort(compareProjectedRunsByRecency)[0]?.runId ?? null
   );
 }
 
@@ -576,7 +540,8 @@ export default function ChatBox(): JSX.Element {
     activeAskTask.type !== 'share' &&
     activeAskTask.status !== ChatTaskStatus.FINISHED &&
     projectedLegacyRun &&
-    ELIGIBLE_EVENT_NATIVE_RUN_STATUSES.has(projectedLegacyRun.status) &&
+    (projectedLegacyRun.status === 'running' ||
+      projectedLegacyRun.status === 'cancelling') &&
     isEventNativeRunActionable(projectedLegacyRun)
       ? activeTaskId
       : null;
@@ -590,6 +555,10 @@ export default function ChatBox(): JSX.Element {
   const eventNativeActiveProjectedRun = eventNativeActiveRunId
     ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
     : undefined;
+  const eventNativeInterruptedRun = selectActionableInterruptedRun(
+    eventNativeProjectSnapshot,
+    interruptedRun?.run_id
+  );
   const activeAsk = activeAskTask?.activeAsk;
   const activeAskMessage = activeAskTask?.messages.findLast(
     (item) => item.step === AgentStep.ASK
@@ -829,17 +798,6 @@ export default function ChatBox(): JSX.Element {
     }
   }, [skill_prompt, searchParams, setSearchParams]);
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, []);
-
   // Handle scrollbar visibility on scroll
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -1046,16 +1004,11 @@ export default function ChatBox(): JSX.Element {
           role: 'user',
           content: displayContent,
           interactionResponseTo: activeInteraction?.interaction_id,
-          attaches:
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [],
+          attaches: JSON.parse(
+            JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+          ),
         });
         setMessage('');
-
-        // Scroll to bottom after adding user message
-        setTimeout(() => {
-          scrollToBottom();
-        }, 200);
 
         chatStore.setIsPending(_taskId, true);
 
@@ -1160,8 +1113,9 @@ export default function ChatBox(): JSX.Element {
             // Pass the message content to startTask instead of adding it to current chatStore
             const attachesToSend =
               queuedAttaches ||
-              JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-              [];
+              JSON.parse(
+                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+              );
             try {
               ensureActiveProjectMode();
               await chatStore.startTask(
@@ -1215,7 +1169,14 @@ export default function ChatBox(): JSX.Element {
               nextTaskId
             );
             if (!nextChatResult) {
-              throw new Error('Unable to prepare the follow-up task.');
+              // Every other failure path in this handler surfaces a toast. The
+              // outer catch only logs, so without this the user would click
+              // Send and observe nothing at all.
+              const prepareError = new Error(
+                t('chat.follow-up-prepare-failed')
+              );
+              toast.error(prepareError.message);
+              throw prepareError;
             }
 
             const nextChatState = nextChatResult.chatStore.getState();
@@ -1272,15 +1233,12 @@ export default function ChatBox(): JSX.Element {
             }
           }
         } else {
-          setTimeout(() => {
-            scrollToBottom();
-          }, 200);
-
           // For the very first message, add it to the current chatStore first, then call startTask
           const attachesToSend =
             queuedAttaches ||
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [];
+            JSON.parse(
+              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+            );
           if (!preserveComposer) setMessage('');
           try {
             ensureActiveProjectMode();
@@ -1857,7 +1815,11 @@ export default function ChatBox(): JSX.Element {
   };
 
   let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
-  if (eventNativeTimelineEnabled && interruptedRun) {
+  if (
+    eventNativeTimelineEnabled &&
+    interruptedRun &&
+    (isCloudRestoredRun || eventNativeInterruptedRun)
+  ) {
     eventNativeRunControlVariant = {
       kind: 'run_control',
       header: {
@@ -2040,9 +2002,9 @@ export default function ChatBox(): JSX.Element {
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default pb-1">
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact

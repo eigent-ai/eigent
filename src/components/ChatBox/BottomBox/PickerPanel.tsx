@@ -350,7 +350,7 @@ export function ConnectorPickerPanel({
       renderTag={(item) => (
         <span
           className={cn(
-            'rounded px-1 py-px text-xs font-medium',
+            'rounded px-1 py-[1px] text-xs font-medium',
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -418,7 +418,7 @@ export function SkillPickerPanel({
         return (
           <span
             className={cn(
-              'rounded px-1 py-px text-xs font-medium',
+              'rounded px-1 py-[1px] text-xs font-medium',
               RICH_SKILL_STYLE_CLASSES[clsIdx]
             )}
           >

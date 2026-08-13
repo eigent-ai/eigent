@@ -216,7 +216,7 @@ function looksLikeNarration(raw: string): boolean {
   return true;
 }
 
-type ToolItem = {
+export type ToolItem = {
   kind: 'tool';
   id: string;
   rowTitle: string;
@@ -260,6 +260,91 @@ type HumanInputItem = {
 };
 
 export type TimelineItem = ToolItem | MessageItem | HumanInputItem;
+
+export type RepeatedToolItem = {
+  kind: 'repeated-tool';
+  id: string;
+  rowTitle: string;
+  toolkitName: string;
+  method: string;
+  calls: readonly ToolItem[];
+  status: 'running' | 'done';
+};
+
+export type WorkLogDisplayItem = TimelineItem | RepeatedToolItem;
+
+function normalizedToolIdentity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function repeatedToolKey(item: ToolItem): string | null {
+  const toolkit = normalizedToolIdentity(item.toolkitName);
+  const method = normalizedToolIdentity(item.method);
+  return toolkit && method ? JSON.stringify([toolkit, method]) : null;
+}
+
+/**
+ * Collapse only consecutive identical toolkit/method rows for presentation.
+ * Messages and human-input receipts are hard chronology boundaries, and the
+ * source work-log items remain unchanged.
+ */
+export function groupConsecutiveToolItems(
+  items: readonly TimelineItem[]
+): WorkLogDisplayItem[] {
+  const grouped: WorkLogDisplayItem[] = [];
+
+  for (let index = 0; index < items.length; ) {
+    const item = items[index]!;
+    if (item.kind !== 'tool') {
+      grouped.push(item);
+      index += 1;
+      continue;
+    }
+
+    const identity = repeatedToolKey(item);
+    if (!identity) {
+      grouped.push(item);
+      index += 1;
+      continue;
+    }
+
+    const calls: ToolItem[] = [item];
+    let cursor = index + 1;
+    while (cursor < items.length) {
+      const candidate = items[cursor]!;
+      if (
+        candidate.kind !== 'tool' ||
+        repeatedToolKey(candidate) !== identity
+      ) {
+        break;
+      }
+      calls.push(candidate);
+      cursor += 1;
+    }
+
+    if (calls.length === 1) {
+      grouped.push(item);
+    } else {
+      grouped.push({
+        kind: 'repeated-tool',
+        id: `repeated-tool:${item.id}`,
+        rowTitle: item.rowTitle,
+        toolkitName: item.toolkitName,
+        method: item.method,
+        calls,
+        status: calls.some((call) => call.status === 'running')
+          ? 'running'
+          : 'done',
+      });
+    }
+    index = cursor;
+  }
+
+  return grouped;
+}
 
 /**
  * One agent's slice of work — a chronological list of inline messages
@@ -1069,6 +1154,89 @@ const ToolDetailRow = memo(function ToolDetailRow({
 });
 ToolDetailRow.displayName = 'ToolDetailRow';
 
+const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
+  item,
+  active,
+}: {
+  item: RepeatedToolItem;
+  active: boolean;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const rowTitle = t('chat.repeated-tool-events', {
+    tool: item.rowTitle,
+    count: item.calls.length,
+  });
+  const running = active && item.status === 'running';
+
+  return (
+    <div
+      className="flex w-full min-w-0 flex-col items-start"
+      data-repeated-tool-group
+      data-repeated-tool-count={item.calls.length}
+      data-toolkit={item.toolkitName}
+      data-method={item.method}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+      >
+        {running ? (
+          <ShinyText
+            text={rowTitle}
+            speed={2.5}
+            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default"
+          />
+        ) : (
+          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default">
+            {rowTitle}
+          </span>
+        )}
+        <ChevronRight
+          size={16}
+          aria-hidden
+          className={cn(
+            'shrink-0 text-ds-icon-neutral-subtle-default transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+          )}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="repeated-tool-calls"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="w-full min-w-0 overflow-hidden"
+          >
+            <div className="flex w-full min-w-0 flex-col gap-1">
+              {item.calls.map((call) => (
+                <ToolDetailRow
+                  key={call.id}
+                  rowTitle={call.rowTitle}
+                  input={call.input}
+                  output={call.output}
+                  status={
+                    active && call.status === 'running' ? 'running' : 'done'
+                  }
+                />
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+});
+RepeatedToolDetailRow.displayName = 'RepeatedToolDetailRow';
+
 const InlineMessageRow = memo(function InlineMessageRow({
   text,
   source,
@@ -1373,6 +1541,10 @@ const AgentGroupRow = memo(function AgentGroupRow({
     : (agentDisplay?.icon ?? DEFAULT_BOT_ICON);
   const useSingleAgentLiveHeader =
     isSingleAgent && group.agentType === 'single_agent';
+  const displayItems = useMemo(
+    () => groupConsecutiveToolItems(group.items),
+    [group.items]
+  );
 
   // Single agent: surface the live in-progress `active_form` in place of the
   // static "CAMEL Agent" label. Fall back to the static label only when no
@@ -1505,7 +1677,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
             className="min-w-0 overflow-hidden"
           >
             <div className="flex flex-col gap-2 py-1 pl-6">
-              {group.items.map((item) =>
+              {displayItems.map((item) =>
                 item.kind === 'message' ? (
                   <InlineMessageRow
                     key={item.id}
@@ -1519,6 +1691,12 @@ const AgentGroupRow = memo(function AgentGroupRow({
                     item={item}
                     readOnly={humanInputReadOnly}
                     onResolved={onHumanInputResolved}
+                  />
+                ) : item.kind === 'repeated-tool' ? (
+                  <RepeatedToolDetailRow
+                    key={item.id}
+                    item={item}
+                    active={taskRunning && group.status === 'running'}
                   />
                 ) : (
                   <ToolDetailRow

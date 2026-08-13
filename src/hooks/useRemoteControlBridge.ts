@@ -810,6 +810,11 @@ async function executeRemoteCommand(
   switch (command.type) {
     case 'user_message': {
       const requestId = command.next_task_id || command.id;
+      // getCommandProjectId falls back to '', which would otherwise be sent as
+      // a request to /projects//follow-ups.
+      if (!projectId) {
+        throw new Error('Remote user_message requires a target Project');
+      }
       const content = String(
         command.payload.content || command.payload.question || ''
       );
