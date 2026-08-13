@@ -67,6 +67,41 @@ function toolNode(
   };
 }
 
+function todoActivity(
+  eventId: string,
+  sequence: number,
+  status: ChatActivityNode['status'],
+  eventType: string,
+  legacyStep: string | null = null
+): ChatActivityNode {
+  return {
+    ...baseNode('run-current', eventId, sequence),
+    eventType,
+    legacyStep,
+    kind: 'activity',
+    activityType: 'tool',
+    status,
+    title: 'todo_write',
+    toolName: 'todo_write',
+    toolkitName: 'TodoToolkit',
+    methodName: 'todo_write',
+  };
+}
+
+function todoPlan(
+  eventId: string,
+  sequence: number,
+  title: string
+): ChatPlanNode {
+  return {
+    ...baseNode('run-current', eventId, sequence),
+    eventType: 'legacy.todo_state',
+    legacyStep: 'todo_state',
+    kind: 'plan',
+    tasks: [{ id: 'todo_1', title, status: 'running' }],
+  };
+}
+
 function makeRun(
   runId: string,
   isCurrent: boolean,
@@ -194,6 +229,89 @@ describe('buildProjectSessionPanelData', () => {
     ]);
     expect(data.resources).toMatchObject([
       { taskId: 'run-old', historical: true },
+    ]);
+  });
+
+  it('quarantines workspace-loaded todo state without a todo_write call', () => {
+    const staleStartupPlan: ChatPlanNode = {
+      ...baseNode('run-current', 'stale-todos', 2),
+      eventType: 'legacy.todo_state',
+      legacyStep: 'todo_state',
+      kind: 'plan',
+      tasks: [
+        {
+          id: 'todo_1',
+          title: 'Task from a different Project',
+          status: 'completed',
+        },
+      ],
+    };
+
+    expect(
+      buildProjectSessionPanelData(
+        [makeRun('run-current', true, [staleStartupPlan])],
+        []
+      ).progress
+    ).toEqual([]);
+  });
+
+  it('accepts a real todo lifecycle without authorizing a later stale state', () => {
+    const typedPlan: ChatPlanNode = {
+      ...baseNode('run-current', 'typed-plan', 1),
+      eventType: 'plan.created',
+      kind: 'plan',
+      tasks: [
+        {
+          id: 'plan-task',
+          title: 'Typed plan task',
+          status: 'running',
+        },
+      ],
+    };
+    const run = makeRun('run-current', true, [
+      typedPlan,
+      todoActivity('todo-prepared-1', 2, 'running', 'tool.prepared'),
+      todoActivity('todo-completed-1', 3, 'completed', 'tool.completed'),
+      todoActivity(
+        'todo-activate-1',
+        4,
+        'running',
+        'legacy.activate_toolkit',
+        'activate_toolkit'
+      ),
+      todoPlan('todo-state-1', 5, 'First current task'),
+      todoActivity(
+        'todo-deactivate-1',
+        6,
+        'completed',
+        'legacy.deactivate_toolkit',
+        'deactivate_toolkit'
+      ),
+      todoPlan('unpaired-state', 7, 'Must stay quarantined'),
+      todoActivity('todo-prepared-2', 8, 'running', 'tool.prepared'),
+      todoPlan('todo-state-2', 9, 'Replacement current task'),
+    ]);
+
+    expect(buildProjectSessionPanelData([run], []).progress).toMatchObject([
+      { task: { content: 'Typed plan task' } },
+      { task: { content: 'Replacement current task' } },
+    ]);
+  });
+
+  it('accepts legacy-only activate_toolkit followed by todo_state', () => {
+    const run = makeRun('run-current', true, [
+      todoActivity(
+        'todo-activate',
+        1,
+        'running',
+        'legacy.activate_toolkit',
+        'activate_toolkit'
+      ),
+      todoPlan('todo-state', 2, 'Legacy current task'),
+    ]);
+
+    expect(buildProjectSessionPanelData([run], []).progress).toMatchObject([
+      { task: { content: 'Legacy current task' } },
     ]);
   });
 
