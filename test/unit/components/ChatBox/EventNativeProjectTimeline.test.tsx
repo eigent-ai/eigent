@@ -37,11 +37,12 @@ const mocks = vi.hoisted(() => ({
   } as ProjectEventStoreHydrationState,
 }));
 
-vi.mock('@/hooks/useProjectEventView', () => ({
-  useProjectChatProjection: () => mocks.projection,
-}));
-vi.mock('@/hooks/useProjectEventStoreHydration', () => ({
-  useProjectEventStoreHydration: () => mocks.hydration,
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: () => ({
+    projectId: 'project-1',
+    hydration: mocks.hydration,
+    snapshot: mocks.projection ? { chat: mocks.projection } : null,
+  }),
 }));
 vi.mock('framer-motion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('framer-motion')>();

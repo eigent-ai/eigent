@@ -18,177 +18,207 @@ import {
   extractHttpUrls,
 } from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
 import type { ProjectSessionRun } from '@/hooks/useProjectSessionOverview';
-import { AgentStep } from '@/types/constants';
+import type {
+  ChatActivityNode,
+  ChatArtifactNode,
+  ChatPlanNode,
+  ChatProjectionNode,
+} from '@/lib/projector/chat';
 import { describe, expect, it } from 'vitest';
 
+function baseNode(
+  runId: string,
+  eventId: string,
+  runSequence: number
+): Omit<ChatProjectionNode, 'kind'> {
+  return {
+    id: eventId,
+    eventId,
+    projectId: 'project-1',
+    runId,
+    createdAt: new Date(runSequence * 1_000).toISOString(),
+    runSequence,
+    cloudCursor: null,
+    eventType: 'test.event',
+    legacyStep: null,
+  } as Omit<ChatProjectionNode, 'kind'>;
+}
+
+function toolNode(
+  runId: string,
+  eventId: string,
+  sequence: number,
+  status: ChatActivityNode['status'],
+  detail: string,
+  toolCallId?: string
+): ChatActivityNode {
+  return {
+    ...baseNode(runId, eventId, sequence),
+    kind: 'activity',
+    activityType: 'tool',
+    status,
+    title: 'Notion search',
+    detail,
+    agentId: 'agent-1',
+    agentName: 'Research Agent',
+    toolkitName: 'MCPToolkit',
+    methodName: 'notion_search',
+    toolCallId,
+  };
+}
+
 function makeRun(
-  taskId: string,
+  runId: string,
   isCurrent: boolean,
-  task: Record<string, unknown>
+  nodes: ChatProjectionNode[]
 ): ProjectSessionRun {
   return {
-    chatId: `chat-${taskId}`,
-    chatStore: {} as ProjectSessionRun['chatStore'],
-    taskId,
-    createdAt: isCurrent ? 200 : 100,
-    updatedAt: isCurrent ? 200 : 100,
+    runId,
+    taskId: runId,
+    status: isCurrent ? 'running' : 'completed',
+    nodes,
+    createdAt: isCurrent ? 2_000 : 1_000,
+    updatedAt: isCurrent ? 20_000 : 10_000,
     isCurrent,
-    task: {
-      messages: [],
-      taskInfo: [],
-      taskRunning: [],
-      taskAssigning: [],
-      fileList: [],
-      webViewUrls: [],
-      attaches: [],
-      ...task,
-    } as ProjectSessionRun['task'],
   };
 }
 
 describe('buildProjectSessionPanelData', () => {
-  it('pairs toolkit activation and deactivation as request and response', () => {
-    const run = makeRun('run-1', true, {
-      taskAssigning: [
-        {
-          agent_id: 'agent-1',
-          name: 'Browser Agent',
-          type: 'browser_agent',
-          tasks: [],
-          log: [
-            {
-              step: AgentStep.ACTIVATE_TOOLKIT,
-              timestamp: 1,
-              data: {
-                toolkit_name: 'Browser Toolkit',
-                method_name: 'search',
-                message: '{"query":"Eigent"}',
-              },
-            },
-            {
-              step: AgentStep.DEACTIVATE_TOOLKIT,
-              timestamp: 2,
-              data: {
-                toolkit_name: 'Browser Toolkit',
-                method_name: 'search',
-                message: 'https://eigent.ai/docs',
-              },
-            },
-          ],
-        },
-      ],
-    });
+  it('pairs semantic tool lifecycle events by durable call id', () => {
+    const run = makeRun('run-1', true, [
+      toolNode('run-1', 'tool-start', 1, 'running', 'Searching', 'call-1'),
+      toolNode('run-1', 'tool-end', 2, 'completed', '3 results', 'call-1'),
+    ]);
 
     expect(collectSessionToolCalls([run])).toMatchObject([
       {
-        toolkitName: 'Browser Toolkit',
-        method: 'search',
-        input: '{"query":"Eigent"}',
-        output: 'https://eigent.ai/docs',
+        id: 'call-1',
+        toolkitName: 'MCPToolkit',
+        method: 'notion_search',
+        input: 'Searching',
+        output: '3 results',
         status: 'done',
         taskId: 'run-1',
       },
     ]);
   });
 
-  it('keeps run ownership internally while folding historical content', () => {
-    const current = makeRun('run-current', true, {
-      taskInfo: [
-        { id: 'p-current', content: 'Current step', status: 'running' },
-      ],
-      webViewUrls: [
-        {
-          url: 'https://current.example.com/reference',
-          processTaskId: 'p-current',
-        },
-      ],
-    });
-    const historical = makeRun('run-old', false, {
-      taskInfo: [{ id: 'p-old', content: 'Older step', status: 'completed' }],
-      webViewUrls: [
-        {
-          url: 'https://old.example.com/research',
-          processTaskId: 'p-old',
-        },
-      ],
-    });
+  it('scopes durable call ids to their owning Run', () => {
+    const current = makeRun('run-current', true, [
+      toolNode(
+        'run-current',
+        'current-start',
+        1,
+        'running',
+        'current input',
+        'call-1'
+      ),
+      toolNode(
+        'run-current',
+        'current-end',
+        2,
+        'completed',
+        'current output',
+        'call-1'
+      ),
+    ]);
+    const historical = makeRun('run-old', false, [
+      toolNode('run-old', 'old-start', 1, 'running', 'old input', 'call-1'),
+      toolNode('run-old', 'old-end', 2, 'completed', 'old output', 'call-1'),
+    ]);
+
+    expect(collectSessionToolCalls([current, historical])).toMatchObject([
+      { taskId: 'run-old', input: 'old input', output: 'old output' },
+      {
+        taskId: 'run-current',
+        input: 'current input',
+        output: 'current output',
+      },
+    ]);
+  });
+
+  it('uses FIFO fallback for older tool frames without correlation ids', () => {
+    const run = makeRun('run-1', true, [
+      toolNode('run-1', 'start-1', 1, 'running', 'first'),
+      toolNode('run-1', 'start-2', 2, 'running', 'second'),
+      toolNode('run-1', 'end-1', 3, 'completed', 'first result'),
+      toolNode('run-1', 'end-2', 4, 'completed', 'second result'),
+    ]);
+
+    expect(collectSessionToolCalls([run])).toMatchObject([
+      { input: 'first', output: 'first result', status: 'done' },
+      { input: 'second', output: 'second result', status: 'done' },
+    ]);
+  });
+
+  it('projects plans, artifacts and safe URL resources across Runs', () => {
+    const plan: ChatPlanNode = {
+      ...baseNode('run-current', 'plan', 3),
+      kind: 'plan',
+      tasks: [{ id: 'task-1', title: 'Build report', status: 'running' }],
+    };
+    const artifact: ChatArtifactNode = {
+      ...baseNode('run-current', 'artifact', 4),
+      kind: 'artifact',
+      operation: 'created',
+      path: 'outputs/report.md',
+      name: 'report.md',
+    };
+    const current = makeRun('run-current', true, [plan, artifact]);
+    const historical = makeRun('run-old', false, [
+      {
+        ...baseNode('run-old', 'message', 1),
+        kind: 'message',
+        role: 'assistant',
+        content: 'Read https://old.example.com/research.',
+        status: 'complete',
+      },
+    ]);
 
     const data = buildProjectSessionPanelData([current, historical], []);
 
     expect(data.progress).toMatchObject([
-      { taskId: 'run-current', historical: false, updatedAt: 200 },
-      { taskId: 'run-old', historical: true, updatedAt: 100 },
+      {
+        taskId: 'run-current',
+        historical: false,
+        task: { id: 'task-1', content: 'Build report', status: 'running' },
+      },
+    ]);
+    expect(data.files).toMatchObject([
+      {
+        id: 'outputs/report.md',
+        taskId: 'run-current',
+        historical: false,
+        file: { name: 'report.md', artifactChange: 'generated' },
+      },
     ]);
     expect(data.resources).toMatchObject([
-      { taskId: 'run-current', historical: false, updatedAt: 200 },
-      { taskId: 'run-old', historical: true, updatedAt: 100 },
+      { taskId: 'run-old', historical: true },
     ]);
   });
 
-  it('extracts unique searched URLs without trailing punctuation', () => {
-    expect(
-      extractHttpUrls(
-        'Read https://example.com/a, then https://example.com/a and https://docs.example.com/page).'
-      )
-    ).toEqual(['https://example.com/a', 'https://docs.example.com/page']);
-  });
-
-  it('uses Open Connector identity and combines its calls across runs', () => {
-    const connectorAgent = (timestamp: number) => ({
-      agent_id: `agent-${timestamp}`,
-      name: 'Agent',
-      type: 'single_agent',
-      workerInfo: {
-        name: 'Agent',
-        description: '',
-        tools: [],
-        mcp_tools: { mcpServers: { connector_gateway: {} } },
-        selectedTools: [],
-      },
-      tasks: [
-        {
-          id: `task-${timestamp}`,
-          content: 'Search Notion',
-          status: 'completed',
-          toolkits: [
-            {
-              toolkitName: 'MCPToolkit',
-              toolkitMethods: 'notion_search',
-              message: '{"query":"roadmap"}',
-            },
-          ],
-        },
-      ],
-      log: [
-        {
-          step: AgentStep.ACTIVATE_TOOLKIT,
-          timestamp,
-          data: {
-            toolkit_name: 'MCPToolkit',
-            method_name: 'notion_search',
-            message: '{"query":"roadmap"}',
-          },
-        },
-        {
-          step: AgentStep.DEACTIVATE_TOOLKIT,
-          timestamp: timestamp + 1,
-          data: {
-            toolkit_name: 'MCPToolkit',
-            method_name: 'notion_search',
-            message: '{"results":[]}',
-          },
-        },
-      ],
-    });
-    const current = makeRun('run-current', true, {
-      taskAssigning: [connectorAgent(3)],
-    });
-    const historical = makeRun('run-old', false, {
-      taskAssigning: [connectorAgent(1)],
-    });
+  it('uses connector identity without reading a raw event payload', () => {
+    const current = makeRun('run-current', true, [
+      toolNode(
+        'run-current',
+        'tool-start',
+        1,
+        'running',
+        'roadmap',
+        'notion-call'
+      ),
+      toolNode(
+        'run-current',
+        'tool-end',
+        2,
+        'completed',
+        'done',
+        'notion-call'
+      ),
+    ]);
 
     const data = buildProjectSessionPanelData(
-      [current, historical],
+      [current],
       [],
       [
         {
@@ -200,16 +230,23 @@ describe('buildProjectSessionPanelData', () => {
       ]
     );
 
-    expect(data.contextItems).toHaveLength(1);
-    expect(data.contextItems[0]).toMatchObject({
-      id: 'notion',
-      label: 'Notion',
-      iconUrl: 'https://cdn.example.com/notion.svg',
-      historical: false,
-    });
-    expect(data.contextItems[0]?.calls.map((call) => call.taskId)).toEqual([
-      'run-old',
-      'run-current',
+    expect(data.contextItems).toMatchObject([
+      {
+        id: 'connector:notion',
+        label: 'Notion',
+        iconUrl: 'https://cdn.example.com/notion.svg',
+        historical: false,
+        calls: [{ id: 'notion-call' }],
+      },
     ]);
+    expect(JSON.stringify(data)).not.toContain('__legacy_data');
+  });
+
+  it('extracts unique searched URLs without trailing punctuation', () => {
+    expect(
+      extractHttpUrls(
+        'Read https://example.com/a, then https://example.com/a and https://docs.example.com/page).'
+      )
+    ).toEqual(['https://example.com/a', 'https://docs.example.com/page']);
   });
 });

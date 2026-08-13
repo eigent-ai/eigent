@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useProjectEventStoreHydration } from '@/hooks/useProjectEventStoreHydration';
-import { useProjectChatProjection } from '@/hooks/useProjectEventView';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import {
   selectRenderableChatNodes,
   type ChatProjectionNode,
 } from '@/lib/projector/chat';
+import { usePageTabStore } from '@/store/pageTabStore';
 import {
   useEffect,
   useLayoutEffect,
@@ -97,13 +97,12 @@ export function EventNativeProjectTimeline({
   scrollContainerRef,
   scrollBottomInsetPx,
 }: EventNativeProjectTimelineProps) {
-  const hydration = useProjectEventStoreHydration({
-    projectId,
-    enabled: true,
-  });
-  const projection = useProjectChatProjection(projectId);
+  const runtime = useProjectEventRuntime();
+  const hydration = runtime.hydration;
+  const projection =
+    runtime.projectId === projectId ? runtime.snapshot?.chat : undefined;
   const allNodes = useMemo(
-    () => selectRenderableChatNodes(projection),
+    () => (projection ? selectRenderableChatNodes(projection) : []),
     [projection]
   );
   const timelineWindow = useMemo(
@@ -118,6 +117,12 @@ export function EventNativeProjectTimeline({
   const ignoreAnchorScrollRef = useRef(false);
   const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollToTurnRequest = usePageTabStore(
+    (state) => state.scrollToTurnRequest
+  );
+  const setScrollToTurnRequest = usePageTabStore(
+    (state) => state.setScrollToTurnRequest
+  );
   const latestNode = visibleNodes.at(-1);
   const latestEventId = latestNode?.eventId;
   const userMessageNodes = visibleNodes.filter(
@@ -227,6 +232,38 @@ export function EventNativeProjectTimeline({
     },
     []
   );
+
+  useEffect(() => {
+    if (
+      !scrollToTurnRequest ||
+      scrollToTurnRequest.projectId !== projectId ||
+      !scrollContainerRef?.current
+    ) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    const target = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-run-id]')
+    ).find(
+      (element) =>
+        element.getAttribute('data-run-id') === scrollToTurnRequest.taskId
+    );
+    if (!target) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    container.scrollTo({
+      top: container.scrollTop + targetRect.top - containerRect.top,
+      behavior: 'smooth',
+    });
+    setScrollToTurnRequest(null);
+  }, [
+    projectId,
+    scrollContainerRef,
+    scrollToTurnRequest,
+    setScrollToTurnRequest,
+    visibleNodes,
+  ]);
 
   return (
     <div

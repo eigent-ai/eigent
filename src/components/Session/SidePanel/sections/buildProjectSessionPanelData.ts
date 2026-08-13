@@ -13,20 +13,21 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectSessionRun } from '@/hooks/useProjectSessionOverview';
+import type {
+  ChatActivityNode,
+  ChatPlanTaskStatus,
+  ChatProjectionNode,
+} from '@/lib/projector/chat';
 import { httpUrlOrNull } from '@/lib/richText';
-import { AgentStep, TaskStatus } from '@/types/constants';
+import { TaskStatus, type TaskStatusType } from '@/types/constants';
 import {
-  buildContextItems,
   extractLoadedSkillNames,
   normalizeContextKey,
   resolveContextConnector,
   type ContextConnector,
   type ContextSkill,
 } from './buildContextItems';
-import {
-  collectSidePanelOutputFiles,
-  mergeSidePanelOutputFiles,
-} from './collectSidePanelOutputFiles';
+import { mergeSidePanelOutputFiles } from './collectSidePanelOutputFiles';
 import type { ContextCategory, ContextItem } from './ExecutionContextSection';
 
 export interface SessionProgressItem {
@@ -48,19 +49,21 @@ export interface SessionAgentItem {
   createdAt: number;
   updatedAt: number;
   subagent: boolean;
-  sourceAgent?: Agent;
 }
 
 export interface SessionToolCall {
   id: string;
   toolkitName: string;
   method: string;
+  /** Safe semantic detail only; raw durable payloads never enter this model. */
   input: string;
+  /** Safe semantic detail only; raw durable payloads never enter this model. */
   output: string;
   status: 'running' | 'done';
   taskId: string;
   agentName: string;
   createdAt: number;
+  updatedAt: number;
   skillNames: string[];
 }
 
@@ -101,7 +104,7 @@ export interface SessionEnvironmentItem {
   updatedAt: number;
 }
 
-/** Project-wide data consumed by the unified SidePanel. */
+/** Project-wide data consumed by the locked SidePanel UI. */
 export interface ProjectSessionPanelData {
   agents: SessionAgentItem[];
   contextItems: SessionContextItem[];
@@ -112,284 +115,295 @@ export interface ProjectSessionPanelData {
   toolCalls: SessionToolCall[];
 }
 
-function normalizeMessage(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+const ACTIVE_TOOL_STATUSES = new Set(['pending', 'running']);
+const TERMINAL_TOOL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+function nodeTime(node: ChatProjectionNode, fallback = 0): number {
+  const parsed = node.createdAt ? Date.parse(node.createdAt) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback + node.runSequence;
 }
 
-function eventTime(event: AgentMessage, fallback: number, sequence: number) {
-  if (typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)) {
-    return event.timestamp < 1_000_000_000_000
-      ? event.timestamp * 1000
-      : event.timestamp;
-  }
-  if (event.created_at) {
-    const parsed = Date.parse(event.created_at);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback + sequence;
+function normalizedToolIdentity(node: ChatActivityNode): string {
+  return JSON.stringify([
+    node.runId,
+    normalizeContextKey(node.agentId || node.agentName || ''),
+    normalizeContextKey(node.toolkitName || node.toolName || 'tool'),
+    normalizeContextKey(node.methodName || node.toolName || node.title),
+  ]);
 }
 
+function safeToolDetail(node: ChatActivityNode): string {
+  if (node.detail?.trim()) return node.detail.trim();
+  // Legacy toolkit frames route their already-approved display text through
+  // the semantic title. Typed durable events never take this compatibility
+  // path and still require explicit display_detail/display_summary fields.
+  if (
+    node.legacyStep === 'activate_toolkit' ||
+    node.legacyStep === 'deactivate_toolkit'
+  ) {
+    return node.title.trim();
+  }
+  return '';
+}
+
+function toolCallFromNode(node: ChatActivityNode): SessionToolCall {
+  const active = ACTIVE_TOOL_STATUSES.has(node.status);
+  const detail = safeToolDetail(node);
+  return {
+    id: node.toolCallId || `tool-call:${node.eventId}`,
+    toolkitName: node.toolkitName?.trim() || node.toolName?.trim() || 'Tool',
+    method:
+      node.methodName?.trim() || node.toolName?.trim() || node.title.trim(),
+    input: active ? detail : '',
+    output: active ? '' : detail,
+    status: active ? 'running' : 'done',
+    taskId: node.runId,
+    agentName: node.agentName?.trim() || '',
+    createdAt: nodeTime(node),
+    updatedAt: nodeTime(node),
+    skillNames: [],
+  };
+}
+
+function mergeToolNode(call: SessionToolCall, node: ChatActivityNode): void {
+  const detail = safeToolDetail(node);
+  const active = ACTIVE_TOOL_STATUSES.has(node.status);
+  if (detail) {
+    if (active && !call.input) call.input = detail;
+    if (!active) {
+      call.output = [call.output, detail].filter(Boolean).join('\n\n');
+    }
+  }
+  call.updatedAt = Math.max(call.updatedAt, nodeTime(node));
+  if (!active) call.status = 'done';
+  if (!call.agentName && node.agentName) call.agentName = node.agentName;
+}
+
+/**
+ * Fold immutable semantic tool lifecycle nodes into logical calls. Explicit
+ * backend call IDs win; older legacy frames use FIFO pairing per identity.
+ */
 export function collectSessionToolCalls(
   runs: ProjectSessionRun[]
 ): SessionToolCall[] {
   const calls: SessionToolCall[] = [];
-  let sequence = 0;
+  const byCallId = new Map<string, SessionToolCall>();
+  const anonymousOpen = new Map<string, SessionToolCall[]>();
 
   for (const run of [...runs].reverse()) {
-    for (const agent of run.task.taskAssigning ?? []) {
-      const openByPair = new Map<string, SessionToolCall[]>();
-      for (const event of agent.log ?? []) {
-        if (
-          event.step !== AgentStep.ACTIVATE_TOOLKIT &&
-          event.step !== AgentStep.DEACTIVATE_TOOLKIT
-        ) {
-          continue;
-        }
-        const toolkitName = String(event.data?.toolkit_name ?? '').trim();
-        if (!toolkitName || toolkitName.toLowerCase() === 'notice') continue;
-        const method = String(event.data?.method_name ?? '').trim();
-        const message = normalizeMessage(event.data?.message).trim();
-        const pair = `${normalizeContextKey(toolkitName)}:${method
-          .toLowerCase()
-          .replace(/_/g, ' ')}`;
+    for (const node of run.nodes) {
+      if (node.kind !== 'activity' || node.activityType !== 'tool') continue;
+      const identity = normalizedToolIdentity(node);
 
-        if (event.step === AgentStep.ACTIVATE_TOOLKIT) {
-          const call: SessionToolCall = {
-            id: `${run.taskId}:${agent.agent_id}:${sequence}`,
-            toolkitName,
-            method,
-            input: message,
-            output: '',
-            status: 'running',
-            taskId: run.taskId,
-            agentName: agent.name,
-            createdAt: eventTime(event, run.createdAt, sequence),
-            skillNames:
-              normalizeContextKey(toolkitName) === 'skill'
-                ? extractLoadedSkillNames(message)
-                : [],
-          };
-          sequence += 1;
+      if (node.toolCallId) {
+        const callKey = `${node.runId}:${node.toolCallId}`;
+        const existing = byCallId.get(callKey);
+        if (existing) {
+          mergeToolNode(existing, node);
+        } else {
+          const call = toolCallFromNode(node);
+          byCallId.set(callKey, call);
           calls.push(call);
-          const pending = openByPair.get(pair) ?? [];
-          pending.push(call);
-          openByPair.set(pair, pending);
-          continue;
         }
+        continue;
+      }
 
-        const pending = openByPair.get(pair) ?? [];
-        const call = [...pending]
-          .reverse()
-          .find((item) => item.status === 'running');
-        if (call) {
-          call.output = [call.output, message].filter(Boolean).join('\n\n');
-          call.status = 'done';
-          continue;
-        }
+      if (ACTIVE_TOOL_STATUSES.has(node.status)) {
+        const call = toolCallFromNode(node);
+        calls.push(call);
+        const pending = anonymousOpen.get(identity) ?? [];
+        pending.push(call);
+        anonymousOpen.set(identity, pending);
+        continue;
+      }
 
-        calls.push({
-          id: `${run.taskId}:${agent.agent_id}:${sequence}`,
-          toolkitName,
-          method,
-          input: '',
-          output: message,
-          status: 'done',
-          taskId: run.taskId,
-          agentName: agent.name,
-          createdAt: eventTime(event, run.createdAt, sequence),
-          skillNames: [],
-        });
-        sequence += 1;
+      const pending = anonymousOpen.get(identity) ?? [];
+      const call = TERMINAL_TOOL_STATUSES.has(node.status)
+        ? pending.shift()
+        : undefined;
+      if (call) {
+        mergeToolNode(call, node);
+      } else {
+        calls.push(toolCallFromNode(node));
       }
     }
   }
 
-  return calls.sort((a, b) => a.createdAt - b.createdAt);
-}
-
-function mergeSubtasks(run: ProjectSessionRun): TaskInfo[] {
-  const { task } = run;
-  const singleAgent = task.taskAssigning.find(
-    (agent) => agent.type === 'single_agent'
-  );
-  const base =
-    singleAgent?.tasks?.length && singleAgent.tasks.length > 0
-      ? singleAgent.tasks
-      : task.taskInfo;
-  const liveById = new Map(
-    task.taskRunning.map((item) => [item.id, item] as const)
-  );
-  const merged = base.map((item) => {
-    const live = liveById.get(item.id);
-    return live
-      ? { ...item, ...live, content: item.content || live.content }
-      : item;
-  });
-  for (const live of task.taskRunning) {
-    if (!merged.some((item) => item.id === live.id)) merged.push(live);
-  }
-  return merged.filter((item) => item.content.trim() !== '');
-}
-
-function selectedToolNames(agent: Agent): string[] {
-  const names = new Set(agent.tools ?? []);
-  const selected = agent.workerInfo?.selectedTools;
-  if (Array.isArray(selected)) {
-    for (const value of selected) {
-      if (typeof value === 'string') {
-        names.add(value);
-      } else if (value && typeof value === 'object') {
-        const item = value as { name?: string; key?: string; toolkit?: string };
-        const name = item.name ?? item.key ?? item.toolkit;
-        if (name) names.add(name);
-      }
+  for (const call of calls) {
+    if (/skill/i.test(call.toolkitName)) {
+      call.skillNames = extractLoadedSkillNames(
+        [call.input, call.output].filter(Boolean).join('\n')
+      );
     }
   }
-  return [...names];
-}
-
-function extractJsonString(input: string, key: string): string | null {
-  try {
-    const parsed = JSON.parse(input);
-    const value = parsed?.[key];
-    return typeof value === 'string' && value.trim() ? value.trim() : null;
-  } catch {
-    const match = input.match(
-      new RegExp(`${key}\\s*=\\s*["']([^"']+)["']`, 'i')
-    );
-    return match?.[1]?.trim() || null;
-  }
+  return calls.sort(
+    (left, right) =>
+      left.createdAt - right.createdAt || left.id.localeCompare(right.id)
+  );
 }
 
 function collectAgents(
   runs: ProjectSessionRun[],
   calls: SessionToolCall[]
 ): SessionAgentItem[] {
-  const items = new Map<string, SessionAgentItem>();
+  const agents = new Map<string, SessionAgentItem>();
+  const put = (
+    run: ProjectSessionRun,
+    identity: string,
+    name: string,
+    description: string,
+    subagent: boolean
+  ) => {
+    const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
+      identity || name || 'agent'
+    )}`;
+    const existing = agents.get(key);
+    if (!existing) {
+      agents.set(key, {
+        id: key,
+        name,
+        type: subagent ? 'subagent' : 'agent',
+        description,
+        tools: [],
+        historical: !run.isCurrent,
+        createdAt: run.createdAt,
+        updatedAt: run.updatedAt,
+        subagent,
+      });
+      return;
+    }
+    if (!existing.name && name) existing.name = name;
+    if (!existing.description && description)
+      existing.description = description;
+    if (run.isCurrent) existing.historical = false;
+    existing.createdAt = Math.max(existing.createdAt, run.createdAt);
+    existing.updatedAt = Math.max(existing.updatedAt, run.updatedAt);
+  };
 
   for (const run of runs) {
-    for (const agent of run.task.taskAssigning ?? []) {
-      const displayName = agent.workerInfo?.name || agent.name;
-      const key = `${agent.type}:${displayName.trim().toLowerCase()}`;
-      const existing = items.get(key);
-      if (existing) {
-        existing.createdAt = Math.max(existing.createdAt, run.createdAt);
-        existing.updatedAt = Math.max(existing.updatedAt, run.updatedAt);
-        if (!run.isCurrent || !existing.historical) continue;
+    for (const node of run.nodes) {
+      if (node.kind !== 'activity') continue;
+      if (node.activityType === 'agent') {
+        const text = `${node.eventType} ${node.title}`.toLowerCase();
+        const subagent = /sub.?agent|remote/.test(text);
+        put(
+          run,
+          node.agentId || node.agentName || node.title,
+          node.agentName || node.title,
+          node.detail || '',
+          subagent
+        );
+      } else if (node.agentId || node.agentName) {
+        put(
+          run,
+          node.agentId || node.agentName || 'agent',
+          node.agentName || '',
+          '',
+          false
+        );
       }
-      items.set(key, {
-        id: key,
-        name: displayName,
-        type: agent.type,
-        description: agent.workerInfo?.description || '',
-        tools: selectedToolNames(agent),
-        historical: !run.isCurrent,
-        createdAt: Math.max(existing?.createdAt ?? 0, run.createdAt),
-        updatedAt: Math.max(existing?.updatedAt ?? 0, run.updatedAt),
-        subagent: false,
-        sourceAgent: agent,
-      });
     }
   }
 
   for (const call of calls) {
-    const normalized = `${call.toolkitName} ${call.method}`
-      .toLowerCase()
-      .replace(/[_-]/g, ' ');
-    if (!normalized.includes('sub agent') && !normalized.includes('subagent')) {
-      continue;
+    const run = runs.find((candidate) => candidate.runId === call.taskId);
+    if (!run) continue;
+    const callText = `${call.toolkitName} ${call.method}`.toLowerCase();
+    const subagent = /sub.?agent|remote/.test(callText);
+    const identity = call.agentName || (subagent ? 'remote-subagent' : 'agent');
+    put(run, identity, call.agentName, '', subagent);
+    const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
+      identity
+    )}`;
+    const agent = agents.get(key);
+    if (agent && !agent.tools.includes(call.toolkitName)) {
+      agent.tools.push(call.toolkitName);
     }
-    const owningRun = runs.find((run) => run.taskId === call.taskId);
-    const remoteName = extractJsonString(call.input, 'remote_agent_name') || '';
-    const key = `subagent:${remoteName.toLowerCase() || 'remote-subagent'}`;
-    const existing = items.get(key);
-    const createdAt = Math.max(
-      existing?.createdAt ?? 0,
-      owningRun?.createdAt ?? call.createdAt
-    );
-    const updatedAt = Math.max(
-      existing?.updatedAt ?? 0,
-      call.createdAt,
-      owningRun?.updatedAt ?? 0
-    );
-    if (existing && !existing.historical) {
-      existing.createdAt = createdAt;
-      existing.updatedAt = updatedAt;
-      continue;
-    }
-    items.set(key, {
-      id: key,
-      name: remoteName,
-      type: 'subagent',
-      description: extractJsonString(call.input, 'instruction') || '',
-      tools: [],
-      historical: !owningRun?.isCurrent,
-      createdAt,
-      updatedAt,
-      subagent: true,
-    });
   }
 
-  return [...items.values()].sort(
-    (a, b) =>
-      Number(a.historical) - Number(b.historical) ||
-      Number(a.subagent) - Number(b.subagent)
+  return [...agents.values()].sort(
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      Number(left.subagent) - Number(right.subagent) ||
+      left.name.localeCompare(right.name)
   );
 }
 
-function uploadedFiles(run: ProjectSessionRun): File[] {
-  const all = [
-    ...run.task.messages
-      .filter((message) => message.role === 'user')
-      .flatMap((message) => message.attaches ?? []),
-    ...(run.task.attaches ?? []),
-  ];
-  const seen = new Set<string>();
-  return all.filter((file) => {
-    if (!file.filePath || seen.has(file.filePath)) return false;
-    seen.add(file.filePath);
-    return true;
-  });
+function planStatus(status: ChatPlanTaskStatus): TaskStatusType {
+  switch (status) {
+    case 'completed':
+      return TaskStatus.COMPLETED;
+    case 'failed':
+      return TaskStatus.FAILED;
+    case 'skipped':
+      return TaskStatus.SKIPPED;
+    case 'blocked':
+      return TaskStatus.BLOCKED;
+    case 'running':
+      return TaskStatus.RUNNING;
+    default:
+      return TaskStatus.WAITING;
+  }
 }
 
-function callMatchesContext(
-  call: SessionToolCall,
-  item: ContextItem,
-  connectors: ContextConnector[]
-): boolean {
-  if (item.category === 'skill') {
-    const itemKey = normalizeContextKey(item.label);
-    return call.skillNames.some(
-      (name) => normalizeContextKey(name) === itemKey
-    );
-  }
-  if (item.category === 'connector') {
-    const connector = resolveContextConnector(
-      call.toolkitName,
-      call.method,
-      call.input,
-      connectors
-    );
-    if (connector) {
-      return (
-        normalizeContextKey(connector.service) ===
-          normalizeContextKey(item.id) ||
-        normalizeContextKey(connector.displayName || connector.service) ===
-          normalizeContextKey(item.label)
-      );
+function activityTaskStatus(node: ChatActivityNode): TaskStatusType {
+  return planStatus(node.status === 'cancelled' ? 'skipped' : node.status);
+}
+
+function collectProgress(runs: ProjectSessionRun[]): SessionProgressItem[] {
+  const progress: SessionProgressItem[] = [];
+  for (const run of runs) {
+    const tasks = new Map<string, SessionProgressItem>();
+    for (const node of run.nodes) {
+      const time = nodeTime(node, run.createdAt);
+      if (node.kind === 'plan') {
+        for (const task of node.tasks) {
+          const key = task.id || `${node.eventId}:${task.title}`;
+          const existing = tasks.get(key);
+          tasks.set(key, {
+            key: `${run.runId}:${key}`,
+            task: {
+              id: key,
+              content: task.title,
+              status: planStatus(task.status),
+            },
+            taskId: run.runId,
+            historical: !run.isCurrent,
+            createdAt: existing?.createdAt ?? time,
+            updatedAt: time,
+          });
+        }
+      }
+      if (node.kind !== 'activity' || node.activityType !== 'task') continue;
+      const key = node.taskId || node.eventId;
+      const existing = tasks.get(key);
+      tasks.set(key, {
+        key: `${run.runId}:${key}`,
+        task: {
+          id: key,
+          content: existing?.task.content || node.detail || node.title,
+          status: activityTaskStatus(node),
+        },
+        taskId: run.runId,
+        historical: !run.isCurrent,
+        createdAt: existing?.createdAt ?? time,
+        updatedAt: time,
+      });
     }
-    return (
-      normalizeContextKey(call.toolkitName) ===
-      normalizeContextKey(item.label || item.id)
-    );
+    progress.push(...tasks.values());
   }
-  return false;
+  return progress.sort(
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      left.createdAt - right.createdAt
+  );
+}
+
+function displaySkillName(name: string, skills: ContextSkill[]): string {
+  const match = skills.find(
+    (skill) => normalizeContextKey(skill.name) === normalizeContextKey(name)
+  );
+  return match?.name || name;
 }
 
 function collectContext(
@@ -398,51 +412,71 @@ function collectContext(
   skills: ContextSkill[],
   connectors: ContextConnector[]
 ): SessionContextItem[] {
+  const runById = new Map(runs.map((run) => [run.runId, run]));
   const items = new Map<string, SessionContextItem>();
-  for (const run of runs) {
-    const runItems = buildContextItems(
-      run.task.taskAssigning,
-      run.task.taskRunning,
-      uploadedFiles(run),
-      skills,
-      connectors
-    ).filter(
-      (
-        item
-      ): item is ContextItem & { category: Exclude<ContextCategory, 'file'> } =>
-        item.category !== 'file'
-    );
-    for (const item of runItems) {
-      const key = `${item.category}:${normalizeContextKey(item.label)}`;
-      const itemCalls = calls.filter((call) =>
-        callMatchesContext(call, item, connectors)
-      );
-      const existing = items.get(key);
-      if (existing) {
-        existing.calls = Array.from(
-          new Map(
-            [...existing.calls, ...itemCalls].map((call) => [call.id, call])
-          ).values()
-        );
-        if (run.isCurrent) existing.historical = false;
-        existing.createdAt = Math.max(existing.createdAt, run.createdAt);
-        existing.updatedAt = Math.max(existing.updatedAt, run.updatedAt);
-        continue;
+
+  const put = (
+    category: Exclude<ContextCategory, 'file'>,
+    label: string,
+    iconUrl: string | undefined,
+    call: SessionToolCall
+  ) => {
+    const run = runById.get(call.taskId);
+    if (!run || !label.trim()) return;
+    const key = `${category}:${normalizeContextKey(label)}`;
+    const existing = items.get(key);
+    if (existing) {
+      if (!existing.calls.some((candidate) => candidate.id === call.id)) {
+        existing.calls.push(call);
       }
-      items.set(key, {
-        ...item,
-        historical: !run.isCurrent,
-        createdAt: run.createdAt,
-        updatedAt: Math.max(
-          run.updatedAt,
-          ...itemCalls.map((call) => call.createdAt)
-        ),
-        calls: itemCalls,
-      });
+      if (run.isCurrent) existing.historical = false;
+      existing.createdAt = Math.max(existing.createdAt, run.createdAt);
+      existing.updatedAt = Math.max(existing.updatedAt, call.updatedAt);
+      return;
+    }
+    items.set(key, {
+      id: key,
+      label,
+      category,
+      iconUrl,
+      historical: !run.isCurrent,
+      createdAt: run.createdAt,
+      updatedAt: call.updatedAt,
+      calls: [call],
+    });
+  };
+
+  for (const call of calls) {
+    if (/skill/i.test(call.toolkitName)) {
+      const names = call.skillNames.length > 0 ? call.skillNames : ['Skill'];
+      for (const name of names) {
+        put('skill', displaySkillName(name, skills), undefined, call);
+      }
+      continue;
+    }
+
+    const connector = resolveContextConnector(
+      call.toolkitName,
+      call.method,
+      [call.input, call.output].filter(Boolean).join('\n'),
+      connectors
+    );
+    if (connector) {
+      put(
+        'connector',
+        connector.displayName || connector.service,
+        connector.iconUrl || undefined,
+        call
+      );
+    } else if (/mcp|connector/i.test(call.toolkitName)) {
+      put('connector', call.toolkitName, undefined, call);
     }
   }
+
   return [...items.values()].sort(
-    (a, b) => Number(a.historical) - Number(b.historical)
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      left.label.localeCompare(right.label)
   );
 }
 
@@ -469,210 +503,154 @@ function resourceLabel(url: string): string {
   }
 }
 
-function collectResources(
-  runs: ProjectSessionRun[],
-  calls: SessionToolCall[]
-): SessionResourceItem[] {
+function safeNodeText(node: ChatProjectionNode): string {
+  switch (node.kind) {
+    case 'message':
+      return node.content;
+    case 'notice':
+      return `${node.title || ''}\n${node.content}`;
+    case 'interaction':
+      return `${node.prompt || ''}\n${node.response || ''}`;
+    case 'plan':
+      return `${node.title || ''}\n${node.summary || ''}`;
+    case 'activity':
+      return `${node.title}\n${node.detail || ''}`;
+    case 'artifact':
+      return node.path;
+    case 'run_status':
+      return node.reason || '';
+    case 'unknown':
+      return '';
+  }
+}
+
+function collectResources(runs: ProjectSessionRun[]): SessionResourceItem[] {
   const resources = new Map<string, SessionResourceItem>();
-  const outputPaths = new Set(
-    runs.flatMap((run) =>
-      collectSidePanelOutputFiles(run.task).flatMap((file) => [
-        file.path,
-        file.relativePath ?? '',
-      ])
-    )
-  );
-
-  const put = (item: SessionResourceItem) => {
-    const existing = resources.get(item.id);
-    if (existing) {
-      item.createdAt = Math.max(item.createdAt, existing.createdAt);
-      item.updatedAt = Math.max(item.updatedAt, existing.updatedAt);
-    }
-    if (!existing || (existing.historical && !item.historical)) {
-      resources.set(item.id, item);
-    } else if (existing) {
-      existing.updatedAt = item.updatedAt;
-    }
-  };
-
   for (const run of runs) {
-    for (const entry of run.task.webViewUrls ?? []) {
-      const urls = extractHttpUrls(entry.url);
-      for (const url of urls) {
-        put({
+    for (const node of run.nodes) {
+      for (const url of extractHttpUrls(safeNodeText(node))) {
+        const existing = resources.get(url);
+        const time = nodeTime(node, run.createdAt);
+        const item: SessionResourceItem = {
           id: `url:${url}`,
           label: resourceLabel(url),
           kind: 'url',
           url,
-          taskId: run.taskId,
+          taskId: run.runId,
           historical: !run.isCurrent,
-          createdAt: run.createdAt,
-          updatedAt: run.updatedAt,
-        });
-      }
-    }
-
-    for (const file of uploadedFiles(run)) {
-      if (outputPaths.has(file.filePath)) continue;
-      const asUrl = httpUrlOrNull(file.filePath);
-      if (asUrl) {
-        put({
-          id: `url:${asUrl}`,
-          label: file.fileName || resourceLabel(asUrl),
-          kind: 'url',
-          url: asUrl,
-          taskId: run.taskId,
-          historical: !run.isCurrent,
-          createdAt: run.createdAt,
-          updatedAt: run.updatedAt,
-        });
-      } else {
-        put({
-          id: `file:${file.filePath}`,
-          label:
-            file.fileName || file.filePath.split('/').pop() || file.filePath,
-          kind: 'file',
-          file: {
-            name: file.fileName,
-            path: file.filePath,
-            type: file.fileName.split('.').pop() || '',
-          },
-          taskId: run.taskId,
-          historical: !run.isCurrent,
-          createdAt: run.createdAt,
-          updatedAt: run.updatedAt,
-        });
+          createdAt: existing?.createdAt ?? time,
+          updatedAt: Math.max(existing?.updatedAt ?? 0, time),
+        };
+        if (!existing || (existing.historical && run.isCurrent)) {
+          resources.set(url, item);
+        } else {
+          existing.updatedAt = item.updatedAt;
+        }
       }
     }
   }
-
-  for (const call of calls) {
-    const run = runs.find((candidate) => candidate.taskId === call.taskId);
-    for (const url of extractHttpUrls(`${call.input}\n${call.output}`)) {
-      put({
-        id: `url:${url}`,
-        label: resourceLabel(url),
-        kind: 'url',
-        url,
-        taskId: call.taskId,
-        historical: !run?.isCurrent,
-        createdAt: run?.createdAt ?? call.createdAt,
-        updatedAt: Math.max(call.createdAt, run?.updatedAt ?? 0),
-      });
-    }
-  }
-
   return [...resources.values()].sort(
-    (a, b) => Number(a.historical) - Number(b.historical)
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      right.updatedAt - left.updatedAt
   );
+}
+
+function fileInfoFromArtifact(
+  node: Extract<ChatProjectionNode, { kind: 'artifact' }>
+): FileInfo {
+  const name =
+    node.name || node.path.split('/').filter(Boolean).at(-1) || node.path;
+  const isRelative = !/^(?:[a-z]+:|\/|[a-z]:[\\/])/i.test(node.path);
+  return {
+    name,
+    type: name.includes('.') ? name.split('.').at(-1) || '' : '',
+    path: node.path,
+    relativePath: isRelative ? node.path : undefined,
+    artifactChange:
+      node.operation === 'created'
+        ? 'generated'
+        : node.operation === 'updated'
+          ? 'changed'
+          : undefined,
+    mimeType: node.mimeType,
+  };
 }
 
 function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
   const files = new Map<string, SessionFileItem>();
-  for (const run of runs) {
-    for (const file of collectSidePanelOutputFiles(run.task)) {
-      const key = file.relativePath || file.path || file.name;
-      if (!key) continue;
+  for (const run of [...runs].reverse()) {
+    for (const node of run.nodes) {
+      if (node.kind !== 'artifact' || !node.path || httpUrlOrNull(node.path)) {
+        continue;
+      }
+      const key = node.path;
+      if (node.operation === 'deleted') {
+        files.delete(key);
+        continue;
+      }
+      const time = nodeTime(node, run.createdAt);
       const existing = files.get(key);
-      if (existing) {
-        existing.createdAt = Math.max(existing.createdAt, run.createdAt);
-        existing.updatedAt = Math.max(existing.updatedAt, run.updatedAt);
-      }
-      if (!existing || (existing.historical && run.isCurrent)) {
-        files.set(key, {
-          id: key,
-          file,
-          taskId: run.taskId,
-          historical: !run.isCurrent,
-          createdAt: Math.max(existing?.createdAt ?? 0, run.createdAt),
-          updatedAt: Math.max(existing?.updatedAt ?? 0, run.updatedAt),
-        });
-      }
+      files.set(key, {
+        id: key,
+        file: fileInfoFromArtifact(node),
+        taskId: run.runId,
+        historical: existing?.historical === false ? false : !run.isCurrent,
+        createdAt: existing?.createdAt ?? time,
+        updatedAt: time,
+      });
     }
   }
   return [...files.values()].sort(
-    (a, b) => Number(a.historical) - Number(b.historical)
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      right.updatedAt - left.updatedAt
   );
 }
 
 function collectEnvironments(
-  runs: ProjectSessionRun[],
-  calls: SessionToolCall[]
+  runs: ProjectSessionRun[]
 ): SessionEnvironmentItem[] {
   const environments = new Map<string, SessionEnvironmentItem>();
-  const put = (
-    label: string,
-    taskId: string,
-    historical: boolean,
-    createdAt: number,
-    updatedAt: number
-  ) => {
+  const put = (label: string, run: ProjectSessionRun, time: number) => {
     const id = label.toLowerCase();
     const existing = environments.get(id);
-    const latestCreation = Math.max(existing?.createdAt ?? 0, createdAt);
-    const latestUpdate = Math.max(existing?.updatedAt ?? 0, updatedAt);
-    if (!existing || (existing.historical && !historical)) {
+    if (!existing || (existing.historical && run.isCurrent)) {
       environments.set(id, {
         id,
         label,
-        taskId,
-        historical,
-        createdAt: latestCreation,
-        updatedAt: latestUpdate,
+        taskId: run.runId,
+        historical: !run.isCurrent,
+        createdAt: existing?.createdAt ?? time,
+        updatedAt: Math.max(existing?.updatedAt ?? 0, time),
       });
     } else {
-      existing.createdAt = latestCreation;
-      existing.updatedAt = latestUpdate;
+      existing.updatedAt = Math.max(existing.updatedAt, time);
     }
   };
 
   for (const run of runs) {
-    if (run.task.webViewUrls.length > 0) {
-      put('Browser', run.taskId, !run.isCurrent, run.createdAt, run.updatedAt);
-    }
-    const hasTerminal = run.task.taskAssigning.some((agent) =>
-      agent.tasks.some((task) => (task.terminal?.length ?? 0) > 0)
-    );
-    if (hasTerminal) {
-      put('Terminal', run.taskId, !run.isCurrent, run.createdAt, run.updatedAt);
-    }
-  }
-
-  for (const call of calls) {
-    const run = runs.find((candidate) => candidate.taskId === call.taskId);
-    const normalized = `${call.toolkitName} ${call.method}`.toLowerCase();
-    if (/browser|search|scrape/.test(normalized)) {
-      put(
-        'Browser',
-        call.taskId,
-        !run?.isCurrent,
-        run?.createdAt ?? call.createdAt,
-        Math.max(call.createdAt, run?.updatedAt ?? 0)
-      );
-    }
-    if (/terminal|shell|code execution/.test(normalized)) {
-      put(
-        'Terminal',
-        call.taskId,
-        !run?.isCurrent,
-        run?.createdAt ?? call.createdAt,
-        Math.max(call.createdAt, run?.updatedAt ?? 0)
-      );
-    }
-    if (/sub.?agent|remote/.test(normalized)) {
-      put(
-        'Remote environment',
-        call.taskId,
-        !run?.isCurrent,
-        run?.createdAt ?? call.createdAt,
-        Math.max(call.createdAt, run?.updatedAt ?? 0)
-      );
+    for (const node of run.nodes) {
+      if (node.kind !== 'activity') continue;
+      const time = nodeTime(node, run.createdAt);
+      const identity = `${node.activityType} ${node.title} ${
+        node.toolkitName || ''
+      } ${node.methodName || ''}`.toLowerCase();
+      if (node.activityType === 'terminal' || /terminal|shell/.test(identity)) {
+        put('Terminal', run, time);
+      }
+      if (/browser|search|scrape/.test(identity)) {
+        put('Browser', run, time);
+      }
+      if (/sub.?agent|remote/.test(identity)) {
+        put('Remote environment', run, time);
+      }
     }
   }
-
   return [...environments.values()].sort(
-    (a, b) => Number(a.historical) - Number(b.historical)
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      left.label.localeCompare(right.label)
   );
 }
 
@@ -685,19 +663,10 @@ export function buildProjectSessionPanelData(
   return {
     agents: collectAgents(runs, toolCalls),
     contextItems: collectContext(runs, toolCalls, skills, connectors),
-    environments: collectEnvironments(runs, toolCalls),
+    environments: collectEnvironments(runs),
     files: collectFiles(runs),
-    progress: runs.flatMap((run) =>
-      mergeSubtasks(run).map((task) => ({
-        key: `${run.taskId}:${task.id}`,
-        task,
-        taskId: run.taskId,
-        historical: !run.isCurrent,
-        createdAt: run.createdAt,
-        updatedAt: run.updatedAt,
-      }))
-    ),
-    resources: collectResources(runs, toolCalls),
+    progress: collectProgress(runs),
+    resources: collectResources(runs),
     toolCalls,
   };
 }
@@ -714,7 +683,7 @@ export function mergeProjectFiles(
   return merged.map((file) => {
     const id = file.relativePath || file.path || file.name;
     return (
-      items.find((item) => item.id === id) ?? {
+      items.find((item) => item.id === id || item.file.path === file.path) ?? {
         id,
         file,
         taskId: fallbackTaskId,

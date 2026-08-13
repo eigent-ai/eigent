@@ -87,6 +87,13 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
+/** Compatibility lookup used by callers that only need the backend platform. */
+export function getCloudModelPlatform(modelId: string): string {
+  return (
+    getCloudModelStore().resolveCloudModel(modelId)?.model.model_platform || ''
+  );
+}
+
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
