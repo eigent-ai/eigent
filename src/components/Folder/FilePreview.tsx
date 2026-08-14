@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
 import { loadFilePreview } from '@/lib/filePreviewLoader';
+import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { FileText, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -77,11 +78,14 @@ export function FilePreview({
       previewRequestRef.current = controller;
       setSelectedFile(target);
       setLoading(true);
-      void loadFilePreview(target, {
-        ipcRenderer,
-        showSource,
-        signal: controller.signal,
-      })
+      void resolveArtifactAssetFile(target)
+        .then((resolved) =>
+          loadFilePreview(resolved, {
+            ipcRenderer,
+            showSource,
+            signal: controller.signal,
+          })
+        )
         .then((loadedFile) => {
           if (!controller.signal.aborted) setSelectedFile(loadedFile);
         })
@@ -115,7 +119,7 @@ export function FilePreview({
     }
     loadFileContent(file, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.path, file?.isRemote, loadFileContent]);
+  }, [file?.path, file?.isRemote, file?.assetRef?.chatFileId, loadFileContent]);
 
   // Breadcrumb is intentionally shallow: "Context > filename". The "Context"
   // root navigates to the Inbox/Context tab for this file.

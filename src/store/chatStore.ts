@@ -35,7 +35,6 @@ import {
 } from '@/lib/events/appEventClassifiers';
 import {
   recordFeatureUsed,
-  recordFileGenerated,
   recordTaskCompleted,
   recordTaskFailed,
   recordTaskStopped,
@@ -770,7 +769,7 @@ export function collectTaskUploadFiles(
   camelLogFiles: CamelLogUploadFile[],
   messages: Message[],
   pendingAttaches: File[] = [],
-  taskOutputFiles: FileInfo[] = []
+  _taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
     Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
@@ -788,25 +787,10 @@ export function collectTaskUploadFiles(
     });
   }
 
-  // Only WRITE_FILE events populate taskOutputFiles. Do not scan the selected
-  // workspace or infer upload consent from paths mentioned in a final answer:
-  // those paths may point at files that existed before Eigent opened the
-  // folder. Reading/referencing a local file is never upload consent.
-  for (const file of taskOutputFiles) {
-    if (!file?.path || !file?.name || file.isFolder) continue;
-    // A canonical manifest is also the consent boundary. Files from the
-    // selected workspace are metadata-only; only Eigent/agent generated
-    // outputs may leave the device automatically.
-    if (file.uploadPolicy === 'metadata_only') continue;
-    if (!isReadableLocalPath(file.path)) continue;
-    uploadCandidates.push({
-      path: file.path,
-      name: file.name,
-      relativePath: file.relativePath,
-      source: 'project_output',
-      artifactId: file.artifactId,
-    });
-  }
+  // Canonical agent-generated Artifacts are uploaded by the Brain-owned
+  // SQLite ArtifactUploadOutbox. Keeping that lane out of Renderer memory is
+  // what makes upload + artifact.uploaded crash-recoverable. Selected-folder
+  // files remain metadata-only and are never inferred as upload consent.
 
   // ChatBox attachments are the other explicit consent boundary. This does
   // not include files merely present in the selected folder.
@@ -4666,54 +4650,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       );
                       if (failedUploads.length > 0) {
                         console.error('Failed to upload files:', failedUploads);
-                      }
-
-                      for (const result of uploadResults) {
-                        if (
-                          !result.success ||
-                          result.source !== 'project_output' ||
-                          !result.artifactId ||
-                          !result.response ||
-                          typeof result.response !== 'object'
-                        ) {
-                          continue;
-                        }
-                        const asset = result.response as Record<
-                          string,
-                          unknown
-                        >;
-                        try {
-                          await fetchPost(
-                            `/runs/${encodeURIComponent(currentTaskId)}/artifacts/${encodeURIComponent(result.artifactId)}/uploaded`,
-                            {
-                              chat_file_id: asset.id,
-                              s3_bucket: asset.s3_bucket,
-                              s3_key: asset.s3_key,
-                              filename: asset.filename,
-                              file_size: asset.file_size,
-                              file_type: asset.file_type,
-                            }
-                          );
-                        } catch (error) {
-                          console.error(
-                            'Uploaded Artifact asset could not be journaled:',
-                            result.artifactId,
-                            error
-                          );
-                        }
-                      }
-
-                      const generatedSuccessCount = uploadResults.filter(
-                        (result) =>
-                          result.success && result.source === 'project_output'
-                      ).length;
-
-                      if (generatedSuccessCount > 0) {
-                        proxyFetchPost(`/api/v1/user/stat`, {
-                          action: 'file_generate_count',
-                          value: generatedSuccessCount,
-                        });
-                        recordFileGenerated(generatedSuccessCount);
                       }
                     }
                   } catch (error) {

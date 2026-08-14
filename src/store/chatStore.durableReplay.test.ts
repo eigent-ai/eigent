@@ -232,7 +232,7 @@ describe('canonical Run replay projection', () => {
     ]);
   });
 
-  it('uploads only agent-generated canonical Artifacts', () => {
+  it('keeps canonical Artifact uploads out of the Renderer lane', () => {
     const candidates = collectTaskUploadFiles(
       [],
       [],
@@ -255,12 +255,7 @@ describe('canonical Run replay projection', () => {
       ]
     );
 
-    expect(candidates).toEqual([
-      expect.objectContaining({
-        artifactId: 'art-generated',
-        path: '/workspace/generated.csv',
-      }),
-    ]);
+    expect(candidates).toEqual([]);
   });
 
   it('matches URL-encoded stream paths and legacy x-prefixed paths', () => {

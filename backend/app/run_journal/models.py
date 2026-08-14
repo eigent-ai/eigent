@@ -769,6 +769,19 @@ class RunEventSyncBatch:
 
 
 @dataclass(frozen=True)
+class ArtifactUploadSyncItem:
+    artifact_id: str
+    run_id: str
+    project_id: str
+    local_path: str
+    filename: str
+    relative_path: str
+    file_size: int
+    lease_token: str
+    attempt_count: int
+
+
+@dataclass(frozen=True)
 class RemoteCommandInboxRecord:
     command_id: str
     session_id: str

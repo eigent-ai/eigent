@@ -19,17 +19,19 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import mimetypes
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Any, Protocol
 from urllib.parse import quote, urlsplit
 
 import httpx
 
 from app.run_journal import (
+    ArtifactUploadSyncItem,
     CloudRunEventReplica,
     CloudRunReplica,
     MemoryMutationSyncBatch,
@@ -168,6 +170,12 @@ class RunEventSyncTransport(Protocol):
         self,
         configuration: CloudSyncConfiguration,
         payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    async def upload_artifact(
+        self,
+        configuration: CloudSyncConfiguration,
+        item: ArtifactUploadSyncItem,
     ) -> dict[str, Any]: ...
 
     async def close(self) -> None: ...
@@ -396,6 +404,47 @@ class HttpRunEventSyncTransport:
             payload,
         )
 
+    async def upload_artifact(
+        self,
+        configuration: CloudSyncConfiguration,
+        item: ArtifactUploadSyncItem,
+    ) -> dict[str, Any]:
+        path = Path(item.local_path)
+        content_type = (
+            mimetypes.guess_type(item.filename)[0]
+            or "application/octet-stream"
+        )
+        api_base = self._sync_base(configuration).rsplit("/sync", 1)[0]
+        with path.open("rb") as file_handle:
+            response = await self._client.post(
+                f"{api_base}/chat/files/upload",
+                headers=self._headers(configuration),
+                data={
+                    "task_id": item.run_id,
+                    "client_request_id": item.artifact_id,
+                },
+                files={
+                    "file": (item.filename, file_handle, content_type),
+                },
+            )
+        if response.is_error:
+            try:
+                detail: Any = response.json()
+            except ValueError:
+                detail = response.text
+            raise RunEventSyncHttpError(response.status_code, detail)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RunEventSyncProtocolError(
+                "Artifact upload returned invalid JSON"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise RunEventSyncProtocolError(
+                "Artifact upload returned an invalid payload"
+            )
+        return payload
+
     async def close(self) -> None:
         await self._client.aclose()
 
@@ -496,6 +545,20 @@ class CloudSyncWorker:
                     )
                 )
                 memory_count = sum(memory_results)
+        artifact_count = 0
+        artifact_uploads = await asyncio.to_thread(
+            self._journal.claim_ready_artifact_uploads,
+            limit=self._max_parallel_runs,
+            lease_seconds=max(self._lease_seconds, 60.0),
+        )
+        if artifact_uploads:
+            artifact_results = await asyncio.gather(
+                *(
+                    self._sync_artifact_upload(item, configuration)
+                    for item in artifact_uploads
+                )
+            )
+            artifact_count = sum(artifact_results)
         batches = await asyncio.to_thread(
             self._journal.claim_ready_outbox_batches,
             max_runs=self._max_parallel_runs,
@@ -503,13 +566,95 @@ class CloudSyncWorker:
             lease_seconds=self._lease_seconds,
         )
         if not batches:
-            return memory_count
+            if artifact_uploads:
+                self.notify()
+            return memory_count + artifact_count
         results = await asyncio.gather(
             *(self._sync_batch(batch, configuration) for batch in batches)
         )
         # Drain another slice without waiting when more Runs or events are ready.
         self.notify()
-        return memory_count + sum(results)
+        return memory_count + artifact_count + sum(results)
+
+    async def _sync_artifact_upload(
+        self,
+        item: ArtifactUploadSyncItem,
+        configuration: CloudSyncConfiguration,
+    ) -> int:
+        upload = getattr(self._transport, "upload_artifact", None)
+        if not callable(upload):
+            await self._retry_artifact_upload(
+                item, "Artifact upload transport is unavailable"
+            )
+            return 0
+        try:
+            response = await upload(configuration, item)
+            required = {
+                "id",
+                "filename",
+                "file_size",
+                "file_type",
+                "s3_bucket",
+                "s3_key",
+            }
+            if not required.issubset(response):
+                raise RunEventSyncProtocolError(
+                    "Artifact upload response is missing asset identity"
+                )
+            await asyncio.to_thread(
+                self._journal.complete_artifact_upload,
+                item,
+                chat_file_id=int(response["id"]),
+                s3_bucket=str(response["s3_bucket"]),
+                s3_key=str(response["s3_key"]),
+                filename=str(response["filename"]),
+                file_size=int(response["file_size"]),
+                file_type=str(response["file_type"]),
+            )
+        except asyncio.CancelledError:
+            raise
+        except FileNotFoundError as exc:
+            await asyncio.to_thread(
+                self._journal.retry_artifact_upload,
+                item,
+                error=str(exc),
+                next_attempt_at=time.time(),
+                dead_letter=True,
+            )
+            return 0
+        except RunEventSyncHttpError as exc:
+            if exc.status_code in {400, 409, 413, 422}:
+                await asyncio.to_thread(
+                    self._journal.retry_artifact_upload,
+                    item,
+                    error=str(exc),
+                    next_attempt_at=time.time(),
+                    dead_letter=True,
+                )
+            else:
+                await self._retry_artifact_upload(item, str(exc))
+            return 0
+        except Exception as exc:
+            await self._retry_artifact_upload(item, str(exc))
+            return 0
+        self.notify()
+        return 1
+
+    async def _retry_artifact_upload(
+        self,
+        item: ArtifactUploadSyncItem,
+        error: str,
+    ) -> None:
+        delay = min(
+            2 ** min(item.attempt_count + 1, 8),
+            self._max_retry_seconds,
+        )
+        await asyncio.to_thread(
+            self._journal.retry_artifact_upload,
+            item,
+            error=error,
+            next_attempt_at=time.time() + delay,
+        )
 
     async def bootstrap_once(self) -> None:
         """Synchronously repair the local read replica once per credential set."""
@@ -702,7 +847,7 @@ class CloudSyncWorker:
                     and callable(claim_writer)
                 ):
                     try:
-                        await claim_writer(
+                        claim = await claim_writer(
                             configuration,
                             {
                                 "scope_type": key[0],
@@ -712,6 +857,46 @@ class CloudSyncWorker:
                                 ],
                             },
                         )
+                        baseline_scope = claim.get("baseline_scope")
+                        baseline_entries = claim.get("baseline_entries")
+                        if claim.get("rebase_required"):
+                            if not isinstance(
+                                baseline_scope, dict
+                            ) or not isinstance(baseline_entries, list):
+                                raise RunEventSyncProtocolError(
+                                    "Memory writer transfer omitted its "
+                                    "Cloud baseline"
+                                )
+                            await asyncio.to_thread(
+                                self._journal.merge_cloud_memory_baseline,
+                                scope_type=key[0],
+                                scope_id=key[1],
+                                scope=baseline_scope,
+                                entries=baseline_entries,
+                            )
+                            refreshed = next(
+                                (
+                                    item
+                                    for item in await asyncio.to_thread(
+                                        self._journal.list_memory_sync_snapshots
+                                    )
+                                    if (item["scope_type"], item["scope_id"])
+                                    == key
+                                ),
+                                None,
+                            )
+                            if refreshed is None:
+                                raise RunEventSyncProtocolError(
+                                    "Merged Memory baseline is not readable"
+                                )
+                            revision = int(refreshed["revision"])
+                            payload = {
+                                "scope_type": key[0],
+                                "scope_id": key[1],
+                                "scope": refreshed["scope"],
+                                "source_revision": revision,
+                                "entries": refreshed["entries"],
+                            }
                         response = await put_snapshot(configuration, payload)
                     except Exception:
                         logger.exception(

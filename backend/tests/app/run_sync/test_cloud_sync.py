@@ -46,6 +46,7 @@ class FakeTransport:
         self.memory_snapshot_failures: set[tuple[str, str]] = set()
         self.memory_writer_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_claims: list[dict[str, Any]] = []
+        self.artifact_uploads = []
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -140,6 +141,19 @@ class FakeTransport:
             "writer_epoch": payload["expected_writer_epoch"] + 1,
             "owner_device_id": configuration.desktop_instance_id,
             "rebase_required": True,
+            "baseline_source_revision": 7,
+            "baseline_scope": {
+                "capture_enabled": payload["scope_type"] == "project",
+                "use_enabled": True,
+                "sync_scope": "full_memory",
+                "token_limit": (
+                    1024 if payload["scope_type"] == "project" else 384
+                ),
+                "processed_through_watermark": None,
+                "watermark_kind": None,
+                "updated_at": "2026-08-14T00:00:00+00:00",
+            },
+            "baseline_entries": [],
         }
 
     async def ingest_memory_mutations(self, configuration, payload):
@@ -156,6 +170,17 @@ class FakeTransport:
                 }
                 for mutation in payload["mutations"]
             ],
+        }
+
+    async def upload_artifact(self, configuration, item):
+        self.artifact_uploads.append(item)
+        return {
+            "id": 73,
+            "filename": item.filename,
+            "file_size": item.file_size,
+            "file_type": "text/plain",
+            "s3_bucket": "test-assets",
+            "s3_key": f"artifacts/{item.artifact_id}",
         }
 
     async def close(self):
@@ -210,6 +235,66 @@ async def test_worker_sends_fifo_batch_and_marks_it_sent(journal):
     assert journal.list_pending_outbox(now=100) == []
     await worker.close()
     assert transport.closed is True
+
+
+@pytest.mark.asyncio
+async def test_worker_uploads_durable_artifact_then_syncs_asset_event(
+    journal, tmp_path
+):
+    from app.artifacts import record_artifact_manifest
+
+    artifact_path = tmp_path / "report.txt"
+    artifact_path.write_text("durable report", encoding="utf-8")
+    journal.ensure_run(run_id="run-artifact", project_id="project-1", now=1)
+    record_artifact_manifest(
+        journal,
+        run_id="run-artifact",
+        project_id="project-1",
+        artifacts=[
+            {
+                "filename": "report.txt",
+                "path": str(artifact_path),
+                "relativePath": "reports/report.txt",
+                "changeType": "generated",
+                "size": artifact_path.stat().st_size,
+                "uploadPolicy": "agent_generated",
+            }
+        ],
+    )
+    # A manifest can still be corrected while its Run is active. Upload does
+    # not claim bytes until the terminal barrier pins the authoritative set.
+    assert journal.claim_ready_artifact_uploads(now=float("inf")) == []
+    journal.append_event(
+        "run-artifact",
+        RunEventDraft(
+            event_id="run-artifact-completed",
+            event_type="run.completed",
+            payload={},
+            created_at=3,
+        ),
+    )
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 5
+
+    assert len(transport.artifact_uploads) == 1
+    upload = transport.artifact_uploads[0]
+    uploaded = [
+        event
+        for event in journal.list_events("run-artifact")
+        if event.event_type == "artifact.uploaded"
+    ]
+    assert len(uploaded) == 1
+    assert uploaded[0].sequence > next(
+        event.sequence
+        for event in journal.list_events("run-artifact")
+        if event.event_type == "run.completed"
+    )
+    assert uploaded[0].payload["artifact_id"] == upload.artifact_id
+    assert uploaded[0].payload["asset_ref"]["chat_file_id"] == 73
+    assert journal.claim_ready_artifact_uploads(now=float("inf")) == []
+    await worker.close()
 
 
 @pytest.mark.asyncio

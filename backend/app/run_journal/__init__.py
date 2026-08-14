@@ -15,6 +15,7 @@
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
+    ArtifactUploadSyncItem,
     AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
@@ -93,6 +94,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ApprovalRecord",
     "ApprovalRuleRecord",
+    "ArtifactUploadSyncItem",
     "AttemptEnvironmentBinding",
     "CloudRunEventReplica",
     "CloudRunReplica",

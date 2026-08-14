@@ -38,6 +38,7 @@ from typing import Any
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
+    ArtifactUploadSyncItem,
     AttemptEnvironmentBinding,
     CloudRunEventReplica,
     CloudRunReplica,
@@ -114,7 +115,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 logger = logging.getLogger("run_journal")
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
@@ -1667,6 +1668,41 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (25, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 25;
+COMMIT;
+"""
+
+_MIGRATION_V26 = """
+BEGIN IMMEDIATE;
+
+-- Artifact bytes use an independent durable lane. The canonical manifest and
+-- this upload intent are committed together; successful upload later appends
+-- artifact.uploaded and clears the lease in one local transaction.
+CREATE TABLE IF NOT EXISTS artifact_upload_outbox(
+    artifact_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    local_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    file_size INTEGER NOT NULL CHECK(file_size >= 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'sending', 'sent', 'dead_letter')
+    ),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+    next_attempt_at REAL NOT NULL,
+    lease_token TEXT,
+    lease_until REAL,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS artifact_upload_outbox_pending_idx
+ON artifact_upload_outbox(status, next_attempt_at, lease_until, created_at);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (26, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 26;
 COMMIT;
 """
 
@@ -7724,7 +7760,8 @@ class SQLiteRunJournal:
                 (run_id,),
             ).fetchone()
             run = connection.execute(
-                "SELECT status FROM runs WHERE run_id = ?", (run_id,)
+                "SELECT status, project_id FROM runs WHERE run_id = ?",
+                (run_id,),
             ).fetchone()
             if run is None:
                 raise RunNotFoundError(f"run_id {run_id!r} does not exist")
@@ -7745,7 +7782,81 @@ class SQLiteRunJournal:
                         expected_project_id=expected_project_id,
                     )
                 )
+            self._enqueue_artifact_uploads_in_transaction(
+                connection,
+                run_id=run_id,
+                project_id=str(run["project_id"]),
+                manifest_payload=dict(drafts[-1].payload),
+                created_at=float(drafts[-1].created_at),
+            )
             return committed[-1]
+
+    @staticmethod
+    def _enqueue_artifact_uploads_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        project_id: str,
+        manifest_payload: dict[str, Any],
+        created_at: float,
+    ) -> None:
+        artifacts = manifest_payload.get("artifacts")
+        if not isinstance(artifacts, list):
+            return
+        current_ids: list[str] = []
+        for raw in artifacts:
+            if not isinstance(raw, dict):
+                continue
+            artifact_id = str(raw.get("artifact_id") or "").strip()
+            local_path = str(raw.get("path") or "").strip()
+            if (
+                not artifact_id
+                or not local_path
+                or raw.get("uploadPolicy") != "agent_generated"
+            ):
+                continue
+            current_ids.append(artifact_id)
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO artifact_upload_outbox(
+                    artifact_id, run_id, project_id, local_path, filename,
+                    relative_path, file_size, status, attempt_count,
+                    next_attempt_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+                """,
+                (
+                    artifact_id,
+                    run_id,
+                    project_id,
+                    local_path,
+                    str(raw.get("filename") or Path(local_path).name),
+                    str(raw.get("relativePath") or Path(local_path).name),
+                    max(0, int(raw.get("size") or 0)),
+                    created_at,
+                    created_at,
+                    created_at,
+                ),
+            )
+
+        # A corrected non-terminal manifest may drop a vanished file. Do not
+        # upload a stale path that is no longer part of the canonical barrier.
+        if current_ids:
+            connection.execute(
+                """
+                DELETE FROM artifact_upload_outbox
+                WHERE run_id = ? AND status = 'pending'
+                  AND artifact_id NOT IN (SELECT value FROM json_each(?))
+                """,
+                (run_id, json.dumps(current_ids, separators=(",", ":"))),
+            )
+        else:
+            connection.execute(
+                """
+                DELETE FROM artifact_upload_outbox
+                WHERE run_id = ? AND status = 'pending'
+                """,
+                (run_id,),
+            )
 
     def complete_successful_run(
         self,
@@ -12367,6 +12478,184 @@ class SQLiteRunJournal:
             ).fetchall()
             return [self._outbox_from_row(row) for row in rows]
 
+    def claim_ready_artifact_uploads(
+        self,
+        *,
+        now: float | None = None,
+        limit: int = 4,
+        lease_seconds: float = 60.0,
+    ) -> list[ArtifactUploadSyncItem]:
+        if limit < 1 or lease_seconds <= 0:
+            raise ValueError("artifact upload claim limits must be positive")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                UPDATE artifact_upload_outbox
+                SET status = 'pending', lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE status = 'sending'
+                  AND (lease_until IS NULL OR lease_until <= ?)
+                """,
+                (timestamp, timestamp),
+            )
+            rows = connection.execute(
+                """
+                SELECT artifact_upload_outbox.*
+                FROM artifact_upload_outbox
+                JOIN runs USING(run_id)
+                WHERE artifact_upload_outbox.status = 'pending'
+                  AND artifact_upload_outbox.next_attempt_at <= ?
+                  AND runs.status IN ('completed', 'failed', 'cancelled')
+                ORDER BY artifact_upload_outbox.created_at,
+                         artifact_upload_outbox.artifact_id
+                LIMIT ?
+                """,
+                (timestamp, limit),
+            ).fetchall()
+            claimed: list[ArtifactUploadSyncItem] = []
+            for row in rows:
+                lease_token = uuid.uuid4().hex
+                updated = connection.execute(
+                    """
+                    UPDATE artifact_upload_outbox
+                    SET status = 'sending', lease_token = ?, lease_until = ?,
+                        updated_at = ?
+                    WHERE artifact_id = ? AND status = 'pending'
+                    """,
+                    (
+                        lease_token,
+                        timestamp + lease_seconds,
+                        timestamp,
+                        row["artifact_id"],
+                    ),
+                )
+                if updated.rowcount != 1:
+                    continue
+                claimed.append(
+                    ArtifactUploadSyncItem(
+                        artifact_id=str(row["artifact_id"]),
+                        run_id=str(row["run_id"]),
+                        project_id=str(row["project_id"]),
+                        local_path=str(row["local_path"]),
+                        filename=str(row["filename"]),
+                        relative_path=str(row["relative_path"]),
+                        file_size=int(row["file_size"]),
+                        lease_token=lease_token,
+                        attempt_count=int(row["attempt_count"]),
+                    )
+                )
+            return claimed
+
+    @staticmethod
+    def _assert_artifact_upload_lease(
+        connection: sqlite3.Connection,
+        item: ArtifactUploadSyncItem,
+    ) -> None:
+        row = connection.execute(
+            """
+            SELECT status, lease_token FROM artifact_upload_outbox
+            WHERE artifact_id = ?
+            """,
+            (item.artifact_id,),
+        ).fetchone()
+        if (
+            row is None
+            or row["status"] != "sending"
+            or row["lease_token"] != item.lease_token
+        ):
+            raise OutboxLeaseLostError(
+                f"artifact upload lease lost for {item.artifact_id!r}"
+            )
+
+    def complete_artifact_upload(
+        self,
+        item: ArtifactUploadSyncItem,
+        *,
+        chat_file_id: int,
+        s3_bucket: str,
+        s3_key: str,
+        filename: str,
+        file_size: int,
+        file_type: str,
+        now: float | None = None,
+    ) -> CommittedRunEvent:
+        timestamp = now if now is not None else time.time()
+        payload = {
+            "artifact_id": item.artifact_id,
+            "relativePath": item.relative_path,
+            "filename": filename,
+            "asset_ref": {
+                "chat_file_id": chat_file_id,
+                "bucket": s3_bucket,
+                "key": s3_key,
+                "filename": filename,
+                "size": file_size,
+                "content_type": file_type,
+            },
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {"run_id": item.run_id, **payload},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        draft = RunEventDraft(
+            event_id=f"au_{fingerprint[:61]}",
+            event_type="artifact.uploaded",
+            payload=payload,
+            created_at=timestamp,
+        )
+        with self._write_transaction() as connection:
+            self._assert_artifact_upload_lease(connection, item)
+            event = self._append_event_in_transaction(
+                connection,
+                item.run_id,
+                draft,
+                expected_project_id=item.project_id,
+            )
+            connection.execute(
+                """
+                UPDATE artifact_upload_outbox
+                SET status = 'sent', lease_token = NULL, lease_until = NULL,
+                    last_error = NULL, updated_at = ?
+                WHERE artifact_id = ?
+                """,
+                (timestamp, item.artifact_id),
+            )
+            return event
+
+    def retry_artifact_upload(
+        self,
+        item: ArtifactUploadSyncItem,
+        *,
+        error: str,
+        next_attempt_at: float,
+        now: float | None = None,
+        dead_letter: bool = False,
+    ) -> None:
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            self._assert_artifact_upload_lease(connection, item)
+            connection.execute(
+                """
+                UPDATE artifact_upload_outbox
+                SET status = ?, attempt_count = attempt_count + 1,
+                    next_attempt_at = ?, last_error = ?, lease_token = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE artifact_id = ?
+                """,
+                (
+                    "dead_letter" if dead_letter else "pending",
+                    next_attempt_at,
+                    error[:4000],
+                    timestamp,
+                    item.artifact_id,
+                ),
+            )
+
     def claim_ready_outbox_batches(
         self,
         *,
@@ -12581,11 +12870,24 @@ class SQLiteRunJournal:
         projected["content_digest"] = hashlib.sha256(
             content.encode("utf-8")
         ).hexdigest()
-        projected["source_refs"] = [
-            "ref:"
-            + hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:20]
-            for value in projected.get("source_refs", [])[:20]
-        ]
+        redacted_refs: list[str] = []
+        for value in projected.get("source_refs", [])[:20]:
+            text = str(value)
+            suffix = text.removeprefix("ref:")
+            if (
+                text.startswith("ref:")
+                and len(suffix) == 20
+                and all(
+                    character in "0123456789abcdef" for character in suffix
+                )
+            ):
+                redacted_refs.append(text)
+            else:
+                redacted_refs.append(
+                    "ref:"
+                    + hashlib.sha256(text.encode("utf-8")).hexdigest()[:20]
+                )
+        projected["source_refs"] = redacted_refs
         return projected
 
     def list_memory_sync_snapshots(self) -> list[dict[str, Any]]:
@@ -12670,6 +12972,197 @@ class SQLiteRunJournal:
                     }
                 )
             return snapshots
+
+    def merge_cloud_memory_baseline(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        scope: dict[str, Any],
+        entries: list[dict[str, Any]],
+    ) -> None:
+        """Hydrate a new writer before it publishes a rebase snapshot.
+
+        This is a read-model import, not a user/agent mutation: it never emits
+        a Memory mutation or advances the local revision. Local entries are
+        retained, while a newer Cloud version of the same id wins. The final
+        union must still fit the fixed scope cap; otherwise takeover remains
+        fail-closed instead of silently deleting learned or pinned Memory.
+        """
+
+        self._validate_memory_scope(scope_type, scope_id)
+        if scope.get("sync_scope") != "full_memory":
+            raise InvalidRunTransitionError(
+                "Cloud Memory baseline must contain full_memory"
+            )
+
+        def parse_timestamp(value: Any) -> float:
+            if isinstance(value, (int, float)):
+                return float(value)
+            if not isinstance(value, str):
+                raise ValueError("Cloud Memory timestamp is invalid")
+            return datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            ).timestamp()
+
+        timestamp = time.time()
+        with self._write_transaction() as connection:
+            state = self._ensure_memory_scope_state_in_transaction(
+                connection,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                owner_kind="desktop",
+                token_limit=_MEMORY_DEFAULT_TOKEN_LIMITS[scope_type],
+                now=timestamp,
+            )
+            seen: set[str] = set()
+            for raw in entries:
+                memory_id = str(raw.get("memory_id") or "").strip()
+                if not memory_id or memory_id in seen:
+                    raise IdempotencyConflictError(
+                        "Cloud Memory baseline contains duplicate ids"
+                    )
+                seen.add(memory_id)
+                content = str(raw.get("content") or "")
+                if hashlib.sha256(content.encode("utf-8")).hexdigest() != str(
+                    raw.get("content_digest") or ""
+                ):
+                    raise IdempotencyConflictError(
+                        "Cloud Memory baseline content digest does not match"
+                    )
+                self._validate_memory_entry_values(
+                    content=content,
+                    kind=str(raw.get("kind") or ""),
+                    priority=str(raw.get("priority") or "normal"),
+                    token_count=int(raw.get("token_count") or 0),
+                    created_by=str(raw.get("created_by") or ""),
+                    source_trust=str(raw.get("source_trust") or ""),
+                    sensitivity=str(raw.get("sensitivity") or "normal"),
+                )
+                incoming_updated = parse_timestamp(raw.get("updated_at"))
+                incoming_created = parse_timestamp(raw.get("created_at"))
+                incoming_deleted = (
+                    parse_timestamp(raw["deleted_at"])
+                    if raw.get("deleted_at") is not None
+                    else None
+                )
+                existing = connection.execute(
+                    "SELECT * FROM memory_entries WHERE memory_id = ?",
+                    (memory_id,),
+                ).fetchone()
+                if existing is not None and (
+                    existing["scope_type"] != scope_type
+                    or existing["scope_id"] != scope_id
+                ):
+                    raise IdempotencyConflictError(
+                        "Cloud Memory id belongs to another local scope"
+                    )
+                incoming_version = int(raw.get("version") or 0)
+                should_apply = existing is None or (
+                    incoming_version > int(existing["version"])
+                    or (
+                        incoming_version == int(existing["version"])
+                        and incoming_updated > float(existing["updated_at"])
+                    )
+                )
+                if not should_apply:
+                    continue
+                values = (
+                    scope_type,
+                    scope_id,
+                    str(raw["kind"]),
+                    content,
+                    str(raw.get("priority") or "normal"),
+                    incoming_version,
+                    int(raw["token_count"]),
+                    int(bool(raw.get("pinned_by_user"))),
+                    int(bool(raw.get("confirmed_by_user"))),
+                    str(raw["created_by"]),
+                    str(raw["source_trust"]),
+                    str(raw.get("sensitivity") or "normal"),
+                    json.dumps(
+                        list(raw.get("source_refs") or []),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    incoming_deleted,
+                    incoming_created,
+                    incoming_updated,
+                    memory_id,
+                )
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO memory_entries(
+                            scope_type, scope_id, kind, content, priority,
+                            version, token_count, pinned_by_user,
+                            confirmed_by_user, created_by, source_trust,
+                            sensitivity, source_refs_json, deleted_at,
+                            created_at, updated_at, memory_id, usage_count
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                  ?, ?, ?, 0)
+                        """,
+                        values,
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET scope_type = ?, scope_id = ?, kind = ?, content = ?,
+                            priority = ?, version = ?, token_count = ?,
+                            pinned_by_user = ?, confirmed_by_user = ?,
+                            created_by = ?, source_trust = ?, sensitivity = ?,
+                            source_refs_json = ?, deleted_at = ?, created_at = ?,
+                            updated_at = ?
+                        WHERE memory_id = ?
+                        """,
+                        values,
+                    )
+
+            active_tokens = int(
+                connection.execute(
+                    """
+                    SELECT COALESCE(SUM(token_count), 0)
+                    FROM memory_entries
+                    WHERE scope_type = ? AND scope_id = ?
+                      AND deleted_at IS NULL
+                    """,
+                    (scope_type, scope_id),
+                ).fetchone()[0]
+            )
+            if active_tokens > int(state["token_limit"]):
+                raise InvalidRunTransitionError(
+                    "Merged Cloud Memory baseline exceeds the local hard cap"
+                )
+            if int(state["revision"]) == 0:
+                connection.execute(
+                    """
+                    UPDATE memory_scope_state
+                    SET capture_enabled = ?, use_enabled = ?,
+                        processed_through_watermark = ?, watermark_kind = ?,
+                        current_token_count = ?, updated_at = ?
+                    WHERE scope_type = ? AND scope_id = ?
+                    """,
+                    (
+                        int(bool(scope.get("capture_enabled"))),
+                        int(bool(scope.get("use_enabled"))),
+                        scope.get("processed_through_watermark"),
+                        scope.get("watermark_kind"),
+                        active_tokens,
+                        timestamp,
+                        scope_type,
+                        scope_id,
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE memory_scope_state
+                    SET current_token_count = ?, updated_at = ?
+                    WHERE scope_type = ? AND scope_id = ?
+                    """,
+                    (active_tokens, timestamp, scope_type, scope_id),
+                )
 
     def get_memory_sync_status(
         self, scope_type: str, scope_id: str
@@ -13652,6 +14145,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(_MIGRATION_V24)
         if version < 25:
             self._connection.executescript(_MIGRATION_V25)
+        if version < 26:
+            self._connection.executescript(_MIGRATION_V26)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

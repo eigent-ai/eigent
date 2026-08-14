@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import threading
 
@@ -568,3 +569,72 @@ def test_memory_sync_snapshot_is_always_full_and_includes_tombstones(journal):
     assert snapshot["scope"]["sync_scope"] == "full_memory"
     assert snapshot["entries"][0]["content"] == "Prefer compact replies."
     assert snapshot["entries"][0]["deleted_at"] is not None
+
+
+def test_writer_takeover_merges_cloud_baseline_before_rebase(journal):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-local",
+        idempotency_key="request-local",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-local",
+        actor_type="user",
+        reason="Keep a local preference",
+        content="Use compact tables.",
+        kind="preference",
+        token_count=3,
+        created_by="user",
+        source_trust="user_confirmed",
+    )
+    cloud_content = "Never remove the confirmed release constraint."
+    journal.merge_cloud_memory_baseline(
+        scope_type="project",
+        scope_id="project-1",
+        scope={
+            "capture_enabled": True,
+            "use_enabled": True,
+            "sync_scope": "full_memory",
+            "token_limit": 1024,
+            "processed_through_watermark": "sqlite-project-v1:7",
+            "watermark_kind": "journal_cursor",
+            "updated_at": "2026-08-14T00:00:00+00:00",
+        },
+        entries=[
+            {
+                "memory_id": "memory-cloud",
+                "kind": "constraint",
+                "content": cloud_content,
+                "content_digest": hashlib.sha256(
+                    cloud_content.encode()
+                ).hexdigest(),
+                "priority": "high",
+                "version": 4,
+                "token_count": 6,
+                "pinned_by_user": True,
+                "confirmed_by_user": True,
+                "created_by": "user",
+                "source_trust": "user_confirmed",
+                "sensitivity": "normal",
+                "source_refs": ["ref:0123456789abcdefabcd"],
+                "deleted_at": None,
+                "created_at": "2026-08-13T00:00:00+00:00",
+                "updated_at": "2026-08-14T00:00:00+00:00",
+            }
+        ],
+    )
+
+    snapshot = journal.list_memory_sync_snapshots()[0]
+
+    assert {entry["memory_id"] for entry in snapshot["entries"]} == {
+        "memory-local",
+        "memory-cloud",
+    }
+    restored = next(
+        entry
+        for entry in snapshot["entries"]
+        if entry["memory_id"] == "memory-cloud"
+    )
+    assert restored["pinned_by_user"] is True
+    assert restored["confirmed_by_user"] is True
+    assert restored["source_refs"] == ["ref:0123456789abcdefabcd"]
