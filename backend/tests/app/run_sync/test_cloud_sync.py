@@ -47,6 +47,7 @@ class FakeTransport:
         self.memory_writer_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_claims: list[dict[str, Any]] = []
         self.artifact_uploads = []
+        self.artifact_upload_gate: asyncio.Event | None = None
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -174,6 +175,8 @@ class FakeTransport:
 
     async def upload_artifact(self, configuration, item):
         self.artifact_uploads.append(item)
+        if self.artifact_upload_gate is not None:
+            await self.artifact_upload_gate.wait()
         return {
             "id": 73,
             "filename": item.filename,
@@ -274,9 +277,28 @@ async def test_worker_uploads_durable_artifact_then_syncs_asset_event(
         ),
     )
     transport = FakeTransport()
+    transport.artifact_upload_gate = asyncio.Event()
     worker = _worker(journal, transport)
 
-    assert await worker.drain_once() == 5
+    # The S3 lane is deliberately stalled. Canonical events, including the
+    # terminal result, must still reach Cloud without waiting for file bytes.
+    assert await worker.drain_once() == 3
+    assert transport.payloads
+    assert transport.payloads[0]["events"][-1]["event_type"] == "run.completed"
+    assert not any(
+        event.event_type == "artifact.uploaded"
+        for event in journal.list_events("run-artifact")
+    )
+
+    transport.artifact_upload_gate.set()
+    for _ in range(100):
+        if any(
+            event.event_type == "artifact.uploaded"
+            for event in journal.list_events("run-artifact")
+        ):
+            break
+        await asyncio.sleep(0)
+    assert await worker.drain_once() == 1
 
     assert len(transport.artifact_uploads) == 1
     upload = transport.artifact_uploads[0]

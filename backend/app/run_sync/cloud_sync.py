@@ -482,6 +482,7 @@ class CloudSyncWorker:
         self._bootstrap_next_attempt_at = 0.0
         self._memory_snapshot_revisions: dict[tuple[str, str], int] = {}
         self._memory_snapshot_verified_at: dict[tuple[str, str], float] = {}
+        self._artifact_tasks: set[asyncio.Task[int]] = set()
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         if configuration != self._configuration:
@@ -545,36 +546,52 @@ class CloudSyncWorker:
                     )
                 )
                 memory_count = sum(memory_results)
-        artifact_count = 0
-        artifact_uploads = await asyncio.to_thread(
-            self._journal.claim_ready_artifact_uploads,
-            limit=self._max_parallel_runs,
-            lease_seconds=max(self._lease_seconds, 60.0),
+        artifact_capacity = max(
+            0, self._max_parallel_runs - len(self._artifact_tasks)
         )
-        if artifact_uploads:
-            artifact_results = await asyncio.gather(
-                *(
-                    self._sync_artifact_upload(item, configuration)
-                    for item in artifact_uploads
-                )
+        artifact_uploads = (
+            await asyncio.to_thread(
+                self._journal.claim_ready_artifact_uploads,
+                limit=artifact_capacity,
+                lease_seconds=max(self._lease_seconds, 60.0),
             )
-            artifact_count = sum(artifact_results)
+            if artifact_capacity
+            else []
+        )
         batches = await asyncio.to_thread(
             self._journal.claim_ready_outbox_batches,
             max_runs=self._max_parallel_runs,
             batch_size=self._batch_size,
             lease_seconds=self._lease_seconds,
         )
+        for item in artifact_uploads:
+            task = asyncio.create_task(
+                self._sync_artifact_upload(item, configuration),
+                name=f"artifact-upload-{item.artifact_id}",
+            )
+            self._artifact_tasks.add(task)
+            task.add_done_callback(self._artifact_upload_finished)
         if not batches:
-            if artifact_uploads:
-                self.notify()
-            return memory_count + artifact_count
+            return memory_count
         results = await asyncio.gather(
             *(self._sync_batch(batch, configuration) for batch in batches)
         )
         # Drain another slice without waiting when more Runs or events are ready.
         self.notify()
-        return memory_count + artifact_count + sum(results)
+        return memory_count + sum(results)
+
+    def _artifact_upload_finished(self, task: asyncio.Task[int]) -> None:
+        self._artifact_tasks.discard(task)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            # _sync_artifact_upload normally converts failures into durable
+            # retry/dead-letter state. Keep a final guard so a background task
+            # can never become an unobserved exception.
+            logger.exception("Unexpected Artifact upload task failure")
+        self.notify()
 
     async def _sync_artifact_upload(
         self,
@@ -1361,4 +1378,10 @@ class CloudSyncWorker:
                 await task
             except asyncio.CancelledError:
                 pass
+        artifact_tasks = tuple(self._artifact_tasks)
+        self._artifact_tasks.clear()
+        for artifact_task in artifact_tasks:
+            artifact_task.cancel()
+        if artifact_tasks:
+            await asyncio.gather(*artifact_tasks, return_exceptions=True)
         await self._transport.close()
