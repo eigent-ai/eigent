@@ -164,6 +164,12 @@ class RunEventSyncTransport(Protocol):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
+    async def claim_memory_writer(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
     async def close(self) -> None: ...
 
 
@@ -315,7 +321,7 @@ class HttpRunEventSyncTransport:
         return await self._json_request(
             "GET",
             f"{self._sync_base(configuration)}/projects/{encoded_project_id}/snapshot"
-            "?event_limit=1",
+            "?event_limit=1&include_artifacts=false",
             configuration,
         )
 
@@ -368,6 +374,24 @@ class HttpRunEventSyncTransport:
         return await self._json_request(
             "PUT",
             f"{self._sync_base(configuration)}/memory/snapshot",
+            configuration,
+            payload,
+        )
+
+    async def claim_memory_writer(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if str(payload.get("scope_type")) == "project":
+            await self._ensure_device_and_route(
+                configuration, str(payload["scope_id"])
+            )
+        else:
+            await self._ensure_device(configuration)
+        return await self._json_request(
+            "POST",
+            f"{self._sync_base(configuration)}/memory/writer:claim",
             configuration,
             payload,
         )
@@ -661,6 +685,53 @@ class CloudSyncWorker:
             }
             try:
                 response = await put_snapshot(configuration, payload)
+            except RunEventSyncHttpError as exc:
+                detail = (
+                    exc.detail.get("detail", exc.detail)
+                    if isinstance(exc.detail, dict)
+                    else {}
+                )
+                claim_writer = getattr(
+                    self._transport, "claim_memory_writer", None
+                )
+                if (
+                    exc.status_code == 409
+                    and isinstance(detail, dict)
+                    and detail.get("code") == "memory_scope_writer_conflict"
+                    and isinstance(detail.get("current_writer_epoch"), int)
+                    and callable(claim_writer)
+                ):
+                    try:
+                        await claim_writer(
+                            configuration,
+                            {
+                                "scope_type": key[0],
+                                "scope_id": key[1],
+                                "expected_writer_epoch": detail[
+                                    "current_writer_epoch"
+                                ],
+                            },
+                        )
+                        response = await put_snapshot(configuration, payload)
+                    except Exception:
+                        logger.exception(
+                            "Cloud Memory writer transfer failed for %s/%s",
+                            *key,
+                        )
+                        continue
+                else:
+                    logger.exception(
+                        "Cloud Memory snapshot sync failed for %s/%s", *key
+                    )
+                    continue
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "Cloud Memory snapshot sync failed for %s/%s", *key
+                )
+                continue
+            try:
                 if (
                     response.get("scope_type") != key[0]
                     or response.get("scope_id") != key[1]

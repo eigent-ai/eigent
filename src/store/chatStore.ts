@@ -146,6 +146,22 @@ export const canonicalRunEventToLegacyMessage = (
           : undefined,
     } as AgentMessage;
   }
+  if (event.event_type === 'artifact.uploaded') {
+    const payload =
+      event.payload && typeof event.payload === 'object'
+        ? (event.payload as Record<string, unknown>)
+        : null;
+    if (!payload || typeof payload.artifact_id !== 'string') return null;
+    return {
+      step: AgentStep.ARTIFACT_UPLOADED,
+      data: payload,
+      timestamp:
+        typeof event.created_at === 'number' &&
+        Number.isFinite(event.created_at)
+          ? event.created_at
+          : undefined,
+    } as AgentMessage;
+  }
   if (typeof event.legacy_step !== 'string' || !event.legacy_step) {
     return null;
   }
@@ -577,12 +593,14 @@ interface UploadCandidate {
   name: string;
   uploadName: string;
   source: UploadFileSource;
+  artifactId?: string;
 }
 
 interface UploadOutcome {
   success: boolean;
   fileName: string;
   source: UploadFileSource;
+  artifactId?: string;
   response?: unknown;
   error?: unknown;
 }
@@ -776,12 +794,17 @@ export function collectTaskUploadFiles(
   // folder. Reading/referencing a local file is never upload consent.
   for (const file of taskOutputFiles) {
     if (!file?.path || !file?.name || file.isFolder) continue;
+    // A canonical manifest is also the consent boundary. Files from the
+    // selected workspace are metadata-only; only Eigent/agent generated
+    // outputs may leave the device automatically.
+    if (file.uploadPolicy === 'metadata_only') continue;
     if (!isReadableLocalPath(file.path)) continue;
     uploadCandidates.push({
       path: file.path,
       name: file.name,
       relativePath: file.relativePath,
       source: 'project_output',
+      artifactId: file.artifactId,
     });
   }
 
@@ -836,6 +859,7 @@ async function uploadTaskFiles(
           success: false,
           fileName: file.name,
           source: file.source,
+          artifactId: file.artifactId,
           error: 'IPC renderer is unavailable',
         });
         continue;
@@ -846,6 +870,7 @@ async function uploadTaskFiles(
           success: false,
           fileName: file.name,
           source: file.source,
+          artifactId: file.artifactId,
           error: result.error || 'Failed to read file',
         });
         continue;
@@ -873,6 +898,7 @@ async function uploadTaskFiles(
         success: true,
         fileName: file.uploadName,
         source: file.source,
+        artifactId: file.artifactId,
         response: uploadResponse,
       });
     } catch (error) {
@@ -881,6 +907,7 @@ async function uploadTaskFiles(
         success: false,
         fileName: file.uploadName,
         source: file.source,
+        artifactId: file.artifactId,
         error,
       });
     }
@@ -1182,12 +1209,16 @@ export function extractFinalOutputFileList(
 }
 
 type TaskArtifactChange = {
+  artifact_id?: unknown;
   filename?: unknown;
   path?: unknown;
   relativePath?: unknown;
   changeType?: unknown;
   size?: unknown;
   modifiedAt?: unknown;
+  uploadPolicy?: unknown;
+  localPathAvailable?: unknown;
+  asset_ref?: unknown;
 };
 
 /** Convert Brain's capability-protected local artifact index into preview cards. */
@@ -1209,9 +1240,19 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
       typeof candidate.relativePath === 'string'
         ? normalizeOutputPath(candidate.relativePath)
         : undefined;
+    const artifactId =
+      typeof candidate.artifact_id === 'string'
+        ? candidate.artifact_id.trim()
+        : '';
     const type = getFileTypeFromName(name);
-    const identity = (relativePath || path).toLowerCase();
-    if (!path || !name || !identity || seen.has(identity)) continue;
+    const identity = (artifactId || relativePath || path).toLowerCase();
+    if (!name || !identity || seen.has(identity)) continue;
+
+    const asset =
+      candidate.asset_ref && typeof candidate.asset_ref === 'object'
+        ? (candidate.asset_ref as Record<string, unknown>)
+        : null;
+    const assetKey = typeof asset?.key === 'string' ? asset.key : undefined;
 
     seen.add(identity);
     files.push({
@@ -1221,6 +1262,35 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
       relativePath,
       icon: FileText,
       isRemote: false,
+      artifactId: artifactId || undefined,
+      uploadPolicy:
+        candidate.uploadPolicy === 'agent_generated'
+          ? 'agent_generated'
+          : candidate.uploadPolicy === 'metadata_only'
+            ? 'metadata_only'
+            : undefined,
+      localPathAvailable:
+        typeof candidate.localPathAvailable === 'boolean'
+          ? candidate.localPathAvailable
+          : Boolean(path),
+      assetRef: assetKey
+        ? {
+            chatFileId:
+              typeof asset?.chat_file_id === 'number'
+                ? asset.chat_file_id
+                : undefined,
+            key: assetKey,
+            bucket:
+              typeof asset?.bucket === 'string' ? asset.bucket : undefined,
+            filename:
+              typeof asset?.filename === 'string' ? asset.filename : undefined,
+            size: typeof asset?.size === 'number' ? asset.size : undefined,
+            contentType:
+              typeof asset?.content_type === 'string'
+                ? asset.content_type
+                : undefined,
+          }
+        : undefined,
       artifactChange:
         candidate.changeType === 'generated' ? 'generated' : 'changed',
       size:
@@ -4068,6 +4138,57 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
 
+          if (agentMessages.step === AgentStep.ARTIFACT_UPLOADED) {
+            const lockedTaskId = getCurrentTaskId();
+            const lockedTask = getCurrentChatStore().tasks[lockedTaskId];
+            if (!lockedTask) return;
+            const artifactId = agentMessages.data.artifact_id;
+            const rawAsset = agentMessages.data.asset_ref;
+            const assetKey = rawAsset?.key;
+            if (
+              typeof artifactId !== 'string' ||
+              !rawAsset ||
+              typeof rawAsset !== 'object' ||
+              typeof assetKey !== 'string'
+            ) {
+              return;
+            }
+            lockedTask.artifactManifestFiles = (
+              lockedTask.artifactManifestFiles || []
+            ).map((file) =>
+              file.artifactId === artifactId
+                ? {
+                    ...file,
+                    assetRef: {
+                      chatFileId:
+                        typeof rawAsset.chat_file_id === 'number'
+                          ? rawAsset.chat_file_id
+                          : undefined,
+                      key: assetKey,
+                      bucket:
+                        typeof rawAsset.bucket === 'string'
+                          ? rawAsset.bucket
+                          : undefined,
+                      filename:
+                        typeof rawAsset.filename === 'string'
+                          ? rawAsset.filename
+                          : undefined,
+                      size:
+                        typeof rawAsset.size === 'number'
+                          ? rawAsset.size
+                          : undefined,
+                      contentType:
+                        typeof rawAsset.content_type === 'string'
+                          ? rawAsset.content_type
+                          : undefined,
+                    },
+                  }
+                : file
+            );
+            setUpdateCount();
+            return;
+          }
+
           if (agentMessages.step === AgentStep.BUDGET_NOT_ENOUGH) {
             console.log('error', agentMessages.data);
             showCreditsToast();
@@ -4512,11 +4633,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         uploadTargetId,
                         user_id
                       )) as CamelLogUploadFile[]) || [];
-                    const taskOutputFiles = tasks[
+                    const legacyTaskOutputFiles = tasks[
                       currentTaskId
                     ].taskAssigning.flatMap((agent) =>
                       agent.tasks.flatMap((task) => task.fileList || [])
                     );
+                    const taskOutputFiles =
+                      completedTask.artifactManifestFinalized === true
+                        ? completedTask.artifactManifestFiles || []
+                        : legacyTaskOutputFiles;
                     const filesToUpload = collectTaskUploadFiles(
                       camelLogFiles,
                       tasks[currentTaskId].messages,
@@ -4541,6 +4666,41 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       );
                       if (failedUploads.length > 0) {
                         console.error('Failed to upload files:', failedUploads);
+                      }
+
+                      for (const result of uploadResults) {
+                        if (
+                          !result.success ||
+                          result.source !== 'project_output' ||
+                          !result.artifactId ||
+                          !result.response ||
+                          typeof result.response !== 'object'
+                        ) {
+                          continue;
+                        }
+                        const asset = result.response as Record<
+                          string,
+                          unknown
+                        >;
+                        try {
+                          await fetchPost(
+                            `/runs/${encodeURIComponent(currentTaskId)}/artifacts/${encodeURIComponent(result.artifactId)}/uploaded`,
+                            {
+                              chat_file_id: asset.id,
+                              s3_bucket: asset.s3_bucket,
+                              s3_key: asset.s3_key,
+                              filename: asset.filename,
+                              file_size: asset.file_size,
+                              file_type: asset.file_type,
+                            }
+                          );
+                        } catch (error) {
+                          console.error(
+                            'Uploaded Artifact asset could not be journaled:',
+                            result.artifactId,
+                            error
+                          );
+                        }
                       }
 
                       const generatedSuccessCount = uploadResults.filter(

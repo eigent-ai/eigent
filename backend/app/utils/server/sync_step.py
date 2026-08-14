@@ -198,27 +198,16 @@ async def _record_local_step(args, value) -> None:
     # was already shown to the user.
     await _flush_local_text(run_id)
     if data["step"] == "end":
-        # Finalize the authoritative Artifact manifest before the legacy
-        # assistant.final/end projection. Durable replay can therefore build
-        # the Files changed UI before END terminalizes the legacy reducer.
-        from app.artifacts import finalize_run_artifacts
-        from app.run_journal.runtime import get_default_run_journal
-
-        journal = get_default_run_journal()
-        run = await asyncio.to_thread(journal.get_run, run_id)
-        if run is None:
-            raise RuntimeError(
-                f"Run {run_id!r} disappeared before finalization"
-            )
-        await asyncio.to_thread(finalize_run_artifacts, journal, run)
-        await get_default_event_recorder().record_assistant_final(
-            project_id=project_id,
-            run_id=run_id,
-            data=data["data"],
-        )
+        # RunCoordinator owns the successful terminal transaction. Artifact
+        # discovery happens first, then assistant.final + run.completed commit
+        # atomically before the legacy END frame is yielded to the Renderer.
         from app.run_runtime import get_default_run_coordinator
 
-        if not await get_default_run_coordinator().complete_turn(run_id):
+        if not await get_default_run_coordinator().complete_turn(
+            run_id,
+            project_id=project_id,
+            assistant_data=data["data"],
+        ):
             raise RuntimeError(
                 f"RunCoordinator could not terminalize completed Run {run_id!r}"
             )
@@ -235,6 +224,11 @@ async def _record_local_step_fail_open(args, value) -> None:
     try:
         await _record_local_step(args, value)
     except Exception as exc:
+        parsed = _parse_value(value)
+        if parsed is not None and parsed.get("step") == "end":
+            # A successful END is a product claim that must never outrun the
+            # canonical assistant result and Run terminal transaction.
+            raise
         run_id, project_id = _resolve_run_and_project(args)
         _local_text_buffers.pop(run_id, None)
         _mark_local_history_degraded(

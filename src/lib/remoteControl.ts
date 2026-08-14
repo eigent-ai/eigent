@@ -316,6 +316,7 @@ export interface RemoteProjectSnapshot {
     updated_at: string;
   }>;
   recent_events: RemoteCanonicalEvent[];
+  artifact_events?: RemoteCanonicalEvent[];
   events_truncated: boolean;
 }
 

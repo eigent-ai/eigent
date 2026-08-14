@@ -17,6 +17,7 @@ import {
   acceptCanonicalRunEvent,
   admitDurableRunResume,
   canonicalRunEventToLegacyMessage,
+  collectTaskUploadFiles,
   createCanonicalRunEventCursor,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
@@ -206,6 +207,60 @@ describe('canonical Run replay projection', () => {
         [files[0]]
       )
     ).toHaveLength(1);
+  });
+
+  it('keeps Cloud-safe Artifact metadata when the local path is redacted', () => {
+    const files = normalizeTaskArtifactFileList([
+      {
+        artifact_id: 'art-cloud-1',
+        filename: 'report.csv',
+        relativePath: 'reports/report.csv',
+        changeType: 'generated',
+        uploadPolicy: 'agent_generated',
+        localPathAvailable: false,
+      },
+    ]);
+
+    expect(files).toEqual([
+      expect.objectContaining({
+        artifactId: 'art-cloud-1',
+        name: 'report.csv',
+        path: '',
+        relativePath: 'reports/report.csv',
+        localPathAvailable: false,
+      }),
+    ]);
+  });
+
+  it('uploads only agent-generated canonical Artifacts', () => {
+    const candidates = collectTaskUploadFiles(
+      [],
+      [],
+      [],
+      [
+        {
+          artifactId: 'art-generated',
+          name: 'generated.csv',
+          type: 'csv',
+          path: '/workspace/generated.csv',
+          uploadPolicy: 'agent_generated',
+        },
+        {
+          artifactId: 'art-local',
+          name: 'private.csv',
+          type: 'csv',
+          path: '/workspace/private.csv',
+          uploadPolicy: 'metadata_only',
+        },
+      ]
+    );
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        artifactId: 'art-generated',
+        path: '/workspace/generated.csv',
+      }),
+    ]);
   });
 
   it('matches URL-encoded stream paths and legacy x-prefixed paths', () => {

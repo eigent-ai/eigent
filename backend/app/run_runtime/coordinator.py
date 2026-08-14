@@ -368,14 +368,21 @@ class RunCoordinator:
             handle.deadline_changed_event.set()
             return True
 
-    async def complete_turn(self, run_id: str) -> bool:
+    async def complete_turn(
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+        assistant_data: Any,
+    ) -> bool:
         """Terminalize one Run without disposing its warm Project runtime.
 
         Compatibility chat generators intentionally stay alive across
         follow-up Runs.  Their physical completion therefore cannot define a
-        logical Run boundary.  The end-step recorder calls this method after
-        assistant.final is durable; the same handle can then be rebound to
-        the next Run without retaining the previous Run as ``running``.
+        logical Run boundary. The end-step recorder gives this method the
+        assistant result so it can atomically commit that result with the
+        successful terminal; the same handle can then be rebound to the next
+        Run without retaining the previous Run as ``running``.
         """
 
         async with self._lock:
@@ -383,12 +390,70 @@ class RunCoordinator:
             if handle is None or not handle.consumer_alive:
                 return False
             started_at = handle.started_at
-        await self._commit_run_terminal(
-            run_id=run_id,
-            started_at=started_at,
-            event_type="run.completed",
-            payload={"reason": "run_turn_completed"},
+        if self._journal is None:
+            return True
+        from app.artifacts import finalize_run_artifacts
+        from app.run_journal.models import RunEventDraft
+
+        run = await asyncio.to_thread(self._journal.get_run, run_id)
+        if run is None:
+            return False
+        artifact_manifest = await asyncio.to_thread(
+            finalize_run_artifacts,
+            self._journal,
+            run,
         )
+        assistant_payload = (
+            dict(assistant_data)
+            if isinstance(assistant_data, dict)
+            else {"message": str(assistant_data)}
+        )
+        await asyncio.to_thread(
+            self._journal.complete_successful_run,
+            run_id,
+            assistant_final=RunEventDraft(
+                event_id=f"assistant-final:{run_id}",
+                event_type="assistant.final",
+                payload=assistant_payload,
+                legacy_step="end",
+            ),
+            terminal=RunEventDraft(
+                event_id=(
+                    f"runtime-terminal:{run_id}:"
+                    f"{int(started_at * 1_000_000)}:run.completed"
+                ),
+                event_type="run.completed",
+                payload={"reason": "run_turn_completed"},
+            ),
+            artifact_manifest=artifact_manifest,
+            expected_project_id=project_id,
+        )
+        from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+        notify_default_cloud_sync_worker()
+        try:
+            from app.workspace_git import get_default_workspace_git_lifecycle
+
+            await asyncio.to_thread(
+                get_default_workspace_git_lifecycle().finalize_run,
+                run_id,
+            )
+        except Exception:
+            logger.exception(
+                "Terminal Run Git finalization needs attention",
+                extra={"run_id": run_id},
+            )
+        try:
+            from app.lightweight_memory import (
+                schedule_project_memory_maintenance,
+            )
+
+            schedule_project_memory_maintenance(project_id)
+        except Exception:
+            logger.exception(
+                "Failed to schedule non-blocking Memory maintenance",
+                extra={"run_id": run_id, "project_id": project_id},
+            )
         run = (
             await asyncio.to_thread(self._journal.get_run, run_id)
             if self._journal is not None
@@ -627,17 +692,18 @@ class RunCoordinator:
         if run is None or run.status in {"completed", "failed", "cancelled"}:
             return
         try:
-            if event_type == "run.completed":
+            if event_type in {
+                "run.completed",
+                "run.failed",
+                "run.cancelled",
+                "run.deadline_reached",
+            }:
                 from app.artifacts import finalize_run_artifacts
 
                 artifact_manifest_event = await asyncio.to_thread(
                     finalize_run_artifacts,
                     self._journal,
                     run,
-                )
-                result_event = await asyncio.to_thread(
-                    self._journal.get_run_final_result_event,
-                    run_id,
                 )
                 payload = {
                     **payload,
@@ -650,6 +716,10 @@ class RunCoordinator:
                         )
                     ),
                 }
+                result_event = await asyncio.to_thread(
+                    self._journal.get_run_final_result_event,
+                    run_id,
+                )
                 if result_event is not None:
                     payload = {
                         **payload,

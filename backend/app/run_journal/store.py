@@ -7692,10 +7692,10 @@ class SQLiteRunJournal:
         """Commit one Run's Artifact lifecycle and manifest barrier once.
 
         Artifact discovery runs before this transaction and two terminal paths
-        may race to publish its result. ``BEGIN IMMEDIATE`` plus the in-lock
-        barrier lookup makes the first finalized manifest authoritative; a
-        later scanner observes and returns it without appending a second view
-        of the same Run's filesystem.
+        may race to publish its result. While a Run remains non-terminal a
+        later scan may append a corrected manifest (for example after crash
+        recovery). Once terminal, ``BEGIN IMMEDIATE`` plus the in-lock barrier
+        lookup freezes and returns the latest committed manifest.
         """
 
         if (
@@ -7723,7 +7723,16 @@ class SQLiteRunJournal:
                 """,
                 (run_id,),
             ).fetchone()
-            if existing is not None:
+            run = connection.execute(
+                "SELECT status FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if existing is not None and run["status"] in {
+                "completed",
+                "failed",
+                "cancelled",
+            }:
                 return self._event_from_row(existing)
 
             committed: list[CommittedRunEvent] = []
@@ -7737,6 +7746,84 @@ class SQLiteRunJournal:
                     )
                 )
             return committed[-1]
+
+    def complete_successful_run(
+        self,
+        run_id: str,
+        *,
+        assistant_final: RunEventDraft,
+        terminal: RunEventDraft,
+        artifact_manifest: CommittedRunEvent,
+        expected_project_id: str,
+    ) -> tuple[CommittedRunEvent, CommittedRunEvent]:
+        """Atomically commit the canonical result and successful Run terminal.
+
+        Artifact discovery intentionally happens before this short transaction.
+        A crash after its manifest barrier is safe because a non-terminal Run may
+        publish a later manifest generation; the successful assistant result and
+        ``run.completed`` themselves never become separated.
+        """
+
+        if assistant_final.event_type != "assistant.final":
+            raise ValueError("successful completion requires assistant.final")
+        if terminal.event_type != "run.completed":
+            raise ValueError("successful completion requires run.completed")
+        if artifact_manifest.run_id != run_id:
+            raise IdempotencyConflictError(
+                "Artifact manifest belongs to another Run"
+            )
+
+        terminal_payload = {
+            **dict(terminal.payload),
+            "artifact_manifest_event_id": artifact_manifest.event_id,
+            "artifact_count": int(
+                artifact_manifest.payload.get("artifact_count", 0)
+            ),
+            "result_event_id": assistant_final.event_id,
+        }
+        terminal_draft = RunEventDraft(
+            event_id=terminal.event_id,
+            event_type=terminal.event_type,
+            payload=terminal_payload,
+            legacy_step=terminal.legacy_step,
+            created_at=terminal.created_at,
+        )
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if run["project_id"] != expected_project_id:
+                raise IdempotencyConflictError(
+                    f"run_id {run_id!r} belongs to another project"
+                )
+
+            result_event = self._append_event_in_transaction(
+                connection,
+                run_id,
+                assistant_final,
+                expected_project_id=expected_project_id,
+            )
+            terminal_event = self._append_event_in_transaction(
+                connection,
+                run_id,
+                terminal_draft,
+                expected_project_id=expected_project_id,
+                run_status="completed",
+                clear_active_attempt=True,
+            )
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'completed', ended_at = COALESCE(ended_at, ?),
+                    outcome = COALESCE(outcome, 'run.completed')
+                WHERE run_id = ?
+                  AND status IN ('pending', 'running', 'waiting_for_user')
+                """,
+                (terminal_draft.created_at, run_id),
+            )
+            return result_event, terminal_event
 
     def list_events(
         self,

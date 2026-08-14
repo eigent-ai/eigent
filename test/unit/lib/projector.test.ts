@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import {
   completeProjectViewResync,
   createProjectViewState,
@@ -10,6 +24,7 @@ import {
   projectSnapshot,
   reduceProjectView,
   selectPendingLegacyAsk,
+  selectRunArtifacts,
 } from '@/lib/projector';
 import { describe, expect, it } from 'vitest';
 
@@ -39,6 +54,67 @@ describe('projector pipeline', () => {
     expect(duplicate).toBe(first);
     expect(first.legacySteps).toHaveLength(1);
     expect(first.currentCursor).toBe(1);
+  });
+
+  it('restores durable Artifacts outside the bounded snapshot event tail', () => {
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 100,
+      recent_events: [
+        event({
+          event_id: 'recent-100',
+          cloud_cursor: 100,
+          run_sequence: 100,
+        }),
+      ],
+      artifact_events: [
+        event({
+          event_id: 'manifest-1',
+          cloud_cursor: 1,
+          event_type: 'artifact.manifest.finalized',
+          legacy_step: null,
+          payload: {
+            artifacts: [
+              {
+                artifact_id: 'artifact-1',
+                filename: 'report.csv',
+                relativePath: 'reports/report.csv',
+                changeType: 'generated',
+                uploadPolicy: 'agent_generated',
+                localPathAvailable: false,
+              },
+            ],
+          },
+        }),
+        event({
+          event_id: 'upload-1',
+          cloud_cursor: 2,
+          run_sequence: 2,
+          event_type: 'artifact.uploaded',
+          legacy_step: null,
+          payload: {
+            artifact_id: 'artifact-1',
+            asset_ref: {
+              chat_file_id: 7,
+              bucket: 'assets',
+              key: 'reports/report.csv',
+            },
+          },
+        }),
+      ],
+      events_truncated: true,
+    });
+
+    expect(snapshot.needsResync).toBe(false);
+    expect(selectRunArtifacts(snapshot, 'run-1')).toEqual([
+      expect.objectContaining({
+        artifactId: 'artifact-1',
+        assetRef: expect.objectContaining({
+          chatFileId: 7,
+          key: 'reports/report.csv',
+        }),
+      }),
+    ]);
   });
 
   it('detects both Project cursor and Run sequence gaps', () => {

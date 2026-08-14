@@ -22,13 +22,14 @@ depends on an in-memory queue.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
 import uuid
 from contextlib import suppress
 from dataclasses import asdict
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -41,6 +42,7 @@ from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
+    RunEventDraft,
     RunNotFoundError,
     UnsafeResumeError,
     get_default_run_journal,
@@ -105,6 +107,15 @@ class InteractionDecisionBody(BaseModel):
     actor_id: str | None = None
     source: str = "desktop"
     continue_active_attempt: bool = True
+
+
+class ArtifactUploadedBody(BaseModel):
+    chat_file_id: int | None = Field(default=None, ge=1)
+    s3_bucket: str = Field(min_length=1, max_length=255)
+    s3_key: str = Field(min_length=1, max_length=2048)
+    filename: str = Field(min_length=1, max_length=1024)
+    file_size: int = Field(ge=0)
+    file_type: str = Field(default="", max_length=255)
 
 
 def _event_payload(event: CommittedRunEvent) -> dict[str, Any]:
@@ -300,7 +311,7 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
-    status: list[str] | None = Query(default=None),
+    status: Annotated[list[str] | None, Query()] = None,
     limit: int = Query(default=20, ge=1, le=100),
 ):
     """Return canonical Run state for the main Desktop Project UI."""
@@ -675,6 +686,84 @@ async def cancel_run(run_id: str, body: CancelRunBody):
     except Exception as exc:
         raise _control_error(exc) from exc
     return asdict(run)
+
+
+@router.post("/runs/{run_id}/artifacts/{artifact_id}/uploaded")
+async def record_artifact_uploaded(
+    run_id: str,
+    artifact_id: str,
+    body: ArtifactUploadedBody,
+):
+    """Attach a durable Cloud asset reference to one canonical Artifact."""
+
+    journal = get_default_run_journal()
+    manifest = await asyncio.to_thread(
+        journal.get_run_artifact_manifest_event,
+        run_id,
+    )
+    if manifest is None:
+        raise HTTPException(
+            status_code=409, detail="Artifact manifest missing"
+        )
+    candidates = manifest.payload.get("artifacts")
+    artifact = (
+        next(
+            (
+                item
+                for item in candidates
+                if isinstance(item, dict)
+                and item.get("artifact_id") == artifact_id
+            ),
+            None,
+        )
+        if isinstance(candidates, list)
+        else None
+    )
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    if artifact.get("uploadPolicy") != "agent_generated":
+        raise HTTPException(
+            status_code=409,
+            detail="Metadata-only Artifact cannot be uploaded automatically",
+        )
+
+    payload = {
+        "artifact_id": artifact_id,
+        "relativePath": artifact.get("relativePath"),
+        "filename": body.filename,
+        "asset_ref": {
+            "chat_file_id": body.chat_file_id,
+            "bucket": body.s3_bucket,
+            "key": body.s3_key,
+            "filename": body.filename,
+            "size": body.file_size,
+            "content_type": body.file_type,
+        },
+    }
+    event_fingerprint = hashlib.sha256(
+        json.dumps(
+            {"run_id": run_id, **payload},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    try:
+        committed = await asyncio.to_thread(
+            journal.append_event,
+            run_id,
+            RunEventDraft(
+                event_id=f"au_{event_fingerprint[:61]}",
+                event_type="artifact.uploaded",
+                payload=payload,
+            ),
+        )
+    except Exception as exc:
+        raise _control_error(exc) from exc
+    from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+    notify_default_cloud_sync_worker()
+    return _event_payload(committed)
 
 
 @router.post("/runs/{run_id}/signals")

@@ -41,6 +41,21 @@ declare global {
     mimeType?: string;
     supportsRanges?: boolean;
     preview?: FilePreviewPayload;
+    /** Stable identity from the canonical Artifact event stream. */
+    artifactId?: string;
+    /** Only agent-generated outputs may be uploaded automatically. */
+    uploadPolicy?: 'agent_generated' | 'metadata_only';
+    /** False for Cloud-restored metadata whose local path was redacted. */
+    localPathAvailable?: boolean;
+    /** Durable Cloud asset reference populated after upload succeeds. */
+    assetRef?: {
+      chatFileId?: number;
+      bucket?: string;
+      key: string;
+      filename?: string;
+      size?: number;
+      contentType?: string;
+    };
   }
 
   interface ProjectInfo {
@@ -183,6 +198,8 @@ declare global {
       safety_class?: string;
       target_resources?: string[];
       artifacts?: Array<Record<string, unknown>>;
+      artifact_id?: string;
+      asset_ref?: Record<string, unknown>;
       artifact_count?: number;
       scan_status?: string;
       manifest_digest?: string;

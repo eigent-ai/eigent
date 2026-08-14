@@ -1,8 +1,23 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import type {
   CanonicalProjectEvent,
-  ProjectViewState,
+  ProjectedArtifact,
   ProjectedRun,
   ProjectorMode,
+  ProjectViewState,
 } from './types';
 
 const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
@@ -101,6 +116,7 @@ export function createProjectViewState(
     resyncReason: null,
     resyncTargetCursor: null,
     runs: {},
+    artifactsByRun: {},
     legacySteps: [],
     unknownEvents: [],
   };
@@ -208,6 +224,102 @@ export function reduceProjectView(
     (event.payload.__legacy_step_id as number | string | undefined) ||
     event.eventId;
   const legacyData = event.payload.__legacy_data ?? event.payload;
+  let artifactsByRun = state.artifactsByRun;
+  if (event.eventType === 'artifact.manifest.finalized') {
+    const rawArtifacts = Array.isArray(event.payload.artifacts)
+      ? event.payload.artifacts
+      : [];
+    const projectedArtifacts: ProjectedArtifact[] = rawArtifacts.flatMap(
+      (raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        const value = raw as Record<string, unknown>;
+        const relativePath =
+          typeof value.relativePath === 'string' ? value.relativePath : '';
+        const name =
+          typeof value.filename === 'string'
+            ? value.filename
+            : relativePath.split('/').filter(Boolean).at(-1) || '';
+        if (!relativePath || !name) return [];
+        return [
+          {
+            artifactId:
+              typeof value.artifact_id === 'string'
+                ? value.artifact_id
+                : `${event.runId}:${relativePath}`,
+            runId: event.runId,
+            name,
+            relativePath,
+            changeType:
+              value.changeType === 'generated' ? 'generated' : 'changed',
+            size:
+              typeof value.size === 'number' && Number.isFinite(value.size)
+                ? value.size
+                : null,
+            modifiedAt:
+              typeof value.modifiedAt === 'number' &&
+              Number.isFinite(value.modifiedAt)
+                ? value.modifiedAt
+                : null,
+            uploadPolicy:
+              typeof value.uploadPolicy === 'string'
+                ? value.uploadPolicy
+                : null,
+            localPathAvailable: value.localPathAvailable === true,
+          },
+        ];
+      }
+    );
+    artifactsByRun = {
+      ...artifactsByRun,
+      [event.runId]: projectedArtifacts,
+    };
+  }
+  if (event.eventType === 'artifact.uploaded') {
+    const artifactId =
+      typeof event.payload.artifact_id === 'string'
+        ? event.payload.artifact_id
+        : '';
+    const rawAsset =
+      event.payload.asset_ref && typeof event.payload.asset_ref === 'object'
+        ? (event.payload.asset_ref as Record<string, unknown>)
+        : null;
+    const key = typeof rawAsset?.key === 'string' ? rawAsset.key : '';
+    if (artifactId && key) {
+      artifactsByRun = {
+        ...artifactsByRun,
+        [event.runId]: (artifactsByRun[event.runId] || []).map((artifact) =>
+          artifact.artifactId === artifactId
+            ? {
+                ...artifact,
+                assetRef: {
+                  key,
+                  chatFileId:
+                    typeof rawAsset?.chat_file_id === 'number'
+                      ? rawAsset.chat_file_id
+                      : undefined,
+                  bucket:
+                    typeof rawAsset?.bucket === 'string'
+                      ? rawAsset.bucket
+                      : undefined,
+                  filename:
+                    typeof rawAsset?.filename === 'string'
+                      ? rawAsset.filename
+                      : undefined,
+                  size:
+                    typeof rawAsset?.size === 'number'
+                      ? rawAsset.size
+                      : undefined,
+                  contentType:
+                    typeof rawAsset?.content_type === 'string'
+                      ? rawAsset.content_type
+                      : undefined,
+                },
+              }
+            : artifact
+        ),
+      };
+    }
+  }
   const hasLegacyStepId =
     event.legacyStep !== null &&
     state.legacySteps.some(
@@ -266,9 +378,12 @@ export function reduceProjectView(
     needsResync: state.needsResync,
     resyncReason: state.resyncReason,
     runs: { ...state.runs, [event.runId]: run },
+    artifactsByRun,
     legacySteps,
     unknownEvents:
-      event.legacyStep || RUN_STATUS_BY_EVENT[event.eventType]
+      event.legacyStep ||
+      RUN_STATUS_BY_EVENT[event.eventType] ||
+      event.eventType.startsWith('artifact.')
         ? state.unknownEvents
         : [...state.unknownEvents, event],
   };

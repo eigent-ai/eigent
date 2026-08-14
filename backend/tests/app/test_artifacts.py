@@ -21,7 +21,7 @@ from app import artifacts
 from app.run_journal import SQLiteRunJournal
 
 
-def test_finalize_commits_artifacts_then_manifest_and_is_idempotent(
+def test_finalize_rescans_non_terminal_run_and_reuses_terminal_manifest(
     monkeypatch, tmp_path
 ):
     output_root = tmp_path / "output"
@@ -43,39 +43,50 @@ def test_finalize_commits_artifacts_then_manifest_and_is_idempotent(
             working_directory=str(workspace_root),
             task_start_time=0,
             artifact_manifest=None,
+            user_id="user-1",
         )
         resolver = MagicMock()
-        resolver.store.get_snapshot.return_value = snapshot
+        resolver.store.find_snapshot.return_value = (
+            "user_user-1",
+            snapshot,
+        )
         monkeypatch.setattr(
             artifacts, "get_workspace_resolver", lambda: resolver
         )
 
-        from app.service import task as task_service
-
-        monkeypatch.setattr(
-            task_service,
-            "get_task_lock_if_exists",
-            lambda _project_id: SimpleNamespace(
-                email="user@example.com", user_id="user-1"
+        first = artifacts.finalize_run_artifacts(journal, run)
+        resumed = output_root / "resumed.txt"
+        resumed.write_text(
+            "created after the first manifest", encoding="utf-8"
+        )
+        second = artifacts.finalize_run_artifacts(journal, run)
+        journal.append_event(
+            "run-1",
+            artifacts.RunEventDraft(
+                event_id="run-1-completed",
+                event_type="run.completed",
+                payload={"artifact_manifest_event_id": second.event_id},
             ),
         )
-
-        first = artifacts.finalize_run_artifacts(journal, run)
-        second = artifacts.finalize_run_artifacts(journal, run)
+        third = artifacts.finalize_run_artifacts(journal, run)
         events = journal.list_events("run-1")
 
-        assert first.event_id == second.event_id
-        assert {event.event_type for event in events[:-1]} == {
+        assert first.event_id != second.event_id
+        assert second.event_id == third.event_id
+        assert first.payload["artifact_count"] == 2
+        assert second.payload["artifact_count"] == 3
+        assert {event.event_type for event in events} >= {
             "artifact.created",
             "artifact.modified",
+            "artifact.manifest.finalized",
+            "run.completed",
         }
-        assert events[-1].event_type == "artifact.manifest.finalized"
-        assert first.payload["artifact_count"] == 2
-        assert first.payload["scan_status"] == "complete"
+        assert second.payload["scan_status"] == "complete"
         assert {
-            artifact["uploadPolicy"] for artifact in first.payload["artifacts"]
+            artifact["uploadPolicy"]
+            for artifact in second.payload["artifacts"]
         } == {"agent_generated", "metadata_only"}
-        resolver.store.freeze_artifact_manifest.assert_called_once()
+        assert resolver.store.freeze_artifact_manifest.call_count == 2
     finally:
         journal.close()
 
@@ -86,10 +97,10 @@ def test_finalize_records_explicit_unavailable_manifest_without_workspace(
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     try:
         run = journal.ensure_run(run_id="run-1", project_id="project-1")
-        from app.service import task as task_service
-
+        resolver = MagicMock()
+        resolver.store.find_snapshot.return_value = None
         monkeypatch.setattr(
-            task_service, "get_task_lock_if_exists", lambda _project_id: None
+            artifacts, "get_workspace_resolver", lambda: resolver
         )
 
         manifest = artifacts.finalize_run_artifacts(journal, run)
@@ -113,6 +124,14 @@ def test_concurrent_manifest_finalization_commits_one_authoritative_barrier(
     barrier = Barrier(2)
     try:
         journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.append_event(
+            "run-1",
+            artifacts.RunEventDraft(
+                event_id="run-1-completed",
+                event_type="run.completed",
+                payload={},
+            ),
+        )
 
         def finalize(filename: str):
             barrier.wait()
@@ -140,9 +159,27 @@ def test_concurrent_manifest_finalization_commits_one_authoritative_barrier(
             if event.event_type == "artifact.manifest.finalized"
         ]
         assert len(manifests) == 1
-        assert len(events) == 2
+        assert len(events) == 3
         assert {result.event_id for result in results} == {
             manifests[0].event_id
         }
     finally:
         journal.close()
+
+
+def test_discovery_marks_exact_result_cap_as_partial(tmp_path):
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    for name in ("a.txt", "b.txt"):
+        (output_root / name).write_text(name, encoding="utf-8")
+    snapshot = SimpleNamespace(
+        task_output_root=str(output_root),
+        working_directory=str(output_root),
+        task_start_time=0,
+    )
+
+    result = artifacts.discover_task_changed_files(snapshot, max_entries=1)
+
+    assert len(result.artifacts) == 1
+    assert result.scan_status == "partial"
+    assert result.truncated is True

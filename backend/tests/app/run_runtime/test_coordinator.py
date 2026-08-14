@@ -266,14 +266,17 @@ async def test_logical_turn_completes_without_disposing_warm_runtime(tmp_path):
             run_id="run-turn",
             stream_factory=source,
         )
-        final = await EventRecorder(journal).record_assistant_final(
-            project_id="project-1",
-            run_id="run-turn",
-            data="Done",
+        assert (
+            await coordinator.complete_turn(
+                "run-turn",
+                project_id="project-1",
+                assistant_data="Done",
+            )
+            is True
         )
-
-        assert await coordinator.complete_turn("run-turn") is True
         assert journal.get_run("run-turn").status == "completed"
+        final = journal.get_run_final_result_event("run-turn")
+        assert final is not None
         completed = next(
             event
             for event in journal.list_events("run-turn")

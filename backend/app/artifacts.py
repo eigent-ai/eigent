@@ -24,10 +24,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.run_context import get_current_run_context
 from app.run_journal.models import CommittedRunEvent, RunEventDraft, RunRecord
 from app.run_journal.store import SQLiteRunJournal
 from app.utils.file_utils import list_files
@@ -36,7 +39,16 @@ from app.utils.workspace_resolver import TaskSnapshot, get_workspace_resolver
 logger = logging.getLogger("artifacts")
 
 MAX_ARTIFACTS_PER_RUN = 500
+MAX_ARTIFACT_SCAN_SECONDS = 3.0
+MAX_ARTIFACT_SCAN_ENTRIES = 100_000
 _ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
+
+
+@dataclass(frozen=True)
+class ArtifactScanResult:
+    artifacts: list[dict[str, Any]]
+    scan_status: str
+    truncated: bool
 
 
 def _canonical_digest(value: Any) -> str:
@@ -62,37 +74,64 @@ def _task_change_roots(snapshot: TaskSnapshot) -> list[tuple[Path, bool]]:
     return roots
 
 
-def scan_task_changed_files(
+def discover_task_changed_files(
     snapshot: TaskSnapshot,
     max_entries: int = MAX_ARTIFACTS_PER_RUN,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     list_files_fn: Callable[..., list[str]] = list_files,
-) -> list[dict[str, Any]]:
-    """Discover files generated or modified by exactly one Run."""
+) -> ArtifactScanResult:
+    """Discover files generated or modified by one Run within hard budgets."""
 
     result: list[dict[str, Any]] = []
     seen_paths: set[str] = set()
     remaining = max_entries
     windows = modification_windows or ((snapshot.task_start_time - 1.0, None),)
+    deadline = time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    scanned_entries = 0
+    scan_limited = False
+
+    def bounded_list_files(
+        root: Path, *, limit: int, **kwargs: Any
+    ) -> list[str]:
+        nonlocal scanned_entries, scan_limited
+        seconds_left = deadline - time.perf_counter()
+        entries_left = MAX_ARTIFACT_SCAN_ENTRIES - scanned_entries
+        if seconds_left <= 0 or entries_left <= 0:
+            scan_limited = True
+            return []
+        stats: dict[str, float | int] = {}
+        values = list_files_fn(
+            str(root),
+            base=str(root),
+            # Read one look-ahead result so an exact result cap is not confused
+            # with a complete scan.
+            max_entries=limit + 1,
+            max_scanned_entries=entries_left,
+            max_scan_seconds=seconds_left,
+            stats=stats,
+            **kwargs,
+        )
+        scanned_entries += int(stats.get("scanned_entries", 0))
+        if bool(stats.get("scan_limited", 0)) or len(values) > limit:
+            scan_limited = True
+        return values[:limit]
 
     for root, include_all in _task_change_roots(snapshot):
         if remaining <= 0:
+            scan_limited = True
             break
         if include_all:
-            paths = list_files_fn(
-                str(root), base=str(root), max_entries=remaining
-            )
+            paths = bounded_list_files(root, limit=remaining)
         else:
             paths = []
             window_seen: set[str] = set()
             for modified_after, modified_before in windows:
                 if len(paths) >= remaining:
                     break
-                window_paths = list_files_fn(
-                    str(root),
-                    base=str(root),
-                    max_entries=remaining - len(paths),
+                window_paths = bounded_list_files(
+                    root,
+                    limit=remaining - len(paths),
                     modified_after=modified_after,
                     modified_before=modified_before,
                 )
@@ -138,7 +177,28 @@ def scan_task_changed_files(
             if remaining <= 0:
                 break
 
-    return sorted(result, key=lambda item: item["relativePath"])
+    return ArtifactScanResult(
+        artifacts=sorted(result, key=lambda item: item["relativePath"]),
+        scan_status="partial" if scan_limited else "complete",
+        truncated=scan_limited,
+    )
+
+
+def scan_task_changed_files(
+    snapshot: TaskSnapshot,
+    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    modification_windows: tuple[tuple[float, float | None], ...] | None = None,
+    *,
+    list_files_fn: Callable[..., list[str]] = list_files,
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper returning only the bounded Artifact list."""
+
+    return discover_task_changed_files(
+        snapshot,
+        max_entries=max_entries,
+        modification_windows=modification_windows,
+        list_files_fn=list_files_fn,
+    ).artifacts
 
 
 def task_modification_windows(
@@ -190,6 +250,7 @@ def record_artifact_manifest(
     project_id: str,
     artifacts: list[dict[str, Any]],
     scan_status: str = "complete",
+    truncated: bool = False,
 ) -> CommittedRunEvent:
     """Commit Artifact lifecycle events followed by one manifest barrier."""
 
@@ -224,7 +285,7 @@ def record_artifact_manifest(
         "artifacts": projected,
         "artifact_count": len(projected),
         "scan_status": scan_status,
-        "truncated": len(projected) >= MAX_ARTIFACTS_PER_RUN,
+        "truncated": truncated,
     }
     manifest_digest = _canonical_digest(
         {
@@ -264,31 +325,33 @@ def finalize_run_artifacts(
 ) -> CommittedRunEvent:
     """Discover and commit a Run manifest exactly before its terminal event."""
 
+    current_run = journal.get_run(run.run_id) or run
     existing = journal.get_run_artifact_manifest_event(run.run_id)
-    if existing is not None:
+    if existing is not None and current_run.status in {
+        "completed",
+        "failed",
+        "cancelled",
+    }:
         return existing
 
     email: str | None = None
     user_id: str | int | None = None
-    try:
-        from app.service.task import get_task_lock_if_exists
-
-        task_lock = get_task_lock_if_exists(run.project_id)
-        if task_lock is not None:
-            email = task_lock.email
-            user_id = task_lock.user_id
-    except Exception:
-        logger.exception(
-            "Failed to resolve Run workspace owner for Artifact finalization",
-            extra={"run_id": run.run_id},
-        )
-
+    run_context = get_current_run_context()
+    if run_context is not None and run_context.run_id == run.run_id:
+        email = run_context.email
+        user_id = run_context.user_id
+    resolver = get_workspace_resolver()
     snapshot = (
-        get_workspace_resolver().store.get_snapshot(email, run.run_id, user_id)
+        resolver.store.get_snapshot(email, run.run_id, user_id)
         if email
         else None
     )
-    if snapshot is None or snapshot.project_id != run.project_id:
+    if snapshot is None:
+        located = resolver.store.find_snapshot(run.run_id)
+        if located is not None:
+            email, snapshot = located
+            user_id = snapshot.user_id
+    if snapshot is None:
         return record_artifact_manifest(
             journal,
             run_id=run.run_id,
@@ -296,27 +359,44 @@ def finalize_run_artifacts(
             artifacts=[],
             scan_status="workspace_unavailable",
         )
+    if snapshot.project_id != run.project_id:
+        return record_artifact_manifest(
+            journal,
+            run_id=run.run_id,
+            project_id=run.project_id,
+            artifacts=[],
+            scan_status="workspace_mismatch",
+        )
 
-    if snapshot.artifact_manifest is not None:
+    if snapshot.artifact_manifest is not None and current_run.status in {
+        "completed",
+        "failed",
+        "cancelled",
+    }:
         artifacts = [dict(item) for item in snapshot.artifact_manifest]
+        scan_status = "complete"
+        truncated = False
     else:
         windows, _ = task_modification_windows(
             journal, run.run_id, run.project_id
         )
-        artifacts = scan_task_changed_files(
+        scan_result = discover_task_changed_files(
             snapshot, modification_windows=windows
         )
+        artifacts = scan_result.artifacts
+        scan_status = scan_result.scan_status
+        truncated = scan_result.truncated
 
     manifest = record_artifact_manifest(
         journal,
         run_id=run.run_id,
         project_id=run.project_id,
         artifacts=artifacts,
+        scan_status=scan_status,
+        truncated=truncated,
     )
     try:
-        get_workspace_resolver().store.freeze_artifact_manifest(
-            email, snapshot, artifacts
-        )
+        resolver.store.freeze_artifact_manifest(email, snapshot, artifacts)
     except Exception:
         # The sidecar snapshot is a compatibility cache. SQLite is already
         # authoritative and must not be rolled back by a cache write failure.

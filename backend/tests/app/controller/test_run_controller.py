@@ -21,9 +21,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.controller.run_controller import (
+    ArtifactUploadedBody,
     _is_terminal,
     get_run,
     get_run_events,
+    record_artifact_uploaded,
     stream_run_events,
 )
 from app.run_journal import CommittedRunEvent, RunRecord
@@ -85,6 +87,65 @@ def test_assistant_final_renders_as_legacy_end_without_closing_run_stream():
     )
 
     assert _is_terminal(event) is False
+
+
+@pytest.mark.asyncio
+async def test_uploaded_asset_is_journaled_only_for_agent_generated_artifact():
+    journal = MagicMock()
+    journal.get_run_artifact_manifest_event.return_value = CommittedRunEvent(
+        event_id="manifest",
+        run_id="run-1",
+        sequence=2,
+        event_type="artifact.manifest.finalized",
+        payload={
+            "artifacts": [
+                {
+                    "artifact_id": "art-1",
+                    "relativePath": "report.csv",
+                    "uploadPolicy": "agent_generated",
+                }
+            ]
+        },
+        legacy_step=None,
+        created_at=1.0,
+        run_version=2,
+    )
+    journal.append_event.side_effect = lambda run_id, draft: CommittedRunEvent(
+        event_id=draft.event_id,
+        run_id=run_id,
+        sequence=3,
+        event_type=draft.event_type,
+        payload=draft.payload,
+        legacy_step=None,
+        created_at=draft.created_at,
+        run_version=3,
+    )
+    with (
+        patch(
+            "app.controller.run_controller.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.run_sync.runtime.notify_default_cloud_sync_worker"
+        ) as notify,
+    ):
+        result = await record_artifact_uploaded(
+            "run-1",
+            "art-1",
+            ArtifactUploadedBody(
+                s3_bucket="generated",
+                s3_key="user/project/report.csv",
+                filename="report.csv",
+                file_size=12,
+                file_type="text/csv",
+            ),
+        )
+
+    draft = journal.append_event.call_args.args[1]
+    assert draft.event_type == "artifact.uploaded"
+    assert draft.payload["asset_ref"]["key"] == "user/project/report.csv"
+    assert result["event_type"] == "artifact.uploaded"
+    notify.assert_called_once_with()
 
 
 def _decode_sse(value: str) -> tuple[int | None, str, dict]:
@@ -228,9 +289,11 @@ async def test_stream_resumes_from_last_event_id_on_transport_reconnect():
     events = [_event(1, "confirmed"), _event(2, "end")]
     journal = MagicMock()
     journal.get_run.return_value = _run_record()
-    journal.list_events.side_effect = lambda run_id, *, after_sequence, limit: [
-        event for event in events if event.sequence > after_sequence
-    ][:limit]
+    journal.list_events.side_effect = (
+        lambda run_id, *, after_sequence, limit: [
+            event for event in events if event.sequence > after_sequence
+        ][:limit]
+    )
     coordinator = RunCoordinator()
 
     with (
