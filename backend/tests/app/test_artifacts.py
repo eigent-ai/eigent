@@ -167,6 +167,64 @@ def test_concurrent_manifest_finalization_commits_one_authoritative_barrier(
         journal.close()
 
 
+def test_success_terminal_pins_latest_manifest_observed_inside_transaction(
+    tmp_path,
+):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        stale = artifacts.record_artifact_manifest(
+            journal,
+            run_id="run-1",
+            project_id="project-1",
+            artifacts=[
+                {
+                    "filename": "first.txt",
+                    "path": "/workspace/first.txt",
+                    "relativePath": "first.txt",
+                    "changeType": "generated",
+                }
+            ],
+        )
+        latest = artifacts.record_artifact_manifest(
+            journal,
+            run_id="run-1",
+            project_id="project-1",
+            artifacts=[
+                {
+                    "filename": "second.txt",
+                    "path": "/workspace/second.txt",
+                    "relativePath": "second.txt",
+                    "changeType": "generated",
+                }
+            ],
+        )
+
+        _, terminal = journal.complete_successful_run(
+            "run-1",
+            assistant_final=artifacts.RunEventDraft(
+                event_id="assistant-final:run-1",
+                event_type="assistant.final",
+                payload={"message": "done"},
+            ),
+            terminal=artifacts.RunEventDraft(
+                event_id="run-1-completed",
+                event_type="run.completed",
+                payload={"reason": "completed"},
+            ),
+            artifact_manifest=stale,
+            expected_project_id="project-1",
+        )
+
+        assert stale.event_id != latest.event_id
+        assert (
+            terminal.payload["artifact_manifest_event_id"] == latest.event_id
+        )
+        assert terminal.payload["artifact_count"] == 1
+    finally:
+        journal.close()
+
+
 def test_discovery_marks_exact_result_cap_as_partial(tmp_path):
     output_root = tmp_path / "output"
     output_root.mkdir()

@@ -700,22 +700,11 @@ class RunCoordinator:
             }:
                 from app.artifacts import finalize_run_artifacts
 
-                artifact_manifest_event = await asyncio.to_thread(
+                await asyncio.to_thread(
                     finalize_run_artifacts,
                     self._journal,
                     run,
                 )
-                payload = {
-                    **payload,
-                    "artifact_manifest_event_id": (
-                        artifact_manifest_event.event_id
-                    ),
-                    "artifact_count": int(
-                        artifact_manifest_event.payload.get(
-                            "artifact_count", 0
-                        )
-                    ),
-                }
                 result_event = await asyncio.to_thread(
                     self._journal.get_run_final_result_event,
                     run_id,
@@ -725,18 +714,32 @@ class RunCoordinator:
                         **payload,
                         "result_event_id": result_event.event_id,
                     }
-            await asyncio.to_thread(
-                self._journal.append_event,
-                run_id,
-                RunEventDraft(
-                    event_id=(
-                        f"runtime-terminal:{run_id}:"
-                        f"{int(started_at * 1_000_000)}:{event_type}"
-                    ),
-                    event_type=event_type,
-                    payload=payload,
+            terminal_draft = RunEventDraft(
+                event_id=(
+                    f"runtime-terminal:{run_id}:"
+                    f"{int(started_at * 1_000_000)}:{event_type}"
                 ),
+                event_type=event_type,
+                payload=payload,
             )
+            if event_type in {
+                "run.completed",
+                "run.failed",
+                "run.cancelled",
+                "run.deadline_reached",
+            }:
+                await asyncio.to_thread(
+                    self._journal.append_terminal_with_latest_artifact_manifest,
+                    run_id,
+                    terminal_draft,
+                    expected_project_id=run.project_id,
+                )
+            else:
+                await asyncio.to_thread(
+                    self._journal.append_event,
+                    run_id,
+                    terminal_draft,
+                )
             try:
                 from app.workspace_git import (
                     get_default_workspace_git_lifecycle,

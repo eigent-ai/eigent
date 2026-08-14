@@ -7772,22 +7772,10 @@ class SQLiteRunJournal:
             raise IdempotencyConflictError(
                 "Artifact manifest belongs to another Run"
             )
-
-        terminal_payload = {
-            **dict(terminal.payload),
-            "artifact_manifest_event_id": artifact_manifest.event_id,
-            "artifact_count": int(
-                artifact_manifest.payload.get("artifact_count", 0)
-            ),
-            "result_event_id": assistant_final.event_id,
-        }
-        terminal_draft = RunEventDraft(
-            event_id=terminal.event_id,
-            event_type=terminal.event_type,
-            payload=terminal_payload,
-            legacy_step=terminal.legacy_step,
-            created_at=terminal.created_at,
-        )
+        if artifact_manifest.event_type != "artifact.manifest.finalized":
+            raise IdempotencyConflictError(
+                "Successful completion requires an Artifact manifest"
+            )
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
@@ -7798,6 +7786,30 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"run_id {run_id!r} belongs to another project"
                 )
+
+            # Artifact discovery happens outside this short transaction and
+            # two terminal paths may race. Pin the newest committed manifest
+            # under the same writer lock as run.completed; never trust the
+            # manifest object observed before this transaction began.
+            latest_manifest = self._latest_artifact_manifest_in_transaction(
+                connection,
+                run_id,
+            )
+            terminal_payload = {
+                **dict(terminal.payload),
+                "artifact_manifest_event_id": latest_manifest.event_id,
+                "artifact_count": int(
+                    latest_manifest.payload.get("artifact_count", 0)
+                ),
+                "result_event_id": assistant_final.event_id,
+            }
+            terminal_draft = RunEventDraft(
+                event_id=terminal.event_id,
+                event_type=terminal.event_type,
+                payload=terminal_payload,
+                legacy_step=terminal.legacy_step,
+                created_at=terminal.created_at,
+            )
 
             result_event = self._append_event_in_transaction(
                 connection,
@@ -7824,6 +7836,91 @@ class SQLiteRunJournal:
                 (terminal_draft.created_at, run_id),
             )
             return result_event, terminal_event
+
+    def append_terminal_with_latest_artifact_manifest(
+        self,
+        run_id: str,
+        draft: RunEventDraft,
+        *,
+        expected_project_id: str | None = None,
+    ) -> CommittedRunEvent:
+        """Atomically bind a terminal outcome to the latest Artifact manifest."""
+
+        terminal_status = self._terminal_status_for_event(draft)
+        if terminal_status not in {"completed", "failed", "cancelled"}:
+            raise ValueError(
+                "Artifact terminal commit requires a terminal Run event"
+            )
+        with self._write_transaction() as connection:
+            latest_manifest = self._latest_artifact_manifest_in_transaction(
+                connection,
+                run_id,
+            )
+            enriched = RunEventDraft(
+                event_id=draft.event_id,
+                event_type=draft.event_type,
+                payload={
+                    **dict(draft.payload),
+                    "artifact_manifest_event_id": latest_manifest.event_id,
+                    "artifact_count": int(
+                        latest_manifest.payload.get("artifact_count", 0)
+                    ),
+                },
+                legacy_step=draft.legacy_step,
+                created_at=draft.created_at,
+            )
+            event = self._append_event_in_transaction(
+                connection,
+                run_id,
+                enriched,
+                expected_project_id=expected_project_id,
+                run_status=terminal_status,
+                clear_active_attempt=True,
+            )
+            attempt_status = (
+                "completed"
+                if terminal_status == "completed"
+                else terminal_status
+            )
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = ?, ended_at = COALESCE(ended_at, ?),
+                    outcome = COALESCE(outcome, ?)
+                WHERE run_id = ?
+                  AND status IN ('pending', 'running', 'waiting_for_user')
+                """,
+                (
+                    attempt_status,
+                    enriched.created_at,
+                    enriched.event_type,
+                    run_id,
+                ),
+            )
+            return event
+
+    def _latest_artifact_manifest_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+    ) -> CommittedRunEvent:
+        row = connection.execute(
+            """
+            SELECT event_id, run_id, sequence, run_version, event_type,
+                   payload_json, legacy_step, created_at
+            FROM run_events
+            WHERE run_id = ?
+              AND event_type = 'artifact.manifest.finalized'
+            ORDER BY sequence DESC
+            LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise InvalidRunTransitionError(
+                f"run {run_id!r} cannot terminate before its Artifact manifest"
+            )
+        return self._event_from_row(row)
 
     def list_events(
         self,
