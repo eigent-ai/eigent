@@ -77,6 +77,19 @@ export interface MemoryListResponse {
   };
 }
 
+export interface MemoryReconciliationItem {
+  reconciliation_id: string;
+  account_owner_id: string;
+  scope_type: MemoryScopeType;
+  scope_id: string;
+  memory_id: string;
+  local_entry: Partial<MemoryEntry>;
+  cloud_entry: Partial<MemoryEntry>;
+  status: 'pending' | 'accepted_local' | 'accepted_cloud' | 'dismissed';
+  created_at: number;
+  resolved_at: number | null;
+}
+
 const scopePath = (scopeType: MemoryScopeType, scopeId: string) =>
   `/memory/scopes/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`;
 
@@ -90,6 +103,24 @@ export const listMemoryEntries = (
     scope_id: scopeId,
     include_deleted: includeDeleted,
   });
+
+export const listMemoryReconciliation = (
+  scopeType: MemoryScopeType,
+  scopeId: string
+): Promise<{ items: MemoryReconciliationItem[] }> =>
+  fetchGet('/memory/reconciliation', {
+    scope_type: scopeType,
+    scope_id: scopeId,
+  });
+
+export const resolveMemoryReconciliation = (
+  reconciliationId: string,
+  decision: 'local' | 'cloud' | 'dismiss'
+): Promise<MemoryReconciliationItem> =>
+  fetchPost(
+    `/memory/reconciliation/${encodeURIComponent(reconciliationId)}/resolve`,
+    { decision }
+  );
 
 export const updateMemoryScopeSettings = (
   scopeType: MemoryScopeType,

@@ -55,7 +55,14 @@ def test_history_search_uses_project_cursor_redacts_and_reports_trust(service):
         RunEventDraft(
             event_id="event-2",
             event_type="tool.completed",
-            payload={"content": "alpha observed"},
+            payload={
+                "tool_call_id": "tool-1",
+                "tool_name": "gmail.search",
+                "status": "completed",
+                "outcome": "completed",
+                "request": {"query": "alpha"},
+                "result": {"raw_connector_payload": "private mailbox body"},
+            },
             created_at=2,
         ),
     )
@@ -75,6 +82,7 @@ def test_history_search_uses_project_cursor_redacts_and_reports_trust(service):
     assert first.items[0].source_trust == "user_asserted"
     assert first.items[0].content["api_key"] == "[REDACTED]"
     assert second.items[0].source_trust == "tool_observed"
+    assert "result" not in second.items[0].content
     assert second.complete is True
 
 
@@ -124,7 +132,7 @@ def test_agent_user_asserted_memory_requires_same_project_user_event(service):
         "run-1",
         RunEventDraft(
             event_id="assistant-1",
-            event_type="assistant.final",
+            event_type="assistant.delta",
             payload={"content": "The user said this."},
         ),
     )

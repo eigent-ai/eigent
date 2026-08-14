@@ -34,6 +34,8 @@ from app.run_journal import (
     RunNotFoundError,
     SQLiteRunJournal,
 )
+from app.run_journal.cloud_projection import cloud_event_payload
+from app.run_policy import ToolSafetyClass
 from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
@@ -789,6 +791,58 @@ def test_cloud_history_restore_rejects_cursor_gaps(journal):
         )
 
 
+def test_cloud_bootstrap_accepts_redacted_projection_of_local_approval(
+    journal,
+):
+    journal.ensure_run(run_id="run-local", project_id="project-local")
+    payload = {
+        "approval_id": "approval-1",
+        "prompt": {
+            "action": {
+                "operation": "filesystem.write",
+                "normalized_arguments": {
+                    "path": "/Users/alice/private/report.md",
+                    "content": "private contents",
+                },
+                "target_resources": ["/Users/alice/private/report.md"],
+            },
+            "target_resources": ["/Users/alice/private/report.md"],
+        },
+    }
+    local = journal.append_event(
+        "run-local",
+        RunEventDraft(
+            event_id="approval-1-requested",
+            event_type="approval.requested",
+            payload=payload,
+            created_at=10.0,
+        ),
+    )
+    replica = CloudRunEventReplica(
+        event_id=local.event_id,
+        project_id="project-local",
+        run_id="run-local",
+        run_sequence=local.sequence,
+        run_version=local.run_version,
+        cloud_cursor=1,
+        event_type=local.event_type,
+        payload=cloud_event_payload(local.event_type, payload),
+        legacy_step=None,
+        created_at=local.created_at,
+    )
+
+    assert (
+        journal.import_cloud_project_page(
+            project_id="project-local",
+            after_cursor=0,
+            next_cursor=1,
+            events=[replica],
+        )
+        == 1
+    )
+    assert journal.list_events("run-local")[0].payload == payload
+
+
 def test_duplicate_event_id_returns_original_without_allocating_sequence(
     journal,
 ):
@@ -1463,7 +1517,9 @@ async def test_event_recorder_rejects_cross_project_attribution(journal):
 
 
 @pytest.mark.asyncio
-async def test_legacy_end_requires_trusted_execution_stream(journal):
+async def test_legacy_end_requires_trusted_stream_but_cannot_terminalize_run(
+    journal,
+):
     journal.ensure_run(run_id="run-1", project_id="project-1")
     recorder = EventRecorder(journal)
 
@@ -1482,4 +1538,131 @@ async def test_legacy_end_requires_trusted_execution_stream(journal):
         data={},
         allow_terminal=True,
     )
-    assert journal.get_run("run-1").status == "completed"
+    assert journal.get_run("run-1").status == "running"
+
+
+@pytest.mark.asyncio
+async def test_event_recorder_rejects_standalone_assistant_final(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    recorder = EventRecorder(journal)
+
+    with pytest.raises(RuntimeError, match="committed atomically"):
+        await recorder.record_assistant_final(
+            project_id="project-1",
+            run_id="run-1",
+            data={"message": "must not be written alone"},
+        )
+
+    assert journal.list_events("run-1") == []
+
+
+def _test_artifact_manifest(journal, run_id: str):
+    return journal.append_artifact_manifest_events(
+        run_id,
+        [
+            RunEventDraft(
+                event_id=f"artifact-manifest:{run_id}:test",
+                event_type="artifact.manifest.finalized",
+                payload={
+                    "artifacts": [],
+                    "artifact_count": 0,
+                    "scan_status": "complete",
+                },
+            )
+        ],
+        expected_project_id="project-1",
+    )
+
+
+def test_successful_completion_rejects_unknown_tool_outcome(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="send_email",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        status="prepared",
+        request={"to": "user@example.com"},
+        now=1,
+    )
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="send_email",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        status="dispatched",
+        request={"to": "user@example.com"},
+        now=2,
+    )
+    manifest = _test_artifact_manifest(journal, "run-1")
+
+    with pytest.raises(
+        InvalidRunTransitionError,
+        match="unresolved Tool outcome",
+    ):
+        journal.complete_successful_run(
+            "run-1",
+            assistant_final=RunEventDraft(
+                event_id="assistant-final:run-1",
+                event_type="assistant.final",
+                payload={"message": "Done"},
+            ),
+            terminal=RunEventDraft(
+                event_id="run-completed:run-1",
+                event_type="run.completed",
+                payload={"reason": "success"},
+            ),
+            artifact_manifest=manifest,
+            expected_project_id="project-1",
+        )
+
+    event_types = [event.event_type for event in journal.list_events("run-1")]
+    assert "assistant.final" not in event_types
+    assert "run.completed" not in event_types
+
+
+def test_cancel_marks_dispatched_tool_outcome_unknown_before_terminal(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="send_email",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        status="prepared",
+        request={"to": "user@example.com"},
+        now=1,
+    )
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="send_email",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        status="dispatched",
+        request={"to": "user@example.com"},
+        now=2,
+    )
+    journal.request_cancel(
+        "run-1",
+        request_id="cancel-1",
+        reason="user_request",
+        now=3,
+    )
+
+    cancelled = journal.complete_cancel(
+        "run-1",
+        request_id="cancel-1",
+        now=4,
+    )
+
+    assert cancelled.status == "cancelled"
+    assert journal.list_tool_calls("run-1")[0].status == "outcome_unknown"
+    assert [event.event_type for event in journal.list_events("run-1")][
+        -2:
+    ] == [
+        "tool.outcome_unknown",
+        "run.cancelled",
+    ]

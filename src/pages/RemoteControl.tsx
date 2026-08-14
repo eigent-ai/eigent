@@ -22,6 +22,10 @@ import {
   type ProjectViewState,
 } from '@/lib/projector';
 import {
+  mergeLocalRemoteCommandStatus,
+  type LocalRemoteCommandStatus,
+} from '@/lib/remoteCommandStatus';
+import {
   extendRemoteControlSession,
   getRemoteControlSession,
   getRemoteControlSnapshot,
@@ -46,13 +50,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-type CommandStatus = {
-  id: string;
-  content: string;
-  type: string;
-  status: string;
-  error?: string;
-};
+type CommandStatus = LocalRemoteCommandStatus;
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === 'object'
@@ -240,7 +238,19 @@ export default function RemoteControlPage() {
     }
     let ws: WebSocket | null = null;
     let pingTimer: number | null = null;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempts = 0;
     let stopped = false;
+
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer !== null) return;
+      const delay = Math.min(1000 * 2 ** reconnectAttempts, 30000);
+      reconnectAttempts += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    };
 
     const publishProjection = (next: ProjectViewState) => {
       projectorRef.current = next;
@@ -303,9 +313,17 @@ export default function RemoteControlPage() {
           );
           if (stopped) return;
           applyCanonicalEvents(page.items || []);
-          cursor = page.next_cursor;
+          const nextCursor = page.next_cursor;
           authoritativeCursor = page.current_cursor;
           if (!page.has_more) break;
+          if (nextCursor <= cursor) {
+            console.warn(
+              '[RemoteControl] event page did not advance; rehydrating snapshot'
+            );
+            await rehydrateSnapshot();
+            return;
+          }
+          cursor = nextCursor;
         }
         const view = projectorRef.current;
         if (view?.needsResync) {
@@ -327,14 +345,20 @@ export default function RemoteControlPage() {
     };
 
     async function connect() {
-      const url = await getRemoteControlWebSocketUrl(
-        `/api/v1/remote-control/sessions/${sessionId}/events/subscribe`
-      );
-      if (stopped) {
+      let url: string;
+      try {
+        url = await getRemoteControlWebSocketUrl(
+          `/api/v1/remote-control/sessions/${sessionId}/events/subscribe`
+        );
+      } catch (error) {
+        console.warn('[RemoteControl] websocket setup failed', error);
+        scheduleReconnect();
         return;
       }
+      if (stopped) return;
       ws = new WebSocket(url);
       ws.onopen = () => {
+        reconnectAttempts = 0;
         ws?.send(
           JSON.stringify({
             type: 'subscribe',
@@ -406,15 +430,13 @@ export default function RemoteControlPage() {
           }
           if (payload.type === 'command_status') {
             setCommands((current) =>
-              current.map((command) =>
-                command.id === payload.command_id
-                  ? {
-                      ...command,
-                      status: payload.status,
-                      error: payload.error,
-                    }
-                  : command
-              )
+              mergeLocalRemoteCommandStatus(current, {
+                id: payload.command_id,
+                content: 'Remote command',
+                type: 'unknown',
+                status: payload.status,
+                error: payload.error,
+              })
             );
           }
           if (payload.type === 'command_event' && payload.projection) {
@@ -426,15 +448,13 @@ export default function RemoteControlPage() {
                   ? projection.admission_state
                   : projection.receipt_state;
             setCommands((current) =>
-              current.map((command) =>
-                command.id === payload.command_id
-                  ? {
-                      ...command,
-                      status,
-                      error: projection.integrity_alert || command.error,
-                    }
-                  : command
-              )
+              mergeLocalRemoteCommandStatus(current, {
+                id: payload.command_id,
+                content: 'Remote command',
+                type: 'unknown',
+                status,
+                error: projection.integrity_alert || undefined,
+              })
             );
           }
         } catch (err) {
@@ -444,7 +464,9 @@ export default function RemoteControlPage() {
       ws.onclose = () => {
         if (pingTimer) {
           window.clearInterval(pingTimer);
+          pingTimer = null;
         }
+        scheduleReconnect();
       };
     }
 
@@ -453,6 +475,9 @@ export default function RemoteControlPage() {
       stopped = true;
       if (pingTimer) {
         window.clearInterval(pingTimer);
+      }
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
       }
       ws?.close();
     };

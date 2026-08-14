@@ -34,6 +34,7 @@ from app.run_journal import (
     OptimisticConcurrencyError,
     RunNotFoundError,
 )
+from app.run_sync.runtime import current_authenticated_account_owner_id
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 
@@ -74,6 +75,10 @@ class MemoryScopeSettingsBody(BaseModel):
 class ConsolidateMemoryBody(BaseModel):
     request_id: str = Field(min_length=1, max_length=128)
     reason: str = Field(min_length=1, max_length=1000)
+
+
+class ResolveMemoryReconciliationBody(BaseModel):
+    decision: Literal["local", "cloud", "dismiss"]
 
 
 def _serialize_result(result) -> dict:
@@ -168,6 +173,42 @@ async def list_memory_entries(
             scope_type, scope_id
         ),
     }
+
+
+@router.get("/memory/reconciliation")
+async def list_memory_reconciliation(
+    scope_type: ScopeType,
+    scope_id: str,
+):
+    service = get_lightweight_memory_service()
+    try:
+        account_owner_id = await current_authenticated_account_owner_id()
+        items = service.journal.list_memory_reconciliation_items(
+            scope_type,
+            scope_id,
+            account_owner_id=account_owner_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate_error(exc) from exc
+    return {"items": [asdict(item) for item in items]}
+
+
+@router.post("/memory/reconciliation/{reconciliation_id}/resolve")
+async def resolve_memory_reconciliation(
+    reconciliation_id: str,
+    body: ResolveMemoryReconciliationBody,
+):
+    service = get_lightweight_memory_service()
+    try:
+        account_owner_id = await current_authenticated_account_owner_id()
+        item = service.resolve_reconciliation(
+            reconciliation_id,
+            account_owner_id=account_owner_id,
+            decision=body.decision,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate_error(exc) from exc
+    return asdict(item)
 
 
 @router.post("/memory/entries")

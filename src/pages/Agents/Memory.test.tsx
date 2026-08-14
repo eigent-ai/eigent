@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   list: vi.fn(),
+  listReconciliation: vi.fn(),
+  resolveReconciliation: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   settings: vi.fn(),
@@ -31,6 +33,8 @@ const api = vi.hoisted(() => ({
 vi.mock('@/service/memoryApi', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   listMemoryEntries: api.list,
+  listMemoryReconciliation: api.listReconciliation,
+  resolveMemoryReconciliation: api.resolveReconciliation,
   createMemoryEntry: api.create,
   updateMemoryEntry: api.update,
   updateMemoryScopeSettings: api.settings,
@@ -91,6 +95,8 @@ describe('Memory Center', () => {
     });
     api.create.mockResolvedValue({});
     api.consolidate.mockResolvedValue({});
+    api.listReconciliation.mockResolvedValue({ items: [] });
+    api.resolveReconciliation.mockResolvedValue({});
   });
 
   it('offers bounded organization without exposing a sync chooser', async () => {
@@ -99,7 +105,9 @@ describe('Memory Center', () => {
 
     await screen.findByText(/Synced to your Eigent account/);
     expect(screen.queryByRole('combobox', { name: /sync/i })).toBeNull();
-    await user.click(screen.getByRole('button', { name: /Organize/ }));
+    const organize = screen.getByRole('button', { name: /Organize/ });
+    await waitFor(() => expect(organize).toBeEnabled());
+    await user.click(organize);
 
     expect(api.consolidate).toHaveBeenCalledWith('project', 'project-1');
   });

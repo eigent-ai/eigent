@@ -44,6 +44,77 @@ _TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
 _EXTERNAL_TRUST = {"external_untrusted", "tool_observed", "model_inferred"}
 _INSTRUCTION_KINDS = {"preference", "constraint"}
 _QUERY_TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
+_HISTORY_ARTIFACT_FIELDS = frozenset(
+    {
+        "artifact_id",
+        "filename",
+        "relativePath",
+        "changeType",
+        "size",
+        "mimeType",
+        "scan_status",
+        "truncated",
+        "artifact_count",
+        "manifest_digest",
+    }
+)
+
+
+def _history_payload_projection(
+    event_type: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Return the model-visible, normalized History projection.
+
+    Canonical Run events remain untouched in SQLite.  The Agent History Tool
+    gets only redacted arguments, connector/tool outcome metadata, and
+    Artifact metadata.  Raw Connector bodies, tool results and local Artifact
+    paths are deliberately unavailable through this principal.
+    """
+
+    redacted = redact_action_arguments(payload)
+    if event_type.startswith("tool."):
+        return {
+            key: value
+            for key, value in redacted.items()
+            if key
+            in {
+                "tool_call_id",
+                "attempt_id",
+                "tool_name",
+                "safety_class",
+                "status",
+                "outcome",
+                "timeout_reason",
+                "request",
+            }
+        }
+    if event_type.startswith("artifact."):
+        if event_type == "artifact.manifest.finalized":
+            artifacts = redacted.get("artifacts")
+            projected_artifacts = (
+                [
+                    {
+                        key: value
+                        for key, value in artifact.items()
+                        if key in _HISTORY_ARTIFACT_FIELDS
+                    }
+                    for artifact in artifacts
+                    if isinstance(artifact, dict)
+                ]
+                if isinstance(artifacts, list)
+                else []
+            )
+            return {
+                key: value
+                for key, value in redacted.items()
+                if key in _HISTORY_ARTIFACT_FIELDS
+            } | {"artifacts": projected_artifacts}
+        return {
+            key: value
+            for key, value in redacted.items()
+            if key in _HISTORY_ARTIFACT_FIELDS
+        }
+    return redacted
 
 
 @dataclass(frozen=True)
@@ -117,6 +188,143 @@ class LightweightMemoryService:
             )
         )
 
+    def resolve_reconciliation(
+        self,
+        reconciliation_id: str,
+        *,
+        account_owner_id: str,
+        decision: Literal["local", "cloud", "dismiss"],
+    ):
+        """Resolve a visible cross-device conflict without silent LWW."""
+
+        item = self._journal.get_memory_reconciliation_item(reconciliation_id)
+        if item is None:
+            raise KeyError(reconciliation_id)
+        if item.account_owner_id != account_owner_id:
+            raise PermissionError(
+                "Memory reconciliation belongs to another account"
+            )
+        if decision in {"local", "dismiss"}:
+            resolution = (
+                "accepted_local" if decision == "local" else "dismissed"
+            )
+            return self._journal.resolve_memory_reconciliation_item(
+                reconciliation_id,
+                resolution=resolution,
+            )
+        cloud = item.cloud_entry
+        existing = self._require_entry(item.memory_id)
+        if (
+            existing.scope_type != item.scope_type
+            or existing.scope_id != item.scope_id
+        ):
+            raise PermissionError("Memory reconciliation scope changed")
+        current_shape = {
+            "kind": existing.kind,
+            "content": existing.content,
+            "priority": existing.priority,
+            "token_count": existing.token_count,
+            "created_by": existing.created_by,
+            "source_trust": existing.source_trust,
+            "sensitivity": existing.sensitivity,
+            "source_refs": list(existing.source_refs),
+            "deleted_at": existing.deleted_at,
+        }
+        if current_shape != item.local_entry:
+            raise InvalidRunTransitionError(
+                "Local Memory changed after this review item was created; "
+                "refresh conflicts before choosing the Cloud version"
+            )
+        cloud_deleted = cloud.get("deleted_at") is not None
+        request_prefix = f"memory-reconciliation:{reconciliation_id}"
+        if cloud_deleted:
+            if existing.deleted_at is None:
+                self._journal.apply_memory_mutation(
+                    mutation_id=stable_memory_id(
+                        "mutation", request_prefix, "remove"
+                    ),
+                    idempotency_key=f"{request_prefix}:remove",
+                    operation="remove",
+                    scope_type=existing.scope_type,
+                    scope_id=existing.scope_id,
+                    memory_id=existing.memory_id,
+                    expected_version=existing.version,
+                    actor_type="user",
+                    reason="Accepted Cloud Memory deletion in Memory Center",
+                )
+        else:
+            content = str(cloud.get("content") or "")
+            kind = str(cloud.get("kind") or "")
+            source_trust = str(cloud.get("source_trust") or "")
+            assert_manifest_secret_free({"content": content})
+            if (
+                source_trust in _EXTERNAL_TRUST
+                and kind in _INSTRUCTION_KINDS
+                and not bool(cloud.get("confirmed_by_user"))
+            ):
+                raise PermissionError(
+                    "Cloud instruction Memory must be confirmed before use"
+                )
+            if existing.deleted_at is not None:
+                self._journal.apply_memory_mutation(
+                    mutation_id=stable_memory_id(
+                        "mutation", request_prefix, "restore"
+                    ),
+                    idempotency_key=f"{request_prefix}:restore",
+                    operation="restore",
+                    scope_type=existing.scope_type,
+                    scope_id=existing.scope_id,
+                    memory_id=existing.memory_id,
+                    expected_version=existing.version,
+                    actor_type="user",
+                    reason="Accepted active Cloud Memory in Memory Center",
+                )
+                existing = self._require_entry(item.memory_id)
+            local_semantic = (
+                existing.kind,
+                existing.content,
+                existing.priority,
+                existing.created_by,
+                existing.source_trust,
+                existing.sensitivity,
+                existing.source_refs,
+            )
+            cloud_semantic = (
+                kind,
+                content,
+                str(cloud.get("priority") or "normal"),
+                str(cloud.get("created_by") or ""),
+                source_trust,
+                str(cloud.get("sensitivity") or "normal"),
+                tuple(cloud.get("source_refs") or ()),
+            )
+            if local_semantic != cloud_semantic:
+                self._journal.apply_memory_mutation(
+                    mutation_id=stable_memory_id(
+                        "mutation", request_prefix, "replace"
+                    ),
+                    idempotency_key=f"{request_prefix}:replace",
+                    operation="replace",
+                    scope_type=existing.scope_type,
+                    scope_id=existing.scope_id,
+                    memory_id=existing.memory_id,
+                    expected_version=existing.version,
+                    actor_type="system",
+                    reason="Accepted Cloud Memory content in Memory Center",
+                    content=content,
+                    kind=kind,
+                    priority=str(cloud.get("priority") or "normal"),
+                    token_count=count_tokens(content),
+                    created_by=str(cloud.get("created_by") or "importer"),
+                    source_trust=source_trust,
+                    sensitivity=str(cloud.get("sensitivity") or "normal"),
+                    source_refs=tuple(cloud.get("source_refs") or ()),
+                )
+        return self._journal.resolve_memory_reconciliation_item(
+            reconciliation_id,
+            resolution="accepted_cloud",
+        )
+
     def create_entry(
         self,
         *,
@@ -136,6 +344,7 @@ class LightweightMemoryService:
         run_id: str | None = None,
         activity_id: str | None = None,
         decision_id: str | None = None,
+        confirmed_by_user_action: bool = False,
     ) -> MemoryMutationResult:
         source_refs = tuple(dict.fromkeys(source_refs))
         self._assert_mutation_policy(
@@ -144,6 +353,7 @@ class LightweightMemoryService:
             content=content,
             actor_type=actor_type,
             source_trust=source_trust,
+            confirmed_by_user_action=confirmed_by_user_action,
         )
         if actor_type == "agent":
             self._assert_agent_provenance(
@@ -187,6 +397,7 @@ class LightweightMemoryService:
             run_id=run_id,
             activity_id=activity_id,
             decision_id=decision_id,
+            confirmed_by_user_action=confirmed_by_user_action,
         )
 
     def consolidate_scope(
@@ -285,6 +496,7 @@ class LightweightMemoryService:
         run_id: str | None = None,
         activity_id: str | None = None,
         decision_id: str | None = None,
+        confirmed_by_user_action: bool = False,
     ) -> MemoryMutationResult:
         existing = self._require_entry(memory_id)
         # Rewritten model text is a new claim. It must not inherit a stronger
@@ -300,6 +512,7 @@ class LightweightMemoryService:
             content=content,
             actor_type=actor_type,
             source_trust=trust,
+            confirmed_by_user_action=confirmed_by_user_action,
         )
         return self._journal.apply_memory_mutation(
             mutation_id=stable_memory_id("mutation", request_id),
@@ -323,6 +536,7 @@ class LightweightMemoryService:
             run_id=run_id,
             activity_id=activity_id,
             decision_id=decision_id,
+            confirmed_by_user_action=confirmed_by_user_action,
         )
 
     def transition_entry(
@@ -340,12 +554,16 @@ class LightweightMemoryService:
         decision_id: str | None = None,
     ) -> MemoryMutationResult:
         existing = self._require_entry(memory_id)
-        if actor_type == "agent" and (
-            existing.scope_type != "project"
-            or existing.created_by != "agent"
-            or existing.confirmed_by_user
-            or existing.pinned_by_user
-            or operation in {"confirm", "pin"}
+        if (
+            actor_type == "agent"
+            and decision_id is None
+            and (
+                existing.scope_type != "project"
+                or existing.created_by != "agent"
+                or existing.confirmed_by_user
+                or existing.pinned_by_user
+                or operation in {"confirm", "pin"}
+            )
         ):
             raise PermissionError(
                 "Agent Memory changes outside unconfirmed Project entries "
@@ -365,6 +583,7 @@ class LightweightMemoryService:
             run_id=run_id,
             activity_id=activity_id,
             decision_id=decision_id,
+            confirmed_by_user_action=decision_id is not None,
         )
 
     def search_memory(
@@ -454,7 +673,9 @@ class LightweightMemoryService:
             for item in page:
                 previous_cursor = scan_cursor
                 scan_cursor = item.journal_cursor
-                payload = redact_action_arguments(item.event.payload)
+                payload = _history_payload_projection(
+                    item.event.event_type, item.event.payload
+                )
                 searchable = json.dumps(payload, ensure_ascii=False).casefold()
                 if (
                     query_text
@@ -528,9 +749,14 @@ class LightweightMemoryService:
         content: str,
         actor_type: str,
         source_trust: str,
+        confirmed_by_user_action: bool = False,
     ) -> None:
         assert_manifest_secret_free({"content": content})
-        if actor_type == "agent" and scope_type != "project":
+        if (
+            actor_type == "agent"
+            and scope_type != "project"
+            and not confirmed_by_user_action
+        ):
             raise PermissionError(
                 "Agent Space/User Memory mutations require HumanInteraction"
             )

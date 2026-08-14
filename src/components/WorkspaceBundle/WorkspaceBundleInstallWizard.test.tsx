@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -231,7 +245,7 @@ describe('WorkspaceBundleInstallWizard', () => {
     mocks.decide.mockResolvedValue(snapshot(false));
   });
 
-  it('shows the immutable review before creating or approving a Space', async () => {
+  it('requires a separate approval after persisting the install proposal', async () => {
     mocks.fetchReview.mockResolvedValue(review);
     const user = userEvent.setup();
     renderWizard({ initialHandle: 'research@1' });
@@ -244,11 +258,18 @@ describe('WorkspaceBundleInstallWizard', () => {
       screen.getByRole('button', { name: /confirm and create/i })
     );
 
-    await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByRole('button', { name: /approve installation/i })
+    ).toBeInTheDocument();
     expect(mocks.createSpace).toHaveBeenCalledTimes(1);
-    expect(mocks.createProposal.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.decide.mock.invocationCallOrder[0]
+    expect(mocks.createProposal).toHaveBeenCalledTimes(1);
+    expect(mocks.decide).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole('button', { name: /approve installation/i })
     );
+
+    await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
   });
 
   it('stores plaintext only through the Electron vault and binds an opaque ref', async () => {
@@ -282,6 +303,36 @@ describe('WorkspaceBundleInstallWizard', () => {
           expect.objectContaining({ secret_ref: `wsvault_${'A'.repeat(32)}` }),
         ],
       })
+    );
+  });
+
+  it('removes a newly stored secret when the durable binding is rejected', async () => {
+    mocks.fetchProposal.mockResolvedValue(snapshot(false));
+    mocks.secretPut.mockResolvedValue({
+      secret_ref: `wsvault_${'C'.repeat(32)}`,
+      account_scope_digest: 'b'.repeat(64),
+      space_id: 'space-1',
+      revision_id: 'research@1',
+      slot_id: 'environment:API_TOKEN',
+      state: 'available',
+    });
+    mocks.bindValues.mockRejectedValue(new Error('Version conflict'));
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    await user.type(
+      await screen.findByLabelText('Local value for API_TOKEN'),
+      'orphan-candidate'
+    );
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mocks.secretDelete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          secret_ref: `wsvault_${'C'.repeat(32)}`,
+          slot_id: 'environment:API_TOKEN',
+        })
+      )
     );
   });
 
@@ -812,6 +863,9 @@ describe('WorkspaceBundleInstallWizard', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Approve installation' })
+    );
     await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
     expect(mocks.createProposal).toHaveBeenCalledTimes(2);
     expect(mocks.createSpace).toHaveBeenCalledTimes(1);
@@ -842,6 +896,9 @@ describe('WorkspaceBundleInstallWizard', () => {
       await screen.findByRole('button', { name: /confirm and create/i })
     );
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Approve installation' })
+    );
     await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
     expect(mocks.createSpace).toHaveBeenCalledTimes(1);
     expect(mocks.createProposal).toHaveBeenCalledTimes(2);

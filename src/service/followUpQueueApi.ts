@@ -20,6 +20,15 @@ const TERMINAL_CONTINUATION_ADMISSION_CODES = new Set([
   'continuation_clarification_required',
   'continuation_duplicate_without_progress',
 ]);
+const PENDING_FOLLOW_UP_CACHE_MS = 3000;
+const pendingFollowUpCache = new Map<
+  string,
+  { expiresAt: number; request: Promise<DurableFollowUpRequest[]> }
+>();
+
+function invalidatePendingFollowUps(projectId: string): void {
+  pendingFollowUpCache.delete(projectId);
+}
 
 export interface ContinuationAdmissionRejection {
   code: string;
@@ -78,6 +87,7 @@ export function createFollowUpRequest(input: {
   source?: 'local' | 'remote_control' | 'scheduled';
   sourceCommandId?: string;
 }): Promise<DurableFollowUpRequest> {
+  invalidatePendingFollowUps(input.projectId);
   return fetchPost(basePath(input.projectId), {
     request_id: input.requestId,
     content: input.content,
@@ -108,14 +118,28 @@ export function getRemoteFollowUpByCommandId(
 export async function listPendingFollowUpRequests(
   projectId: string
 ): Promise<DurableFollowUpRequest[]> {
-  const response = await fetchGet(basePath(projectId));
-  return Array.isArray(response?.items) ? response.items : [];
+  const cached = pendingFollowUpCache.get(projectId);
+  if (cached && cached.expiresAt > Date.now()) return cached.request;
+  const request = fetchGet(basePath(projectId)).then((response) =>
+    Array.isArray(response?.items) ? response.items : []
+  );
+  pendingFollowUpCache.set(projectId, {
+    expiresAt: Date.now() + PENDING_FOLLOW_UP_CACHE_MS,
+    request,
+  });
+  request.catch(() => {
+    if (pendingFollowUpCache.get(projectId)?.request === request) {
+      pendingFollowUpCache.delete(projectId);
+    }
+  });
+  return request;
 }
 
 export function prioritizeFollowUpRequest(
   projectId: string,
   requestId: string
 ): Promise<DurableFollowUpRequest> {
+  invalidatePendingFollowUps(projectId);
   return fetchPost(
     `${basePath(projectId)}/${encodeURIComponent(requestId)}/send-now`
   );
@@ -125,6 +149,7 @@ export function cancelFollowUpRequest(
   projectId: string,
   requestId: string
 ): Promise<DurableFollowUpRequest> {
+  invalidatePendingFollowUps(projectId);
   return fetchDelete(`${basePath(projectId)}/${encodeURIComponent(requestId)}`);
 }
 
@@ -133,6 +158,7 @@ export function markFollowUpRequestAdmitted(
   requestId: string,
   runId: string
 ): Promise<DurableFollowUpRequest> {
+  invalidatePendingFollowUps(projectId);
   return fetchPost(
     `${basePath(projectId)}/${encodeURIComponent(requestId)}/admitted`,
     { run_id: runId }

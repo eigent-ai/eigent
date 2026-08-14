@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from typing import Any
@@ -61,6 +75,7 @@ def _command() -> dict[str, Any]:
         "expires_at": "2030-01-01T00:00:00+00:00",
         "receipt_grace_until": "2030-01-01T00:00:30+00:00",
         "requires_online_receipt_confirmation": False,
+        "lease_token": "delivery-lease-1",
     }
 
 
@@ -77,12 +92,16 @@ async def test_worker_confirms_receipt_and_drains_independent_lane(tmp_path):
         )
         assert may_execute is True
         assert confirmed.receipt_status == "confirmed"
+        assert confirmed.delivery_lease_token == "delivery-lease-1"
         assert transport.confirmed == ["command-1"]
 
         assert await worker.drain_once() == 1
         assert len(transport.ingested) == 1
         assert transport.ingested[0].events[0].event_type == (
             "receipt.durably_received"
+        )
+        assert transport.ingested[0].delivery_lease_token == (
+            "delivery-lease-1"
         )
         assert journal.claim_command_result_batches() == []
         await worker.close()
@@ -204,4 +223,6 @@ def test_command_inbox_terminal_state_cannot_move_backwards(tmp_path):
                 occurred_at=4,
             )
 
-        assert journal.get_remote_command(record.command_id).state == "completed"
+        assert (
+            journal.get_remote_command(record.command_id).state == "completed"
+        )

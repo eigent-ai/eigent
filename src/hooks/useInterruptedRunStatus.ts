@@ -12,17 +12,22 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet } from '@/api/http';
 import { useHost } from '@/host';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ProjectedRun } from '@/lib/projector';
+import {
+  runEventIngressRegistry,
+  runProjectionStore,
+  useRunProjectionSelector,
+} from '@/lib/runEvents';
+import { useCallback, useEffect, useMemo } from 'react';
 
 export interface DurableRunSummary {
   run_id: string;
   project_id: string;
   status: string;
   updated_at: number;
-  origin?: 'local' | 'cloud_restore';
+  origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
   latest_attempt?: {
     attempt_number: number;
@@ -49,25 +54,6 @@ export function normalizeInterruptedRunState(
   return value as RunsByProject;
 }
 
-function sameRunSummary(
-  left: DurableRunSummary | null,
-  right: DurableRunSummary | null
-): boolean {
-  if (left === right) return true;
-  if (!left || !right) return false;
-  return (
-    left.run_id === right.run_id &&
-    left.project_id === right.project_id &&
-    left.status === right.status &&
-    left.updated_at === right.updated_at &&
-    left.origin === right.origin &&
-    left.resume_blocked_reason === right.resume_blocked_reason &&
-    left.latest_attempt?.attempt_number ===
-      right.latest_attempt?.attempt_number &&
-    left.latest_attempt?.status === right.latest_attempt?.status
-  );
-}
-
 /**
  * Cloud-restored Runs are historical projections, not actionable local
  * interruptions. Keep their provenance in the journal, but do not surface
@@ -77,6 +63,26 @@ export function actionableInterruptedRun(
   run: DurableRunSummary | null
 ): DurableRunSummary | null {
   return run?.origin === 'cloud_restore' ? null : run;
+}
+
+function projectedRunToDurableSummary(
+  projectId: string,
+  run: ProjectedRun
+): DurableRunSummary {
+  return {
+    run_id: run.runId,
+    project_id: projectId,
+    status: run.status,
+    updated_at: Date.parse(run.updatedAt) / 1000,
+    origin: run.origin,
+    resume_blocked_reason: run.resumeBlockedReason,
+    latest_attempt: run.latestAttempt
+      ? {
+          attempt_number: run.latestAttempt.attemptNumber,
+          status: run.latestAttempt.status,
+        }
+      : null,
+  };
 }
 
 /**
@@ -90,69 +96,54 @@ export function actionableInterruptedRun(
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
-  const [interruptedRunState, setInterruptedRunState] =
-    useState<InterruptedRunState>({});
-  const runsByProject = normalizeInterruptedRunState(interruptedRunState);
-  const inFlightRef = useRef<{
-    projectId: string;
-    promise: Promise<void>;
-  } | null>(null);
-  const storedRun = projectId ? (runsByProject[projectId] ?? null) : null;
-  const run = actionableInterruptedRun(storedRun);
+  const selectInterrupted = useCallback(
+    (state: import('@/lib/projector').ProjectViewState | null) => {
+      const interrupted = Object.values(state?.runs || {}).filter(
+        (candidate) => candidate.status === 'interrupted'
+      );
+      interrupted.sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt)
+      );
+      return interrupted[0] || null;
+    },
+    []
+  );
+  const projectedRun = useRunProjectionSelector(projectId, selectInterrupted);
+  const run = useMemo(
+    () =>
+      projectedRun && projectId
+        ? actionableInterruptedRun(
+            projectedRunToDurableSummary(projectId, projectedRun)
+          )
+        : null,
+    [projectId, projectedRun]
+  );
 
   const setRun = useCallback(
     (next: DurableRunSummary | null) => {
       if (!projectId) return;
-      setInterruptedRunState((current) => {
-        const currentByProject = normalizeInterruptedRunState(current);
-        return sameRunSummary(currentByProject[projectId] ?? null, next)
-          ? currentByProject
-          : { ...currentByProject, [projectId]: next };
-      });
+      if (!next) {
+        if (projectedRun) {
+          runProjectionStore.removeRun(projectId, projectedRun.runId);
+        }
+        return;
+      }
+      runProjectionStore.upsertRunSummaries(projectId, [next]);
     },
-    [projectId]
+    [projectId, projectedRun]
   );
 
   const refresh = useCallback((): Promise<void> => {
-    if (!projectId) {
-      return Promise.resolve();
-    }
-
-    const existing = inFlightRef.current;
-    if (existing?.projectId === projectId) return existing.promise;
-
-    const promise = (async () => {
-      try {
-        const result = await fetchGet('/runs', {
-          project_id: projectId,
-          status: 'interrupted',
-          limit: 1,
-        });
-        const next = Array.isArray(result?.runs) ? result.runs[0] : null;
-        // Store by Project so a late response can never paint another
-        // Project's banner or overwrite its newer result.
-        setInterruptedRunState((current) => {
-          const currentByProject = normalizeInterruptedRunState(current);
-          const nextRun = next || null;
-          return sameRunSummary(currentByProject[projectId] ?? null, nextRun)
-            ? currentByProject
-            : { ...currentByProject, [projectId]: nextRun };
-        });
-      } catch (error: any) {
+    if (!projectId) return Promise.resolve();
+    return runEventIngressRegistry
+      .reconcileProject(projectId)
+      .catch((error) => {
         // Brain can still be booting while the Project shell is visible. Keep
         // the last canonical state until backend-ready/focus retries it.
         if (error?.name !== 'AbortError') {
           console.debug('[RunControl] Run status refresh deferred', error);
         }
-      }
-    })().finally(() => {
-      if (inFlightRef.current?.promise === promise) {
-        inFlightRef.current = null;
-      }
-    });
-
-    inFlightRef.current = { projectId, promise };
-    return promise;
+      });
   }, [projectId]);
 
   useEffect(() => {

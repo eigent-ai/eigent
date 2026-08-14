@@ -91,7 +91,12 @@ def test_follow_up_is_removed_from_pending_only_after_run_admission(journal):
         project_id="project-1",
         content="Continue",
     )
-    journal.ensure_run(run_id="follow-1", project_id="project-1")
+    journal.ensure_run(
+        run_id="follow-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "follow-1", request_id="admit-follow-1", reason="follow_up_execution"
+    )
 
     admitted = journal.mark_follow_up_admitted(
         request_id="follow-1",
@@ -167,7 +172,14 @@ def test_follow_up_controller_round_trip_uses_local_routes(client, journal):
         assert prioritized.status_code == 200
         assert prioritized.json()["delivery_mode"] == "send_now"
 
-        journal.ensure_run(run_id="follow-1", project_id="project-1")
+        journal.ensure_run(
+            run_id="follow-1", project_id="project-1", status="pending"
+        )
+        journal.create_run_attempt(
+            "follow-1",
+            request_id="admit-follow-1",
+            reason="follow_up_execution",
+        )
         admitted = client.post(
             "/projects/project-1/follow-ups/follow-1/admitted",
             json={"run_id": "follow-1"},
@@ -217,7 +229,14 @@ def test_remote_follow_up_is_durable_and_globally_reconciled(client, journal):
         assert by_command.status_code == 200
         assert by_command.json() == created.json()
 
-        journal.ensure_run(run_id="run-remote", project_id="project-remote")
+        journal.ensure_run(
+            run_id="run-remote", project_id="project-remote", status="pending"
+        )
+        journal.create_run_attempt(
+            "run-remote",
+            request_id="admit-run-remote",
+            reason="follow_up_execution",
+        )
         admitted = client.post(
             "/projects/project-remote/follow-ups/run-remote/admitted",
             json={"run_id": "run-remote"},

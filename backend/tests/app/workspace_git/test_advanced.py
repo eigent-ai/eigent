@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -73,6 +87,32 @@ def advanced_git(tmp_path: Path):
 )
 def test_advanced_git_grammar_classifies_known_commands(argv, operation):
     assert AdvancedGitCommandClassifier().classify(argv).operation == operation
+
+
+@pytest.mark.parametrize(
+    "argv",
+    (
+        ("checkout", "-f", "main"),
+        ("switch", "main"),
+        ("branch", "-f", "topic", "HEAD~1"),
+        ("tag", "-f", "v1", "HEAD~1"),
+    ),
+)
+def test_worktree_and_ref_overwrites_are_destructive_and_confirmed(argv):
+    classification = AdvancedGitCommandClassifier().classify(argv)
+
+    assert classification.operation == "git.destructive"
+    assert classification.always_confirm is True
+
+
+def test_git_config_list_is_read_only_but_external_config_files_are_rejected():
+    classifier = AdvancedGitCommandClassifier()
+
+    assert classifier.classify(("config", "--list")).operation == "git.read"
+    with pytest.raises(AdvancedGitCommandRejected):
+        classifier.classify(
+            ("config", "--file", "../../.zshenv", "core.dummy", "x")
+        )
 
 
 @pytest.mark.parametrize(
@@ -483,6 +523,19 @@ def test_publish_policy_scans_outgoing_history_without_retaining_secret(
 
     assert "stripe_secret" in str(rejected.value)
     assert secret not in str(rejected.value)
+
+
+def test_publish_policy_comment_does_not_suppress_real_secret():
+    secret = "AKIA" + "A1B2C3D4E5F6G7H8"
+    assert (
+        GitPublishPolicy._secret_type(
+            f"AWS_ACCESS_KEY_ID={secret}  # sample config"
+        )
+        == "aws_access_key"
+    )
+    assert (
+        GitPublishPolicy._secret_type('password="sample-placeholder"') is None
+    )
 
 
 def test_publish_policy_returns_bounded_metadata_for_clean_history(

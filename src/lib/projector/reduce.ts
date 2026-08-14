@@ -50,6 +50,44 @@ function sameAskData(left: unknown, right: unknown): boolean {
 }
 
 const CROSS_LANE_MATCH_WINDOW_SECONDS = 120;
+const MAX_SEEN_EVENT_IDS = 10000;
+const MAX_LEGACY_STEPS = 5000;
+const MAX_UNKNOWN_EVENTS = 500;
+const MAX_ARTIFACT_RUNS = 1000;
+
+function appendBounded<T>(values: T[], value: T, limit: number): T[] {
+  const next = [...values, value];
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}
+
+function appendSeenEvent(
+  seenEventIds: Record<string, true>,
+  eventId: string
+): Record<string, true> {
+  const next = { ...seenEventIds, [eventId]: true as const };
+  const overflow = Object.keys(next).length - MAX_SEEN_EVENT_IDS;
+  if (overflow <= 0) return next;
+  return Object.fromEntries(
+    Object.keys(next)
+      .slice(overflow)
+      .map((id) => [id, true])
+  ) as Record<string, true>;
+}
+
+function retainRecentArtifactRuns(
+  artifactsByRun: Record<string, ProjectedArtifact[]>,
+  currentRunId: string
+): Record<string, ProjectedArtifact[]> {
+  const runIds = Object.keys(artifactsByRun);
+  if (runIds.length <= MAX_ARTIFACT_RUNS) return artifactsByRun;
+  const retained = runIds
+    .filter((runId) => runId !== currentRunId)
+    .slice(-(MAX_ARTIFACT_RUNS - 1));
+  retained.push(currentRunId);
+  return Object.fromEntries(
+    retained.map((runId) => [runId, artifactsByRun[runId]])
+  );
+}
 
 function findEquivalentCrossLaneStep(
   state: ProjectViewState,
@@ -200,12 +238,21 @@ export function reduceProjectView(
     };
   }
 
-  const status =
+  const candidateStatus =
     RUN_STATUS_BY_EVENT[event.eventType] ||
     (event.legacyStep === 'end'
       ? 'completed'
       : previousRun?.status || 'running');
+  const status =
+    previousRun &&
+    previousRun.status !== 'running' &&
+    previousRun.status !== 'interrupted' &&
+    candidateStatus === 'running'
+      ? previousRun.status
+      : candidateStatus;
   const run: ProjectedRun = {
+    ...previousRun,
+    ...(event.origin ? { origin: event.origin } : {}),
     runId: event.runId,
     status,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
@@ -269,10 +316,20 @@ export function reduceProjectView(
         ];
       }
     );
-    artifactsByRun = {
-      ...artifactsByRun,
-      [event.runId]: projectedArtifacts,
-    };
+    const previousArtifacts = artifactsByRun[event.runId] || [];
+    const previousById = new Map(
+      previousArtifacts.map((artifact) => [artifact.artifactId, artifact])
+    );
+    artifactsByRun = retainRecentArtifactRuns(
+      {
+        ...artifactsByRun,
+        [event.runId]: projectedArtifacts.map((artifact) => ({
+          ...artifact,
+          assetRef: previousById.get(artifact.artifactId)?.assetRef,
+        })),
+      },
+      event.runId
+    );
   }
   if (event.eventType === 'artifact.uploaded') {
     const artifactId =
@@ -285,39 +342,42 @@ export function reduceProjectView(
         : null;
     const key = typeof rawAsset?.key === 'string' ? rawAsset.key : '';
     if (artifactId && key) {
-      artifactsByRun = {
-        ...artifactsByRun,
-        [event.runId]: (artifactsByRun[event.runId] || []).map((artifact) =>
-          artifact.artifactId === artifactId
-            ? {
-                ...artifact,
-                assetRef: {
-                  key,
-                  chatFileId:
-                    typeof rawAsset?.chat_file_id === 'number'
-                      ? rawAsset.chat_file_id
-                      : undefined,
-                  bucket:
-                    typeof rawAsset?.bucket === 'string'
-                      ? rawAsset.bucket
-                      : undefined,
-                  filename:
-                    typeof rawAsset?.filename === 'string'
-                      ? rawAsset.filename
-                      : undefined,
-                  size:
-                    typeof rawAsset?.size === 'number'
-                      ? rawAsset.size
-                      : undefined,
-                  contentType:
-                    typeof rawAsset?.content_type === 'string'
-                      ? rawAsset.content_type
-                      : undefined,
-                },
-              }
-            : artifact
-        ),
-      };
+      artifactsByRun = retainRecentArtifactRuns(
+        {
+          ...artifactsByRun,
+          [event.runId]: (artifactsByRun[event.runId] || []).map((artifact) =>
+            artifact.artifactId === artifactId
+              ? {
+                  ...artifact,
+                  assetRef: {
+                    key,
+                    chatFileId:
+                      typeof rawAsset?.chat_file_id === 'number'
+                        ? rawAsset.chat_file_id
+                        : undefined,
+                    bucket:
+                      typeof rawAsset?.bucket === 'string'
+                        ? rawAsset.bucket
+                        : undefined,
+                    filename:
+                      typeof rawAsset?.filename === 'string'
+                        ? rawAsset.filename
+                        : undefined,
+                    size:
+                      typeof rawAsset?.size === 'number'
+                        ? rawAsset.size
+                        : undefined,
+                    contentType:
+                      typeof rawAsset?.content_type === 'string'
+                        ? rawAsset.content_type
+                        : undefined,
+                  },
+                }
+              : artifact
+          ),
+        },
+        event.runId
+      );
     }
   }
   const hasLegacyStepId =
@@ -350,8 +410,8 @@ export function reduceProjectView(
         : step
     );
   } else if (event.legacyStep && !hasLegacyStep) {
-    legacySteps = [
-      ...state.legacySteps,
+    legacySteps = appendBounded(
+      state.legacySteps,
       {
         eventId: event.eventId,
         stepId: legacyStepId,
@@ -364,12 +424,13 @@ export function reduceProjectView(
         cloudCursor: event.cloudCursor,
         source: event.source,
       },
-    ];
+      MAX_LEGACY_STEPS
+    );
   }
 
   return {
     ...state,
-    seenEventIds: { ...state.seenEventIds, [event.eventId]: true },
+    seenEventIds: appendSeenEvent(state.seenEventIds, event.eventId),
     currentCursor:
       event.cloudCursor === null
         ? state.currentCursor
@@ -385,6 +446,6 @@ export function reduceProjectView(
       RUN_STATUS_BY_EVENT[event.eventType] ||
       event.eventType.startsWith('artifact.')
         ? state.unknownEvents
-        : [...state.unknownEvents, event],
+        : appendBounded(state.unknownEvents, event, MAX_UNKNOWN_EVENTS),
   };
 }

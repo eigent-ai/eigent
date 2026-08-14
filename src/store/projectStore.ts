@@ -166,6 +166,7 @@ interface TaskQueue {
   triggerName?: string;
   processing?: boolean;
   sendNow?: boolean;
+  source?: 'local' | 'remote_control' | 'scheduled';
 }
 
 /**
@@ -438,7 +439,8 @@ interface ProjectStore {
     executionId?: string,
     triggerTaskId?: string,
     triggerId?: number,
-    triggerName?: string
+    triggerName?: string,
+    source?: 'local' | 'remote_control' | 'scheduled'
   ) => string | null;
   removeQueuedMessage: (projectId: string, taskId: string) => TaskQueue;
   restoreQueuedMessage: (projectId: string, messageData: TaskQueue) => void;
@@ -1995,7 +1997,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     executionId?: string,
     triggerTaskId?: string,
     triggerId?: number,
-    triggerName?: string
+    triggerName?: string,
+    source?: 'local' | 'remote_control' | 'scheduled'
   ) => {
     const { projects } = get();
 
@@ -2037,6 +2040,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               triggerTaskId,
               triggerId,
               triggerName,
+              source,
             },
           ],
           updatedAt: Date.now(),

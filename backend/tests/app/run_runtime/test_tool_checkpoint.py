@@ -101,6 +101,43 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
         assert tool.result == {"content": "hello"}
 
 
+def test_checkpoint_redacts_common_nested_credential_keys(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            prepare_tool_checkpoint(
+                raw_tool_call_id="credential-shapes",
+                tool_name="connector_call",
+                arguments={
+                    "env": {
+                        "refresh_token": "refresh-secret",
+                        "ACCESS_TOKEN": "access-secret",
+                        "clientSecret": "client-secret",
+                        "PRIVATE_KEY": "private-secret",
+                        "DB_PASSWORD": "database-secret",
+                    }
+                },
+                journal=journal,
+            )
+        persisted = journal.list_tool_calls("run-1")[0].request
+        assert persisted["env"] == {
+            "refresh_token": "[REDACTED]",
+            "ACCESS_TOKEN": "[REDACTED]",
+            "clientSecret": "[REDACTED]",
+            "PRIVATE_KEY": "[REDACTED]",
+            "DB_PASSWORD": "[REDACTED]",
+        }
+        assert "refresh-secret" not in str(persisted)
+
+
+def test_tool_without_admitted_run_context_fails_closed():
+    with pytest.raises(ToolCheckpointPersistenceError, match="RunContext"):
+        prepare_tool_checkpoint(
+            raw_tool_call_id="orphan-tool",
+            tool_name="send_email",
+            arguments={"to": "user@example.com"},
+        )
+
+
 def test_unsafe_external_error_is_recorded_then_fails_closed(tmp_path):
     with _running_journal(tmp_path) as journal:
         with run_context_scope(_context(tmp_path)):
@@ -142,9 +179,7 @@ def test_tool_error_remains_useful_without_persisting_embedded_credentials(
 
         tool = journal.list_tool_calls("run-1")[0]
         assert tool.status == "failed"
-        assert tool.result == {
-            "error": "provider rejected Bearer [REDACTED]"
-        }
+        assert tool.result == {"error": "provider rejected Bearer [REDACTED]"}
 
 
 def test_unsafe_tool_soft_error_is_known_failed_and_does_not_block_resume(

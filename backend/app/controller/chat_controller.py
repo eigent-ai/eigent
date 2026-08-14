@@ -466,11 +466,14 @@ def _admission_request_id(
     attaches: list[str],
     project_context: str | None,
 ) -> str:
+    # ``project_context`` is a rebuildable renderer projection and can change
+    # between retries.  It must never participate in durable admission
+    # identity.  Keep the parameter temporarily for call-site compatibility.
+    del project_context
     canonical = json.dumps(
         {
             "question": question,
             "attaches": attaches,
-            "project_context": project_context,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -700,11 +703,12 @@ async def _resolve_continuation_admission(
         "Continue from this frontier. Do not repeat the prior final answer.\n"
         "=== End Durable Continuation Intent ==="
     )
-    current_context = (data.project_context or "").strip()
-    combined = (
-        f"{current_context}\n\n{directive}" if current_context else directive
+    # The Workforce execution path does not consume ``project_context``.
+    # Put the resolved continuation in the actual model instruction so it
+    # cannot be silently discarded after the durable claim is recorded.
+    return data.model_copy(
+        update={"question": f"{data.question.strip()}\n\n{directive}"}
     )
-    return data.model_copy(update={"project_context": combined})
 
 
 def _is_remote_browser_hands(request: Request | None) -> bool:
@@ -1066,6 +1070,16 @@ async def _prepare_chat_run(
     camel_log.mkdir(parents=True, exist_ok=True)
     run_context = _build_run_context(data, frozen_dirs, request, camel_log)
     journal = get_default_run_journal()
+    if isinstance(journal, SQLiteRunJournal):
+        # The request body is not an ownership authority. Persist only a
+        # candidate; CloudSync promotes it after device registration proves
+        # the authenticated Cloud account.
+        await asyncio.to_thread(
+            journal.register_memory_scope_owner_candidates,
+            project_id=run_context.project_id,
+            space_id=run_context.space_id,
+            claimed_account_owner_id=run_context.user_id,
+        )
     is_resume = data.resume_request_id is not None
     if is_resume:
         request_id = str(data.resume_request_id)
@@ -1921,8 +1935,38 @@ async def _improve_chat(
         and refreshed_context.run_id == data.task_id
     )
     if rotation_succeeded:
+        coordinator = get_default_run_coordinator()
+        rebound_runtime = False
+
+        async def rollback_runtime_binding() -> None:
+            nonlocal rebound_runtime
+            if (
+                rebound_runtime
+                and previous_run_id is not None
+                and previous_run_id != refreshed_context.run_id
+            ):
+                restored = await coordinator.rebind_run(
+                    refreshed_context.run_id,
+                    previous_run_id,
+                )
+                if not restored:
+                    chat_logger.critical(
+                        "Failed to roll back follow-up runtime binding",
+                        extra={
+                            "previous_run_id": previous_run_id,
+                            "new_run_id": refreshed_context.run_id,
+                        },
+                    )
+            if isinstance(current_context, RunContext):
+                task_lock.run_context = current_context
+                await asyncio.to_thread(
+                    apply_run_env_for_third_party, current_context
+                )
+            task_lock.status = previous_status
+            rebound_runtime = False
+
         if previous_run_id is not None:
-            rebound = await get_default_run_coordinator().rebind_run(
+            rebound = await coordinator.rebind_run(
                 previous_run_id,
                 refreshed_context.run_id,
             )
@@ -1941,6 +1985,7 @@ async def _improve_chat(
                     code.error,
                     "The previous Run has no live consumer for this follow-up.",
                 )
+            rebound_runtime = previous_run_id != refreshed_context.run_id
         resolved_request_id = admission_request_id or _admission_request_id(
             refreshed_context.run_id,
             question=data.question,
@@ -1948,12 +1993,16 @@ async def _improve_chat(
             project_context=data.project_context,
         )
         journal = get_default_run_journal()
-        await asyncio.to_thread(
-            journal.ensure_run,
-            run_id=refreshed_context.run_id,
-            project_id=refreshed_context.project_id,
-            status="pending",
-        )
+        try:
+            await asyncio.to_thread(
+                journal.ensure_run,
+                run_id=refreshed_context.run_id,
+                project_id=refreshed_context.project_id,
+                status="pending",
+            )
+        except Exception:
+            await rollback_runtime_binding()
+            raise
         environment = None
         template = getattr(
             task_lock,
@@ -1975,8 +2024,10 @@ async def _improve_chat(
                     template=template,
                 )
             except WorkspaceBundleReconfigurationPendingError as exc:
+                await rollback_runtime_binding()
                 raise _workspace_bundle_admission_error(exc) from exc
             except EnvironmentSetupRequiredError as exc:
+                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             try:
                 runtime_environment = await asyncio.to_thread(
@@ -1986,6 +2037,7 @@ async def _improve_chat(
                     refreshed_context,
                 )
             except EnvironmentSetupRequiredError as exc:
+                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             try:
                 _require_supported_bundle_session_mode(
@@ -1993,6 +2045,7 @@ async def _improve_chat(
                     runtime_environment,
                 )
             except EnvironmentSetupRequiredError as exc:
+                await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
             _apply_environment_to_task_lock(
                 task_lock,
@@ -2000,22 +2053,26 @@ async def _improve_chat(
                 template=template,
                 runtime_environment=runtime_environment,
             )
-        attempt = await asyncio.to_thread(
-            journal.create_run_attempt,
-            refreshed_context.run_id,
-            request_id=resolved_request_id,
-            reason="follow_up_execution",
-            activate=False,
-            environment=(environment.binding if environment else None),
-        )
-        await _record_canonical_user_message(
-            journal,
-            run_context=refreshed_context,
-            request_id=resolved_request_id,
-            content=data.question,
-            source="improve",
-            attaches=data.attaches or [],
-        )
+        try:
+            attempt = await asyncio.to_thread(
+                journal.create_run_attempt,
+                refreshed_context.run_id,
+                request_id=resolved_request_id,
+                reason="follow_up_execution",
+                activate=False,
+                environment=(environment.binding if environment else None),
+            )
+            await _record_canonical_user_message(
+                journal,
+                run_context=refreshed_context,
+                request_id=resolved_request_id,
+                content=data.question,
+                source="improve",
+                attaches=data.attaches or [],
+            )
+        except Exception:
+            await rollback_runtime_binding()
+            raise
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the

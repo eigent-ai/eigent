@@ -50,8 +50,10 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
+import { runEventIngressRegistry } from '@/lib/runEvents';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -550,6 +552,8 @@ interface Task {
   /** Files from the authoritative typed Artifact manifest during replay. */
   artifactManifestFiles?: FileInfo[];
   artifactManifestFinalized?: boolean;
+  artifactManifestScanStatus?: string;
+  artifactManifestTruncated?: boolean;
   webViewUrls: { url: string; processTaskId: string }[];
   activeAsk: string;
   askList: Message[];
@@ -2646,6 +2650,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ) {
                 return;
               }
+              const canonicalProjectId =
+                typeof parsed?.project_id === 'string'
+                  ? parsed.project_id
+                  : project_id;
+              if (canonicalProjectId) {
+                runEventIngressRegistry.ingest(
+                  canonicalProjectId,
+                  newTaskId,
+                  parsed,
+                  'historical_rehydrate'
+                );
+              }
               // /runs/{id}/stream returns the canonical RunEvent envelope.
               // The existing Desktop reducer remains legacy-shaped during
               // migration, so typed-only/control events advance the stream
@@ -4113,6 +4129,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             lockedTask.artifactManifestFiles = normalizeTaskArtifactFileList(
               agentMessages.data.artifacts
             );
+            lockedTask.artifactManifestScanStatus =
+              typeof agentMessages.data.scan_status === 'string'
+                ? agentMessages.data.scan_status
+                : 'complete';
+            lockedTask.artifactManifestTruncated =
+              agentMessages.data.truncated === true;
             // A finalized manifest is the durable barrier even when discovery
             // explicitly records workspace_unavailable. Re-querying the live
             // filesystem during replay would invent a second, non-canonical
@@ -4388,9 +4410,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 const project = projectStore.getProjectById(project_id);
                 if (project && project.queuedMessages) {
                   const messageToRemove = project.queuedMessages.find(
-                    (msg) =>
-                      msg.task_id === taskIdToRemove ||
-                      msg.content.includes(taskIdToRemove)
+                    (msg) => msg.task_id === taskIdToRemove
                   );
                   if (messageToRemove) {
                     projectStore.removeQueuedMessage(
@@ -4414,28 +4434,32 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const taskIdToRemove = agentMessages.data.task_id as string;
               if (taskIdToRemove) {
                 const projectStore = useProjectStore.getState();
-                // Try to remove from current project otherwise
-                const project_id =
-                  agentMessages.data.project_id ?? projectStore.activeProjectId;
+                const project_id = agentMessages.data.project_id as
+                  string | undefined;
                 if (project_id) {
-                  // Find and remove the message with matching task ID
                   const project = projectStore.getProjectById(project_id);
                   if (project && project.queuedMessages) {
                     const messageToRemove = project.queuedMessages.find(
-                      (msg) =>
-                        msg.task_id === taskIdToRemove ||
-                        msg.content.includes(taskIdToRemove)
+                      (msg) => msg.task_id === taskIdToRemove
                     );
                     if (messageToRemove) {
                       projectStore.removeQueuedMessage(
                         project_id,
                         messageToRemove.task_id
                       );
+                      void cancelFollowUpRequest(
+                        project_id,
+                        messageToRemove.task_id
+                      ).catch(() => undefined);
                       console.log(
                         `Task removed from project queue: ${taskIdToRemove}`
                       );
                     }
                   }
+                } else {
+                  console.warn(
+                    '[remove_task] Ignored queue mutation without project_id'
+                  );
                 }
               }
             } catch (error) {
@@ -4909,6 +4933,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
+          if (!type && project_id) {
+            runEventIngressRegistry.ensureLocal(project_id, newTaskId);
+          }
           const { setAttaches, activeTaskId } = get();
           setAttaches(activeTaskId as string, []);
           return;

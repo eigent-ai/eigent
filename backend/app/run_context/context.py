@@ -136,15 +136,19 @@ async def stream_with_run_context(
 ) -> AsyncIterator[str]:
     iterator = stream.__aiter__()
     while True:
-        # Store the getter, not a snapshot. A queue-backed stream can block in
-        # __anext__ while a follow-up atomically rebinds TaskLock.run_context;
-        # journal writes inside the generator must observe that new immutable
-        # RunContext rather than attribute the first event to the prior Run.
-        token = current_run_context_getter.set(context_getter)
+        # Resolve one immutable snapshot for this generator turn. Child tasks
+        # created by the turn inherit that value, so a late tool completion
+        # cannot be attributed to a subsequently rebound Run. The next
+        # __anext__ resolves the getter again and therefore still observes an
+        # intentional follow-up rebind.
+        context = context_getter()
+        getter_token = current_run_context_getter.set(None)
+        context_token = current_run_context.set(context)
         try:
             item = await iterator.__anext__()
         except StopAsyncIteration:
             return
         finally:
-            current_run_context_getter.reset(token)
+            current_run_context.reset(context_token)
+            current_run_context_getter.reset(getter_token)
         yield item

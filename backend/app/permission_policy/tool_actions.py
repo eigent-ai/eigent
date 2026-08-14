@@ -55,7 +55,11 @@ _CONTROL_PLANE_FILENAMES = frozenset(
     {
         "desktop-instance-id",
         "policy.sqlite3",
+        "policy.sqlite3-journal",
+        "policy.sqlite3-shm",
+        "policy.sqlite3-wal",
         "run-journal.sqlite3",
+        "run-journal.sqlite3-journal",
         "run-journal.sqlite3-shm",
         "run-journal.sqlite3-wal",
     }
@@ -237,16 +241,33 @@ def _opaque_tool_identity_resource(
 def _argument_values(
     arguments: dict[str, Any], keys: tuple[str, ...]
 ) -> tuple[str, ...]:
+    normalized_keys = {_normalized_argument_key(key) for key in keys}
     values: list[str] = []
-    for key in keys:
-        value = arguments.get(key)
-        if value is None:
-            continue
-        if isinstance(value, (list, tuple)):
-            values.extend(str(item) for item in value if item is not None)
-        else:
-            values.append(str(value))
+    stack: list[dict[str, Any]] = [arguments]
+    while stack:
+        current = stack.pop()
+        for key, value in current.items():
+            if isinstance(value, dict):
+                stack.append(value)
+            elif isinstance(value, (list, tuple)):
+                stack.extend(item for item in value if isinstance(item, dict))
+            if _normalized_argument_key(key) not in normalized_keys:
+                continue
+            if isinstance(value, (list, tuple)):
+                values.extend(
+                    str(item)
+                    for item in value
+                    if item is not None and not isinstance(item, dict)
+                )
+            elif value is not None and not isinstance(value, dict):
+                values.append(str(value))
     return tuple(dict.fromkeys(item for item in values if item.strip()))
+
+
+def _normalized_argument_key(value: object) -> str:
+    text = str(value).strip()
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", text)
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
 def _target_resources(
@@ -408,27 +429,29 @@ def _expanded_shell_words(
 
 def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
     expanded_segments = _expanded_shell_words(words)
-    whole_command = " ".join(
-        word for segment in expanded_segments for word in segment
-    ).lower()
-    whole_command_path = whole_command.replace(chr(92), "/")
-    whole_command_compact = re.sub(r"[^a-z0-9_]+", "", whole_command)
-    if ".eigent" in whole_command_path and (
-        re.search(r"run.*journal.*sqlite", whole_command_compact)
-        or re.search(r"policy.*sqlite", whole_command_compact)
-    ):
-        return True
+    in_eigent_directory = False
     for segment in expanded_segments:
-        raw = " ".join(segment).lower()
-        compact = re.sub(r"[^a-z0-9_]+", "", raw)
-        if "eigentlocalcontrolcapability" in compact:
-            return True
-        if ".eigent" not in raw.replace(chr(92), "/"):
-            continue
-        if re.search(r"run.*journal.*sqlite", compact) or re.search(
-            r"policy.*sqlite", compact
-        ):
-            return True
+        segment_mentions_eigent = any(
+            ".eigent" in word.lower().replace(chr(92), "/") for word in segment
+        )
+        executable = (
+            segment[0].lstrip("(").replace(chr(92), "/").rsplit("/", 1)[-1]
+            if segment
+            else ""
+        )
+        if executable.lower() == "cd" and segment_mentions_eigent:
+            in_eigent_directory = True
+        for word in segment:
+            raw = word.lower().replace(chr(92), "/")
+            compact = re.sub(r"[^a-z0-9_]+", "", raw)
+            if "eigentlocalcontrolcapability" in compact:
+                return True
+            if ".eigent" not in raw and not in_eigent_directory:
+                continue
+            if re.search(r"run.*journal.*sqlite", compact) or re.search(
+                r"policy.*sqlite", compact
+            ):
+                return True
     return False
 
 

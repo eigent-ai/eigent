@@ -398,6 +398,11 @@ class RunCoordinator:
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
             return False
+        if run.status in {"completed", "failed", "cancelled"}:
+            # A compatibility END frame may close the renderer stream after a
+            # durable cancel/failure. It is transport state, not permission to
+            # rewrite the canonical Run outcome as success.
+            return True
         artifact_manifest = await asyncio.to_thread(
             finalize_run_artifacts,
             self._journal,
@@ -575,6 +580,7 @@ class RunCoordinator:
                 reason=reason,
             )
             await self.cancel(run_id)
+            await self._finalize_artifacts_before_terminal(run_id)
             cancelled = await asyncio.to_thread(
                 journal.complete_cancel,
                 run_id,
@@ -595,6 +601,49 @@ class RunCoordinator:
                     extra={"run_id": run_id},
                 )
             return cancelled
+
+    async def complete_cancelled_turn(
+        self,
+        run_id: str,
+        *,
+        request_id: str,
+        reason: str = "user_stopped_turn",
+    ):
+        """Terminalize a warm generator turn without cancelling its pump.
+
+        Skip stops the active model/tool turn but deliberately keeps the
+        Project's compatibility generator alive for follow-ups. Cancelling
+        the RuntimeHandle here would cancel the pump currently executing this
+        method, so the durable cancel transition is committed directly.
+        """
+
+        journal = self._run_journal()
+        await asyncio.to_thread(
+            journal.request_cancel,
+            run_id,
+            request_id=request_id,
+            reason=reason,
+        )
+        await self._finalize_artifacts_before_terminal(run_id)
+        cancelled = await asyncio.to_thread(
+            journal.complete_cancel,
+            run_id,
+            request_id=request_id,
+        )
+        from app.run_sync.runtime import notify_default_cloud_sync_worker
+
+        notify_default_cloud_sync_worker()
+        return cancelled
+
+    async def _finalize_artifacts_before_terminal(self, run_id: str) -> None:
+        if self._journal is None:
+            return
+        from app.artifacts import finalize_run_artifacts
+
+        run = await asyncio.to_thread(self._journal.get_run, run_id)
+        if run is None:
+            return
+        await asyncio.to_thread(finalize_run_artifacts, self._journal, run)
 
     async def close(self) -> None:
         async with self._lock:
@@ -651,11 +700,23 @@ class RunCoordinator:
                 extra={"run_id": handle.run_id},
             )
         else:
-            await self._commit_execution_terminal(
-                handle,
-                event_type="run.completed",
-                payload={"reason": "execution_backend_completed"},
+            result = (
+                await asyncio.to_thread(
+                    self._journal.get_run_final_result_event,
+                    handle.run_id,
+                )
+                if self._journal is not None
+                else None
             )
+            if result is None:
+                await self._commit_execution_terminal(
+                    handle,
+                    event_type="runtime.interrupted",
+                    payload={
+                        "reason": "execution_backend_ended_without_result",
+                        "retryable": True,
+                    },
+                )
         finally:
             handle.finish(error)
             async with self._lock:

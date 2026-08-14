@@ -18,7 +18,7 @@ import asyncio
 
 import pytest
 
-from app.run_journal import EventRecorder, SQLiteRunJournal
+from app.run_journal import SQLiteRunJournal
 from app.run_runtime import RunCoordinator, RunExecutionError
 
 
@@ -212,25 +212,26 @@ async def test_completed_run_references_its_canonical_assistant_result(
     tmp_path,
 ):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    coordinator = RunCoordinator(journal)
+    release = asyncio.Event()
     try:
         journal.ensure_run(run_id="run-result", project_id="project-1")
-        final = await EventRecorder(journal).record_assistant_final(
-            project_id="project-1",
-            run_id="run-result",
-            data="The durable answer",
-        )
-        coordinator = RunCoordinator(journal)
 
         async def source():
-            yield "visible SSE frame"
+            await release.wait()
+            yield "transport closes later"
 
-        subscription = await coordinator.start_with_subscription(
+        await coordinator.start_with_subscription(
             run_id="run-result",
             stream_factory=source,
         )
-        assert await subscription.__anext__() == "visible SSE frame"
-        with pytest.raises(StopAsyncIteration):
-            await subscription.__anext__()
+        assert await coordinator.complete_turn(
+            "run-result",
+            project_id="project-1",
+            assistant_data="The durable answer",
+        )
+        final = journal.get_run_final_result_event("run-result")
+        assert final is not None
 
         completed = next(
             event
@@ -247,6 +248,8 @@ async def test_completed_run_references_its_canonical_assistant_result(
         assert completed.payload["artifact_count"] == 0
         assert completed.payload["result_event_id"] == final.event_id
     finally:
+        release.set()
+        await coordinator.close()
         journal.close()
 
 
@@ -284,6 +287,52 @@ async def test_logical_turn_completes_without_disposing_warm_runtime(tmp_path):
         )
         assert completed.payload["result_event_id"] == final.event_id
         assert await coordinator.get_handle("run-turn") is subscription.handle
+    finally:
+        release.set()
+        await coordinator.close()
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    coordinator = RunCoordinator(journal)
+    release = asyncio.Event()
+    try:
+        journal.ensure_run(run_id="run-cancel", project_id="project-1")
+        journal.create_run_attempt(
+            "run-cancel",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+
+        async def source():
+            await release.wait()
+            yield "legacy end transport"
+
+        await coordinator.start_with_subscription(
+            run_id="run-cancel",
+            stream_factory=source,
+        )
+        await coordinator.complete_cancelled_turn(
+            "run-cancel",
+            request_id="user-stop:run-cancel",
+        )
+
+        assert (
+            await coordinator.complete_turn(
+                "run-cancel",
+                project_id="project-1",
+                assistant_data="Task stopped by user",
+            )
+            is True
+        )
+        assert journal.get_run("run-cancel").status == "cancelled"
+        assert journal.get_run_final_result_event("run-cancel") is None
+        assert "run.completed" not in {
+            event.event_type for event in journal.list_events("run-cancel")
+        }
     finally:
         release.set()
         await coordinator.close()

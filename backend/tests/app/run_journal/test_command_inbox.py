@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import pytest
@@ -23,6 +37,7 @@ def _persist(journal: SQLiteRunJournal, command_id: str = "command-1"):
         expires_at=200.0,
         receipt_grace_until=230.0,
         requires_online_receipt_confirmation=False,
+        delivery_lease_token="delivery-lease-1",
         receipt_event_id=f"{command_id}:receipt",
         now=100.0,
     )
@@ -36,6 +51,7 @@ def test_inbox_commit_also_persists_receipt_outbox(tmp_path):
         batches = journal.claim_command_result_batches(now=100.0)
         assert len(batches) == 1
         assert batches[0].command_id == "command-1"
+        assert batches[0].delivery_lease_token == "delivery-lease-1"
         assert [event.event_type for event in batches[0].events] == [
             "receipt.durably_received"
         ]
@@ -66,6 +82,7 @@ def test_empty_command_result_batch_is_rejected_before_sql(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         batch = CommandResultSyncBatch(
             command_id="command-1",
+            delivery_lease_token="delivery-lease-1",
             lease_token="lease-1",
             attempt_count=0,
             events=(),

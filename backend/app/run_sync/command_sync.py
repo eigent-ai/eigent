@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Durable Desktop command Inbox and independent command-result sync lane."""
 
 from __future__ import annotations
@@ -157,6 +171,7 @@ class HttpCommandSyncTransport:
                 "occurred_at": datetime.fromtimestamp(
                     command.created_at, tz=UTC
                 ).isoformat(),
+                "lease_token": command.delivery_lease_token,
             },
         )
 
@@ -171,6 +186,7 @@ class HttpCommandSyncTransport:
             f"{self._base(configuration)}/commands/{batch.command_id}/events",
             configuration,
             payload={
+                "delivery_lease_token": batch.delivery_lease_token,
                 "events": [
                     {
                         "event_id": event.event_id,
@@ -182,7 +198,7 @@ class HttpCommandSyncTransport:
                         ).isoformat(),
                     }
                     for event in batch.events
-                ]
+                ],
             },
         )
 
@@ -275,6 +291,7 @@ class CommandControlWorker:
             requires_online_receipt_confirmation=bool(
                 command.get("requires_online_receipt_confirmation", False)
             ),
+            delivery_lease_token=command.get("lease_token"),
             receipt_event_id=command.get("receipt_event_id"),
         )
         self.notify()
@@ -366,7 +383,9 @@ class CommandControlWorker:
                 configuration, limit=self._max_commands
             )
         except Exception:
-            logger.exception("Remote command pull failed; outbound lane remains live")
+            logger.exception(
+                "Remote command pull failed; outbound lane remains live"
+            )
             pulled = []
         for item in pulled:
             try:
@@ -392,11 +411,14 @@ class CommandControlWorker:
                         "requires_online_receipt_confirmation": item.get(
                             "requires_online_receipt_confirmation", False
                         ),
+                        "lease_token": item.get("lease_token"),
                     }
                 )
                 pulled_count += 1
             except Exception:
-                logger.exception("Ignoring malformed or conflicting remote command")
+                logger.exception(
+                    "Ignoring malformed or conflicting remote command"
+                )
         for command in await asyncio.to_thread(
             self._journal.list_reconcilable_commands,
             limit=self._max_commands,

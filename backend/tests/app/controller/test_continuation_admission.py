@@ -76,8 +76,9 @@ async def test_continue_binds_frontier_and_rejects_duplicate_without_advance(
             project_id="project-1",
             run_id="run-2",
         )
-        assert "intent: continue_project" in (first.project_context or "")
-        assert "next_action: Write summary" in (first.project_context or "")
+        assert "intent: continue_project" in first.question
+        assert "next_action: Write summary" in first.question
+        assert first.project_context is None
 
         with pytest.raises(HTTPException) as captured:
             await _resolve_continuation_admission(

@@ -179,7 +179,7 @@ describe('Remote Control durable follow-up admission', () => {
     });
   });
 
-  it('marks an idle Project request admitted only after Brain accepts its stream', async () => {
+  it('relies on Brain atomic admission after an idle Project stream opens', async () => {
     vi.mocked(fetchGet).mockResolvedValue({ has_lock: false, status: 'idle' });
     const command = {
       id: 'command-1',
@@ -206,11 +206,7 @@ describe('Remote Control durable follow-up admission', () => {
       'single-agent',
       expect.objectContaining({ preserveTaskId: true, awaitAdmission: true })
     );
-    expect(markFollowUpRequestAdmitted).toHaveBeenCalledWith(
-      'project-1',
-      'run-2',
-      'run-2'
-    );
+    expect(markFollowUpRequestAdmitted).not.toHaveBeenCalled();
     expect(removeQueuedMessage).toHaveBeenCalledWith('project-1', 'run-2');
   });
 

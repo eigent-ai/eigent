@@ -12,12 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
   fetchGet: vi.fn(() => Promise.resolve({ items: [] })),
-  fetchPost: vi.fn(),
+  fetchPost: vi.fn((path: string, body?: Record<string, unknown>) => {
+    if (path.endsWith('/follow-ups')) {
+      const requestId = String(body?.request_id || 'request-1');
+      return Promise.resolve({
+        request_id: requestId,
+        project_id: path.split('/')[2],
+        content: String(body?.content || ''),
+        attachment_paths: body?.attachment_paths || [],
+        delivery_mode: 'wait',
+        status: 'pending',
+        source: body?.source || 'local',
+        source_command_id: body?.source_command_id || null,
+        created_at: 1,
+        updated_at: 1,
+      });
+    }
+    return Promise.resolve({});
+  }),
   fetchPut: vi.fn(),
   getBaseURL: vi.fn(() => Promise.resolve('')),
   getLocalControlCapability: vi.fn(() =>
@@ -31,29 +48,14 @@ vi.mock('@/api/http', () => ({
   waitForBackendReady: vi.fn(() => Promise.resolve(true)),
 }));
 
+import { fetchGet, fetchPost } from '@/api/http';
 import { __remoteControlBridgeTestHooks } from '@/hooks/useRemoteControlBridge';
 import { useProjectStore } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 
-function jsonResponse(payload: unknown): Response {
-  return {
-    ok: true,
-    status: 200,
-    headers: {
-      get: (name: string) =>
-        name.toLowerCase() === 'content-type' ? 'application/json' : '',
-    },
-    json: () => Promise.resolve(payload),
-    text: () => Promise.resolve(JSON.stringify(payload)),
-  } as Response;
-}
-
 describe('useRemoteControlBridge internals', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
@@ -81,20 +83,33 @@ describe('useRemoteControlBridge internals', () => {
     });
   });
 
-  afterEach(() => {
-    fetchSpy.mockRestore();
-  });
-
-  it('allows user_message commands for a non-active Project without switching foreground Project', async () => {
+  it('durably queues user_message commands for a busy background Project', async () => {
     const activeProjectId = useProjectStore
       .getState()
       .createProject('Active Project', undefined, 'project-active');
 
-    fetchSpy
-      .mockResolvedValueOnce(
-        jsonResponse({ has_lock: true, status: 'running' })
+    vi.mocked(fetchGet).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith('/follow-ups')
+          ? {
+              items: [
+                {
+                  request_id: 'task-target-next',
+                  project_id: 'project-target',
+                  content: 'Continue the target project in the background',
+                  attachment_paths: [],
+                  delivery_mode: 'wait',
+                  status: 'pending',
+                  source: 'remote_control',
+                  source_command_id: 'rc_cmd_cross_project',
+                  created_at: 1,
+                  updated_at: 1,
+                },
+              ],
+            }
+          : { has_lock: true, status: 'running' }
       )
-      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
       {
@@ -121,15 +136,13 @@ describe('useRemoteControlBridge internals', () => {
     });
     expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
     expect(useProjectStore.getState().projects['project-target']).toBeDefined();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
-    expect(fetchSpy.mock.calls[1]?.[0]).toBe('/chat/project-target');
-    expect(fetchSpy.mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'X-Eigent-Local-Capability': 'renderer-capability',
-        }),
-      })
+    expect(fetchGet).toHaveBeenCalledWith(
+      '/projects/project-target/follow-ups'
+    );
+    expect(fetchGet).toHaveBeenCalledWith('/chat/project-target/status');
+    expect(fetchPost).not.toHaveBeenCalledWith(
+      '/chat/project-target',
+      expect.anything()
     );
   });
 
@@ -154,8 +167,27 @@ describe('useRemoteControlBridge internals', () => {
     const startTask = vi.fn(() => Promise.resolve());
     targetChatStore?.setState({ startTask } as any);
 
-    fetchSpy.mockResolvedValueOnce(
-      jsonResponse({ has_lock: false, status: 'idle' })
+    vi.mocked(fetchGet).mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith('/follow-ups')
+          ? {
+              items: [
+                {
+                  request_id: 'task-target-next',
+                  project_id: 'project-target',
+                  content: 'Start local background task',
+                  attachment_paths: [],
+                  delivery_mode: 'wait',
+                  status: 'pending',
+                  source: 'remote_control',
+                  source_command_id: 'rc_cmd_local_start',
+                  created_at: 1,
+                  updated_at: 1,
+                },
+              ],
+            }
+          : { has_lock: false, status: 'idle' }
+      )
     );
 
     const ack = await __remoteControlBridgeTestHooks.executeRemoteCommand(
@@ -192,8 +224,10 @@ describe('useRemoteControlBridge internals', () => {
       skipHistoryCreate: false,
       historyId: null,
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
+    expect(fetchGet).toHaveBeenCalledWith(
+      '/projects/project-target/follow-ups'
+    );
+    expect(fetchGet).toHaveBeenCalledWith('/chat/project-target/status');
   });
 
   it('keeps remote history metadata on inactive background Projects', () => {

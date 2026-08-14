@@ -171,7 +171,21 @@ class IncrementalMemoryMaintainer:
                 if parse_project_cursor(
                     page.next_cursor
                 ) == parse_project_cursor(after):
-                    return state
+                    current = self._service.scope("project", project_id)
+                    return (
+                        self._service.journal.record_memory_maintenance_result(
+                            "project",
+                            project_id,
+                            expected_revision=current.revision,
+                            processed_through_watermark=None,
+                            watermark_kind=None,
+                            extractor_version=self._extractor.version,
+                            last_error=(
+                                "History page exceeded the bounded extraction "
+                                "budget before its first event"
+                            ),
+                        )
+                    )
                 active = self._service.list_entries("project", project_id)
                 proposals = self._extractor.extract(
                     active_memory=active,
@@ -283,7 +297,8 @@ def schedule_project_memory_maintenance(project_id: str) -> None:
         try:
             state = completed.result()
             if (
-                parse_project_cursor(state.processed_through_watermark)
+                state.last_error is None
+                and parse_project_cursor(state.processed_through_watermark)
                 < get_lightweight_memory_service().journal.get_project_history_cursor(
                     project_id
                 )

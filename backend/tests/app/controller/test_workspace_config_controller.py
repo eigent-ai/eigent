@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import json
@@ -1275,6 +1289,32 @@ def test_agent_plugin_isolates_escaping_skill_symlinks_and_excludes_git_aliases(
         "linked-git" not in item["logical_path"] for item in payload["files"]
     )
     assert "private git data" not in response.text
+
+
+def test_agent_plugin_excludes_nested_git_administration_directories(
+    workspace_config_api,
+    tmp_path,
+):
+    client, _ = workspace_config_api
+    source = _agent_plugin(tmp_path / "portable-plugin")
+    nested_git = source / "vendor" / "dependency" / ".git"
+    nested_git.mkdir(parents=True)
+    (nested_git / "config").write_text(
+        "nested private git data", encoding="utf-8"
+    )
+
+    response = client.post(
+        "/api/v1/workspace-bundles/agent-plugins:inspect",
+        json={"source_path": str(source), "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert all(
+        "/.git/" not in item["logical_path"]
+        for item in response.json()["files"]
+    )
+    assert "nested private git data" not in response.text
 
 
 def test_agent_plugin_skips_an_escaping_skills_component_without_losing_mcp(

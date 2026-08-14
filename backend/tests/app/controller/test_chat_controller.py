@@ -165,8 +165,11 @@ class TestChatController:
             prepare.assert_awaited_once_with(
                 chat_data,
                 mock_request,
-                admission_request_id=(
-                    "initial:test_task_123:91e462c4441b73410837efd3"
+                admission_request_id=_admission_request_id(
+                    run_id,
+                    question=chat_data.question,
+                    attaches=chat_data.attaches,
+                    project_context=chat_data.project_context,
                 ),
             )
             assert execution.call_count == 1

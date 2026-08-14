@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fetchConnectedProviders, providerLabel } from '@/api/connectors';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -684,13 +698,9 @@ export function WorkspaceBundleInstallWizard({
         `/workspace-bundles/install?proposal=${encodeURIComponent(seed.proposalId)}&handle=${encodeURIComponent(handle.revisionId)}`,
         { replace: true }
       );
-      const approved = await decideWorkspaceBundleInstall({
-        proposalId: seed.proposalId,
-        expectedVersion: proposed.proposal.version,
-        approved: true,
-        actorId,
-      });
-      setSnapshot(approved);
+      // Persisting the proposal is not user consent. Keep the installation in
+      // `proposed` until the review card below receives a separate click.
+      setSnapshot(proposed);
       setRetryMode(null);
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -718,9 +728,10 @@ export function WorkspaceBundleInstallWizard({
       }
       setBusyKey(item.requirement_key);
       setError(null);
+      let storedSecretRef: string | null = null;
+      let accountScopeDigest: string | null = null;
       try {
-        const accountScopeDigest =
-          await workspaceBundleAccountScopeDigest(actorId);
+        accountScopeDigest = await workspaceBundleAccountScopeDigest(actorId);
         const stored = await host.electronAPI.workspaceSecretPut({
           account_scope_digest: accountScopeDigest,
           space_id: proposal.space_id,
@@ -728,6 +739,7 @@ export function WorkspaceBundleInstallWizard({
           slot_id: item.requirement_key,
           value,
         });
+        storedSecretRef = stored.secret_ref;
         const next = await bindWorkspaceBundleLocalValues({
           proposalId: proposal.proposal_id,
           clientRequestId: `local-value:${proposal.proposal_id}:${crypto.randomUUID()}`,
@@ -758,13 +770,41 @@ export function WorkspaceBundleInstallWizard({
         return true;
       } catch (nextError) {
         setError(errorMessage(nextError));
+        let bindingWasCommitted = false;
         try {
-          setSnapshot(
-            await fetchWorkspaceBundleInstallProposal(proposal.proposal_id)
+          const recovered = await fetchWorkspaceBundleInstallProposal(
+            proposal.proposal_id
+          );
+          setSnapshot(recovered);
+          const requirement = recovered.value_requirements.find(
+            (candidate) =>
+              candidate.requirement_key === item.requirement_key &&
+              candidate.requirement_kind === item.requirement_kind
+          );
+          bindingWasCommitted = Boolean(
+            requirement?.configured &&
+            requirement.available &&
+            (requirement.binding_version ?? 0) > (item.binding_version ?? 0)
           );
         } catch {
           // Preserve the binding failure. Reopening Local setup will replay
           // the durable proposal if the response was lost after commit.
+        }
+        if (
+          storedSecretRef &&
+          accountScopeDigest &&
+          !bindingWasCommitted &&
+          host.electronAPI.workspaceSecretDelete
+        ) {
+          await Promise.resolve(
+            host.electronAPI.workspaceSecretDelete({
+              secret_ref: storedSecretRef,
+              account_scope_digest: accountScopeDigest,
+              space_id: proposal.space_id,
+              revision_id: proposal.revision_id,
+              slot_id: item.requirement_key,
+            })
+          ).catch(() => undefined);
         }
         return false;
       } finally {
@@ -966,8 +1006,8 @@ export function WorkspaceBundleInstallWizard({
           Install Workspace Bundle
         </h1>
         <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
-          Review what the workspace environment can access, then configure required values
-          and connections locally.
+          Review what the workspace environment can access, then configure
+          required values and connections locally.
         </p>
       </header>
 
@@ -1177,22 +1217,74 @@ export function WorkspaceBundleInstallWizard({
           {proposal.state === 'proposed' ? (
             <Card>
               <CardHeader>
-                <CardTitle>Finish confirming this installation</CardTitle>
+                <CardTitle>Review and approve this installation</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <p className="text-body-sm text-ds-text-neutral-muted-default">
-                  The durable proposal was saved, but the approval response did
-                  not finish. Continue without creating another Workspace.
+                  The proposal is saved, but nothing has been approved or
+                  materialized yet. Review every local capability before
+                  continuing.
                 </p>
+                <div className="rounded-xl border border-ds-border-neutral-subtle-default p-3 text-body-sm">
+                  <p>
+                    Permission profile:{' '}
+                    <span className="font-mono">
+                      {proposal.install_plan.permission_profile}
+                    </span>
+                  </p>
+                  <p>
+                    Assets: {proposal.install_plan.asset_count} ·{' '}
+                    {proposal.install_plan.asset_bytes} bytes
+                  </p>
+                  {proposal.install_plan.connector_slots.map((slot) => (
+                    <p key={slot.slot_id}>
+                      Connector {slot.connector_id}: grants{' '}
+                      {slot.required_grants.join(', ') || 'none'}
+                    </p>
+                  ))}
+                  {proposal.install_plan.local_path_slots.map((slotId) => (
+                    <p key={slotId}>Local folder access: {slotId}</p>
+                  ))}
+                  {proposal.install_plan.script_actions.map((actionId) => (
+                    <p
+                      key={actionId}
+                      className="text-ds-text-warning-default-default"
+                    >
+                      Executable action: {actionId}
+                    </p>
+                  ))}
+                  {(proposal.install_plan.mcp_destinations || []).map(
+                    (destination) => (
+                      <div
+                        key={destination.mcp_id}
+                        className="mt-2 rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                      >
+                        <p className="font-semibold">
+                          MCP: {destination.mcp_id}
+                        </p>
+                        {destination.executable_command ? (
+                          <p className="break-all font-mono">
+                            {destination.executable_command}{' '}
+                            {destination.argument_preview.join(' ')}
+                          </p>
+                        ) : null}
+                        {destination.endpoint_url ? (
+                          <p className="break-all font-mono">
+                            {destination.endpoint_url}
+                          </p>
+                        ) : null}
+                      </div>
+                    )
+                  )}
+                </div>
                 <Button
-                  className="mt-4"
                   onClick={() => void continueApproval()}
                   disabled={busyKey === 'approval'}
                 >
                   {busyKey === 'approval' ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   ) : null}
-                  Continue approval
+                  Approve installation
                 </Button>
               </CardContent>
             </Card>

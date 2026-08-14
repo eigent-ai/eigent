@@ -580,6 +580,11 @@ async def single_agent_solve(
 
                         cancelled_turn.add_done_callback(_swallow)
                     task_lock.status = Status.done
+                    from app.service.run_cancellation import (
+                        cancel_current_turn_durable,
+                    )
+
+                    await cancel_current_turn_durable(task_lock)
                     _finalize_memory_for_turn(
                         task_lock,
                         state="cancelled",
@@ -596,6 +601,11 @@ async def single_agent_solve(
                         agent.stop_event.set()
                     if running_turn is not None and not running_turn.done():
                         running_turn.cancel()
+                    from app.service.run_cancellation import (
+                        cancel_current_turn_durable,
+                    )
+
+                    await cancel_current_turn_durable(task_lock)
                     await delete_task_lock(task_lock.id)
                     break
 

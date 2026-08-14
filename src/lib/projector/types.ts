@@ -26,6 +26,7 @@ export type CanonicalProjectEvent = {
   legacyStep: string | null;
   createdAt: string;
   source: 'canonical' | 'chat_step_v1' | 'indexeddb_v1' | 'local_memory_v1';
+  origin?: 'local' | 'cloud_restore' | 'remote';
   raw: unknown;
 };
 
@@ -49,6 +50,13 @@ export type ProjectedRun = {
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
+  origin?: 'local' | 'cloud_restore' | 'remote';
+  resumeBlockedReason?: string | null;
+  latestAttempt?: {
+    attemptNumber: number;
+    status: string;
+  } | null;
+  totalAttemptElapsedMs?: number | null;
 };
 
 export type ProjectedArtifact = {

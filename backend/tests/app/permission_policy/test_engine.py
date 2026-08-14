@@ -121,6 +121,45 @@ def test_rule_precedence_is_deny_then_prompt_then_allow():
     assert decision.matched_rule_id == "deny"
 
 
+def test_persistent_allow_is_bound_to_tool_safety_and_risk_shape():
+    approved = _action()
+    rule = PolicyRule(
+        rule_id="reviewed-tool-only",
+        effect=PolicyEffect.ALLOW,
+        action_pattern=approved.persistent_rule_action_pattern,
+        resource_pattern="report.md",
+    )
+    profile = PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL]
+    engine = PermissionPolicyEngine()
+
+    assert engine.evaluate(
+        approved, profile=profile, rules=(rule,)
+    ).effect is (PolicyEffect.ALLOW)
+    different_tool = ActionDescriptor(
+        **{
+            **approved.__dict__,
+            "action_id": "other-tool",
+            "tool_name": "another_writer",
+        }
+    )
+    newly_risky = ActionDescriptor(
+        **{
+            **approved.__dict__,
+            "action_id": "risky-tool",
+            "risk_tags": ("untrusted_script",),
+        }
+    )
+
+    assert (
+        engine.evaluate(different_tool, profile=profile, rules=(rule,)).effect
+        is PolicyEffect.PROMPT
+    )
+    assert (
+        engine.evaluate(newly_risky, profile=profile, rules=(rule,)).effect
+        is PolicyEffect.PROMPT
+    )
+
+
 def test_auto_reviewer_never_auto_approves_forbidden_actions():
     engine = PermissionPolicyEngine()
     profile = PRESET_PROFILES[PermissionProfileName.AUTO_REVIEWER]
@@ -690,6 +729,53 @@ def test_opaque_mcp_write_gets_an_exact_stable_tool_identity(tmp_path):
     assert first.target_resources == repeated.target_resources
     assert first.target_resources[0].startswith("tool-identity:sha256:")
     assert first.target_resources != other_tool.target_resources
+
+
+def test_camel_case_nested_path_arguments_are_policy_targets(tmp_path):
+    descriptor = build_tool_action_descriptor(
+        action_id="camel-path",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"input": {"filePath": "../outside/.ssh/config"}},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path / "workspace",
+    )
+
+    assert descriptor.target_resources == ("../outside/.ssh/config",)
+    assert "new_filesystem_root" in descriptor.risk_tags
+    assert "credential_export" in descriptor.risk_tags
+
+
+@pytest.mark.parametrize(
+    "filename",
+    (
+        "policy.sqlite3-wal",
+        "policy.sqlite3-shm",
+        "policy.sqlite3-journal",
+        "run-journal.sqlite3-journal",
+    ),
+)
+def test_every_policy_database_sidecar_is_a_control_plane_target(
+    tmp_path, filename
+):
+    descriptor = build_tool_action_descriptor(
+        action_id=f"sidecar-{filename}",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"filePath": str(tmp_path / ".eigent" / filename)},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" in descriptor.risk_tags
 
 
 @pytest.mark.parametrize(

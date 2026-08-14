@@ -31,18 +31,21 @@ import {
   createMemoryEntry,
   deleteMemoryEntry,
   listMemoryEntries,
+  listMemoryReconciliation,
   pinMemoryEntry,
+  resolveMemoryReconciliation,
   restoreMemoryEntry,
   updateMemoryEntry,
   updateMemoryScopeSettings,
   type MemoryEntry,
   type MemoryKind,
+  type MemoryReconciliationItem,
   type MemoryScopeState,
   type MemoryScopeType,
 } from '@/service/memoryApi';
 import { useAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
-import { DEFAULT_LOCAL_USER_ID, useSpaceStore } from '@/store/spaceStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   ArchiveRestore,
   Brain,
@@ -80,6 +83,9 @@ export default function Memory() {
   const userId = useAuthStore((state) => state.user_id);
   const [scopeType, setScopeType] = useState<MemoryScopeType>('project');
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
+  const [reconciliationItems, setReconciliationItems] = useState<
+    MemoryReconciliationItem[]
+  >([]);
   const [scopeState, setScopeState] = useState<MemoryScopeState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,7 +104,7 @@ export default function Memory() {
     () => ({
       project: activeProjectId,
       space: activeSpaceId,
-      user: String(userId ?? DEFAULT_LOCAL_USER_ID),
+      user: userId == null ? null : String(userId),
     }),
     [activeProjectId, activeSpaceId, userId]
   );
@@ -124,6 +130,17 @@ export default function Memory() {
       setEntries(response.items);
       setScopeState(response.scope_state);
       setSyncStatus(response.sync_status?.state ?? 'unknown');
+      try {
+        const reconciliation = await listMemoryReconciliation(
+          scopeType,
+          scopeId
+        );
+        if (generation !== requestGeneration.current) return;
+        setReconciliationItems(reconciliation.items);
+      } catch {
+        if (generation !== requestGeneration.current) return;
+        setReconciliationItems([]);
+      }
     } catch (caught) {
       if (generation !== requestGeneration.current) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -211,6 +228,71 @@ export default function Memory() {
         </div>
       ) : (
         <>
+          {reconciliationItems.length > 0 && (
+            <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+              <strong className="text-body-sm">
+                Review Memory from another device
+              </strong>
+              <p className="mt-1 text-xs text-ds-text-neutral-muted-default">
+                Eigent did not overwrite either version. Choose which content to
+                keep for each item.
+              </p>
+              <div className="mt-4 flex flex-col gap-3">
+                {reconciliationItems.map((item) => (
+                  <article
+                    key={item.reconciliation_id}
+                    className="bg-white rounded-xl p-4"
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="text-xs font-semibold">This device</div>
+                        <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                          {String(item.local_entry.content ?? 'Archived')}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold">Cloud copy</div>
+                        <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                          {item.cloud_entry.deleted_at
+                            ? 'Archived'
+                            : String(item.cloud_entry.content ?? '')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void runAndReload(() =>
+                            resolveMemoryReconciliation(
+                              item.reconciliation_id,
+                              'local'
+                            )
+                          )
+                        }
+                      >
+                        Keep this device
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void runAndReload(() =>
+                            resolveMemoryReconciliation(
+                              item.reconciliation_id,
+                              'cloud'
+                            )
+                          )
+                        }
+                      >
+                        Use cloud copy
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="rounded-2xl bg-ds-bg-neutral-default-default p-5">
             <div className="grid gap-4 md:grid-cols-3">
               <label className="flex items-center justify-between gap-4">
@@ -375,8 +457,9 @@ export default function Memory() {
                         {TRUST_LABELS[entry.source_trust]}
                       </div>
                       {entry.source_refs.length > 0 ? (
-                        <div className="mt-1 break-all">
-                          Sources: {entry.source_refs.join(', ')}
+                        <div className="mt-1">
+                          {entry.source_refs.length} durable source
+                          {entry.source_refs.length === 1 ? '' : 's'} recorded
                         </div>
                       ) : null}
                     </details>

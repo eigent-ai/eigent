@@ -145,6 +145,20 @@ class MemoryEntryRecord:
 
 
 @dataclass(frozen=True)
+class MemoryReconciliationRecord:
+    reconciliation_id: str
+    account_owner_id: str
+    scope_type: str
+    scope_id: str
+    memory_id: str
+    local_entry: dict[str, Any]
+    cloud_entry: dict[str, Any]
+    status: str
+    created_at: float
+    resolved_at: float | None
+
+
+@dataclass(frozen=True)
 class MemoryMutationRecord:
     mutation_id: str
     memory_id: str | None
@@ -794,6 +808,7 @@ class RemoteCommandInboxRecord:
     expires_at: float
     receipt_grace_until: float
     requires_online_receipt_confirmation: bool
+    delivery_lease_token: str | None
     receipt_event_id: str
     receipt_status: str
     state: str
@@ -816,6 +831,7 @@ class CommandResultEvent:
 @dataclass(frozen=True)
 class CommandResultSyncBatch:
     command_id: str
+    delivery_lease_token: str | None
     lease_token: str
     attempt_count: int
     events: tuple[CommandResultEvent, ...]

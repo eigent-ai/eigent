@@ -202,6 +202,7 @@ declare global {
       asset_ref?: Record<string, unknown>;
       artifact_count?: number;
       scan_status?: string;
+      truncated?: boolean;
       manifest_digest?: string;
       allowed_scopes?: import('@/service/humanInteractionApi').InteractionDecisionScope[];
       options?: import('@/service/humanInteractionApi').HumanInteractionPayload['options'];

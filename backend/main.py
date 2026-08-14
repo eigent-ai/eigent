@@ -142,11 +142,16 @@ async def startup_event():
 
     # Reconcile durable execution facts before accepting new Run admission.
     # No Python coroutine or external Tool call is restarted implicitly.
+    from app.artifacts import finalize_recoverable_run_artifacts
     from app.run_journal.runtime import get_default_run_journal
 
-    reconciliation = await asyncio.to_thread(
-        get_default_run_journal().reconcile_startup
+    journal = get_default_run_journal()
+    artifact_recovery = await asyncio.to_thread(
+        finalize_recoverable_run_artifacts,
+        journal,
     )
+
+    reconciliation = await asyncio.to_thread(journal.reconcile_startup)
     from app.workspace_git import (
         WorkspaceGitObserver,
         get_default_workforce_git_service,
@@ -166,7 +171,6 @@ async def startup_event():
     git_observation = await asyncio.to_thread(
         WorkspaceGitObserver(get_default_run_journal()).inspect_all
     )
-    journal = get_default_run_journal()
     from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
         migrate_legacy_workspace_bundle_on_startup,
@@ -194,6 +198,7 @@ async def startup_event():
     app_logger.info(
         "RunJournal startup reconciliation complete",
         extra={
+            "recovered_artifact_manifests": len(artifact_recovery),
             "interrupted_runs": len(reconciliation.interrupted_run_ids),
             "completed_cancels": len(reconciliation.completed_cancel_run_ids),
             "deadline_runs": len(reconciliation.deadline_run_ids),

@@ -111,33 +111,19 @@ class EventRecorder:
         data: Any,
         created_at: float | None = None,
     ) -> CommittedRunEvent:
-        """Commit the one canonical successful assistant result for a Run.
+        """Reject the obsolete standalone final-result write path.
 
-        ``legacy_step='end'`` keeps existing desktop/cloud projectors working
-        while ``assistant.final`` gives new readers a typed result contract.
-        The deterministic event id makes a lost response safe to retry.
+        A successful result is only canonical when the Journal commits it in
+        the same transaction as ``run.completed`` and its latest Artifact
+        manifest.  Keeping this compatibility method fail-closed prevents a
+        future caller from reintroducing a split result/terminal write.
         """
 
-        if isinstance(data, dict):
-            payload = dict(data)
-        else:
-            payload = {"message": str(data)}
-        values: dict[str, Any] = {
-            "event_id": f"assistant-final:{run_id}",
-            "event_type": "assistant.final",
-            "payload": payload,
-            "legacy_step": "end",
-        }
-        if created_at is not None:
-            values["created_at"] = created_at
-        event = await asyncio.to_thread(
-            self._journal.append_event,
-            run_id,
-            RunEventDraft(**values),
-            expected_project_id=project_id,
+        del project_id, run_id, data, created_at
+        raise RuntimeError(
+            "assistant.final must be committed atomically via "
+            "SQLiteRunJournal.complete_successful_run"
         )
-        self._notify_commit()
-        return event
 
     async def record_user_message(
         self,

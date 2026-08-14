@@ -1241,10 +1241,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 )
                 finalize_task_lock_run_memory(
                     task_lock,
-                    state="done",
+                    state="cancelled",
                     final_result=end_message,
                     summary=getattr(task_lock, "summary_task_content", ""),
                 )
+
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
 
                 # Clear camel_task as well
                 # (workforce is cleared, so
@@ -2066,6 +2072,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     state="cancelled",
                     final_result="<summary>Task stopped</summary>Task stopped by user",
                 )
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
                 logger.info("[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
                 logger.info(

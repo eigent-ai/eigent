@@ -151,10 +151,11 @@ function QueueingItem({
         <Button
           variant="ghost"
           size="xs"
-          disabled={processing}
+          disabled={processing || !isHovered}
+          tabIndex={isHovered ? 0 : -1}
           className={cn(
             'h-5 shrink-0 rounded-md px-1.5 text-[11px] transition-opacity',
-            isHovered ? 'opacity-100' : 'opacity-0'
+            isHovered ? 'opacity-100' : 'pointer-events-none opacity-0'
           )}
           onClick={(event) => {
             event.preventDefault();

@@ -113,7 +113,8 @@ describe('HumanInteractionCard durable approval', () => {
       // deliberately hides it because one Project contains multiple Runs.
       allowed_scopes: ['once', 'run', 'space'] as const,
       rule_matcher: {
-        action_pattern: 'mcp.tool.write',
+        action_pattern: 'action-identity:sha256:opaque-digest',
+        display_operation: 'mcp.tool.write',
         resource_pattern: 'tool-identity:sha256:abc',
         matcher_kind: 'literal_tool',
       },
@@ -124,6 +125,10 @@ describe('HumanInteractionCard durable approval', () => {
       screen.queryByRole('button', {
         name: 'Allow this tool for this Run',
       })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/mcp\.tool\.write/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/action-identity:sha256/)
     ).not.toBeInTheDocument();
 
     fireEvent.click(

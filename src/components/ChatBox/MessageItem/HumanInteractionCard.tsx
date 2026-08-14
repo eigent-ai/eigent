@@ -157,7 +157,8 @@ export function HumanInteractionCard({
                 className="mt-1 font-mono"
                 title={interaction.rule_matcher.resource_pattern}
               >
-                {interaction.rule_matcher.action_pattern}{' '}
+                {interaction.rule_matcher.display_operation ||
+                  interaction.rule_matcher.action_pattern}{' '}
                 {interaction.rule_matcher.resource_pattern}
               </div>
             </div>

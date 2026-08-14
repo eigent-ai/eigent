@@ -228,11 +228,14 @@ def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
             "once",
             "space",
         ]
-        assert file_result.approval.prompt["rule_matcher"] == {
-            "action_pattern": "filesystem.write",
+        matcher = file_result.approval.prompt["rule_matcher"]
+        assert matcher == {
+            "action_pattern": matcher["action_pattern"],
+            "display_operation": "filesystem.write",
             "resource_pattern": "out[*].txt",
             "matcher_kind": "literal_resource",
         }
+        assert matcher["action_pattern"].startswith("action-identity:sha256:")
         assert terminal_result.approval is not None
         assert terminal_result.approval.prompt["allowed_scopes"] == ["once"]
         assert terminal_result.approval.prompt["rule_matcher"] is None
@@ -242,7 +245,10 @@ def test_persistent_approval_uses_literal_matcher_and_shell_is_once_only(
             "space",
         ]
         mcp_matcher = mcp_result.approval.prompt["rule_matcher"]
-        assert mcp_matcher["action_pattern"] == "mcp.tool.write"
+        assert mcp_matcher["action_pattern"].startswith(
+            "action-identity:sha256:"
+        )
+        assert mcp_matcher["display_operation"] == "mcp.tool.write"
         assert mcp_matcher["resource_pattern"].startswith(
             "tool-identity:sha256:"
         )

@@ -111,4 +111,36 @@ describe('followUpQueueApi local Brain routes', () => {
       })
     ).toBeNull();
   });
+
+  it('deduplicates concurrent pending-list reads without caching failures', async () => {
+    vi.mocked(fetchPost).mockResolvedValue({});
+    vi.mocked(fetchGet).mockResolvedValueOnce({
+      items: [{ request_id: 'request-1' }],
+    });
+
+    const [first, second] = await Promise.all([
+      listPendingFollowUpRequests('cache-project'),
+      listPendingFollowUpRequests('cache-project'),
+    ]);
+
+    expect(fetchGet).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(second);
+
+    await createFollowUpRequest({
+      projectId: 'cache-project',
+      requestId: 'request-2',
+      content: 'New message',
+      attachmentPaths: [],
+    });
+    vi.mocked(fetchGet).mockRejectedValueOnce(new Error('Brain unavailable'));
+    await expect(listPendingFollowUpRequests('cache-project')).rejects.toThrow(
+      'Brain unavailable'
+    );
+
+    vi.mocked(fetchGet).mockResolvedValueOnce({ items: [] });
+    await expect(listPendingFollowUpRequests('cache-project')).resolves.toEqual(
+      []
+    );
+    expect(fetchGet).toHaveBeenCalledTimes(3);
+  });
 });

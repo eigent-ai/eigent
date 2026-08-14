@@ -29,15 +29,6 @@ from app.run_context import get_current_run_context
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
 from app.run_policy import ToolSafetyClass
 
-_REDACTED_KEYS = {
-    "api_key",
-    "apikey",
-    "authorization",
-    "cookie",
-    "password",
-    "secret",
-    "token",
-}
 # This allowlist is trusted code, unlike model-generated names and arguments.
 # Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
 # enumerated so mutating operations cannot inherit safety from a shared prefix.
@@ -118,25 +109,26 @@ def _redact(value: Any) -> Any:
         # fully initialized and both paths share the exact same redactor.
         from app.permission_policy.models import redact_action_arguments
 
-        return {
-            str(key): (
-                "[REDACTED]"
-                if str(key).lower() in _REDACTED_KEYS
-                else {
-                    "argument_count": len(item),
-                    "sha256": hashlib.sha256(
-                        json.dumps(item, ensure_ascii=False).encode("utf-8")
-                    ).hexdigest(),
-                    "redacted_preview": redact_action_arguments(
-                        {"argv": list(item)}
-                    )["argv"],
-                }
-                if str(key).lower() == "argv"
-                and isinstance(item, (list, tuple))
-                else _redact(item)
-            )
-            for key, item in value.items()
-        }
+        redacted = redact_action_arguments(value)
+        argv_key = next(
+            (
+                key
+                for key in value
+                if str(key).replace("-", "_").lower() == "argv"
+                and isinstance(value[key], (list, tuple))
+            ),
+            None,
+        )
+        if argv_key is not None:
+            item = value[argv_key]
+            redacted[str(argv_key)] = {
+                "argument_count": len(item),
+                "sha256": hashlib.sha256(
+                    json.dumps(item, ensure_ascii=False).encode("utf-8")
+                ).hexdigest(),
+                "redacted_preview": redacted[str(argv_key)],
+            }
+        return redacted
     if isinstance(value, (list, tuple)):
         return [_redact(item) for item in value]
     if isinstance(value, str):
@@ -263,7 +255,9 @@ def prepare_tool_checkpoint(
 ) -> ToolCheckpointContext | None:
     run_context = get_current_run_context()
     if run_context is None:
-        return None
+        raise ToolCheckpointPersistenceError(
+            f"tool {tool_name!r} cannot execute without an admitted RunContext"
+        )
     store = journal or get_default_run_journal()
     try:
         run = store.get_run(run_context.run_id)

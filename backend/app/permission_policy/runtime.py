@@ -49,10 +49,14 @@ async def authorize_tool_checkpoint(
     journal: SQLiteRunJournal | None = None,
 ) -> PolicyDecision | None:
     if checkpoint is None:
-        return None
+        raise ToolPermissionRejectedError(
+            "tool execution requires a durable checkpoint"
+        )
     run_context = get_current_run_context()
     if run_context is None:
-        return None
+        raise ToolPermissionRejectedError(
+            "tool execution requires an admitted RunContext"
+        )
     store = journal or get_default_run_journal()
     attempt = store.get_run_attempt(checkpoint.attempt_id)
     environment_digest = (

@@ -22,7 +22,6 @@ depends on an in-memory queue.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import time
@@ -42,7 +41,6 @@ from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
     OptimisticConcurrencyError,
-    RunEventDraft,
     RunNotFoundError,
     UnsafeResumeError,
     get_default_run_journal,
@@ -109,25 +107,28 @@ class InteractionDecisionBody(BaseModel):
     continue_active_attempt: bool = True
 
 
-class ArtifactUploadedBody(BaseModel):
-    chat_file_id: int | None = Field(default=None, ge=1)
-    s3_bucket: str = Field(min_length=1, max_length=255)
-    s3_key: str = Field(min_length=1, max_length=2048)
-    filename: str = Field(min_length=1, max_length=1024)
-    file_size: int = Field(ge=0)
-    file_type: str = Field(default="", max_length=255)
-
-
-def _event_payload(event: CommittedRunEvent) -> dict[str, Any]:
+def _event_payload(
+    event: CommittedRunEvent,
+    *,
+    project_id: str,
+    origin: str,
+) -> dict[str, Any]:
     return {
+        "schema_version": 1,
         "event_id": event.event_id,
+        "project_id": project_id,
         "run_id": event.run_id,
+        # Keep the legacy key during the renderer migration while exposing the
+        # transport-neutral contract consumed by RunDomainEventIngress.
         "sequence": event.sequence,
+        "run_sequence": event.sequence,
         "run_version": event.run_version,
         "event_type": event.event_type,
         "legacy_step": event.legacy_step,
         "payload": event.payload,
         "created_at": event.created_at,
+        "occurred_at": event.created_at,
+        "origin": origin,
     }
 
 
@@ -177,6 +178,8 @@ async def _read_events(
 async def _durable_event_stream(
     run_id: str,
     *,
+    project_id: str,
+    origin: str,
     after_sequence: int,
     heartbeat_seconds: float = _DEFAULT_HEARTBEAT_SECONDS,
 ):
@@ -189,6 +192,7 @@ async def _durable_event_stream(
     last_event: CommittedRunEvent | None = None
     runtime_error: str | None = None
     subscriber_lagged = False
+    replay_caught_up = False
 
     try:
         while True:
@@ -205,11 +209,27 @@ async def _durable_event_stream(
                     last_event = event
                     yield _sse(
                         "run_event",
-                        _event_payload(event),
+                        _event_payload(
+                            event,
+                            project_id=project_id,
+                            origin=origin,
+                        ),
                         event_id=event.sequence,
                     )
                 if len(events) < _EVENT_PAGE_SIZE:
                     break
+
+            if not replay_caught_up:
+                # This marker is deliberately not a canonical Run event. It
+                # lets the application-owned ingress distinguish replayed
+                # SQLite facts from subsequently arriving live facts without
+                # guessing from timing. Legacy EventSource consumers ignore
+                # unknown event names.
+                replay_caught_up = True
+                yield _sse(
+                    "replay_caught_up",
+                    {"run_id": run_id, "after_sequence": cursor},
+                )
 
             if subscription is None:
                 if subscriber_lagged:
@@ -472,6 +492,13 @@ async def decide_run_interaction(
                     "persistent approval requires one exact resource matcher"
                 )
             rule_space_id = interaction.request.get("space_id")
+            offered_matcher = interaction.request.get("rule_matcher")
+            offered_action_pattern = (
+                str(offered_matcher.get("action_pattern"))
+                if isinstance(offered_matcher, dict)
+                and offered_matcher.get("action_pattern") is not None
+                else None
+            )
             details = {
                 key: value
                 for key, value in body.decision.items()
@@ -501,8 +528,8 @@ async def decide_run_interaction(
                     else None
                 ),
                 rule_action_pattern=(
-                    str(action.get("operation"))
-                    if action.get("operation") is not None
+                    offered_action_pattern
+                    if decision_scope in {"run", "space"}
                     else None
                 ),
                 rule_resource_pattern=(resource_pattern),
@@ -572,7 +599,7 @@ async def get_run_events(
     after_sequence: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=5000),
 ):
-    await _load_run_or_404(run_id)
+    run = await _load_run_or_404(run_id)
     events = await _read_events(
         run_id,
         after_sequence=after_sequence,
@@ -585,7 +612,14 @@ async def get_run_events(
         "after_sequence": after_sequence,
         "next_sequence": page[-1].sequence if page else after_sequence,
         "has_more": has_more,
-        "events": [_event_payload(event) for event in page],
+        "events": [
+            _event_payload(
+                event,
+                project_id=run.project_id,
+                origin=run.origin,
+            )
+            for event in page
+        ],
     }
 
 
@@ -595,7 +629,7 @@ async def stream_run_events(
     after_sequence: int = Query(default=0, ge=0),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ):
-    await _load_run_or_404(run_id)
+    run = await _load_run_or_404(run_id)
     reconnect_sequence = after_sequence
     if isinstance(last_event_id, str):
         try:
@@ -605,7 +639,12 @@ async def stream_run_events(
         if parsed_last_event_id >= 0:
             reconnect_sequence = max(reconnect_sequence, parsed_last_event_id)
     return StreamingResponse(
-        _durable_event_stream(run_id, after_sequence=reconnect_sequence),
+        _durable_event_stream(
+            run_id,
+            project_id=run.project_id,
+            origin=run.origin,
+            after_sequence=reconnect_sequence,
+        ),
         media_type="text/event-stream",
     )
 
@@ -686,84 +725,6 @@ async def cancel_run(run_id: str, body: CancelRunBody):
     except Exception as exc:
         raise _control_error(exc) from exc
     return asdict(run)
-
-
-@router.post("/runs/{run_id}/artifacts/{artifact_id}/uploaded")
-async def record_artifact_uploaded(
-    run_id: str,
-    artifact_id: str,
-    body: ArtifactUploadedBody,
-):
-    """Attach a durable Cloud asset reference to one canonical Artifact."""
-
-    journal = get_default_run_journal()
-    manifest = await asyncio.to_thread(
-        journal.get_run_artifact_manifest_event,
-        run_id,
-    )
-    if manifest is None:
-        raise HTTPException(
-            status_code=409, detail="Artifact manifest missing"
-        )
-    candidates = manifest.payload.get("artifacts")
-    artifact = (
-        next(
-            (
-                item
-                for item in candidates
-                if isinstance(item, dict)
-                and item.get("artifact_id") == artifact_id
-            ),
-            None,
-        )
-        if isinstance(candidates, list)
-        else None
-    )
-    if artifact is None:
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    if artifact.get("uploadPolicy") != "agent_generated":
-        raise HTTPException(
-            status_code=409,
-            detail="Metadata-only Artifact cannot be uploaded automatically",
-        )
-
-    payload = {
-        "artifact_id": artifact_id,
-        "relativePath": artifact.get("relativePath"),
-        "filename": body.filename,
-        "asset_ref": {
-            "chat_file_id": body.chat_file_id,
-            "bucket": body.s3_bucket,
-            "key": body.s3_key,
-            "filename": body.filename,
-            "size": body.file_size,
-            "content_type": body.file_type,
-        },
-    }
-    event_fingerprint = hashlib.sha256(
-        json.dumps(
-            {"run_id": run_id, **payload},
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    try:
-        committed = await asyncio.to_thread(
-            journal.append_event,
-            run_id,
-            RunEventDraft(
-                event_id=f"au_{event_fingerprint[:61]}",
-                event_type="artifact.uploaded",
-                payload=payload,
-            ),
-        )
-    except Exception as exc:
-        raise _control_error(exc) from exc
-    from app.run_sync.runtime import notify_default_cloud_sync_worker
-
-    notify_default_cloud_sync_worker()
-    return _event_payload(committed)
 
 
 @router.post("/runs/{run_id}/signals")

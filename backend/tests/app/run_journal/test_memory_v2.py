@@ -564,10 +564,13 @@ def test_memory_sync_snapshot_is_always_full_and_includes_tombstones(journal):
         expected_version=1,
     )
 
-    snapshot = journal.list_memory_sync_snapshots()[0]
+    journal.bind_memory_scope_owner(
+        "user", "user-1", account_owner_id="account-1"
+    )
+    snapshot = journal.list_memory_sync_snapshots("account-1")[0]
 
     assert snapshot["scope"]["sync_scope"] == "full_memory"
-    assert snapshot["entries"][0]["content"] == "Prefer compact replies."
+    assert snapshot["entries"][0]["content"] == ""
     assert snapshot["entries"][0]["deleted_at"] is not None
 
 
@@ -588,9 +591,13 @@ def test_writer_takeover_merges_cloud_baseline_before_rebase(journal):
         source_trust="user_confirmed",
     )
     cloud_content = "Never remove the confirmed release constraint."
-    journal.merge_cloud_memory_baseline(
+    journal.bind_memory_scope_owner(
+        "project", "project-1", account_owner_id="account-1"
+    )
+    reconciliation_count = journal.merge_cloud_memory_baseline(
         scope_type="project",
         scope_id="project-1",
+        account_owner_id="account-1",
         scope={
             "capture_enabled": True,
             "use_enabled": True,
@@ -624,7 +631,8 @@ def test_writer_takeover_merges_cloud_baseline_before_rebase(journal):
         ],
     )
 
-    snapshot = journal.list_memory_sync_snapshots()[0]
+    assert reconciliation_count == 0
+    snapshot = journal.list_memory_sync_snapshots("account-1")[0]
 
     assert {entry["memory_id"] for entry in snapshot["entries"]} == {
         "memory-local",

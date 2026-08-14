@@ -135,6 +135,18 @@ class FakeTransport:
             "entry_count": len(payload["entries"]),
         }
 
+    async def account_owner_id(self, configuration):
+        return "7"
+
+    async def authorize_memory_scopes(self, configuration, scopes):
+        return {
+            "account_owner_id": "7",
+            "authorized_scopes": [
+                {"scope_type": scope_type, "scope_id": scope_id}
+                for scope_type, scope_id in scopes
+            ],
+        }
+
     async def claim_memory_writer(self, configuration, payload):
         self.memory_writer_claims.append(payload)
         return {
@@ -338,6 +350,9 @@ async def test_worker_syncs_full_memory_snapshot_and_independent_outbox(
         created_by="user",
         source_trust="user_confirmed",
     )
+    journal.bind_memory_scope_owner(
+        "project", "project-1", account_owner_id="7"
+    )
     transport = FakeTransport()
     worker = _worker(journal, transport)
 
@@ -380,6 +395,9 @@ async def test_bad_memory_snapshot_does_not_block_an_unrelated_scope(journal):
             created_by="user",
             source_trust="user_confirmed",
         )
+        journal.bind_memory_scope_owner(
+            scope_type, scope_id, account_owner_id="7"
+        )
     transport = FakeTransport()
     transport.memory_snapshot_failures.add(("project", "project-1"))
     worker = _worker(journal, transport)
@@ -412,6 +430,9 @@ async def test_worker_claims_stale_memory_writer_then_retries_full_snapshot(
         token_count=3,
         created_by="user",
         source_trust="user_confirmed",
+    )
+    journal.bind_memory_scope_owner(
+        "project", "project-1", account_owner_id="7"
     )
     transport = FakeTransport()
     transport.memory_writer_conflicts.add(("project", "project-1"))
@@ -716,6 +737,7 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
                 200,
                 json={
                     "device_id": "desk-1",
+                    "account_owner_id": "user-1",
                     "credential_version": 1,
                     "registered_at": "2026-08-06T00:00:00+00:00",
                 },

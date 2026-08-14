@@ -93,6 +93,7 @@ def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
     with (
         patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
         patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
         patch(f"{_LCA}.dispatch_tool_checkpoint"),
         patch(f"{_LCA}.finish_tool_checkpoint") as finish,
         patch(f"{_LCA}._schedule_async_task"),
@@ -387,6 +388,13 @@ class TestListenChatAgent:
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
             patch("asyncio.create_task"),
         ):
@@ -438,6 +446,13 @@ class TestListenChatAgent:
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
         ):
             # Mock the model backend creation
@@ -499,6 +514,13 @@ class TestListenChatAgent:
 
         with (
             patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+            patch(
+                f"{_LCA}.prepare_tool_checkpoint",
+                return_value=MagicMock(),
+            ),
+            patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+            patch(f"{_LCA}.dispatch_tool_checkpoint"),
+            patch(f"{_LCA}.finish_tool_checkpoint"),
             patch("camel.models.ModelFactory.create") as mock_create_model,
         ):
             mock_backend = MagicMock()

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import { createFollowUpRequest } from '@/service/followUpQueueApi';
 import {
   ProjectType,
   useProjectRuntimeStore,
@@ -191,17 +192,27 @@ export function useTriggerTaskExecutor() {
         // Format the message with all context
         const formattedMessage = formatTriggeredTaskMessage(task);
 
-        // Add message directly to projectStore's queuedMessages
-        // useBackgroundTaskProcessor will pick it up and execute it
+        const durableRequestId = `scheduled:${task.executionId || task.id}`;
+        await createFollowUpRequest({
+          projectId: targetProjectId,
+          requestId: durableRequestId,
+          content: formattedMessage,
+          attachmentPaths: [],
+          source: 'scheduled',
+        });
+
+        // The renderer mirrors the durable Brain queue for immediate UI. It
+        // is not the authority and may be rebuilt after a restart.
         const queuedTaskId = store.addQueuedMessage(
           targetProjectId,
           formattedMessage,
           [],
-          undefined,
+          durableRequestId,
           task.executionId,
           undefined,
           task.triggerId,
-          task.triggerName
+          task.triggerName,
+          'scheduled'
         );
 
         if (!queuedTaskId) {

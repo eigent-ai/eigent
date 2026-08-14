@@ -30,7 +30,6 @@ import {
   getRemoteFollowUpByCommandId,
   listPendingFollowUpRequests,
   listPendingRemoteFollowUpRequests,
-  markFollowUpRequestAdmitted,
   terminalContinuationAdmissionRejection,
   type DurableFollowUpRequest,
 } from '@/service/followUpQueueApi';
@@ -781,7 +780,9 @@ async function dispatchPersistedRemoteFollowUp(
     }
     throw error;
   }
-  await markFollowUpRequestAdmitted(projectId, requestId, requestId);
+  // Brain admits the queue row atomically with the Run Attempt.  A separate
+  // renderer acknowledgement could race an exceptionally fast terminal Run
+  // and is no longer part of the correctness boundary.
   useProjectStore.getState().removeQueuedMessage(projectId, requestId);
   return true;
 }

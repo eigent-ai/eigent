@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Trusted action descriptors and permission-policy contracts."""
 
 from __future__ import annotations
@@ -273,7 +287,14 @@ def _argv_command_index(value: list[Any] | tuple[Any, ...]) -> int | None:
             if index < len(value):
                 index += 1
         elif executable == "stdbuf":
-            value_options = {"-i", "--input", "-o", "--output", "-e", "--error"}
+            value_options = {
+                "-i",
+                "--input",
+                "-o",
+                "--output",
+                "-e",
+                "--error",
+            }
             while index < len(value) and isinstance(value[index], str):
                 token = value[index]
                 if not token.startswith("-"):
@@ -687,6 +708,28 @@ class ActionDescriptor:
     @property
     def action_digest(self) -> str:
         return canonical_digest(self.canonical_payload())
+
+    @property
+    def persistent_rule_action_pattern(self) -> str:
+        """Bind durable ALLOW rules to the reviewed action semantics.
+
+        Operation-only rules are suitable for administrator-authored DENY and
+        PROMPT policy, but are too broad for a user's "always allow this tool"
+        decision.  Keep arguments and Run identity out of the matcher while
+        binding the tool, safety class, side-effect shape, and risk tags that
+        the user actually reviewed.
+        """
+
+        identity = canonical_digest(
+            {
+                "operation": self.operation,
+                "tool_name": self.tool_name,
+                "safety_class": self.safety_class.value,
+                "external_side_effect": self.external_side_effect,
+                "risk_tags": sorted(self.risk_tags),
+            }
+        )
+        return f"action-identity:sha256:{identity}"
 
 
 @dataclass(frozen=True)

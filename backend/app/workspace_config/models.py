@@ -430,6 +430,10 @@ class ContextSource(_StrictFrozenModel):
                 raise ValueError(
                     "bundle_asset path must use a bundle:// logical URI"
                 )
+        elif self.path is not None:
+            raise ValueError(
+                f"{self.kind} cannot contain a physical path field"
+            )
         if self.kind == "inline" and self.content is None:
             raise ValueError("inline context requires content")
         # Inline context is a local Bundle declaration and may intentionally

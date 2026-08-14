@@ -28,6 +28,44 @@ from app.service.single_agent_service import _build_single_agent_context
 pytestmark = pytest.mark.unit
 
 
+def _complete_run(journal, run_id: str, project_id: str, data):
+    manifest = journal.append_artifact_manifest_events(
+        run_id,
+        [
+            RunEventDraft(
+                event_id=f"artifact-manifest:{run_id}:test",
+                event_type="artifact.manifest.finalized",
+                payload={
+                    "artifacts": [],
+                    "artifact_count": 0,
+                    "scan_status": "complete",
+                },
+                created_at=8.0,
+            )
+        ],
+        expected_project_id=project_id,
+    )
+    payload = dict(data) if isinstance(data, dict) else {"message": str(data)}
+    return journal.complete_successful_run(
+        run_id,
+        assistant_final=RunEventDraft(
+            event_id=f"assistant-final:{run_id}",
+            event_type="assistant.final",
+            payload=payload,
+            legacy_step="end",
+            created_at=8.0,
+        ),
+        terminal=RunEventDraft(
+            event_id=f"run-completed:{run_id}",
+            event_type="run.completed",
+            payload={"reason": "test"},
+            created_at=8.0,
+        ),
+        artifact_manifest=manifest,
+        expected_project_id=project_id,
+    )
+
+
 @pytest.fixture
 def journal(tmp_path):
     value = SQLiteRunJournal(tmp_path / "journal.sqlite3")
@@ -178,11 +216,12 @@ async def test_projection_keeps_user_assistant_and_success_and_error_tools(
         now=7.6,
         **unsafe,
     )
-    await recorder.record_assistant_final(
-        project_id="project-1",
-        run_id="run-1",
-        data="Calendar checked; Gmail needs reconnection.",
-        created_at=8,
+    journal.ensure_run(run_id="run-assistant", project_id="project-1", now=7.8)
+    _complete_run(
+        journal,
+        "run-assistant",
+        "project-1",
+        "Calendar checked; Gmail needs reconnection.",
     )
     journal.ensure_run(run_id="run-2", project_id="project-1", now=9)
 
@@ -233,17 +272,17 @@ async def test_typed_events_are_idempotent_and_final_result_is_discoverable(
         content="Do the next thing",
         source="improve",
     )
-    final = await recorder.record_assistant_final(
-        project_id="project-1",
-        run_id="run-1",
-        data={"message": "Done"},
+    final, _ = _complete_run(
+        journal, "run-1", "project-1", {"message": "Done"}
     )
 
     assert replay == first
     assert journal.get_run_final_result_event("run-1") == final
     assert [event.event_type for event in journal.list_events("run-1")] == [
         "user.message",
+        "artifact.manifest.finalized",
         "assistant.final",
+        "run.completed",
     ]
 
 
@@ -262,18 +301,11 @@ async def test_model_context_persists_secret_free_projection_diagnostics(
         content="Prior durable instruction",
         source="chat",
     )
-    await recorder.record_assistant_final(
-        project_id="project-1",
-        run_id="run-previous",
-        data="Prior durable answer",
-    )
-    journal.append_event(
+    _complete_run(
+        journal,
         "run-previous",
-        RunEventDraft(
-            event_id="completed:run-previous",
-            event_type="run.completed",
-            payload={"reason": "test"},
-        ),
+        "project-1",
+        "Prior durable answer",
     )
     journal.ensure_run(
         run_id="run-current", project_id="project-1", status="pending"

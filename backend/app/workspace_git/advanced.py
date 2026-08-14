@@ -4,6 +4,12 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 """Policy-gated Advanced Git argv grammar and durable execution gateway."""
@@ -453,6 +459,15 @@ class AdvancedGitCommandClassifier:
                     command,
                     always_confirm=True,
                 )
+            if any(
+                value == "-f" or value.startswith("--force")
+                for value in argv[1:]
+            ):
+                return self._classification(
+                    "git.destructive",
+                    command,
+                    always_confirm=True,
+                )
             options = tuple(
                 value for value in argv[1:] if value.startswith("-")
             )
@@ -489,7 +504,9 @@ class AdvancedGitCommandClassifier:
                 raise AdvancedGitCommandRejected(
                     "advanced checkout cannot restore paths; use typed restore"
                 )
-            return self._classification("git.local_write", command)
+            return self._classification(
+                "git.destructive", command, always_confirm=True
+            )
         if command in _LOCAL_WRITE_COMMANDS:
             if command == "add":
                 self._validate_explicit_add_paths(argv)
@@ -498,6 +515,21 @@ class AdvancedGitCommandClassifier:
             if command == "tag" and any(
                 value in {"-d", "--delete"} for value in argv[1:]
             ):
+                return self._classification(
+                    "git.destructive",
+                    command,
+                    always_confirm=True,
+                )
+            if command == "tag" and any(
+                value == "-f" or value.startswith("--force")
+                for value in argv[1:]
+            ):
+                return self._classification(
+                    "git.destructive",
+                    command,
+                    always_confirm=True,
+                )
+            if command == "switch":
                 return self._classification(
                     "git.destructive",
                     command,
@@ -574,6 +606,16 @@ class AdvancedGitCommandClassifier:
                 always_confirm=True,
             )
         if command == "config":
+            if any(
+                value in {"--file", "--global", "--system", "--worktree"}
+                or value.startswith(
+                    ("--file=", "--global=", "--system=", "--worktree=")
+                )
+                for value in lowered
+            ):
+                raise AdvancedGitCommandRejected(
+                    "Git config outside the managed repository is disabled"
+                )
             joined = " ".join(lowered)
             if any(
                 fragment in joined for fragment in _SENSITIVE_CONFIG_FRAGMENTS
@@ -581,6 +623,21 @@ class AdvancedGitCommandClassifier:
                 raise AdvancedGitCommandRejected(
                     "sensitive Git configuration is disabled"
                 )
+            if any(
+                value
+                in {
+                    "--list",
+                    "-l",
+                    "--get",
+                    "--get-all",
+                    "--get-regexp",
+                    "--get-urlmatch",
+                    "--show-origin",
+                    "--show-scope",
+                }
+                for value in lowered
+            ):
+                return self._classification("git.read", command)
             return self._classification(
                 "git.config_sensitive",
                 command,

@@ -405,3 +405,22 @@ def finalize_run_artifacts(
             extra={"run_id": run.run_id},
         )
     return manifest
+
+
+def finalize_recoverable_run_artifacts(
+    journal: SQLiteRunJournal,
+) -> tuple[str, ...]:
+    """Finalize crash-surviving manifests before startup changes Run status."""
+
+    finalized: list[str] = []
+    for run in journal.list_recoverable_runs():
+        try:
+            finalize_run_artifacts(journal, run)
+        except Exception:  # noqa: BLE001 - isolate one damaged workspace
+            logger.exception(
+                "Artifact recovery skipped one Run",
+                extra={"run_id": run.run_id},
+            )
+            continue
+        finalized.append(run.run_id)
+    return tuple(finalized)

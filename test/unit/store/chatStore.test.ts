@@ -137,9 +137,9 @@ import {
   getCloudModelPlatform,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
-  resolveRunOutputFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
+  resolveRunOutputFileList,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -582,7 +582,7 @@ describe('ChatStore - Core Functionality', () => {
       ]);
     });
 
-    it('collects generated files from task output file lists', () => {
+    it('leaves generated Artifact uploads to the durable Brain outbox', () => {
       const uploadFiles = collectTaskUploadFiles([], [], [], [
         {
           path: '/Users/test/.eigent/user_1/space_x/index.html',
@@ -596,14 +596,7 @@ describe('ChatStore - Core Functionality', () => {
         },
       ] as any);
 
-      expect(uploadFiles).toEqual([
-        {
-          path: '/Users/test/.eigent/user_1/space_x/index.html',
-          name: 'index.html',
-          uploadName: 'project_output/index.html',
-          source: 'project_output',
-        },
-      ]);
+      expect(uploadFiles).toEqual([]);
     });
 
     it('keeps camel log upload names nested under camel_log', () => {

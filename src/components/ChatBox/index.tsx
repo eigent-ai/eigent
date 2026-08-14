@@ -14,6 +14,7 @@
 
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -34,7 +35,6 @@ import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   listPendingFollowUpRequests,
-  markFollowUpRequestAdmitted,
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
@@ -422,7 +422,6 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
-  const hydratedFollowUpProjectsRef = useRef<Set<string>>(new Set());
 
   const navigate = useNavigate();
 
@@ -744,12 +743,14 @@ export default function ChatBox(): JSX.Element {
         toast.error(error?.message || 'Failed to queue message.');
         return;
       }
-      projectStore.addQueuedMessage(
-        targetProjectId,
-        displayContent,
-        queuedFiles,
-        requestId
-      );
+      projectStore.restoreQueuedMessage(targetProjectId, {
+        task_id: requestId,
+        run_id: requestId,
+        content: displayContent,
+        timestamp: Date.now(),
+        attaches: queuedFiles,
+        source: 'local',
+      });
       chatStore.setAttaches(_taskId, []);
       setMessage('');
       toast.success('Message queued. It will run after the current task.');
@@ -773,28 +774,44 @@ export default function ChatBox(): JSX.Element {
         chatStore.setNextTaskId(queuedRequestId);
         chatStore.setNextExecutionId(_taskId, undefined);
         const queuedFiles = queuedAttaches || [];
-        await fetchPost(`/chat/${targetProjectId}`, {
-          question: tempMessageContent,
-          task_id: queuedRequestId,
-          attaches: queuedFiles.map((file) => file.filePath),
-          project_context: buildProjectContinuationContext(
-            targetProjectId,
-            queuedRequestId
-          ),
-          target: undefined,
-        });
-        await markFollowUpRequestAdmitted(
-          targetProjectId,
-          queuedRequestId,
-          queuedRequestId
+        const backendStatus = await fetchGet(
+          `/chat/${encodeURIComponent(targetProjectId)}/status`
         );
-        chatStore.setIsPending(_taskId, true);
-        chatStore.addMessages(_taskId, {
-          id: generateUniqueId(),
-          role: 'user',
-          content: displayContent,
-          attaches: queuedFiles,
-        });
+        if (backendStatus?.has_lock) {
+          await fetchPost(`/chat/${targetProjectId}`, {
+            question: tempMessageContent,
+            task_id: queuedRequestId,
+            attaches: queuedFiles.map((file) => file.filePath),
+            target: undefined,
+          });
+          chatStore.setIsPending(_taskId, true);
+          chatStore.addMessages(_taskId, {
+            id: generateUniqueId(),
+            role: 'user',
+            content: displayContent,
+            attaches: queuedFiles,
+          });
+        } else {
+          // Brain restart removes the warm compatibility consumer.  A queued
+          // instruction is still a normal new Run, so start it through the
+          // cold admission path with its durable request id instead of
+          // retrying /chat/{project} forever.
+          await chatStore.startTask(
+            queuedRequestId,
+            undefined,
+            undefined,
+            undefined,
+            tempMessageContent,
+            queuedFiles,
+            undefined,
+            targetProjectId,
+            effectiveSessionMode,
+            {
+              preserveTaskId: true,
+              awaitAdmission: true,
+            }
+          );
+        }
       } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
           toast.error(
@@ -1113,18 +1130,27 @@ export default function ChatBox(): JSX.Element {
       content: m.content,
       timestamp: m.timestamp,
       processing: m.processing,
-      canSendNow: !m.executionId && !interruptedRun,
+      canSendNow:
+        !m.executionId &&
+        m.source !== 'scheduled' &&
+        m.source !== 'remote_control' &&
+        !interruptedRun,
     }));
   }, [interruptedRun, projectStore]);
 
   useEffect(() => {
     const projectId = projectStore.activeProjectId;
-    if (!projectId || hydratedFollowUpProjectsRef.current.has(projectId)) {
-      return;
-    }
-    hydratedFollowUpProjectsRef.current.add(projectId);
+    if (!projectId) return;
     void listPendingFollowUpRequests(projectId)
       .then((items) => {
+        const durableIds = new Set(items.map((item) => item.request_id));
+        const current =
+          projectStore.getProjectById(projectId)?.queuedMessages || [];
+        for (const local of current) {
+          if (local.source && !durableIds.has(local.task_id)) {
+            projectStore.removeQueuedMessage(projectId, local.task_id);
+          }
+        }
         for (const item of items) {
           projectStore.restoreQueuedMessage(projectId, {
             task_id: item.request_id,
@@ -1137,17 +1163,17 @@ export default function ChatBox(): JSX.Element {
               source: 'local',
             })) as unknown as File[],
             sendNow: item.delivery_mode === 'send_now',
+            source: item.source,
           });
         }
       })
       .catch((error) => {
-        hydratedFollowUpProjectsRef.current.delete(projectId);
         console.warn(
           '[FollowUpQueue] Failed to restore pending messages',
           error
         );
       });
-  }, [projectStore]);
+  }, [projectStore.activeProjectId]);
 
   useEffect(() => {
     const projectId = projectStore.activeProjectId;

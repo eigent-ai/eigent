@@ -101,26 +101,11 @@ class PermissionPolicyService:
         space_id: str,
         permission_profile_revision: str | None = None,
     ) -> PolicyDecision:
-        profile = self.profile_for_revision(
+        profile = self._effective_profile(
             space_id=space_id,
             revision=permission_profile_revision,
+            attempt_id=descriptor.attempt_id,
         )
-        profile_trusted = self._journal.attempt_permission_profile_is_trusted(
-            descriptor.attempt_id,
-            profile.revision,
-        )
-        if (
-            profile.name
-            in {
-                PermissionProfileName.AUTO_REVIEWER,
-                PermissionProfileName.FULL_ACCESS,
-            }
-            and not profile_trusted
-        ):
-            profile = replace(
-                PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
-                revision=f"untrusted:{profile.revision}",
-            )
         records = self._journal.list_approval_rules(
             space_id=space_id,
             run_id=descriptor.run_id,
@@ -185,6 +170,32 @@ class PermissionPolicyService:
             rules=rules,
         )
 
+    def _effective_profile(
+        self,
+        *,
+        space_id: str,
+        revision: str | None,
+        attempt_id: str,
+    ) -> PermissionProfile:
+        profile = self.profile_for_revision(
+            space_id=space_id,
+            revision=revision,
+        )
+        if profile.name not in {
+            PermissionProfileName.AUTO_REVIEWER,
+            PermissionProfileName.FULL_ACCESS,
+        }:
+            return profile
+        if self._journal.attempt_permission_profile_is_trusted(
+            attempt_id,
+            profile.revision,
+        ):
+            return profile
+        return replace(
+            PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
+            revision=f"untrusted:{profile.revision}",
+        )
+
     def evaluate_and_request_approval(
         self,
         descriptor: ActionDescriptor,
@@ -229,9 +240,10 @@ class PermissionPolicyService:
         )
         if decision.effect is not PolicyEffect.PROMPT:
             return PolicyEvaluationResult(decision=decision, approval=None)
-        profile = self.profile_for_revision(
+        profile = self._effective_profile(
             space_id=space_id,
             revision=permission_profile_revision,
+            attempt_id=descriptor.attempt_id,
         )
         identifier = approval_id or f"approval_{uuid.uuid4().hex}"
         if expires_at is None:
@@ -283,7 +295,10 @@ class PermissionPolicyService:
                     else ["once"]
                 ),
                 "rule_matcher": {
-                    "action_pattern": descriptor.operation,
+                    "action_pattern": (
+                        descriptor.persistent_rule_action_pattern
+                    ),
+                    "display_operation": descriptor.operation,
                     "resource_pattern": resource_matcher,
                     "matcher_kind": matcher_kind,
                 }

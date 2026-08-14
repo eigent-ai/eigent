@@ -17,16 +17,15 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import logging
 import mimetypes
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import httpx
 
@@ -39,21 +38,38 @@ from app.run_journal import (
     RunEventSyncBatch,
     SQLiteRunJournal,
 )
+from app.run_journal.cloud_projection import (
+    cloud_event_payload,
+    cloud_resource_label,
+)
 
 logger = logging.getLogger("run_sync")
 
 
+class _AsyncMultipartFileStream(httpx.AsyncByteStream):
+    """Read a multipart file in bounded worker-thread chunks."""
+
+    def __init__(self, prefix: bytes, path: Path, suffix: bytes) -> None:
+        self._prefix = prefix
+        self._path = path
+        self._suffix = suffix
+
+    async def __aiter__(self):
+        yield self._prefix
+        file_handle = await asyncio.to_thread(self._path.open, "rb")
+        try:
+            while True:
+                chunk = await asyncio.to_thread(file_handle.read, 1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(file_handle.close)
+        yield self._suffix
+
+
 def _cloud_resource_label(value: Any) -> str:
-    resource = str(value)
-    parsed = urlsplit(resource)
-    if parsed.scheme in {"http", "https"} and parsed.netloc:
-        return f"{parsed.scheme}://{parsed.netloc}"
-    if resource.startswith(("/", "~", "\\\\")) or re.match(
-        r"^[A-Za-z]:[\\\\/]", resource
-    ):
-        normalized_path = resource.replace("\\", "/")
-        return f"[local]/{PurePath(normalized_path).name}"
-    return resource
+    return cloud_resource_label(value)
 
 
 def _cloud_event_payload(
@@ -61,46 +77,7 @@ def _cloud_event_payload(
 ) -> dict[str, Any]:
     """Project a local canonical event into its Cloud-safe representation."""
 
-    projected = copy.deepcopy(payload)
-    if event_type.startswith("artifact."):
-        projected.pop("path", None)
-        projected["localPathAvailable"] = False
-        artifacts = projected.get("artifacts")
-        if isinstance(artifacts, list):
-            for artifact in artifacts:
-                if isinstance(artifact, dict):
-                    artifact.pop("path", None)
-                    artifact["localPathAvailable"] = False
-        return projected
-    if event_type != "approval.requested":
-        return projected
-    prompt = projected.get("prompt")
-    if not isinstance(prompt, dict):
-        return projected
-    resources = prompt.get("target_resources")
-    if isinstance(resources, list):
-        prompt["target_resources"] = [
-            _cloud_resource_label(item) for item in resources
-        ]
-    action = prompt.get("action")
-    if isinstance(action, dict):
-        # The digest is computed and persisted from the full trusted local
-        # descriptor. Remote display never needs raw tool arguments, file
-        # contents, query strings, or absolute paths.
-        action.pop("normalized_arguments", None)
-        action_resources = action.get("target_resources")
-        if isinstance(action_resources, list):
-            action["target_resources"] = [
-                _cloud_resource_label(item) for item in action_resources
-            ]
-    matcher = prompt.get("rule_matcher")
-    if isinstance(matcher, dict) and isinstance(
-        matcher.get("resource_pattern"), str
-    ):
-        matcher["resource_pattern"] = _cloud_resource_label(
-            matcher["resource_pattern"]
-        )
-    return projected
+    return cloud_event_payload(event_type, payload)
 
 
 @dataclass(frozen=True)
@@ -172,6 +149,17 @@ class RunEventSyncTransport(Protocol):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
+    async def account_owner_id(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> str: ...
+
+    async def authorize_memory_scopes(
+        self,
+        configuration: CloudSyncConfiguration,
+        scopes: list[tuple[str, str]],
+    ) -> dict[str, Any]: ...
+
     async def upload_artifact(
         self,
         configuration: CloudSyncConfiguration,
@@ -192,7 +180,7 @@ class HttpRunEventSyncTransport:
             timeout=timeout_seconds,
             transport=transport,
         )
-        self._registered_devices: set[tuple[str, str]] = set()
+        self._registered_devices: dict[tuple[str, str], str] = {}
         self._claimed_routes: set[tuple[str, str, str]] = set()
         self._registration_lock = asyncio.Lock()
 
@@ -252,7 +240,7 @@ class HttpRunEventSyncTransport:
             if device_key in self._registered_devices:
                 return
             try:
-                await self._json_request(
+                response = await self._json_request(
                     "POST",
                     f"{base}/devices/register",
                     configuration,
@@ -266,7 +254,48 @@ class HttpRunEventSyncTransport:
                 )
             except RunEventSyncHttpError as exc:
                 raise RunSyncInfrastructureError(str(exc)) from exc
-            self._registered_devices.add(device_key)
+            account_owner_id = str(
+                response.get("account_owner_id") or ""
+            ).strip()
+            if not account_owner_id:
+                raise RunEventSyncProtocolError(
+                    "Device registration omitted authenticated account owner"
+                )
+            self._registered_devices[device_key] = account_owner_id
+
+    async def account_owner_id(
+        self,
+        configuration: CloudSyncConfiguration,
+    ) -> str:
+        await self._ensure_device(configuration)
+        key = (
+            self._sync_base(configuration),
+            configuration.desktop_instance_id,
+        )
+        owner = self._registered_devices.get(key)
+        if not owner:
+            raise RunEventSyncProtocolError(
+                "Authenticated Memory account owner is unavailable"
+            )
+        return owner
+
+    async def authorize_memory_scopes(
+        self,
+        configuration: CloudSyncConfiguration,
+        scopes: list[tuple[str, str]],
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        return await self._json_request(
+            "POST",
+            f"{self._sync_base(configuration)}/memory/scopes:authorize",
+            configuration,
+            {
+                "scopes": [
+                    {"scope_type": scope_type, "scope_id": scope_id}
+                    for scope_type, scope_id in scopes
+                ]
+            },
+        )
 
     async def _ensure_device_and_route(
         self,
@@ -415,18 +444,34 @@ class HttpRunEventSyncTransport:
             or "application/octet-stream"
         )
         api_base = self._sync_base(configuration).rsplit("/sync", 1)[0]
-        with path.open("rb") as file_handle:
-            response = await self._client.post(
-                f"{api_base}/chat/files/upload",
-                headers=self._headers(configuration),
-                data={
-                    "task_id": item.run_id,
-                    "client_request_id": item.artifact_id,
-                },
-                files={
-                    "file": (item.filename, file_handle, content_type),
-                },
-            )
+        boundary = (
+            "eigent-" + re.sub(r"[^A-Za-z0-9]", "", item.artifact_id)[:48]
+        )
+        safe_filename = re.sub(r"[\r\n\"\\]", "_", item.filename)
+        prefix = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="task_id"\r\n\r\n'
+            f"{item.run_id}\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="client_request_id"\r\n\r\n'
+            f"{item.artifact_id}\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; '
+            f'filename="{safe_filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        suffix = f"\r\n--{boundary}--\r\n".encode()
+        size = await asyncio.to_thread(lambda: path.stat().st_size)
+        headers = {
+            **self._headers(configuration),
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(prefix) + size + len(suffix)),
+        }
+        response = await self._client.post(
+            f"{api_base}/chat/files/upload",
+            headers=headers,
+            content=_AsyncMultipartFileStream(prefix, path, suffix),
+        )
         if response.is_error:
             try:
                 detail: Any = response.json()
@@ -507,6 +552,22 @@ class CloudSyncWorker:
     def notify(self) -> None:
         if not self._closed:
             self._wake.set()
+
+    async def authenticated_account_owner_id(self) -> str:
+        """Return the owner proven by the active device-auth session."""
+
+        configuration = self._configuration
+        resolver = getattr(self._transport, "account_owner_id", None)
+        if configuration is None or not callable(resolver):
+            raise RunSyncInfrastructureError(
+                "Cloud Memory account authentication is unavailable"
+            )
+        owner = str(await resolver(configuration)).strip()
+        if not owner:
+            raise RunEventSyncProtocolError(
+                "Cloud Memory account authentication omitted its owner"
+            )
+        return owner
 
     async def drain_once(self) -> int:
         configuration = self._configuration
@@ -662,8 +723,9 @@ class CloudSyncWorker:
         item: ArtifactUploadSyncItem,
         error: str,
     ) -> None:
+        next_attempt = item.attempt_count + 1
         delay = min(
-            2 ** min(item.attempt_count + 1, 8),
+            2 ** min(next_attempt, 8),
             self._max_retry_seconds,
         )
         await asyncio.to_thread(
@@ -671,6 +733,7 @@ class CloudSyncWorker:
             item,
             error=error,
             next_attempt_at=time.time() + delay,
+            dead_letter=next_attempt >= 8,
         )
 
     async def bootstrap_once(self) -> None:
@@ -821,10 +884,53 @@ class CloudSyncWorker:
         configuration: CloudSyncConfiguration,
     ) -> set[tuple[str, str]]:
         put_snapshot = getattr(self._transport, "put_memory_snapshot", None)
-        if not callable(put_snapshot):
+        resolve_owner = getattr(self._transport, "account_owner_id", None)
+        authorize_scopes = getattr(
+            self._transport, "authorize_memory_scopes", None
+        )
+        if not all(
+            callable(item)
+            for item in (put_snapshot, resolve_owner, authorize_scopes)
+        ):
             return set()
+        account_owner_id = str(await resolve_owner(configuration)).strip()
+        if not account_owner_id:
+            raise RunEventSyncProtocolError(
+                "Memory sync requires an authenticated account owner"
+            )
+        candidates = await asyncio.to_thread(
+            self._journal.list_memory_scope_owner_candidates,
+            account_owner_id,
+        )
+        if candidates:
+            authorization = await authorize_scopes(configuration, candidates)
+            if (
+                str(authorization.get("account_owner_id") or "")
+                != account_owner_id
+            ):
+                raise RunEventSyncProtocolError(
+                    "Memory scope authorization owner does not match device"
+                )
+            raw_scopes = authorization.get("authorized_scopes")
+            if not isinstance(raw_scopes, list):
+                raise RunEventSyncProtocolError(
+                    "Memory scope authorization omitted authorized_scopes"
+                )
+            approved = [
+                (str(item["scope_type"]), str(item["scope_id"]))
+                for item in raw_scopes
+                if isinstance(item, dict)
+                and item.get("scope_type") in {"project", "space", "user"}
+                and isinstance(item.get("scope_id"), str)
+            ]
+            await asyncio.to_thread(
+                self._journal.confirm_memory_scope_owner_candidates,
+                account_owner_id,
+                approved,
+            )
         snapshots = await asyncio.to_thread(
-            self._journal.list_memory_sync_snapshots
+            self._journal.list_memory_sync_snapshots,
+            account_owner_id,
         )
         ready: set[tuple[str, str]] = set()
         now = time.monotonic()
@@ -884,18 +990,29 @@ class CloudSyncWorker:
                                     "Memory writer transfer omitted its "
                                     "Cloud baseline"
                                 )
-                            await asyncio.to_thread(
+                            reconciliation_count = await asyncio.to_thread(
                                 self._journal.merge_cloud_memory_baseline,
                                 scope_type=key[0],
                                 scope_id=key[1],
+                                account_owner_id=account_owner_id,
                                 scope=baseline_scope,
                                 entries=baseline_entries,
                             )
+                            if reconciliation_count:
+                                logger.warning(
+                                    "Cloud Memory takeover for %s/%s needs "
+                                    "%d user reconciliation decision(s)",
+                                    key[0],
+                                    key[1],
+                                    reconciliation_count,
+                                )
+                                continue
                             refreshed = next(
                                 (
                                     item
                                     for item in await asyncio.to_thread(
-                                        self._journal.list_memory_sync_snapshots
+                                        self._journal.list_memory_sync_snapshots,
+                                        account_owner_id,
                                     )
                                     if (item["scope_type"], item["scope_id"])
                                     == key

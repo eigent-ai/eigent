@@ -35,6 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.run_journal.cloud_projection import cloud_event_payload
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
@@ -64,6 +65,7 @@ from app.run_journal.models import (
     MemoryMutationResult,
     MemoryMutationSyncBatch,
     MemoryMutationSyncItem,
+    MemoryReconciliationRecord,
     MemoryScopeStateRecord,
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
@@ -111,11 +113,12 @@ from app.run_policy import (
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
     ThinkingEffort,
+    assert_manifest_secret_free,
     canonical_digest,
     canonical_json,
 )
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 28
 logger = logging.getLogger("run_journal")
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
@@ -1703,6 +1706,78 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (26, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 26;
+COMMIT;
+"""
+
+_MIGRATION_V27 = """
+BEGIN IMMEDIATE;
+
+-- A Desktop database can outlive login sessions. Memory scopes are bound to
+-- the authenticated account that created/used the owning Space or Project;
+-- unbound legacy/development rows never enter a later account's sync lane.
+CREATE TABLE IF NOT EXISTS memory_scope_owners(
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    account_owner_id TEXT NOT NULL CHECK(length(trim(account_owner_id)) > 0),
+    bound_at REAL NOT NULL,
+    PRIMARY KEY(scope_type, scope_id)
+);
+CREATE INDEX IF NOT EXISTS memory_scope_owners_account_idx
+ON memory_scope_owners(account_owner_id, scope_type, scope_id);
+
+-- Request payload identity is only a candidate. CloudSync promotes it after
+-- the device-registration response proves the authenticated Cloud account.
+CREATE TABLE IF NOT EXISTS memory_scope_owner_candidates(
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    claimed_account_owner_id TEXT NOT NULL CHECK(
+        length(trim(claimed_account_owner_id)) > 0
+    ),
+    created_at REAL NOT NULL,
+    PRIMARY KEY(scope_type, scope_id, claimed_account_owner_id)
+);
+CREATE INDEX IF NOT EXISTS memory_scope_owner_candidates_claim_idx
+ON memory_scope_owner_candidates(
+    claimed_account_owner_id, scope_type, scope_id
+);
+
+-- Writer takeover conflicts are review facts, never silent last-write-wins.
+CREATE TABLE IF NOT EXISTS memory_reconciliation_items(
+    reconciliation_id TEXT PRIMARY KEY,
+    account_owner_id TEXT NOT NULL,
+    scope_type TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    memory_id TEXT NOT NULL,
+    local_entry_json TEXT NOT NULL,
+    cloud_entry_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'accepted_local', 'accepted_cloud', 'dismissed')
+    ),
+    created_at REAL NOT NULL,
+    resolved_at REAL,
+    UNIQUE(account_owner_id, scope_type, scope_id, memory_id, status)
+);
+CREATE INDEX IF NOT EXISTS memory_reconciliation_pending_idx
+ON memory_reconciliation_items(account_owner_id, status, created_at);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (27, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 27;
+COMMIT;
+"""
+
+_MIGRATION_V28 = """
+BEGIN IMMEDIATE;
+
+-- Persist the Cloud delivery fence across a Desktop restart between Inbox
+-- commit and receipt confirmation.
+ALTER TABLE remote_command_inbox ADD COLUMN delivery_lease_token TEXT;
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (28, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 28;
 COMMIT;
 """
 
@@ -6756,6 +6831,20 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._run_from_row(row) for row in rows]
 
+    def list_recoverable_runs(self) -> list[RunRecord]:
+        """Return Runs whose filesystem artifacts must precede reconciliation."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM runs
+                WHERE status IN ('pending', 'running', 'waiting_for_user')
+                   OR (status = 'interrupted' AND cancel_request_id IS NOT NULL)
+                ORDER BY created_at, run_id
+                """
+            ).fetchall()
+        return [self._run_from_row(row) for row in rows]
+
     def get_active_project_run(self, project_id: str) -> RunRecord | None:
         """Return the Run that owns the Project execution lease, if any."""
 
@@ -7359,13 +7448,17 @@ class SQLiteRunJournal:
         now: float | None = None,
     ) -> FollowUpRequestRecord:
         timestamp = now if now is not None else time.time()
+        if run_id != request_id:
+            raise IdempotencyConflictError(
+                "a follow-up request must be admitted as its deterministic Run"
+            )
         with self._write_transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM follow_up_requests WHERE request_id = ?",
                 (request_id,),
             ).fetchone()
             run = connection.execute(
-                "SELECT project_id FROM runs WHERE run_id = ?",
+                "SELECT project_id, status FROM runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
             if row is None or row["project_id"] != project_id:
@@ -7375,6 +7468,18 @@ class SQLiteRunJournal:
             if run is None or run["project_id"] != project_id:
                 raise RunNotFoundError(
                     f"follow-up Run {run_id!r} does not exist in this Project"
+                )
+            if run["status"] in {"completed", "failed", "cancelled"}:
+                raise InvalidRunTransitionError(
+                    "a follow-up cannot be admitted to a terminal Run"
+                )
+            attempt = connection.execute(
+                "SELECT 1 FROM run_attempts WHERE run_id = ? LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            if attempt is None:
+                raise InvalidRunTransitionError(
+                    "a follow-up cannot be admitted before Run admission"
                 )
             if row["status"] == "admitted":
                 if row["admitted_run_id"] != run_id:
@@ -7523,13 +7628,21 @@ class SQLiteRunJournal:
                 ).fetchone()
                 existing = duplicate or sequence_owner
                 if existing is not None:
+                    existing_payload = json.loads(existing["payload_json"])
+                    payload_matches = (
+                        existing_payload == event.payload
+                        or cloud_event_payload(
+                            str(existing["event_type"]), existing_payload
+                        )
+                        == event.payload
+                    )
                     if (
                         existing["event_id"] != event.event_id
                         or existing["run_id"] != event.run_id
                         or int(existing["sequence"]) != event.run_sequence
                         or int(existing["run_version"]) != event.run_version
                         or existing["event_type"] != event.event_type
-                        or existing["payload_json"] != payload_json
+                        or not payload_matches
                         or existing["legacy_step"] != event.legacy_step
                     ):
                         raise IdempotencyConflictError(
@@ -7771,6 +7884,14 @@ class SQLiteRunJournal:
                 "cancelled",
             }:
                 return self._event_from_row(existing)
+            if existing is not None:
+                existing_payload = json.loads(existing["payload_json"])
+                incoming_payload = dict(drafts[-1].payload)
+                if (
+                    existing_payload.get("scan_status") == "complete"
+                    and incoming_payload.get("scan_status") != "complete"
+                ):
+                    return self._event_from_row(existing)
 
             committed: list[CommittedRunEvent] = []
             for draft in drafts:
@@ -7838,6 +7959,9 @@ class SQLiteRunJournal:
                 ),
             )
 
+        if manifest_payload.get("scan_status") != "complete":
+            return
+
         # A corrected non-terminal manifest may drop a vanished file. Do not
         # upload a stale path that is no longer part of the canonical barrier.
         if current_ids:
@@ -7898,6 +8022,20 @@ class SQLiteRunJournal:
                     f"run_id {run_id!r} belongs to another project"
                 )
 
+            unknown_tool = connection.execute(
+                """
+                SELECT tool_call_id FROM tool_calls
+                WHERE run_id = ? AND status IN ('dispatched', 'outcome_unknown')
+                ORDER BY created_at, tool_call_id LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if unknown_tool is not None:
+                raise InvalidRunTransitionError(
+                    "a Run with an unresolved Tool outcome cannot complete "
+                    f"successfully ({unknown_tool['tool_call_id']})"
+                )
+
             # Artifact discovery happens outside this short transaction and
             # two terminal paths may race. Pin the newest committed manifest
             # under the same writer lock as run.completed; never trust the
@@ -7927,6 +8065,7 @@ class SQLiteRunJournal:
                 run_id,
                 assistant_final,
                 expected_project_id=expected_project_id,
+                allow_assistant_final=True,
             )
             terminal_event = self._append_event_in_transaction(
                 connection,
@@ -8166,6 +8305,180 @@ class SQLiteRunJournal:
                 now=timestamp,
             )
             return self._memory_scope_state_from_row(row)
+
+    def bind_memory_scope_owner(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        account_owner_id: str,
+        now: float | None = None,
+    ) -> None:
+        """Bind a local scope to one authenticated account exactly once."""
+
+        self._validate_memory_scope(scope_type, scope_id)
+        owner = account_owner_id.strip()
+        if not owner:
+            raise ValueError("Memory account owner is required")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                """
+                SELECT account_owner_id FROM memory_scope_owners
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+            if existing is not None and existing["account_owner_id"] != owner:
+                raise IdempotencyConflictError(
+                    f"Memory scope {scope_type}:{scope_id} belongs to "
+                    "another account"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO memory_scope_owners(
+                    scope_type, scope_id, account_owner_id, bound_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (scope_type, scope_id, owner, timestamp),
+            )
+
+    def register_memory_scope_owner_candidates(
+        self,
+        *,
+        project_id: str,
+        space_id: str,
+        claimed_account_owner_id: str | None,
+        now: float | None = None,
+    ) -> None:
+        """Record an untrusted ownership claim for later Cloud confirmation."""
+
+        owner = str(claimed_account_owner_id or "").strip()
+        if not owner:
+            return
+        timestamp = now if now is not None else time.time()
+        candidates = (
+            ("project", project_id),
+            ("space", space_id),
+            ("user", owner),
+        )
+        with self._write_transaction() as connection:
+            for scope_type, scope_id in candidates:
+                self._validate_memory_scope(scope_type, scope_id)
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO memory_scope_owner_candidates(
+                        scope_type, scope_id, claimed_account_owner_id,
+                        created_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (scope_type, scope_id, owner, timestamp),
+                )
+
+    def list_memory_scope_owner_candidates(
+        self,
+        account_owner_id: str,
+    ) -> list[tuple[str, str]]:
+        """Return untrusted claims for explicit server authorization."""
+
+        owner = account_owner_id.strip()
+        if not owner:
+            return []
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT scope_type, scope_id
+                FROM memory_scope_owner_candidates
+                WHERE claimed_account_owner_id = ?
+                ORDER BY scope_type, scope_id
+                """,
+                (owner,),
+            ).fetchall()
+        return [(str(row["scope_type"]), str(row["scope_id"])) for row in rows]
+
+    def confirm_memory_scope_owner_candidates(
+        self,
+        account_owner_id: str,
+        authorized_scopes: list[tuple[str, str]],
+        *,
+        now: float | None = None,
+    ) -> int:
+        """Promote only scope keys explicitly authorized by eigent_server."""
+
+        owner = account_owner_id.strip()
+        if not owner:
+            raise ValueError("Memory account owner is required")
+        normalized = set(authorized_scopes)
+        for scope_type, scope_id in normalized:
+            self._validate_memory_scope(scope_type, scope_id)
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT scope_type, scope_id
+                FROM memory_scope_owner_candidates
+                WHERE claimed_account_owner_id = ?
+                ORDER BY scope_type, scope_id
+                """,
+                (owner,),
+            ).fetchall()
+            promoted = 0
+            for row in rows:
+                key = (str(row["scope_type"]), str(row["scope_id"]))
+                if key not in normalized:
+                    continue
+                existing = connection.execute(
+                    """
+                    SELECT account_owner_id FROM memory_scope_owners
+                    WHERE scope_type = ? AND scope_id = ?
+                    """,
+                    (row["scope_type"], row["scope_id"]),
+                ).fetchone()
+                if existing is not None:
+                    if existing["account_owner_id"] != owner:
+                        continue
+                else:
+                    connection.execute(
+                        """
+                        INSERT INTO memory_scope_owners(
+                            scope_type, scope_id, account_owner_id, bound_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            row["scope_type"],
+                            row["scope_id"],
+                            owner,
+                            timestamp,
+                        ),
+                    )
+                    promoted += 1
+                connection.execute(
+                    """
+                    DELETE FROM memory_scope_owner_candidates
+                    WHERE scope_type = ? AND scope_id = ?
+                      AND claimed_account_owner_id = ?
+                    """,
+                    (row["scope_type"], row["scope_id"], owner),
+                )
+            return promoted
+
+    def bind_run_memory_scopes(
+        self,
+        *,
+        project_id: str,
+        space_id: str,
+        account_owner_id: str,
+    ) -> None:
+        for scope_type, scope_id in (
+            ("project", project_id),
+            ("space", space_id),
+            ("user", account_owner_id),
+        ):
+            self.bind_memory_scope_owner(
+                scope_type,
+                scope_id,
+                account_owner_id=account_owner_id,
+            )
 
     def get_memory_scope_state(
         self, scope_type: str, scope_id: str
@@ -8446,6 +8759,110 @@ class SQLiteRunJournal:
             rows = self._connection.execute(query, parameters).fetchall()
             return [self._memory_mutation_from_row(row) for row in rows]
 
+    def list_memory_reconciliation_items(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        account_owner_id: str,
+        status: str = "pending",
+        limit: int = 100,
+    ) -> list[MemoryReconciliationRecord]:
+        """List explicit cross-device Memory conflicts for user review."""
+
+        self._validate_memory_scope(scope_type, scope_id)
+        if status not in {
+            "pending",
+            "accepted_local",
+            "accepted_cloud",
+            "dismissed",
+        }:
+            raise ValueError("invalid Memory reconciliation status")
+        if limit < 1 or limit > 200:
+            raise ValueError("Memory reconciliation limit is invalid")
+        owner = account_owner_id.strip()
+        if not owner:
+            raise ValueError("Memory account owner is required")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM memory_reconciliation_items
+                WHERE scope_type = ? AND scope_id = ?
+                  AND account_owner_id = ? AND status = ?
+                ORDER BY created_at, reconciliation_id
+                LIMIT ?
+                """,
+                (scope_type, scope_id, owner, status, limit),
+            ).fetchall()
+        return [self._memory_reconciliation_from_row(row) for row in rows]
+
+    def get_memory_reconciliation_item(
+        self, reconciliation_id: str
+    ) -> MemoryReconciliationRecord | None:
+        if not reconciliation_id.strip():
+            raise ValueError("Memory reconciliation id is required")
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT * FROM memory_reconciliation_items
+                WHERE reconciliation_id = ?""",
+                (reconciliation_id,),
+            ).fetchone()
+        return (
+            self._memory_reconciliation_from_row(row)
+            if row is not None
+            else None
+        )
+
+    def resolve_memory_reconciliation_item(
+        self,
+        reconciliation_id: str,
+        *,
+        resolution: str,
+        now: float | None = None,
+    ) -> MemoryReconciliationRecord:
+        """CAS-close a conflict after the selected mutation was persisted."""
+
+        if resolution not in {
+            "accepted_local",
+            "accepted_cloud",
+            "dismissed",
+        }:
+            raise ValueError("invalid Memory reconciliation resolution")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                """SELECT * FROM memory_reconciliation_items
+                WHERE reconciliation_id = ?""",
+                (reconciliation_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError("Memory reconciliation item not found")
+            if row["status"] != "pending":
+                if row["status"] != resolution:
+                    raise IdempotencyConflictError(
+                        "Memory reconciliation was already resolved differently"
+                    )
+                return self._memory_reconciliation_from_row(row)
+            updated = connection.execute(
+                """
+                UPDATE memory_reconciliation_items
+                SET status = ?, resolved_at = ?
+                WHERE reconciliation_id = ? AND status = 'pending'
+                """,
+                (resolution, timestamp, reconciliation_id),
+            )
+            if updated.rowcount != 1:
+                raise OptimisticConcurrencyError(
+                    "Memory reconciliation changed during resolution"
+                )
+            result = connection.execute(
+                """SELECT * FROM memory_reconciliation_items
+                WHERE reconciliation_id = ?""",
+                (reconciliation_id,),
+            ).fetchone()
+            assert result is not None
+            return self._memory_reconciliation_from_row(result)
+
     def apply_memory_mutation(
         self,
         *,
@@ -8470,6 +8887,7 @@ class SQLiteRunJournal:
         run_id: str | None = None,
         activity_id: str | None = None,
         decision_id: str | None = None,
+        confirmed_by_user_action: bool = False,
         now: float | None = None,
     ) -> MemoryMutationResult:
         """Apply one canonical, CAS-guarded lightweight Memory mutation."""
@@ -8535,6 +8953,14 @@ class SQLiteRunJournal:
         ).hexdigest()
 
         with self._write_transaction() as connection:
+            if confirmed_by_user_action:
+                self._assert_memory_user_decision_in_transaction(
+                    connection,
+                    decision_id=decision_id,
+                    run_id=run_id,
+                    memory_id=memory_id,
+                    operation=operation,
+                )
             duplicate = connection.execute(
                 "SELECT * FROM memory_mutations WHERE idempotency_key = ?",
                 (idempotency_key,),
@@ -8635,7 +9061,7 @@ class SQLiteRunJournal:
                         content.strip() if content else content,
                         priority,
                         token_count,
-                        int(actor_type == "user"),
+                        int(actor_type == "user" or confirmed_by_user_action),
                         created_by,
                         source_trust,
                         sensitivity,
@@ -8715,7 +9141,10 @@ class SQLiteRunJournal:
                             resolved_trust,
                             sensitivity,
                             replacement_refs,
-                            int(actor_type == "user"),
+                            int(
+                                actor_type == "user"
+                                or confirmed_by_user_action
+                            ),
                             timestamp,
                             memory_id,
                             expected_version,
@@ -8937,6 +9366,51 @@ class SQLiteRunJournal:
                 scope_state=self._memory_scope_state_from_row(state),
             )
 
+    @staticmethod
+    def _assert_memory_user_decision_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        decision_id: str | None,
+        run_id: str | None,
+        memory_id: str | None,
+        operation: str,
+    ) -> None:
+        if not decision_id or not run_id:
+            raise PermissionError(
+                "reviewed Memory mutation requires a durable user decision"
+            )
+        row = connection.execute(
+            """
+            SELECT decisions.decision_json, decisions.actor_type,
+                   interactions.run_id, interactions.request_json
+            FROM human_interaction_decisions AS decisions
+            JOIN human_interactions AS interactions
+              ON interactions.interaction_id = decisions.interaction_id
+            WHERE decisions.decision_id = ?
+              AND interactions.interaction_type = 'memory_change_review'
+              AND interactions.status = 'resolved'
+            """,
+            (decision_id,),
+        ).fetchone()
+        if (
+            row is None
+            or row["actor_type"] != "user"
+            or row["run_id"] != run_id
+        ):
+            raise PermissionError("Memory review was not approved by the user")
+        decision = json.loads(row["decision_json"])
+        request = json.loads(row["request_json"])
+        change = request.get("memory_change")
+        if (
+            decision.get("decision") != "approved"
+            or not isinstance(change, dict)
+            or change.get("operation") != operation
+            or (memory_id is not None and change.get("memory_id") != memory_id)
+        ):
+            raise PermissionError(
+                "Memory review does not authorize this exact mutation"
+            )
+
     def get_run_final_result_event(
         self, run_id: str
     ) -> CommittedRunEvent | None:
@@ -9134,6 +9608,27 @@ class SQLiteRunJournal:
                     WHERE project_id = ? AND run_id = ?""",
                     (run["project_id"], run_id),
                 )
+            blockers = self._unsafe_resume_blockers(connection, run_id)
+            if blockers:
+                raise UnsafeResumeError(blockers)
+            unresolved_tools = connection.execute(
+                """
+                SELECT calls.tool_call_id, calls.run_id
+                FROM tool_calls AS calls
+                JOIN runs AS owner ON owner.run_id = calls.run_id
+                WHERE owner.project_id = ?
+                  AND calls.status IN ('prepared', 'dispatched')
+                ORDER BY calls.created_at
+                LIMIT 1
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            if unresolved_tools is not None:
+                raise InvalidRunTransitionError(
+                    f"project {run['project_id']!r} still has unresolved Tool "
+                    f"call {unresolved_tools['tool_call_id']!r} in Run "
+                    f"{unresolved_tools['run_id']!r}"
+                )
             pending_approvals = connection.execute(
                 """
                 SELECT approval_id FROM approvals
@@ -9165,9 +9660,6 @@ class SQLiteRunJournal:
                         row["interaction_id"] for row in pending_interactions
                     )
                 )
-            blockers = self._unsafe_resume_blockers(connection, run_id)
-            if blockers:
-                raise UnsafeResumeError(blockers)
             if environment is not None:
                 spec = connection.execute(
                     """
@@ -9304,6 +9796,18 @@ class SQLiteRunJournal:
                 ),
                 run_status=status,
                 active_attempt_id=identifier,
+            )
+            # A follow-up's request_id is its deterministic Run id.  Admit the
+            # durable queue row in the same transaction as its first Attempt,
+            # so a renderer crash cannot leave an executing Run queued forever.
+            connection.execute(
+                """
+                UPDATE follow_up_requests
+                SET status = 'admitted', admitted_run_id = ?,
+                    last_error = NULL, updated_at = ?
+                WHERE request_id = ? AND project_id = ? AND status = 'pending'
+                """,
+                (run_id, timestamp, run_id, run["project_id"]),
             )
             row = connection.execute(
                 "SELECT * FROM run_attempts WHERE attempt_id = ?",
@@ -9803,16 +10307,70 @@ class SQLiteRunJournal:
                 """,
                 (timestamp, run_id),
             )
+            dispatched_tools = connection.execute(
+                """
+                SELECT * FROM tool_calls
+                WHERE run_id = ? AND status = 'dispatched'
+                  AND outcome IS NULL
+                ORDER BY created_at, tool_call_id
+                """,
+                (run_id,),
+            ).fetchall()
+            for tool in dispatched_tools:
+                connection.execute(
+                    """
+                    UPDATE tool_calls
+                    SET status = 'outcome_unknown',
+                        outcome = 'outcome_unknown', updated_at = ?
+                    WHERE tool_call_id = ? AND status = 'dispatched'
+                    """,
+                    (timestamp, tool["tool_call_id"]),
+                )
+                self._append_event_in_transaction(
+                    connection,
+                    run_id,
+                    RunEventDraft(
+                        event_id=(
+                            "cancel:tool-outcome-unknown:"
+                            f"{tool['tool_call_id']}"
+                        ),
+                        event_type="tool.outcome_unknown",
+                        payload={
+                            "tool_call_id": tool["tool_call_id"],
+                            "safety_class": tool["safety_class"],
+                            "reason": "cancelled_after_dispatch",
+                        },
+                        created_at=timestamp,
+                    ),
+                )
+            payload: dict[str, Any] = {
+                "request_id": request_id,
+                "reason": "explicit_cancel",
+            }
+            manifest = connection.execute(
+                """
+                SELECT * FROM run_events
+                WHERE run_id = ?
+                  AND event_type = 'artifact.manifest.finalized'
+                ORDER BY sequence DESC LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if manifest is not None:
+                manifest_event = self._event_from_row(manifest)
+                payload.update(
+                    artifact_manifest_event_id=manifest_event.event_id,
+                    artifact_count=int(
+                        manifest_event.payload.get("artifact_count", 0)
+                    ),
+                )
             self._append_event_in_transaction(
                 connection,
                 run_id,
                 RunEventDraft(
                     event_id=f"cancel:{request_id}:completed",
                     event_type="run.cancelled",
-                    payload={
-                        "request_id": request_id,
-                        "reason": "explicit_cancel",
-                    },
+                    payload=payload,
                     created_at=timestamp,
                 ),
                 run_status="cancelled",
@@ -11953,6 +12511,7 @@ class SQLiteRunJournal:
         expires_at: float,
         receipt_grace_until: float,
         requires_online_receipt_confirmation: bool,
+        delivery_lease_token: str | None = None,
         receipt_event_id: str | None = None,
         now: float | None = None,
     ) -> RemoteCommandInboxRecord:
@@ -11994,6 +12553,24 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"command_id {command_id!r} was reused with different data"
                     )
+                if (
+                    delivery_lease_token
+                    and existing["receipt_status"] == "pending"
+                    and existing["delivery_lease_token"]
+                    != delivery_lease_token
+                ):
+                    connection.execute(
+                        """
+                        UPDATE remote_command_inbox
+                        SET delivery_lease_token = ?, updated_at = ?
+                        WHERE command_id = ? AND receipt_status = 'pending'
+                        """,
+                        (delivery_lease_token, timestamp, command_id),
+                    )
+                    existing = connection.execute(
+                        "SELECT * FROM remote_command_inbox WHERE command_id = ?",
+                        (command_id,),
+                    ).fetchone()
                 return self._command_from_row(existing)
 
             connection.execute(
@@ -12003,9 +12580,10 @@ class SQLiteRunJournal:
                     route_version, command_type, payload_json, expires_at,
                     receipt_grace_until,
                     requires_online_receipt_confirmation, receipt_event_id,
+                    delivery_lease_token,
                     receipt_status, state, dispatch_attempt_count, last_error,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           'pending', 'received', 0, NULL, ?, ?)
                 """,
                 (
@@ -12021,6 +12599,7 @@ class SQLiteRunJournal:
                     receipt_grace_until,
                     int(requires_online_receipt_confirmation),
                     receipt_id,
+                    delivery_lease_token,
                     timestamp,
                     timestamp,
                 ),
@@ -12342,9 +12921,12 @@ class SQLiteRunJournal:
             for candidate in candidates:
                 rows = connection.execute(
                     """
-                    SELECT e.*, o.status, o.attempt_count, o.next_attempt_at
+                    SELECT e.*, o.status, o.attempt_count, o.next_attempt_at,
+                           i.delivery_lease_token
                     FROM command_result_outbox AS o
                     JOIN command_result_events AS e ON e.event_id = o.event_id
+                    JOIN remote_command_inbox AS i
+                      ON i.command_id = o.command_id
                     WHERE o.command_id = ? AND o.command_event_sequence >= ?
                       AND o.status != 'sent'
                     ORDER BY o.command_event_sequence
@@ -12394,6 +12976,7 @@ class SQLiteRunJournal:
                 batches.append(
                     CommandResultSyncBatch(
                         command_id=candidate["command_id"],
+                        delivery_lease_token=ready[0]["delivery_lease_token"],
                         lease_token=token,
                         attempt_count=int(ready[0]["attempt_count"]),
                         events=tuple(
@@ -12865,7 +13448,11 @@ class SQLiteRunJournal:
                 "Memory sync is fixed to full_memory"
             )
         projected = dict(entry)
-        content = str(projected.get("content") or "")
+        content = (
+            ""
+            if projected.get("deleted_at") is not None
+            else str(projected.get("content") or "")
+        )
         projected["content"] = content
         projected["content_digest"] = hashlib.sha256(
             content.encode("utf-8")
@@ -12890,16 +13477,28 @@ class SQLiteRunJournal:
         projected["source_refs"] = redacted_refs
         return projected
 
-    def list_memory_sync_snapshots(self) -> list[dict[str, Any]]:
+    def list_memory_sync_snapshots(
+        self, account_owner_id: str
+    ) -> list[dict[str, Any]]:
         """Return bounded derived snapshots for anti-entropy bootstrap."""
+
+        owner = account_owner_id.strip()
+        if not owner:
+            return []
 
         with self._lock:
             states = self._connection.execute(
                 """
-                SELECT * FROM memory_scope_state
-                WHERE sync_scope = 'full_memory'
-                ORDER BY scope_type, scope_id
-                """
+                SELECT state.*
+                FROM memory_scope_state AS state
+                JOIN memory_scope_owners AS owner
+                  ON owner.scope_type = state.scope_type
+                 AND owner.scope_id = state.scope_id
+                WHERE state.sync_scope = 'full_memory'
+                  AND owner.account_owner_id = ?
+                ORDER BY state.scope_type, state.scope_id
+                """,
+                (owner,),
             ).fetchall()
             snapshots: list[dict[str, Any]] = []
             for state in states:
@@ -12978,16 +13577,18 @@ class SQLiteRunJournal:
         *,
         scope_type: str,
         scope_id: str,
+        account_owner_id: str,
         scope: dict[str, Any],
         entries: list[dict[str, Any]],
-    ) -> None:
+    ) -> int:
         """Hydrate a new writer before it publishes a rebase snapshot.
 
         This is a read-model import, not a user/agent mutation: it never emits
         a Memory mutation or advances the local revision. Local entries are
-        retained, while a newer Cloud version of the same id wins. The final
-        union must still fit the fixed scope cap; otherwise takeover remains
-        fail-closed instead of silently deleting learned or pinned Memory.
+        retained. Any differing entry with the same id becomes an explicit
+        review item; neither timestamp nor version is allowed to silently
+        overwrite user-visible Memory. The final union must still fit the
+        fixed scope cap.
         """
 
         self._validate_memory_scope(scope_type, scope_id)
@@ -13006,7 +13607,22 @@ class SQLiteRunJournal:
             ).timestamp()
 
         timestamp = time.time()
+        owner = account_owner_id.strip()
+        if not owner:
+            raise ValueError("Memory account owner is required")
         with self._write_transaction() as connection:
+            ownership = connection.execute(
+                """
+                SELECT account_owner_id FROM memory_scope_owners
+                WHERE scope_type = ? AND scope_id = ?
+                """,
+                (scope_type, scope_id),
+            ).fetchone()
+            if ownership is None or ownership["account_owner_id"] != owner:
+                raise InvalidRunTransitionError(
+                    "Cloud Memory baseline scope is not bound to the "
+                    "authenticated account"
+                )
             state = self._ensure_memory_scope_state_in_transaction(
                 connection,
                 scope_type=scope_type,
@@ -13016,6 +13632,7 @@ class SQLiteRunJournal:
                 now=timestamp,
             )
             seen: set[str] = set()
+            reconciliation_count = 0
             for raw in entries:
                 memory_id = str(raw.get("memory_id") or "").strip()
                 if not memory_id or memory_id in seen:
@@ -13030,6 +13647,11 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         "Cloud Memory baseline content digest does not match"
                     )
+                incoming_deleted = (
+                    parse_timestamp(raw["deleted_at"])
+                    if raw.get("deleted_at") is not None
+                    else None
+                )
                 self._validate_memory_entry_values(
                     content=content,
                     kind=str(raw.get("kind") or ""),
@@ -13038,14 +13660,36 @@ class SQLiteRunJournal:
                     created_by=str(raw.get("created_by") or ""),
                     source_trust=str(raw.get("source_trust") or ""),
                     sensitivity=str(raw.get("sensitivity") or "normal"),
+                    allow_empty_content=incoming_deleted is not None,
                 )
+                incoming_kind = str(raw.get("kind") or "")
+                incoming_trust = str(raw.get("source_trust") or "")
+                incoming_created_by = str(raw.get("created_by") or "")
+                incoming_confirmed = bool(raw.get("confirmed_by_user"))
+                if incoming_deleted is None:
+                    assert_manifest_secret_free({"content": content})
+                if (
+                    incoming_trust
+                    in {
+                        "external_untrusted",
+                        "tool_observed",
+                        "model_inferred",
+                    }
+                    and incoming_kind in {"preference", "constraint"}
+                    and not incoming_confirmed
+                ):
+                    raise PermissionError(
+                        "Unreviewed Cloud Memory cannot become an instruction"
+                    )
+                if (
+                    incoming_trust == "user_confirmed"
+                    and incoming_created_by != "user"
+                ):
+                    raise PermissionError(
+                        "Cloud Memory cannot launder user-confirmed provenance"
+                    )
                 incoming_updated = parse_timestamp(raw.get("updated_at"))
                 incoming_created = parse_timestamp(raw.get("created_at"))
-                incoming_deleted = (
-                    parse_timestamp(raw["deleted_at"])
-                    if raw.get("deleted_at") is not None
-                    else None
-                )
                 existing = connection.execute(
                     "SELECT * FROM memory_entries WHERE memory_id = ?",
                     (memory_id,),
@@ -13058,14 +13702,85 @@ class SQLiteRunJournal:
                         "Cloud Memory id belongs to another local scope"
                     )
                 incoming_version = int(raw.get("version") or 0)
-                should_apply = existing is None or (
-                    incoming_version > int(existing["version"])
-                    or (
-                        incoming_version == int(existing["version"])
-                        and incoming_updated > float(existing["updated_at"])
+                if existing is not None:
+                    local_deleted = (
+                        float(existing["deleted_at"])
+                        if existing["deleted_at"] is not None
+                        else None
                     )
-                )
-                if not should_apply:
+                    local_shape = {
+                        "kind": existing["kind"],
+                        "content": existing["content"],
+                        "priority": existing["priority"],
+                        "token_count": int(existing["token_count"]),
+                        "created_by": existing["created_by"],
+                        "source_trust": existing["source_trust"],
+                        "sensitivity": existing["sensitivity"],
+                        "source_refs": json.loads(
+                            existing["source_refs_json"]
+                        ),
+                        "deleted_at": local_deleted,
+                    }
+                    cloud_shape = {
+                        "kind": str(raw["kind"]),
+                        "content": content,
+                        "priority": str(raw.get("priority") or "normal"),
+                        "token_count": int(raw["token_count"]),
+                        "created_by": str(raw["created_by"]),
+                        "source_trust": str(raw["source_trust"]),
+                        "sensitivity": str(raw.get("sensitivity") or "normal"),
+                        "source_refs": list(raw.get("source_refs") or []),
+                        "deleted_at": incoming_deleted,
+                    }
+                    if local_shape == cloud_shape:
+                        continue
+                    reconciliation_id = (
+                        "memrecon_"
+                        + hashlib.sha256(
+                            json.dumps(
+                                {
+                                    "owner": owner,
+                                    "scope_type": scope_type,
+                                    "scope_id": scope_id,
+                                    "memory_id": memory_id,
+                                    "local": local_shape,
+                                    "cloud": cloud_shape,
+                                },
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode("utf-8")
+                        ).hexdigest()[:32]
+                    )
+                    inserted = connection.execute(
+                        """
+                        INSERT OR IGNORE INTO memory_reconciliation_items(
+                            reconciliation_id, account_owner_id, scope_type,
+                            scope_id, memory_id, local_entry_json,
+                            cloud_entry_json, status, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                        """,
+                        (
+                            reconciliation_id,
+                            owner,
+                            scope_type,
+                            scope_id,
+                            memory_id,
+                            json.dumps(
+                                local_shape,
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            json.dumps(
+                                dict(raw),
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            timestamp,
+                        ),
+                    )
+                    reconciliation_count += int(inserted.rowcount == 1)
                     continue
                 values = (
                     scope_type,
@@ -13139,15 +13854,12 @@ class SQLiteRunJournal:
                     """
                     UPDATE memory_scope_state
                     SET capture_enabled = ?, use_enabled = ?,
-                        processed_through_watermark = ?, watermark_kind = ?,
                         current_token_count = ?, updated_at = ?
                     WHERE scope_type = ? AND scope_id = ?
                     """,
                     (
                         int(bool(scope.get("capture_enabled"))),
                         int(bool(scope.get("use_enabled"))),
-                        scope.get("processed_through_watermark"),
-                        scope.get("watermark_kind"),
                         active_tokens,
                         timestamp,
                         scope_type,
@@ -13163,6 +13875,7 @@ class SQLiteRunJournal:
                     """,
                     (active_tokens, timestamp, scope_type, scope_id),
                 )
+            return reconciliation_count
 
     def get_memory_sync_status(
         self, scope_type: str, scope_id: str
@@ -13538,7 +14251,7 @@ class SQLiteRunJournal:
         # Coordinator remains the sole owner of the Run terminal transition.
         if draft.event_type == "assistant.final":
             return None
-        if draft.event_type == "run.completed" or draft.legacy_step == "end":
+        if draft.event_type == "run.completed":
             return "completed"
         if draft.event_type in {"run.failed", "run.deadline_reached"}:
             return "failed"
@@ -13565,7 +14278,16 @@ class SQLiteRunJournal:
         rows = connection.execute(
             """
             SELECT event_type, payload_json, legacy_step
-            FROM run_events WHERE run_id = ? ORDER BY sequence
+            FROM run_events
+            WHERE run_id = ?
+              AND (
+                event_type IN (
+                    'user.message', 'tool.outcome_unknown',
+                    'artifact.manifest.finalized'
+                )
+                OR legacy_step = 'todo_state'
+              )
+            ORDER BY sequence
             """,
             (run_id,),
         ).fetchall()
@@ -13591,14 +14313,15 @@ class SQLiteRunJournal:
                 outcome_unknown = True
             artifact_id = payload.get("artifact_id")
             if isinstance(artifact_id, str) and artifact_id.strip():
-                artifact_ids.add(artifact_id.strip())
+                if len(artifact_ids) < 500:
+                    artifact_ids.add(artifact_id.strip())
             many = payload.get("artifact_ids")
             if isinstance(many, list):
-                artifact_ids.update(
-                    value.strip()
-                    for value in many
-                    if isinstance(value, str) and value.strip()
-                )
+                for value in many:
+                    if len(artifact_ids) >= 500:
+                        break
+                    if isinstance(value, str) and value.strip():
+                        artifact_ids.add(value.strip())
             artifacts = payload.get("artifacts")
             if isinstance(artifacts, list):
                 for artifact in artifacts:
@@ -13607,7 +14330,8 @@ class SQLiteRunJournal:
                             "id"
                         )
                         if isinstance(value, str) and value.strip():
-                            artifact_ids.add(value.strip())
+                            if len(artifact_ids) < 500:
+                                artifact_ids.add(value.strip())
 
         completed: list[str] = []
         remaining: list[str] = []
@@ -13653,11 +14377,11 @@ class SQLiteRunJournal:
             objective = cls._bounded_frontier_text(
                 previous_frontier.get("objective")
             )
-            artifact_ids.update(
-                value
-                for value in previous_frontier.get("artifact_ids", [])
-                if isinstance(value, str) and value
-            )
+            for value in previous_frontier.get("artifact_ids", []):
+                if len(artifact_ids) >= 500:
+                    break
+                if isinstance(value, str) and value:
+                    artifact_ids.add(value)
             if not saw_todo_state:
                 completed = [
                     cls._bounded_frontier_text(value)
@@ -13824,6 +14548,7 @@ class SQLiteRunJournal:
         run_status: str | None = None,
         active_attempt_id: str | None = None,
         clear_active_attempt: bool = False,
+        allow_assistant_final: bool = False,
     ) -> CommittedRunEvent:
         encoded_payload = payload_json or json.dumps(
             dict(draft.payload),
@@ -13865,6 +14590,21 @@ class SQLiteRunJournal:
             raise InvalidRunTransitionError(
                 f"run {run_id!r} is read-only Cloud-restored history"
             )
+        if draft.event_type == "assistant.final":
+            if not allow_assistant_final:
+                raise InvalidRunTransitionError(
+                    "assistant.final may only be committed atomically with "
+                    "run.completed"
+                )
+            if run["status"] not in {
+                "pending",
+                "running",
+                "waiting_for_user",
+                "interrupted",
+            }:
+                raise InvalidRunTransitionError(
+                    f"terminal run {run_id!r} cannot accept assistant.final"
+                )
         if run_status is not None and not transition_allowed(
             RUN_TRANSITIONS,
             str(run["status"]),
@@ -14147,6 +14887,23 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(_MIGRATION_V25)
         if version < 26:
             self._connection.executescript(_MIGRATION_V26)
+        if version < 27:
+            self._connection.executescript(_MIGRATION_V27)
+        if version < 28:
+            inbox_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(remote_command_inbox)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V28
+            if "delivery_lease_token" in inbox_columns:
+                migration = migration.replace(
+                    "ALTER TABLE remote_command_inbox "
+                    "ADD COLUMN delivery_lease_token TEXT;\n",
+                    "",
+                )
+            self._connection.executescript(migration)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -15023,8 +15780,13 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
         created_by: str | None,
         source_trust: str | None,
         sensitivity: str,
+        allow_empty_content: bool = False,
     ) -> None:
-        if content is None or not content.strip() or len(content) > 8192:
+        if (
+            content is None
+            or (not allow_empty_content and not content.strip())
+            or len(content) > 8192
+        ):
             raise ValueError("Memory content is required and bounded")
         if kind not in _MEMORY_KINDS:
             raise ValueError("invalid Memory kind")
@@ -15210,6 +15972,27 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
         )
 
     @staticmethod
+    def _memory_reconciliation_from_row(
+        row: sqlite3.Row,
+    ) -> MemoryReconciliationRecord:
+        return MemoryReconciliationRecord(
+            reconciliation_id=row["reconciliation_id"],
+            account_owner_id=row["account_owner_id"],
+            scope_type=row["scope_type"],
+            scope_id=row["scope_id"],
+            memory_id=row["memory_id"],
+            local_entry=json.loads(row["local_entry_json"]),
+            cloud_entry=json.loads(row["cloud_entry_json"]),
+            status=row["status"],
+            created_at=float(row["created_at"]),
+            resolved_at=(
+                float(row["resolved_at"])
+                if row["resolved_at"] is not None
+                else None
+            ),
+        )
+
+    @staticmethod
     def _event_from_row(row: sqlite3.Row) -> CommittedRunEvent:
         return CommittedRunEvent(
             event_id=row["event_id"],
@@ -15305,6 +16088,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             requires_online_receipt_confirmation=bool(
                 row["requires_online_receipt_confirmation"]
             ),
+            delivery_lease_token=row["delivery_lease_token"],
             receipt_event_id=row["receipt_event_id"],
             receipt_status=row["receipt_status"],
             state=row["state"],

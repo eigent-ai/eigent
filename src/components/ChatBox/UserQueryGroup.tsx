@@ -552,11 +552,21 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   content={message.content}
                   onTyping={() => {}}
                   deferredFooter={
-                    message.fileList?.length ? (
-                      <ArtifactChangeList
-                        files={message.fileList}
-                        onOpen={openFilePreview}
-                      />
+                    message.fileList?.length ||
+                    task?.artifactManifestTruncated ? (
+                      <div className="flex flex-col gap-2">
+                        {task?.artifactManifestTruncated ? (
+                          <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            This Run changed more files than the bounded scan
+                            could list. The files shown below are a partial
+                            durable manifest.
+                          </div>
+                        ) : null}
+                        <ArtifactChangeList
+                          files={message.fileList || []}
+                          onOpen={openFilePreview}
+                        />
+                      </div>
                     ) : undefined
                   }
                 />

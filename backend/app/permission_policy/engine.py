@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Deterministic permission evaluation over trusted action metadata."""
 
 from __future__ import annotations
@@ -143,7 +157,16 @@ class PermissionPolicyEngine:
     def _matches(rule: PolicyRule, descriptor: ActionDescriptor) -> bool:
         if rule.scope == "run" and rule.run_id != descriptor.run_id:
             return False
-        if not fnmatchcase(descriptor.operation, rule.action_pattern):
+        if rule.action_pattern.startswith("action-identity:sha256:"):
+            action_matches = (
+                rule.action_pattern
+                == descriptor.persistent_rule_action_pattern
+            )
+        else:
+            action_matches = fnmatchcase(
+                descriptor.operation, rule.action_pattern
+            )
+        if not action_matches:
             return False
         if rule.resource_pattern is None:
             return True

@@ -41,6 +41,7 @@ export interface HumanInteractionPayload {
   display_arguments?: Record<string, unknown>;
   rule_matcher?: {
     action_pattern?: string | null;
+    display_operation?: string | null;
     resource_pattern?: string | null;
     matcher_kind?: string | null;
   } | null;

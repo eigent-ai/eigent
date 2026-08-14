@@ -4,6 +4,12 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 """Bounded secret and large-object preflight for explicit Git publish."""
@@ -161,7 +167,10 @@ class GitPublishPolicy:
         )
         blobs = [item for item in metadata if item.object_type == "blob"]
         largest_blob = max((item.size_bytes for item in blobs), default=0)
-        if largest_blob > DEFAULT_GIT_RETENTION_POLICY.lfs_recommendation_blob_bytes:
+        if (
+            largest_blob
+            > DEFAULT_GIT_RETENTION_POLICY.lfs_recommendation_blob_bytes
+        ):
             raise GitPublishPolicyError(
                 "Outgoing history contains a blob above the Git LFS threshold"
             )
@@ -216,10 +225,18 @@ class GitPublishPolicy:
     @staticmethod
     def _secret_type(value: str) -> str | None:
         for line in value.splitlines():
-            lowered = line.lower()
-            if any(item in lowered for item in _FALSE_POSITIVE_INDICATORS):
-                continue
             for label, pattern in _SECRET_PATTERNS:
-                if pattern.search(line):
-                    return label
+                match = pattern.search(line)
+                if match is None:
+                    continue
+                # A comment elsewhere on the same line must not bless an
+                # actual credential.  Placeholder suppression applies only
+                # to the exact candidate captured by the secret pattern.
+                candidate = match.group(0).lower()
+                if any(
+                    indicator in candidate
+                    for indicator in _FALSE_POSITIVE_INDICATORS
+                ):
+                    continue
+                return label
         return None

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { decodeTransportMessage } from './decode';
 import type { CanonicalProjectEvent } from './types';
 
@@ -37,6 +51,14 @@ function timestamp(value: unknown): string {
   return new Date(0).toISOString();
 }
 
+function eventOrigin(
+  value: unknown
+): CanonicalProjectEvent['origin'] | undefined {
+  return value === 'local' || value === 'cloud_restore' || value === 'remote'
+    ? value
+    : undefined;
+}
+
 export function normalizeEvent(
   raw: unknown,
   source: SourceVersion = 'canonical'
@@ -56,7 +78,7 @@ export function normalizeEvent(
       eventId,
       projectId,
       runId,
-      runSequence: positiveInteger(message.run_sequence, 1),
+      runSequence: positiveInteger(message.run_sequence ?? message.sequence, 1),
       runVersion: positiveInteger(message.run_version, 1),
       cloudCursor: optionalCursor(message.cloud_cursor),
       eventType: text(message.event_type, 'legacy.step'),
@@ -65,6 +87,7 @@ export function normalizeEvent(
         typeof message.legacy_step === 'string' ? message.legacy_step : null,
       createdAt: timestamp(message.created_at),
       source,
+      origin: eventOrigin(message.origin),
       raw,
     };
   }
@@ -93,6 +116,7 @@ export function normalizeEvent(
     legacyStep: step,
     createdAt: timestamp(message.timestamp ?? message.created_at),
     source,
+    origin: eventOrigin(message.origin),
     raw,
   };
 }

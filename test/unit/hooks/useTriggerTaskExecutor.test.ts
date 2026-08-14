@@ -26,6 +26,7 @@
  * 3. IF triggered new task while on a different page → show toast, add to project queue / run in background
  */
 
+import { fetchPost } from '@/api/http';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -265,6 +266,14 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     expect(project!.queuedMessages).toHaveLength(1);
     expect(project!.queuedMessages[0].executionId).toBe('exec-001');
     expect(project!.queuedMessages[0].content).toContain('Process webhook');
+    expect(fetchPost).toHaveBeenCalledWith('/projects/proj-A/follow-ups', {
+      request_id: 'scheduled:exec-001',
+      content: 'Process webhook',
+      attachment_paths: [],
+      delivery_mode: 'wait',
+      source: 'scheduled',
+      source_command_id: undefined,
+    });
   });
 
   it('should queue multiple tasks for the same project (serialization)', async () => {

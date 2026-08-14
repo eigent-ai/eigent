@@ -113,6 +113,37 @@ def test_attempt_replay_precedes_terminal_and_cancel_guards(tmp_path):
             )
 
 
+def test_terminal_run_rejects_late_assistant_final_without_poisoning_index(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-failed", project_id="project-1")
+        journal.append_event(
+            "run-failed",
+            RunEventDraft(
+                event_id="failed:run-failed",
+                event_type="run.failed",
+                payload={"reason": "test"},
+            ),
+        )
+
+        with pytest.raises(InvalidRunTransitionError, match="assistant.final"):
+            journal.append_event(
+                "run-failed",
+                RunEventDraft(
+                    event_id="assistant-final:run-failed",
+                    event_type="assistant.final",
+                    payload={"message": "not a successful result"},
+                    legacy_step="end",
+                ),
+            )
+
+        assert journal.get_run_final_result_event("run-failed") is None
+        assert [
+            event.event_type for event in journal.list_events("run-failed")
+        ] == ["run.failed"]
+
+
 def test_pending_approval_survives_restart_but_old_attempt_detaches(tmp_path):
     path = tmp_path / "journal.sqlite3"
     with SQLiteRunJournal(path) as journal:
@@ -462,7 +493,7 @@ def test_startup_applies_explicit_approval_reject_expiry_policy(tmp_path):
         }
 
 
-def test_terminal_event_closes_run_and_active_attempt_atomically(tmp_path):
+def test_legacy_end_is_transport_only_and_cannot_close_run(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         attempt = journal.create_run_attempt(
@@ -481,11 +512,9 @@ def test_terminal_event_closes_run_and_active_attempt_atomically(tmp_path):
                 created_at=2,
             ),
         )
-        assert journal.get_run("run-1").status == "completed"
-        assert journal.get_run("run-1").active_attempt_id is None
-        assert (
-            journal.get_run_attempt(attempt.attempt_id).status == "completed"
-        )
+        assert journal.get_run("run-1").status == "running"
+        assert journal.get_run("run-1").active_attempt_id == attempt.attempt_id
+        assert journal.get_run_attempt(attempt.attempt_id).status == "running"
 
 
 def test_terminal_run_expired_approval_does_not_abort_other_startup_recovery(

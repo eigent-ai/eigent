@@ -152,6 +152,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
         actor_type = "agent"
         actor_id: str | None = self.agent_name
         source_trust = "model_inferred"
+        confirmed_by_user_action = False
         if (
             existing.created_by != "agent"
             or existing.confirmed_by_user
@@ -165,9 +166,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             )
             if decision_id is None:
                 return {"status": "rejected", "entry": asdict(existing)}
-            actor_type = "user"
-            actor_id = None
-            source_trust = "user_confirmed"
+            confirmed_by_user_action = True
         result = get_lightweight_memory_service().update_entry(
             memory_id=memory_id,
             expected_version=expected_version,
@@ -184,6 +183,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             run_id=context.run_id,
             activity_id=activity_id,
             decision_id=decision_id,
+            confirmed_by_user_action=confirmed_by_user_action,
         )
         return {"entry": asdict(result.entry)}
 
@@ -226,8 +226,6 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             )
             if decision_id is None:
                 return {"status": "rejected", "entry": asdict(existing)}
-            actor_type = "user"
-            actor_id = None
         result = get_lightweight_memory_service().transition_entry(
             memory_id=memory_id,
             expected_version=expected_version,
@@ -299,9 +297,9 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             scope_id=target_scope_id,
             kind=existing.kind,
             content=existing.content,
-            actor_type="user",
+            actor_type="agent",
             reason=reason,
-            source_trust="user_confirmed",
+            source_trust=existing.source_trust,
             source_refs=existing.source_refs,
             priority=existing.priority,
             sensitivity=existing.sensitivity,
@@ -309,10 +307,11 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
                 f"memory-promote:{context.run_id}:{memory_id}:"
                 f"{expected_version}:{target_scope}"
             ),
-            actor_id=None,
+            actor_id=self.agent_name,
             run_id=context.run_id,
             activity_id=activity_id,
             decision_id=decision_id,
+            confirmed_by_user_action=True,
         )
         return {
             "status": "promoted",
