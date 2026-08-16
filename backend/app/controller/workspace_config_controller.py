@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Capability-protected local Workspace Configuration working-copy API."""
 
 from __future__ import annotations
@@ -65,9 +79,7 @@ class WorkspaceConfigDraftBody(BaseModel):
 
 class WorkspaceConfigPublishedBody(BaseModel):
     expected_version: int = Field(ge=0)
-    revision_id: str = Field(
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}@[1-9][0-9]*$"
-    )
+    revision_id: str = Field(pattern=r"^wbr_[0-9a-f]{32}$")
     manifest_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     actor_id: str = Field(min_length=1, max_length=200)
     email: str = Field(min_length=1, max_length=512)
@@ -122,7 +134,7 @@ def _assert_space_binding(
         )
 
 
-def _default_bundle_id(space_id: str) -> str:
+def _default_bundle_slug(space_id: str) -> str:
     return "bundle_space_" + hashlib.sha256(space_id.encode()).hexdigest()[:24]
 
 
@@ -132,7 +144,7 @@ def _default_document(space_id: str, name: str | None) -> dict[str, Any]:
         "apiVersion": "eigent.ai/v1alpha1",
         "kind": "WorkspaceBundle",
         "metadata": {
-            "id": _default_bundle_id(space_id),
+            "id": _default_bundle_slug(space_id),
             "name": display_name,
             "revision": 1,
         },
@@ -301,8 +313,8 @@ def _agent_plugin_conversion_payload(
 ) -> dict[str, Any]:
     metadata = draft.document["metadata"]
     return {
-        "bundle_id": metadata["id"],
-        "revision_id": str(metadata["revision"]),
+        "slug": metadata["id"],
+        "version": metadata["revision"],
         "target_space_id": target_space_id,
         "status": "draft",
     }
@@ -767,9 +779,22 @@ async def upload_prepared_workspace_configuration_asset(
             descriptor=descriptor,
         )
         manifest = WorkspaceBundleManifest.model_validate(draft.document)
-        bundle_id = manifest.metadata.id
-        revision_id = f"{bundle_id}@{manifest.metadata.revision}"
         cloud = _authoring_cloud(authorization)
+        cloud_revision = await cloud.resolve_owner_revision(
+            manifest.metadata.id,
+            manifest.metadata.revision,
+        )
+        bundle_id = cloud_revision.get("bundle_id")
+        revision_id = cloud_revision.get("id")
+        if (
+            not isinstance(bundle_id, str)
+            or not isinstance(revision_id, str)
+            or cloud_revision.get("manifest_digest") != draft.document_digest
+            or cloud_revision.get("manifest") != manifest.canonical_payload()
+        ):
+            raise IdempotencyConflictError(
+                "Cloud revision does not match the reviewed Workspace Bundle"
+            )
         receipt = await cloud.upload_asset(
             bundle_id,
             revision_id,
@@ -816,9 +841,23 @@ async def record_workspace_configuration_published(
     )
     cloud = None
     try:
+        current_draft = get_default_run_journal().get_workspace_config_draft(
+            space_id
+        )
+        if (
+            current_draft is None
+            or current_draft.version < body.expected_version
+        ):
+            raise IdempotencyConflictError(
+                "Workspace configuration changed before publish finalization"
+            )
+        manifest = WorkspaceBundleManifest.model_validate(
+            current_draft.document
+        )
         cloud = _authoring_cloud(authorization)
-        cloud_revision = await cloud.get_owner_revision(
-            body.revision_id.rsplit("@", 1)[0], body.revision_id
+        cloud_revision = await cloud.resolve_owner_revision(
+            manifest.metadata.id,
+            manifest.metadata.revision,
         )
         if (
             cloud_revision.get("status") != "published"

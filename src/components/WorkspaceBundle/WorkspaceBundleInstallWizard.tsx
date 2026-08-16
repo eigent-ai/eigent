@@ -578,7 +578,7 @@ export function WorkspaceBundleInstallWizard({
     async (rawHandle: string) => {
       const parsed = parseWorkspaceBundleHandle(rawHandle);
       if (!parsed) {
-        setError('Use a published handle such as my-workspace@1.');
+        setError('Use a published handle such as @user-7/my-workspace@1.');
         setRetryMode(null);
         return;
       }
@@ -588,7 +588,7 @@ export function WorkspaceBundleInstallWizard({
         const next = await fetchWorkspaceBundleInstallReview(parsed);
         setHandle(parsed);
         setReview(next);
-        setInstallSeed(readInstallSeed(parsed.revisionId, actorId));
+        setInstallSeed(readInstallSeed(parsed.coordinate, actorId));
         setRetryMode(null);
       } catch (nextError) {
         setError(errorMessage(nextError));
@@ -606,7 +606,11 @@ export function WorkspaceBundleInstallWizard({
     try {
       const next = await fetchWorkspaceBundleInstallProposal(proposalId);
       setSnapshot(next);
-      setHandle(parseWorkspaceBundleHandle(next.proposal.revision_id));
+      setHandle(
+        parseWorkspaceBundleHandle(
+          next.proposal.install_plan.public_coordinate || ''
+        )
+      );
       setRetryMode(null);
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -655,7 +659,7 @@ export function WorkspaceBundleInstallWizard({
           setActive: false,
           metadata: {
             createdFrom: 'workspace_bundle_install',
-            bundleRevision: handle.revisionId,
+            bundleRevision: handle.coordinate,
             bundleInstallProposalId: proposalId,
             bundleInstallRequestId: requestId,
           },
@@ -663,7 +667,7 @@ export function WorkspaceBundleInstallWizard({
         seed = { proposalId, requestId, spaceId };
         setInstallSeed(seed);
         try {
-          writeInstallSeed(handle.revisionId, actorId, seed);
+          writeInstallSeed(handle.coordinate, actorId, seed);
         } catch {
           setInstallSeed(null);
           await deleteSpaceOnServer(spaceId).catch(() => undefined);
@@ -678,7 +682,7 @@ export function WorkspaceBundleInstallWizard({
           space,
         });
         if (!root) {
-          clearInstallSeed(handle.revisionId, actorId);
+          clearInstallSeed(handle.coordinate, actorId);
           setInstallSeed(null);
           await deleteSpaceOnServer(spaceId).catch(() => undefined);
           throw new Error(
@@ -690,12 +694,13 @@ export function WorkspaceBundleInstallWizard({
         proposalId: seed.proposalId,
         requestId: seed.requestId,
         spaceId: seed.spaceId,
-        bundleId: handle.bundleId,
-        revisionId: handle.revisionId,
+        publisherNamespace: handle.publisherNamespace,
+        slug: handle.slug,
+        version: handle.version,
       });
-      clearInstallSeed(handle.revisionId, actorId);
+      clearInstallSeed(handle.coordinate, actorId);
       navigate(
-        `/workspace-bundles/install?proposal=${encodeURIComponent(seed.proposalId)}&handle=${encodeURIComponent(handle.revisionId)}`,
+        `/workspace-bundles/install?proposal=${encodeURIComponent(seed.proposalId)}&handle=${encodeURIComponent(handle.coordinate)}`,
         { replace: true }
       );
       // Persisting the proposal is not user consent. Keep the installation in
@@ -1050,7 +1055,7 @@ export function WorkspaceBundleInstallWizard({
               <Input
                 value={handleInput}
                 onChange={(event) => setHandleInput(event.target.value)}
-                placeholder="research-workspace@1"
+                placeholder="@verified-publisher/research-workspace@1"
                 aria-label="Workspace Bundle share handle"
               />
               <Button type="submit" disabled={busyKey === 'review'}>

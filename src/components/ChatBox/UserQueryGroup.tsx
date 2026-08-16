@@ -92,13 +92,27 @@ const AgentResultCard: React.FC<{
 const ArtifactChangeList: React.FC<{
   files?: FileInfo[];
   onOpen: (file: FileInfo) => void;
-}> = ({ files, onOpen }) => {
+  scanStatus?: string;
+  truncated?: boolean;
+}> = ({ files, onOpen, scanStatus = 'complete', truncated = false }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  if (!files?.length) return null;
+  const fileItems = files || [];
+  const scanWarning = truncated
+    ? 'This Run changed more files than the bounded scan could list. The files shown below are a partial durable manifest.'
+    : scanStatus === 'workspace_unavailable'
+      ? 'The original local workspace is unavailable. This durable file manifest may be incomplete.'
+      : scanStatus === 'workspace_mismatch'
+        ? 'The recorded workspace no longer matches this Run. File discovery was not completed.'
+        : scanStatus !== 'complete'
+          ? `File discovery completed with status: ${scanStatus}.`
+          : null;
+  if (!fileItems.length && !scanWarning) return null;
 
   const collapsedCount = 3;
-  const hiddenCount = Math.max(0, files.length - collapsedCount);
-  const visibleFiles = isExpanded ? files : files.slice(0, collapsedCount);
+  const hiddenCount = Math.max(0, fileItems.length - collapsedCount);
+  const visibleFiles = isExpanded
+    ? fileItems
+    : fileItems.slice(0, collapsedCount);
 
   return (
     <section className="bg-ds-bg-neutral-primary-default my-3 overflow-hidden rounded-xl border border-ds-border-neutral-default-default">
@@ -110,9 +124,14 @@ const ArtifactChangeList: React.FC<{
           Files changed
         </span>
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
-          {files.length}
+          {fileItems.length}
         </span>
       </div>
+      {scanWarning ? (
+        <div className="border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-body-xs text-ds-text-warning-strong-default">
+          {scanWarning}
+        </div>
+      ) : null}
       <div className="px-4 py-2">
         {visibleFiles.map((file, fileIndex) => {
           const detail = getWorkspaceRelativeFilePath(file);
@@ -553,18 +572,15 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onTyping={() => {}}
                   deferredFooter={
                     message.fileList?.length ||
-                    task?.artifactManifestTruncated ? (
+                    task?.artifactManifestTruncated ||
+                    (task?.artifactManifestScanStatus &&
+                      task.artifactManifestScanStatus !== 'complete') ? (
                       <div className="flex flex-col gap-2">
-                        {task?.artifactManifestTruncated ? (
-                          <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                            This Run changed more files than the bounded scan
-                            could list. The files shown below are a partial
-                            durable manifest.
-                          </div>
-                        ) : null}
                         <ArtifactChangeList
                           files={message.fileList || []}
                           onOpen={openFilePreview}
+                          scanStatus={task?.artifactManifestScanStatus}
+                          truncated={task?.artifactManifestTruncated}
                         />
                       </div>
                     ) : undefined
@@ -639,6 +655,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               <ArtifactChangeList
                 files={message.fileList}
                 onOpen={openFilePreview}
+                scanStatus={task?.artifactManifestScanStatus}
+                truncated={task?.artifactManifestTruncated}
               />
             </motion.div>
           );

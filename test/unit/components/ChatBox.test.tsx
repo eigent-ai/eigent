@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -744,12 +744,8 @@ describe('ChatBox Component', async () => {
       });
     });
 
-    it('should auto-skip a failed human reply only once per question', async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+    it('keeps an ordinary human question pending without a skip timer', () => {
       const timeoutSpy = vi.spyOn(window, 'setTimeout');
-      _mockFetchPost.mockRejectedValue(new Error('Backend unavailable'));
 
       const activeAskTask = {
         ...defaultChatStoreState.tasks['test-task-id'],
@@ -772,47 +768,16 @@ describe('ChatBox Component', async () => {
         } as any,
       });
 
-      const rendered = renderChatBox();
+      renderChatBox();
       const autoReplyTimer = timeoutSpy.mock.calls.find(
         ([, delay]) => delay === 30000
       );
-      expect(autoReplyTimer).toBeDefined();
-      await act(async () => {
-        (autoReplyTimer![0] as TimerHandler)();
-        await Promise.resolve();
-      });
-
-      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
-      expect(_mockFetchPost).toHaveBeenCalledWith(
+      expect(autoReplyTimer).toBeUndefined();
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
         '/chat/test-project-id/human-reply',
-        { agent: 'test-agent', reply: 'skip' }
+        expect.objectContaining({ reply: 'skip' })
       );
-
-      // Store snapshots change as messages/pending state update. Re-rendering
-      // the same prompt must not arm another automatic reply timer.
-      mockUseChatStoreAdapter.mockReturnValue({
-        projectStore: defaultProjectStoreState as any,
-        chatStore: {
-          ...defaultChatStoreState,
-          tasks: { 'test-task-id': { ...activeAskTask } },
-        } as any,
-      });
-      rendered.rerender(
-        <BrowserRouter>
-          <ChatBox />
-        </BrowserRouter>
-      );
-      await act(async () => {
-        (autoReplyTimer![0] as TimerHandler)();
-        await Promise.resolve();
-      });
-
-      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
-      expect(
-        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
-      ).toHaveLength(1);
       timeoutSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
     });
 
     it('should not auto-skip a question while replaying history', () => {

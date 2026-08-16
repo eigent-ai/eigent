@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import hashlib
@@ -151,8 +165,9 @@ def test_personal_default_import_is_secret_free_and_checksum_rerunnable():
     payload = first.manifest.canonical_payload()
 
     assert first.manifest.digest == second.manifest.digest
-    assert first.runtime_capability_manifest["legacy_source_checksum"] == (
-        second.runtime_capability_manifest["legacy_source_checksum"]
+    assert (
+        first.runtime_capability_manifest["legacy_source_checksum"]
+        == (second.runtime_capability_manifest["legacy_source_checksum"])
     )
     serialized = json.dumps(payload)
     assert "ghp_do_not_put_this_in_manifest" not in serialized
@@ -291,7 +306,18 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
                         "id": "team_docs",
                         "kind": "local_path_slot",
                         "slot": "docs_folder",
-                    }
+                    },
+                    {
+                        "id": "latest_artifacts",
+                        "kind": "artifact_ref",
+                        "path": "artifact://project/latest",
+                        "sharing": "authorized_artifact",
+                    },
+                    {
+                        "id": "project_memory",
+                        "kind": "memory_scope",
+                        "path": "memory://project/current",
+                    },
                 ],
                 "connectors": [
                     {
@@ -420,6 +446,13 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
             for item in local.context_sources
             if item.id == "team_docs"
         ) == str(docs.resolve())
+        logical_sources = {
+            item.id: item.logical_uri for item in local.context_sources
+        }
+        assert logical_sources["latest_artifacts"] == (
+            "artifact://project/latest"
+        )
+        assert logical_sources["project_memory"] == "memory://project/current"
         assert local.connector_bindings[0].local_binding_id == (
             "private-connection-id"
         )
@@ -456,9 +489,12 @@ def test_materialized_bundle_replaces_legacy_template_for_new_run(tmp_path):
             template=legacy,
         )
         assert while_reviewing.binding.bundle_revision_id == "bundle-team@1"
-        assert while_reviewing.spec.local_materialization.connector_bindings[
-            0
-        ].local_binding_id == "private-connection-id"
+        assert (
+            while_reviewing.spec.local_materialization.connector_bindings[
+                0
+            ].local_binding_id
+            == "private-connection-id"
+        )
 
         _, pending = journal.put_workspace_bundle_local_binding(
             proposal_id=proposal.proposal_id,

@@ -14,8 +14,7 @@
 
 import { fetchGet, fetchPost, fetchPut } from '@/api/http';
 import {
-  findWorkspaceBundle,
-  getWorkspaceBundleRevision,
+  getPublicWorkspaceBundleRevision,
   type CloudWorkspaceBundle,
   type CloudWorkspaceBundleRevision,
 } from './workspaceBundleAuthoringApi';
@@ -71,6 +70,7 @@ export interface WorkspaceBundleMcpDestination {
 }
 
 export interface WorkspaceBundleInstallPlan {
+  public_coordinate?: string;
   connector_slots: Array<{
     slot_id: string;
     connector_id: string;
@@ -141,56 +141,66 @@ export interface WorkspaceBundleInstallReview {
 }
 
 export interface ParsedWorkspaceBundleHandle {
-  bundleId: string;
-  revisionId: string;
+  publisherNamespace: string;
+  slug: string;
+  version: number;
+  coordinate: string;
 }
 
 export function parseWorkspaceBundleHandle(
   input: string
 ): ParsedWorkspaceBundleHandle | null {
   const value = input.trim();
-  const match = /^([A-Za-z0-9][A-Za-z0-9._-]{0,79})@([1-9][0-9]*)$/.exec(value);
+  const match =
+    /^@([a-z0-9][a-z0-9._-]{0,79})\/([a-z0-9][a-z0-9._-]{0,79})@([1-9][0-9]*)$/.exec(
+      value
+    );
   if (!match) return null;
-  return { bundleId: match[1], revisionId: value };
+  return {
+    publisherNamespace: match[1],
+    slug: match[2],
+    version: Number(match[3]),
+    coordinate: value,
+  };
 }
 
 export async function fetchWorkspaceBundleInstallReview(
   handle: ParsedWorkspaceBundleHandle
 ): Promise<WorkspaceBundleInstallReview> {
-  const revision = await getWorkspaceBundleRevision(
-    handle.bundleId,
-    handle.revisionId
-  );
+  const revision = await getPublicWorkspaceBundleRevision(handle);
   if (revision.status !== 'published') {
     throw new Error(
       'Only published Workspace Bundle versions can be installed.'
     );
   }
   if (
-    revision.bundle_id !== handle.bundleId ||
-    revision.id !== handle.revisionId
+    revision.publisher_namespace !== handle.publisherNamespace ||
+    revision.slug !== handle.slug ||
+    revision.version !== handle.version ||
+    revision.coordinate !== handle.coordinate
   ) {
     throw new Error('The Workspace Bundle version identity does not match.');
   }
   // Public install remains usable even if mutable owner metadata is not
   // readable by this account. The immutable revision is the authority.
-  const bundle = await findWorkspaceBundle(handle.bundleId).catch(() => null);
-  return { bundle, revision };
+  return { bundle: null, revision };
 }
 
 export const createWorkspaceBundleInstallProposal = async (input: {
   proposalId: string;
   requestId: string;
   spaceId: string;
-  bundleId: string;
-  revisionId: string;
+  publisherNamespace: string;
+  slug: string;
+  version: number;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
   fetchPost('/workspace-bundles/install-proposals', {
     proposal_id: input.proposalId,
     request_id: input.requestId,
     space_id: input.spaceId,
-    bundle_id: input.bundleId,
-    revision_id: input.revisionId,
+    publisher_namespace: input.publisherNamespace,
+    slug: input.slug,
+    version: input.version,
     config_placement: 'sidecar',
   });
 

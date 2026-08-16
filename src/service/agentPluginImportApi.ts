@@ -118,8 +118,8 @@ export interface AgentPluginInspection {
 }
 
 export interface AgentPluginConversionResult {
-  bundle_id: string;
-  revision_id: string;
+  slug: string;
+  version: number;
   target_space_id: string;
   status: 'draft';
 }

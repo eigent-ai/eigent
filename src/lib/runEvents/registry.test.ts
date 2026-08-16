@@ -165,4 +165,53 @@ describe('RunEventIngressRegistry', () => {
     unsubscribe();
     registry.clear();
   });
+
+  it('clears a recoverable gap only after durable replay catches up', async () => {
+    let transportOptions!: {
+      onmessage: (message: { event: string; data: string }) => Promise<void>;
+      signal: AbortSignal;
+    };
+    sseTransportMock.mockImplementation((options) => {
+      transportOptions = options;
+      return new Promise<void>((resolve) => {
+        options.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+      });
+    });
+    const registry = new RunEventIngressRegistry();
+    const event = (sequence: number) =>
+      JSON.stringify({
+        schema_version: 1,
+        event_id: `gap-event-${sequence}`,
+        project_id: 'project-gap',
+        run_id: 'run-gap',
+        run_sequence: sequence,
+        run_version: sequence,
+        event_type: 'run.attempt_started',
+        payload: {},
+        created_at: sequence,
+      });
+
+    registry.ingest('project-gap', 'run-gap', JSON.parse(event(2)), 'live');
+    expect(runProjectionStore.getProject('project-gap')?.needsResync).toBe(
+      true
+    );
+
+    registry.ensureLocal('project-gap', 'run-gap', { reconnect: true });
+    await transportOptions.onmessage({ event: 'run_event', data: event(1) });
+    await transportOptions.onmessage({ event: 'run_event', data: event(2) });
+    expect(runProjectionStore.getProject('project-gap')?.needsResync).toBe(
+      true
+    );
+    await transportOptions.onmessage({
+      event: 'replay_caught_up',
+      data: JSON.stringify({ run_id: 'run-gap', after_sequence: 2 }),
+    });
+
+    expect(runProjectionStore.getProject('project-gap')?.needsResync).toBe(
+      false
+    );
+    registry.clear();
+  });
 });

@@ -292,9 +292,14 @@ def test_task_changes_endpoint_freezes_completed_run_manifest(
     )
 
     assert response.status_code == 200
-    assert [item["relativePath"] for item in response.json()] == ["report.csv"]
+    body = response.json()
+    assert [item["relativePath"] for item in body["artifacts"]] == [
+        "report.csv"
+    ]
+    assert body["scan_status"] == "complete"
+    assert body["truncated"] is False
     resolver.store.freeze_artifact_manifest.assert_called_once_with(
-        "user@example.com", snapshot, response.json()
+        "user@example.com", snapshot, body["artifacts"]
     )
 
 
@@ -348,7 +353,9 @@ def test_task_changes_endpoint_reads_canonical_manifest_without_filesystem_scan(
     )
 
     assert response.status_code == 200
-    assert response.json()[0]["artifact_id"] == "art-1"
+    assert response.json()["artifacts"][0]["artifact_id"] == "art-1"
+    assert response.json()["scan_status"] == "complete"
+    assert response.json()["truncated"] is False
     resolver.store.get_snapshot.assert_not_called()
 
 
@@ -386,7 +393,11 @@ def test_task_changes_treats_unavailable_manifest_as_finalized_history(
     )
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {
+        "artifacts": [],
+        "scan_status": "workspace_unavailable",
+        "truncated": False,
+    }
     resolver.store.get_snapshot.assert_not_called()
 
 
@@ -471,4 +482,8 @@ def test_task_changes_endpoint_requires_local_capability(
         headers={LOCAL_CONTROL_CAPABILITY_HEADER: "secret-1"},
     )
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {
+        "artifacts": [],
+        "scan_status": "complete",
+        "truncated": False,
+    }

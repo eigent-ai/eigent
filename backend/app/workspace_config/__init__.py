@@ -41,6 +41,7 @@ from app.workspace_config.models import (
     canonical_digest,
     canonical_json,
     normalize_thinking_effort,
+    redact_device_home_paths,
 )
 from app.workspace_config.resolver import EnvironmentConfigResolver
 
@@ -72,4 +73,5 @@ __all__ = [
     "load_workspace_manifest",
     "normalize_thinking_effort",
     "parse_workspace_manifest",
+    "redact_device_home_paths",
 ]

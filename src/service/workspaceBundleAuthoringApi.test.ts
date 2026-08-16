@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -23,6 +37,7 @@ import {
   buildWorkspaceBundleAuthorReview,
   ensureWorkspaceBundle,
   findWorkspaceBundle,
+  getPublicWorkspaceBundleRevision,
   publishWorkspaceBundleRevision,
   uploadWorkspaceBundleAsset,
 } from './workspaceBundleAuthoringApi';
@@ -37,27 +52,33 @@ describe('workspace bundle authoring API', () => {
 
   it('updates mutable Bundle metadata with an optimistic preimage', async () => {
     proxyFetchGetMock.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
       workspace_id: 'space-1',
+      publisher_type: 'user',
+      publisher_id: 'user-1',
+      publisher_namespace: 'user-1',
+      slug: 'bundle-1',
+      package_name: '@user-1/bundle-1',
       name: 'Old name',
       visibility: 'private',
+      latest_published_revision_id: null,
     });
     proxyFetchPatchMock.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
       workspace_id: 'space-1',
       name: 'Research',
       visibility: 'public',
     });
 
     await ensureWorkspaceBundle({
-      bundleId: 'bundle-1',
+      slug: 'bundle-1',
       workspaceId: 'space-1',
       name: 'Research',
       visibility: 'public',
     });
 
     expect(proxyFetchPatchMock).toHaveBeenCalledWith(
-      '/api/v1/workspace-bundles/bundle-1',
+      '/api/v1/workspace-bundles/wb_11111111111111111111111111111111',
       {
         expected_name: 'Old name',
         expected_visibility: 'private',
@@ -80,21 +101,30 @@ describe('workspace bundle authoring API', () => {
 
   it('reuses an exact Bundle instead of creating a duplicate', async () => {
     proxyFetchGetMock.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
       workspace_id: 'space-1',
+      publisher_type: 'user',
+      publisher_id: 'user-1',
+      publisher_namespace: 'user-1',
+      slug: 'bundle-1',
+      package_name: '@user-1/bundle-1',
       name: 'Research',
       visibility: 'private',
+      latest_published_revision_id: null,
     });
 
     const result = await ensureWorkspaceBundle({
-      bundleId: 'bundle-1',
+      slug: 'bundle-1',
       workspaceId: 'space-1',
       name: 'Research',
       visibility: 'private',
     });
 
-    expect(result.id).toBe('bundle-1');
+    expect(result.id).toBe('wb_11111111111111111111111111111111');
     expect(proxyFetchPostMock).not.toHaveBeenCalled();
+    expect(proxyFetchGetMock).toHaveBeenCalledWith(
+      '/api/v1/workspace-bundles:resolve?slug=bundle-1'
+    );
   });
 
   it('uploads only the explicitly supplied file under its logical path', async () => {
@@ -103,8 +133,8 @@ describe('workspace bundle authoring API', () => {
     });
 
     await uploadWorkspaceBundleAsset({
-      bundleId: 'bundle-1',
-      revisionId: 'bundle-1@1',
+      bundleId: 'wb_11111111111111111111111111111111',
+      revisionId: 'wbr_11111111111111111111111111111111',
       logicalPath: 'bundle://instructions/coordinator.md',
       file,
       expectedOldDigest: 'b'.repeat(64),
@@ -112,7 +142,9 @@ describe('workspace bundle authoring API', () => {
 
     expect(uploadFileMock).toHaveBeenCalledTimes(1);
     const [path, form] = uploadFileMock.mock.calls[0];
-    expect(path).toContain('/workspace-bundles/bundle-1/revisions/');
+    expect(path).toContain(
+      '/workspace-bundles/wb_11111111111111111111111111111111/revisions/wbr_11111111111111111111111111111111/'
+    );
     expect(form.get('logical_path')).toBe('instructions/coordinator.md');
     expect(form.get('provenance')).toBe('bundle_author');
     expect(form.get('executable')).toBe('false');
@@ -121,8 +153,39 @@ describe('workspace bundle authoring API', () => {
     expect((form.get('file') as File).size).toBe(file.size);
   });
 
+  it('normalizes the public revision id without confusing it with the market coordinate', async () => {
+    proxyFetchGetMock.mockResolvedValue({
+      bundle_id: 'wb_11111111111111111111111111111111',
+      revision_id: 'wbr_11111111111111111111111111111111',
+      publisher_namespace: 'verified-publisher',
+      slug: 'bundle-1',
+      package_name: '@verified-publisher/bundle-1',
+      version: 3,
+      revision: 3,
+      coordinate: '@verified-publisher/bundle-1@3',
+      status: 'published',
+      manifest: {},
+      manifest_digest: 'a'.repeat(64),
+      assets: [],
+    });
+
+    const revision = await getPublicWorkspaceBundleRevision({
+      publisherNamespace: 'verified-publisher',
+      slug: 'bundle-1',
+      version: 3,
+    });
+
+    expect(revision.id).toBe('wbr_11111111111111111111111111111111');
+    expect(revision.coordinate).toBe('@verified-publisher/bundle-1@3');
+    expect(proxyFetchGetMock).toHaveBeenCalledWith(
+      '/api/v1/workspace-bundles/catalog/verified-publisher/bundle-1/revisions/3'
+    );
+  });
+
   it('binds publish to the presented review and sorted selected asset digests', async () => {
-    proxyFetchPostMock.mockResolvedValue({ id: 'bundle-1@1' });
+    proxyFetchPostMock.mockResolvedValue({
+      id: 'wbr_11111111111111111111111111111111',
+    });
     const authorReview = await buildWorkspaceBundleAuthorReview({
       presentedReviewDigest: 'c'.repeat(64),
       manifestDigest: 'a'.repeat(64),
@@ -148,8 +211,8 @@ describe('workspace bundle authoring API', () => {
     });
 
     await publishWorkspaceBundleRevision({
-      bundleId: 'bundle-1',
-      revisionId: 'bundle-1@1',
+      bundleId: 'wb_11111111111111111111111111111111',
+      revisionId: 'wbr_11111111111111111111111111111111',
       manifestDigest: 'a'.repeat(64),
       authorReview,
     });
@@ -169,7 +232,7 @@ describe('workspace bundle authoring API', () => {
       executable: true,
     });
     expect(proxyFetchPostMock).toHaveBeenCalledWith(
-      '/api/v1/workspace-bundles/bundle-1/revisions:publish',
+      '/api/v1/workspace-bundles/wb_11111111111111111111111111111111/revisions:publish',
       expect.objectContaining({ author_review: authorReview })
     );
   });

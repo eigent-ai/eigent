@@ -607,7 +607,15 @@ class AdvancedGitCommandClassifier:
             )
         if command == "config":
             if any(
-                value in {"--file", "--global", "--system", "--worktree"}
+                value
+                in {
+                    "-f",
+                    "--file",
+                    "--global",
+                    "--system",
+                    "--worktree",
+                }
+                or value.startswith("-f")
                 or value.startswith(
                     ("--file=", "--global=", "--system=", "--worktree=")
                 )
@@ -700,6 +708,16 @@ class AdvancedGitCommandClassifier:
                     "Git global options are disabled"
                 )
             lowered = value.lower()
+            if (
+                index > 0
+                and argv[0].lower() == "switch"
+                and lowered in {"-c", "--create"}
+            ):
+                # `git switch -c <branch>` is a subcommand-local create flag,
+                # not the global `git -c name=value` execution override. The
+                # classifier still routes every switch through an explicit
+                # destructive-operation HumanInteraction.
+                continue
             if any(
                 lowered == prefix or lowered.startswith(prefix + "=")
                 for prefix in _PROHIBITED_GLOBAL_PREFIXES

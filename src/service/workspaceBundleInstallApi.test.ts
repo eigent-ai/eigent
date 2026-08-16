@@ -18,8 +18,7 @@ const mocks = vi.hoisted(() => ({
   fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
-  findBundle: vi.fn(),
-  getRevision: vi.fn(),
+  getPublicRevision: vi.fn(),
 }));
 
 vi.mock('@/api/http', () => ({
@@ -29,8 +28,7 @@ vi.mock('@/api/http', () => ({
 }));
 
 vi.mock('./workspaceBundleAuthoringApi', () => ({
-  findWorkspaceBundle: mocks.findBundle,
-  getWorkspaceBundleRevision: mocks.getRevision,
+  getPublicWorkspaceBundleRevision: mocks.getPublicRevision,
 }));
 
 import {
@@ -47,46 +45,65 @@ describe('workspace Bundle install API', () => {
   });
 
   it('accepts only a canonical immutable share handle', () => {
-    expect(parseWorkspaceBundleHandle('research-workspace@12')).toEqual({
-      bundleId: 'research-workspace',
-      revisionId: 'research-workspace@12',
+    expect(
+      parseWorkspaceBundleHandle('@verified/research-workspace@12')
+    ).toEqual({
+      publisherNamespace: 'verified',
+      slug: 'research-workspace',
+      version: 12,
+      coordinate: '@verified/research-workspace@12',
     });
+    expect(parseWorkspaceBundleHandle('research-workspace@12')).toBeNull();
     expect(parseWorkspaceBundleHandle('research-workspace')).toBeNull();
-    expect(parseWorkspaceBundleHandle('research-workspace@0')).toBeNull();
+    expect(
+      parseWorkspaceBundleHandle('@verified/research-workspace@0')
+    ).toBeNull();
   });
 
   it('loads the published revision before creating a local proposal', async () => {
-    mocks.findBundle.mockResolvedValue({ id: 'research-workspace' });
-    mocks.getRevision.mockResolvedValue({
-      id: 'research-workspace@1',
-      bundle_id: 'research-workspace',
+    mocks.getPublicRevision.mockResolvedValue({
+      id: 'wbr_11111111111111111111111111111111',
+      bundle_id: 'wb_11111111111111111111111111111111',
       status: 'published',
+      publisher_namespace: 'verified',
+      slug: 'research-workspace',
+      version: 1,
+      coordinate: '@verified/research-workspace@1',
     });
 
     await fetchWorkspaceBundleInstallReview({
-      bundleId: 'research-workspace',
-      revisionId: 'research-workspace@1',
+      publisherNamespace: 'verified',
+      slug: 'research-workspace',
+      version: 1,
+      coordinate: '@verified/research-workspace@1',
     });
 
-    expect(mocks.getRevision).toHaveBeenCalledWith(
-      'research-workspace',
-      'research-workspace@1'
-    );
+    expect(mocks.getPublicRevision).toHaveBeenCalledWith({
+      publisherNamespace: 'verified',
+      slug: 'research-workspace',
+      version: 1,
+      coordinate: '@verified/research-workspace@1',
+    });
     expect(mocks.fetchPost).not.toHaveBeenCalled();
   });
 
   it('rejects a draft revision during the review-first read', async () => {
-    mocks.findBundle.mockResolvedValue({ id: 'research-workspace' });
-    mocks.getRevision.mockResolvedValue({
-      id: 'research-workspace@1',
-      bundle_id: 'research-workspace',
+    mocks.getPublicRevision.mockResolvedValue({
+      id: 'wbr_11111111111111111111111111111111',
+      bundle_id: 'wb_11111111111111111111111111111111',
       status: 'validated',
+      publisher_namespace: 'verified',
+      slug: 'research-workspace',
+      version: 1,
+      coordinate: '@verified/research-workspace@1',
     });
 
     await expect(
       fetchWorkspaceBundleInstallReview({
-        bundleId: 'research-workspace',
-        revisionId: 'research-workspace@1',
+        publisherNamespace: 'verified',
+        slug: 'research-workspace',
+        version: 1,
+        coordinate: '@verified/research-workspace@1',
       })
     ).rejects.toThrow('Only published');
   });
@@ -98,14 +115,18 @@ describe('workspace Bundle install API', () => {
       proposalId: 'p-1',
       requestId: 'r-1',
       spaceId: 'space-1',
-      bundleId: 'research-workspace',
-      revisionId: 'research-workspace@1',
+      publisherNamespace: 'verified',
+      slug: 'research-workspace',
+      version: 1,
     });
 
     expect(mocks.fetchPost).toHaveBeenCalledWith(
       '/workspace-bundles/install-proposals',
       expect.objectContaining({
         proposal_id: 'p-1',
+        publisher_namespace: 'verified',
+        slug: 'research-workspace',
+        version: 1,
         config_placement: 'sidecar',
       })
     );

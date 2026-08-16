@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,7 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   buildWorkspaceBundleAuthorReview,
   ensureWorkspaceBundle,
-  findWorkspaceBundle,
+  findWorkspaceBundleBySlug,
   getWorkspaceBundleRevision,
   publishWorkspaceBundleRevision,
   uploadWorkspaceBundleAsset,
@@ -91,11 +105,9 @@ const isVerifiedPublishedRevision = (
   review: WorkspaceConfigurationSaveReview
 ): boolean =>
   revision.status === 'published' &&
-  revision.id === review.revision_id &&
   /^[0-9a-f]{64}$/.test(revision.manifest_digest) &&
-  revision.manifest?.metadata?.id === review.bundle_id &&
-  `${revision.manifest.metadata.id}@${revision.manifest.metadata.revision}` ===
-    revision.id;
+  revision.manifest?.metadata?.id === review.slug &&
+  revision.revision === revision.manifest.metadata.revision;
 
 export function WorkspaceBundleSaveDialog({
   open,
@@ -139,11 +151,11 @@ export function WorkspaceBundleSaveDialog({
           'The local configuration changed. Close this review and wait for it to save.'
         );
       }
-      const existing = await findWorkspaceBundle(response.review.bundle_id);
+      const existing = await findWorkspaceBundleBySlug(response.review.slug);
       if (existing) {
         if (existing.workspace_id !== spaceId) {
           throw new Error(
-            'This Bundle id already belongs to a different Workspace.'
+            'This Workspace Bundle slug belongs to a different Workspace.'
           );
         }
         if (!isPublishableVisibility(existing.visibility)) {
@@ -153,17 +165,19 @@ export function WorkspaceBundleSaveDialog({
         }
         setVisibility(existing.visibility);
         setKnownCloudBundle(existing);
-        if (
-          existing.latest_published_revision_id === response.review.revision_id
-        ) {
+        if (existing.latest_published_revision_id) {
           const published = await getWorkspaceBundleRevision(
-            response.review.bundle_id,
-            response.review.revision_id
+            existing.id,
+            existing.latest_published_revision_id
           );
-          if (!isVerifiedPublishedRevision(published, response.review)) {
+          if (
+            isVerifiedPublishedRevision(published, response.review) &&
+            published.revision === draft.document.metadata.revision
+          ) {
+            setRecoverablePublishedRevision(published);
+          } else if (published.revision === draft.document.metadata.revision) {
             throw new Error('Cloud returned an invalid published revision.');
           }
-          setRecoverablePublishedRevision(published);
         }
       }
       setReview(response.review);
@@ -173,7 +187,7 @@ export function WorkspaceBundleSaveDialog({
     } finally {
       setLoading(false);
     }
-  }, [draft.version, identity, spaceId]);
+  }, [draft.document, draft.version, identity, spaceId]);
 
   useEffect(() => {
     if (!open) return;
@@ -370,41 +384,46 @@ export function WorkspaceBundleSaveDialog({
       }
 
       const bundle = await ensureWorkspaceBundle({
-        bundleId: review.bundle_id,
+        slug: review.slug,
         workspaceId: spaceId,
         name: review.name,
         visibility,
         existing: knownCloudBundle,
       });
-      if (bundle.latest_published_revision_id === review.revision_id) {
+      if (bundle.latest_published_revision_id) {
         const recovered = await getWorkspaceBundleRevision(
-          review.bundle_id,
-          review.revision_id
+          bundle.id,
+          bundle.latest_published_revision_id
         );
-        if (!isVerifiedPublishedRevision(recovered, review)) {
+        if (
+          recovered.revision === targetDraft.document.metadata.revision &&
+          !isVerifiedPublishedRevision(recovered, review)
+        ) {
           throw new Error(
             'The published Cloud revision does not match this local review.'
           );
         }
-        await recordPublishedWorkspaceConfiguration(spaceId, identity, {
-          expectedVersion: targetDraft.version,
-          revisionId: recovered.id,
-          manifestDigest: recovered.manifest_digest,
-          actorId: String(identity.userId ?? identity.email),
-        });
-        setRecoveredConcurrentEdits(
-          recovered.manifest_digest !== review.manifest_digest
-        );
-        setPublishedHandle(recovered.id);
-        return;
+        if (recovered.revision === targetDraft.document.metadata.revision) {
+          await recordPublishedWorkspaceConfiguration(spaceId, identity, {
+            expectedVersion: targetDraft.version,
+            revisionId: recovered.id,
+            manifestDigest: recovered.manifest_digest,
+            actorId: String(identity.userId ?? identity.email),
+          });
+          setRecoveredConcurrentEdits(
+            recovered.manifest_digest !== review.manifest_digest
+          );
+          setPublishedHandle(`${bundle.package_name}@${recovered.revision}`);
+          return;
+        }
       }
 
       const validated = await validateWorkspaceBundleRevision(
-        review.bundle_id,
+        bundle.id,
         targetDraft.document
       );
       if (
-        validated.id !== review.revision_id ||
+        validated.revision !== targetDraft.document.metadata.revision ||
         validated.manifest_digest !== review.manifest_digest
       ) {
         throw new Error(
@@ -418,7 +437,7 @@ export function WorkspaceBundleSaveDialog({
           manifestDigest: validated.manifest_digest,
           actorId: String(identity.userId ?? identity.email),
         });
-        setPublishedHandle(validated.id);
+        setPublishedHandle(`${bundle.package_name}@${validated.revision}`);
         return;
       }
       const selectedAssetReceipts: WorkspaceBundleSelectedAsset[] = [];
@@ -427,8 +446,8 @@ export function WorkspaceBundleSaveDialog({
           (asset) => asset.logical_path === item.preflight.logical_path
         );
         const uploaded = await uploadWorkspaceBundleAsset({
-          bundleId: review.bundle_id,
-          revisionId: review.revision_id,
+          bundleId: bundle.id,
+          revisionId: validated.id,
           logicalPath: item.path,
           file: item.file,
           expectedOldDigest: existingAsset?.content_digest,
@@ -493,25 +512,25 @@ export function WorkspaceBundleSaveDialog({
         selectedAssets: selectedAssetReceipts,
       });
       const published = await publishWorkspaceBundleRevision({
-        bundleId: review.bundle_id,
-        revisionId: review.revision_id,
+        bundleId: bundle.id,
+        revisionId: validated.id,
         manifestDigest: review.manifest_digest,
         authorReview,
       });
       if (
         published.status !== 'published' ||
-        published.id !== review.revision_id ||
+        published.id !== validated.id ||
         published.manifest_digest !== review.manifest_digest
       ) {
         throw new Error('Cloud returned an invalid publish receipt.');
       }
       await recordPublishedWorkspaceConfiguration(spaceId, identity, {
         expectedVersion: targetDraft.version,
-        revisionId: review.revision_id,
+        revisionId: published.id,
         manifestDigest: review.manifest_digest,
         actorId: String(identity.userId ?? identity.email),
       });
-      setPublishedHandle(review.revision_id);
+      setPublishedHandle(`${bundle.package_name}@${published.revision}`);
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -879,9 +898,9 @@ export function WorkspaceBundleSaveDialog({
                     {copied ? 'Copied' : 'Copy share handle'}
                   </Button>
                   <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
-                    Share this exact <code>bundle_id@revision</code> handle.
-                    Recipients can paste it into Import Workspace Bundle to
-                    review and install this immutable version.
+                    Share this exact <code>@publisher/slug@version</code>{' '}
+                    coordinate. Recipients can paste it into Import Workspace
+                    Bundle to review and install this immutable version.
                   </p>
                   <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
                     {recoveredConcurrentEdits

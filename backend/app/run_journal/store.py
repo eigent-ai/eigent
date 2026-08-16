@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from app.run_journal.cloud_projection import cloud_event_payload
+from app.run_journal.memory_policy import assert_memory_entry_policy
 from app.run_journal.models import (
     ApprovalRecord,
     ApprovalRuleRecord,
@@ -113,12 +114,11 @@ from app.run_policy import (
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
     ThinkingEffort,
-    assert_manifest_secret_free,
     canonical_digest,
     canonical_json,
 )
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 logger = logging.getLogger("run_journal")
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
@@ -1781,6 +1781,121 @@ PRAGMA user_version = 28;
 COMMIT;
 """
 
+_MIGRATION_V29 = """
+PRAGMA foreign_keys = OFF;
+BEGIN IMMEDIATE;
+
+-- Memory adoption is a durable review interaction.  Earlier schemas knew
+-- only the original doc-18 interaction types, so creating the review failed
+-- after the user had already approved it.  Rebuild the parent table without
+-- renaming it first so the child-table foreign keys continue to target the
+-- canonical name when the replacement is installed.
+CREATE TABLE human_interactions_v29 (
+    interaction_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    attempt_id TEXT REFERENCES run_attempts(attempt_id) ON DELETE SET NULL,
+    interaction_type TEXT NOT NULL CHECK (
+        interaction_type IN (
+            'question', 'choice', 'form', 'confirmation', 'approval',
+            'diff_review', 'merge_conflict', 'credential_binding',
+            'memory_change_review'
+        )
+    ),
+    status TEXT NOT NULL CHECK (
+        status IN ('requested', 'presented', 'resolved', 'expired', 'cancelled')
+    ),
+    request_json TEXT NOT NULL,
+    response_schema_json TEXT NOT NULL DEFAULT '{}',
+    requested_by TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
+    expires_at REAL,
+    presented_at REAL,
+    resolved_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+INSERT INTO human_interactions_v29(
+    interaction_id, run_id, attempt_id, interaction_type, status,
+    request_json, response_schema_json, requested_by, version, expires_at,
+    presented_at, resolved_at, created_at, updated_at
+)
+SELECT interaction_id, run_id, attempt_id, interaction_type, status,
+       request_json, response_schema_json, requested_by, version, expires_at,
+       presented_at, resolved_at, created_at, updated_at
+FROM human_interactions;
+
+DROP TABLE human_interactions;
+ALTER TABLE human_interactions_v29 RENAME TO human_interactions;
+CREATE INDEX human_interactions_run_status_idx
+ON human_interactions(run_id, status, created_at);
+
+-- Cloud tombstones deliberately carry no plaintext.  The original v22
+-- content CHECK made a freshly restored tombstone impossible to persist and
+-- permanently wedged writer takeover.  Active Memory remains non-empty.
+ALTER TABLE memory_entries RENAME TO memory_entries_v28;
+
+CREATE TABLE memory_entries(
+    memory_id TEXT PRIMARY KEY,
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('project', 'space', 'user')),
+    scope_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(
+        kind IN ('fact', 'decision', 'constraint', 'preference', 'todo', 'lesson')
+    ),
+    content TEXT NOT NULL CHECK(
+        length(trim(content)) > 0 OR deleted_at IS NOT NULL
+    ),
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal', 'high')),
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+    token_count INTEGER NOT NULL CHECK(token_count > 0),
+    pinned_by_user INTEGER NOT NULL DEFAULT 0 CHECK(pinned_by_user IN (0, 1)),
+    confirmed_by_user INTEGER NOT NULL DEFAULT 0 CHECK(confirmed_by_user IN (0, 1)),
+    created_by TEXT NOT NULL CHECK(
+        created_by IN ('extractor', 'agent', 'user', 'importer')
+    ),
+    source_trust TEXT NOT NULL CHECK(
+        source_trust IN (
+            'user_confirmed', 'user_asserted', 'system_verified',
+            'tool_observed', 'external_untrusted', 'model_inferred',
+            'legacy_unverified'
+        )
+    ),
+    sensitivity TEXT NOT NULL DEFAULT 'normal' CHECK(
+        sensitivity IN ('normal', 'personal', 'sensitive')
+    ),
+    source_refs_json TEXT NOT NULL DEFAULT '[]',
+    last_used_at REAL,
+    usage_count INTEGER NOT NULL DEFAULT 0 CHECK(usage_count >= 0),
+    deleted_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+INSERT INTO memory_entries(
+    memory_id, scope_type, scope_id, kind, content, priority, version,
+    token_count, pinned_by_user, confirmed_by_user, created_by, source_trust,
+    sensitivity, source_refs_json, last_used_at, usage_count, deleted_at,
+    created_at, updated_at
+)
+SELECT memory_id, scope_type, scope_id, kind, content, priority, version,
+       token_count, pinned_by_user, confirmed_by_user, created_by,
+       source_trust, sensitivity, source_refs_json, last_used_at, usage_count,
+       deleted_at, created_at, updated_at
+FROM memory_entries_v28;
+
+DROP TABLE memory_entries_v28;
+CREATE INDEX memory_entries_scope_active_idx
+ON memory_entries(scope_type, scope_id, deleted_at, pinned_by_user DESC,
+                  priority DESC, updated_at DESC);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (29, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 29;
+COMMIT;
+PRAGMA foreign_keys = ON;
+"""
+
 
 class RunJournalError(RuntimeError):
     """Base error for local RunJournal operations."""
@@ -2747,13 +2862,12 @@ class SQLiteRunJournal:
                 raise OptimisticConcurrencyError(
                     f"workspace configuration for {space_id!r} changed"
                 )
-            try:
-                receipt_bundle_id, receipt_revision_text = revision_id.rsplit(
-                    "@", 1
-                )
-                receipt_revision_number = int(receipt_revision_text)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("invalid revision_id") from exc
+            if (
+                not revision_id.startswith("wbr_")
+                or len(revision_id) != 36
+                or set(revision_id[4:]) - set("0123456789abcdef")
+            ):
+                raise ValueError("invalid revision_id")
             published_json = canonical_json(published_manifest)
             if canonical_digest(published_manifest) != manifest_digest:
                 raise IdempotencyConflictError(
@@ -2761,13 +2875,16 @@ class SQLiteRunJournal:
                 )
             published_metadata = published_manifest.get("metadata", {})
             if (
-                published_metadata.get("id") != receipt_bundle_id
-                or published_metadata.get("revision")
-                != receipt_revision_number
+                not isinstance(published_metadata.get("id"), str)
+                or not isinstance(published_metadata.get("revision"), int)
+                or isinstance(published_metadata.get("revision"), bool)
+                or published_metadata.get("revision", 0) < 1
             ):
                 raise IdempotencyConflictError(
-                    "published revision identity does not match its manifest"
+                    "published manifest identity is invalid"
                 )
+            receipt_bundle_id = str(published_metadata["id"])
+            receipt_revision_number = int(published_metadata["revision"])
             revision = connection.execute(
                 """
                 SELECT * FROM workspace_config_revisions
@@ -8888,6 +9005,8 @@ class SQLiteRunJournal:
         activity_id: str | None = None,
         decision_id: str | None = None,
         confirmed_by_user_action: bool = False,
+        reviewed_operation: str | None = None,
+        reviewed_memory_id: str | None = None,
         now: float | None = None,
     ) -> MemoryMutationResult:
         """Apply one canonical, CAS-guarded lightweight Memory mutation."""
@@ -8945,6 +9064,8 @@ class SQLiteRunJournal:
                     "run_id": run_id,
                     "activity_id": activity_id,
                     "decision_id": decision_id,
+                    "reviewed_operation": reviewed_operation,
+                    "reviewed_memory_id": reviewed_memory_id,
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -8960,6 +9081,8 @@ class SQLiteRunJournal:
                     run_id=run_id,
                     memory_id=memory_id,
                     operation=operation,
+                    reviewed_operation=reviewed_operation,
+                    reviewed_memory_id=reviewed_memory_id,
                 )
             duplicate = connection.execute(
                 "SELECT * FROM memory_mutations WHERE idempotency_key = ?",
@@ -9374,6 +9497,8 @@ class SQLiteRunJournal:
         run_id: str | None,
         memory_id: str | None,
         operation: str,
+        reviewed_operation: str | None = None,
+        reviewed_memory_id: str | None = None,
     ) -> None:
         if not decision_id or not run_id:
             raise PermissionError(
@@ -9404,8 +9529,12 @@ class SQLiteRunJournal:
         if (
             decision.get("decision") != "approved"
             or not isinstance(change, dict)
-            or change.get("operation") != operation
-            or (memory_id is not None and change.get("memory_id") != memory_id)
+            or change.get("operation") != (reviewed_operation or operation)
+            or (
+                (reviewed_memory_id or memory_id) is not None
+                and change.get("memory_id")
+                != (reviewed_memory_id or memory_id)
+            )
         ):
             raise PermissionError(
                 "Memory review does not authorize this exact mutation"
@@ -12114,6 +12243,111 @@ class SQLiteRunJournal:
         detached_attempts: list[str] = []
         unknown_tools: list[str] = []
         with self._write_transaction() as connection:
+            # A prepared ToolCall has not crossed the dispatch boundary.  It
+            # therefore has a known, side-effect-free outcome after a process
+            # restart and must not remain as a permanent Project-wide blocker.
+            # Resolve its paired approval in the same transaction before the
+            # owning Run is interrupted below.
+            prepared_tools = connection.execute(
+                """
+                SELECT * FROM tool_calls
+                WHERE status = 'prepared' AND outcome IS NULL
+                ORDER BY created_at, tool_call_id
+                """
+            ).fetchall()
+            for tool in prepared_tools:
+                try:
+                    with self._savepoint(connection, "startup_prepared_tool"):
+                        updated = connection.execute(
+                            """
+                            UPDATE tool_calls
+                            SET status = 'failed',
+                                outcome = 'failed_before_dispatch',
+                                updated_at = ?
+                            WHERE tool_call_id = ?
+                              AND status = 'prepared' AND outcome IS NULL
+                            """,
+                            (timestamp, tool["tool_call_id"]),
+                        )
+                        if updated.rowcount != 1:
+                            continue
+                        approval_id = f"approval:{tool['tool_call_id']}"
+                        approval = connection.execute(
+                            """SELECT * FROM approvals
+                            WHERE approval_id = ? AND status = 'pending'""",
+                            (approval_id,),
+                        ).fetchone()
+                        if approval is not None:
+                            decision_json = json.dumps(
+                                {
+                                    "decision": "rejected",
+                                    "reason": "brain_restart_before_dispatch",
+                                },
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                            connection.execute(
+                                """
+                                UPDATE approvals
+                                SET status = 'rejected', decision_json = ?,
+                                    resolved_at = ?, version = version + 1
+                                WHERE approval_id = ? AND status = 'pending'
+                                """,
+                                (decision_json, timestamp, approval_id),
+                            )
+                            connection.execute(
+                                """
+                                UPDATE human_interactions
+                                SET status = 'cancelled', resolved_at = ?,
+                                    updated_at = ?, version = version + 1
+                                WHERE interaction_id = ?
+                                  AND status IN ('requested', 'presented')
+                                """,
+                                (timestamp, timestamp, approval_id),
+                            )
+                            connection.execute(
+                                """
+                                INSERT OR IGNORE INTO human_interaction_decisions(
+                                    decision_id, interaction_id,
+                                    decision_request_id, decision_json,
+                                    actor_type, actor_id, source, action_digest,
+                                    created_at
+                                ) VALUES (?, ?, ?, ?, 'system', NULL,
+                                    'recovery', ?, ?)
+                                """,
+                                (
+                                    str(uuid.uuid4()),
+                                    approval_id,
+                                    f"recovery:{approval_id}:before-dispatch",
+                                    decision_json,
+                                    approval["action_digest"],
+                                    timestamp,
+                                ),
+                            )
+                        self._append_event_in_transaction(
+                            connection,
+                            tool["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    "startup:tool-failed-before-dispatch:"
+                                    f"{tool['tool_call_id']}"
+                                ),
+                                event_type="tool.failed",
+                                payload={
+                                    "tool_call_id": tool["tool_call_id"],
+                                    "safety_class": tool["safety_class"],
+                                    "reason": "brain_restart_before_dispatch",
+                                    "outcome_known": True,
+                                },
+                                created_at=timestamp,
+                            ),
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one prepared ToolCall",
+                        extra={"tool_call_id": tool["tool_call_id"]},
+                    )
+                    continue
             runs = connection.execute(
                 """
                 SELECT * FROM runs
@@ -12137,6 +12371,16 @@ class SQLiteRunJournal:
                             """,
                             (run["run_id"],),
                         ).fetchall()
+                        pending_interaction = connection.execute(
+                            """
+                            SELECT 1
+                            FROM human_interactions
+                            WHERE run_id = ?
+                              AND status IN ('requested', 'presented')
+                            LIMIT 1
+                            """,
+                            (run["run_id"],),
+                        ).fetchone()
                         if run["cancel_request_id"] is not None:
                             target_status = "cancelled"
                             event_type = "run.cancelled"
@@ -12151,12 +12395,14 @@ class SQLiteRunJournal:
                         elif (
                             run["status"] == "waiting_for_user"
                             and not active_attempts
+                            and pending_interaction is not None
                         ):
                             continue
                         else:
                             target_status = (
                                 "waiting_for_user"
                                 if run["status"] == "waiting_for_user"
+                                and pending_interaction is not None
                                 else "interrupted"
                             )
                             event_type = "runtime.interrupted"
@@ -13448,11 +13694,30 @@ class SQLiteRunJournal:
                 "Memory sync is fixed to full_memory"
             )
         projected = dict(entry)
+        from app.run_journal.memory_policy import (
+            normalize_memory_provenance_for_cloud,
+        )
+
+        projected["kind"], projected["source_trust"] = (
+            normalize_memory_provenance_for_cloud(
+                kind=str(projected.get("kind") or ""),
+                source_trust=str(projected.get("source_trust") or ""),
+                deleted=projected.get("deleted_at") is not None,
+            )
+        )
         content = (
             ""
             if projected.get("deleted_at") is not None
             else str(projected.get("content") or "")
         )
+        if content:
+            # Import lazily to keep the RunJournal storage module independent
+            # from permission-policy initialization while sharing the exact
+            # credential and device-identity projection used elsewhere.
+            from app.permission_policy.models import redact_sensitive_text
+            from app.workspace_config.models import redact_device_home_paths
+
+            content = redact_device_home_paths(redact_sensitive_text(content))
         projected["content"] = content
         projected["content_digest"] = hashlib.sha256(
             content.encode("utf-8")
@@ -13666,28 +13931,17 @@ class SQLiteRunJournal:
                 incoming_trust = str(raw.get("source_trust") or "")
                 incoming_created_by = str(raw.get("created_by") or "")
                 incoming_confirmed = bool(raw.get("confirmed_by_user"))
-                if incoming_deleted is None:
-                    assert_manifest_secret_free({"content": content})
-                if (
-                    incoming_trust
-                    in {
-                        "external_untrusted",
-                        "tool_observed",
-                        "model_inferred",
-                    }
-                    and incoming_kind in {"preference", "constraint"}
-                    and not incoming_confirmed
-                ):
-                    raise PermissionError(
-                        "Unreviewed Cloud Memory cannot become an instruction"
-                    )
-                if (
-                    incoming_trust == "user_confirmed"
-                    and incoming_created_by != "user"
-                ):
-                    raise PermissionError(
-                        "Cloud Memory cannot launder user-confirmed provenance"
-                    )
+                incoming_refs = list(raw.get("source_refs") or [])
+                assert_memory_entry_policy(
+                    kind=incoming_kind,
+                    content=content,
+                    created_by=incoming_created_by,
+                    source_trust=incoming_trust,
+                    confirmed_by_user=incoming_confirmed,
+                    source_refs=incoming_refs,
+                    deleted=incoming_deleted is not None,
+                    cloud_projection=True,
+                )
                 incoming_updated = parse_timestamp(raw.get("updated_at"))
                 incoming_created = parse_timestamp(raw.get("created_at"))
                 existing = connection.execute(
@@ -13710,7 +13964,11 @@ class SQLiteRunJournal:
                     )
                     local_shape = {
                         "kind": existing["kind"],
-                        "content": existing["content"],
+                        "content": (
+                            ""
+                            if local_deleted is not None
+                            else existing["content"]
+                        ),
                         "priority": existing["priority"],
                         "token_count": int(existing["token_count"]),
                         "created_by": existing["created_by"],
@@ -13729,7 +13987,7 @@ class SQLiteRunJournal:
                         "created_by": str(raw["created_by"]),
                         "source_trust": str(raw["source_trust"]),
                         "sensitivity": str(raw.get("sensitivity") or "normal"),
-                        "source_refs": list(raw.get("source_refs") or []),
+                        "source_refs": incoming_refs,
                         "deleted_at": incoming_deleted,
                     }
                     if local_shape == cloud_shape:
@@ -13796,7 +14054,7 @@ class SQLiteRunJournal:
                     str(raw["source_trust"]),
                     str(raw.get("sensitivity") or "normal"),
                     json.dumps(
-                        list(raw.get("source_refs") or []),
+                        incoming_refs,
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ),
@@ -14904,6 +15162,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                     "",
                 )
             self._connection.executescript(migration)
+        if version < 29:
+            self._connection.executescript(_MIGRATION_V29)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

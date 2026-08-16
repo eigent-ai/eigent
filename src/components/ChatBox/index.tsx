@@ -30,6 +30,7 @@ import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
+import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import {
   cancelFollowUpRequest,
@@ -1101,6 +1102,10 @@ export default function ChatBox(): JSX.Element {
         request_id: runActionRequestId('cancel', run.run_id),
         reason: 'explicit_cancel_from_desktop_ui',
       });
+      // The cancel response confirms the command, not that the renderer has
+      // consumed the canonical run.cancelled event. Replay from the durable
+      // cursor so a prior gap can be filled and needsResync can be released.
+      void runEventIngressRegistry.replayRun(run.project_id, run.run_id);
       clearRunActionRequestId('cancel', run.run_id);
       setInterruptedRun(null);
       for (const { chatStore: store } of projectStore.getAllChatStores(

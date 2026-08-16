@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -176,8 +190,8 @@ describe('AgentPluginImportWizard', () => {
     });
     mocks.inspect.mockResolvedValue(inspection);
     mocks.convert.mockResolvedValue({
-      bundle_id: 'research-plugin',
-      revision_id: 'draft-1',
+      slug: 'research-plugin',
+      version: 1,
       target_space_id: 'space-1',
       status: 'draft',
     });
@@ -283,8 +297,8 @@ describe('AgentPluginImportWizard', () => {
     mocks.convert
       .mockRejectedValueOnce(new Error('The local response was lost.'))
       .mockResolvedValueOnce({
-        bundle_id: 'research-plugin',
-        revision_id: 'draft-2',
+        slug: 'research-plugin',
+        version: 2,
         target_space_id: 'space-1',
         status: 'draft',
       });
@@ -341,8 +355,8 @@ describe('AgentPluginImportWizard', () => {
         })
       )
       .mockResolvedValueOnce({
-        bundle_id: 'research-plugin',
-        revision_id: 'draft-3',
+        slug: 'research-plugin',
+        version: 3,
         target_space_id: 'space-1',
         status: 'draft',
       });
@@ -455,8 +469,8 @@ describe('AgentPluginImportWizard', () => {
     const user = userEvent.setup();
     let resolveConversion:
       | ((value: {
-          bundle_id: string;
-          revision_id: string;
+          slug: string;
+          version: number;
           target_space_id: string;
           status: 'draft';
         }) => void)
@@ -483,8 +497,8 @@ describe('AgentPluginImportWizard', () => {
 
     await waitFor(() => expect(mocks.convert).toHaveBeenCalledTimes(1));
     resolveConversion?.({
-      bundle_id: 'research-plugin',
-      revision_id: 'draft-1',
+      slug: 'research-plugin',
+      version: 1,
       target_space_id: 'space-1',
       status: 'draft',
     });

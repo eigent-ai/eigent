@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 from types import SimpleNamespace
 
 import pytest
@@ -22,7 +23,9 @@ import pytest
 from app.lightweight_memory import (
     IncrementalMemoryMaintainer,
     LightweightMemoryService,
+    maintainer as maintainer_module,
 )
+from app.lightweight_memory.maintainer import _maintenance_retry_delay
 from app.memory.service import build_durable_context_projection_for_task_lock
 from app.run_journal import (
     InvalidRunTransitionError,
@@ -81,9 +84,58 @@ def test_history_search_uses_project_cursor_redacts_and_reports_trust(service):
     assert first.source_watermark == "sqlite-project-v1:2"
     assert first.items[0].source_trust == "user_asserted"
     assert first.items[0].content["api_key"] == "[REDACTED]"
+    assert first.redactions == (
+        "credential_keys_and_recognized_values",
+        "raw_connector_tool_results",
+        "local_artifact_paths_and_content",
+    )
     assert second.items[0].source_trust == "tool_observed"
     assert "result" not in second.items[0].content
     assert second.complete is True
+
+
+def test_history_search_redacts_credentials_embedded_in_free_text(service):
+    journal = service.journal
+    journal.ensure_run(run_id="run-secret", project_id="project-1")
+    journal.append_event(
+        "run-secret",
+        RunEventDraft(
+            event_id="event-secret",
+            event_type="user.message",
+            payload={
+                "content": (
+                    "Use API_KEY=ordinary-secret-value and "
+                    "https://alice:hunter2@example.test"
+                )
+            },
+        ),
+    )
+
+    page = service.search_history(project_id="project-1")
+
+    content = page.items[0].content["content"]
+    assert "ordinary-secret-value" not in content
+    assert "hunter2" not in content
+    assert content.count("[REDACTED]") == 2
+
+
+def test_history_search_redacts_secret_statement_in_free_text(service):
+    journal = service.journal
+    journal.ensure_run(run_id="run-secret-statement", project_id="project-1")
+    journal.append_event(
+        "run-secret-statement",
+        RunEventDraft(
+            event_id="event-secret-statement",
+            event_type="user.message",
+            payload={"content": "The password is ordinary-secret-value"},
+        ),
+    )
+
+    page = service.search_history(project_id="project-1")
+
+    content = page.items[0].content["content"]
+    assert "ordinary-secret-value" not in content
+    assert "password is [REDACTED]" in content
 
 
 def test_memory_is_bounded_and_untrusted_text_cannot_become_instruction(
@@ -123,6 +175,81 @@ def test_user_confirmed_source_cannot_be_laundered_by_agent(service):
             reason="claim user authority",
             source_trust="user_confirmed",
         )
+
+
+def test_explicit_promotion_adopts_memory_without_rejecting_after_approval(
+    service,
+):
+    journal = service.journal
+    journal.ensure_run(run_id="run-promote", project_id="project-1")
+    attempt = journal.create_run_attempt(
+        "run-promote",
+        request_id="initial-promote",
+        reason="initial_execution",
+        activate=True,
+    )
+    source = service.create_entry(
+        scope_type="project",
+        scope_id="project-1",
+        kind="fact",
+        content="Use the approved release checklist.",
+        actor_type="agent",
+        reason="observed in the current Project",
+        source_trust="model_inferred",
+        request_id="source-memory",
+    ).entry
+    assert source is not None
+    interaction = journal.create_human_interaction(
+        interaction_id="promote-review",
+        run_id="run-promote",
+        attempt_id=attempt.attempt_id,
+        interaction_type="memory_change_review",
+        request={
+            "memory_change": {
+                "operation": "promote",
+                "memory_id": source.memory_id,
+                "expected_version": source.version,
+                "after": {"target_scope": "space", "scope_id": "space-1"},
+            }
+        },
+        requested_by="agent:memory",
+    )
+    journal.resolve_human_interaction(
+        interaction.interaction_id,
+        decision_request_id="approve-promote",
+        decision={"decision": "approved"},
+        expected_version=0,
+        expected_run_id="run-promote",
+        actor_type="user",
+        continue_active_attempt=True,
+    )
+    decision = journal.list_human_interaction_decisions(
+        interaction.interaction_id
+    )[0]
+
+    adopted = service.create_entry(
+        scope_type="space",
+        scope_id="space-1",
+        kind=source.kind,
+        content=source.content,
+        actor_type="agent",
+        reason="user approved promotion",
+        source_trust=source.source_trust,
+        source_refs=source.source_refs,
+        request_id="promote-memory",
+        actor_id="memory-agent",
+        run_id="run-promote",
+        decision_id=decision.decision_id,
+        confirmed_by_user_action=True,
+        adopted_by_user=True,
+        reviewed_source_memory_id=source.memory_id,
+    )
+
+    assert adopted.entry is not None
+    assert adopted.entry.created_by == "user"
+    assert adopted.entry.source_trust == "user_confirmed"
+    assert adopted.entry.confirmed_by_user is True
+    assert adopted.mutation.actor_type == "agent"
 
 
 def test_agent_user_asserted_memory_requires_same_project_user_event(service):
@@ -444,6 +571,54 @@ def test_failed_maintainer_does_not_advance_watermark(service):
     state = service.scope("project", "project-1")
     assert state.processed_through_watermark is None
     assert state.last_error == "extractor unavailable"
+
+
+def test_memory_maintenance_retry_budget_is_bounded_and_backed_off():
+    assert [_maintenance_retry_delay(attempt) for attempt in range(1, 7)] == [
+        1,
+        2,
+        4,
+        8,
+        16,
+        None,
+    ]
+
+
+def test_memory_maintenance_persisted_error_uses_and_exhausts_retry_budget(
+    service, monkeypatch
+):
+    class ImmediateErrorExecutor:
+        @staticmethod
+        def submit(_function, _project_id):
+            future = Future()
+            future.set_result(
+                SimpleNamespace(
+                    last_error="history event exceeds extraction budget",
+                    processed_through_watermark=None,
+                )
+            )
+            return future
+
+    delays: list[float] = []
+    monkeypatch.setattr(
+        maintainer_module, "_EXECUTOR", ImmediateErrorExecutor()
+    )
+    monkeypatch.setattr(
+        maintainer_module,
+        "_schedule_project_memory_maintenance_after",
+        lambda _project_id, delay: delays.append(delay),
+    )
+    monkeypatch.setattr(
+        "app.lightweight_memory.service.get_lightweight_memory_service",
+        lambda: service,
+    )
+    maintainer_module._PROJECT_SCHEDULES.pop("project-retry", None)
+
+    for _ in range(6):
+        maintainer_module._submit_project_memory_maintenance("project-retry")
+
+    assert delays == [1, 2, 4, 8, 16]
+    assert "project-retry" not in maintainer_module._PROJECT_SCHEDULES
 
 
 def test_context_projection_uses_lightweight_memory_not_legacy_transcript(

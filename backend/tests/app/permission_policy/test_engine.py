@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import math
+import re
+from pathlib import Path
 
 import pytest
 
@@ -28,6 +30,7 @@ from app.permission_policy import (
     PolicyRule,
     build_tool_action_descriptor,
 )
+from app.permission_policy.tool_actions import _looks_like_filesystem_path
 from app.run_policy import ToolSafetyClass
 
 
@@ -751,6 +754,218 @@ def test_camel_case_nested_path_arguments_are_policy_targets(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "key",
+    (
+        "dest",
+        "filepath",
+        "output",
+        "target",
+        "dst",
+        "save_path",
+        "local_path",
+        "whereToPutIt",
+    ),
+)
+def test_path_values_cannot_bypass_resource_policy_by_renaming_key(
+    tmp_path, key
+):
+    target = str(tmp_path / ".eigent" / "policy.sqlite3")
+    descriptor = build_tool_action_descriptor(
+        action_id=f"path-alias-{key}",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={key: target, "content": "tampered"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == (target,)
+    assert "policy_control_plane" in descriptor.risk_tags
+
+
+def test_structural_path_fallback_does_not_treat_file_body_as_a_target(
+    tmp_path,
+):
+    target = str(tmp_path / "report.md")
+    descriptor = build_tool_action_descriptor(
+        action_id="path-body-separation",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "destinationHint": target,
+            "content": "Document why /etc/hosts must not be edited.",
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == (target,)
+
+
+@pytest.mark.parametrize(
+    ("key", "prose"),
+    (
+        ("commit_message", "fix: auth and/or session"),
+        ("commit_msg", "compare A/B before release"),
+        ("summary", "document client/server behavior"),
+        ("title", "review input/output handling"),
+        ("note", "keep local/cloud semantics aligned"),
+        ("details", "see the design/spec.md file before release"),
+    ),
+)
+def test_structural_path_fallback_does_not_treat_slash_prose_as_target(
+    tmp_path, key, prose
+):
+    target = str(tmp_path / "report.md")
+    descriptor = build_tool_action_descriptor(
+        action_id=f"path-prose-{key}",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"file_path": target, key: prose},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == (target,)
+
+
+@pytest.mark.parametrize(
+    ("key", "prose"),
+    (
+        ("commit_message", "Fix the bug in index.ts"),
+        ("summary", "I updated config.json"),
+        ("title", "refactor utils.py"),
+    ),
+)
+def test_structural_path_fallback_does_not_treat_filename_prose_as_target(
+    tmp_path, key, prose
+):
+    target = str(tmp_path / "report.md")
+    descriptor = build_tool_action_descriptor(
+        action_id=f"filename-prose-{key}",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"file_path": target, key: prose},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == (target,)
+
+
+@pytest.mark.parametrize(
+    ("value", "has_separator", "has_whitespace", "clean_suffix", "expected"),
+    (
+        ("My Folder/notes.txt", True, True, True, True),
+        ("see design/spec.md file", True, True, False, False),
+        ("src/main.py", True, False, True, True),
+        ("src/reports", True, False, False, True),
+        ("Fix index.ts", False, True, True, False),
+        ("plain prose", False, True, False, False),
+        ("config.json", False, False, True, True),
+        ("README", False, False, False, False),
+    ),
+)
+def test_structural_path_fallback_branch_matrix(
+    value, has_separator, has_whitespace, clean_suffix, expected
+):
+    normalized = value.replace("\\", "/")
+    suffix = Path(Path(normalized).name).suffix
+    assert ("/" in normalized) is has_separator
+    assert any(character.isspace() for character in value) is has_whitespace
+    assert (
+        bool(suffix)
+        and len(suffix) <= 17
+        and re.search(r"[a-z]", suffix, re.I) is not None
+        and not any(character.isspace() for character in suffix)
+    ) is clean_suffix
+    assert _looks_like_filesystem_path(value) is expected
+
+
+def test_structural_path_fallback_still_recognizes_relative_path_values(
+    tmp_path,
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="relative-path-structural-fallback",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"totallyMadeUpKey": "src/main.py", "content": "safe"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == ("src/main.py",)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "My Folder/notes.txt",
+        "reports/Q1 summary.md",
+        "Application Support/config.json",
+        "draft output/final report.html",
+    ),
+)
+def test_structural_path_fallback_recognizes_spaced_relative_paths(
+    tmp_path, relative_path
+):
+    descriptor = build_tool_action_descriptor(
+        action_id="spaced-relative-path-structural-fallback",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={"totallyMadeUpKey": relative_path, "content": "safe"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == (relative_path,)
+
+
+@pytest.mark.parametrize(
+    "key", ("dir", "out_file", "path_to_file", "resultFile")
+)
+def test_path_shaped_keys_capture_bare_relative_targets(tmp_path, key):
+    descriptor = build_tool_action_descriptor(
+        action_id=f"relative-path-{key}",
+        tool_name="write_file",
+        toolkit_name="File Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={key: "report", "content": "safe"},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert descriptor.target_resources == ("report",)
+
+
+@pytest.mark.parametrize(
     "filename",
     (
         "policy.sqlite3-wal",
@@ -804,6 +1019,25 @@ def test_control_plane_words_in_separate_arguments_do_not_hard_deny(
 
     assert "policy_control_plane" not in descriptor.risk_tags
     assert "untrusted_hook" not in descriptor.risk_tags
+
+
+def test_control_plane_directory_state_survives_pushd_shell_segment(tmp_path):
+    descriptor = build_tool_action_descriptor(
+        action_id="pushd-control-plane",
+        tool_name="shell_exec",
+        toolkit_name="Terminal Toolkit",
+        safety_class=ToolSafetyClass.UNSAFE_WRITE,
+        arguments={
+            "command": "pushd ~/.eigent; cat policy.sqlite3",
+        },
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+        workspace_root=tmp_path,
+    )
+
+    assert "policy_control_plane" in descriptor.risk_tags
 
 
 def test_auto_executed_workspace_files_and_commands_are_not_auto_reviewed(

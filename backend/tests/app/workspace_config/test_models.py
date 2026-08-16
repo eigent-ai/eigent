@@ -335,6 +335,57 @@ def test_manifest_rejects_structural_path_but_allows_inline_path_prose():
     )
 
 
+@pytest.mark.parametrize(
+    ("kind", "logical_uri"),
+    [
+        ("artifact_ref", "artifact://project/latest"),
+        ("memory_scope", "memory://project/current"),
+    ],
+)
+def test_manifest_accepts_typed_logical_context_references(kind, logical_uri):
+    manifest = parse_workspace_manifest(
+        MANIFEST_YAML.replace(
+            "    - id: research_policy\n"
+            "      kind: bundle_asset\n"
+            "      path: bundle://context/README.md\n"
+            "      sharing: bundled",
+            "    - id: research_policy\n"
+            f"      kind: {kind}\n"
+            f"      path: {logical_uri}\n"
+            "      sharing: authorized_artifact",
+        )
+    )
+
+    source = manifest.spec.context[1]
+    assert source.kind == kind
+    assert source.path == logical_uri
+
+
+@pytest.mark.parametrize(
+    ("kind", "invalid_uri"),
+    [
+        ("artifact_ref", "/tmp/artifact"),
+        ("memory_scope", "bundle://memory/project"),
+    ],
+)
+def test_logical_context_references_reject_physical_or_wrong_scheme(
+    kind, invalid_uri
+):
+    with pytest.raises(ValidationError, match="logical URI"):
+        parse_workspace_manifest(
+            MANIFEST_YAML.replace(
+                "    - id: research_policy\n"
+                "      kind: bundle_asset\n"
+                "      path: bundle://context/README.md\n"
+                "      sharing: bundled",
+                "    - id: research_policy\n"
+                f"      kind: {kind}\n"
+                f"      path: {invalid_uri}\n"
+                "      sharing: authorized_artifact",
+            )
+        )
+
+
 def test_thinking_effort_aliases_are_normalized_and_unsupported_is_explicit():
     manifest = parse_workspace_manifest(
         MANIFEST_YAML.replace(

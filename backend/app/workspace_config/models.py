@@ -253,6 +253,17 @@ def _contains_device_home_path(value: str) -> bool:
     return bool(_DEVICE_HOME_PATH.search(value))
 
 
+def redact_device_home_paths(value: str) -> str:
+    """Remove identifying device-home prefixes from Cloud-bound text.
+
+    Bare system paths such as ``/etc`` and shared homes remain readable. The
+    replacement is deterministic so Memory snapshot retries retain stable
+    digests without disclosing the local account name.
+    """
+
+    return _DEVICE_HOME_PATH.sub("<device-home>/", value)
+
+
 def assert_manifest_secret_free(value: Any, path: str = "$") -> None:
     """Reject secret values while allowing opaque slot references."""
 
@@ -429,6 +440,16 @@ class ContextSource(_StrictFrozenModel):
             if not self.path or not self.path.startswith("bundle://"):
                 raise ValueError(
                     "bundle_asset path must use a bundle:// logical URI"
+                )
+        elif self.kind == "artifact_ref":
+            if not self.path or not self.path.startswith("artifact://"):
+                raise ValueError(
+                    "artifact_ref path must use an artifact:// logical URI"
+                )
+        elif self.kind == "memory_scope":
+            if not self.path or not self.path.startswith("memory://"):
+                raise ValueError(
+                    "memory_scope path must use a memory:// logical URI"
                 )
         elif self.path is not None:
             raise ValueError(

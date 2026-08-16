@@ -1297,6 +1297,8 @@ export function normalizeTaskArtifactFileList(value: unknown): FileInfo[] {
 type TaskArtifactFileListResult = {
   canonical: boolean;
   files: FileInfo[];
+  scanStatus: string | null;
+  truncated: boolean;
 };
 
 async function loadTaskArtifactFileList({
@@ -1312,25 +1314,45 @@ async function loadTaskArtifactFileList({
 }): Promise<TaskArtifactFileListResult> {
   // The index contains absolute local paths and is intentionally Desktop-only.
   if (!getHostIpcRenderer()?.invoke || !projectId || !email) {
-    return { canonical: false, files: [] };
+    return {
+      canonical: false,
+      files: [],
+      scanStatus: null,
+      truncated: false,
+    };
   }
 
   try {
-    const changes = await fetchGet('/files/changes', {
+    const response = await fetchGet('/files/changes', {
       task_id: taskId,
       project_id: projectId,
       email,
       ...(userId ? { user_id: userId } : {}),
     });
+    const envelope =
+      response && !Array.isArray(response) && typeof response === 'object'
+        ? (response as Record<string, unknown>)
+        : null;
+    const changes = envelope?.artifacts ?? response;
     return {
       canonical: true,
       files: normalizeTaskArtifactFileList(changes),
+      scanStatus:
+        typeof envelope?.scan_status === 'string'
+          ? envelope.scan_status
+          : 'complete',
+      truncated: envelope?.truncated === true,
     };
   } catch (error) {
     // Older Brain versions and cloud-only history do not expose the local
     // artifact index. Existing WRITE_FILE/final-answer projections remain.
     console.info(`[Artifacts] No local changes for task ${taskId}`, error);
-    return { canonical: false, files: [] };
+    return {
+      canonical: false,
+      files: [],
+      scanStatus: null,
+      truncated: false,
+    };
   }
 }
 
@@ -4549,6 +4571,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 ? {
                     canonical: true,
                     files: completedTask.artifactManifestFiles || [],
+                    scanStatus:
+                      completedTask.artifactManifestScanStatus || 'complete',
+                    truncated: completedTask.artifactManifestTruncated === true,
                   }
                 : await loadTaskArtifactFileList({
                     taskId: currentTaskId,
@@ -4556,6 +4581,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     email: email || undefined,
                     userId: user_id,
                   });
+            if (taskArtifactFileList.canonical) {
+              completedTask.artifactManifestScanStatus =
+                taskArtifactFileList.scanStatus || 'complete';
+              completedTask.artifactManifestTruncated =
+                taskArtifactFileList.truncated;
+            }
             const outputBaseURL = await getBaseURL().catch(() => '');
             const finalOutputFileList = extractFinalOutputFileList(
               endMessage,

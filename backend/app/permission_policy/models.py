@@ -62,6 +62,11 @@ _DASHED_SK_CANDIDATE = re.compile(
 _URL_USERINFO = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^\s/:@]+):([^\s/@]+)@"
 )
+_INLINE_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(\b(?:access[_-]?token|api[_-]?key|client[_-]?secret|cookie|"
+    r"credential|password|private[_-]?key|refresh[_-]?token|secret|"
+    r"token)\b[ \t]*(?:=|:|\bis\b)[ \t]*['\"]?)([^\s,;'\"}]{4,})"
+)
 _SECRET_HEADER = re.compile(
     r"(?im)(^|[\r\n])([ \t]*)"
     r"(authorization|proxy-authorization|x-api-key|api-key|"
@@ -144,11 +149,33 @@ def _is_redacted_argument_key(value: object) -> bool:
 def _redacted_string(value: str) -> str:
     redacted = _URL_USERINFO.sub(r"\1\2:[REDACTED]@", value)
     redacted = _SECRET_HEADER.sub(_redact_secret_header, redacted)
+    redacted = _INLINE_SECRET_ASSIGNMENT.sub(
+        lambda match: (
+            match.group(0)
+            if any(
+                marker in match.group(2).lower().replace("-", "_")
+                for marker in (
+                    "example",
+                    "placeholder",
+                    "your_token",
+                    "token_here",
+                )
+            )
+            else f"{match.group(1)}[REDACTED]"
+        ),
+        redacted,
+    )
     redacted = _BEARER_CANDIDATE.sub(_redact_bearer, redacted)
     redacted = _DASHED_SK_CANDIDATE.sub(_redact_dashed_sk, redacted)
     for pattern in _SECRET_VALUE_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
+
+
+def redact_sensitive_text(value: str) -> str:
+    """Redact credentials embedded in otherwise unstructured model text."""
+
+    return _redacted_string(value)
 
 
 def _redact_bearer(match: re.Match[str]) -> str:

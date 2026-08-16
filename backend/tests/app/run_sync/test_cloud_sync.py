@@ -48,6 +48,7 @@ class FakeTransport:
         self.memory_writer_claims: list[dict[str, Any]] = []
         self.artifact_uploads = []
         self.artifact_upload_gate: asyncio.Event | None = None
+        self.artifact_upload_error: Exception | None = None
 
     async def ingest(self, configuration, payload):
         self.payloads.append(payload)
@@ -187,6 +188,8 @@ class FakeTransport:
 
     async def upload_artifact(self, configuration, item):
         self.artifact_uploads.append(item)
+        if self.artifact_upload_error is not None:
+            raise self.artifact_upload_error
         if self.artifact_upload_gate is not None:
             await self.artifact_upload_gate.wait()
         return {
@@ -328,6 +331,65 @@ async def test_worker_uploads_durable_artifact_then_syncs_asset_event(
     assert uploaded[0].payload["artifact_id"] == upload.artifact_id
     assert uploaded[0].payload["asset_ref"]["chat_file_id"] == 73
     assert journal.claim_ready_artifact_uploads(now=float("inf")) == []
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_artifact_upload_502_dead_letters_after_bounded_retries(
+    journal, tmp_path
+):
+    from app.artifacts import record_artifact_manifest
+
+    artifact_path = tmp_path / "report.txt"
+    artifact_path.write_text("durable report", encoding="utf-8")
+    journal.ensure_run(run_id="run-artifact-502", project_id="project-1")
+    record_artifact_manifest(
+        journal,
+        run_id="run-artifact-502",
+        project_id="project-1",
+        artifacts=[
+            {
+                "filename": "report.txt",
+                "path": str(artifact_path),
+                "relativePath": "report.txt",
+                "changeType": "generated",
+                "size": artifact_path.stat().st_size,
+                "uploadPolicy": "agent_generated",
+            }
+        ],
+    )
+    journal.append_event(
+        "run-artifact-502",
+        RunEventDraft(
+            event_id="run-artifact-502-completed",
+            event_type="run.completed",
+            payload={},
+        ),
+    )
+    transport = FakeTransport()
+    transport.artifact_upload_error = RunEventSyncHttpError(
+        502, {"detail": "temporary upstream failure"}
+    )
+    worker = _worker(journal, transport)
+    configuration = worker._configuration  # noqa: SLF001 - retry path test
+    assert configuration is not None
+
+    for _ in range(8):
+        item = journal.claim_ready_artifact_uploads(now=float("inf"))[0]
+        await worker._sync_artifact_upload(  # noqa: SLF001 - retry path test
+            item, configuration
+        )
+
+    assert journal.claim_ready_artifact_uploads(now=float("inf")) == []
+    with journal._lock:  # noqa: SLF001 - durable outbox assertion
+        row = journal._connection.execute(  # noqa: SLF001
+            """
+            SELECT status, attempt_count FROM artifact_upload_outbox
+            WHERE run_id = 'run-artifact-502'
+            """
+        ).fetchone()
+    assert row is not None
+    assert (row["status"], row["attempt_count"]) == ("dead_letter", 8)
     await worker.close()
 
 

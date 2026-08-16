@@ -78,6 +78,7 @@ export class RunEventIngressRegistry {
       async onmessage(message) {
         if (message.event === 'replay_caught_up') {
           replaying = false;
+          runProjectionStore.completeResync(projectId);
           return;
         }
         if (message.event !== 'run_event') return;
@@ -176,6 +177,12 @@ export class RunEventIngressRegistry {
     });
     this.reconciliations.set(projectId, promise);
     return promise;
+  }
+
+  replayRun(projectId: string, runId: string): Promise<void> {
+    const current = this.active.get(runId);
+    if (current) this.disconnect(runId);
+    return this.ensureLocal(projectId, runId, { reconnect: true }).promise;
   }
 
   clear(): void {

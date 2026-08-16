@@ -219,6 +219,54 @@ def test_dispatched_unsafe_tool_is_fail_closed_after_restart(tmp_path):
         assert error.value.tool_call_ids == ("tool-1",)
 
 
+def test_prepared_tool_and_approval_are_closed_before_startup_resume(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.checkpoint_tool_call(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="send_email",
+            status="prepared",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"to": "user@example.com"},
+            now=2,
+        )
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow send_email?"},
+            now=3,
+        )
+
+        journal.reconcile_startup(now=4)
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.status == "failed"
+        assert tool.outcome == "failed_before_dispatch"
+        assert journal.list_approvals("run-1")[0].status == "rejected"
+        interaction = journal.get_human_interaction("approval:tool-1")
+        assert interaction is not None
+        assert interaction.status == "cancelled"
+        assert not journal.list_approvals("run-1", pending_only=True)
+
+        resumed = journal.create_run_attempt(
+            "run-1",
+            request_id="resume-1",
+            reason="explicit_resume",
+            now=5,
+        )
+        assert resumed.status == "pending"
+
+
 def test_safe_read_timeout_can_create_a_new_attempt(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")

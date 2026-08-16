@@ -44,7 +44,7 @@ _SECRET_PATTERNS = (
         "credential_url",
         re.compile(
             r"(?i)(?:mysql|postgres|postgresql|mongodb|redis|mssql)://"
-            r"[^:\s]+:[^@\s]+@"
+            r"(?P<username>[^:\s]+):(?P<password>[^@\s]+)@"
         ),
     ),
     (
@@ -68,6 +68,13 @@ _FALSE_POSITIVE_INDICATORS = (
     "sample",
     "your_",
 )
+_PLACEHOLDER_USERNAMES = {"user", "username", "example"}
+_PLACEHOLDER_PASSWORDS = {
+    "pass",
+    "password",
+    "changeme",
+    "placeholder",
+}
 _SENSITIVE_FILE_NAMES = {
     ".env",
     "id_dsa",
@@ -226,17 +233,22 @@ class GitPublishPolicy:
     def _secret_type(value: str) -> str | None:
         for line in value.splitlines():
             for label, pattern in _SECRET_PATTERNS:
-                match = pattern.search(line)
-                if match is None:
-                    continue
-                # A comment elsewhere on the same line must not bless an
-                # actual credential.  Placeholder suppression applies only
-                # to the exact candidate captured by the secret pattern.
-                candidate = match.group(0).lower()
-                if any(
-                    indicator in candidate
-                    for indicator in _FALSE_POSITIVE_INDICATORS
-                ):
-                    continue
-                return label
+                for match in pattern.finditer(line):
+                    # A comment or an earlier placeholder elsewhere on the
+                    # same line must not bless an actual credential.
+                    # Suppression applies only to this captured candidate.
+                    candidate = match.group(0).lower()
+                    if label == "credential_url" and (
+                        match.group("username").casefold()
+                        in _PLACEHOLDER_USERNAMES
+                        and match.group("password").casefold()
+                        in _PLACEHOLDER_PASSWORDS
+                    ):
+                        continue
+                    if any(
+                        indicator in candidate
+                        for indicator in _FALSE_POSITIVE_INDICATORS
+                    ):
+                        continue
+                    return label
         return None

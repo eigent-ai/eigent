@@ -105,6 +105,15 @@ def test_worktree_and_ref_overwrites_are_destructive_and_confirmed(argv):
     assert classification.always_confirm is True
 
 
+def test_switch_create_branch_reaches_human_confirmation():
+    classification = AdvancedGitCommandClassifier().classify(
+        ("switch", "-c", "agent/research")
+    )
+
+    assert classification.operation == "git.destructive"
+    assert classification.always_confirm is True
+
+
 def test_git_config_list_is_read_only_but_external_config_files_are_rejected():
     classifier = AdvancedGitCommandClassifier()
 
@@ -113,6 +122,10 @@ def test_git_config_list_is_read_only_but_external_config_files_are_rejected():
         classifier.classify(
             ("config", "--file", "../../.zshenv", "core.dummy", "x")
         )
+    with pytest.raises(AdvancedGitCommandRejected):
+        classifier.classify(("config", "-f", "../../.gitconfig", "--list"))
+    with pytest.raises(AdvancedGitCommandRejected):
+        classifier.classify(("config", "-f../../.gitconfig", "--list"))
 
 
 @pytest.mark.parametrize(
@@ -536,6 +549,30 @@ def test_publish_policy_comment_does_not_suppress_real_secret():
     assert (
         GitPublishPolicy._secret_type('password="sample-placeholder"') is None
     )
+
+
+def test_publish_policy_checks_later_secret_after_same_pattern_placeholder():
+    placeholder = "AKIAEXAMPLEEXAMPLE12"
+    secret = "AKIAQ1W2E3R4T5Y6U7I8"
+
+    assert (
+        GitPublishPolicy._secret_type(
+            f'example="{placeholder}" production="{secret}"'
+        )
+        == "aws_access_key"
+    )
+
+
+def test_publish_policy_allows_documented_placeholder_credential_url():
+    value = "# Example: postgres://user:pass@localhost:5432/app"
+
+    assert GitPublishPolicy._secret_type(value) is None
+
+
+def test_publish_policy_still_rejects_real_credential_url():
+    value = "DATABASE_URL=postgres://admin:real-production-secret@db/app"
+
+    assert GitPublishPolicy._secret_type(value) == "credential_url"
 
 
 def test_publish_policy_returns_bounded_metadata_for_clean_history(

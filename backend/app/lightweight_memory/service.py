@@ -32,7 +32,7 @@ from app.run_journal import (
     SQLiteRunJournal,
     get_default_run_journal,
 )
-from app.workspace_config import assert_manifest_secret_free
+from app.run_journal.memory_policy import assert_memory_entry_policy
 
 try:
     import tiktoken
@@ -41,8 +41,6 @@ except ImportError:  # pragma: no cover - production bundle includes it
 
 
 _TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
-_EXTERNAL_TRUST = {"external_untrusted", "tool_observed", "model_inferred"}
-_INSTRUCTION_KINDS = {"preference", "constraint"}
 _QUERY_TOKEN_RE = re.compile(r"[\w.-]+", re.UNICODE)
 _HISTORY_ARTIFACT_FIELDS = frozenset(
     {
@@ -256,15 +254,17 @@ class LightweightMemoryService:
             content = str(cloud.get("content") or "")
             kind = str(cloud.get("kind") or "")
             source_trust = str(cloud.get("source_trust") or "")
-            assert_manifest_secret_free({"content": content})
-            if (
-                source_trust in _EXTERNAL_TRUST
-                and kind in _INSTRUCTION_KINDS
-                and not bool(cloud.get("confirmed_by_user"))
-            ):
-                raise PermissionError(
-                    "Cloud instruction Memory must be confirmed before use"
-                )
+            cloud_created_by = str(cloud.get("created_by") or "")
+            cloud_refs = tuple(cloud.get("source_refs") or ())
+            assert_memory_entry_policy(
+                kind=kind,
+                content=content,
+                created_by=cloud_created_by,
+                source_trust=source_trust,
+                confirmed_by_user=bool(cloud.get("confirmed_by_user")),
+                source_refs=cloud_refs,
+                cloud_projection=True,
+            )
             if existing.deleted_at is not None:
                 self._journal.apply_memory_mutation(
                     mutation_id=stable_memory_id(
@@ -293,10 +293,10 @@ class LightweightMemoryService:
                 kind,
                 content,
                 str(cloud.get("priority") or "normal"),
-                str(cloud.get("created_by") or ""),
+                cloud_created_by,
                 source_trust,
                 str(cloud.get("sensitivity") or "normal"),
-                tuple(cloud.get("source_refs") or ()),
+                cloud_refs,
             )
             if local_semantic != cloud_semantic:
                 self._journal.apply_memory_mutation(
@@ -315,10 +315,10 @@ class LightweightMemoryService:
                     kind=kind,
                     priority=str(cloud.get("priority") or "normal"),
                     token_count=count_tokens(content),
-                    created_by=str(cloud.get("created_by") or "importer"),
+                    created_by=cloud_created_by,
                     source_trust=source_trust,
                     sensitivity=str(cloud.get("sensitivity") or "normal"),
-                    source_refs=tuple(cloud.get("source_refs") or ()),
+                    source_refs=cloud_refs,
                 )
         return self._journal.resolve_memory_reconciliation_item(
             reconciliation_id,
@@ -345,21 +345,37 @@ class LightweightMemoryService:
         activity_id: str | None = None,
         decision_id: str | None = None,
         confirmed_by_user_action: bool = False,
+        adopted_by_user: bool = False,
+        reviewed_source_memory_id: str | None = None,
     ) -> MemoryMutationResult:
         source_refs = tuple(dict.fromkeys(source_refs))
+        if adopted_by_user and not (
+            actor_type == "agent"
+            and confirmed_by_user_action
+            and decision_id
+            and reviewed_source_memory_id
+        ):
+            raise PermissionError(
+                "User-adopted Memory requires an exact durable review"
+            )
+        entry_created_by = "user" if adopted_by_user else actor_type
+        entry_source_trust = (
+            "user_confirmed" if adopted_by_user else source_trust
+        )
         self._assert_mutation_policy(
             scope_type=scope_type,
             kind=kind,
             content=content,
             actor_type=actor_type,
-            source_trust=source_trust,
+            source_trust=entry_source_trust,
             confirmed_by_user_action=confirmed_by_user_action,
+            entry_created_by=entry_created_by,
         )
-        if actor_type == "agent":
+        if actor_type == "agent" and not adopted_by_user:
             self._assert_agent_provenance(
                 scope_type=scope_type,
                 scope_id=scope_id,
-                source_trust=source_trust,
+                source_trust=entry_source_trust,
                 source_refs=source_refs,
             )
         state = self.scope(scope_type, scope_id)
@@ -390,14 +406,16 @@ class LightweightMemoryService:
             kind=kind,
             priority=priority,
             token_count=count_tokens(content),
-            created_by=actor_type,
-            source_trust=source_trust,
+            created_by=entry_created_by,
+            source_trust=entry_source_trust,
             sensitivity=sensitivity,
             source_refs=source_refs,
             run_id=run_id,
             activity_id=activity_id,
             decision_id=decision_id,
             confirmed_by_user_action=confirmed_by_user_action,
+            reviewed_operation="promote" if adopted_by_user else None,
+            reviewed_memory_id=reviewed_source_memory_id,
         )
 
     def consolidate_scope(
@@ -735,9 +753,9 @@ class LightweightMemoryService:
             items=tuple(selected),
             next_cursor=next_cursor,
             redactions=(
-                "secrets",
-                "connector_payloads",
-                "unauthorized_artifacts",
+                "credential_keys_and_recognized_values",
+                "raw_connector_tool_results",
+                "local_artifact_paths_and_content",
             ),
         )
 
@@ -750,8 +768,17 @@ class LightweightMemoryService:
         actor_type: str,
         source_trust: str,
         confirmed_by_user_action: bool = False,
+        entry_created_by: str | None = None,
     ) -> None:
-        assert_manifest_secret_free({"content": content})
+        assert_memory_entry_policy(
+            kind=kind,
+            content=content,
+            created_by=entry_created_by or actor_type,
+            source_trust=source_trust,
+            confirmed_by_user=(
+                actor_type == "user" or confirmed_by_user_action
+            ),
+        )
         if (
             actor_type == "agent"
             and scope_type != "project"
@@ -759,19 +786,6 @@ class LightweightMemoryService:
         ):
             raise PermissionError(
                 "Agent Space/User Memory mutations require HumanInteraction"
-            )
-        if source_trust in _EXTERNAL_TRUST and kind in _INSTRUCTION_KINDS:
-            raise PermissionError(
-                "Untrusted or inferred content cannot become a preference "
-                "or constraint without user-authored adoption"
-            )
-        if actor_type != "user" and source_trust == "user_confirmed":
-            raise PermissionError(
-                "Only user-authored content may claim user_confirmed"
-            )
-        if actor_type == "user" and source_trust != "user_confirmed":
-            raise PermissionError(
-                "User-authored Memory must use user_confirmed"
             )
 
     def _require_entry(self, memory_id: str) -> MemoryEntryRecord:

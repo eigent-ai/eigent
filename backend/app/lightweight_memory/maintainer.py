@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Protocol
@@ -36,6 +37,11 @@ from app.run_journal import MemoryScopeStateRecord
 logger = logging.getLogger("lightweight_memory")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="memory-v2")
 _FUTURES: set[Future] = set()
+_SCHEDULE_LOCK = threading.Lock()
+_PROJECT_SCHEDULES: dict[str, _ProjectMaintenanceSchedule] = {}
+_MAX_FAILURE_RETRIES = 5
+_MAX_RETRY_DELAY_SECONDS = 60.0
+_CONTINUATION_DELAY_SECONDS = 0.5
 
 _EXPLICIT_MEMORY_PATTERNS = (
     re.compile(r"\b(?:please\s+)?remember(?:\s+that)?\s+(.+)", re.I | re.S),
@@ -52,6 +58,13 @@ class ProposedMemoryMutation:
     source_event_ids: tuple[str, ...]
     confidence: float
     sensitivity: str = "normal"
+
+
+@dataclass
+class _ProjectMaintenanceSchedule:
+    future: Future | None = None
+    timer: threading.Timer | None = None
+    failure_attempts: int = 0
 
 
 class MemoryExtractor(Protocol):
@@ -279,35 +292,151 @@ class IncrementalMemoryMaintainer:
             raise
 
 
-def schedule_project_memory_maintenance(project_id: str) -> None:
-    """Best-effort, bounded terminal trigger with strong task references."""
+def _maintenance_retry_delay(failure_attempts: int) -> float | None:
+    if failure_attempts < 1 or failure_attempts > _MAX_FAILURE_RETRIES:
+        return None
+    return min(2 ** (failure_attempts - 1), _MAX_RETRY_DELAY_SECONDS)
+
+
+def _submit_project_memory_maintenance(project_id: str) -> None:
+    """Submit one pass, coalescing all triggers for the same Project."""
 
     from app.lightweight_memory.service import get_lightweight_memory_service
 
-    future = _EXECUTOR.submit(
-        IncrementalMemoryMaintainer(
-            get_lightweight_memory_service()
-        ).process_project,
-        project_id,
-    )
+    with _SCHEDULE_LOCK:
+        state = _PROJECT_SCHEDULES.setdefault(
+            project_id, _ProjectMaintenanceSchedule()
+        )
+        state.timer = None
+        # A completed Future remains the lane owner until its callback clears
+        # it. Treating future.done() as idle opens a submit/callback race.
+        if state.future is not None:
+            return
+        # Reserve the Project lane while the scheduler lock is held. Without
+        # this, two terminal notifications can both observe an empty lane and
+        # submit concurrent extraction passes for the same durable cursor.
+        future = _EXECUTOR.submit(
+            IncrementalMemoryMaintainer(
+                get_lightweight_memory_service()
+            ).process_project,
+            project_id,
+        )
+        state.future = future
     _FUTURES.add(future)
 
     def _done(completed: Future) -> None:
         _FUTURES.discard(completed)
+        with _SCHEDULE_LOCK:
+            current = _PROJECT_SCHEDULES.setdefault(
+                project_id, _ProjectMaintenanceSchedule()
+            )
+            if current.future is completed:
+                current.future = None
         try:
-            state = completed.result()
-            if (
-                state.last_error is None
-                and parse_project_cursor(state.processed_through_watermark)
+            scope_state = completed.result()
+            if scope_state.last_error is not None:
+                with _SCHEDULE_LOCK:
+                    current.failure_attempts += 1
+                    failure_attempts = current.failure_attempts
+                delay = _maintenance_retry_delay(failure_attempts)
+                if delay is not None:
+                    logger.warning(
+                        "Incremental Memory maintenance returned an error",
+                        extra={
+                            "project_id": project_id,
+                            "failure_attempts": failure_attempts,
+                            "last_error": scope_state.last_error,
+                        },
+                    )
+                    _schedule_project_memory_maintenance_after(
+                        project_id, delay
+                    )
+                else:
+                    with _SCHEDULE_LOCK:
+                        _PROJECT_SCHEDULES.pop(project_id, None)
+                    logger.error(
+                        "Incremental Memory maintenance retry budget exhausted",
+                        extra={
+                            "project_id": project_id,
+                            "last_error": scope_state.last_error,
+                        },
+                    )
+                return
+            behind = (
+                parse_project_cursor(scope_state.processed_through_watermark)
                 < get_lightweight_memory_service().journal.get_project_history_cursor(
                     project_id
                 )
-            ):
-                schedule_project_memory_maintenance(project_id)
+            )
+            if behind:
+                with _SCHEDULE_LOCK:
+                    current.failure_attempts = 0
+                _schedule_project_memory_maintenance_after(
+                    project_id, _CONTINUATION_DELAY_SECONDS
+                )
+            else:
+                with _SCHEDULE_LOCK:
+                    _PROJECT_SCHEDULES.pop(project_id, None)
         except Exception:
+            with _SCHEDULE_LOCK:
+                current.failure_attempts += 1
+                failure_attempts = current.failure_attempts
             logger.exception(
                 "Incremental Memory maintenance failed",
-                extra={"project_id": project_id},
+                extra={
+                    "project_id": project_id,
+                    "failure_attempts": failure_attempts,
+                },
             )
+            delay = _maintenance_retry_delay(failure_attempts)
+            if delay is not None:
+                _schedule_project_memory_maintenance_after(project_id, delay)
+            else:
+                with _SCHEDULE_LOCK:
+                    _PROJECT_SCHEDULES.pop(project_id, None)
+                logger.error(
+                    "Incremental Memory maintenance retry budget exhausted",
+                    extra={"project_id": project_id},
+                )
 
     future.add_done_callback(_done)
+
+
+def _schedule_project_memory_maintenance_after(
+    project_id: str, delay_seconds: float
+) -> None:
+    with _SCHEDULE_LOCK:
+        state = _PROJECT_SCHEDULES.setdefault(
+            project_id, _ProjectMaintenanceSchedule()
+        )
+        if state.future is not None:
+            return
+        if state.timer is not None and state.timer.is_alive():
+            return
+        timer = threading.Timer(
+            delay_seconds, _submit_project_memory_maintenance, (project_id,)
+        )
+        timer.daemon = True
+        state.timer = timer
+        timer.start()
+
+
+def schedule_project_memory_maintenance(project_id: str) -> None:
+    """Best-effort terminal trigger with bounded retry and continuation pace."""
+
+    normalized = project_id.strip()
+    if not normalized:
+        return
+    with _SCHEDULE_LOCK:
+        state = _PROJECT_SCHEDULES.setdefault(
+            normalized, _ProjectMaintenanceSchedule()
+        )
+        active = state.future is not None or (
+            state.timer is not None and state.timer.is_alive()
+        )
+        if active:
+            return
+        # A later terminal Run is a new trigger and gets a fresh bounded retry
+        # budget even when an earlier pass exhausted its own attempts.
+        state.failure_attempts = 0
+    _submit_project_memory_maintenance(normalized)

@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Review-first local Workspace Bundle installation and materialization."""
 
 from __future__ import annotations
@@ -78,8 +92,9 @@ class WorkspaceBundleInstaller:
         proposal_id: str,
         request_id: str,
         space_id: str,
-        bundle_id: str,
-        revision_id: str,
+        publisher_namespace: str,
+        slug: str,
+        version: int,
         config_placement: ConfigPlacement,
     ) -> WorkspaceBundleInstallProposalRecord:
         if self.cloud is None:
@@ -87,7 +102,9 @@ class WorkspaceBundleInstaller:
                 "Bundle Cloud transport is unavailable"
             )
         revision = await self.cloud.get_catalog_revision(
-            bundle_id, revision_id
+            publisher_namespace,
+            slug,
+            version,
         )
         if revision.get("status") != "published":
             raise WorkspaceBundleInstallError(
@@ -97,9 +114,16 @@ class WorkspaceBundleInstaller:
         if not isinstance(manifest_value, dict):
             raise WorkspaceBundleInstallError("Bundle manifest is missing")
         manifest = WorkspaceBundleManifest.model_validate(manifest_value)
+        bundle_id = revision.get("bundle_id")
+        revision_id = revision.get("revision_id")
         if (
-            manifest.metadata.id != bundle_id
-            or manifest.revision_id != revision_id
+            not isinstance(bundle_id, str)
+            or not isinstance(revision_id, str)
+            or manifest.metadata.id != slug
+            or manifest.metadata.revision != version
+            or revision.get("publisher_namespace") != publisher_namespace
+            or revision.get("slug") != slug
+            or revision.get("version") != version
         ):
             raise WorkspaceBundleInstallError(
                 "Bundle revision identity mismatch"
@@ -129,6 +153,9 @@ class WorkspaceBundleInstaller:
             manifest,
             normalized_assets,
             mcp_destinations=mcp_destinations,
+        )
+        install_plan["public_coordinate"] = (
+            f"@{publisher_namespace}/{slug}@{version}"
         )
         return self.journal.put_workspace_bundle_install_proposal(
             proposal_id=proposal_id,
@@ -303,9 +330,7 @@ class WorkspaceBundleInstaller:
                         for item in current.values()
                     ],
                 )
-                required_grants.append(
-                    secret_binding_grant(binding_digest)
-                )
+                required_grants.append(secret_binding_grant(binding_digest))
         return self.journal.put_workspace_bundle_local_binding(
             proposal_id=proposal_id,
             expected_proposal_version=expected_version,

@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import hashlib
@@ -104,8 +118,10 @@ class FakeCloud:
         ]
         self.executable_asset_ids: set[str] = set()
 
-    async def get_catalog_revision(self, bundle_id, revision_id):
-        revision_number = int(str(revision_id).rsplit("@", 1)[1])
+    async def get_catalog_revision(self, publisher_namespace, slug, version):
+        revision_number = int(version)
+        bundle_id = slug
+        revision_id = f"{slug}@{version}"
         manifest = WorkspaceBundleManifest.model_validate(
             _manifest(revision_number)
         ).canonical_payload()
@@ -113,6 +129,10 @@ class FakeCloud:
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
+            "revision_id": revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
             "status": "published",
             "manifest": manifest,
             "manifest_digest": canonical_digest(manifest),
@@ -333,8 +353,9 @@ async def _approved_and_bound(installer, journal, tmp_path):
         proposal_id="proposal-1",
         request_id="request-1",
         space_id="space-1",
-        bundle_id="bundle-research",
-        revision_id="bundle-research@1",
+        publisher_namespace="user-7",
+        slug="bundle-research",
+        version=1,
         config_placement=ConfigPlacement.SIDECAR,
     )
     assert proposal.state == "proposed"
@@ -625,7 +646,9 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         }
     )
 
-    async def get_catalog_revision(bundle_id, revision_id):
+    async def get_catalog_revision(publisher_namespace, slug, version):
+        bundle_id = slug
+        revision_id = f"{slug}@{version}"
         canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
@@ -648,6 +671,10 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
+            "revision_id": revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
             "status": "published",
             "manifest": canonical,
             "manifest_digest": canonical_digest(canonical),
@@ -671,8 +698,9 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
         proposal_id="proposal-values",
         request_id="request-values",
         space_id="space-1",
-        bundle_id="bundle-research",
-        revision_id="bundle-research@1",
+        publisher_namespace="user-7",
+        slug="bundle-research",
+        version=1,
         config_placement=ConfigPlacement.SIDECAR,
     )
     assert proposal.install_plan["environment_requirements"] == [
@@ -716,9 +744,7 @@ async def test_required_local_values_block_before_cloud_and_optional_env_does_no
             "value_digest": canonical_digest("info"),
         }
     ]
-    assert "LINEAR_API_TOKEN" not in str(
-        destination["public_environment"]
-    )
+    assert "LINEAR_API_TOKEN" not in str(destination["public_environment"])
     proposal = service.decide(
         proposal.proposal_id,
         expected_version=proposal.version,
@@ -808,13 +834,19 @@ async def test_registry_secret_mcp_cannot_be_approved_or_reported_ready(
         }
     ]
 
-    async def get_catalog_revision(bundle_id, revision_id):
+    async def get_catalog_revision(publisher_namespace, slug, version):
+        bundle_id = slug
+        revision_id = f"{slug}@{version}"
         canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
+            "revision_id": revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
             "status": "published",
             "manifest": canonical,
             "manifest_digest": canonical_digest(canonical),
@@ -826,8 +858,9 @@ async def test_registry_secret_mcp_cannot_be_approved_or_reported_ready(
         proposal_id="proposal-registry-secret",
         request_id="request-registry-secret",
         space_id="space-1",
-        bundle_id="bundle-research",
-        revision_id="bundle-research@1",
+        publisher_namespace="user-7",
+        slug="bundle-research",
+        version=1,
         config_placement=ConfigPlacement.SIDECAR,
     )
     destination = proposal.install_plan["mcp_destinations"][0]
@@ -873,13 +906,19 @@ async def test_proposal_rejects_mcp_definition_digest_mismatch(installer):
     ).encode()
     cloud.contents["asset-mcp-private"] = content
 
-    async def get_catalog_revision(bundle_id, revision_id):
+    async def get_catalog_revision(publisher_namespace, slug, version):
+        bundle_id = slug
+        revision_id = f"{slug}@{version}"
         canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
+            "revision_id": revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
             "status": "published",
             "manifest": canonical,
             "manifest_digest": canonical_digest(canonical),
@@ -905,8 +944,9 @@ async def test_proposal_rejects_mcp_definition_digest_mismatch(installer):
             proposal_id="proposal-digest-mismatch",
             request_id="request-digest-mismatch",
             space_id="space-1",
-            bundle_id="bundle-research",
-            revision_id="bundle-research@1",
+            publisher_namespace="user-7",
+            slug="bundle-research",
+            version=1,
             config_placement=ConfigPlacement.SIDECAR,
         )
 
@@ -922,13 +962,19 @@ async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
         "variables": [{"name": "API_TOKEN", "required": True}]
     }
 
-    async def get_catalog_revision(bundle_id, revision_id):
+    async def get_catalog_revision(publisher_namespace, slug, version):
+        bundle_id = slug
+        revision_id = f"{slug}@{version}"
         canonical = WorkspaceBundleManifest.model_validate(
             manifest
         ).canonical_payload()
         return {
             "id": revision_id,
             "bundle_id": bundle_id,
+            "revision_id": revision_id,
+            "publisher_namespace": publisher_namespace,
+            "slug": slug,
+            "version": version,
             "status": "published",
             "manifest": canonical,
             "manifest_digest": canonical_digest(canonical),
@@ -942,8 +988,9 @@ async def test_unreadable_bound_value_blocks_all_cloud_side_effects(installer):
         proposal_id="proposal-unreadable",
         request_id="request-unreadable",
         space_id="space-1",
-        bundle_id="bundle-research",
-        revision_id="bundle-research@1",
+        publisher_namespace="user-7",
+        slug="bundle-research",
+        version=1,
         config_placement=ConfigPlacement.SIDECAR,
     )
     proposal = service.decide(
@@ -1066,8 +1113,9 @@ async def test_upgrade_reviews_again_and_commits_new_configuration(installer):
         proposal_id="proposal-2",
         request_id="request-2",
         space_id="space-1",
-        bundle_id="bundle-research",
-        revision_id="bundle-research@2",
+        publisher_namespace="user-7",
+        slug="bundle-research",
+        version=2,
         config_placement=ConfigPlacement.SIDECAR,
     )
     assert second.state == "proposed"

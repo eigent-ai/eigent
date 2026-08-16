@@ -122,8 +122,8 @@ export const workspaceEnvironmentVariables = (
   document.spec.environment?.variables ?? [];
 
 export interface WorkspaceConfigurationSaveReview {
-  bundle_id: string;
-  revision_id: string;
+  slug: string;
+  version: number;
   manifest_digest: string;
   name: string;
   review_digest: string;

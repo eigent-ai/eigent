@@ -30,6 +30,7 @@ from app.workspace_config import canonical_json
 _PATH_KEYS = (
     "path",
     "paths",
+    "filepath",
     "file_path",
     "file_paths",
     "filename",
@@ -39,15 +40,32 @@ _PATH_KEYS = (
     "folder_path",
     "cwd",
     "working_directory",
+    "dest",
     "destination",
     "destination_path",
+    "target",
     "target_path",
+    "output",
     "output_path",
     "image_path",
     "html_file_path",
 )
 _URL_KEYS = ("url", "target_url", "endpoint")
 _COMMAND_KEYS = ("command", "cmd", "script")
+_NON_PATH_VALUE_KEYS = frozenset(
+    {
+        "argv",
+        "body",
+        "content",
+        "data",
+        "description",
+        "message",
+        "payload",
+        "prompt",
+        "query",
+        "text",
+    }
+)
 _CREDENTIAL_PATH_PARTS = frozenset(
     {".aws", ".azure", ".gnupg", ".kube", ".ssh"}
 )
@@ -264,6 +282,114 @@ def _argument_values(
     return tuple(dict.fromkeys(item for item in values if item.strip()))
 
 
+def _argument_string_leaves(
+    arguments: dict[str, Any],
+) -> tuple[tuple[str, str], ...]:
+    """Return nested string leaves with their immediate normalized key.
+
+    Permission targets cannot depend on every toolkit choosing one of a
+    finite set of path key spellings. The key is retained only so obvious
+    prose/blob fields can be excluded from the structural fallback.
+    """
+
+    leaves: list[tuple[str, str]] = []
+    stack: list[tuple[str, Any]] = [
+        (_normalized_argument_key(key), value)
+        for key, value in arguments.items()
+    ]
+    while stack:
+        key, value = stack.pop()
+        if isinstance(value, dict):
+            stack.extend(
+                (_normalized_argument_key(child_key), child_value)
+                for child_key, child_value in value.items()
+            )
+        elif isinstance(value, (list, tuple)):
+            stack.extend((key, item) for item in value)
+        elif isinstance(value, (str, os.PathLike)):
+            text = os.fspath(value).strip()
+            if text:
+                leaves.append((key, text))
+    return tuple(leaves)
+
+
+def _looks_like_filesystem_path(value: str) -> bool:
+    """Conservatively identify a value whose complete value is a path.
+
+    This deliberately does not search prose for path-looking fragments: a
+    file body that mentions ``/etc/hosts`` is content, not an action target.
+    Unknown argument keys still become targets when their value is an
+    absolute/home/relative path, contains a path separator, names a sensitive
+    control file, or has a conventional filename suffix.
+    """
+
+    text = value.strip().strip("'\"")
+    if not text or "\x00" in text or "\n" in text or "\r" in text:
+        return False
+    if len(text) > 4096 or re.match(r"^[a-z][a-z0-9+.-]*://", text, re.I):
+        return False
+    normalized = text.replace("\\", "/")
+    lowered_name = Path(normalized).name.lower()
+    if lowered_name in _CONTROL_PLANE_FILENAMES:
+        return True
+    if lowered_name in _AUTO_EXECUTED_WORKSPACE_FILENAMES:
+        return True
+    if any(
+        marker in normalized.lower()
+        for marker in _AUTO_EXECUTED_WORKSPACE_PATHS
+    ):
+        return True
+    if re.match(
+        r"^(?:/|~/|\./|\.\./|\$HOME/|\$\{HOME\}/|[A-Za-z]:/|//)",
+        normalized,
+    ):
+        return True
+    has_path_separator = "/" in normalized
+    has_whitespace = any(character.isspace() for character in text)
+    suffix = Path(lowered_name).suffix
+    has_clean_suffix = bool(
+        suffix
+        and len(suffix) <= 17
+        and re.search(r"[a-z]", suffix, re.I)
+        and not any(character.isspace() for character in suffix)
+    )
+    if has_path_separator:
+        return not has_whitespace or has_clean_suffix
+    return has_clean_suffix and not has_whitespace
+
+
+def _looks_like_filesystem_key(key: str) -> bool:
+    tokens = frozenset(key.split("_"))
+    return bool(
+        tokens
+        & {
+            "dir",
+            "directory",
+            "file",
+            "filename",
+            "folder",
+            "path",
+        }
+    ) or key in {"cwd", "dest", "destination", "dst", "output", "target"}
+
+
+def _filesystem_path_values(arguments: dict[str, Any]) -> tuple[str, ...]:
+    """Extract explicit and structurally path-like argument values."""
+
+    values = list(_argument_values(arguments, _PATH_KEYS))
+    command_keys = {
+        _normalized_argument_key(key) for key in (*_COMMAND_KEYS, *_URL_KEYS)
+    }
+    for key, value in _argument_string_leaves(arguments):
+        if key in _NON_PATH_VALUE_KEYS or key in command_keys:
+            continue
+        if _looks_like_filesystem_key(key) or _looks_like_filesystem_path(
+            value
+        ):
+            values.append(value)
+    return tuple(dict.fromkeys(values))
+
+
 def _normalized_argument_key(value: object) -> str:
     text = str(value).strip()
     text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", text)
@@ -273,7 +399,8 @@ def _normalized_argument_key(value: object) -> str:
 def _target_resources(
     *, operation: str, arguments: dict[str, Any]
 ) -> tuple[str, ...]:
-    resources = list(_argument_values(arguments, (*_PATH_KEYS, *_URL_KEYS)))
+    resources = list(_filesystem_path_values(arguments))
+    resources.extend(_argument_values(arguments, _URL_KEYS))
     if operation == "terminal.execute":
         commands = _canonical_command_resource_texts(arguments)
         resources.extend(
@@ -439,7 +566,7 @@ def _is_control_plane_sequence(words: tuple[str, ...]) -> bool:
             if segment
             else ""
         )
-        if executable.lower() == "cd" and segment_mentions_eigent:
+        if executable.lower() in {"cd", "pushd"} and segment_mentions_eigent:
             in_eigent_directory = True
         for word in segment:
             raw = word.lower().replace(chr(92), "/")
@@ -510,7 +637,7 @@ def _risk_tags(
         else None
     )
     tags: set[str] = set()
-    for raw_path in _argument_values(arguments, _PATH_KEYS):
+    for raw_path in _filesystem_path_values(arguments):
         expanded = Path(os.path.expandvars(raw_path)).expanduser()
         candidate = (
             expanded.resolve(strict=False)

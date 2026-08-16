@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Capability-protected local API for review-first Bundle installation."""
 
 from __future__ import annotations
@@ -46,8 +60,17 @@ class BundleProposalBody(BaseModel):
     proposal_id: str = Field(min_length=1, max_length=128)
     request_id: str = Field(min_length=1, max_length=128)
     space_id: str = Field(min_length=1, max_length=256)
-    bundle_id: str = Field(min_length=1, max_length=128)
-    revision_id: str = Field(min_length=1, max_length=128)
+    publisher_namespace: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$",
+    )
+    slug: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$",
+    )
+    version: int = Field(ge=1)
     config_placement: Literal["in_repo", "sidecar"] = "sidecar"
 
 
@@ -245,17 +268,13 @@ def _payload(proposal_id: str) -> dict:
         if item.slot_id.startswith(prefix):
             server_id = item.slot_id.removeprefix(prefix)
             destination = destinations.get(server_id)
-            if destination and destination.get(
-                "requires_secret_confirmation"
-            ):
+            if destination and destination.get("requires_secret_confirmation"):
                 relevant = [
                     {
                         "requirement_key": secret.requirement_key,
                         "secret_ref": secret.secret_ref,
                         "binding_version": secret.binding_version,
-                        "account_scope_digest": (
-                            secret.account_scope_digest
-                        ),
+                        "account_scope_digest": (secret.account_scope_digest),
                     }
                     for secret in secret_bindings
                     if secret.requirement_key
@@ -264,9 +283,7 @@ def _payload(proposal_id: str) -> dict:
                 current = bool(
                     destination.get("attestation_digest")
                     and destination.get("availability_issue") is None
-                    and {
-                        value["requirement_key"] for value in relevant
-                    }
+                    and {value["requirement_key"] for value in relevant}
                     == mcp_secret_keys.get(server_id, set())
                     and attestation_from_grants(item.required_grants)
                     == destination.get("attestation_digest")
@@ -485,8 +502,9 @@ async def propose_bundle_install(
             proposal_id=body.proposal_id,
             request_id=body.request_id,
             space_id=body.space_id,
-            bundle_id=body.bundle_id,
-            revision_id=body.revision_id,
+            publisher_namespace=body.publisher_namespace,
+            slug=body.slug,
+            version=body.version,
             config_placement=ConfigPlacement(body.config_placement),
         )
         return _payload(body.proposal_id)

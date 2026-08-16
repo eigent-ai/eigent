@@ -320,7 +320,7 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
     revision, next_draft = journal.finalize_workspace_config_publish(
         space_id="space-1",
         expected_draft_version=draft.version,
-        revision_id="bundle_publish@1",
+        revision_id="wbr_11111111111111111111111111111111",
         manifest_digest=draft.document_digest,
         published_manifest=document,
         actor_id="user-1",
@@ -329,7 +329,7 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
     replay = journal.finalize_workspace_config_publish(
         space_id="space-1",
         expected_draft_version=draft.version,
-        revision_id="bundle_publish@1",
+        revision_id="wbr_11111111111111111111111111111111",
         manifest_digest=draft.document_digest,
         published_manifest=document,
         actor_id="user-1",
@@ -338,7 +338,9 @@ def test_workspace_config_publish_is_atomic_and_idempotently_advances_draft(
 
     assert revision.status == "published"
     assert next_draft.version == 2
-    assert next_draft.base_revision_id == "bundle_publish@1"
+    assert (
+        next_draft.base_revision_id == "wbr_11111111111111111111111111111111"
+    )
     assert next_draft.document["metadata"]["revision"] == 2
     assert replay[1] == next_draft
     assert (
@@ -373,7 +375,7 @@ def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
         updated_by="user-1",
     )
     journal.put_workspace_config_revision(
-        revision_id="bundle_publish@1",
+        revision_id="wbr_11111111111111111111111111111111",
         bundle_id="other_bundle",
         revision_number=7,
         manifest=document,
@@ -385,7 +387,7 @@ def test_workspace_config_publish_rejects_same_digest_wrong_revision_identity(
         journal.finalize_workspace_config_publish(
             space_id="space-1",
             expected_draft_version=draft.version,
-            revision_id="bundle_publish@1",
+            revision_id="wbr_11111111111111111111111111111111",
             manifest_digest=draft.document_digest,
             published_manifest=document,
             actor_id="user-1",
@@ -435,7 +437,7 @@ def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
     revision, rebased = journal.finalize_workspace_config_publish(
         space_id="space-1",
         expected_draft_version=original.version,
-        revision_id="bundle_publish@1",
+        revision_id="wbr_11111111111111111111111111111111",
         manifest_digest=original.document_digest,
         published_manifest=published_document,
         actor_id="user-1",
@@ -443,7 +445,7 @@ def test_workspace_config_publish_rebases_concurrent_edit_to_next_revision(
 
     assert revision.manifest["metadata"]["name"] == "Published A"
     assert rebased.version == edited.version + 1
-    assert rebased.base_revision_id == "bundle_publish@1"
+    assert rebased.base_revision_id == "wbr_11111111111111111111111111111111"
     assert rebased.document["metadata"] == {
         "id": "bundle_publish",
         "name": "Concurrent B",
@@ -482,13 +484,18 @@ def test_workspace_config_publish_mismatch_rolls_back_every_local_fact(
         journal.finalize_workspace_config_publish(
             space_id="space-1",
             expected_draft_version=draft.version,
-            revision_id="bundle_publish@1",
+            revision_id="wbr_11111111111111111111111111111111",
             manifest_digest="f" * 64,
             published_manifest=document,
             actor_id="user-1",
         )
 
-    assert journal.get_workspace_config_revision("bundle_publish@1") is None
+    assert (
+        journal.get_workspace_config_revision(
+            "wbr_11111111111111111111111111111111"
+        )
+        is None
+    )
     assert journal.get_workspace_config_draft("space-1") == draft
     assert (
         journal.get_latest_workspace_config_materialization("space-1") is None
@@ -994,6 +1001,61 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
     with SQLiteRunJournal(path) as reopened:
         assert reopened.schema_version == SCHEMA_VERSION
         assert reopened.get_run("run-1") is not None
+
+
+def test_v28_database_adds_memory_review_without_losing_interaction_children(
+    tmp_path,
+):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as current:
+        current.ensure_run(run_id="run-1", project_id="project-1", now=1)
+        attempt = current.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=2,
+        )
+        current.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="question",
+            request={"question": "Continue?"},
+            response_schema={"type": "boolean"},
+            requested_by="agent:test",
+            now=3,
+        )
+        current.resolve_human_interaction(
+            "question-1",
+            decision_request_id="decision-1",
+            decision={"value": True},
+            expected_version=0,
+            expected_run_id="run-1",
+            continue_active_attempt=True,
+            now=4,
+        )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 29"
+        )
+        connection.execute("PRAGMA user_version = 28")
+
+    with SQLiteRunJournal(path) as upgraded:
+        interaction = upgraded.get_human_interaction("question-1")
+        decisions = upgraded.list_human_interaction_decisions("question-1")
+
+        assert upgraded.schema_version == SCHEMA_VERSION
+        assert interaction is not None
+        assert interaction.status == "resolved"
+        assert [decision.decision_request_id for decision in decisions] == [
+            "decision-1"
+        ]
+        assert (
+            upgraded._connection.execute("PRAGMA foreign_key_check").fetchall()
+            == []
+        )
 
 
 def test_v17_database_adds_agent_plugin_import_tables_without_losing_draft(

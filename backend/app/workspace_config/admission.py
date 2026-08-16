@@ -352,6 +352,14 @@ class EnvironmentAdmissionService:
                                 logical_uri=source.path,
                             )
                         )
+                    elif source.kind in {"artifact_ref", "memory_scope"}:
+                        local_context_sources.append(
+                            ResolvedContextSource(
+                                id=source.id,
+                                kind=source.kind,
+                                logical_uri=source.path,
+                            )
+                        )
                     elif source.kind == "local_path_slot" and source.slot:
                         binding = bindings.get(source.slot)
                         if binding is None or not binding.local_path:
@@ -402,8 +410,8 @@ class EnvironmentAdmissionService:
                     secret_bindings,
                 )
                 resolved_space_root = (
-                    space_root or working_directory
-                ).expanduser().resolve()
+                    (space_root or working_directory).expanduser().resolve()
+                )
                 if installed.config_placement == "in_repo":
                     resolved_configuration_root = (
                         resolved_space_root / ".eigent"

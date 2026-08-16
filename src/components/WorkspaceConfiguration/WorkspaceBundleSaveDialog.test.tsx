@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -30,6 +44,7 @@ vi.mock('@/service/workspaceBundleAuthoringApi', () => ({
   buildWorkspaceBundleAuthorReview: mocks.buildAuthorReview,
   ensureWorkspaceBundle: mocks.ensureBundle,
   findWorkspaceBundle: mocks.findBundle,
+  findWorkspaceBundleBySlug: mocks.findBundle,
   getWorkspaceBundleRevision: mocks.getRevision,
   validateWorkspaceBundleRevision: mocks.validateRevision,
   uploadWorkspaceBundleAsset: mocks.uploadAsset,
@@ -82,8 +97,8 @@ const draft: WorkspaceConfigurationDraft = {
 };
 
 const review: WorkspaceConfigurationSaveReview = {
-  bundle_id: 'bundle-1',
-  revision_id: 'bundle-1@1',
+  slug: 'bundle-1',
+  version: 1,
   manifest_digest: digest,
   name: 'Research',
   review_digest: 'b'.repeat(64),
@@ -178,11 +193,13 @@ describe('WorkspaceBundleSaveDialog', () => {
       ],
     });
     mocks.ensureBundle.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
+      package_name: '@user-42/bundle-1',
       latest_published_revision_id: null,
     });
     mocks.validateRevision.mockResolvedValue({
-      id: 'bundle-1@1',
+      id: 'wbr_11111111111111111111111111111111',
+      revision: 1,
       manifest_digest: digest,
       status: 'validated',
       assets: [],
@@ -208,7 +225,8 @@ describe('WorkspaceBundleSaveDialog', () => {
       },
     });
     mocks.publishRevision.mockResolvedValue({
-      id: 'bundle-1@1',
+      id: 'wbr_11111111111111111111111111111111',
+      revision: 1,
       manifest_digest: digest,
       status: 'published',
     });
@@ -268,8 +286,10 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('rejects an existing team-scoped Bundle when team authority is unavailable', async () => {
     mocks.findBundle.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
       workspace_id: 'space-1',
+      slug: 'bundle-1',
+      package_name: '@user-42/bundle-1',
       name: 'Research',
       visibility: 'team',
       latest_published_revision_id: null,
@@ -299,7 +319,7 @@ describe('WorkspaceBundleSaveDialog', () => {
 
     expect(
       await screen.findByLabelText('Published Workspace Bundle handle')
-    ).toHaveTextContent('bundle-1@1');
+    ).toHaveTextContent('@user-42/bundle-1@1');
     expect(screen.getByText('Shareable install handle')).toBeInTheDocument();
     expect(
       screen.getByText(/paste it into Import Workspace Bundle/i)
@@ -307,7 +327,7 @@ describe('WorkspaceBundleSaveDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy share handle' }));
     await waitFor(() =>
-      expect(mocks.copyText).toHaveBeenCalledWith('bundle-1@1')
+      expect(mocks.copyText).toHaveBeenCalledWith('@user-42/bundle-1@1')
     );
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
   });
@@ -715,15 +735,17 @@ describe('WorkspaceBundleSaveDialog', () => {
       },
     });
     mocks.findBundle.mockResolvedValue({
-      id: 'bundle-1',
+      id: 'wb_11111111111111111111111111111111',
       workspace_id: 'space-1',
+      slug: 'bundle-1',
+      package_name: '@user-42/bundle-1',
       name: 'Research',
       visibility: 'public',
-      latest_published_revision_id: 'bundle-1@1',
+      latest_published_revision_id: 'wbr_11111111111111111111111111111111',
     });
     mocks.getRevision.mockResolvedValue({
-      id: 'bundle-1@1',
-      bundle_id: 'bundle-1',
+      id: 'wbr_11111111111111111111111111111111',
+      bundle_id: 'wb_11111111111111111111111111111111',
       revision: 1,
       manifest: draft.document,
       manifest_digest: cloudDigest,
@@ -767,12 +789,13 @@ describe('WorkspaceBundleSaveDialog', () => {
 
   it('converges when Cloud publish wins after review loading with a different local digest', async () => {
     mocks.ensureBundle.mockResolvedValue({
-      id: 'bundle-1',
-      latest_published_revision_id: 'bundle-1@1',
+      id: 'wb_11111111111111111111111111111111',
+      package_name: '@user-42/bundle-1',
+      latest_published_revision_id: 'wbr_11111111111111111111111111111111',
     });
     mocks.getRevision.mockResolvedValue({
-      id: 'bundle-1@1',
-      bundle_id: 'bundle-1',
+      id: 'wbr_11111111111111111111111111111111',
+      bundle_id: 'wb_11111111111111111111111111111111',
       revision: 1,
       manifest: draft.document,
       manifest_digest: cloudDigest,

@@ -42,10 +42,18 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/service/workspaceBundleInstallApi', () => ({
   parseWorkspaceBundleHandle: (value: string) => {
-    const match = /^([A-Za-z0-9][A-Za-z0-9._-]{0,79})@([1-9][0-9]*)$/.exec(
-      value
-    );
-    return match ? { bundleId: match[1], revisionId: value } : null;
+    const match =
+      /^@([a-z0-9][a-z0-9._-]{0,79})\/([a-z0-9][a-z0-9._-]{0,79})@([1-9][0-9]*)$/.exec(
+        value
+      );
+    return match
+      ? {
+          publisherNamespace: match[1],
+          slug: match[2],
+          version: Number(match[3]),
+          coordinate: value,
+        }
+      : null;
   },
   fetchWorkspaceBundleInstallReview: mocks.fetchReview,
   fetchWorkspaceBundleInstallProposal: mocks.fetchProposal,
@@ -147,16 +155,26 @@ const manifest = {
 
 const review = {
   bundle: {
-    id: 'research',
+    id: 'wb_11111111111111111111111111111111',
     workspace_id: 'author-space',
+    publisher_type: 'user' as const,
+    publisher_id: '7',
+    publisher_namespace: 'verified-publisher',
+    slug: 'research',
+    package_name: '@verified-publisher/research',
     name: 'Research workspace',
     visibility: 'public' as const,
-    latest_published_revision_id: 'research@1',
+    latest_published_revision_id: 'wbr_11111111111111111111111111111111',
   },
   revision: {
-    id: 'research@1',
-    bundle_id: 'research',
+    id: 'wbr_11111111111111111111111111111111',
+    bundle_id: 'wb_11111111111111111111111111111111',
     revision: 1,
+    publisher_namespace: 'verified-publisher',
+    slug: 'research',
+    package_name: '@verified-publisher/research',
+    version: 1,
+    coordinate: '@verified-publisher/research@1',
     manifest,
     manifest_digest: 'a'.repeat(64),
     status: 'published' as const,
@@ -248,7 +266,7 @@ describe('WorkspaceBundleInstallWizard', () => {
   it('requires a separate approval after persisting the install proposal', async () => {
     mocks.fetchReview.mockResolvedValue(review);
     const user = userEvent.setup();
-    renderWizard({ initialHandle: 'research@1' });
+    renderWizard({ initialHandle: '@verified-publisher/research@1' });
 
     expect(await screen.findByText('Research workspace')).toBeInTheDocument();
     expect(mocks.createSpace).not.toHaveBeenCalled();
@@ -263,6 +281,13 @@ describe('WorkspaceBundleInstallWizard', () => {
     ).toBeInTheDocument();
     expect(mocks.createSpace).toHaveBeenCalledTimes(1);
     expect(mocks.createProposal).toHaveBeenCalledTimes(1);
+    expect(mocks.createProposal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publisherNamespace: 'verified-publisher',
+        slug: 'research',
+        version: 1,
+      })
+    );
     expect(mocks.decide).not.toHaveBeenCalled();
 
     await user.click(
@@ -829,7 +854,7 @@ describe('WorkspaceBundleInstallWizard', () => {
       .mockRejectedValueOnce(new Error('Cloud is temporarily unavailable'))
       .mockResolvedValueOnce(review);
     const user = userEvent.setup();
-    renderWizard({ initialHandle: 'research@1' });
+    renderWizard({ initialHandle: '@verified-publisher/research@1' });
 
     expect(
       await screen.findByText('Cloud is temporarily unavailable')
@@ -853,7 +878,7 @@ describe('WorkspaceBundleInstallWizard', () => {
         },
       });
     const user = userEvent.setup();
-    renderWizard({ initialHandle: 'research@1' });
+    renderWizard({ initialHandle: '@verified-publisher/research@1' });
 
     await user.click(
       await screen.findByRole('button', { name: /confirm and create/i })
@@ -877,7 +902,9 @@ describe('WorkspaceBundleInstallWizard', () => {
       new Error('Brain stopped before the proposal commit')
     );
     const user = userEvent.setup();
-    const first = renderWizard({ initialHandle: 'research@1' });
+    const first = renderWizard({
+      initialHandle: '@verified-publisher/research@1',
+    });
 
     await user.click(
       await screen.findByRole('button', { name: /confirm and create/i })
@@ -891,7 +918,7 @@ describe('WorkspaceBundleInstallWizard', () => {
       ...snapshot(false),
       proposal: { ...snapshot(false).proposal, state: 'proposed', version: 1 },
     });
-    renderWizard({ initialHandle: 'research@1' });
+    renderWizard({ initialHandle: '@verified-publisher/research@1' });
     await user.click(
       await screen.findByRole('button', { name: /confirm and create/i })
     );

@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import {
   proxyFetchGet,
   proxyFetchPatch,
@@ -11,9 +25,30 @@ export type WorkspaceBundleVisibility = 'private' | 'team' | 'public';
 export interface CloudWorkspaceBundle {
   id: string;
   workspace_id: string;
+  publisher_type: 'user' | 'organization';
+  publisher_id: string;
+  publisher_namespace: string;
+  slug: string;
+  package_name: string;
   name: string;
   visibility: 'private' | 'team' | 'public';
   latest_published_revision_id: string | null;
+}
+
+export interface PublicWorkspaceBundleRevision extends CloudWorkspaceBundleRevision {
+  publisher_namespace: string;
+  slug: string;
+  package_name: string;
+  version: number;
+  coordinate: string;
+  status: 'published';
+}
+
+interface PublicWorkspaceBundleRevisionResponse extends Omit<
+  PublicWorkspaceBundleRevision,
+  'id'
+> {
+  revision_id: string;
 }
 
 export interface CloudWorkspaceBundleRevision {
@@ -44,10 +79,7 @@ export interface WorkspaceBundleSelectedAsset {
   media_type: string;
   size_bytes: number;
   provenance:
-    | 'bundle_author'
-    | 'user_uploaded'
-    | 'ai_generated'
-    | 'agent_plugin_import';
+    'bundle_author' | 'user_uploaded' | 'ai_generated' | 'agent_plugin_import';
   executable: boolean;
 }
 
@@ -117,8 +149,26 @@ export const findWorkspaceBundle = async (
   }
 };
 
+export const findWorkspaceBundleBySlug = async (
+  slug: string
+): Promise<CloudWorkspaceBundle | null> => {
+  try {
+    return await proxyFetchGet(
+      `/api/v1/workspace-bundles:resolve?slug=${encodeURIComponent(slug)}`
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error as Error & { status?: number }).status === 404
+    ) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 export const ensureWorkspaceBundle = async (input: {
-  bundleId: string;
+  slug: string;
   workspaceId: string;
   name: string;
   visibility: WorkspaceBundleVisibility;
@@ -126,12 +176,12 @@ export const ensureWorkspaceBundle = async (input: {
 }): Promise<CloudWorkspaceBundle> => {
   const existing =
     input.existing === undefined
-      ? await findWorkspaceBundle(input.bundleId)
+      ? await findWorkspaceBundleBySlug(input.slug)
       : input.existing;
   if (existing) {
     if (existing.workspace_id !== input.workspaceId) {
       throw new Error(
-        'This Bundle id already belongs to a different Workspace.'
+        'This Workspace Bundle slug already belongs to a different Workspace.'
       );
     }
     if (
@@ -144,7 +194,7 @@ export const ensureWorkspaceBundle = async (input: {
         );
       }
       return proxyFetchPatch(
-        `/api/v1/workspace-bundles/${encodeURIComponent(input.bundleId)}`,
+        `/api/v1/workspace-bundles/${encodeURIComponent(existing.id)}`,
         {
           expected_name: existing.name,
           expected_visibility: existing.visibility,
@@ -156,12 +206,23 @@ export const ensureWorkspaceBundle = async (input: {
     return existing;
   }
   return proxyFetchPost('/api/v1/workspace-bundles', {
-    bundle_id: input.bundleId,
+    slug: input.slug,
     workspace_id: input.workspaceId,
-    client_request_id: `workspace-config-create:${input.bundleId}`,
+    client_request_id: `workspace-config-create:${input.workspaceId}:${input.slug}`,
     name: input.name,
     visibility: input.visibility,
   });
+};
+
+export const getPublicWorkspaceBundleRevision = async (input: {
+  publisherNamespace: string;
+  slug: string;
+  version: number;
+}): Promise<PublicWorkspaceBundleRevision> => {
+  const response: PublicWorkspaceBundleRevisionResponse = await proxyFetchGet(
+    `/api/v1/workspace-bundles/catalog/${encodeURIComponent(input.publisherNamespace)}/${encodeURIComponent(input.slug)}/revisions/${input.version}`
+  );
+  return { ...response, id: response.revision_id };
 };
 
 export const validateWorkspaceBundleRevision = async (

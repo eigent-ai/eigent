@@ -399,8 +399,8 @@ def test_agent_plugin_inspect_and_convert_preserve_reviewed_assets(
     assert converted.status_code == 200, converted.text
     payload = converted.json()
     assert payload == {
-        "bundle_id": "agent_plugin_research_plugin",
-        "revision_id": "1",
+        "slug": "agent_plugin_research_plugin",
+        "version": 1,
         "target_space_id": "space-1",
         "status": "draft",
     }
@@ -454,10 +454,7 @@ def test_agent_plugin_inspect_and_convert_preserve_reviewed_assets(
         (item.logical_path, item.content_digest) for item in stored
     ]
 
-    revision_id = (
-        f"{edited.document['metadata']['id']}@"
-        f"{edited.document['metadata']['revision']}"
-    )
+    revision_id = "wbr_22222222222222222222222222222222"
     _, rebased = journal.finalize_workspace_config_publish(
         space_id="space-1",
         expected_draft_version=edited.version,
@@ -552,6 +549,18 @@ def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from
     cloud_receipts: list[dict] = []
 
     class _Cloud:
+        async def resolve_owner_revision(self, slug, version):
+            assert slug == draft.document["metadata"]["id"]
+            assert version == 1
+            return {
+                "id": "wbr_11111111111111111111111111111111",
+                "bundle_id": "wb_reviewed",
+                "status": "published",
+                "manifest_digest": draft.document_digest,
+                "manifest": draft.document,
+                "assets": cloud_receipts,
+            }
+
         async def upload_asset(self, bundle_id, revision_id, **kwargs):
             content = kwargs.pop("content")
             descriptor = next(
@@ -559,8 +568,8 @@ def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from
                 for item in prepared
                 if item["logical_path"] == kwargs["logical_path"]
             )
-            assert bundle_id == draft.document["metadata"]["id"]
-            assert revision_id == f"{bundle_id}@1"
+            assert bundle_id == "wb_reviewed"
+            assert revision_id == "wbr_11111111111111111111111111111111"
             assert len(content) == descriptor["size_bytes"]
             assert kwargs["provenance"] == "agent_plugin_import"
             uploaded.append({"content": content, **kwargs})
@@ -575,7 +584,8 @@ def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from
             return receipt
 
         async def get_owner_revision(self, bundle_id, revision_id):
-            assert bundle_id == draft.document["metadata"]["id"]
+            assert bundle_id == "wb_reviewed"
+            assert revision_id == "wbr_11111111111111111111111111111111"
             return {
                 "id": revision_id,
                 "status": "published",
@@ -609,10 +619,7 @@ def test_prepared_agent_plugin_assets_are_reviewed_preflighted_and_uploaded_from
     ]
     publish_payload = {
         "expected_version": draft.version,
-        "revision_id": (
-            f"{draft.document['metadata']['id']}@"
-            f"{draft.document['metadata']['revision']}"
-        ),
+        "revision_id": "wbr_11111111111111111111111111111111",
         "manifest_digest": draft.document_digest,
         "actor_id": "user-1",
         "email": "user@example.com",
@@ -695,9 +702,12 @@ def test_prepared_asset_publish_recovery_matches_historical_snapshot_after_edit(
     assert edited.document_digest != published_draft.document_digest
 
     class _Cloud:
-        async def get_owner_revision(self, _bundle_id, revision_id):
+        async def resolve_owner_revision(self, slug, version):
+            assert slug == published_draft.document["metadata"]["id"]
+            assert version == published_draft.document["metadata"]["revision"]
             return {
-                "id": revision_id,
+                "id": "wbr_33333333333333333333333333333333",
+                "bundle_id": "wb_recovery",
                 "status": "published",
                 "manifest_digest": published_draft.document_digest,
                 "manifest": published_draft.document,
@@ -714,10 +724,7 @@ def test_prepared_asset_publish_recovery_matches_historical_snapshot_after_edit(
     )
     publish_payload = {
         "expected_version": edited.version,
-        "revision_id": (
-            f"{published_draft.document['metadata']['id']}@"
-            f"{published_draft.document['metadata']['revision']}"
-        ),
+        "revision_id": "wbr_33333333333333333333333333333333",
         "manifest_digest": published_draft.document_digest,
         "actor_id": "user-1",
         "email": "user@example.com",
@@ -1382,12 +1389,15 @@ def test_workspace_configuration_records_only_verified_cloud_publish(
         },
         headers=_headers(),
     ).json()
+    revision_id = "wbr_44444444444444444444444444444444"
 
     class _Cloud:
-        async def get_owner_revision(self, bundle_id, revision_id):
-            assert bundle_id == saved["document"]["metadata"]["id"]
+        async def resolve_owner_revision(self, slug, version):
+            assert slug == saved["document"]["metadata"]["id"]
+            assert version == saved["document"]["metadata"]["revision"]
             return {
                 "id": revision_id,
+                "bundle_id": "wb_verified",
                 "status": "published",
                 "manifest_digest": saved["document_digest"],
                 "manifest": saved["document"],
@@ -1405,10 +1415,7 @@ def test_workspace_configuration_records_only_verified_cloud_publish(
         "/api/v1/spaces/space-1/workspace-configuration/published",
         json={
             "expected_version": saved["version"],
-            "revision_id": (
-                f"{saved['document']['metadata']['id']}@"
-                f"{saved['document']['metadata']['revision']}"
-            ),
+            "revision_id": revision_id,
             "manifest_digest": saved["document_digest"],
             "actor_id": "user-1",
             "email": "user@example.com",
@@ -1456,15 +1463,13 @@ def test_workspace_configuration_recovers_cloud_publish_after_local_edit(
         },
         headers=_headers(),
     ).json()
-    revision_id = (
-        f"{first['document']['metadata']['id']}@"
-        f"{first['document']['metadata']['revision']}"
-    )
+    revision_id = "wbr_55555555555555555555555555555555"
 
     class _Cloud:
-        async def get_owner_revision(self, _bundle_id, _revision_id):
+        async def resolve_owner_revision(self, _slug, _version):
             return {
                 "id": revision_id,
+                "bundle_id": "wb_recovered",
                 "status": "published",
                 "manifest_digest": first["document_digest"],
                 "manifest": first["document"],
@@ -1508,7 +1513,7 @@ def test_workspace_configuration_recovers_cloud_publish_after_local_edit(
     ("cloud_status", "cloud_id", "cloud_digest"),
     [
         ("validated", None, None),
-        ("published", "other_bundle@1", None),
+        ("published", "wbr_77777777777777777777777777777777", None),
         ("published", None, "f" * 64),
     ],
 )
@@ -1532,15 +1537,13 @@ def test_workspace_configuration_rejects_unverified_cloud_publish_receipt(
         },
         headers=_headers(),
     ).json()
-    revision_id = (
-        f"{saved['document']['metadata']['id']}@"
-        f"{saved['document']['metadata']['revision']}"
-    )
+    revision_id = "wbr_66666666666666666666666666666666"
 
     class _Cloud:
-        async def get_owner_revision(self, _bundle_id, _revision_id):
+        async def resolve_owner_revision(self, _slug, _version):
             return {
                 "id": cloud_id or revision_id,
+                "bundle_id": "wb_unverified",
                 "status": cloud_status,
                 "manifest_digest": cloud_digest or saved["document_digest"],
                 "manifest": saved["document"],

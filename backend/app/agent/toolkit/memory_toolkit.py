@@ -312,6 +312,8 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             activity_id=activity_id,
             decision_id=decision_id,
             confirmed_by_user_action=True,
+            adopted_by_user=True,
+            reviewed_source_memory_id=existing.memory_id,
         )
         return {
             "status": "promoted",

@@ -35,6 +35,7 @@ from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.artifacts import (
+    discover_task_changed_files,
     scan_task_changed_files,
     task_modification_windows,
 )
@@ -259,7 +260,7 @@ async def list_task_changed_files(
     user_id: str | None = Query(
         None, description="Optional canonical user ID"
     ),
-) -> list[dict]:
+) -> dict:
     """Return the Desktop-local preview index for one Run's changed files."""
     manifest_event = await run_in_threadpool(
         get_default_run_journal().get_run_artifact_manifest_event,
@@ -268,7 +269,15 @@ async def list_task_changed_files(
     if manifest_event is not None:
         artifacts = manifest_event.payload.get("artifacts", [])
         if isinstance(artifacts, list):
-            return [dict(item) for item in artifacts if isinstance(item, dict)]
+            return {
+                "artifacts": [
+                    dict(item) for item in artifacts if isinstance(item, dict)
+                ],
+                "scan_status": str(
+                    manifest_event.payload.get("scan_status") or "complete"
+                ),
+                "truncated": bool(manifest_event.payload.get("truncated")),
+            }
 
     snapshot = get_workspace_resolver().store.get_snapshot(
         email, task_id, user_id
@@ -277,17 +286,22 @@ async def list_task_changed_files(
         raise HTTPException(status_code=404, detail="Task workspace not found")
     artifact_manifest = getattr(snapshot, "artifact_manifest", None)
     if artifact_manifest is not None:
-        return [dict(item) for item in artifact_manifest]
+        return {
+            "artifacts": [dict(item) for item in artifact_manifest],
+            "scan_status": "complete",
+            "truncated": False,
+        }
 
     windows, permanently_terminal = await run_in_threadpool(
         _task_modification_windows, task_id, project_id
     )
-    artifacts = await run_in_threadpool(
-        _list_task_changed_files,
+    scan_result = await run_in_threadpool(
+        discover_task_changed_files,
         snapshot,
-        500,
-        windows,
+        max_entries=500,
+        modification_windows=windows,
     )
+    artifacts = scan_result.artifacts
     if permanently_terminal:
         await run_in_threadpool(
             get_workspace_resolver().store.freeze_artifact_manifest,
@@ -295,7 +309,11 @@ async def list_task_changed_files(
             snapshot,
             artifacts,
         )
-    return artifacts
+    return {
+        "artifacts": artifacts,
+        "scan_status": scan_result.scan_status,
+        "truncated": scan_result.truncated,
+    }
 
 
 @router.get("/files")

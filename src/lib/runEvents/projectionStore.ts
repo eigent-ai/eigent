@@ -14,6 +14,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import {
+  completeProjectViewResync,
   createProjectViewState,
   reduceProjectView,
   type ProjectViewState,
@@ -173,6 +174,16 @@ export class RunProjectionStore {
     if (this.projects.get(projectId) === state) return;
     this.projects.set(projectId, state);
     this.emit(projectId);
+  }
+
+  completeResync(projectId: string): ProjectViewState | null {
+    const previous = this.projects.get(projectId);
+    if (!previous) return null;
+    const next = completeProjectViewResync(previous, previous.currentCursor);
+    if (next === previous) return previous;
+    this.projects.set(projectId, next);
+    this.emit(projectId);
+    return next;
   }
 
   subscribeProject(projectId: string, listener: () => void): () => void {
