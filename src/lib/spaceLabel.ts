@@ -43,7 +43,11 @@ export function isPlaceholderProjectName(
 export function isPlaceholderSpaceNameStatic(name?: string | null) {
   const normalized = normalizedText(name);
   return (
-    !normalized || normalized === 'new space' || normalized === 'new project'
+    !normalized ||
+    normalized === 'untitled space' ||
+    normalized === '未命名 space' ||
+    normalized === 'new space' ||
+    normalized === 'new project'
   );
 }
 

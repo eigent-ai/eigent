@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => ({
   setActiveProject: vi.fn(),
   setActiveWorkspaceTab: vi.fn(),
   fetchWorkspaceConfiguration: vi.fn(),
+  createSpaceOnServer: vi.fn(),
+  deleteSpaceOnServer: vi.fn(),
+  ensureScratchSpaceWorkspaceBinding: vi.fn(),
 }));
 
 vi.mock('@/host', () => ({
@@ -40,6 +43,10 @@ vi.mock('@/service/agentPluginImportApi', () => ({
 
 vi.mock('@/service/workspaceConfigurationApi', () => ({
   fetchWorkspaceConfiguration: mocks.fetchWorkspaceConfiguration,
+}));
+
+vi.mock('@/lib/scratchSpaceWorkspace', () => ({
+  ensureScratchSpaceWorkspaceBinding: mocks.ensureScratchSpaceWorkspaceBinding,
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -61,12 +68,29 @@ vi.mock('@/store/spaceStore', () => {
         status: 'active',
       },
     },
+    projectsBySpaceId: {},
     activeSpaceId: 'space-1',
     setActiveSpace: mocks.setActiveSpace,
+    createSpaceOnServer: mocks.createSpaceOnServer,
+    deleteSpaceOnServer: mocks.deleteSpaceOnServer,
   };
+  const useSpaceStore = (selector: (value: typeof state) => unknown) =>
+    selector(state);
+  useSpaceStore.getState = () => ({
+    ...state,
+    getSpaceById: (spaceId: string) =>
+      Object.values(state.spaces).find((space) => space.id === spaceId) ??
+      (spaceId === 'plugin-space'
+        ? {
+            id: 'plugin-space',
+            name: 'Research Agent Plugin',
+            status: 'active',
+          }
+        : undefined),
+  });
   return {
-    useSpaceStore: (selector: (value: typeof state) => unknown) =>
-      selector(state),
+    isUnconfiguredPlaceholderSpace: () => false,
+    useSpaceStore,
   };
 });
 
@@ -178,10 +202,17 @@ const inspection: AgentPluginInspection = {
   convertible: true,
 };
 
-const renderWizard = () =>
+const renderWizard = (
+  props: {
+    initialTargetSpaceId?: string | null;
+    showHeader?: boolean;
+    onConfigurationOpen?: () => void;
+    targetMode?: 'existing' | 'create-space';
+  } = {}
+) =>
   render(
     <MemoryRouter>
-      <AgentPluginImportWizard />
+      <AgentPluginImportWizard {...props} />
     </MemoryRouter>
   );
 
@@ -206,6 +237,30 @@ describe('AgentPluginImportWizard', () => {
       persisted: false,
       base_revision_id: null,
     });
+    mocks.createSpaceOnServer.mockResolvedValue('plugin-space');
+    mocks.deleteSpaceOnServer.mockResolvedValue(undefined);
+    mocks.ensureScratchSpaceWorkspaceBinding.mockResolvedValue(
+      '/workspace/plugin-space'
+    );
+  });
+
+  it('removes standalone navigation, card border and padding when embedded', () => {
+    renderWizard({ showHeader: false, initialTargetSpaceId: 'space-1' });
+
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Import Agent Plugin' })
+    ).toBeNull();
+    const title = screen.getByText('Select an Agent Plugin');
+    const cardHeader = title.parentElement;
+    const card = cardHeader?.parentElement;
+    const selectButton = screen.getByRole('button', {
+      name: 'Select directory or archive',
+    });
+
+    expect(card).toHaveClass('space-y-3', '!border-0');
+    expect(cardHeader).toHaveClass('!p-0');
+    expect(selectButton.parentElement).toHaveClass('!p-0');
   });
 
   it('reviews standard metadata, Skills, MCP servers, files, requirements and warnings without exposing source paths or values', async () => {
@@ -303,6 +358,59 @@ describe('AgentPluginImportWizard', () => {
     expect(mocks.setActiveSpace).toHaveBeenCalledWith('space-1');
     expect(mocks.setActiveProject).toHaveBeenCalledWith(null);
     expect(mocks.setActiveWorkspaceTab).toHaveBeenCalledWith('workforce');
+  });
+
+  it('creates a named Space only after confirming an Agent Plugin conversion', async () => {
+    const user = userEvent.setup();
+    mocks.convert.mockResolvedValueOnce({
+      slug: 'research-plugin',
+      version: 1,
+      target_space_id: 'plugin-space',
+      status: 'draft',
+    });
+    renderWizard({ targetMode: 'create-space', showHeader: false });
+
+    await user.click(
+      screen.getByRole('button', { name: /select directory or archive/i })
+    );
+    const spaceName = await screen.findByRole('textbox', {
+      name: 'New Space name',
+    });
+    expect(spaceName).toHaveValue('Research Agent Plugin');
+    expect(mocks.createSpaceOnServer).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole('checkbox', { name: /confirm agent plugin review/i })
+    );
+    await user.click(
+      screen.getByRole('button', { name: /convert to local draft/i })
+    );
+
+    await waitFor(() =>
+      expect(mocks.createSpaceOnServer).toHaveBeenCalledWith({
+        name: 'Research Agent Plugin',
+        sourceType: 'blank',
+        setActive: false,
+        metadata: {
+          createdFrom: 'agent_plugin_import',
+          autoCreatedPlaceholder: false,
+        },
+      })
+    );
+    expect(mocks.ensureScratchSpaceWorkspaceBinding).toHaveBeenCalledWith({
+      email: 'owner@example.com',
+      userId: 'user-1',
+      space: expect.objectContaining({ id: 'plugin-space' }),
+    });
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledWith(
+      'plugin-space',
+      { email: 'owner@example.com', userId: 'user-1' }
+    );
+    await waitFor(() =>
+      expect(mocks.convert).toHaveBeenCalledWith(
+        expect.objectContaining({ targetSpaceId: 'plugin-space' })
+      )
+    );
   });
 
   it('retries a lost conversion response with the same request id and pinned target version', async () => {

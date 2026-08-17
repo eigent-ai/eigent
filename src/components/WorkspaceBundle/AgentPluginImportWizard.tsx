@@ -21,7 +21,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { useHost } from '@/host';
+import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import {
   convertAgentPluginToWorkspaceBundleDraft,
   inspectAgentPluginSource,
@@ -33,7 +35,10 @@ import { fetchWorkspaceConfiguration } from '@/service/workspaceConfigurationApi
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import {
+  isUnconfiguredPlaceholderSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -104,8 +109,14 @@ const requestId = (): string =>
 
 export function AgentPluginImportWizard({
   initialTargetSpaceId,
+  showHeader = true,
+  onConfigurationOpen,
+  targetMode = 'existing',
 }: {
   initialTargetSpaceId?: string | null;
+  showHeader?: boolean;
+  onConfigurationOpen?: () => void;
+  targetMode?: 'existing' | 'create-space';
 }) {
   const navigate = useNavigate();
   const setActiveWorkspaceTab = usePageTabStore(
@@ -115,30 +126,45 @@ export function AgentPluginImportWizard({
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   const spaces = useSpaceStore((state) => state.spaces);
+  const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const setActiveSpace = useSpaceStore((state) => state.setActiveSpace);
+  const createSpaceOnServer = useSpaceStore(
+    (state) => state.createSpaceOnServer
+  );
+  const deleteSpaceOnServer = useSpaceStore(
+    (state) => state.deleteSpaceOnServer
+  );
   const setActiveProject = useProjectRuntimeStore(
     (state) => state.setActiveProject
   );
   const selectableSpaces = useMemo(
     () =>
       Object.values(spaces)
-        .filter((space) => space.status === 'active')
+        .filter(
+          (space) =>
+            space.status === 'active' &&
+            !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)
+        )
         .sort((left, right) => left.name.localeCompare(right.name)),
-    [spaces]
+    [projectsBySpaceId, spaces]
   );
   const selectableSpaceIds = useMemo(
     () => new Set(selectableSpaces.map((space) => space.id)),
     [selectableSpaces]
   );
-  const defaultTarget = initialTargetSpaceId
-    ? selectableSpaceIds.has(initialTargetSpaceId)
-      ? initialTargetSpaceId
-      : ''
-    : activeSpaceId && selectableSpaceIds.has(activeSpaceId)
-      ? activeSpaceId
-      : selectableSpaces.at(0)?.id || '';
+  const defaultTarget =
+    targetMode === 'create-space'
+      ? ''
+      : initialTargetSpaceId
+        ? selectableSpaceIds.has(initialTargetSpaceId)
+          ? initialTargetSpaceId
+          : ''
+        : activeSpaceId && selectableSpaceIds.has(activeSpaceId)
+          ? activeSpaceId
+          : selectableSpaces.at(0)?.id || '';
   const [targetSpaceId, setTargetSpaceId] = useState(defaultTarget);
+  const [newSpaceName, setNewSpaceName] = useState('');
   const [selectedSource, setSelectedSource] =
     useState<AgentPluginSelectedSource | null>(null);
   const [inspection, setInspection] = useState<AgentPluginInspection | null>(
@@ -198,6 +224,9 @@ export function AgentPluginImportWizard({
         userId,
       });
       setInspection(next);
+      if (targetMode === 'create-space') {
+        setNewSpaceName(next.metadata.name?.trim() || 'Imported Agent Plugin');
+      }
     } catch (nextError) {
       setError(redactSelectedPath(errorMessage(nextError), selectedPath));
     } finally {
@@ -211,7 +240,8 @@ export function AgentPluginImportWizard({
       !selectedSource ||
       !inspection ||
       !reviewConfirmed ||
-      !targetSpaceId ||
+      (targetMode === 'existing' && !targetSpaceId) ||
+      (targetMode === 'create-space' && !newSpaceName.trim()) ||
       !email ||
       conversionInFlight.current
     ) {
@@ -221,8 +251,45 @@ export function AgentPluginImportWizard({
     setBusy('convert');
     setError(null);
     const generation = selectionGeneration.current;
-    const requestedTargetSpaceId = targetSpaceId;
+    let requestedTargetSpaceId = targetSpaceId;
     try {
+      if (!requestedTargetSpaceId && targetMode === 'create-space') {
+        requestedTargetSpaceId = await createSpaceOnServer({
+          name: newSpaceName.trim(),
+          sourceType: 'blank',
+          setActive: false,
+          metadata: {
+            createdFrom: 'agent_plugin_import',
+            autoCreatedPlaceholder: false,
+          },
+        });
+        let root: string | null = null;
+        try {
+          root = await ensureScratchSpaceWorkspaceBinding({
+            email,
+            userId,
+            space: useSpaceStore
+              .getState()
+              .getSpaceById(requestedTargetSpaceId),
+          });
+        } catch (bindingError) {
+          await deleteSpaceOnServer(requestedTargetSpaceId).catch(
+            () => undefined
+          );
+          requestedTargetSpaceId = '';
+          throw bindingError;
+        }
+        if (!root) {
+          await deleteSpaceOnServer(requestedTargetSpaceId).catch(
+            () => undefined
+          );
+          requestedTargetSpaceId = '';
+          throw new Error(
+            'Eigent could not create the local Workspace folder.'
+          );
+        }
+        setTargetSpaceId(requestedTargetSpaceId);
+      }
       let context = conversionContext.current;
       if (!context || context.targetSpaceId !== requestedTargetSpaceId) {
         const targetDraft = await fetchWorkspaceConfiguration(
@@ -292,6 +359,7 @@ export function AgentPluginImportWizard({
     setActiveSpace(conversion.target_space_id);
     setActiveProject(null);
     setActiveWorkspaceTab('workforce');
+    onConfigurationOpen?.();
     navigate('/');
   };
 
@@ -318,21 +386,27 @@ export function AgentPluginImportWizard({
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 text-body-sm text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default"
-        onClick={() => navigate(-1)}
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Back
-      </button>
+      {showHeader ? (
+        <>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-body-sm text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default"
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+          </button>
 
-      <header>
-        <h1 className="text-heading-2xl font-semibold">Import Agent Plugin</h1>
-        <p className="mt-2 max-w-2xl text-body-sm text-ds-text-neutral-muted-default">
-          Import the Agent Plugins standard. Eigent reviews the package before
-          converting it to a local Workspace Bundle draft.
-        </p>
-      </header>
+          <header>
+            <h1 className="text-heading-2xl font-semibold">
+              Import Agent Plugin
+            </h1>
+            <p className="mt-2 max-w-2xl text-body-sm text-ds-text-neutral-muted-default">
+              Import the Agent Plugins standard. Eigent reviews the package
+              before converting it to a local Workspace Bundle draft.
+            </p>
+          </header>
+        </>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-body-sm text-ds-text-error-strong-default">
@@ -340,15 +414,21 @@ export function AgentPluginImportWizard({
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader>
+      <Card className={showHeader ? undefined : 'space-y-3 !border-0'}>
+        <CardHeader className={showHeader ? undefined : '!p-0'}>
           <CardTitle>Select an Agent Plugin</CardTitle>
           <CardDescription>
             Choose a local plugin directory or archive. The selected path is
             inspected locally and is never included in the converted Bundle.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
+        <CardContent
+          className={
+            showHeader
+              ? 'flex flex-wrap items-center gap-3'
+              : 'flex flex-wrap items-center gap-3 !p-0'
+          }
+        >
           <Button
             type="button"
             variant="secondary"
@@ -708,29 +788,41 @@ export function AgentPluginImportWizard({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <label className="block space-y-1.5 text-body-sm font-medium">
-                <span>Target Workspace</span>
-                <select
-                  className="h-10 w-full rounded-xl border bg-ds-bg-neutral-default-default px-3"
-                  value={targetSpaceId}
-                  disabled={busy !== null}
-                  onChange={(event) => {
-                    selectionGeneration.current += 1;
-                    setTargetSpaceId(event.target.value);
-                    conversionContext.current = null;
-                    setReplacementReview(null);
-                    setReplacementConfirmed(false);
-                  }}
-                >
-                  <option value="">Select a Workspace</option>
-                  {selectableSpaces.map((space) => (
-                    <option key={space.id} value={space.id}>
-                      {space.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {selectableSpaces.length === 0 ? (
+              {targetMode === 'create-space' ? (
+                <label className="block space-y-1.5 text-body-sm font-medium">
+                  <span>New Space name</span>
+                  <Input
+                    value={newSpaceName}
+                    disabled={busy !== null || Boolean(targetSpaceId)}
+                    onChange={(event) => setNewSpaceName(event.target.value)}
+                    aria-label="New Space name"
+                  />
+                </label>
+              ) : (
+                <label className="block space-y-1.5 text-body-sm font-medium">
+                  <span>Target Workspace</span>
+                  <select
+                    className="h-10 w-full rounded-xl border bg-ds-bg-neutral-default-default px-3"
+                    value={targetSpaceId}
+                    disabled={busy !== null}
+                    onChange={(event) => {
+                      selectionGeneration.current += 1;
+                      setTargetSpaceId(event.target.value);
+                      conversionContext.current = null;
+                      setReplacementReview(null);
+                      setReplacementConfirmed(false);
+                    }}
+                  >
+                    <option value="">Select a Workspace</option>
+                    {selectableSpaces.map((space) => (
+                      <option key={space.id} value={space.id}>
+                        {space.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {targetMode === 'existing' && selectableSpaces.length === 0 ? (
                 <p className="text-body-sm text-ds-text-warning-default-default">
                   Create a Workspace before converting this Agent Plugin.
                 </p>
@@ -785,7 +877,9 @@ export function AgentPluginImportWizard({
                 disabled={
                   !inspection.convertible ||
                   !reviewConfirmed ||
-                  !targetSpaceId ||
+                  (targetMode === 'existing'
+                    ? !targetSpaceId
+                    : !newSpaceName.trim()) ||
                   !email ||
                   busy !== null
                 }

@@ -20,7 +20,7 @@ export default function HomeSections() {
   const { section } = useHomeSection();
 
   return (
-    <div className="w-full min-w-0 flex-1 pb-12 pl-3 pr-2">
+    <div className="w-full min-w-0 flex-1 pb-12 pt-4">
       {section === 'spaces' && <Spaces />}
     </div>
   );

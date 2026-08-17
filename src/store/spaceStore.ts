@@ -81,6 +81,19 @@ export interface CreateSpaceInput {
   setActive?: boolean;
 }
 
+export type UpdateSpaceInput = Partial<
+  Pick<
+    Space,
+    | 'name'
+    | 'description'
+    | 'sourceType'
+    | 'rootPath'
+    | 'rootFingerprint'
+    | 'status'
+    | 'metadata'
+  >
+>;
+
 export interface SpaceProjectMeta {
   id: string;
   userId?: string;
@@ -129,6 +142,10 @@ interface SpaceStore {
   upsertSpaces: (spaces: Space[], activeSpaceId?: string | null) => void;
   createSpace: (input: CreateSpaceInput) => string;
   createSpaceOnServer: (input: CreateSpaceInput) => Promise<string>;
+  updateSpaceOnServer: (
+    spaceId: string,
+    input: UpdateSpaceInput
+  ) => Promise<void>;
   deleteSpace: (spaceId: string) => void;
   deleteSpaceOnServer: (spaceId: string) => Promise<void>;
   cleanupInactiveEmptySpacesOnServer: () => Promise<void>;
@@ -273,18 +290,29 @@ const DISPOSABLE_BLANK_SPACE_CREATED_FROM = new Set([
   'home_hub_toolbar',
   'top_bar',
   'project_sidebar_space_selector',
+  'space_detail_sidebar',
   'workspace_space_picker',
 ]);
+
+/** Empty placeholder Spaces stay available to creation flows but never render as user Spaces. */
+export const isUnconfiguredPlaceholderSpace = (
+  space: Space | null | undefined,
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
+) => {
+  if (!space || space.metadata?.legacy === true) return false;
+  if (space.status !== 'active' || space.sourceType !== 'blank') return false;
+  if (space.rootPath) return false;
+  if (!isPlaceholderSpaceNameStatic(space.name)) return false;
+  return !hasVisibleProjectsForSpace(projectsBySpaceId, space.id);
+};
 
 export const isDisposableBlankSpace = (
   space: Space | null | undefined,
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
 ) => {
-  if (!space || space.metadata?.legacy === true) return false;
-  if (space.status !== 'active') return false;
-  if (space.sourceType !== 'blank') return false;
-  if (space.rootPath) return false;
-  if (hasVisibleProjectsForSpace(projectsBySpaceId, space.id)) return false;
+  if (!space || !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)) {
+    return false;
+  }
   if (space.metadata?.autoCreatedPlaceholder !== true) return false;
 
   const createdFrom =
@@ -1184,6 +1212,20 @@ export const useSpaceStore = create<SpaceStore>()(
         return space.id;
       },
 
+      updateSpaceOnServer: async (spaceId, input) => {
+        const { proxyUpdateSpace } = await import('@/service/spaceApi');
+        const space = await proxyUpdateSpace(spaceId, {
+          name: input.name,
+          description: input.description,
+          source_type: input.sourceType,
+          root_path: input.rootPath,
+          root_fingerprint: input.rootFingerprint,
+          status: input.status,
+          metadata: input.metadata,
+        });
+        get().upsertSpaces([space], undefined);
+      },
+
       deleteSpace: (spaceId) => {
         const current = get();
         if (!current.spaces[spaceId]) return;
@@ -1307,9 +1349,7 @@ export const useSpaceStore = create<SpaceStore>()(
       renameSpaceOnServer: async (spaceId, name) => {
         const nextName = name.trim();
         if (!nextName) return;
-        const { proxyUpdateSpace } = await import('@/service/spaceApi');
-        const space = await proxyUpdateSpace(spaceId, { name: nextName });
-        get().upsertSpaces([space], undefined);
+        await get().updateSpaceOnServer(spaceId, { name: nextName });
       },
 
       setActiveSpace: (spaceId) => {

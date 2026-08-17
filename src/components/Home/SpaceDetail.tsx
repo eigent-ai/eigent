@@ -13,18 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
 
-import ContentHeader from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
-import {
-  LabelPillToggle,
-  type LabelPillToggleOption,
-} from '@/components/ui/label-pill-toggle';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   Activity,
   ArrowLeft,
-  Brain,
   CalendarDays,
   Cloud,
   FolderKanban,
@@ -32,15 +29,22 @@ import {
   HardDrive,
   ListChecks,
   LoaderCircle,
-  Settings2,
   Zap,
 } from 'lucide-react';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
+import { SpaceDetailTabsNav, type SpaceDetailTab } from './SpaceDetailTabsNav';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
-import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import { formatHubDate } from './utils';
+
+export {
+  isSpaceDetailTab,
+  SPACE_DETAIL_TABS,
+  type SpaceDetailTab,
+} from './SpaceDetailTabsNav';
 
 const Folder = lazy(() => import('@/components/Folder'));
 const Memory = lazy(() => import('@/components/Settings/Memory'));
@@ -50,29 +54,7 @@ const WorkspaceConfigurationEditor = lazy(() =>
   }))
 );
 
-export const SPACE_DETAIL_TABS = [
-  'projects',
-  'tasks',
-  'triggers',
-  'context',
-  'memory',
-  'workspace-profile',
-] as const;
-
-export type SpaceDetailTab = (typeof SPACE_DETAIL_TABS)[number];
-
-export function isSpaceDetailTab(value: unknown): value is SpaceDetailTab {
-  return SPACE_DETAIL_TABS.includes(value as SpaceDetailTab);
-}
-
-const SPACE_DETAIL_TAB_OPTIONS: LabelPillToggleOption<SpaceDetailTab>[] = [
-  { value: 'projects', label: 'Projects', icon: FolderKanban },
-  { value: 'tasks', label: 'Tasks', icon: ListChecks },
-  { value: 'triggers', label: 'Triggers', icon: Zap },
-  { value: 'context', label: 'Context', icon: FolderOpen },
-  { value: 'memory', label: 'Memory', icon: Brain },
-  { value: 'workspace-profile', label: 'Workspace Profile', icon: Settings2 },
-];
+const SPACE_DETAIL_RAIL_CLASS = 'mx-auto w-full max-w-[1100px]';
 
 function DetailFallback() {
   return (
@@ -131,13 +113,36 @@ export default function SpaceDetail({
   onTabChange,
   onBack,
 }: SpaceDetailProps) {
+  const navigate = useNavigate();
+  const setActiveSpace = useSpaceStore((state) => state.setActiveSpace);
+  const projectStore = useProjectRuntimeStore();
+  const setActiveWorkspaceTab = usePageTabStore(
+    (state) => state.setActiveWorkspaceTab
+  );
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (state) => state.requestWorkspaceChatFocus
+  );
   const data = useSpaceDetailData(spaceId);
   const { space } = data;
+
+  const handleOpenWorkspace = useCallback(() => {
+    setActiveSpace(spaceId);
+    projectStore.setActiveProject(null);
+    setActiveWorkspaceTab('workforce');
+    requestWorkspaceChatFocus();
+    navigate('/');
+  }, [
+    navigate,
+    projectStore,
+    requestWorkspaceChatFocus,
+    setActiveSpace,
+    setActiveWorkspaceTab,
+    spaceId,
+  ]);
 
   if (!space) {
     return (
       <div className="flex h-full flex-col">
-        <ContentHeader border={false} />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <FolderOpen
             className="h-10 w-10 text-ds-icon-neutral-muted-default"
@@ -203,11 +208,19 @@ export default function SpaceDetail({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <ContentHeader border={false} />
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]">
-          <div className="px-8 py-6">
-            <div className="mx-auto grid w-full max-w-[1100px] gap-8 xl:grid-cols-[minmax(240px,0.8fr)_minmax(600px,1.4fr)] xl:items-start">
+        <div
+          data-space-detail-scroll-container
+          className="scrollbar-always-visible min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]"
+        >
+          <div className="px-8 py-8">
+            <div
+              data-space-detail-summary-rail
+              className={cn(
+                SPACE_DETAIL_RAIL_CLASS,
+                'grid gap-8 xl:grid-cols-[minmax(240px,0.8fr)_minmax(600px,1.4fr)] xl:items-start'
+              )}
+            >
               <div className="min-w-0 overflow-hidden">
                 <span
                   className="block truncate !text-body-lg font-bold text-ds-text-neutral-default-default"
@@ -264,28 +277,48 @@ export default function SpaceDetail({
 
           <div
             data-space-tabs-sticky
-            className="sticky top-0 z-20 bg-ds-bg-neutral-subtle-default px-8 py-2"
+            className="border-b-1 sticky -top-px z-20 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default px-8 pt-2"
           >
-            <div className="mx-auto w-full max-w-[1100px]">
-              <LabelPillToggle
-                value={activeTab}
-                options={SPACE_DETAIL_TAB_OPTIONS}
-                onValueChange={onTabChange}
-                layoutId="space-detail-tabs"
-                aria-label="Space content"
-              />
+            <div
+              data-space-detail-tabs-rail
+              className={SPACE_DETAIL_RAIL_CLASS}
+            >
+              <div className="flex min-w-0 items-start justify-between gap-4">
+                <SpaceDetailTabsNav
+                  activeTab={activeTab}
+                  onChange={onTabChange}
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-lg font-bold"
+                  onClick={handleOpenWorkspace}
+                >
+                  Open Workspace
+                </Button>
+              </div>
             </div>
           </div>
 
           <div
             className={cn(
-              'mx-auto w-full max-w-[1100px]',
+              'px-8',
               contextLikeTab
                 ? 'h-[calc(100dvh-8.5rem)] min-h-[32rem]'
-                : 'min-h-full px-8 py-4'
+                : 'min-h-full py-4'
             )}
           >
-            <Suspense fallback={<DetailFallback />}>{tabContent}</Suspense>
+            <div
+              data-space-detail-content-rail
+              className={cn(
+                SPACE_DETAIL_RAIL_CLASS,
+                contextLikeTab ? 'h-full' : 'min-h-full'
+              )}
+            >
+              <Suspense fallback={<DetailFallback />}>{tabContent}</Suspense>
+            </div>
           </div>
         </div>
       </div>

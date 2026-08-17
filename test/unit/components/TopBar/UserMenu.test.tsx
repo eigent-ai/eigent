@@ -14,7 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { UserMenu } from '@/components/TopBar/UserMenu';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -161,7 +161,7 @@ describe('UserMenu subscription summary', () => {
     consoleError.mockRestore();
   });
 
-  it('lists Settings first and opens it inside Home', async () => {
+  it('groups account details before preferences and opens Settings inside Home', async () => {
     const user = userEvent.setup();
     vi.mocked(proxyFetchGet)
       .mockResolvedValueOnce({ plan_key: 'pro' })
@@ -170,14 +170,37 @@ describe('UserMenu subscription summary', () => {
     renderUserMenu('/?tab=project');
     await openMenu(user);
 
-    const menuItems = screen.getAllByRole('menuitem');
-    expect(menuItems[0]).toHaveTextContent('Settings');
+    const menu = screen.getByRole('menu');
+    const email = within(menu).getByText('person@example.com');
+    const plan = within(menu).getByText('Pro').parentElement;
+    const referFriends = within(menu).getByRole('menuitem', {
+      name: 'Refer friends',
+    });
+    const [accountDivider, logoutDivider] =
+      within(menu).getAllByRole('separator');
+    const appearance = within(menu).getByText('Appearance');
+    const language = within(menu).getByRole('menuitem', { name: 'Language' });
+    const settings = within(menu).getByRole('menuitem', { name: 'Settings' });
+    const logout = within(menu).getByRole('menuitem', { name: 'Log out' });
 
-    await user.click(
-      screen.getByRole('menuitem', {
-        name: 'Settings',
-      })
-    );
+    expect(plan).toHaveTextContent('Pro · 10');
+    expect(settings.querySelector('svg')).toHaveClass('lucide-settings');
+    for (const [current, next] of [
+      [email, plan],
+      [plan, referFriends],
+      [referFriends, accountDivider],
+      [accountDivider, appearance],
+      [appearance, language],
+      [language, settings],
+      [settings, logoutDivider],
+      [logoutDivider, logout],
+    ] as const) {
+      expect(
+        current?.compareDocumentPosition(next) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+    await user.click(settings);
 
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/home?section=settings&tab=settings'

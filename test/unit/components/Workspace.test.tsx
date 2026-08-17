@@ -192,16 +192,27 @@ vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
   WorkforceAgentList: () => null,
 }));
 vi.mock('@/components/Workspace/WorkspaceAllSessions', () => ({
-  WorkspaceAllSessions: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceExamplePrompts', () => ({
-  WorkspaceExamplePrompts: () => null,
+  WorkspaceAllSessions: () => <div>All Projects content</div>,
 }));
 vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
-  WorkspaceProjectPicker: () => null,
+  WorkspaceProjectPicker: () => <div>Space switch</div>,
 }));
-vi.mock('@/components/Workspace/WorkspaceRecentSessions', () => ({
-  WorkspaceRecentSessions: () => null,
+vi.mock('@/components/Settings/Memory', () => ({
+  default: ({ fixedScope }: { fixedScope: { type: string; id: string } }) => (
+    <div>
+      Memory Settings content for {fixedScope.type} {fixedScope.id}
+    </div>
+  ),
+}));
+vi.mock('@/components/WorkspaceConfiguration/SpaceSettings', () => ({
+  SpaceSettings: ({ onBack }: { onBack?: () => void }) => (
+    <div>
+      <span>Space Settings content</span>
+      <button type="button" onClick={onBack}>
+        Back to Workspace
+      </button>
+    </div>
+  ),
 }));
 const renderWorkspace = () =>
   render(
@@ -258,6 +269,72 @@ describe('Workspace', () => {
     expect(
       screen.queryByRole('button', { name: 'layout.workspace-profile' })
     ).not.toBeInTheDocument();
+  });
+
+  it('shows a sidebar-width management panel beside the composer and an empty content section', () => {
+    renderWorkspace();
+
+    const managementPanel = screen.getByRole('complementary', {
+      name: 'Workspace management',
+    });
+    expect(managementPanel).toHaveStyle({ width: '240px' });
+    expect(
+      screen.getByRole('button', { name: 'Space settings' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Memory settings' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'All projects' })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace content')).toBeEmptyDOMElement();
+  });
+
+  it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
+    const { container } = renderWorkspace();
+
+    expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
+    const coworkLabel = screen.getByText('Cowork with');
+    const coworkRow = coworkLabel.closest('[data-workspace-cowork-row]');
+    const agentList = container.querySelector('[data-workspace-agent-list]');
+    const bottomBox = container.querySelector('[data-workspace-bottom-box]');
+    const inputSection = container.querySelector(
+      '[data-workspace-input-section]'
+    );
+    const workspaceHeader = screen.getByLabelText('Workspace header');
+    const managementPanel = screen.getByRole('complementary', {
+      name: 'Workspace management',
+    });
+
+    expect(coworkLabel).toHaveClass('h-10', 'items-center');
+    expect(workspaceHeader).toHaveClass('gap-0');
+    expect(inputSection).toHaveClass('p-4');
+    expect(managementPanel).toHaveClass('p-1');
+    expect(coworkRow).toHaveClass('h-10', 'items-center', 'justify-start');
+    expect(agentList).toHaveClass('h-10', 'items-center', 'justify-start');
+    expect(coworkRow?.nextElementSibling).toBe(bottomBox);
+  });
+
+  it('opens all Workspace management subpages and returns to the landing page', async () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All projects' }));
+    expect(screen.getByText('All Projects content')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to workspace' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Memory settings' }));
+    expect(
+      await screen.findByText('Memory Settings content for space space-1')
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to workspace' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Space settings' }));
+    expect(screen.getByText('Space Settings content')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Workspace' }));
+
+    expect(
+      screen.getByRole('complementary', { name: 'Workspace management' })
+    ).toBeInTheDocument();
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

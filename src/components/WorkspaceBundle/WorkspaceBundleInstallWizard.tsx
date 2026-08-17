@@ -41,7 +41,7 @@ import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
 import {
   Check,
   ExternalLink,
@@ -528,6 +528,7 @@ function LocalValueRow({
 export interface WorkspaceBundleInstallWizardProps {
   initialHandle?: string;
   initialProposalId?: string;
+  targetSpaceId?: string;
   showHeader?: boolean;
   onProposalChange?: (proposalId: string | null, handle: string | null) => void;
   onWorkspaceOpen?: () => void;
@@ -536,6 +537,7 @@ export interface WorkspaceBundleInstallWizardProps {
 export function WorkspaceBundleInstallWizard({
   initialHandle = '',
   initialProposalId = '',
+  targetSpaceId,
   showHeader = true,
   onProposalChange,
   onWorkspaceOpen,
@@ -547,6 +549,9 @@ export function WorkspaceBundleInstallWizard({
   const actorId = String(userId ?? email ?? '');
   const createSpaceOnServer = useSpaceStore(
     (state) => state.createSpaceOnServer
+  );
+  const updateSpaceOnServer = useSpaceStore(
+    (state) => state.updateSpaceOnServer
   );
   const deleteSpaceOnServer = useSpaceStore(
     (state) => state.deleteSpaceOnServer
@@ -730,6 +735,9 @@ export function WorkspaceBundleInstallWizard({
     setError(null);
     try {
       let seed = installSeed;
+      if (seed && targetSpaceId && seed.spaceId !== targetSpaceId) {
+        seed = null;
+      }
       if (!seed) {
         const proposalId = newInstallId('bundleinstall');
         const requestId = newInstallId('bundlerequest');
@@ -737,24 +745,52 @@ export function WorkspaceBundleInstallWizard({
           review.bundle?.name ||
           review.revision.manifest.metadata.name ||
           'Imported workspace';
-        const spaceId = await createSpaceOnServer({
-          name,
-          sourceType: 'blank',
-          setActive: false,
-          metadata: {
-            createdFrom: 'workspace_bundle_install',
-            bundleRevision: handle.coordinate,
-            bundleInstallProposalId: proposalId,
-            bundleInstallRequestId: requestId,
-          },
-        });
+        const spaceStore = useSpaceStore.getState();
+        const targetSpace = targetSpaceId
+          ? spaceStore.getSpaceById(targetSpaceId)
+          : null;
+        const reuseTargetSpace = isDisposableBlankSpace(
+          targetSpace,
+          spaceStore.projectsBySpaceId
+        );
+        const metadata = {
+          ...targetSpace?.metadata,
+          createdFrom: 'workspace_bundle_install',
+          autoCreatedPlaceholder: false,
+          bundleRevision: handle.coordinate,
+          bundleInstallProposalId: proposalId,
+          bundleInstallRequestId: requestId,
+        };
+        const spaceId = reuseTargetSpace
+          ? targetSpace!.id
+          : await createSpaceOnServer({
+              name,
+              sourceType: 'blank',
+              setActive: false,
+              metadata,
+            });
+        if (reuseTargetSpace) {
+          await updateSpaceOnServer(spaceId, { name, metadata });
+        }
         seed = { proposalId, requestId, spaceId };
         setInstallSeed(seed);
         try {
           writeInstallSeed(handle.coordinate, actorId, seed);
         } catch {
           setInstallSeed(null);
-          await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          if (reuseTargetSpace && targetSpace) {
+            await updateSpaceOnServer(spaceId, {
+              name: targetSpace.name,
+              description: targetSpace.description,
+              sourceType: targetSpace.sourceType,
+              rootPath: targetSpace.rootPath,
+              rootFingerprint: targetSpace.rootFingerprint,
+              status: targetSpace.status,
+              metadata: targetSpace.metadata,
+            }).catch(() => undefined);
+          } else {
+            await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          }
           throw new Error(
             'Eigent could not save the recoverable installation intent.'
           );
@@ -768,7 +804,19 @@ export function WorkspaceBundleInstallWizard({
         if (!root) {
           clearInstallSeed(handle.coordinate, actorId);
           setInstallSeed(null);
-          await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          if (reuseTargetSpace && targetSpace) {
+            await updateSpaceOnServer(spaceId, {
+              name: targetSpace.name,
+              description: targetSpace.description,
+              sourceType: targetSpace.sourceType,
+              rootPath: targetSpace.rootPath,
+              rootFingerprint: targetSpace.rootFingerprint,
+              status: targetSpace.status,
+              metadata: targetSpace.metadata,
+            }).catch(() => undefined);
+          } else {
+            await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          }
           throw new Error(
             'Eigent could not create the local Workspace folder.'
           );
@@ -808,6 +856,8 @@ export function WorkspaceBundleInstallWizard({
     installSeed,
     onProposalChange,
     review,
+    targetSpaceId,
+    updateSpaceOnServer,
     userId,
   ]);
 
@@ -1130,11 +1180,11 @@ export function WorkspaceBundleInstallWizard({
       ) : null}
 
       {!review && !snapshot ? (
-        <Card>
-          <CardHeader>
+        <Card className={showHeader ? undefined : 'space-y-3 !border-0'}>
+          <CardHeader className={showHeader ? undefined : '!p-0'}>
             <CardTitle>Import by share handle</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className={showHeader ? undefined : '!p-0'}>
             <form
               className="flex gap-2"
               onSubmit={(event) => {

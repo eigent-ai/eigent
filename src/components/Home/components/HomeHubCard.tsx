@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import AlertDialog from '@/components/ui/alertDialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
@@ -27,7 +28,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useHomeHub } from '../context';
@@ -71,7 +72,7 @@ function SpaceItemContent({
   layout,
 }: HomeHubSpaceItemProps) {
   const { t } = useTranslation();
-  const { openSpace } = useHomeHubNavigation();
+  const { openSpace, openWorkspace } = useHomeHubNavigation();
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const deleteSpaceOnServer = useSpaceStore((s) => s.deleteSpaceOnServer);
 
@@ -118,6 +119,33 @@ function SpaceItemContent({
       setDeleting(false);
     }
   }, [canManage, deleteSpaceOnServer, deleting, space.id, t]);
+
+  const handleOpenWorkspace = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      openWorkspace(space.id);
+    },
+    [openWorkspace, space.id]
+  );
+
+  const openWorkspaceButton =
+    layout === 'board' ? null : (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={
+          layout === 'list'
+            ? 'h-7 cursor-pointer justify-self-end rounded-lg font-medium'
+            : 'h-7 cursor-pointer rounded-lg font-medium'
+        }
+        data-home-space-open-workspace
+        data-layout={layout}
+        onClick={handleOpenWorkspace}
+      >
+        Open Workspace
+      </Button>
+    );
 
   const menuItems = [
     {
@@ -185,34 +213,37 @@ function SpaceItemContent({
         menuItems={menuItems}
       >
         {layout === 'list' ? (
-          <HomeHubItemBody
-            title={title}
-            nameIcon={<Folder className="h-4 w-4" />}
-            listCells={[
-              { id: 'type', content: spaceKindLabel },
-              {
-                id: 'projects',
-                content: String(projectCount),
-                align: 'right',
-              },
-              {
-                id: 'tasks',
-                content: formatCompactCount(taskCount),
-                align: 'right',
-              },
-              {
-                id: 'triggers',
-                content: formatCompactCount(triggerCount),
-                align: 'right',
-              },
-              {
-                id: 'created',
-                content: formatHubCreatedTime(space.createdAt) || '—',
-                align: 'right',
-                textSize: 'xs',
-              },
-            ]}
-          />
+          <>
+            <HomeHubItemBody
+              title={title}
+              nameIcon={<Folder className="h-4 w-4" />}
+              listCells={[
+                { id: 'type', content: spaceKindLabel },
+                {
+                  id: 'projects',
+                  content: String(projectCount),
+                  align: 'right',
+                },
+                {
+                  id: 'tasks',
+                  content: formatCompactCount(taskCount),
+                  align: 'right',
+                },
+                {
+                  id: 'triggers',
+                  content: formatCompactCount(triggerCount),
+                  align: 'right',
+                },
+                {
+                  id: 'created',
+                  content: formatHubCreatedTime(space.createdAt) || '—',
+                  align: 'right',
+                  textSize: 'xs',
+                },
+              ]}
+            />
+            {openWorkspaceButton}
+          </>
         ) : layout === 'board' ? (
           <HomeHubSpaceBoardCardBody
             title={title}
@@ -224,16 +255,19 @@ function SpaceItemContent({
             menuItems={menuItems}
           />
         ) : (
-          <HomeHubSpaceCardBody
-            title={title}
-            spaceKindLabel={spaceKindLabel}
-            projectCount={projectCount}
-            taskCount={taskCount}
-            triggerCount={triggerCount}
-            status={space.status}
-            updatedAt={space.updatedAt}
-            menuItems={menuItems}
-          />
+          <>
+            <HomeHubSpaceCardBody
+              title={title}
+              spaceKindLabel={spaceKindLabel}
+              projectCount={projectCount}
+              taskCount={taskCount}
+              triggerCount={triggerCount}
+              status={space.status}
+              updatedAt={space.updatedAt}
+              menuItems={menuItems}
+              footerAction={openWorkspaceButton}
+            />
+          </>
         )}
       </HomeHubItemShell>
     </>

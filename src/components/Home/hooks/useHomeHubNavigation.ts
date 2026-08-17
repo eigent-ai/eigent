@@ -34,6 +34,9 @@ export function useHomeHubNavigation() {
   const projectStore = useProjectRuntimeStore();
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
   const requestSelectTrigger = usePageTabStore((s) => s.requestSelectTrigger);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
 
@@ -45,6 +48,23 @@ export function useHomeHubNavigation() {
       );
     },
     [location.state, navigate]
+  );
+
+  const openWorkspace = useCallback(
+    (spaceId: string) => {
+      setActiveSpace(spaceId);
+      projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
+      navigate('/');
+    },
+    [
+      navigate,
+      projectStore,
+      requestWorkspaceChatFocus,
+      setActiveSpace,
+      setActiveWorkspaceTab,
+    ]
   );
 
   const openProject = useCallback(
@@ -193,6 +213,7 @@ export function useHomeHubNavigation() {
 
   return {
     openSpace,
+    openWorkspace,
     openProject,
     openTask,
     openTrigger,

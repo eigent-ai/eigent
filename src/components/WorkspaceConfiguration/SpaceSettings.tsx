@@ -14,7 +14,9 @@
 
 import ContentHeader from '@/components/Layout/ContentHeader';
 import SettingsContentShell from '@/components/Settings/SettingsContentShell';
+import { Button } from '@/components/ui/button';
 import { useSpaceStore } from '@/store/spaceStore';
+import { ArrowLeft } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -23,8 +25,12 @@ const WorkspaceConfigurationEditor = lazy(async () => {
   return { default: module.WorkspaceConfigurationEditor };
 });
 
+interface SpaceSettingsProps {
+  onBack?: () => void;
+}
+
 /** Settings editor for the active Space profile. */
-export function SpaceSettings() {
+export function SpaceSettings({ onBack }: SpaceSettingsProps = {}) {
   const { t } = useTranslation();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const activeSpace = useSpaceStore((state) =>
@@ -34,7 +40,24 @@ export function SpaceSettings() {
 
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-col">
-      <ContentHeader title={title} />
+      <ContentHeader
+        title={title}
+        leading={
+          onBack ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="text"
+              onClick={onBack}
+              aria-label={t('layout.back-to-workspace-tooltip')}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              {t('layout.back')}
+            </Button>
+          ) : undefined
+        }
+      />
       <SettingsContentShell>
         {!activeSpaceId || !activeSpace ? (
           <div className="flex min-h-full items-center justify-center p-8 text-body-sm text-ds-text-neutral-muted-default">

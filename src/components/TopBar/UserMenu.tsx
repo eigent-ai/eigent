@@ -49,7 +49,7 @@ import {
   LogOut,
   Monitor,
   Moon,
-  Settings2,
+  Settings,
   Sun,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -247,16 +247,6 @@ export function UserMenu() {
           >
             {email?.trim() || profileDisplayName || t('setting.profile')}
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            className="gap-2"
-            onPointerEnter={closeLanguageSub}
-            onSelect={handleOpenSettings}
-          >
-            <Settings2 className="h-4 w-4" aria-hidden />
-            {t('setting.settings')}
-          </DropdownMenuItem>
 
           {!IS_LOCAL_PROXY ? (
             <DropdownMenuItem
@@ -301,6 +291,26 @@ export function UserMenu() {
             {t('layout.refer-friends')}
           </DropdownMenuItem>
 
+          <DropdownMenuSeparator />
+
+          <div
+            className="flex flex-col gap-1.5 px-2 py-1.5"
+            onPointerEnter={closeLanguageSub}
+            onPointerDown={(event) => event.preventDefault()}
+          >
+            <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+              {t('setting.appearance')}
+            </span>
+            <IconPillToggle
+              className="w-full"
+              layoutId="user-menu-color-mode"
+              aria-label={t('setting.appearance')}
+              value={appearanceMode}
+              options={colorModeOptions}
+              onValueChange={setAppearanceMode}
+            />
+          </div>
+
           <DropdownMenuSub
             open={languageSubOpen}
             onOpenChange={setLanguageSubOpen}
@@ -343,23 +353,14 @@ export function UserMenu() {
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          <div
-            className="flex flex-col gap-1.5 px-2 py-1.5"
+          <DropdownMenuItem
+            className="gap-2"
             onPointerEnter={closeLanguageSub}
-            onPointerDown={(event) => event.preventDefault()}
+            onSelect={handleOpenSettings}
           >
-            <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-              {t('setting.appearance')}
-            </span>
-            <IconPillToggle
-              className="w-full"
-              layoutId="user-menu-color-mode"
-              aria-label={t('setting.appearance')}
-              value={appearanceMode}
-              options={colorModeOptions}
-              onValueChange={setAppearanceMode}
-            />
-          </div>
+            <Settings className="h-4 w-4" aria-hidden />
+            {t('setting.settings')}
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
           <DropdownMenuItem

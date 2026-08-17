@@ -14,22 +14,26 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import SettingsContentShell from '@/components/Settings/SettingsContentShell';
 import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import { WorkspaceAllSessions } from '@/components/Workspace/WorkspaceAllSessions';
-import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
+import {
+  WorkspaceManagementPanel,
+  type WorkspaceSubPage,
+} from '@/components/Workspace/WorkspaceManagementPanel';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
-import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
+import { SpaceSettings } from '@/components/WorkspaceConfiguration/SpaceSettings';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
 import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -44,15 +48,25 @@ import {
   type SessionModeType,
 } from '@/types/constants';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
 
+const MemorySettings = lazy(() => import('@/components/Settings/Memory'));
+
 interface WorkspaceProps {
   /**
-   * `'workspace'` (default): full landing — header, composer, and recent runs.
+   * `'workspace'` (default): management landing with a top-aligned composer.
    * `'new-project'`: composer-first layout; use with `embedded` inside Session.
    */
   variant?: 'workspace' | 'new-project';
@@ -96,25 +110,11 @@ export default function Workspace({
   );
   const activeProjectMetadata =
     activeProjectMeta?.metadata ?? activeProject?.metadata;
-  const isEmptyProject = useProjectRuntimeStore((s) => s.isEmptyProject);
   const customAgentFolderPath = usePageTabStore((s) =>
     activeProjectId
       ? s.customAgentFolderPathByProjectId[activeProjectId]
       : undefined
   );
-  const showWorkspaceExamplePrompts = useMemo(() => {
-    if (!activeProject) return false;
-    if (customAgentFolderPath) return false;
-    if (!isEmptyProject(activeProject)) return false;
-    if (activeProjectMetadata?.historyId) return false;
-    if (activeProjectMetadata?.tags?.includes('replay')) return false;
-    return true;
-  }, [
-    activeProject,
-    activeProjectMetadata,
-    customAgentFolderPath,
-    isEmptyProject,
-  ]);
   /**
    * True when the home workspace has no explicitly selected project (default
    * "new project" shell). New Project keeps the interactive project picker in
@@ -208,12 +208,8 @@ export default function Workspace({
     null
   );
 
-  type WorkspaceSubPage = 'all-sessions' | null;
   const [workspaceSubPage, setWorkspaceSubPage] =
-    useState<WorkspaceSubPage>(null);
-  const SUB_PAGE_TITLES: Record<NonNullable<WorkspaceSubPage>, string> = {
-    'all-sessions': t('layout.projects'),
-  };
+    useState<WorkspaceSubPage | null>(null);
   const textareaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -457,6 +453,22 @@ export default function Workspace({
     ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
     : undefined;
 
+  const renderAgentList = (alignment: 'center' | 'start' = 'center') =>
+    effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
+      <SingleAgentList />
+    ) : (
+      <WorkforceAgentList
+        sortedAgents={sortedAgents}
+        activeAgentId={activeAgentId}
+        onSelectAgent={onSelectAgent}
+        onEditWorkerFromMenu={onEditWorkerFromMenu}
+        onDuplicateUserAgent={onDuplicateUserAgent}
+        onDeleteUserAgent={onDeleteUserAgent}
+        onAddWorker={() => setAddWorkerDialogOpen(true)}
+        alignment={alignment}
+      />
+    );
+
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
@@ -466,26 +478,31 @@ export default function Workspace({
           : t('layout.workspace-cowork-workforce')}
       </span>
       <div className="mb-8 flex w-full justify-center px-5">
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <SingleAgentList />
-        ) : (
-          <WorkforceAgentList
-            sortedAgents={sortedAgents}
-            activeAgentId={activeAgentId}
-            onSelectAgent={onSelectAgent}
-            onEditWorkerFromMenu={onEditWorkerFromMenu}
-            onDuplicateUserAgent={onDuplicateUserAgent}
-            onDeleteUserAgent={onDeleteUserAgent}
-            onAddWorker={() => setAddWorkerDialogOpen(true)}
-          />
-        )}
+        {renderAgentList()}
       </div>
     </>
   );
 
+  const workspaceComposerTop = (
+    <div
+      data-workspace-cowork-row
+      className="mb-3 flex h-10 min-h-10 w-full min-w-0 items-center justify-start gap-3"
+    >
+      <span className="text-heading-md my-1 inline-flex h-8 min-h-8 shrink-0 items-center font-semibold text-ds-text-neutral-default-default">
+        Cowork with
+      </span>
+      <div
+        data-workspace-agent-list
+        className="flex h-10 min-h-10 min-w-0 flex-1 items-center justify-start overflow-hidden"
+      >
+        {renderAgentList('start')}
+      </div>
+    </div>
+  );
+
   const composerInput = (
     <>
-      <div className="w-full">
+      <div data-workspace-bottom-box className="w-full">
         <BottomBox
           state="input"
           queuedMessages={[]}
@@ -524,12 +541,6 @@ export default function Workspace({
     </div>
   );
 
-  const showBottomExamplePrompts =
-    !embedded &&
-    (isNewProjectVariant ||
-      !chatStore?.activeTaskId ||
-      showWorkspaceExamplePrompts);
-
   if (embedded && isNewProjectVariant) {
     return (
       <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
@@ -543,90 +554,115 @@ export default function Workspace({
     );
   }
 
-  return (
-    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
-      {/* Center section: header + content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Header toolbar */}
-        <div
-          className={cn(
-            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
-            !isNewProjectVariant && 'px-3'
-          )}
-        >
-          {!isNewProjectVariant && workspaceSubPage !== null && (
+  const backToWorkspace = () => setWorkspaceSubPage(null);
+
+  if (!isNewProjectVariant && workspaceSubPage === 'space-settings') {
+    return <SpaceSettings onBack={backToWorkspace} />;
+  }
+
+  if (!isNewProjectVariant && workspaceSubPage === 'memory-settings') {
+    return (
+      <main className="flex h-full min-h-0 min-w-0 flex-col">
+        <ContentHeader
+          title="Memory Settings"
+          leading={
             <Button
               type="button"
               variant="ghost"
               size="sm"
               buttonContent="text"
-              onClick={() => setWorkspaceSubPage(null)}
-              className="no-drag shrink-0"
+              onClick={backToWorkspace}
               aria-label={t('layout.back-to-workspace-tooltip')}
             >
-              <ArrowLeft aria-hidden />
+              <ArrowLeft className="h-4 w-4" aria-hidden />
               {t('layout.back')}
             </Button>
-          )}
-          {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
-                {SUB_PAGE_TITLES[workspaceSubPage]}
-              </span>
+          }
+        />
+        <SettingsContentShell>
+          {!activeSpaceId ? (
+            <div className="flex min-h-full items-center justify-center p-8 text-body-sm text-ds-text-neutral-muted-default">
+              Select a Space before managing its Memory.
             </div>
-          )}
-          <div className="flex-1" />
-        </div>
-
-        {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          {/* Sub-pages */}
-          {!isNewProjectVariant && workspaceSubPage === 'all-sessions' && (
-            <WorkspaceAllSessions
-              projects={navProjects}
-              activeProjectId={activeProjectId}
-              onProjectClick={(id) => {
-                handleSelectProject(id);
-                setWorkspaceSubPage(null);
-              }}
-            />
-          )}
-          {/* Main content (hidden when a sub-page is active) */}
-          {workspaceSubPage === null && (
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
-              <div
-                className={cn(
-                  'flex min-h-0 w-full flex-1 flex-col',
-                  !isNewProjectVariant && 'px-3'
-                )}
-              >
-                {composer}
-
-                <div
-                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
-                  id="workspace-bottom-group"
-                >
-                  {showBottomExamplePrompts ? (
-                    <WorkspaceExamplePrompts
-                      onSelectPrompt={setMessage}
-                      disabled={!hasModel}
-                    />
-                  ) : navProjects.length > 0 ? (
-                    <WorkspaceRecentSessions
-                      projects={navProjects}
-                      activeProjectId={activeProjectId}
-                      onProjectClick={handleSelectProject}
-                      onOpenAllProjects={() =>
-                        setWorkspaceSubPage('all-sessions')
-                      }
-                    />
-                  ) : null}
+          ) : (
+            <Suspense
+              fallback={
+                <div className="flex min-h-full items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+                  Loading Memory settings…
                 </div>
+              }
+            >
+              <MemorySettings
+                key={activeSpaceId}
+                fixedScope={{ type: 'space', id: activeSpaceId }}
+                showScopeSelector={false}
+              />
+            </Suspense>
+          )}
+        </SettingsContentShell>
+      </main>
+    );
+  }
+
+  if (!isNewProjectVariant && workspaceSubPage === 'all-projects') {
+    return (
+      <main className="flex h-full min-h-0 min-w-0 flex-col">
+        <ContentHeader
+          title="All Projects"
+          leading={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              buttonContent="text"
+              onClick={backToWorkspace}
+              aria-label={t('layout.back-to-workspace-tooltip')}
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              {t('layout.back')}
+            </Button>
+          }
+        />
+        <WorkspaceAllSessions
+          projects={navProjects}
+          activeProjectId={activeProjectId}
+          onProjectClick={handleSelectProject}
+        />
+      </main>
+    );
+  }
+
+  return (
+    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
+      {isNewProjectVariant ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
+          {composer}
+        </div>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <section
+            aria-label="Workspace header"
+            className="flex w-full shrink-0 items-start gap-0"
+          >
+            <div
+              data-workspace-input-section
+              className="flex min-w-0 flex-1 justify-center p-4"
+            >
+              <div className="flex w-full min-w-0 max-w-[600px] flex-col">
+                {workspaceComposerTop}
+                {composerInput}
               </div>
             </div>
-          )}
+            <WorkspaceManagementPanel onOpen={setWorkspaceSubPage} />
+          </section>
+
+          <section
+            aria-label="Workspace content"
+            data-workspace-content
+            className="min-h-0 w-full flex-1"
+          />
         </div>
-      </div>
+      )}
     </div>
   );
 }
