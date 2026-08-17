@@ -508,7 +508,7 @@ function HeaderWin() {
                 appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
               }
               alt=""
-              className="h-4 w-4 shrink-0 select-none"
+              className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
               width={16}
               height={16}
               draggable={false}
@@ -602,7 +602,7 @@ function HeaderWin() {
         <div
           className={cn(
             'no-drag relative z-50 flex h-7 shrink-0 items-center gap-0.5',
-            platform === 'darwin' && 'px-1.5'
+            platform === 'darwin' && 'px-0.5'
           )}
         >
           <TooltipSimple

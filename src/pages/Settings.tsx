@@ -35,6 +35,10 @@ import {
   type SettingsSectionId,
   useSettingsStore,
 } from '@/store/settingsStore';
+import {
+  isUnconfiguredPlaceholderSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
 import { useCallback, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -58,6 +62,15 @@ function HomeSettingsPageContent() {
   const sectionFromUrl = searchParams.get('section');
   const isSpacesView = sectionFromUrl === null || sectionFromUrl === 'spaces';
   const spaceId = isSpacesView ? searchParams.get('spaceId') : null;
+  const spacesById = useSpaceStore((state) => state.spaces);
+  const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
+  const routeSpace = spaceId ? spacesById[spaceId] : null;
+  const visibleSpaceId = isUnconfiguredPlaceholderSpace(
+    routeSpace,
+    projectsBySpaceId
+  )
+    ? null
+    : spaceId;
   const tabFromUrl = searchParams.get('tab');
   const legacySection = isSettingsSection(sectionFromUrl)
     ? sectionFromUrl
@@ -90,6 +103,12 @@ function HomeSettingsPageContent() {
     navigateHome('?section=spaces');
   }, [navigateHome]);
 
+  useEffect(() => {
+    if (spaceId && !visibleSpaceId && routeSpace) {
+      navigateHome('?section=spaces');
+    }
+  }, [navigateHome, routeSpace, spaceId, visibleSpaceId]);
+
   const handleSettingsSectionChange = useCallback(
     (section: SettingsSectionId) => {
       setActiveSection(section);
@@ -117,9 +136,9 @@ function HomeSettingsPageContent() {
     [navigateHome, spaceId]
   );
 
-  const sidebar = spaceId ? (
+  const sidebar = visibleSpaceId ? (
     <SpaceDetailSidebar
-      selectedSpaceId={spaceId}
+      selectedSpaceId={visibleSpaceId}
       onBack={handleHomeSectionChange}
       onSelectSpace={handleSelectSpace}
     />
@@ -135,21 +154,25 @@ function HomeSettingsPageContent() {
   return (
     <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
       <main className="flex h-full min-h-0 min-w-0 flex-col">
-        {spaceId ? (
+        {visibleSpaceId ? (
           <SpaceDetail
-            spaceId={spaceId}
+            spaceId={visibleSpaceId}
             activeTab={activeSpaceTab}
             onTabChange={handleSpaceTabChange}
             onBack={handleHomeSectionChange}
           />
         ) : isSpacesView ? (
-          <>
-            <HomeHeader />
-            <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
-              <HomeGreeting />
-              <HomeSections />
+          <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+            <div className="min-h-full px-8 py-6">
+              <div className="mx-auto w-full max-w-[1100px]">
+                <HomeGreeting />
+                <div className="mt-8">
+                  <HomeHeader />
+                  <HomeSections />
+                </div>
+              </div>
             </div>
-          </>
+          </div>
         ) : (
           <SettingsHeaderProvider activeSection={activeSection}>
             <SettingsHeader activeSection={activeSection} />

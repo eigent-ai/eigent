@@ -15,10 +15,11 @@
 import type { ServerProject } from '@/service/spaceApi';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
+  isDisposableBlankSpace,
   SPACE_SCHEMA_VERSION,
+  useSpaceStore,
   type Space,
   type SpaceSourceType,
-  useSpaceStore,
 } from '@/store/spaceStore';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -42,6 +43,7 @@ vi.mock('@/service/spaceApi', () => ({
   proxyEnsureLegacySpace: vi.fn(),
   proxyFetchSpaceProjects: vi.fn(),
   proxyFetchSpaces: vi.fn(),
+  proxyUpdateSpace: vi.fn(),
 }));
 
 vi.mock('@/service/workspaceApi', () => ({
@@ -179,6 +181,52 @@ describe('spaceStore user scoping', () => {
         space_new_blank: 200,
       },
     });
+  });
+
+  it('treats a new Space from the detail sidebar as a disposable placeholder', () => {
+    const space = makeSpace(
+      'space-detail-new',
+      'Untitled Space',
+      'blank',
+      '2',
+      {
+        createdFrom: 'space_detail_sidebar',
+        autoCreatedPlaceholder: true,
+      }
+    );
+
+    expect(isDisposableBlankSpace(space, {})).toBe(true);
+  });
+
+  it('updates a Space on the server without changing its id', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const updated = {
+      ...makeSpace('space_old_blank', 'project-folder', 'folder', '1'),
+      rootPath: '/Users/test/project-folder',
+      metadata: {
+        createdFrom: 'space_detail_empty_state',
+        autoCreatedPlaceholder: false,
+        bindingSource: 'space_local_brain',
+      },
+    };
+    vi.mocked(spaceApi.proxyUpdateSpace).mockResolvedValue(updated);
+
+    await useSpaceStore.getState().updateSpaceOnServer('space_old_blank', {
+      name: 'project-folder',
+      sourceType: 'folder',
+      rootPath: '/Users/test/project-folder',
+      metadata: updated.metadata,
+    });
+
+    expect(spaceApi.proxyUpdateSpace).toHaveBeenCalledWith(
+      'space_old_blank',
+      expect.objectContaining({
+        name: 'project-folder',
+        source_type: 'folder',
+        root_path: '/Users/test/project-folder',
+      })
+    );
+    expect(useSpaceStore.getState().spaces.space_old_blank).toEqual(updated);
   });
 
   it('disposes project preview shells when their Space is deleted', () => {

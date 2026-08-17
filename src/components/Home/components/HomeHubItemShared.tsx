@@ -45,7 +45,7 @@ import { formatHubRelativeAgo } from '../utils';
 export type HomeHubItemKind = 'space' | 'project' | 'task' | 'trigger';
 
 export const HOME_HUB_LIST_GRID_CLASS: Record<HomeHubItemKind, string> = {
-  space: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_72px_96px]',
+  space: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_72px_96px_120px]',
   project: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_80px_96px]',
   task: 'grid-cols-[minmax(0,2fr)_112px_80px_96px]',
   trigger: 'grid-cols-[minmax(0,2fr)_112px_100px_96px_96px]',
@@ -275,6 +275,7 @@ type HomeHubHubCardBodyProps = {
   menuItems: HomeHubMenuItem[];
   statItems: string[];
   footerTags: ReactNode;
+  footerAction?: ReactNode;
   updatedAt?: string | number | null;
   titleClassName?: string;
 };
@@ -285,6 +286,7 @@ export function HomeHubHubCardBody({
   menuItems,
   statItems,
   footerTags,
+  footerAction,
   updatedAt,
   titleClassName,
 }: HomeHubHubCardBodyProps) {
@@ -320,11 +322,12 @@ export function HomeHubHubCardBody({
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {footerTags}
         </div>
-        {lastUpdated ? (
-          <span className="shrink-0 text-body-xs text-ds-text-neutral-subtle-default">
-            {t('layout.home-space-last-updated', { time: lastUpdated })}
-          </span>
-        ) : null}
+        {footerAction ??
+          (lastUpdated ? (
+            <span className="shrink-0 text-body-xs text-ds-text-neutral-subtle-default">
+              {t('layout.home-space-last-updated', { time: lastUpdated })}
+            </span>
+          ) : null)}
       </div>
     </>
   );
@@ -460,6 +463,7 @@ type HomeHubSpaceCardBodyProps = {
   status: Space['status'];
   updatedAt?: number;
   menuItems: HomeHubMenuItem[];
+  footerAction?: ReactNode;
 };
 
 export function HomeHubSpaceCardBody({
@@ -471,6 +475,7 @@ export function HomeHubSpaceCardBody({
   status,
   updatedAt,
   menuItems,
+  footerAction,
 }: HomeHubSpaceCardBodyProps) {
   const { t } = useTranslation();
   const statusLabel = getSpaceStatusLabel(status, t);
@@ -487,6 +492,7 @@ export function HomeHubSpaceCardBody({
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
+      footerAction={footerAction}
       footerTags={
         <>
           <HomeHubSpaceStatusTag status={status} label={statusLabel} />

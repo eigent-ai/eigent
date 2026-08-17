@@ -22,7 +22,7 @@ import {
   Globe,
   Puzzle,
   Radio,
-  Settings2,
+  Settings,
   UsersRound,
   WandSparkles,
 } from 'lucide-react';
@@ -119,7 +119,7 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
         id: 'settings',
         labelKey: 'layout.settings',
         defaultLabel: 'Settings',
-        icon: Settings2,
+        icon: Settings,
       },
     ],
   },

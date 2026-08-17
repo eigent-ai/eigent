@@ -13,12 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useUserTriggerCountQuery } from '@/hooks/queries/useTriggerQueries';
-import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
+import {
+  isUnconfiguredPlaceholderSpace,
+  useSpaceStore,
+} from '@/store/spaceStore';
 import { ProjectGroup as ProjectGroupType } from '@/types/history';
 import { useMemo } from 'react';
 
 export function useHomeHubCounts(projects: ProjectGroupType[]) {
-  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const spacesById = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const { data: triggersCount = 0 } = useUserTriggerCountQuery();
@@ -28,10 +30,9 @@ export function useHomeHubCounts(projects: ProjectGroupType[]) {
       Object.values(spacesById).filter(
         (space) =>
           space.status !== 'archived' &&
-          (space.id === activeSpaceId ||
-            !isDisposableBlankSpace(space, projectsBySpaceId))
+          !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)
       ).length,
-    [activeSpaceId, projectsBySpaceId, spacesById]
+    [projectsBySpaceId, spacesById]
   );
 
   const projectsCount = projects.length;

@@ -15,15 +15,13 @@
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   getVisibleProjectMetasForSpace,
-  isDisposableBlankSpace,
+  isUnconfiguredPlaceholderSpace,
   useSpaceStore,
   type Space,
 } from '@/store/spaceStore';
 import { Folder } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import HomeHubBoard from './components/HomeHubBoard';
-import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
 import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
@@ -34,7 +32,6 @@ import {
   compareHubByTimestamp,
   matchesHubNameSearch,
 } from './utils';
-import { getSpaceBoardColumn, groupByBoardColumn } from './utils/boardStatus';
 
 const pathBasename = (path?: string | null) => {
   const value = path?.trim();
@@ -51,27 +48,22 @@ export default function Spaces() {
     projects: hubProjects,
     sortBy,
     sortDirection,
-    triggers,
-    chatTasks,
   } = useHomeHub();
   const spacesById = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
-  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
-
   const spaceSections = useMemo(
     () =>
       Object.values(spacesById)
         .filter(
           (space) =>
             space.status !== 'archived' &&
-            (space.id === activeSpaceId ||
-              !isDisposableBlankSpace(space, projectsBySpaceId))
+            !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)
         )
         .map((space) => ({
           space,
           projects: getVisibleProjectMetasForSpace(projectsBySpaceId, space.id),
         })),
-    [activeSpaceId, projectsBySpaceId, spacesById]
+    [projectsBySpaceId, spacesById]
   );
 
   const spaceIdsKey = useMemo(
@@ -105,34 +97,6 @@ export default function Spaces() {
     },
     [t]
   );
-
-  const hubProjectsBySpaceId = useMemo(() => {
-    const map = new Map<string, typeof hubProjects>();
-    for (const project of hubProjects) {
-      if (!project.space_id) continue;
-      const list = map.get(project.space_id);
-      if (list) {
-        list.push(project);
-      } else {
-        map.set(project.space_id, [project]);
-      }
-    }
-    return map;
-  }, [hubProjects]);
-
-  const triggersBySpaceId = useMemo(() => {
-    const map = new Map<string, typeof triggers>();
-    for (const trigger of triggers) {
-      if (!trigger.space_id) continue;
-      const list = map.get(trigger.space_id);
-      if (list) {
-        list.push(trigger);
-      } else {
-        map.set(trigger.space_id, [trigger]);
-      }
-    }
-    return map;
-  }, [triggers]);
 
   const getSpaceStats = useCallback(
     (spaceId: string, projectCount: number) => {
@@ -189,50 +153,8 @@ export default function Spaces() {
     });
   }, [searchQuery, sortBy, sortDirection, spaceSections, t]);
 
-  const boardColumns = useMemo(() => {
-    const grouped = groupByBoardColumn(filteredSpaceSections, ({ space }) =>
-      getSpaceBoardColumn(
-        hubProjectsBySpaceId.get(space.id) ?? [],
-        triggersBySpaceId.get(space.id) ?? [],
-        chatTasks
-      )
-    );
-
-    const renderSpaceCard = ({
-      space,
-      projects,
-    }: (typeof filteredSpaceSections)[number]) => {
-      const stats = getSpaceStats(space.id, projects.length);
-      return (
-        <HomeHubBoardCard
-          key={space.id}
-          kind="space"
-          space={space}
-          subtitle={getSubtitle(space)}
-          isLegacy={isLegacySpace(space)}
-          projectCount={stats.projectCount}
-          taskCount={stats.taskCount}
-          triggerCount={stats.triggerCount}
-        />
-      );
-    };
-
-    return {
-      default: grouped.default.map(renderSpaceCard),
-      running: grouped.running.map(renderSpaceCard),
-      awaiting_review: grouped.awaiting_review.map(renderSpaceCard),
-    };
-  }, [
-    chatTasks,
-    filteredSpaceSections,
-    getSpaceStats,
-    getSubtitle,
-    hubProjectsBySpaceId,
-    triggersBySpaceId,
-  ]);
-
   return (
-    <div className="flex w-full min-w-0 flex-col">
+    <div data-home-spaces-list className="flex w-full min-w-0 flex-col">
       <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -247,9 +169,7 @@ export default function Spaces() {
               {t('layout.search-no-results')}
             </div>
           </div>
-        ) : viewMode === 'board' ? (
-          <HomeHubBoard columns={boardColumns} />
-        ) : viewMode === 'grid' ? (
+        ) : viewMode === 'grid' || viewMode === 'board' ? (
           <HomeHubGrid>
             {filteredSpaceSections.map(({ space, projects }) => {
               const stats = getSpaceStats(space.id, projects.length);

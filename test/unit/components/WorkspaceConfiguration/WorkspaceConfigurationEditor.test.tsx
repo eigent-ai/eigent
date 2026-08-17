@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { WorkspaceConfigurationEditor } from '@/pages/WorkspaceConfiguration';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -141,12 +147,36 @@ describe('WorkspaceConfigurationEditor', () => {
       environmentSection!.compareDocumentPosition(instructionsSection!) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    expect(identitySection).toHaveClass('flex', 'flex-col');
-    expect(modelSection?.lastElementChild).toHaveClass('divide-y');
+    const settingsGroups = container.querySelectorAll(
+      '[data-settings-row-group]'
+    );
+    const modelGroup = modelSection?.querySelector('[data-settings-row-group]');
+    const environmentGroup = environmentSection?.querySelector(
+      '[data-settings-row-group]'
+    );
+    expect(settingsGroups).toHaveLength(8);
+    expect(modelGroup).toBeInTheDocument();
+    expect(environmentGroup).toBeInTheDocument();
+    expect(modelGroup).not.toBe(environmentGroup);
+    expect(identitySection).toContainElement(
+      within(identitySection as HTMLElement).getByTestId(
+        'identity-settings-group'
+      )
+    );
+    expect(
+      container.querySelectorAll('[data-settings-row-divider]')
+    ).toHaveLength(0);
+    expect(modelSection?.querySelector('.divide-y')).toBeInTheDocument();
     expect(container.querySelector('select')).toBeNull();
+    expect(
+      container.querySelector('[data-workspace-configuration-width]')
+    ).toHaveClass('w-full');
+    expect(
+      container.querySelector('[data-workspace-configuration-width]')
+    ).not.toHaveClass('max-w-5xl');
   });
 
-  it('splits the profile rail from the two-column Identity controls', () => {
+  it('shows the simplified profile rail and keeps section actions with their lists', () => {
     const { container } = render(
       <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
     );
@@ -163,8 +193,8 @@ describe('WorkspaceConfigurationEditor', () => {
     const modelSection = container.querySelector(
       '#space-settings-model'
     ) as HTMLElement;
-    const identityGrid = within(identitySection).getByTestId(
-      'identity-settings-grid'
+    const identityGroup = within(identitySection).getByTestId(
+      'identity-settings-group'
     );
     const scrollIntoView = vi.fn();
     modelSection.scrollIntoView = scrollIntoView;
@@ -172,39 +202,123 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(profileRail).toHaveClass('md:w-[300px]', 'md:sticky');
     expect(profileRail.children).toHaveLength(1);
     expect(profileRail.firstElementChild).toContainElement(contents);
+    expect(within(profileRail).getByText('Profile')).toBeInTheDocument();
     expect(
-      within(profileRail).getByRole('img', {
+      within(profileRail).getByText('Research Bundle')
+    ).toBeInTheDocument();
+    expect(
+      within(profileRail).queryByRole('img', {
         name: 'Space identity preview',
       })
-    ).toHaveClass('bg-ds-bg-brand-subtle-default');
-    expect(within(profileRail).getByText('Share option')).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
-      within(profileRail).getByRole('button', { name: 'Save & share' })
+      within(profileRail).queryByText('Identity profile')
+    ).not.toBeInTheDocument();
+    expect(
+      within(profileRail).queryByText('Share option')
+    ).not.toBeInTheDocument();
+    expect(
+      within(profileRail).getByRole('button', {
+        name: 'Share workspace bundle',
+      })
     ).toBeEnabled();
     expect(within(contents).getAllByRole('button')).toHaveLength(9);
     expect(within(contents).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(contents).getByRole('button', { name: 'Identity' })
+    ).toHaveAttribute('aria-current', 'location');
     fireEvent.click(within(contents).getByRole('button', { name: 'Model' }));
     expect(scrollIntoView).toHaveBeenCalledWith({
       behavior: 'smooth',
       block: 'start',
     });
-    expect(identityGrid).toHaveClass('sm:grid-cols-2');
-    expect(identityGrid.children).toHaveLength(4);
-    expect(within(identitySection).getByLabelText('Bundle name')).toHaveValue(
-      'Research Bundle'
-    );
     expect(
-      within(identitySection).getByRole('combobox', {
-        name: 'Permission profile',
-      })
-    ).toBeInTheDocument();
+      within(contents).getByRole('button', { name: 'Model' })
+    ).toHaveAttribute('aria-current', 'location');
+    expect(
+      within(identitySection).queryByText('Identity')
+    ).not.toBeInTheDocument();
+    expect(identityGroup).toHaveClass('divide-y');
+    expect(identityGroup.children).toHaveLength(4);
+    const bundleNameInput =
+      within(identitySection).getByLabelText('Bundle name');
+    const permissionSelect = within(identitySection).getByRole('combobox', {
+      name: 'Permission profile',
+    });
+    const remotePolicySelect = within(identitySection).getByRole('combobox', {
+      name: 'Remote policy',
+    });
+    expect(bundleNameInput).toHaveValue('Research Bundle');
+    expect(bundleNameInput.parentElement).toHaveClass(
+      'bg-ds-bg-neutral-subtle-default'
+    );
+    expect(permissionSelect).toHaveClass('bg-ds-bg-neutral-subtle-default');
+    expect(remotePolicySelect).toHaveClass('bg-ds-bg-neutral-subtle-default');
     expect(
       within(identitySection).getByRole('switch', {
         name: 'Git workspace environment',
       })
     ).toBeChecked();
-    expect(
-      within(identitySection).getByRole('combobox', { name: 'Remote policy' })
-    ).toBeInTheDocument();
+    expect(remotePolicySelect).toBeInTheDocument();
+
+    const environmentSection = container.querySelector(
+      '#space-settings-environment'
+    ) as HTMLElement;
+    const environmentRow = environmentSection.querySelector(
+      '[data-settings-row]'
+    );
+    expect(environmentRow).toContainElement(
+      within(environmentSection).getByRole('button', { name: 'Add' })
+    );
+    expect(environmentRow).toHaveTextContent(
+      'No environment variables are required.'
+    );
+  });
+
+  it('tracks the current contents item while the settings sections scroll', async () => {
+    const { container } = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const sectionIds = [
+      'space-settings-identity',
+      'space-settings-model',
+      'space-settings-environment',
+      'space-settings-instructions',
+      'space-settings-context',
+      'space-settings-agents',
+      'space-settings-skills',
+      'space-settings-connectors',
+      'space-settings-mcp-servers',
+    ];
+    const sectionTops = [-500, -400, -300, -200, 80, 300, 500, 700, 900];
+
+    sectionIds.forEach((id, index) => {
+      const section = container.querySelector(`#${id}`) as HTMLElement;
+      section.getBoundingClientRect = vi.fn(
+        () =>
+          ({
+            top: sectionTops[index],
+            bottom: sectionTops[index] + 160,
+            left: 0,
+            right: 600,
+            width: 600,
+            height: 160,
+            x: 0,
+            y: sectionTops[index],
+            toJSON: () => ({}),
+          }) as DOMRect
+      );
+    });
+
+    fireEvent.scroll(window);
+
+    const contents = screen.getByRole('navigation', {
+      name: 'Space settings sections',
+    });
+    await waitFor(() =>
+      expect(
+        within(contents).getByRole('button', { name: 'Context' })
+      ).toHaveAttribute('aria-current', 'location')
+    );
   });
 });

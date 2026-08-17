@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import SearchInput from '@/components/Dashboard/SearchInput';
-import ContentHeader from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,68 +22,24 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { useHost } from '@/host';
-import {
-  createSpaceFromFolderPicker,
-  getFolderSpaceErrorMessage,
-} from '@/lib/createSpaceFromFolder';
-import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
-import { getDefaultNewSpaceName } from '@/lib/spaceLabel';
-import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSpaceStore } from '@/store/spaceStore';
-import {
-  ArrowUpDown,
-  ChevronDown,
-  Columns2,
-  Filter,
-  FolderOpen,
-  LayoutGrid,
-  List,
-  PlusCircle,
-} from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { ArrowUpDown, LayoutGrid, List } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { useHomeHub } from './context';
-import { type HomeSection, useHomeSection } from './hooks/useHomeSection';
-import {
-  capitalizeLabel,
-  defaultSortDirectionForField,
-  type HomeSortBy,
-} from './utils';
-
-const SEARCH_PLACEHOLDER_KEYS: Record<HomeSection, string> = {
-  spaces: 'layout.search-spaces',
-};
-
-const SECTION_TITLE_KEYS: Record<HomeSection, string> = {
-  spaces: 'layout.spaces',
-};
+import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
+import NewSpaceDialog from './NewSpaceDialog';
+import { defaultSortDirectionForField, type HomeSortBy } from './utils';
 
 /**
- * Home content-pane header: section title plus the hub controls (search,
- * filter, sort, view switch, create). Uses the shared 44px `ContentHeader`
- * so it lines up with the project / context / triggers headers.
+ * In-page Spaces toolbar: visible search, ordering, view, and create controls.
  */
 export default function HomeHeader() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const host = useHost();
-  const email = useAuthStore((s) => s.email);
-  const userId = useAuthStore((s) => s.user_id);
-  const projectStore = useProjectRuntimeStore();
-  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
-  const createSpaceOnServer = useSpaceStore((s) => s.createSpaceOnServer);
-  const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
-  const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
-  const requestWorkspaceChatFocus = usePageTabStore(
-    (s) => s.requestWorkspaceChatFocus
-  );
-  const { section: activeSection } = useHomeSection();
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const { createBlankSpace, createSpaceFromFolder } =
+    useNewSpaceCreation('home_hub_toolbar');
   const {
+    sectionCounts,
     viewMode,
     setViewMode,
     searchQuery,
@@ -116,209 +71,109 @@ export default function HomeHeader() {
     setSortDirection(defaultSortDirectionForField(nextSortBy));
   };
 
-  const goToWorkspace = useCallback(() => {
-    setActiveWorkspaceTab('workforce');
-    requestWorkspaceChatFocus();
-    navigate('/');
-  }, [navigate, requestWorkspaceChatFocus, setActiveWorkspaceTab]);
-
-  const handleCreateBlankSpace = useCallback(async () => {
-    try {
-      const spaceId = await createSpaceOnServer({
-        name: getDefaultNewSpaceName(t),
-        sourceType: 'blank',
-        setActive: false,
-        metadata: {
-          createdFrom: 'home_hub_toolbar',
-          autoCreatedPlaceholder: true,
-        },
-      });
-      await ensureScratchSpaceWorkspaceBinding({
-        email,
-        userId,
-        space: useSpaceStore.getState().getSpaceById(spaceId),
-      });
-      setActiveSpace(spaceId);
-      projectStore.setActiveProject(null);
-      goToWorkspace();
-    } catch (error) {
-      console.error('Failed to create Space:', error);
-      toast.error(t('layout.spaces-create-failed'), {
-        closeButton: true,
-      });
-    }
-  }, [
-    createSpaceOnServer,
-    email,
-    goToWorkspace,
-    projectStore,
-    setActiveSpace,
-    t,
-    userId,
-  ]);
-
-  const handleCreateSpaceFromFolder = useCallback(async () => {
-    try {
-      const spaceId = await createSpaceFromFolderPicker({
-        host,
-        email,
-        userId,
-        activeSpaceId,
-        projectStore,
-        createdFrom: 'home_hub_toolbar',
-      });
-      if (!spaceId) return;
-      goToWorkspace();
-    } catch (error) {
-      console.warn('[HomeHeader] Failed to create folder Space:', error);
-      toast.error(getFolderSpaceErrorMessage(error, t), {
-        closeButton: true,
-      });
-    }
-  }, [activeSpaceId, email, goToWorkspace, host, projectStore, t, userId]);
-
   return (
-    <ContentHeader
-      title={capitalizeLabel(t(SECTION_TITLE_KEYS[activeSection]))}
-      actions={
-        <>
+    <section
+      data-home-spaces-toolbar
+      aria-label="Spaces toolbar"
+      className="flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default pb-4"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="!text-body-lg font-bold text-ds-text-neutral-default-default">
+          {t('layout.spaces')}
+        </h2>
+        <span className="inline-flex shrink-0 items-center rounded-xl bg-ds-bg-neutral-muted-default px-2 py-0.5 !text-label-xs font-medium tabular-nums text-ds-text-neutral-muted-default">
+          {sectionCounts.spaces}{' '}
+          {sectionCounts.spaces === 1 ? 'Space' : 'Spaces'}
+        </span>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        <div className="w-56 max-w-full">
           <SearchInput
-            variant="icon"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t(SEARCH_PLACEHOLDER_KEYS[activeSection])}
+            placeholder={t('layout.search-spaces')}
           />
+        </div>
 
-          <TooltipSimple
-            content={t('layout.home-filter-disabled-tooltip')}
-            side="bottom"
-          >
+        <DropdownMenu>
+          <TooltipSimple content={sortLabel} variant="instant" side="bottom">
             <span className="inline-flex">
-              <Button
-                type="button"
-                variant="ghost"
-                buttonContent="icon-only"
-                size="sm"
-                className="rounded-lg"
-                disabled
-                aria-label={t('layout.home-filter-disabled-tooltip')}
-              >
-                <Filter className="h-4 w-4" />
-              </Button>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  buttonContent="icon-only"
+                  size="sm"
+                  className="rounded-lg"
+                  aria-label={sortLabel}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
             </span>
           </TooltipSimple>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleSortChange('created')}>
+              {t('layout.home-sort-created')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleSortChange('updated')}>
+              {t('layout.home-sort-updated')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleSortChange('name')}>
+              {t('layout.home-sort-name')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-          <DropdownMenu>
-            <TooltipSimple content={sortLabel} variant="instant" side="bottom">
-              <span className="inline-flex">
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    buttonContent="icon-only"
-                    size="sm"
-                    className="rounded-lg"
-                    aria-label={sortLabel}
-                  >
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </span>
-            </TooltipSimple>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleSortChange('created')}>
-                {t('layout.home-sort-created')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleSortChange('updated')}>
-                {t('layout.home-sort-updated')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleSortChange('name')}>
-                {t('layout.home-sort-name')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <Tabs
+          value={viewMode === 'board' ? 'grid' : viewMode}
+          onValueChange={(value) => setViewMode(value as 'grid' | 'list')}
+        >
+          <TabsList appearance="default">
+            <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
+              <TooltipSimple
+                content={t('dashboard.grid')}
+                variant="instant"
+                side="bottom"
+              >
+                <div className="inline-flex h-5 w-5 items-center justify-center">
+                  <LayoutGrid size={16} />
+                </div>
+              </TooltipSimple>
+            </TabsTrigger>
+            <TabsTrigger value="list" aria-label={t('dashboard.list')}>
+              <TooltipSimple
+                content={t('dashboard.list')}
+                variant="instant"
+                side="bottom"
+              >
+                <div className="inline-flex h-5 w-5 items-center justify-center">
+                  <List size={16} />
+                </div>
+              </TooltipSimple>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-          <Tabs
-            value={viewMode}
-            onValueChange={(value) =>
-              setViewMode(value as 'grid' | 'list' | 'board')
-            }
-          >
-            <TabsList appearance="default">
-              <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
-                <TooltipSimple
-                  content={t('dashboard.grid')}
-                  variant="instant"
-                  side="bottom"
-                >
-                  <div className="inline-flex h-5 w-5 items-center justify-center">
-                    <LayoutGrid size={16} />
-                  </div>
-                </TooltipSimple>
-              </TabsTrigger>
-              <TabsTrigger value="list" aria-label={t('dashboard.list')}>
-                <TooltipSimple
-                  content={t('dashboard.list')}
-                  variant="instant"
-                  side="bottom"
-                >
-                  <div className="inline-flex h-5 w-5 items-center justify-center">
-                    <List size={16} />
-                  </div>
-                </TooltipSimple>
-              </TabsTrigger>
-              <TabsTrigger value="board" aria-label={t('dashboard.board')}>
-                <TooltipSimple
-                  content={t('dashboard.board')}
-                  variant="instant"
-                  side="bottom"
-                >
-                  <div className="inline-flex h-5 w-5 items-center justify-center">
-                    <Columns2 size={16} />
-                  </div>
-                </TooltipSimple>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          buttonContent="text"
+          className="rounded-lg"
+          onClick={() => setNewSpaceDialogOpen(true)}
+        >
+          {t('layout.spaces-new-space')}
+        </Button>
+      </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                buttonContent="text"
-                className="rounded-lg"
-              >
-                {t('layout.spaces-new-space')}
-                <ChevronDown className="h-4 w-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 p-1">
-              <DropdownMenuItem
-                className="cursor-pointer gap-2"
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleCreateBlankSpace();
-                }}
-              >
-                <PlusCircle className="h-4 w-4 shrink-0" aria-hidden />
-                {t('layout.workspace-start-from-scratch')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer gap-2"
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleCreateSpaceFromFolder();
-                }}
-              >
-                <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
-                {t('layout.workspace-use-local-folder')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      }
-    />
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={createBlankSpace}
+        onUseLocalFolder={createSpaceFromFolder}
+      />
+    </section>
   );
 }

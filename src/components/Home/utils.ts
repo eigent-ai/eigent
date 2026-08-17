@@ -112,7 +112,7 @@ export function readStoredHomeViewMode(): HomeViewMode {
   if (typeof window === 'undefined') return 'grid';
   try {
     const raw = window.localStorage.getItem(HOME_VIEW_MODE_STORAGE_KEY);
-    if (raw === 'grid' || raw === 'list' || raw === 'board') return raw;
+    if (raw === 'grid' || raw === 'list') return raw;
   } catch {
     // ignore storage read failures
   }

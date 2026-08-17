@@ -22,6 +22,21 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const homeOverviewMocks = vi.hoisted(() => ({
+  fetchConnectedProviders: vi.fn(),
+  listMemoryEntries: vi.fn(),
+}));
+
+vi.mock('@/api/connectors', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/connectors')>()),
+  fetchConnectedProviders: homeOverviewMocks.fetchConnectedProviders,
+}));
+
+vi.mock('@/service/memoryApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/service/memoryApi')>()),
+  listMemoryEntries: homeOverviewMocks.listMemoryEntries,
+}));
+
 vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useUserTriggerCountQuery: () => ({ data: 0 }),
 }));
@@ -50,6 +65,10 @@ vi.mock('@/store/authStore', () => {
   const authState = {
     appearance: 'light',
     language: 'en',
+    token: 'token',
+    username: 'Douglas',
+    email: 'douglas@example.com',
+    user_id: 7,
   };
   const useAuthStore = (
     selector: (state: typeof authState) => unknown = (state) => state
@@ -91,6 +110,17 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     useSettingsStore.setState({
       activeSection: 'models',
+    });
+    homeOverviewMocks.fetchConnectedProviders.mockResolvedValue([
+      { service: 'github' },
+      { service: 'notion' },
+    ]);
+    homeOverviewMocks.listMemoryEntries.mockResolvedValue({
+      scope_state: {
+        token_limit: 5000,
+        current_token_count: 1000,
+      },
+      items: [],
     });
   });
 
@@ -179,8 +209,10 @@ describe('SettingsPage', () => {
       screen.getByRole('button', { name: 'Extension' }).querySelector('svg')
     ).toHaveClass('lucide-puzzle');
     expect(
-      within(sidebar).getByRole('button', { name: 'Settings' })
-    ).toBeInTheDocument();
+      within(sidebar)
+        .getByRole('button', { name: 'Settings' })
+        .querySelector('svg')
+    ).toHaveClass('lucide-settings');
     expect(
       within(sidebar).queryByRole('button', { name: 'General' })
     ).not.toBeInTheDocument();
@@ -205,6 +237,140 @@ describe('SettingsPage', () => {
       expect(spacesTab).toHaveAttribute('aria-current', 'page');
       expect(modelsTab).not.toHaveAttribute('aria-current');
     });
+
+    const overview = document.querySelector(
+      '[data-home-spaces-overview]'
+    ) as HTMLElement;
+    const toolbar = document.querySelector(
+      '[data-home-spaces-toolbar]'
+    ) as HTMLElement;
+    const list = document.querySelector('[data-home-spaces-list]');
+    expect(document.querySelector('main > header')).not.toBeInTheDocument();
+    expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
+    expect(overview).toHaveTextContent('Douglas');
+    expect(within(overview).queryByText('Status')).not.toBeInTheDocument();
+    expect(within(overview).queryByText('Tasks')).not.toBeInTheDocument();
+    expect(
+      within(overview)
+        .getByText('Spaces')
+        .parentElement?.parentElement?.querySelector('svg')
+    ).toHaveClass('lucide-folder');
+    expect(
+      within(overview)
+        .getByText('Connectors')
+        .parentElement?.parentElement?.querySelector('svg')
+    ).toHaveClass('lucide-cable');
+    expect(await within(overview).findByText('2')).toBeInTheDocument();
+    expect(
+      within(overview)
+        .getByText('Skills')
+        .parentElement?.parentElement?.querySelector('svg')
+    ).toHaveClass('lucide-wand-sparkles');
+    expect(
+      within(overview)
+        .getByText('Memory left')
+        .parentElement?.parentElement?.querySelector('svg')
+    ).toHaveClass('lucide-brain');
+    expect(await within(overview).findByText('4,000')).toBeInTheDocument();
+    expect(
+      within(toolbar).getByPlaceholderText('Search spaces...')
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole('tab', { name: 'List' })
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).queryByRole('tab', { name: 'Board' })
+    ).not.toBeInTheDocument();
+    const newSpaceButton = within(toolbar).getByRole('button', {
+      name: 'New Space',
+    });
+    expect(newSpaceButton.querySelector('svg')).not.toBeInTheDocument();
+    expect(
+      toolbar.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await user.click(newSpaceButton);
+    const newSpaceDialog = await screen.findByRole('dialog', {
+      name: 'Create a new Space',
+    });
+    const newSpaceOptions = within(newSpaceDialog).getByRole('group', {
+      name: 'New Space options',
+    });
+    expect(newSpaceOptions).toHaveClass('grid-cols-3');
+    expect(
+      within(newSpaceOptions).getByRole('button', {
+        name: 'Start from scratch',
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(newSpaceOptions).getByRole('button', {
+        name: 'Use a local folder',
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      within(newSpaceOptions).getByRole('button', {
+        name: 'Import from Workspace Bundle',
+      })
+    );
+
+    const bundleOptionsDialog = await screen.findByRole('dialog', {
+      name: 'Import a Bundle',
+    });
+    const bundleOptions = within(bundleOptionsDialog).getByRole('group', {
+      name: 'Bundle import options',
+    });
+    expect(bundleOptions).toHaveClass('grid-cols-2');
+    expect(
+      within(bundleOptions).getByRole('button', {
+        name: 'Import Agent Plugin as Bundle',
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      within(bundleOptions).getByRole('button', {
+        name: 'Add Workspace Bundle name',
+      })
+    );
+
+    const workspaceBundleDialog = await screen.findByRole('dialog', {
+      name: 'Import Workspace Bundle',
+    });
+    expect(
+      await within(workspaceBundleDialog).findByRole('textbox', {
+        name: 'Workspace Bundle share handle',
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      within(workspaceBundleDialog).getByRole('button', { name: 'Close' })
+    );
+
+    await user.click(newSpaceButton);
+    const reopenedNewSpaceDialog = await screen.findByRole('dialog', {
+      name: 'Create a new Space',
+    });
+    await user.click(
+      within(reopenedNewSpaceDialog).getByRole('button', {
+        name: 'Import from Workspace Bundle',
+      })
+    );
+    const reopenedBundleOptions = await screen.findByRole('dialog', {
+      name: 'Import a Bundle',
+    });
+    await user.click(
+      within(reopenedBundleOptions).getByRole('button', {
+        name: 'Import Agent Plugin as Bundle',
+      })
+    );
+    const agentPluginDialog = await screen.findByRole('dialog', {
+      name: 'Import Agent Plugin as Bundle',
+    });
+    expect(
+      await within(agentPluginDialog).findByRole('button', {
+        name: 'Select directory or archive',
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      within(agentPluginDialog).getByRole('button', { name: 'Close' })
+    );
 
     await user.click(modelsTab);
 
@@ -340,10 +506,20 @@ describe('SettingsPage', () => {
           createdAt: now,
           updatedAt: now,
         },
+        'legacy-untitled': {
+          id: 'legacy-untitled',
+          name: 'Untitled Space',
+          sourceType: 'blank',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now - 1,
+          updatedAt: now - 1,
+        },
       },
       projectsBySpaceId: {
         ...state.projectsBySpaceId,
         'space-1': {},
+        'legacy-untitled': {},
       },
       projectsSyncedAt: {
         ...state.projectsSyncedAt,
@@ -362,12 +538,65 @@ describe('SettingsPage', () => {
     expect(
       within(detailSidebar).getByRole('button', { name: 'Back to Home' })
     ).toBeInTheDocument();
+    const newSpaceTab = within(detailSidebar).getByRole('button', {
+      name: 'New Space',
+    });
+    expect(newSpaceTab.querySelector('svg')).toHaveClass('lucide-plus');
     expect(
-      within(detailSidebar).getByRole('button', { name: 'New Space' })
+      newSpaceTab.compareDocumentPosition(
+        within(detailSidebar).getByText('Spaces')
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
+    ).not.toBeInTheDocument();
+    await user.click(newSpaceTab);
+    expect(
+      await screen.findByRole('dialog', { name: 'Create a new Space' })
     ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(
+      detailSidebar.querySelector('.lucide-check')
+    ).not.toBeInTheDocument();
+    const designSpaceTab = within(detailSidebar).getByRole('button', {
+      name: 'Design Space',
+    });
+    const spaceMoreButton = within(detailSidebar).getByRole('button', {
+      name: 'More actions: Design Space',
+    });
+    expect(spaceMoreButton.closest('.group')).toContainElement(designSpaceTab);
+
+    await user.click(spaceMoreButton);
+    await user.click(
+      within(screen.getByRole('menu')).getByRole('menuitem', {
+        name: 'Rename Space',
+      })
+    );
+    const renameDialog = screen.getByRole('alertdialog', {
+      name: 'Rename Space',
+    });
+    expect(within(renameDialog).getByPlaceholderText('Space name')).toHaveValue(
+      'Design Space'
+    );
+    await user.click(
+      within(renameDialog).getByRole('button', { name: 'Cancel' })
+    );
+
+    await user.click(spaceMoreButton);
+    await user.click(
+      within(screen.getByRole('menu')).getByRole('menuitem', {
+        name: 'Delete',
+      })
+    );
+    const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
+    expect(deleteDialog).toHaveTextContent(
+      'Are you sure you want to delete this Space and all its Projects?'
+    );
+    await user.click(
+      within(deleteDialog).getByRole('button', { name: 'Cancel' })
+    );
     const detailHeader = document.querySelector('main header');
-    expect(detailHeader).toBeEmptyDOMElement();
-    expect(detailHeader).not.toHaveClass('border-b');
+    expect(detailHeader).not.toBeInTheDocument();
     expect(
       within(screen.getByRole('main')).getByText('Design Space')
     ).toHaveClass('!text-body-lg');
@@ -380,23 +609,69 @@ describe('SettingsPage', () => {
       'Triggers',
       'Context',
       'Memory',
-      'Workspace Profile',
+      'Space Settings',
     ]) {
-      expect(screen.getByRole('radio', { name: tabName })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: tabName })).toBeInTheDocument();
     }
+    expect(screen.getByRole('tablist', { name: 'Space content' })).toHaveClass(
+      'gap-2',
+      'pb-2'
+    );
+    const spaceTabRow = screen.getByRole('tablist', {
+      name: 'Space content',
+    }).parentElement;
+    expect(spaceTabRow).toHaveClass('justify-between');
     expect(
-      screen.getByRole('radiogroup', { name: 'Space content' })
-    ).toHaveClass('rounded-full', 'bg-ds-bg-neutral-strong-default');
+      within(spaceTabRow as HTMLElement).getByRole('button', {
+        name: 'Open Workspace',
+      })
+    ).toHaveAttribute('data-variant', 'primary');
     expect(
-      within(screen.getByRole('radio', { name: 'Projects' })).getByText(
+      within(screen.getByRole('tab', { name: 'Projects' })).getByText(
         'Projects'
       )
-    ).toHaveClass('!text-body-sm');
+    ).toHaveClass('!text-body-sm', 'font-bold');
+    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    expect(
+      screen.getByRole('tab', { name: 'Space Settings' }).querySelector('svg')
+    ).toHaveClass('lucide-settings');
+    expect(document.querySelector('[data-space-detail-tab-hover]')).toHaveClass(
+      'bg-ds-bg-neutral-default-default'
+    );
     const stickyTabs = document.querySelector('[data-space-tabs-sticky]');
-    expect(stickyTabs).toHaveClass('sticky', 'top-0');
-    expect(stickyTabs).not.toHaveClass('border-b');
+    expect(stickyTabs).toHaveClass(
+      'sticky',
+      '-top-px',
+      'border-b-1',
+      'bg-ds-bg-neutral-subtle-default'
+    );
+    const detailRails = [
+      document.querySelector('[data-space-detail-summary-rail]'),
+      document.querySelector('[data-space-detail-tabs-rail]'),
+      document.querySelector('[data-space-detail-content-rail]'),
+    ];
+    for (const rail of detailRails) {
+      expect(rail).toHaveClass('mx-auto', 'w-full', 'max-w-[1100px]');
+    }
+    expect(detailRails[2]?.parentElement).toHaveClass('px-8');
+    expect(detailRails[2]).not.toHaveClass('px-8');
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Tasks' }));
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+    });
+    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+      'aria-selected',
+      'false'
     );
 
     await user.click(
@@ -413,6 +688,99 @@ describe('SettingsPage', () => {
       'aria-current',
       'page'
     );
+
+    const cardWorkspaceButtons = await waitFor(() => {
+      const buttons = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          '[data-home-space-open-workspace][data-layout="card"]'
+        )
+      );
+      expect(buttons.length).toBeGreaterThan(0);
+      return buttons;
+    });
+    expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
+    expect(cardWorkspaceButtons[0]).toHaveClass(
+      'cursor-pointer',
+      'rounded-lg',
+      'font-medium'
+    );
+    expect(
+      cardWorkspaceButtons[0].closest('[role="button"]')
+    ).not.toHaveTextContent('Last updated:');
+
+    const homeToolbar = document.querySelector(
+      '[data-home-spaces-toolbar]'
+    ) as HTMLElement;
+    await user.click(within(homeToolbar).getByRole('tab', { name: 'List' }));
+    const listWorkspaceButtons = await waitFor(() => {
+      const buttons = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          '[data-home-space-open-workspace][data-layout="list"]'
+        )
+      );
+      expect(buttons.length).toBeGreaterThan(0);
+      return buttons;
+    });
+    expect(listWorkspaceButtons[0]).toHaveClass(
+      'justify-self-end',
+      'cursor-pointer',
+      'rounded-lg',
+      'font-medium'
+    );
+    expect(listWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
+    expect(listWorkspaceButtons[0].parentElement?.lastElementChild).toBe(
+      listWorkspaceButtons[0]
+    );
+    await user.click(within(homeToolbar).getByRole('tab', { name: 'Grid' }));
+  });
+
+  it('redirects an empty placeholder Space to Home without listing it', async () => {
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'empty-space': {
+          id: 'empty-space',
+          name: 'Untitled Space',
+          sourceType: 'blank',
+          status: 'active',
+          schemaVersion: 2,
+          createdAt: now,
+          updatedAt: now,
+          metadata: {
+            createdFrom: 'space_detail_sidebar',
+            autoCreatedPlaceholder: true,
+          },
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'empty-space': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'empty-space': now,
+      },
+    }));
+
+    renderSettingsPage(
+      '/home?section=spaces&spaceId=empty-space&spaceTab=projects'
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('complementary', { name: 'Home' })
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Untitled Space')).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-home-spaces-list]')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Connect to a local folder' })
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('[data-space-stat]')).not.toBeInTheDocument();
   });
 
   it('supports horizontal section content while defaulting to vertical', () => {

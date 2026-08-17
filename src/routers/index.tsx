@@ -31,7 +31,6 @@ const Workspace = lazy(() => import('@/pages/Workspace'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
-const AgentPluginImport = lazy(() => import('@/pages/AgentPluginImport'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const ENABLE_DESKTOP_REMOTE_CONTROL_FALLBACK = isDesktop();
@@ -204,12 +203,6 @@ const AppRoutes = () => (
           <Route path="/home" element={<Settings />} />
         </Route>
         <Route path="/settings" element={<SettingsRouteRedirect />} />
-        <Route
-          path="/agent-plugins/import"
-          element={
-            isDesktop() ? <AgentPluginImport /> : <Navigate to="/" replace />
-          }
-        />
         <Route
           path="/setting"
           element={<Navigate to="/home?section=settings" replace />}

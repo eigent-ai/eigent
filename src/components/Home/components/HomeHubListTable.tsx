@@ -20,7 +20,7 @@ import { HOME_HUB_LIST_GRID_CLASS } from './HomeHubItemShared';
 
 type HomeHubListColumn = {
   id: string;
-  labelKey: string;
+  labelKey?: string;
   align?: 'left' | 'right';
 };
 
@@ -32,6 +32,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
+    { id: 'action', align: 'right' },
   ],
   project: [
     { id: 'name', labelKey: 'layout.home-list-name' },
@@ -80,7 +81,11 @@ export default function HomeHubListTable({
               column.align === 'right' ? 'text-right' : 'text-left'
             )}
           >
-            {t(column.labelKey)}
+            {column.labelKey ? (
+              t(column.labelKey)
+            ) : (
+              <span className="sr-only">Workspace action</span>
+            )}
           </span>
         ))}
       </div>

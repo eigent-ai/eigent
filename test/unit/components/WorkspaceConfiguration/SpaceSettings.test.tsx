@@ -52,10 +52,10 @@ vi.mock('@/pages/WorkspaceConfiguration', () => ({
   ),
 }));
 
-function renderSpaceSettings() {
+function renderSpaceSettings(onBack?: () => void) {
   return render(
     <MemoryRouter initialEntries={['/']}>
-      <SpaceSettings />
+      <SpaceSettings onBack={onBack} />
     </MemoryRouter>
   );
 }
@@ -96,5 +96,14 @@ describe('SpaceSettings', () => {
     expect(
       screen.queryByTestId('workspace-configuration-editor')
     ).not.toBeInTheDocument();
+  });
+
+  it('adds a back control only when rendered as a Workspace subpage', () => {
+    const onBack = vi.fn();
+    renderSpaceSettings(onBack);
+
+    screen.getByRole('button', { name: 'Back to workspace' }).click();
+
+    expect(onBack).toHaveBeenCalledOnce();
   });
 });

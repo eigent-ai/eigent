@@ -29,6 +29,7 @@ export interface WorkforceAgentListProps {
   onDuplicateUserAgent: (agent: Agent) => void;
   onDeleteUserAgent: (agentId: string) => void;
   onAddWorker: () => void;
+  alignment?: 'center' | 'start';
 }
 
 /**
@@ -42,18 +43,29 @@ export function WorkforceAgentList({
   onDuplicateUserAgent,
   onDeleteUserAgent,
   onAddWorker,
+  alignment = 'center',
 }: WorkforceAgentListProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="flex w-full min-w-0 justify-center">
+    <div
+      className={cn(
+        'flex w-full min-w-0',
+        alignment === 'start' ? 'justify-start' : 'justify-center'
+      )}
+    >
       <div className="inline-flex min-w-0 max-w-full items-center gap-2">
         <div
           role="list"
           aria-label={t('layout.aiWorkforce')}
           className="min-w-0 max-w-[min(100%,calc(100vw-3rem))] overflow-x-auto"
         >
-          <div className="flex flex-row flex-nowrap items-center justify-center gap-2">
+          <div
+            className={cn(
+              'flex flex-row flex-nowrap items-center gap-2',
+              alignment === 'start' ? 'justify-start' : 'justify-center'
+            )}
+          >
             {sortedAgents.map((agent) => (
               <div key={agent.agent_id} className="shrink-0" role="listitem">
                 <FoldedAgentCard
