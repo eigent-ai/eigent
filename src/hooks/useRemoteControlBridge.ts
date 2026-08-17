@@ -24,6 +24,7 @@ import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
   setRemoteControlBridgeConnected,
+  type RemoteControlBridgeError,
 } from '@/lib/remoteControl';
 import {
   createFollowUpRequest,
@@ -1119,7 +1120,27 @@ export const __remoteControlBridgeTestHooks = {
   pendingCommandResult,
   queuePendingCommandResult,
   removePendingCommandResult,
+  serverBridgeError,
 };
+
+function serverBridgeError(message: any): RemoteControlBridgeError | null {
+  if (message?.type !== 'error') {
+    return null;
+  }
+  const code =
+    typeof message.code === 'string' && message.code
+      ? message.code
+      : 'bridge_error';
+  const text =
+    typeof message.message === 'string' && message.message
+      ? message.message
+      : 'Remote control bridge registration failed.';
+  const retryable =
+    typeof message.retryable === 'boolean'
+      ? message.retryable
+      : code !== 'device_owner_mismatch';
+  return { code, message: text, retryable };
+}
 
 export function useRemoteControlBridge(token: string | null | undefined) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
@@ -1132,9 +1153,11 @@ export function useRemoteControlBridge(token: string | null | undefined) {
 
   useEffect(() => {
     if (!token || !isDesktop()) {
-      setRemoteControlBridgeConnected(false);
+      setRemoteControlBridgeConnected(false, null);
       return;
     }
+
+    setRemoteControlBridgeConnected(false, null);
 
     let stopped = false;
     let ws: WebSocket | null = null;
@@ -1561,7 +1584,6 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         attempt: reconnectAttempt,
       });
       ws.onopen = () => {
-        reconnectAttempt = 0;
         send({
           type: 'subscribe',
           desktop_instance_id: desktopInstanceId,
@@ -1580,6 +1602,9 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         try {
           const message = JSON.parse(event.data);
           if (message?.type === 'connected') {
+            // Reset backoff only after application-level registration. A raw
+            // WebSocket open followed by a policy rejection is not success.
+            reconnectAttempt = 0;
             console.info(
               '[RemoteControlBridge][RC-TRACE] bridge registered on server',
               { desktop_instance_id: desktopInstanceId }
@@ -1588,6 +1613,19 @@ export function useRemoteControlBridge(token: string | null | undefined) {
             void flushPendingCommandResults()
               .then(replayDurableInbox)
               .then(reconcileRemoteFollowUps);
+            return;
+          }
+          const bridgeError = serverBridgeError(message);
+          if (bridgeError) {
+            console.error(
+              '[RemoteControlBridge] Bridge registration rejected',
+              bridgeError
+            );
+            setRemoteControlBridgeConnected(false, bridgeError);
+            if (!bridgeError.retryable) {
+              stopped = true;
+              ws?.close(1000, bridgeError.code.slice(0, 120));
+            }
             return;
           }
           if (message?.type === 'auth_expired') {
@@ -1624,7 +1662,18 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           stopped,
           attempt: reconnectAttempt,
         });
-        setRemoteControlBridgeConnected(false);
+        if (!stopped && event?.code === 1008) {
+          stopped = true;
+          setRemoteControlBridgeConnected(false, {
+            code: 'bridge_policy_rejected',
+            message:
+              event?.reason ||
+              'Remote control bridge registration was rejected by policy.',
+            retryable: false,
+          });
+        } else {
+          setRemoteControlBridgeConnected(false);
+        }
         if (pingTimer) {
           window.clearInterval(pingTimer);
           pingTimer = null;

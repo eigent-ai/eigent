@@ -20,6 +20,7 @@ import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/ses
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,
+  getRemoteControlBridgeError,
   getRemoteControlDesktopInstanceId,
   isRemoteControlAlreadyGoneError,
   parseRemoteControlLinkToken,
@@ -437,10 +438,19 @@ export function WorkspaceDispatch() {
     try {
       const bridgeReady = await waitForRemoteControlBridgeConnected();
       if (!bridgeReady) {
-        toast.error('Remote control is still connecting.', {
-          description:
-            'Keep Eigent Desktop open and try again in a few seconds.',
-        });
+        const bridgeError = getRemoteControlBridgeError();
+        toast.error(
+          bridgeError?.retryable === false
+            ? 'Remote control needs attention.'
+            : 'Remote control is still connecting.',
+          {
+            description:
+              bridgeError?.code === 'device_owner_mismatch'
+                ? 'This Desktop is registered to another Eigent account. Sign in with that account or explicitly reset/transfer the Desktop device registration.'
+                : bridgeError?.message ||
+                  'Keep Eigent Desktop open and try again in a few seconds.',
+          }
+        );
         return;
       }
 
