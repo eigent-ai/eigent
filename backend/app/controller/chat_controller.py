@@ -81,6 +81,7 @@ from app.service.task import (
 )
 from app.utils.browser_launcher import (
     ensure_cdp_browser_endpoint,
+    has_eigent_embedded_browser_target,
     is_cdp_url_available,
     normalize_cdp_url,
 )
@@ -735,6 +736,39 @@ async def _prepare_browser_for_request(
     request: Request | None,
     port: int,
 ) -> bool:
+    if env("EIGENT_RUNTIME", "").lower().strip() == "electron":
+        configured_port = env("EIGENT_ELECTRON_CDP_PORT", "").strip()
+        try:
+            embedded_port = int(configured_port) if configured_port else port
+        except (TypeError, ValueError):
+            embedded_port = port
+        endpoint = f"http://127.0.0.1:{embedded_port}"
+        is_available, has_owned_target = await asyncio.gather(
+            asyncio.to_thread(is_cdp_url_available, endpoint),
+            asyncio.to_thread(has_eigent_embedded_browser_target, endpoint),
+        )
+        if is_available and has_owned_target:
+            if request is not None:
+                request.state.browser_available = True
+                request.state.cdp_url = endpoint
+                request.state.browser_port = embedded_port
+            return True
+
+        chat_logger.warning(
+            "Electron embedded browser is unavailable; refusing external "
+            "browser fallback",
+            extra={
+                "port": embedded_port,
+                "cdp_available": is_available,
+                "owned_target_available": has_owned_target,
+            },
+        )
+        if request is not None:
+            request.state.browser_available = False
+            request.state.cdp_url = None
+            request.state.browser_port = embedded_port
+        return False
+
     existing_cdp_url = (
         get_connected_cdp_endpoint_for_request(request)
         or env("EIGENT_CDP_URL", "")
@@ -1054,8 +1088,9 @@ async def _prepare_chat_run(
             exc_info=True,
         )
 
-    # Web mode: reuse an existing CDP endpoint first, otherwise acquire browser
-    # through RemoteHands or launch a local browser when available.
+    # Electron is restricted to its owned WebContentsView target. A standalone
+    # Brain used by the Web client may reuse RemoteHands or provision an
+    # external Chrome/Chromium endpoint.
     if not data.cdp_browsers:
         await _prepare_browser_for_request_with_timeout(
             request, data.browser_port

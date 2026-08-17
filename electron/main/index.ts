@@ -885,6 +885,15 @@ function registerIpcHandlers() {
     return browser_port;
   });
 
+  ipcMain.handle('get-embedded-browser-runtime', () => {
+    const targetAvailable =
+      webViewManager?.hasAvailableBrowserToolkitTarget() ?? false;
+    log.info(
+      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, target_available=${targetAvailable}`
+    );
+    return { port: browser_port, targetAvailable };
+  });
+
   // Set browser port
   ipcMain.handle(
     'set-browser-port',
@@ -3461,6 +3470,7 @@ const checkAndStartBackend = async (
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
             EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
             EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
+            EIGENT_ELECTRON_CDP_PORT: String(browser_port),
             EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
               workspaceSecretBroker.endpoint,
             EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY:

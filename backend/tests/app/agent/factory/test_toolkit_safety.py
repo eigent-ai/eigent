@@ -1,7 +1,22 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from types import SimpleNamespace
 
 from app.agent.factory.toolkit_assembler import _mcp_config, _tag_tools
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.run_policy import ToolSafetyClass
@@ -40,6 +55,36 @@ def test_titleized_toolkit_names_apply_trusted_read_declarations():
         browser_read, "browser_get_page_snapshot", {}
     ) == (ToolSafetyClass.SAFE_READ, None)
     assert declared_tool_safety(browser_write, "browser_click", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_code_owned_todo_write_is_safe_internal_progress_state():
+    todo_write = NamedTool("todo_write")
+    other_todo_tool = NamedTool("todo_delete")
+
+    _tag_tools(
+        [todo_write, other_todo_tool],
+        ObservableTodoToolkit.toolkit_name(),
+    )
+
+    assert declared_tool_safety(todo_write, "todo_write", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    assert declared_tool_safety(other_todo_tool, "todo_delete", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_untrusted_mcp_todo_write_name_does_not_bypass_approval():
+    todo_write = NamedTool("todo_write")
+
+    _tag_tools([todo_write], "Third Party MCP")
+
+    assert declared_tool_safety(todo_write, "todo_write", {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )

@@ -30,6 +30,8 @@ interface Size {
   height: number;
 }
 
+export const EIGENT_EMBEDDED_BROWSER_TARGET_URL = 'about:blank?use=0';
+
 export class WebViewManager {
   private webViews = new Map<string, WebViewInfo>();
   private win: BrowserWindow | null = null;
@@ -125,9 +127,24 @@ export class WebViewManager {
     return activeWebviews.map((webview) => webview.id);
   }
 
+  /**
+   * Browser Toolkit may only attach to a pre-created WebContentsView, never
+   * the Eigent renderer. The marker URL is assigned exclusively to views in
+   * the isolated persist:user_login partition.
+   */
+  public hasAvailableBrowserToolkitTarget() {
+    return Array.from(this.webViews.values()).some((webview) => {
+      const contents = webview.view.webContents;
+      return (
+        !contents.isDestroyed() &&
+        contents.getURL().startsWith(EIGENT_EMBEDDED_BROWSER_TARGET_URL)
+      );
+    });
+  }
+
   public async createWebview(
     id: string = '1',
-    url: string = 'about:blank?use=0'
+    url: string = EIGENT_EMBEDDED_BROWSER_TARGET_URL
   ) {
     try {
       // If webview with this id already exists, return error
@@ -281,7 +298,7 @@ export class WebViewManager {
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
-          url !== 'about:blank?use=0' &&
+          url !== EIGENT_EMBEDDED_BROWSER_TARGET_URL &&
           url !== 'about:blank'
         ) {
           console.log('did-navigate-in-page', id, url);
@@ -299,7 +316,7 @@ export class WebViewManager {
         if (
           webViewInfo.isActive &&
           webViewInfo.isShow &&
-          navigationUrl !== 'about:blank?use=0' &&
+          navigationUrl !== EIGENT_EMBEDDED_BROWSER_TARGET_URL &&
           navigationUrl !== 'about:blank'
         ) {
           console.log('did-navigate', id, navigationUrl);
@@ -331,7 +348,7 @@ export class WebViewManager {
           // Create only 2 new webviews to reduce memory usage
           for (let i = 0; i < 2; i++) {
             const nextId = (startId + i).toString();
-            this.createWebview(nextId, 'about:blank?use=0');
+            this.createWebview(nextId, EIGENT_EMBEDDED_BROWSER_TARGET_URL);
           }
         }
 
@@ -421,7 +438,10 @@ export class WebViewManager {
     // If webview doesn't exist, create it
     if (!webViewInfo) {
       console.log(`Webview ${id} not found, creating new one`);
-      const createResult = await this.createWebview(id, 'about:blank?use=0');
+      const createResult = await this.createWebview(
+        id,
+        EIGENT_EMBEDDED_BROWSER_TARGET_URL
+      );
       if (!createResult.success) {
         return { success: false, error: `Failed to create webview ${id}` };
       }
@@ -506,7 +526,7 @@ export class WebViewManager {
         ([_id, info]) =>
           !info.isActive &&
           !info.isShow &&
-          info.currentUrl === 'about:blank?use=0'
+          info.currentUrl === EIGENT_EMBEDDED_BROWSER_TARGET_URL
       )
       .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
 

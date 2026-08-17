@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from app.controller.chat_controller import (
     _admission_request_id,
     _classify_persisted_admission,
+    _prepare_browser_for_request,
     _prepare_chat_run,
     _PreparedChatRun,
     _require_supported_bundle_session_mode,
@@ -68,6 +69,92 @@ def controller_run_journal():
 @pytest.mark.unit
 class TestChatController:
     """Test cases for chat controller endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_electron_browser_uses_owned_embedded_target_only(
+        self, mock_request
+    ):
+        mock_request.state = SimpleNamespace()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "EIGENT_RUNTIME": "electron",
+                    "EIGENT_ELECTRON_CDP_PORT": "9333",
+                },
+                clear=True,
+            ),
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=True,
+            ) as mock_available,
+            patch(
+                "app.controller.chat_controller.has_eigent_embedded_browser_target",
+                return_value=True,
+            ) as mock_owned_target,
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint"
+            ) as mock_external_launcher,
+        ):
+            assert await _prepare_browser_for_request(mock_request, 9222)
+
+        assert mock_request.state.cdp_url == "http://127.0.0.1:9333"
+        assert mock_request.state.browser_port == 9333
+        assert mock_request.state.browser_available is True
+        mock_available.assert_called_once_with("http://127.0.0.1:9333")
+        mock_owned_target.assert_called_once_with("http://127.0.0.1:9333")
+        mock_external_launcher.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_electron_browser_does_not_fallback_to_external_browser(
+        self, mock_request
+    ):
+        mock_request.state = SimpleNamespace()
+        with (
+            patch.dict(
+                os.environ,
+                {"EIGENT_RUNTIME": "electron"},
+                clear=True,
+            ),
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=True,
+            ),
+            patch(
+                "app.controller.chat_controller.has_eigent_embedded_browser_target",
+                return_value=False,
+            ),
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint"
+            ) as mock_external_launcher,
+        ):
+            assert not await _prepare_browser_for_request(mock_request, 9222)
+
+        assert mock_request.state.cdp_url is None
+        assert mock_request.state.browser_available is False
+        mock_external_launcher.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_standalone_brain_retains_external_browser_fallback(
+        self, mock_request
+    ):
+        mock_request.state = SimpleNamespace()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "app.controller.chat_controller.is_cdp_url_available",
+                return_value=False,
+            ),
+            patch(
+                "app.controller.chat_controller.ensure_cdp_browser_endpoint",
+                return_value="http://127.0.0.1:9444",
+            ) as mock_external_launcher,
+        ):
+            assert await _prepare_browser_for_request(mock_request, 9222)
+
+        assert mock_request.state.cdp_url == "http://127.0.0.1:9444"
+        assert mock_request.state.browser_port == 9444
+        mock_external_launcher.assert_called_once_with(9222)
 
     @pytest.mark.asyncio
     async def test_post_chat_endpoint_success(

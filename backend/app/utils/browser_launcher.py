@@ -36,6 +36,7 @@ DEFAULT_CDP_PORT = 9222
 FALLBACK_CDP_PORT_START = 9223
 FALLBACK_CDP_PORT_END = 9299
 LOCAL_CDP_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX = "about:blank?use=0"
 
 
 def is_local_cdp_host(host: str | None) -> bool:
@@ -79,6 +80,39 @@ def is_cdp_url_available(cdp_url: str) -> bool:
         return _is_supported_cdp_version(r.json(), normalized)
     except Exception:
         return False
+
+
+def has_eigent_embedded_browser_target(cdp_url: str) -> bool:
+    """Return whether Electron exposes an Eigent-owned browser WebView.
+
+    Electron's debugging endpoint also exposes the main Eigent renderer.  A
+    reachable CDP socket alone is therefore not sufficient authorization for
+    Browser Toolkit: the host must have pre-created a browser WebContentsView
+    in the isolated ``persist:user_login`` partition.  Those views use the
+    marker URL below until claimed by a browser session.
+    """
+
+    normalized, _, _ = normalize_cdp_url(cdp_url)
+    try:
+        import httpx
+
+        response = httpx.get(f"{normalized}/json/list", timeout=2.0)
+        if response.status_code != 200:
+            return False
+        targets = response.json()
+    except Exception:
+        return False
+
+    if not isinstance(targets, list):
+        return False
+    return any(
+        isinstance(target, dict)
+        and target.get("type") in {"page", "webview"}
+        and str(target.get("url") or "").startswith(
+            EIGENT_EMBEDDED_BROWSER_TARGET_PREFIX
+        )
+        for target in targets
+    )
 
 
 def _is_port_in_use(port: int) -> bool:
