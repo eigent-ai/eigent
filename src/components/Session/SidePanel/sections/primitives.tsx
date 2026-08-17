@@ -16,7 +16,13 @@ import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Check, ChevronDown, History } from 'lucide-react';
-import { forwardRef, useState, type ReactNode } from 'react';
+import {
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 const SESSION_ROW_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
@@ -187,8 +193,13 @@ export function SessionPanelCollapse({
   className?: string;
 }) {
   const shouldReduceMotion = useReducedMotion();
+  const collapseRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    collapseRef.current?.toggleAttribute('inert', !open);
+  }, [open]);
   return (
     <motion.div
+      ref={collapseRef}
       initial={false}
       animate={{
         height: open ? 'auto' : 0,
@@ -218,28 +229,6 @@ export function CountPill({ count }: { count: number }) {
   return (
     <span className="inline-flex items-center justify-center rounded-full bg-ds-bg-neutral-subtle-default px-1.5 text-label-xs font-bold text-ds-text-neutral-subtle-default">
       {count}
-    </span>
-  );
-}
-
-/**
- * Small muted category label for grouping list items.
- */
-export function CategoryLabel({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        'block px-2 pb-1 pt-2 !text-body-sm text-ds-text-neutral-muted-default first:pt-0',
-        className
-      )}
-    >
-      {children}
     </span>
   );
 }
@@ -369,17 +358,5 @@ export function ProgressCircle({
         />
       ) : null}
     </span>
-  );
-}
-
-/**
- * Thin connector line between two progress circles in the folded strip view.
- */
-export function ProgressConnector() {
-  return (
-    <span
-      className="h-px min-w-[6px] flex-1 bg-ds-border-neutral-default-default"
-      aria-hidden
-    />
   );
 }

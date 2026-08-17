@@ -91,13 +91,6 @@ const PROJECT_CONTEXT_MAX_RUNS = 8;
 // end step.
 const MAX_CHAT_HISTORY_SUMMARY_LENGTH = 1024;
 
-/** Compatibility lookup used by callers that only need the backend platform. */
-export function getCloudModelPlatform(modelId: string): string {
-  return (
-    getCloudModelStore().resolveCloudModel(modelId)?.model.model_platform || ''
-  );
-}
-
 export async function admitDurableRunResume(
   runId: string,
   requestId: string,
@@ -778,7 +771,7 @@ interface Task {
   // Trigger execution ID for tracking trigger task completion
   executionId?: string;
   nextExecutionId?: string;
-  /** Unix ms timestamp when this task was created — used for TurnTabs ordering. */
+  /** Unix ms timestamp when this task was created — used for Run ordering. */
   createdAt: number;
 }
 
@@ -4895,7 +4888,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (taskIdToRemove) {
                 const projectStore = useProjectStore.getState();
                 const project_id = agentMessages.data.project_id as
-                  string | undefined;
+                  | string
+                  | undefined;
                 if (project_id) {
                   const project = projectStore.getProjectById(project_id);
                   if (project && project.queuedMessages) {

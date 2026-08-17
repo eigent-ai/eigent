@@ -59,7 +59,6 @@ import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { loadFilePreview } from '@/lib/filePreviewLoader';
@@ -898,7 +897,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const authStore = useAuthStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const activeProjectId = projectStore.activeProjectId;
-  const selectedTurn = useSelectedProjectTurn(activeProjectId);
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -957,10 +955,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
 
   const rememberSelectedFile = (file: FileInfo) => {
-    if (!selectedTurn.chatStore || !selectedTurn.taskId) return;
-    selectedTurn.chatStore
-      .getState()
-      .setSelectedFile(selectedTurn.taskId, file);
+    if (!chatStore?.activeTaskId) return;
+    chatStore.setSelectedFile(chatStore.activeTaskId, file);
   };
 
   const filteredFileTree = useMemo(
@@ -1056,10 +1052,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const activeTaskId = selectedTurn.taskId ?? undefined;
+  const activeTaskId = chatStore?.activeTaskId ?? undefined;
+  const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
   const projectedFileRevision = useMemo(
-    () => getSidePanelOutputFilesRevision(selectedTurn.task),
-    [selectedTurn.task]
+    () => getSidePanelOutputFilesRevision(activeTask),
+    [activeTask]
   );
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
@@ -1348,7 +1345,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setFileTree(tree);
       // Keep the old structure for compatibility
       setFileGroups((prev) => {
-        const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
+        const chatStoreSelectedFile = activeTask?.selectedFile;
         if (chatStoreSelectedFile) {
           const file = findMatchingFile(
             nextVisibleFiles,
@@ -1436,10 +1433,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     hasFetchedRemote.current = false;
   }, [projectId, activeTaskId]);
 
-  const selectedFilePath = selectedTurn.task?.selectedFile?.path;
+  const selectedFilePath = activeTask?.selectedFile?.path;
 
   useEffect(() => {
-    const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
+    const chatStoreSelectedFile = activeTask?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = findMatchingFile(fileGroups[0].files, chatStoreSelectedFile);
       if (file) {
@@ -1454,7 +1451,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFilePath, fileGroups, isShowSourceCode, selectedTurn.taskId]);
+  }, [selectedFilePath, fileGroups, isShowSourceCode, activeTaskId]);
 
   const fileBreadcrumbSegments = useMemo(() => {
     if (!selectedFile) return [];

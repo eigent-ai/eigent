@@ -15,7 +15,6 @@
 import { fetchPut } from '@/api/http';
 import Terminal from '@/components/Terminal';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import {
   ArrowDown,
@@ -34,11 +33,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 
-export default function TerminalAgentWorkspace({
-  selectedTurn,
-}: {
-  selectedTurn?: SelectedProjectTurn;
-}) {
+export default function TerminalAgentWorkspace() {
   //Get Chatstore for the active project's task
   const host = useHost();
   const electronAPI = host?.electronAPI;
@@ -48,9 +43,8 @@ export default function TerminalAgentWorkspace({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isTakeControl, setIsTakeControl] = useState(false);
 
-  const selectedChatState = selectedTurn?.chatStore?.getState();
-  const targetChatStore = selectedChatState ?? chatStore;
-  const activeTaskId = selectedTurn?.taskId ?? targetChatStore?.activeTaskId;
+  const targetChatStore = chatStore;
+  const activeTaskId = targetChatStore?.activeTaskId;
   const taskAssigning =
     targetChatStore?.tasks[activeTaskId as string]?.taskAssigning;
   const activeWorkspace =

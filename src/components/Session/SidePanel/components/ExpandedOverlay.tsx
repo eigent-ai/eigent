@@ -19,7 +19,7 @@ import Workflow from '@/components/WorkFlow';
 import WorkforceMenu from '@/components/WorkforceMenu';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -35,15 +35,13 @@ export interface SidePanelExpandedOverlayProps {
   workforcePanelKey: string;
   onToggleSidePanel: () => void;
   isSidePanelVisible: boolean;
-  selectedTurn: SelectedProjectTurn;
 }
 
-function WorkforceOverlayCanvas({
-  selectedTurn,
-}: {
-  selectedTurn: SelectedProjectTurn;
-}) {
-  const activeTask = selectedTurn.task;
+function WorkforceOverlayCanvas() {
+  const { chatStore } = useChatStoreAdapter();
+  const activeTask = chatStore?.activeTaskId
+    ? chatStore.tasks[chatStore.activeTaskId]
+    : undefined;
   const activeWorkSpace = activeTask?.activeWorkspace;
 
   if (!activeTask || !activeWorkSpace) {
@@ -65,7 +63,7 @@ function WorkforceOverlayCanvas({
         (agent) => agent.agent_id === activeWorkSpace
       )?.type === 'browser_agent' && (
         <div className="flex h-full w-full flex-1">
-          <BrowserAgentWorkspace selectedTurn={selectedTurn} />
+          <BrowserAgentWorkspace />
         </div>
       )}
       {activeWorkSpace === 'workflow' && (
@@ -82,7 +80,7 @@ function WorkforceOverlayCanvas({
         (agent) => agent.agent_id === activeWorkSpace
       )?.type === 'developer_agent' && (
         <div className="flex h-full w-full flex-1">
-          <TerminalAgentWorkspace selectedTurn={selectedTurn} />
+          <TerminalAgentWorkspace />
         </div>
       )}
       {activeWorkSpace === 'documentWorkSpace' && (
@@ -131,8 +129,8 @@ export default function ExpandedOverlay({
   workforcePanelKey,
   onToggleSidePanel,
   isSidePanelVisible,
-  selectedTurn,
 }: SidePanelExpandedOverlayProps) {
+  const { chatStore } = useChatStoreAdapter();
   const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
   const host = useHost();
@@ -145,14 +143,13 @@ export default function ExpandedOverlay({
       return;
     }
     if (workflowResetForOpenRef.current) return;
-    const taskId = selectedTurn.taskId;
-    const selectedChatState = selectedTurn.chatStore?.getState();
-    if (!taskId || !selectedChatState) return;
+    const taskId = chatStore?.activeTaskId;
+    if (!taskId || !chatStore) return;
     workflowResetForOpenRef.current = true;
-    selectedChatState.setActiveWorkspace(taskId, 'workflow');
-    selectedChatState.setActiveAgent(taskId, '');
+    chatStore.setActiveWorkspace(taskId, 'workflow');
+    chatStore.setActiveAgent(taskId, '');
     host?.electronAPI?.hideAllWebview?.();
-  }, [open, selectedTurn.chatStore, selectedTurn.taskId, host]);
+  }, [open, chatStore, host]);
 
   useEffect(() => {
     if (!open) return;
@@ -253,7 +250,7 @@ export default function ExpandedOverlay({
                   transition={{ duration: 0.2 }}
                   className="h-full w-full min-w-0"
                 >
-                  <WorkforceOverlayCanvas selectedTurn={selectedTurn} />
+                  <WorkforceOverlayCanvas />
                 </motion.div>
               </AnimatePresence>
             </div>

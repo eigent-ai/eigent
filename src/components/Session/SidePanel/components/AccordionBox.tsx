@@ -71,6 +71,7 @@ export function SidePanelAccordionBox({
   const dynamicBody = isRenderProp
     ? (children as (s: SidePanelAccordionRenderArgs) => ReactNode)({ open })
     : null;
+  const stickyHeader = rowVariant === 'section';
 
   return (
     <motion.div
@@ -78,9 +79,14 @@ export function SidePanelAccordionBox({
       transition={
         shouldReduceMotion ? { layout: { duration: 0 } } : LAYOUT_TRANSITION
       }
-      className="z-10 flex min-w-0 shrink-0 flex-col overflow-hidden"
+      className="z-10 flex min-w-0 shrink-0 flex-col overflow-visible"
     >
-      <div className="flex h-10 min-h-10 w-full shrink-0 items-center">
+      <div
+        className={cn(
+          'flex h-10 min-h-10 w-full shrink-0 items-center',
+          stickyHeader && 'sticky top-0 z-20 bg-ds-bg-neutral-default-default'
+        )}
+      >
         <div className="min-w-0 flex-1">
           <SessionPanelButton
             variant={rowVariant}

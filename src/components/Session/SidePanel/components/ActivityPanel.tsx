@@ -23,8 +23,10 @@ import {
   buildProjectSessionPanelData,
   isProgressDone,
   mergeProjectFiles,
+  type ProjectSessionPanelData,
   type SessionAgentItem,
   type SessionContextItem,
+  type SessionEnvironmentItem,
   type SessionFileItem,
   type SessionProgressItem,
   type SessionResourceItem,
@@ -61,19 +63,76 @@ import {
   FileText,
   Globe,
   Hammer,
+  MonitorCog,
   Plus,
+  SquareTerminal,
   WandSparkles,
 } from 'lucide-react';
 import {
   Children,
   Fragment,
+  startTransition,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+
+const EMPTY_PANEL_DATA: ProjectSessionPanelData = {
+  agents: [],
+  contextItems: [],
+  environments: [],
+  files: [],
+  progress: [],
+  resources: [],
+  toolCalls: [],
+};
+const PANEL_REBUILD_INTERVAL_MS = 32;
+
+function useDeferredProjectSessionPanelData(
+  projectId: string | null,
+  runs: Parameters<typeof buildProjectSessionPanelData>[0],
+  skills: Parameters<typeof buildProjectSessionPanelData>[1],
+  connectors: Parameters<typeof buildProjectSessionPanelData>[2]
+): ProjectSessionPanelData {
+  const [state, setState] = useState<{
+    data: ProjectSessionPanelData;
+    projectId: string | null;
+  }>({ data: EMPTY_PANEL_DATA, projectId });
+  const latestInputRef = useRef({ connectors, projectId, runs, skills });
+  const pendingRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(
+    null
+  );
+
+  useEffect(() => {
+    latestInputRef.current = { connectors, projectId, runs, skills };
+    if (pendingRef.current !== null) return;
+    pendingRef.current = globalThis.setTimeout(() => {
+      pendingRef.current = null;
+      const latest = latestInputRef.current;
+      const data = buildProjectSessionPanelData(
+        latest.runs,
+        latest.skills,
+        latest.connectors
+      );
+      startTransition(() => setState({ data, projectId: latest.projectId }));
+    }, PANEL_REBUILD_INTERVAL_MS);
+  }, [connectors, projectId, runs, skills]);
+
+  useEffect(
+    () => () => {
+      if (pendingRef.current !== null) {
+        globalThis.clearTimeout(pendingRef.current);
+      }
+    },
+    []
+  );
+
+  return state.projectId === projectId ? state.data : EMPTY_PANEL_DATA;
+}
 
 function SimpleRows<T>({
   items,
@@ -169,7 +228,7 @@ function ProgressSection({
   onSelect: (item: SessionProgressItem) => void;
 }) {
   const { t } = useTranslation();
-  const { primary, earlier } = arrangeSessionPanelItems(items, scope);
+  const { primary, earlier } = arrangeSessionPanelItems(items, scope, 'source');
   const rows = (progressItems: SessionProgressItem[]) => (
     <SimpleRows
       items={progressItems}
@@ -199,12 +258,10 @@ function ProgressSection({
 
 function ContextSubcategory({
   title,
-  icon,
   items,
   onSelect,
 }: {
   title: string;
-  icon: ReactNode;
   items: SessionContextItem[];
   onSelect: (item: SessionContextItem) => void;
 }) {
@@ -213,7 +270,12 @@ function ContextSubcategory({
     <SidePanelAccordionBox
       title={title}
       titleSuffix={<CountPill count={items.length} />}
-      leading={icon}
+      leading={
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-ds-border-neutral-default-default"
+          aria-hidden
+        />
+      }
       rowVariant="subcategory"
     >
       <SimpleRows
@@ -267,13 +329,11 @@ function ContextSection({
         title={t('layout.session-panel-skills', {
           defaultValue: 'Skills',
         })}
-        icon={<WandSparkles size={16} aria-hidden />}
         items={primary.filter((item) => item.category === 'skill')}
         onSelect={onSelect}
       />
       <ContextSubcategory
         title={t('layout.mcp-tools')}
-        icon={<Hammer size={16} aria-hidden />}
         items={primary.filter((item) => item.category === 'connector')}
         onSelect={onSelect}
       />
@@ -344,6 +404,52 @@ function ResourcesSection({
     <SidePanelAccordionBox
       title={t('layout.session-panel-resources', {
         defaultValue: 'Resources',
+      })}
+      titleSuffix={<CountPill count={primary.length} />}
+      defaultOpen={false}
+    >
+      {rows(primary)}
+      <EarlierItems count={earlier.length}>{rows(earlier)}</EarlierItems>
+    </SidePanelAccordionBox>
+  );
+}
+
+function EnvironmentIcon({ label }: { label: string }) {
+  if (label === 'Terminal') return <SquareTerminal size={16} aria-hidden />;
+  if (label === 'Browser') return <Globe size={16} aria-hidden />;
+  return <MonitorCog size={16} aria-hidden />;
+}
+
+function EnvironmentsSection({
+  items,
+  scope,
+  onSelect,
+}: {
+  items: SessionEnvironmentItem[];
+  scope: SessionPanelScope;
+  onSelect: (item: SessionEnvironmentItem) => void;
+}) {
+  const { t } = useTranslation();
+  const { primary, earlier } = arrangeSessionPanelItems(items, scope);
+  const rows = (environments: SessionEnvironmentItem[]) => (
+    <SimpleRows
+      items={environments}
+      render={(item) => (
+        <SidePanelListRow
+          key={item.id}
+          leading={<EnvironmentIcon label={item.label} />}
+          onClick={() => onSelect(item)}
+        >
+          {item.label}
+        </SidePanelListRow>
+      )}
+    />
+  );
+
+  return (
+    <SidePanelAccordionBox
+      title={t('layout.session-panel-environments', {
+        defaultValue: 'Environments',
       })}
       titleSuffix={<CountPill count={primary.length} />}
       defaultOpen={false}
@@ -451,9 +557,11 @@ export function SessionActivityPanel({
     () => selectSessionPanelRuns(overview.runs, scope),
     [overview.runs, scope]
   );
-  const panelData = useMemo(
-    () => buildProjectSessionPanelData(scopedRuns, skills, connectors),
-    [connectors, scopedRuns, skills]
+  const panelData = useDeferredProjectSessionPanelData(
+    projectId,
+    scopedRuns,
+    skills,
+    connectors
   );
   const agents = useMemo(
     () => panelData.agents.filter((agent) => !agent.subagent),
@@ -611,6 +719,19 @@ export function SessionActivityPanel({
                 onSelect={setSelectedContext}
               />
             ) : null}
+            {panelData.environments.length > 0 ? (
+              <EnvironmentsSection
+                items={panelData.environments}
+                scope={scope}
+                onSelect={(item) => {
+                  if (!projectId) return;
+                  setScrollToTurnRequest({
+                    projectId,
+                    taskId: item.taskId,
+                  });
+                }}
+              />
+            ) : null}
             {panelData.resources.length > 0 ? (
               <ResourcesSection
                 items={panelData.resources}
@@ -657,6 +778,7 @@ export function SessionActivityPanel({
           {panelData.agents.length === 0 &&
           panelData.progress.length === 0 &&
           panelData.contextItems.length === 0 &&
+          panelData.environments.length === 0 &&
           panelData.resources.length === 0 &&
           files.length === 0 ? (
             <div className="px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">

@@ -18,7 +18,6 @@ import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
-import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
@@ -309,20 +308,17 @@ export default function Session({ isNewProject = false }: SessionProps) {
   );
 
   // "Context" breadcrumb / empty-state action: open the Inbox tab for this file.
-  const selectedTurn = useSelectedProjectTurn(activeProjectId);
   const handleJumpToContext = useCallback(
     (file: FileInfo | null) => {
-      if (file && selectedTurn.taskId && selectedTurn.chatStore) {
-        selectedTurn.chatStore
-          .getState()
-          .setSelectedFile(selectedTurn.taskId, file);
+      if (file && chatStore?.activeTaskId) {
+        chatStore.setSelectedFile(chatStore.activeTaskId, file);
       }
       setActiveWorkspaceTab('inbox', {
         clearInboxForProjectId: activeProjectId ?? null,
       });
       closeSessionPreview();
     },
-    [selectedTurn, setActiveWorkspaceTab, activeProjectId, closeSessionPreview]
+    [chatStore, setActiveWorkspaceTab, activeProjectId, closeSessionPreview]
   );
 
   const toggleExpandedOverlay = useCallback(() => {
@@ -349,7 +345,6 @@ export default function Session({ isNewProject = false }: SessionProps) {
       onCloseExpandedOverlay={closeExpandedOverlay}
     />
   ) : null;
-
   if (isNewProject) {
     return (
       // The new-project tab deliberately preserves the last active Project in

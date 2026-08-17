@@ -24,11 +24,12 @@ import {
   extractLoadedSkillNames,
   normalizeContextKey,
   resolveContextConnector,
+  type ContextCategory,
   type ContextConnector,
+  type ContextItem,
   type ContextSkill,
 } from './buildContextItems';
 import { mergeSidePanelOutputFiles } from './collectSidePanelOutputFiles';
-import type { ContextCategory, ContextItem } from './ExecutionContextSection';
 
 export interface SessionProgressItem {
   key: string;
@@ -119,6 +120,8 @@ const ACTIVE_TOOL_STATUSES = new Set(['pending', 'running']);
 const TERMINAL_TOOL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const SKILL_LOAD_METHOD = 'load skill';
 const SKILL_LIST_METHOD = 'list skills';
+const TOOL_IDENTITY_CACHE = new WeakMap<ChatActivityNode, string>();
+const NODE_HTTP_URL_CACHE = new WeakMap<ChatProjectionNode, string[]>();
 
 function normalizedMethodName(value: string): string {
   return value.trim().toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ');
@@ -145,12 +148,16 @@ function nodeTime(node: ChatProjectionNode, fallback = 0): number {
 }
 
 function normalizedToolIdentity(node: ChatActivityNode): string {
-  return JSON.stringify([
+  const cached = TOOL_IDENTITY_CACHE.get(node);
+  if (cached) return cached;
+  const identity = JSON.stringify([
     node.runId,
     normalizeContextKey(node.agentId || node.agentName || ''),
     normalizeContextKey(node.toolkitName || node.toolName || 'tool'),
     normalizeContextKey(node.methodName || node.toolName || node.title),
   ]);
+  TOOL_IDENTITY_CACHE.set(node, identity);
+  return identity;
 }
 
 function safeToolDetail(node: ChatActivityNode): string {
@@ -595,11 +602,19 @@ function safeNodeText(node: ChatProjectionNode): string {
   }
 }
 
+function nodeHttpUrls(node: ChatProjectionNode): string[] {
+  const cached = NODE_HTTP_URL_CACHE.get(node);
+  if (cached) return cached;
+  const urls = extractHttpUrls(safeNodeText(node));
+  NODE_HTTP_URL_CACHE.set(node, urls);
+  return urls;
+}
+
 function collectResources(runs: ProjectSessionRun[]): SessionResourceItem[] {
   const resources = new Map<string, SessionResourceItem>();
   for (const run of runs) {
     for (const node of run.nodes) {
-      for (const url of extractHttpUrls(safeNodeText(node))) {
+      for (const url of nodeHttpUrls(node)) {
         const existing = resources.get(url);
         const time = nodeTime(node, run.createdAt);
         const item: SessionResourceItem = {

@@ -13,39 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { usePageTabStore } from '@/store/pageTabStore';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-describe('pageTabStore turn selection', () => {
+describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
       taskBoxFocusRequestId: 0,
       taskBoxFocusProjectId: null,
       taskBoxFocusTaskId: null,
       scrollToTurnRequest: null,
     });
-  });
-
-  it('holds manual selection until the selected turn reaches the viewport', () => {
-    const store = usePageTabStore.getState();
-    store.setSidePanelSelectedTurn('project-1', 'task-2', 5000);
-    store.setSidePanelViewedTurn('project-1', 'task-1');
-
-    expect(
-      usePageTabStore.getState().sidePanelSelectedTurnByProject['project-1']
-    ).toBe('task-2');
-
-    store.setSidePanelViewedTurn('project-1', 'task-2');
-    expect(
-      usePageTabStore.getState().sidePanelManualUntilByProject['project-1']
-    ).toBe(0);
-
-    store.setSidePanelViewedTurn('project-1', 'task-1');
-    expect(
-      usePageTabStore.getState().sidePanelSelectedTurnByProject['project-1']
-    ).toBe('task-1');
   });
 
   it('scopes task-card focus requests to a project and task', () => {
@@ -57,31 +34,13 @@ describe('pageTabStore turn selection', () => {
       taskBoxFocusTaskId: 'task-2',
     });
   });
-});
 
-describe('pageTabStore side-panel viewport selection', () => {
-  beforeEach(() => {
-    usePageTabStore.setState({
-      sidePanelManualUntilByProject: {},
-      sidePanelSelectedTurnByProject: {},
-      sidePanelViewedTurnByProject: {},
-    });
-  });
+  it('stores a one-shot historical Run scroll request', () => {
+    const request = { projectId: 'project-1', taskId: 'task-1' };
+    usePageTabStore.getState().setScrollToTurnRequest(request);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toEqual(request);
 
-  it('does not publish duplicate state for repeated observer callbacks', () => {
-    const listener = vi.fn();
-    const unsubscribe = usePageTabStore.subscribe(listener);
-
-    usePageTabStore
-      .getState()
-      .setSidePanelViewedTurn('project_one', 'task_one');
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    usePageTabStore
-      .getState()
-      .setSidePanelViewedTurn('project_one', 'task_one');
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    unsubscribe();
+    usePageTabStore.getState().setScrollToTurnRequest(null);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toBeNull();
   });
 });

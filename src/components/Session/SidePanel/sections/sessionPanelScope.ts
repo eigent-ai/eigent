@@ -39,11 +39,15 @@ export function selectSessionPanelRuns<
  */
 export function arrangeSessionPanelItems<T extends SessionPanelScopedItem>(
   items: T[],
-  scope: SessionPanelScope
+  scope: SessionPanelScope,
+  order: 'newest' | 'source' = 'newest'
 ): { primary: T[]; earlier: T[] } {
-  const sorted = [...items].sort(
-    (a, b) => b.createdAt - a.createdAt || b.updatedAt - a.updatedAt
-  );
+  const sorted =
+    order === 'source'
+      ? [...items]
+      : [...items].sort(
+          (a, b) => b.createdAt - a.createdAt || b.updatedAt - a.updatedAt
+        );
   const primary = sorted.filter((item) => !item.historical);
 
   return scope === 'latest'

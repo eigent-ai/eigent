@@ -278,6 +278,10 @@ export function EventNativeProjectTimeline({
       (element) =>
         element.getAttribute('data-run-id') === scrollToTurnRequest.taskId
     );
+    // A request is a one-shot command. Clear it even when the requested Run
+    // is outside the bounded DOM window so it cannot fire unexpectedly after
+    // later timeline updates mount that Run.
+    setScrollToTurnRequest(null);
     if (!target) return;
 
     const containerRect = container.getBoundingClientRect();
@@ -286,7 +290,6 @@ export function EventNativeProjectTimeline({
       top: container.scrollTop + targetRect.top - containerRect.top,
       behavior: 'smooth',
     });
-    setScrollToTurnRequest(null);
   }, [
     projectId,
     scrollContainerRef,

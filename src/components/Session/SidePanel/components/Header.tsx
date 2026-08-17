@@ -21,8 +21,6 @@ export interface SidePanelHeaderProps {
   mode: SessionModeType;
   isSidePanelVisible: boolean;
   onToggle: () => void;
-  /** Optional content rendered immediately after the fold button (left side). */
-  start?: ReactNode;
   /** Optional right-side content (e.g. workforce expand overlay) */
   end?: ReactNode;
 }
@@ -32,7 +30,6 @@ export function SidePanelHeader({
   mode,
   isSidePanelVisible,
   onToggle,
-  start,
   end,
 }: SidePanelHeaderProps) {
   return (
@@ -49,7 +46,6 @@ export function SidePanelHeader({
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {start}
         {end != null ? (
           <div className="flex items-center gap-1">{end}</div>
         ) : null}

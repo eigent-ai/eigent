@@ -81,7 +81,7 @@ export function shouldProjectLegacyChatStep(
   );
 }
 
-/** Never allow migration projection failures to affect the legacy UI path. */
+/** Never allow projection failures to affect the source chat transport. */
 export function enqueueChatEventProjection(
   input: ChatEventProjectionInput,
   enabled = isChatEventProjectionEnabled(),

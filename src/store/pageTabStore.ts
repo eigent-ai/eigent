@@ -364,29 +364,7 @@ interface PageTabState {
   triggerSelectRequestId: number;
   requestSelectTrigger: (triggerId: number) => void;
 
-  // ── TurnTabs: per-project turn selection ─────────────────────────────────
-  /**
-   * Which task (turn) is currently highlighted in the side-panel TurnTabs,
-   * per project. `null` / absent → default to the chatStore's activeTaskId.
-   */
-  sidePanelSelectedTurnByProject: Record<string, string>;
-  /**
-   * Unix-ms timestamp until which a user tab-click overrides the
-   * scroll-driven viewport selection, per project.
-   */
-  sidePanelManualUntilByProject: Record<string, number>;
-  /**
-   * Task ID currently visible in the chatbox scroll viewport, per project.
-   * Written by the IntersectionObserver in ProjectChatContainer.
-   */
-  sidePanelViewedTurnByProject: Record<string, string>;
-  setSidePanelSelectedTurn: (
-    projectId: string,
-    taskId: string,
-    manualDurationMs?: number
-  ) => void;
-  setSidePanelViewedTurn: (projectId: string, taskId: string) => void;
-  /** Set by TurnTabs to tell the matching ProjectChatContainer to scroll. */
+  /** One-shot command used by historical rows in the Session side panel. */
   scrollToTurnRequest: { projectId: string; taskId: string } | null;
   setScrollToTurnRequest: (
     request: { projectId: string; taskId: string } | null
@@ -638,56 +616,6 @@ export const usePageTabStore = create<PageTabState>()(
           triggerSelectRequestId: state.triggerSelectRequestId + 1,
         })),
 
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
-      setSidePanelSelectedTurn: (projectId, taskId, manualDurationMs = 1500) =>
-        set((state) => ({
-          sidePanelSelectedTurnByProject: {
-            ...state.sidePanelSelectedTurnByProject,
-            [projectId]: taskId,
-          },
-          sidePanelManualUntilByProject: {
-            ...state.sidePanelManualUntilByProject,
-            [projectId]: Date.now() + manualDurationMs,
-          },
-        })),
-      setSidePanelViewedTurn: (projectId, taskId) =>
-        set((state) => {
-          const manualUntil =
-            state.sidePanelManualUntilByProject[projectId] ?? 0;
-          // Suppress viewport updates during the manual-selection window so a
-          // tab click isn't immediately overwritten by an in-flight observer
-          // firing while the chatbox is mid-scroll.
-          const selectedTaskId =
-            state.sidePanelSelectedTurnByProject[projectId];
-          if (Date.now() < manualUntil && selectedTaskId !== taskId) {
-            return state;
-          }
-          if (
-            state.sidePanelViewedTurnByProject[projectId] === taskId &&
-            selectedTaskId === taskId &&
-            manualUntil === 0
-          ) {
-            return state;
-          }
-          // Once the window expires, drive both fields so components only need
-          // to read `sidePanelSelectedTurnByProject` — no Date.now() in render.
-          return {
-            sidePanelViewedTurnByProject: {
-              ...state.sidePanelViewedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelSelectedTurnByProject: {
-              ...state.sidePanelSelectedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelManualUntilByProject: {
-              ...state.sidePanelManualUntilByProject,
-              [projectId]: 0,
-            },
-          };
-        }),
       scrollToTurnRequest: null,
       setScrollToTurnRequest: (request) =>
         set({ scrollToTurnRequest: request }),
