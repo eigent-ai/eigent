@@ -14,7 +14,6 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
@@ -33,11 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function BrowserAgentWorkspace({
-  selectedTurn,
-}: {
-  selectedTurn?: SelectedProjectTurn;
-}) {
+export default function BrowserAgentWorkspace() {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const host = useHost();
@@ -101,10 +96,8 @@ export default function BrowserAgentWorkspace({
     },
   };
   // Extract complex expressions to avoid lint error in dependency array
-  const selectedChatState = selectedTurn?.chatStore?.getState();
-  const targetChatStore = selectedChatState ?? chatStore;
-  const activeTaskId =
-    selectedTurn?.taskId ?? (targetChatStore?.activeTaskId as string);
+  const targetChatStore = chatStore;
+  const activeTaskId = targetChatStore?.activeTaskId as string;
   const taskAssigning = targetChatStore?.tasks[activeTaskId]?.taskAssigning;
   const activeWorkspace = targetChatStore?.tasks[activeTaskId]?.activeWorkspace;
 

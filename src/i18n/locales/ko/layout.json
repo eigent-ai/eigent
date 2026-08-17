@@ -343,6 +343,7 @@
   "session-panel-skills": "스킬",
   "session-panel-resources": "리소스",
   "session-panel-files": "파일",
+  "session-panel-environments": "환경",
   "session-panel-earlier": "이전 실행",
   "session-panel-agent": "에이전트",
   "session-panel-subagent": "하위 에이전트",

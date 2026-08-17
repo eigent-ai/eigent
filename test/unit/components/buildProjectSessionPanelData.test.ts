@@ -18,11 +18,13 @@ import {
   extractHttpUrls,
 } from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
 import type { ProjectSessionRun } from '@/hooks/useProjectSessionOverview';
-import type {
-  ChatActivityNode,
-  ChatArtifactNode,
-  ChatPlanNode,
-  ChatProjectionNode,
+import { normalizeLegacyChatStep } from '@/lib/projector';
+import {
+  adaptChatProjectionEvent,
+  type ChatActivityNode,
+  type ChatArtifactNode,
+  type ChatPlanNode,
+  type ChatProjectionNode,
 } from '@/lib/projector/chat';
 import { describe, expect, it } from 'vitest';
 
@@ -250,6 +252,37 @@ describe('buildProjectSessionPanelData', () => {
     ]);
   });
 
+  it('collects terminal, browser, and remote execution environments', () => {
+    const terminal: ChatActivityNode = {
+      ...baseNode('run-current', 'terminal', 1),
+      kind: 'activity',
+      activityType: 'terminal',
+      status: 'running',
+      title: 'Run shell command',
+    };
+    const browser = {
+      ...toolNode('run-current', 'browser', 2, 'running', 'Open page'),
+      toolkitName: 'BrowserToolkit',
+      methodName: 'browser_navigate',
+    };
+    const remote = agentNode(
+      'run-current',
+      'remote',
+      3,
+      'remote-agent',
+      'research_helper',
+      'agent.remote_started',
+      'Remote subagent research_helper'
+    );
+
+    expect(
+      buildProjectSessionPanelData(
+        [makeRun('run-current', true, [terminal, browser, remote])],
+        []
+      ).environments.map((item) => item.label)
+    ).toEqual(['Browser', 'Remote environment', 'Terminal']);
+  });
+
   it('pairs semantic tool lifecycle events by durable call id', () => {
     const run = makeRun('run-1', true, [
       toolNode('run-1', 'tool-start', 1, 'running', 'Searching', 'call-1'),
@@ -443,6 +476,71 @@ describe('buildProjectSessionPanelData', () => {
 
     expect(buildProjectSessionPanelData([run], []).progress).toMatchObject([
       { task: { content: 'Legacy current task' } },
+    ]);
+  });
+
+  it('preserves legacy tool lifecycle status through the shipping bridge', () => {
+    const rawSteps = [
+      {
+        step: 'activate_toolkit',
+        data: {
+          toolkit_name: 'TodoToolkit',
+          method_name: 'todo_write',
+          tool_name: 'todo_write',
+          message: '{"todos":["first","second"]}',
+        },
+      },
+      {
+        step: 'todo_state',
+        data: {
+          todos: [
+            { id: 'todo-1', content: 'First task', status: 'in_progress' },
+            { id: 'todo-2', content: 'Second task', status: 'pending' },
+          ],
+        },
+      },
+      {
+        step: 'deactivate_toolkit',
+        data: {
+          toolkit_name: 'TodoToolkit',
+          method_name: 'todo_write',
+          tool_name: 'todo_write',
+          message: 'Todos updated',
+        },
+      },
+    ];
+    const nodes = rawSteps.map((raw, index) =>
+      adaptChatProjectionEvent(
+        normalizeLegacyChatStep(raw, {
+          projectId: 'project-1',
+          runId: 'run-current',
+          sequence: index + 1,
+          sourceId: 'test-stream',
+          createdAt: (index + 1) * 1_000,
+        })
+      )
+    );
+
+    expect(
+      nodes.map((node) => ('status' in node ? node.status : undefined))
+    ).toEqual(['running', undefined, 'completed']);
+
+    const data = buildProjectSessionPanelData(
+      [makeRun('run-current', true, nodes)],
+      []
+    );
+    expect(data.progress.map((item) => item.task.content)).toEqual([
+      'First task',
+      'Second task',
+    ]);
+    expect(data.toolCalls).toMatchObject([
+      {
+        toolkitName: 'TodoToolkit',
+        method: 'todo_write',
+        input: '{"todos":["first","second"]}',
+        output: 'Todos updated',
+        status: 'done',
+      },
     ]);
   });
 

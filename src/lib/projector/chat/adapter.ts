@@ -657,7 +657,9 @@ function activityNode(
     kind: 'activity',
     activityType,
     status: normalizeActivityStatus(
-      payload.status ?? payload.state ?? base.eventType.split('.').at(-1),
+      payload.status ??
+        payload.state ??
+        (isTypedActivity ? base.eventType.split('.').at(-1) : undefined),
       fallbackStatus
     ),
     title,

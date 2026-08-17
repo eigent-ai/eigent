@@ -138,7 +138,6 @@ import {
   collectTaskUploadFiles,
   extractEndPayloadText,
   extractFinalOutputFileList,
-  getCloudModelPlatform,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -655,17 +654,6 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       expect(uploadFiles).toEqual([]);
-    });
-  });
-
-  describe('Cloud Model Platform Mapping', () => {
-    it('maps cloud model ids to backend platforms', () => {
-      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
-      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
-        'aws-bedrock-converse'
-      );
-      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
-      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
     });
   });
 

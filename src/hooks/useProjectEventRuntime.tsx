@@ -65,10 +65,13 @@ export function ProjectEventRuntimeProvider({
   projectId: string | null | undefined;
 }) {
   const normalizedProjectId = projectId || null;
+  const runtimeEnabled = Boolean(normalizedProjectId);
   const store = useMemo(
     () =>
-      normalizedProjectId ? getProjectEventStore(normalizedProjectId) : null,
-    [normalizedProjectId]
+      runtimeEnabled && normalizedProjectId
+        ? getProjectEventStore(normalizedProjectId)
+        : null,
+    [normalizedProjectId, runtimeEnabled]
   );
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -83,13 +86,13 @@ export function ProjectEventRuntimeProvider({
   );
   const hydration = useProjectEventStoreHydration({
     projectId: normalizedProjectId,
-    enabled: Boolean(normalizedProjectId),
+    enabled: runtimeEnabled,
   });
 
   useProjectRunEventStreams({
     projectId: normalizedProjectId,
     snapshot,
-    enabled: Boolean(normalizedProjectId),
+    enabled: runtimeEnabled,
   });
 
   const value = useMemo<ProjectEventRuntimeValue>(

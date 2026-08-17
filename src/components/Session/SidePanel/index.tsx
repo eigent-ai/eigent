@@ -26,9 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { cn } from '@/lib/utils';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { ChevronLeft } from 'lucide-react';
 import { useState } from 'react';
@@ -55,8 +53,6 @@ export function SessionSidePanel({
 }: SessionSidePanelProps) {
   const { t } = useTranslation();
   const isFolded = !isSidePanelVisible;
-  const projectStore = useProjectRuntimeStore();
-  const selectedTurn = useSelectedProjectTurn(projectStore.activeProjectId);
   const [scope, setScope] = useState<SessionPanelScope>('latest');
 
   const headerTitle = t('layout.session-summary', {
@@ -140,7 +136,6 @@ export function SessionSidePanel({
           workforcePanelKey={workforcePanelKey}
           onToggleSidePanel={onToggleSidePanel}
           isSidePanelVisible={isSidePanelVisible}
-          selectedTurn={selectedTurn}
         />
       ) : null}
 

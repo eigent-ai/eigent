@@ -74,6 +74,20 @@ describe('arrangeSessionPanelItems', () => {
 
     expect([...result.primary, ...result.earlier]).toHaveLength(items.length);
   });
+
+  it('can preserve a deliberately chronological source order', () => {
+    const chronological = [...items].reverse();
+    const result = arrangeSessionPanelItems(chronological, 'all', 'source');
+
+    expect(result.primary.map((item) => item.id)).toEqual([
+      'current-less-recently-updated',
+      'current-recently-updated',
+    ]);
+    expect(result.earlier.map((item) => item.id)).toEqual([
+      'oldest-history',
+      'newest-history',
+    ]);
+  });
 });
 
 describe('selectSessionPanelRuns', () => {

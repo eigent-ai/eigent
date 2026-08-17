@@ -28,22 +28,6 @@ export type ChatEventProjectionInput = {
 };
 
 /**
- * The Session side panel is event-native, so the migration bridge is enabled
- * by default even while the ChatBox renderer remains behind its own cutover
- * flag. Set VITE_SESSION_SIDE_PANEL_EVENT_BUS=false only for emergency rollback.
- */
-export function isChatEventProjectionEnabled(): boolean {
-  return (
-    import.meta.env.VITE_SESSION_SIDE_PANEL_EVENT_BUS !== 'false' ||
-    import.meta.env.VITE_CHATBOX_EVENT_SHADOW === 'true' ||
-    // The visible read path still needs the legacy /chat source bridge while
-    // the canonical companion owns typed Run events. Keep the flags
-    // independently deployable, but make cutover imply bridge ingestion.
-    isChatEventTimelineEnabled()
-  );
-}
-
-/**
  * Visible event-native ChatBox rendering remains an explicit cutover. Shadow
  * ingestion can stay enabled while renderer parity and history hydration are
  * measured without changing the production UI.
@@ -67,10 +51,10 @@ export type ChatEventProjectionOutcome =
   | 'rejected'
   | 'overflowed';
 
-/** Never allow migration projection failures to affect the legacy UI path. */
+/** Never allow projection failures to affect the source chat transport. */
 export function enqueueChatEventProjection(
   input: ChatEventProjectionInput,
-  enabled = isChatEventProjectionEnabled()
+  enabled = true
 ): ChatEventProjectionOutcome {
   if (!enabled || !input.projectId) return 'disabled';
   if (

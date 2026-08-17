@@ -343,6 +343,7 @@
   "session-panel-skills": "スキル",
   "session-panel-resources": "リソース",
   "session-panel-files": "ファイル",
+  "session-panel-environments": "環境",
   "session-panel-earlier": "以前の実行",
   "session-panel-agent": "エージェント",
   "session-panel-subagent": "サブエージェント",
