@@ -54,6 +54,7 @@ _AUTO_REVIEW_FORBIDDEN_RISK_TAGS = frozenset(
         "finance",
         "new_filesystem_root",
         "permanent_delete",
+        "privilege_escalation",
         "untrusted_hook",
         "untrusted_script",
     }
@@ -61,6 +62,10 @@ _AUTO_REVIEW_FORBIDDEN_RISK_TAGS = frozenset(
 _AUTO_REVIEW_ELIGIBLE_OPERATIONS = frozenset(
     {
         "filesystem.write",
+        "terminal.execute",
+        "browser.interact",
+        "connector.write",
+        "mcp.tool.write",
         "git.local_write",
         "git.integrate",
     }
@@ -189,6 +194,10 @@ class PermissionPolicyEngine:
     ) -> bool:
         if profile.name is not PermissionProfileName.AUTO_REVIEWER:
             return False
+        # Keep this an explicit list so a newly introduced operation cannot
+        # become silently allowed before its risk classification is defined.
+        # Within the known routine operations, auto-review is risk driven:
+        # only the dangerous operations/tags below interrupt the user.
         if descriptor.operation not in _AUTO_REVIEW_ELIGIBLE_OPERATIONS:
             return False
         if descriptor.operation in _AUTO_REVIEW_FORBIDDEN_OPERATIONS:

@@ -417,7 +417,9 @@ def test_policy_service_uses_pinned_profile_revision(tmp_path):
         assert current.effect is PolicyEffect.PROMPT
 
 
-def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
+def test_auto_reviewer_approves_routine_actions_and_prompts_for_danger(
+    tmp_path,
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         profile = journal.put_space_permission_profile(
@@ -461,6 +463,18 @@ def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
             attempt_id=attempt.attempt_id,
             environment_spec_digest="e" * 64,
         )
+        routine_mcp_write = ActionDescriptor(
+            action_id="action-mcp",
+            tool_name="todo_write",
+            operation="mcp.tool.write",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            normalized_arguments={"todo": "finish report"},
+            target_resources=("tool-identity:sha256:todo-write",),
+            external_side_effect=True,
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            environment_spec_digest="e" * 64,
+        )
 
         allowed = service.evaluate_and_request_approval(
             eligible,
@@ -474,12 +488,21 @@ def test_auto_reviewer_approves_only_eligible_actions(tmp_path):
             prompt={"title": "delete"},
             permission_profile_revision=revision,
         )
+        mcp_allowed = service.evaluate_and_request_approval(
+            routine_mcp_write,
+            space_id="space-1",
+            prompt={"title": "update todo"},
+            permission_profile_revision=revision,
+        )
 
         assert allowed.decision.effect is PolicyEffect.ALLOW
         assert allowed.decision.reason == "auto_reviewer_approved"
         assert allowed.approval is None
         assert prompted.decision.effect is PolicyEffect.PROMPT
         assert prompted.approval is not None
+        assert mcp_allowed.decision.effect is PolicyEffect.ALLOW
+        assert mcp_allowed.decision.reason == "auto_reviewer_approved"
+        assert mcp_allowed.approval is None
 
 
 def test_sqlite_tampering_cannot_enable_profile_or_allow_rule(tmp_path):

@@ -126,6 +126,29 @@ _AUTO_EXECUTED_WORKSPACE_PATHS = (
 )
 _COMMAND_WRAPPERS = frozenset({"command", "env", "nohup", "sudo"})
 _SHELL_EXECUTABLES = frozenset({"bash", "dash", "ksh", "sh", "zsh"})
+_PRIVILEGE_EXECUTABLES = frozenset({"doas", "pkexec", "sudo"})
+_DESTRUCTIVE_EXECUTABLES = frozenset(
+    {
+        "kill",
+        "killall",
+        "pkill",
+        "reboot",
+        "rm",
+        "rmdir",
+        "shutdown",
+        "shred",
+        "unlink",
+    }
+)
+_EXTERNAL_ACTION_HINT_KEYS = (
+    "action",
+    "action_id",
+    "action_name",
+    "intent",
+    "method",
+    "operation",
+    "operation_name",
+)
 _BROWSER_READ_NAMES = frozenset(
     {
         "browser_console_view",
@@ -220,6 +243,7 @@ def build_tool_action_descriptor(
             ),
         )
     risk_tags = _risk_tags(
+        tool_name=tool_name,
         operation=operation,
         arguments=arguments,
         workspace_root=workspace_root,
@@ -616,8 +640,117 @@ def _terminal_executes_untrusted_workspace_code(
     return False
 
 
+def _terminal_obvious_risk_tags(
+    arguments: dict[str, Any],
+) -> frozenset[str]:
+    """Classify explicit high-risk shell intent without prompting on prose.
+
+    Auto reviewer permits ordinary terminal work, so commands whose argv
+    directly expresses deletion, privilege escalation, remote publication or
+    downloaded-code execution must remain user-reviewed.
+    """
+
+    tags: set[str] = set()
+    for words in _command_word_sequences(arguments):
+        for segment in _shell_segments(words):
+            if not segment:
+                continue
+            executable = (
+                segment[0]
+                .lstrip("(")
+                .replace(chr(92), "/")
+                .rsplit("/", 1)[-1]
+                .lower()
+            )
+            lowered = tuple(word.lower() for word in segment[1:])
+            if executable in _PRIVILEGE_EXECUTABLES:
+                tags.add("privilege_escalation")
+            if executable in _DESTRUCTIVE_EXECUTABLES:
+                tags.add("permanent_delete")
+            if executable == "git" and lowered:
+                subcommand = next(
+                    (word for word in lowered if not word.startswith("-")),
+                    "",
+                )
+                if subcommand == "push":
+                    tags.add("external_publish")
+                if (
+                    subcommand == "clean"
+                    or (subcommand == "reset" and "--hard" in lowered)
+                    or (
+                        subcommand == "branch"
+                        and any(word in {"-d", "-D"} for word in segment[1:])
+                    )
+                ):
+                    tags.add("permanent_delete")
+            if (
+                (executable == "npm" and "publish" in lowered)
+                or (executable == "cargo" and "publish" in lowered)
+                or (executable == "docker" and "push" in lowered)
+                or (executable == "twine" and "upload" in lowered)
+            ):
+                tags.add("external_publish")
+            if executable in {"curl", "http", "httpie"} and any(
+                word
+                in {
+                    "-d",
+                    "--data",
+                    "--data-ascii",
+                    "--data-binary",
+                    "--data-raw",
+                    "-f",
+                    "--form",
+                    "-t",
+                    "--upload-file",
+                }
+                or word.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+                for word in lowered
+            ):
+                tags.add("external_send")
+    command_text = "\n".join(_command_texts(arguments))
+    if re.search(r"[|]\s*(?:ba|da|k|z)?sh(?:\s|$)", command_text, re.I):
+        tags.add("untrusted_script")
+    return frozenset(tags)
+
+
+def _external_tool_obvious_risk_tags(
+    *, tool_name: str, arguments: dict[str, Any]
+) -> frozenset[str]:
+    """Recognize explicit side-effect verbs in MCP/connector action IDs."""
+
+    hints = [tool_name]
+    hints.extend(_argument_values(arguments, _EXTERNAL_ACTION_HINT_KEYS))
+    tokens = {
+        token
+        for hint in hints
+        for token in re.split(
+            r"[^a-z0-9]+",
+            re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", hint).lower(),
+        )
+        if token
+    }
+    tags: set[str] = set()
+    if tokens & {
+        "delete",
+        "destroy",
+        "purge",
+        "remove",
+        "revoke",
+        "terminate",
+    }:
+        tags.add("permanent_delete")
+    if tokens & {"invite", "notify", "post", "send"}:
+        tags.add("external_send")
+    if tokens & {"deploy", "publish", "release"}:
+        tags.add("external_publish")
+    if tokens & {"charge", "finance", "pay", "payment", "purchase", "refund"}:
+        tags.add("finance")
+    return frozenset(tags)
+
+
 def _risk_tags(
     *,
+    tool_name: str,
     operation: str,
     arguments: dict[str, Any],
     workspace_root: str | Path | None,
@@ -702,4 +835,12 @@ def _risk_tags(
             for part in _CREDENTIAL_PATH_PARTS
         ):
             tags.add("credential_export")
+        tags.update(_terminal_obvious_risk_tags(arguments))
+    if operation in {"mcp.tool.write", "connector.write"}:
+        tags.update(
+            _external_tool_obvious_risk_tags(
+                tool_name=tool_name,
+                arguments=arguments,
+            )
+        )
     return tuple(sorted(tags))

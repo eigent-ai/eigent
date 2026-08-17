@@ -69,7 +69,8 @@ const APPROVAL_OPTIONS: ApprovalOption[] = [
   {
     value: 'auto_reviewer',
     label: 'Auto reviewer',
-    description: 'Auto-review eligible changes; sensitive actions still ask.',
+    description:
+      'Approve routine actions; ask only for sensitive or dangerous actions.',
     icon: ShieldCheck,
   },
   {
