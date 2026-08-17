@@ -525,26 +525,30 @@ describe('ChatStore - Core Functionality', () => {
         {
           path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
-          uploadName: 'camel_log/ba4462e1/agent.log',
+          uploadName: 'agent.log',
+          logicalPath: 'ba4462e1/agent.log',
           source: 'camel_log',
         },
         {
           path: '/Users/test/Documents/brief.pdf',
           name: 'brief.pdf',
-          uploadName: 'user_attachment/brief.pdf',
-          source: 'user_attachment',
+          uploadName: 'brief.pdf',
+          logicalPath: 'brief.pdf',
+          source: 'user_upload',
         },
         {
           path: '/tmp/project/report.md',
           name: 'report.md',
-          uploadName: 'user_attachment/report.md',
-          source: 'user_attachment',
+          uploadName: 'report.md',
+          logicalPath: 'report.md',
+          source: 'user_upload',
         },
         {
           path: '/Users/test/Documents/followup.csv',
           name: 'followup.csv',
-          uploadName: 'user_attachment/followup.csv',
-          source: 'user_attachment',
+          uploadName: 'followup.csv',
+          logicalPath: 'followup.csv',
+          source: 'user_upload',
         },
       ]);
     });
@@ -576,8 +580,9 @@ describe('ChatStore - Core Functionality', () => {
         {
           path: 'C:\\Users\\test\\Desktop\\notes.txt',
           name: 'notes.txt',
-          uploadName: 'user_attachment/notes.txt',
-          source: 'user_attachment',
+          uploadName: 'notes.txt',
+          logicalPath: 'notes.txt',
+          source: 'user_upload',
         },
       ]);
     });
@@ -599,7 +604,7 @@ describe('ChatStore - Core Functionality', () => {
       expect(uploadFiles).toEqual([]);
     });
 
-    it('keeps camel log upload names nested under camel_log', () => {
+    it('keeps camel log logical paths nested while uploading a basename', () => {
       const uploadFiles = collectTaskUploadFiles(
         [
           {
@@ -617,7 +622,8 @@ describe('ChatStore - Core Functionality', () => {
         {
           path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
           name: 'conv.json',
-          uploadName: 'camel_log/agent/conv.json',
+          uploadName: 'conv.json',
+          logicalPath: 'agent/conv.json',
           source: 'camel_log',
         },
       ]);

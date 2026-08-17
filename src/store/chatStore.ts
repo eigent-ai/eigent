@@ -625,7 +625,7 @@ interface Task {
   createdAt: number;
 }
 
-type UploadFileSource = 'project_output' | 'camel_log' | 'user_attachment';
+type UploadFileSource = 'project_output' | 'camel_log' | 'user_upload';
 
 interface UploadCandidate {
   path: string;
@@ -866,7 +866,7 @@ export function collectTaskUploadFiles(
       path: attachment.filePath,
       name:
         attachment.fileName?.trim() || getFileNameFromPath(attachment.filePath),
-      source: 'user_attachment',
+      source: 'user_upload',
     });
   }
 
