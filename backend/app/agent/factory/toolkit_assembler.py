@@ -79,6 +79,14 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     # meaningful safety boundary. Third-party tools with the same function
     # name remain conservative because declarations are scoped by toolkit.
     "todotoolkit": frozenset({"todo_write"}),
+    # This code-owned operation can only stop a TerminalToolkit session that
+    # Eigent previously registered under the supplied logical session id. It
+    # cannot target an arbitrary process/PID, and repeating it after a restart
+    # converges to the same "session is no longer running" state. Treat it as
+    # replay-safe so an interrupted cleanup cannot permanently block Resume.
+    # Third-party tools with the same function name remain conservative because
+    # trusted declarations are scoped to the code-owned toolkit name.
+    "terminaltoolkit": frozenset({"shell_kill_process"}),
     # HybridBrowserToolkit intentionally publishes itself as "Browser Toolkit".
     "browsertoolkit": frozenset(
         {

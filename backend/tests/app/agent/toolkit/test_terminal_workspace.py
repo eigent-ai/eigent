@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import threading
@@ -9,7 +23,10 @@ from camel.toolkits.terminal_toolkit import (
 )
 
 from app.agent.toolkit import terminal_toolkit
-from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.terminal_toolkit import (
+    TerminalToolkit,
+    _original_isolated_local_command,
+)
 from app.run_context import RunContext, run_context_scope
 from app.utils.listen import toolkit_listen
 
@@ -62,7 +79,8 @@ def test_terminal_materializes_run_workspace_before_process_spawn(
     def fake_shell_exec(self, *, id, command, block, timeout):
         calls.append("spawn")
         assert self.working_dir == str(run_root)
-        return f"{id}:{command}:{block}:{timeout}"
+        original = _original_isolated_local_command(command) or command
+        return f"{id}:{original}:{block}:{timeout}"
 
     monkeypatch.setattr(
         terminal_toolkit,

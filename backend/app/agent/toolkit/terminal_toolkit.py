@@ -21,6 +21,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -89,6 +90,12 @@ _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
     "WINDIR",
 }
 
+_LOCAL_PROCESS_GROUP_BOOTSTRAP = (
+    "import os,sys; os.setsid(); "
+    'os.execv("/bin/sh", ["/bin/sh", "-c", sys.argv[1]])'
+)
+_LOCAL_PROCESS_GROUP_GRACE_SECONDS = 0.35
+
 
 def is_secret_broker_environment_key(name: str) -> bool:
     return bool(_SECRET_BROKER_ENVIRONMENT_KEY.fullmatch(name.strip().upper()))
@@ -126,6 +133,56 @@ def _shell_command_argv(
     if os_name == "nt":
         return [comspec or "cmd.exe", "/d", "/s", "/c", command]
     return ["/bin/sh", "-c", command]
+
+
+def _isolated_local_command(command: str) -> str:
+    """Run a command in a process group owned by its terminal session."""
+
+    return " ".join(
+        (
+            "exec",
+            shlex.quote(sys.executable),
+            "-c",
+            shlex.quote(_LOCAL_PROCESS_GROUP_BOOTSTRAP),
+            shlex.quote(command),
+        )
+    )
+
+
+def _original_isolated_local_command(command: str) -> str | None:
+    """Return the user command from our exact process-group bootstrap."""
+
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return None
+    if (
+        argv[:4]
+        != [
+            "exec",
+            sys.executable,
+            "-c",
+            _LOCAL_PROCESS_GROUP_BOOTSTRAP,
+        ]
+        or len(argv) != 5
+    ):
+        return None
+    return argv[4]
+
+
+def _restore_isolated_commands_for_log(content: str) -> str:
+    """Keep the process bootstrap and local Python path out of durable logs."""
+
+    restored: list[str] = []
+    for line in content.splitlines(keepends=True):
+        line_body = line.rstrip("\r\n")
+        line_ending = line[len(line_body) :]
+        if line_body.startswith("> "):
+            original = _original_isolated_local_command(line_body[2:])
+            if original is not None:
+                line_body = f"> {original}"
+        restored.append(line_body + line_ending)
+    return "".join(restored)
 
 
 @auto_listen_toolkit(BaseTerminalToolkit)
@@ -231,6 +288,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if is_control_plane_environment_key(key):
                 environment.pop(key, None)
         return environment
+
+    def _sanitize_command(self, command: str) -> tuple[bool, str]:
+        """Apply CAMEL safe-mode checks to the user command, not our shim."""
+
+        original_command = _original_isolated_local_command(command)
+        if original_command is None:
+            return super()._sanitize_command(command)
+        is_safe, sanitized = super()._sanitize_command(original_command)
+        if not is_safe:
+            return False, sanitized
+        return True, _isolated_local_command(sanitized)
 
     def _scrub_runtime_output(self, content: str) -> str:
         scrubbed = content
@@ -594,6 +662,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         """
         # ANSI controls can split one secret into fragments. Normalize first,
         # then scrub the exact runtime values before logging or SSE emission.
+        content = _restore_isolated_commands_for_log(content)
         content = self._scrub_runtime_output(_to_plain(content))
         super()._write_to_log(log_file, content)
         logger.debug(
@@ -714,9 +783,23 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # never started in the User Worktree once Git is enabled.
                 self.working_dir = str(prepared.agent_workspace.agent_worktree)
 
+        isolate_local_session = (
+            runtime_env_provider is None
+            and not getattr(self, "use_docker_backend", False)
+            and os.name != "nt"
+        )
+        command_for_spawn = (
+            _isolated_local_command(command)
+            if isolate_local_session
+            else command
+        )
+
         if runtime_env_provider is None:
             result = super().shell_exec(
-                id=id, command=command, block=block, timeout=timeout
+                id=id,
+                command=command_for_spawn,
+                block=block,
+                timeout=timeout,
             )
         else:
             with self._runtime_env_lock:
@@ -743,6 +826,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         self._runtime_env_overlay.clear()
                         self._runtime_env_overlay = None
                         self._active_runtime_secret_values = ()
+
+        if isolate_local_session:
+            self._record_local_process_group(id, original_command=command)
 
         process_continues = (
             isinstance(result, str)
@@ -781,6 +867,169 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def _record_local_process_group(
+        self,
+        session_id: str,
+        *,
+        original_command: str,
+    ) -> None:
+        """Remember the stable process-group id for a tracked local session."""
+
+        session_lock = getattr(self, "_session_lock", None)
+        if session_lock is None:
+            return
+        with session_lock:
+            session = self.shell_sessions.get(session_id)
+            if (
+                session is None
+                or session.get("backend") != "local"
+                or session.get("process") is None
+            ):
+                return
+            process_group = session["process"].pid
+
+        # The bootstrap calls setsid immediately, but a non-blocking spawn can
+        # return to this thread before the child has executed it.  Never record
+        # an unverified pgid: killpg() must not target the Brain's own group.
+        deadline = time.monotonic() + 0.25
+        owns_process_group = False
+        while time.monotonic() < deadline:
+            try:
+                owns_process_group = os.getpgid(process_group) == process_group
+            except ProcessLookupError:
+                # The leader may have exited while a descendant still owns the
+                # group and its stdout pipe.
+                owns_process_group = self._process_group_exists(process_group)
+            if owns_process_group:
+                break
+            time.sleep(0.005)
+        if not owns_process_group:
+            logger.warning(
+                "Terminal process did not establish an isolated process group",
+                extra={"session_id": session_id, "pid": process_group},
+            )
+            return
+
+        with session_lock:
+            current = self.shell_sessions.get(session_id)
+            if current is session:
+                current["eigent_process_group"] = process_group
+                history = current.get("command_history")
+                if history:
+                    history[0] = original_command
+
+    def _process_group_exists(self, process_group: int) -> bool:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _terminate_local_session(self, session: dict) -> None:
+        """Terminate a local session without touching its reader's streams.
+
+        New sessions have a dedicated process group.  Killing the entire group
+        closes every descendant's copy of stdout, allowing the reader thread to
+        observe EOF and close the stream itself.  Legacy sessions fall back to
+        a bounded terminate/kill of the recorded process.
+        """
+
+        process = session.get("process")
+        process_group = session.get("eigent_process_group")
+        if os.name == "nt" and process is not None:
+            completed = subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=1.0,
+                check=False,
+            )
+            if completed.returncode not in {0, 128}:
+                raise RuntimeError(
+                    "Terminal process tree cleanup failed: "
+                    + (completed.stderr or completed.stdout).strip()
+                )
+            return
+        if process_group is not None and os.name != "nt":
+            try:
+                os.killpg(process_group, signal.SIGTERM)
+            except ProcessLookupError:
+                return
+            except PermissionError:
+                if process is not None and process.poll() is not None:
+                    return
+                raise
+
+            deadline = time.monotonic() + _LOCAL_PROCESS_GROUP_GRACE_SECONDS
+            while time.monotonic() < deadline and self._process_group_exists(
+                process_group
+            ):
+                time.sleep(0.02)
+            if self._process_group_exists(process_group):
+                try:
+                    os.killpg(process_group, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    # macOS can report EPERM once the session leader and its
+                    # final descendants are zombies awaiting reap.  The dead
+                    # Popen leader proves there is no live root left to manage.
+                    if process is None or process.poll() is None:
+                        raise
+            return
+
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=_LOCAL_PROCESS_GROUP_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=_LOCAL_PROCESS_GROUP_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Terminal session process did not exit after force kill",
+                    extra={"pid": process.pid},
+                )
+
+    def shell_kill_process(self, id: str) -> str:
+        """Terminate a tracked process within a bounded amount of time."""
+
+        with self._session_lock:
+            session = self.shell_sessions.get(id)
+            if session is None or not session.get("running", False):
+                return f"Error: No active session found with ID '{id}'."
+            if session.get("backend") != "local":
+                return super().shell_kill_process(id)
+            session["stopping"] = True
+
+        try:
+            self._terminate_local_session(session)
+        except Exception as exc:
+            with self._session_lock:
+                current = self.shell_sessions.get(id)
+                if current is not None:
+                    current["stopping"] = False
+            logger.exception(
+                "Failed to terminate local terminal session",
+                extra={"session_id": id},
+            )
+            return f"Error killing process in session '{id}': {exc}"
+
+        # Do not close stdin/stdout here.  The output reader owns stdout and
+        # closes it after every process in the isolated group has released the
+        # pipe.  Cross-thread TextIOWrapper.close() is the deadlock fixed here.
+        with self._output_condition:
+            current = self.shell_sessions.get(id)
+            if current is not None:
+                current["running"] = False
+                current["stopping"] = False
+            self._output_condition.notify_all()
+        return f"Process in session '{id}' has been terminated."
 
     def _watch_background_workspace_mutation(
         self,
