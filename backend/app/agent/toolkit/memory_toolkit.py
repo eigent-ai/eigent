@@ -14,12 +14,11 @@
 
 """Always-available typed tools for lightweight Memory and History Search."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import uuid
 from dataclasses import asdict
+from typing import Literal
 
 from camel.toolkits import BaseToolkit, FunctionTool
 
@@ -36,6 +35,37 @@ from app.service.task import (
     ActionAskData,
     get_task_lock,
 )
+
+_AGENT_WRITABLE_MEMORY_KINDS = frozenset(
+    {"fact", "decision", "todo", "lesson"}
+)
+_MEMORY_SOURCE_TRUST_ALIASES = {
+    "untrusted_external": "external_untrusted",
+}
+_MEMORY_SOURCE_TRUST_VALUES = frozenset(
+    {"user_asserted", "tool_observed", "external_untrusted", "model_inferred"}
+)
+
+
+def _memory_validation_error(
+    *, field: str, value: str, allowed_values: frozenset[str]
+) -> dict:
+    """Return a known pre-write validation failure to the model.
+
+    Memory mutation tools are classified as unsafe writes. Raising here after
+    dispatch would therefore be indistinguishable from a failed write with an
+    unknown outcome. A structured tool error records ``tool.failed`` while
+    keeping the Run alive so the model can correct its call.
+    """
+
+    return {
+        "error": f"Invalid Memory {field}: {value!r}",
+        "error_code": "MEMORY_ARGUMENT_VALIDATION_FAILED",
+        "field": field,
+        "allowed_values": sorted(allowed_values),
+        "outcome_known": True,
+        "retryable": True,
+    }
 
 
 class MemoryToolkit(BaseToolkit, AbstractToolkit):
@@ -69,10 +99,15 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
 
     def remember_project_memory(
         self,
-        kind: str,
+        kind: Literal["fact", "decision", "todo", "lesson"],
         content: str,
         reason: str,
-        source_trust: str = "model_inferred",
+        source_trust: Literal[
+            "user_asserted",
+            "tool_observed",
+            "external_untrusted",
+            "model_inferred",
+        ] = "model_inferred",
         source_event_ids: list[str] | None = None,
     ) -> dict:
         """Save one short, stable Project Memory item.
@@ -86,19 +121,28 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             kind: One of fact, decision, todo, or lesson.
             content: The short, stable Memory statement to save.
             reason: Why the item is durable and useful in future Runs.
-            source_trust: Provenance category for the statement.
+            source_trust: One of user_asserted, tool_observed,
+                external_untrusted, or model_inferred. The pre-enum legacy
+                spelling untrusted_external is accepted but not advertised
+                to models, and is normalized before any durable write.
             source_event_ids: Optional canonical History event citations.
         """
 
-        if kind not in {"fact", "decision", "todo", "lesson"}:
-            raise ValueError("Project Memory kind is not agent-writable")
-        if source_trust not in {
-            "user_asserted",
-            "tool_observed",
-            "external_untrusted",
-            "model_inferred",
-        }:
-            raise ValueError("invalid Memory source trust")
+        if kind not in _AGENT_WRITABLE_MEMORY_KINDS:
+            return _memory_validation_error(
+                field="kind",
+                value=str(kind),
+                allowed_values=_AGENT_WRITABLE_MEMORY_KINDS,
+            )
+        normalized_source_trust = _MEMORY_SOURCE_TRUST_ALIASES.get(
+            source_trust, source_trust
+        )
+        if normalized_source_trust not in _MEMORY_SOURCE_TRUST_VALUES:
+            return _memory_validation_error(
+                field="source_trust",
+                value=str(source_trust),
+                allowed_values=_MEMORY_SOURCE_TRUST_VALUES,
+            )
         context = self._run_context()
         activity_id, decision_id = self._audit_link()
         result = get_lightweight_memory_service().create_entry(
@@ -108,7 +152,7 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             content=content,
             actor_type="agent",
             reason=reason,
-            source_trust=source_trust,
+            source_trust=normalized_source_trust,
             source_refs=tuple(source_event_ids or ()),
             actor_id=self.agent_name,
             run_id=context.run_id,
