@@ -447,7 +447,9 @@ class HttpRunEventSyncTransport:
         boundary = (
             "eigent-" + re.sub(r"[^A-Za-z0-9]", "", item.artifact_id)[:48]
         )
-        safe_filename = re.sub(r"[\r\n\"\\]", "_", item.filename)
+        upload_basename = item.filename.replace("\\", "/").rsplit("/", 1)[-1]
+        safe_filename = re.sub(r"[\r\n\"\\]", "_", upload_basename)
+        safe_logical_path = item.relative_path.replace("\\", "/")
         prefix = (
             f"--{boundary}\r\n"
             'Content-Disposition: form-data; name="task_id"\r\n\r\n'
@@ -455,6 +457,12 @@ class HttpRunEventSyncTransport:
             f"--{boundary}\r\n"
             'Content-Disposition: form-data; name="client_request_id"\r\n\r\n'
             f"{item.artifact_id}\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="source"\r\n\r\n'
+            "project_output\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="logical_path"\r\n\r\n'
+            f"{safe_logical_path}\r\n"
             f"--{boundary}\r\n"
             'Content-Disposition: form-data; name="file"; '
             f'filename="{safe_filename}"\r\n'

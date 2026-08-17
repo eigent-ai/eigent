@@ -631,6 +631,7 @@ interface UploadCandidate {
   path: string;
   name: string;
   uploadName: string;
+  logicalPath: string;
   source: UploadFileSource;
   artifactId?: string;
 }
@@ -662,22 +663,40 @@ function isReadableLocalPath(filePath?: string): filePath is string {
   return !/^(https?:|file:|blob:|data:)/i.test(filePath);
 }
 
-function buildUploadName(
+function buildUploadLogicalPath(
   fileName: string,
   source: UploadFileSource,
-  attachmentIndex: number,
   relativePath?: string
 ): string {
   if (source === 'camel_log') {
     return relativePath
-      ? `camel_log/${relativePath}/${fileName}`
-      : `camel_log/${fileName}`;
-  }
-  if (source === 'user_attachment') {
-    return `user_attachment/${fileName}`;
+      ? `${normalizeOutputPath(relativePath)}/${fileName}`
+      : fileName;
   }
 
-  return `project_output/${fileName}`;
+  return fileName;
+}
+
+export async function buildUploadRequestId(
+  uploadTargetId: string,
+  file: Pick<UploadCandidate, 'path' | 'source' | 'logicalPath'>
+): Promise<string> {
+  const identity = [
+    'renderer-upload-v1',
+    uploadTargetId,
+    file.source,
+    file.logicalPath,
+    // The local path is never uploaded. Hashing it keeps two explicitly
+    // attached same-named files distinct without leaking device identity.
+    file.path,
+  ].join('\0');
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(identity)
+  );
+  return `renderer-upload-v1:${Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 function syncProjectDisplayName(
@@ -812,7 +831,9 @@ export function collectTaskUploadFiles(
   _taskOutputFiles: FileInfo[] = []
 ): UploadCandidate[] {
   const uploadCandidates: Array<
-    Omit<UploadCandidate, 'uploadName'> & { relativePath?: string }
+    Omit<UploadCandidate, 'uploadName' | 'logicalPath'> & {
+      relativePath?: string;
+    }
   > = [];
 
   // Diagnostics are deliberately isolated from project-folder discovery.
@@ -850,16 +871,16 @@ export function collectTaskUploadFiles(
   }
 
   const uniqueCandidates = new Map<string, UploadCandidate>();
-  let attachmentIndex = 1;
   for (const file of uploadCandidates) {
     if (!uniqueCandidates.has(file.path)) {
       const { relativePath, ...rest } = file;
+      const uploadName = getFileNameFromPath(file.name);
       uniqueCandidates.set(file.path, {
         ...rest,
-        uploadName: buildUploadName(
-          file.name,
+        uploadName,
+        logicalPath: buildUploadLogicalPath(
+          uploadName,
           file.source,
-          file.source === 'user_attachment' ? attachmentIndex++ : 0,
           relativePath
         ),
       });
@@ -907,6 +928,12 @@ async function uploadTaskFiles(
       formData.append('file', blob, file.uploadName);
       // TODO(file): rename endpoint to use project_id
       formData.append('task_id', uploadTargetId);
+      formData.append('source', file.source);
+      formData.append('logical_path', file.logicalPath);
+      formData.append(
+        'client_request_id',
+        await buildUploadRequestId(uploadTargetId, file)
+      );
 
       const uploadResponse = await uploadFile(
         '/api/v1/chat/files/upload',

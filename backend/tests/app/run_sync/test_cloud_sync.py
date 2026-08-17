@@ -21,7 +21,11 @@ from typing import Any
 import httpx
 import pytest
 
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import (
+    ArtifactUploadSyncItem,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
 from app.run_sync import (
     CloudSyncConfiguration,
     CloudSyncWorker,
@@ -234,6 +238,62 @@ def _append(journal: SQLiteRunJournal, run_id: str, count: int = 1) -> None:
                 created_at=float(sequence),
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_artifact_upload_sends_leaf_filename_and_logical_metadata(
+    tmp_path,
+):
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = await request.aread()
+        return httpx.Response(
+            200,
+            json={
+                "id": 73,
+                "filename": "report.csv",
+                "file_size": 4,
+                "file_type": "text/csv",
+                "s3_bucket": "test-assets",
+                "s3_key": "artifacts/report.csv",
+                "source": "project_output",
+                "logical_path": "reports/report.csv",
+            },
+        )
+
+    path = tmp_path / "report.csv"
+    path.write_text("a,b\n", encoding="utf-8")
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    configuration = CloudSyncConfiguration(
+        endpoint_url="https://cloud.example/api/v1/sync/events:ingest",
+        authorization="Bearer token",
+        desktop_instance_id="desktop-1",
+    )
+    item = ArtifactUploadSyncItem(
+        artifact_id="artifact-1",
+        run_id="run-1",
+        project_id="project-1",
+        local_path=str(path),
+        filename="report.csv",
+        relative_path="reports/report.csv",
+        file_size=path.stat().st_size,
+        lease_token="lease-1",
+        attempt_count=0,
+    )
+
+    await transport.upload_artifact(configuration, item)
+    await transport.close()
+
+    body = captured["body"]
+    assert isinstance(body, bytes)
+    assert b'name="source"\r\n\r\nproject_output' in body
+    assert b'name="logical_path"\r\n\r\nreports/report.csv' in body
+    assert b'filename="report.csv"' in body
+    assert b'filename="reports/report.csv"' not in body
 
 
 def _worker(journal, transport, **kwargs) -> CloudSyncWorker:

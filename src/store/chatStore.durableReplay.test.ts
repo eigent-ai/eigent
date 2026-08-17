@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   acceptCanonicalRunEvent,
   admitDurableRunResume,
+  buildUploadRequestId,
   canonicalRunEventToLegacyMessage,
   collectTaskUploadFiles,
   createCanonicalRunEventCursor,
@@ -343,6 +344,46 @@ describe('canonical Run replay projection', () => {
     );
 
     expect(candidates).toEqual([]);
+  });
+
+  it('separates a CAMEL log basename from its logical path metadata', () => {
+    const candidates = collectTaskUploadFiles(
+      [
+        {
+          path: '/Users/test/.eigent/camel_logs/agent-1/conv.json',
+          name: 'conv.json',
+          relativePath: 'agent-1',
+          source: 'camel_log',
+        },
+      ],
+      [],
+      []
+    );
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        uploadName: 'conv.json',
+        source: 'camel_log',
+        logicalPath: 'agent-1/conv.json',
+      }),
+    ]);
+    expect(candidates[0].uploadName).not.toContain('/');
+  });
+
+  it('derives a bounded idempotency key without exposing the local path', async () => {
+    const file = {
+      path: '/Users/alice/private/camel_logs/agent-1/conv.json',
+      source: 'camel_log' as const,
+      logicalPath: 'agent-1/conv.json',
+    };
+
+    const first = await buildUploadRequestId('project-1', file);
+    const replay = await buildUploadRequestId('project-1', file);
+
+    expect(first).toBe(replay);
+    expect(first).toHaveLength(83);
+    expect(first).not.toContain('alice');
+    expect(first).not.toContain('conv.json');
   });
 
   it('matches URL-encoded stream paths and legacy x-prefixed paths', () => {
