@@ -515,7 +515,7 @@ function getPersistedStepTimeMs(message: AgentMessage): number | null {
   return null;
 }
 
-async function resolveCdpBrowsersForRequest(
+export async function resolveCdpBrowsersForRequest(
   shouldEnsureBrowser: boolean
 ): Promise<{
   browser_port?: number;
@@ -526,32 +526,37 @@ async function resolveCdpBrowsersForRequest(
     return { cdp_browsers: [] };
   }
 
-  const browser_port = await ipc.invoke('get-browser-port');
-  let cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
-
-  if (shouldEnsureBrowser && cdp_browsers.length === 0) {
-    const launchResult = await ipc.invoke('launch-cdp-browser');
-    if (launchResult?.success) {
-      cdp_browsers = (await ipc.invoke('get-cdp-browsers')) ?? [];
-      if (cdp_browsers.length === 0 && launchResult.port) {
-        cdp_browsers = [
-          {
-            id: `launched-${launchResult.port}`,
-            port: launchResult.port,
-            isExternal: false,
-            name: `Launched Browser (${launchResult.port})`,
-          },
-        ];
-      }
-    } else {
-      console.warn(
-        'Failed to launch managed CDP browser:',
-        launchResult?.error || launchResult
-      );
-    }
+  const browser_port = Number(await ipc.invoke('get-browser-port'));
+  if (!shouldEnsureBrowser) {
+    return { browser_port, cdp_browsers: [] };
   }
 
-  return { browser_port, cdp_browsers };
+  const embeddedRuntime = await ipc.invoke('get-embedded-browser-runtime');
+  const embeddedTargets = Array.isArray(embeddedRuntime?.targets)
+    ? embeddedRuntime.targets.filter(
+        (target: any) =>
+          typeof target?.url === 'string' && target.url.length > 0
+      )
+    : [];
+  if (!embeddedRuntime?.targetAvailable || embeddedTargets.length === 0) {
+    console.warn(
+      'Electron embedded browser has no available Eigent-owned WebView target'
+    );
+    return { browser_port, cdp_browsers: [] };
+  }
+
+  const embeddedPort = Number(embeddedRuntime.port) || browser_port;
+  return {
+    browser_port: embeddedPort,
+    cdp_browsers: embeddedTargets.map((target: any) => ({
+      id: `electron-webview-${target.webContentsId ?? 'owned'}`,
+      port: embeddedPort,
+      endpoint: `http://127.0.0.1:${embeddedPort}`,
+      isExternal: false,
+      managedBy: 'electron',
+      targetUrl: target.url,
+    })),
+  };
 }
 
 export type DurableRunDisplayStatus =

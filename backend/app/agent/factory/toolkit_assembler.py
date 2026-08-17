@@ -493,13 +493,22 @@ async def assemble_single_agent_toolkits(
             search_tools = message_integration.register_functions(search_tools)
             assembly.add_tools(search_tools, SearchToolkit.toolkit_name())
 
-    if _enabled(config, "browser") and (
-        hands is None or hands.can_use_browser()
+    electron_runtime = env("EIGENT_RUNTIME", "").lower().strip() == "electron"
+    has_owned_electron_target = any(
+        browser.get("managedBy") == "electron" and browser.get("targetUrl")
+        for browser in options.cdp_browsers
+    )
+    if (
+        _enabled(config, "browser")
+        and (hands is None or hands.can_use_browser())
+        and (not electron_runtime or has_owned_electron_target)
     ):
         toolkit_session_id = str(uuid.uuid4())[:8]
         selected_port: int | None = None
         cdp_url: str | None = None
         cdp_owned_by_hands = False
+        owned_target_url: str | None = None
+        browser_target_available = True
 
         if options.cdp_browsers:
             # Reuse the same pool as the Browser Agent so concurrent projects
@@ -512,17 +521,30 @@ async def assemble_single_agent_toolkits(
                 options.task_id,
             )
             if selected_browser is None:
-                selected_browser = options.cdp_browsers[0]
-                logger.warning(
-                    "No available CDP browser in pool for Single Agent; "
-                    "using first browser",
-                    extra={
-                        "project_id": options.project_id,
-                        "task_id": options.task_id,
-                    },
-                )
-            selected_port = _get_browser_port(selected_browser)
-            cdp_url = _get_browser_endpoint(selected_browser)
+                if electron_runtime:
+                    browser_target_available = False
+                    logger.warning(
+                        "No unused Eigent embedded browser target is "
+                        "available; Browser Toolkit will remain disabled",
+                        extra={
+                            "project_id": options.project_id,
+                            "task_id": options.task_id,
+                        },
+                    )
+                else:
+                    selected_browser = options.cdp_browsers[0]
+                    logger.warning(
+                        "No available CDP browser in pool for Single Agent; "
+                        "using first browser",
+                        extra={
+                            "project_id": options.project_id,
+                            "task_id": options.task_id,
+                        },
+                    )
+            if selected_browser is not None:
+                selected_port = _get_browser_port(selected_browser)
+                cdp_url = _get_browser_endpoint(selected_browser)
+                owned_target_url = selected_browser.get("targetUrl")
         else:
             existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
             selected_port = int(env("browser_port", "9222"))
@@ -544,31 +566,37 @@ async def assemble_single_agent_toolkits(
                 except (NotImplementedError, ValueError):
                     cdp_url = f"http://localhost:{selected_port}"
 
-        cdp_keep_current = bool(options.cdp_browsers)
-        default_start_url = None if cdp_keep_current else "about:blank"
-        browser_options = {
-            "cdp_keep_current_page": cdp_keep_current,
-            "default_start_url": default_start_url,
-            "headless": False,
-            "browser_log_to_file": True,
-            "stealth": True,
-            "session_id": toolkit_session_id,
-            "cdp_url": cdp_url,
-            "enabled_tools": _browser_enabled_tools(),
-            **_options(config, "browser"),
-        }
-        toolkit = HybridBrowserToolkit(options.project_id, **browser_options)
-        toolkit.agent_name = Agents.single_agent
-        assembly.browser_toolkit = toolkit
-        assembly.browser_port = selected_port
-        assembly.browser_cdp_url = cdp_url
-        assembly.browser_session_id = toolkit_session_id
-        assembly.browser_owned_by_hands = cdp_owned_by_hands
-        assembly.toolkits_to_register_agent.append(toolkit)
-        registered = message_integration.register_toolkits(toolkit)
-        assembly.add_tools(
-            registered.get_tools(), HybridBrowserToolkit.toolkit_name()
-        )
+        if browser_target_available:
+            cdp_keep_current = bool(options.cdp_browsers)
+            default_start_url = None if cdp_keep_current else "about:blank"
+            browser_options = {
+                "cdp_keep_current_page": cdp_keep_current,
+                "default_start_url": default_start_url,
+                "headless": False,
+                "browser_log_to_file": True,
+                "session_id": toolkit_session_id,
+                "cdp_url": cdp_url,
+                "enabled_tools": _browser_enabled_tools(),
+                **_options(config, "browser"),
+                # Host-owned target identity is an admission fact, not Bundle
+                # configuration. Keep it authoritative over manifest options.
+                "owned_target_url": owned_target_url,
+                "stealth": not bool(owned_target_url),
+            }
+            toolkit = HybridBrowserToolkit(
+                options.project_id, **browser_options
+            )
+            toolkit.agent_name = Agents.single_agent
+            assembly.browser_toolkit = toolkit
+            assembly.browser_port = selected_port
+            assembly.browser_cdp_url = cdp_url
+            assembly.browser_session_id = toolkit_session_id
+            assembly.browser_owned_by_hands = cdp_owned_by_hands
+            assembly.toolkits_to_register_agent.append(toolkit)
+            registered = message_integration.register_toolkits(toolkit)
+            assembly.add_tools(
+                registered.get_tools(), HybridBrowserToolkit.toolkit_name()
+            )
 
     if _enabled(config, "terminal") and (
         hands is None or hands.can_execute_terminal()

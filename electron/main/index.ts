@@ -886,12 +886,16 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('get-embedded-browser-runtime', () => {
-    const targetAvailable =
-      webViewManager?.hasAvailableBrowserToolkitTarget() ?? false;
+    const targets = webViewManager?.listAvailableBrowserToolkitTargets() ?? [];
+    const targetAvailable = targets.length > 0;
     log.info(
-      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, target_available=${targetAvailable}`
+      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, available_targets=${targets.length}`
     );
-    return { port: browser_port, targetAvailable };
+    return {
+      port: browser_port,
+      targetAvailable,
+      targets,
+    };
   });
 
   // Set browser port

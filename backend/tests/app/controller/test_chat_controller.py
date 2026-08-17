@@ -85,10 +85,6 @@ class TestChatController:
                 clear=True,
             ),
             patch(
-                "app.controller.chat_controller.is_cdp_url_available",
-                return_value=True,
-            ) as mock_available,
-            patch(
                 "app.controller.chat_controller.has_eigent_embedded_browser_target",
                 return_value=True,
             ) as mock_owned_target,
@@ -96,13 +92,19 @@ class TestChatController:
                 "app.controller.chat_controller.ensure_cdp_browser_endpoint"
             ) as mock_external_launcher,
         ):
-            assert await _prepare_browser_for_request(mock_request, 9222)
+            assert await _prepare_browser_for_request(
+                mock_request,
+                9222,
+                "about:blank#eigent-browser-toolkit=7",
+            )
 
         assert mock_request.state.cdp_url == "http://127.0.0.1:9333"
         assert mock_request.state.browser_port == 9333
         assert mock_request.state.browser_available is True
-        mock_available.assert_called_once_with("http://127.0.0.1:9333")
-        mock_owned_target.assert_called_once_with("http://127.0.0.1:9333")
+        mock_owned_target.assert_called_once_with(
+            "http://127.0.0.1:9333",
+            "about:blank#eigent-browser-toolkit=7",
+        )
         mock_external_launcher.assert_not_called()
 
     @pytest.mark.asyncio

@@ -14,6 +14,7 @@
 
 import asyncio
 import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -610,6 +611,106 @@ class TestListenChatAgent:
 
                 assert result is cloned_agent
                 mock_clone_constructor.assert_called_once()
+
+    def test_clone_assigns_a_distinct_electron_target(self, mock_task_lock):
+        from app.agent.factory.browser import _cdp_pool_manager
+
+        task_id = "electron-clone-task"
+        first_target = "about:blank#eigent-browser-toolkit=101"
+        second_target = "about:blank#eigent-browser-toolkit=102"
+        browsers = [
+            {
+                "port": 9222,
+                "managedBy": "electron",
+                "targetUrl": first_target,
+            },
+            {
+                "port": 9222,
+                "managedBy": "electron",
+                "targetUrl": second_target,
+            },
+        ]
+        _cdp_pool_manager.acquire_browser(browsers, "parent-session", task_id)
+
+        try:
+            with (
+                patch(f"{_LCA}.get_task_lock", return_value=mock_task_lock),
+                patch("camel.models.ModelFactory.create") as create_model,
+            ):
+                backend = MagicMock()
+                backend.model_type = "gpt-4"
+                backend.current_model = MagicMock()
+                backend.current_model.model_type = "gpt-4"
+                backend.models = "gpt-4"
+                backend.scheduling_strategy = MagicMock()
+                backend.scheduling_strategy.__name__ = "round_robin"
+                create_model.return_value = backend
+
+                agent = ListenChatAgent(
+                    api_task_id="project-1",
+                    agent_name="Browser Agent",
+                    model="gpt-4",
+                )
+                agent._original_system_message = "browser system"
+                agent.memory = MagicMock()
+                agent.memory.window_size = 10
+                agent.memory.get_context_creator.return_value.token_limit = (
+                    4000
+                )
+                agent._external_tool_schemas = {}
+                agent.response_terminators = []
+                agent._cdp_acquire_callback = MagicMock()
+                agent._cdp_release_callback = MagicMock()
+                agent._cdp_options = SimpleNamespace(cdp_browsers=browsers)
+                agent._cdp_task_id = task_id
+
+                browser_config = SimpleNamespace(
+                    cdp_url="http://127.0.0.1:9222"
+                )
+                toolkit = MagicMock()
+                toolkit.config_loader.get_browser_config.return_value = (
+                    browser_config
+                )
+                toolkit._owned_target_url = first_target
+                toolkit._allow_owned_target_clone = False
+                toolkit._ws_config = {"ownedTargetUrl": first_target}
+                agent._browser_toolkit = toolkit
+
+                observed: dict[str, object] = {}
+
+                def clone_tools():
+                    observed["owned_target_url"] = toolkit._owned_target_url
+                    observed["allow_owned_target_clone"] = (
+                        toolkit._allow_owned_target_clone
+                    )
+                    observed["ws_owned_target_url"] = toolkit._ws_config.get(
+                        "ownedTargetUrl"
+                    )
+                    return [], []
+
+                cloned_agent = MagicMock()
+                with (
+                    patch(
+                        f"{_LCA}.ListenChatAgent",
+                        return_value=cloned_agent,
+                    ),
+                    patch.object(
+                        agent, "_clone_tools", side_effect=clone_tools
+                    ),
+                ):
+                    assert agent.clone() is cloned_agent
+
+                assert observed == {
+                    "owned_target_url": second_target,
+                    "allow_owned_target_clone": True,
+                    "ws_owned_target_url": second_target,
+                }
+                assert toolkit._owned_target_url == first_target
+                assert toolkit._allow_owned_target_clone is False
+                assert toolkit._ws_config["ownedTargetUrl"] == first_target
+                assert cloned_agent._cdp_session_id != "parent-session"
+        finally:
+            _cdp_pool_manager.release_by_task(task_id)
 
     def test_listen_chat_agent_with_tools(self, mock_task_lock):
         """Test ListenChatAgent with tools."""

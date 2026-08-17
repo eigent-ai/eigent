@@ -735,6 +735,7 @@ def _is_remote_browser_hands(request: Request | None) -> bool:
 async def _prepare_browser_for_request(
     request: Request | None,
     port: int,
+    target_url: str | None = None,
 ) -> bool:
     if env("EIGENT_RUNTIME", "").lower().strip() == "electron":
         configured_port = env("EIGENT_ELECTRON_CDP_PORT", "").strip()
@@ -743,11 +744,12 @@ async def _prepare_browser_for_request(
         except (TypeError, ValueError):
             embedded_port = port
         endpoint = f"http://127.0.0.1:{embedded_port}"
-        is_available, has_owned_target = await asyncio.gather(
-            asyncio.to_thread(is_cdp_url_available, endpoint),
-            asyncio.to_thread(has_eigent_embedded_browser_target, endpoint),
+        has_owned_target = await asyncio.to_thread(
+            has_eigent_embedded_browser_target,
+            endpoint,
+            target_url,
         )
-        if is_available and has_owned_target:
+        if target_url and has_owned_target:
             if request is not None:
                 request.state.browser_available = True
                 request.state.cdp_url = endpoint
@@ -759,7 +761,7 @@ async def _prepare_browser_for_request(
             "browser fallback",
             extra={
                 "port": embedded_port,
-                "cdp_available": is_available,
+                "target_url_supplied": bool(target_url),
                 "owned_target_available": has_owned_target,
             },
         )
@@ -839,11 +841,12 @@ def _browser_prepare_timeout_seconds() -> float:
 async def _prepare_browser_for_request_with_timeout(
     request: Request | None,
     port: int,
+    target_url: str | None = None,
 ) -> bool:
     timeout = _browser_prepare_timeout_seconds()
     try:
         return await asyncio.wait_for(
-            _prepare_browser_for_request(request, port),
+            _prepare_browser_for_request(request, port, target_url),
             timeout=timeout,
         )
     except TimeoutError:
@@ -1091,10 +1094,26 @@ async def _prepare_chat_run(
     # Electron is restricted to its owned WebContentsView target. A standalone
     # Brain used by the Web client may reuse RemoteHands or provision an
     # external Chrome/Chromium endpoint.
-    if not data.cdp_browsers:
-        await _prepare_browser_for_request_with_timeout(
-            request, data.browser_port
+    electron_runtime = env("EIGENT_RUNTIME", "").lower().strip() == "electron"
+    embedded_target_url = next(
+        (
+            str(browser.get("targetUrl"))
+            for browser in data.cdp_browsers
+            if browser.get("managedBy") == "electron"
+            and browser.get("targetUrl")
+        ),
+        None,
+    )
+    if electron_runtime or not data.cdp_browsers:
+        browser_ready = await _prepare_browser_for_request_with_timeout(
+            request,
+            data.browser_port,
+            embedded_target_url,
         )
+        if electron_runtime and not browser_ready:
+            # Never let an Electron request fall through to the shared CDP
+            # endpoint without an exact Eigent-owned target descriptor.
+            data.cdp_browsers = []
 
     camel_log = _camel_log_dir(
         data.email,

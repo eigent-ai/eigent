@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -43,6 +44,7 @@ _navigation_locks: dict[str, asyncio.Lock] = {}
 _navigation_locks_guard = asyncio.Lock()
 _browser_bringup_locks: dict[str, asyncio.Lock] = {}
 _browser_bringup_locks_guard = asyncio.Lock()
+_node_runtime_hook_lock = asyncio.Lock()
 
 # Global registry: (CDP endpoint, tab_id) -> session_id. Namespacing prevents
 # unrelated browser instances from consuming each other's tab budget.
@@ -423,12 +425,30 @@ class WebSocketBrowserWrapper(BaseWebSocketBrowserWrapper):
             self.websocket = None
 
     async def start(self):
-        # Simply use the parent implementation which uses system npm/node
+        """Start CAMEL, adding the target guard only for Electron sessions."""
         self._ensure_local_no_proxy()
         logger.info(
             "Starting WebSocket server using parent implementation (system npm/node)"
         )
-        await super().start()
+        owned_target_url = str(self.config.get("ownedTargetUrl") or "")
+        if not owned_target_url:
+            return await super().start()
+
+        hook_path = Path(__file__).with_name("electron_target_guard.cjs")
+        require_option = f"--require={hook_path}"
+        async with _node_runtime_hook_lock:
+            previous = os.environ.get("NODE_OPTIONS")
+            options = previous.split() if previous else []
+            if require_option not in options:
+                options.append(require_option)
+            os.environ["NODE_OPTIONS"] = " ".join(options)
+            try:
+                return await super().start()
+            finally:
+                if previous is None:
+                    os.environ.pop("NODE_OPTIONS", None)
+                else:
+                    os.environ["NODE_OPTIONS"] = previous
 
     async def _send_command(
         self, command: str, params: dict[str, Any]
@@ -748,6 +768,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
         connect_over_cdp: bool = True,  # Deprecated: auto-set to True when cdp_url is provided, kept for compatibility
         cdp_url: str | None = "http://localhost:9222",
         cdp_keep_current_page: bool = False,
+        owned_target_url: str | None = None,
         full_visual_mode: bool = False,
     ) -> None:
         logger.info(
@@ -800,6 +821,10 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             cdp_keep_current_page=cdp_keep_current_page,
             full_visual_mode=full_visual_mode,
         )
+        self._owned_target_url = owned_target_url
+        self._allow_owned_target_clone = False
+        if owned_target_url:
+            self._ws_config["ownedTargetUrl"] = owned_target_url
         if self._default_timeout is not None:
             self._ws_config["defaultTimeout"] = self._default_timeout
         command_timeout_override = env(
@@ -920,6 +945,12 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
     ) -> "HybridBrowserToolkit":
         import uuid
 
+        if self._owned_target_url and not self._allow_owned_target_clone:
+            raise RuntimeError(
+                "An Electron embedded Browser Toolkit target cannot be "
+                "cloned until the CDP pool assigns a different target."
+            )
+
         if new_session_id is None:
             new_session_id = str(uuid.uuid4())[:8]
 
@@ -959,6 +990,7 @@ class HybridBrowserToolkit(BaseHybridBrowserToolkit, AbstractToolkit):
             connect_over_cdp=self.config_loader.get_browser_config().connect_over_cdp,
             cdp_url=self.config_loader.get_browser_config().cdp_url,
             cdp_keep_current_page=self.config_loader.get_browser_config().cdp_keep_current_page,
+            owned_target_url=self._owned_target_url,
             full_visual_mode=self._full_visual_mode,
         )
 

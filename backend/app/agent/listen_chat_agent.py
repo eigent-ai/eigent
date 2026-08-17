@@ -1203,6 +1203,7 @@ class ListenChatAgent(ChatAgent):
         # tools so that HybridBrowserToolkit clones with the correct CDP port
         new_cdp_port = None
         new_cdp_url = None
+        new_owned_target_url = None
         new_cdp_session = None
         has_cdp = hasattr(self, "_cdp_acquire_callback") and callable(
             getattr(self, "_cdp_acquire_callback", None)
@@ -1232,7 +1233,16 @@ class ListenChatAgent(ChatAgent):
                 if selected:
                     new_cdp_port = _get_browser_port(selected)
                     new_cdp_url = _get_browser_endpoint(selected)
+                    new_owned_target_url = selected.get("targetUrl")
                 else:
+                    if any(
+                        browser.get("managedBy") == "electron"
+                        for browser in cdp_browsers
+                    ):
+                        raise RuntimeError(
+                            "No unused Eigent embedded browser target is "
+                            "available for the cloned Agent."
+                        )
                     fallback_browser = cdp_browsers[0]
                     new_cdp_port = _get_browser_port(fallback_browser)
                     new_cdp_url = _get_browser_endpoint(fallback_browser)
@@ -1246,9 +1256,24 @@ class ListenChatAgent(ChatAgent):
                 original_cdp_url = (
                     toolkit.config_loader.get_browser_config().cdp_url
                 )
+                original_owned_target_url = getattr(
+                    toolkit, "_owned_target_url", None
+                )
+                original_allow_owned_target_clone = getattr(
+                    toolkit, "_allow_owned_target_clone", False
+                )
+                original_ws_owned_target_url = toolkit._ws_config.get(
+                    "ownedTargetUrl"
+                )
                 toolkit.config_loader.get_browser_config().cdp_url = (
                     new_cdp_url
                 )
+                toolkit._owned_target_url = new_owned_target_url
+                toolkit._allow_owned_target_clone = bool(new_owned_target_url)
+                if new_owned_target_url:
+                    toolkit._ws_config["ownedTargetUrl"] = new_owned_target_url
+                else:
+                    toolkit._ws_config.pop("ownedTargetUrl", None)
                 try:
                     cloned_tools, toolkits_to_register = self._clone_tools()
                 except Exception:
@@ -1260,6 +1285,16 @@ class ListenChatAgent(ChatAgent):
                     toolkit.config_loader.get_browser_config().cdp_url = (
                         original_cdp_url
                     )
+                    toolkit._owned_target_url = original_owned_target_url
+                    toolkit._allow_owned_target_clone = (
+                        original_allow_owned_target_clone
+                    )
+                    if original_ws_owned_target_url:
+                        toolkit._ws_config["ownedTargetUrl"] = (
+                            original_ws_owned_target_url
+                        )
+                    else:
+                        toolkit._ws_config.pop("ownedTargetUrl", None)
         else:
             cloned_tools, toolkits_to_register = self._clone_tools()
 

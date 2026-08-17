@@ -69,12 +69,23 @@ def test_embedded_browser_target_requires_eigent_owned_webview(monkeypatch):
         def json():
             return [
                 {"type": "page", "url": "http://localhost:5173/"},
-                {"type": "page", "url": "about:blank?use=0"},
+                {
+                    "type": "page",
+                    "url": "about:blank#eigent-browser-toolkit=1",
+                },
             ]
 
     monkeypatch.setattr("httpx.get", lambda *args, **kwargs: _Response())
 
     assert has_eigent_embedded_browser_target("http://127.0.0.1:9222")
+    assert has_eigent_embedded_browser_target(
+        "http://127.0.0.1:9222",
+        "about:blank#eigent-browser-toolkit=1",
+    )
+    assert not has_eigent_embedded_browser_target(
+        "http://127.0.0.1:9222",
+        "about:blank#eigent-browser-toolkit=2",
+    )
 
 
 @pytest.mark.unit
@@ -86,7 +97,10 @@ def test_embedded_browser_target_rejects_main_renderer_only(monkeypatch):
         def json():
             return [
                 {"type": "page", "url": "http://localhost:5173/"},
-                {"type": "other", "url": "about:blank?use=0"},
+                {
+                    "type": "other",
+                    "url": "about:blank#eigent-browser-toolkit=1",
+                },
             ]
 
     monkeypatch.setattr("httpx.get", lambda *args, **kwargs: _Response())
