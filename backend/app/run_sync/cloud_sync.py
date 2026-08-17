@@ -527,6 +527,10 @@ class CloudSyncWorker:
         self._bootstrap_next_attempt_at = 0.0
         self._memory_snapshot_revisions: dict[tuple[str, str], int] = {}
         self._memory_snapshot_verified_at: dict[tuple[str, str], float] = {}
+        self._memory_snapshot_failure_counts: dict[tuple[str, str], int] = {}
+        self._memory_snapshot_failed_revisions: dict[tuple[str, str], int] = {}
+        self._memory_snapshot_retry_after: dict[tuple[str, str], float] = {}
+        self._memory_snapshot_repair_revisions: dict[tuple[str, str], int] = {}
         self._artifact_tasks: set[asyncio.Task[int]] = set()
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
@@ -536,6 +540,10 @@ class CloudSyncWorker:
             self._bootstrap_next_attempt_at = 0.0
             self._memory_snapshot_revisions.clear()
             self._memory_snapshot_verified_at.clear()
+            self._memory_snapshot_failure_counts.clear()
+            self._memory_snapshot_failed_revisions.clear()
+            self._memory_snapshot_retry_after.clear()
+            self._memory_snapshot_repair_revisions.clear()
         self._configuration = configuration
         self.notify()
 
@@ -937,6 +945,11 @@ class CloudSyncWorker:
         for snapshot in snapshots:
             key = (str(snapshot["scope_type"]), str(snapshot["scope_id"]))
             revision = int(snapshot["revision"])
+            failed_revision = self._memory_snapshot_failed_revisions.get(key)
+            if failed_revision != revision:
+                self._clear_memory_snapshot_failure(key)
+            elif now < self._memory_snapshot_retry_after.get(key, 0.0):
+                continue
             if (
                 self._memory_snapshot_revisions.get(key) == revision
                 and now - self._memory_snapshot_verified_at.get(key, 0.0)
@@ -959,6 +972,63 @@ class CloudSyncWorker:
                     if isinstance(exc.detail, dict)
                     else {}
                 )
+                if (
+                    exc.status_code == 409
+                    and isinstance(detail, dict)
+                    and detail.get("code")
+                    == "memory_snapshot_same_revision_conflict"
+                ):
+                    if (
+                        self._memory_snapshot_repair_revisions.get(key)
+                        == revision
+                    ):
+                        delay = self._defer_memory_snapshot_retry(
+                            key, revision
+                        )
+                        logger.warning(
+                            "Cloud still rejects repaired Memory projection "
+                            "%s/%s at revision %d; retrying in %.1fs",
+                            key[0],
+                            key[1],
+                            revision,
+                            delay,
+                        )
+                        continue
+                    try:
+                        repair_revision = self._journal.advance_memory_snapshot_revision_after_cloud_conflict
+                        repaired = await asyncio.to_thread(
+                            repair_revision,
+                            key[0],
+                            key[1],
+                            expected_revision=revision,
+                        )
+                    except Exception:
+                        delay = self._defer_memory_snapshot_retry(
+                            key, revision
+                        )
+                        logger.exception(
+                            "Cloud Memory revision repair failed for %s/%s; "
+                            "retrying in %.1fs",
+                            key[0],
+                            key[1],
+                            delay,
+                        )
+                    else:
+                        self._clear_memory_snapshot_failure(key)
+                        if repaired:
+                            self._memory_snapshot_repair_revisions[key] = (
+                                revision + 1
+                            )
+                            logger.warning(
+                                "Advanced local Memory revision after Cloud "
+                                "rejected stale projection %s/%s at revision "
+                                "%d",
+                                key[0],
+                                key[1],
+                                revision,
+                            )
+                        self.notify()
+                    continue
                 claim_writer = getattr(
                     self._transport, "claim_memory_writer", None
                 )
@@ -1033,21 +1103,37 @@ class CloudSyncWorker:
                             }
                         response = await put_snapshot(configuration, payload)
                     except Exception:
+                        delay = self._defer_memory_snapshot_retry(
+                            key, revision
+                        )
                         logger.exception(
-                            "Cloud Memory writer transfer failed for %s/%s",
-                            *key,
+                            "Cloud Memory writer transfer failed for %s/%s; "
+                            "retrying in %.1fs",
+                            key[0],
+                            key[1],
+                            delay,
                         )
                         continue
                 else:
+                    delay = self._defer_memory_snapshot_retry(key, revision)
                     logger.exception(
-                        "Cloud Memory snapshot sync failed for %s/%s", *key
+                        "Cloud Memory snapshot sync failed for %s/%s; "
+                        "retrying in %.1fs",
+                        key[0],
+                        key[1],
+                        delay,
                     )
                     continue
             except asyncio.CancelledError:
                 raise
             except Exception:
+                delay = self._defer_memory_snapshot_retry(key, revision)
                 logger.exception(
-                    "Cloud Memory snapshot sync failed for %s/%s", *key
+                    "Cloud Memory snapshot sync failed for %s/%s; retrying "
+                    "in %.1fs",
+                    key[0],
+                    key[1],
+                    delay,
                 )
                 continue
             try:
@@ -1066,14 +1152,41 @@ class CloudSyncWorker:
             except Exception:
                 # Scope isolation is deliberate: one malformed or stale scope
                 # must not stop unrelated Memory outboxes from draining.
+                delay = self._defer_memory_snapshot_retry(key, revision)
                 logger.exception(
-                    "Cloud Memory snapshot sync failed for %s/%s", *key
+                    "Cloud Memory snapshot sync failed for %s/%s; retrying "
+                    "in %.1fs",
+                    key[0],
+                    key[1],
+                    delay,
                 )
                 continue
+            self._clear_memory_snapshot_failure(key)
+            self._memory_snapshot_repair_revisions.pop(key, None)
             self._memory_snapshot_revisions[key] = revision
             self._memory_snapshot_verified_at[key] = now
             ready.add(key)
         return ready
+
+    def _defer_memory_snapshot_retry(
+        self,
+        key: tuple[str, str],
+        revision: int,
+    ) -> float:
+        attempts = self._memory_snapshot_failure_counts.get(key, 0) + 1
+        delay = min(2 ** min(attempts, 8), self._max_retry_seconds)
+        self._memory_snapshot_failure_counts[key] = attempts
+        self._memory_snapshot_failed_revisions[key] = revision
+        self._memory_snapshot_retry_after[key] = time.monotonic() + delay
+        return delay
+
+    def _clear_memory_snapshot_failure(
+        self,
+        key: tuple[str, str],
+    ) -> None:
+        self._memory_snapshot_failure_counts.pop(key, None)
+        self._memory_snapshot_failed_revisions.pop(key, None)
+        self._memory_snapshot_retry_after.pop(key, None)
 
     @staticmethod
     def _timestamp(value: Any) -> float:

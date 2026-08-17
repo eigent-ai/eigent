@@ -263,7 +263,7 @@ describe('spaceStore user scoping', () => {
     expect(state.activeSpaceId).toBe('space_selected');
   });
 
-  it('creates a blank space for legacy migrations and selects it on first hydrate', async () => {
+  it('keeps an existing Legacy Space with projects instead of creating Untitled Space', async () => {
     const spaceApi = await import('@/service/spaceApi');
     vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
       makeSpace('legacy_2', 'Legacy Space', 'legacy', '2', { legacy: true }),
@@ -284,17 +284,54 @@ describe('spaceStore user scoping', () => {
     await useSpaceStore.getState().hydrateFromServer(2);
 
     const state = useSpaceStore.getState();
-    expect(spaceApi.proxyCreateSpace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Untitled Space',
-        source_type: 'blank',
+    expect(spaceApi.proxyCreateSpace).not.toHaveBeenCalled();
+    expect(Object.keys(state.spaces)).toEqual(['legacy_2']);
+    expect(state.activeSpaceId).toBe('legacy_2');
+  });
+
+  it('coalesces concurrent hydration so an empty account creates one Space', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    let resolveSpaces: ((spaces: Space[]) => void) | undefined;
+    vi.mocked(spaceApi.proxyFetchSpaces).mockReturnValue(
+      new Promise<Space[]>((resolve) => {
+        resolveSpaces = resolve;
       })
     );
-    expect(Object.keys(state.spaces).sort()).toEqual([
-      'legacy_2',
-      'space_migration_blank',
+
+    const firstHydration = useSpaceStore.getState().hydrateFromServer(2);
+    const secondHydration = useSpaceStore.getState().hydrateFromServer(2);
+
+    await vi.waitFor(() => {
+      expect(spaceApi.proxyFetchSpaces).toHaveBeenCalledTimes(1);
+    });
+    resolveSpaces?.([]);
+    await Promise.all([firstHydration, secondHydration]);
+
+    expect(spaceApi.proxyCreateSpace).toHaveBeenCalledTimes(1);
+    expect(useSpaceStore.getState().activeSpaceId).toBe('space_created');
+  });
+
+  it('uses the authenticated owner when hydration omits userId', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_selected', 'Selected Space', 'folder', '2'),
     ]);
-    expect(state.activeSpaceId).toBe('space_migration_blank');
+    useSpaceStore.setState({
+      activeSpaceId: 'space_selected',
+      spaces: {
+        space_selected: makeSpace(
+          'space_selected',
+          'Selected Space',
+          'folder',
+          '2'
+        ),
+      },
+    });
+
+    await useSpaceStore.getState().hydrateFromServer();
+
+    expect(spaceApi.proxyCreateSpace).not.toHaveBeenCalled();
+    expect(useSpaceStore.getState().activeSpaceId).toBe('space_selected');
   });
 
   it('coalesces concurrent project syncs for the same Space', async () => {

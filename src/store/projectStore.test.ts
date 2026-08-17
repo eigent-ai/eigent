@@ -80,8 +80,8 @@ vi.mock('./chatStore', async (importOriginal) => {
 });
 
 describe('projectStore runtime shape', () => {
-  it('invalidates cache snapshots predating durable approval resolution projection', () => {
-    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(7);
+  it('uses the cache schema that rejects incomplete message projections', () => {
+    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(9);
   });
 
   beforeEach(() => {
@@ -412,6 +412,11 @@ describe('projectStore runtime shape', () => {
         const project = useProjectStore.getState().projects.project_local;
         const chatStore = project.chatStores[project.activeChatId];
         chatStore.getState().create(taskId, 'replay');
+        chatStore.getState().addMessages(taskId, {
+          id: 'user-1',
+          role: 'user',
+          content: 'long-running prompt',
+        });
       });
       getCachedProjectMock.mockResolvedValue({
         schemaVersion: 2,
@@ -637,6 +642,70 @@ describe('projectStore runtime shape', () => {
     }
   });
 
+  it('rejects a freshness-anchored cache whose task message projection is empty', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_incomplete_cache',
+            status: 'waiting_for_user',
+            updated_at: 300,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_incomplete_cache'],
+        tasks: {
+          task_incomplete_cache: {
+            taskState: {
+              status: 'running',
+              durableRunStatus: 'waiting_for_user',
+              hasMessages: true,
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_incomplete_cache'],
+          'approval prompt',
+          'project_incomplete_cache',
+          'history_incomplete_cache',
+          'Incomplete cache project',
+          'space_test',
+          { task_incomplete_cache: 'approval prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_incomplete_cache',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_incomplete_cache',
+        'approval prompt',
+        0,
+        'project_incomplete_cache',
+        'local_durable'
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
   it('repairs zero duration in a current cache from the canonical local Run', async () => {
     const { useAuthStore } = await import('./authStore');
     const previousUserId = useAuthStore.getState().user_id;
@@ -665,7 +734,9 @@ describe('projectStore runtime shape', () => {
               status: 'finished',
               elapsed: 0,
               taskTime: 123,
-              messages: [],
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
               taskInfo: [],
               taskRunning: [],
               taskAssigning: [],

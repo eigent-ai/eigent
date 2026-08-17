@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchPost } from '@/api/http';
+import { fetchGet, fetchPost } from '@/api/http';
 
 export type InteractionDecisionScope = 'once' | 'run' | 'space';
 
@@ -67,6 +67,78 @@ export const humanInteractionDecisionPath = (
 ): string =>
   `/runs/${encodeURIComponent(runId)}/interactions/${encodeURIComponent(interactionId)}/decisions`;
 
+export const pendingHumanInteractionsPath = (runId: string): string =>
+  `/runs/${encodeURIComponent(runId)}/interactions?status=pending`;
+
+interface PendingHumanInteractionRecord {
+  interaction_id?: string;
+  status?: string;
+  version?: number;
+  action_digest?: string | null;
+}
+
+const PENDING_INTERACTION_CACHE_TTL_MS = 3_000;
+const pendingInteractionsByRun = new Map<
+  string,
+  {
+    expiresAt: number;
+    request: Promise<PendingHumanInteractionRecord[]>;
+  }
+>();
+
+export function invalidatePendingHumanInteractions(runId?: string): void {
+  if (runId) pendingInteractionsByRun.delete(runId);
+  else pendingInteractionsByRun.clear();
+}
+
+function listPendingHumanInteractions(
+  runId: string
+): Promise<PendingHumanInteractionRecord[]> {
+  const now = Date.now();
+  const cached = pendingInteractionsByRun.get(runId);
+  if (cached && cached.expiresAt > now) return cached.request;
+
+  let request: Promise<PendingHumanInteractionRecord[]>;
+  request = fetchGet(pendingHumanInteractionsPath(runId))
+    .then((response: { interactions?: PendingHumanInteractionRecord[] }) =>
+      Array.isArray(response?.interactions) ? response.interactions : []
+    )
+    .catch((error) => {
+      if (pendingInteractionsByRun.get(runId)?.request === request) {
+        pendingInteractionsByRun.delete(runId);
+      }
+      throw error;
+    });
+  pendingInteractionsByRun.set(runId, {
+    expiresAt: now + PENDING_INTERACTION_CACHE_TTL_MS,
+    request,
+  });
+  return request;
+}
+
+/**
+ * Revalidate a replayed card against the local durable store before making
+ * it actionable. This is intentionally narrower than trusting legacy UI task
+ * ids: the exact interaction/version must still be pending in Brain. Older
+ * lightweight list responses omit action_digest; the decision POST remains
+ * the authority and always performs its own digest/status/version CAS.
+ */
+export async function isHumanInteractionStillPending(
+  interaction: HumanInteractionPayload
+): Promise<boolean> {
+  if (!interaction.run_id) return false;
+  const interactions = await listPendingHumanInteractions(interaction.run_id);
+  return interactions.some(
+    (candidate) =>
+      candidate.interaction_id === interaction.interaction_id &&
+      (candidate.status === 'requested' || candidate.status === 'presented') &&
+      candidate.version === (interaction.version ?? 0) &&
+      (interaction.action_digest === undefined ||
+        candidate.action_digest === undefined ||
+        candidate.action_digest === interaction.action_digest)
+  );
+}
+
 export async function decideHumanInteraction(
   interaction: HumanInteractionPayload,
   input: {
@@ -76,7 +148,7 @@ export async function decideHumanInteraction(
   }
 ) {
   if (!interaction.run_id) throw new Error('Missing durable Run id');
-  return fetchPost(
+  const response = await fetchPost(
     humanInteractionDecisionPath(
       interaction.run_id,
       interaction.interaction_id
@@ -95,4 +167,6 @@ export async function decideHumanInteraction(
       continue_active_attempt: true,
     }
   );
+  invalidatePendingHumanInteractions(interaction.run_id);
+  return response;
 }

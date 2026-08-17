@@ -14,22 +14,28 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { fetchPostMock } = vi.hoisted(() => ({
+const { fetchGetMock, fetchPostMock } = vi.hoisted(() => ({
+  fetchGetMock: vi.fn(),
   fetchPostMock: vi.fn(),
 }));
 
 vi.mock('@/api/http', () => ({
+  fetchGet: fetchGetMock,
   fetchPost: fetchPostMock,
 }));
 
 import {
   decideHumanInteraction,
   humanInteractionDecisionPath,
+  invalidatePendingHumanInteractions,
+  isHumanInteractionStillPending,
 } from './humanInteractionApi';
 
 describe('local HumanInteraction API', () => {
   beforeEach(() => {
     fetchPostMock.mockReset();
+    fetchGetMock.mockReset();
+    invalidatePendingHumanInteractions();
   });
 
   it('uses the unprefixed FastAPI Run decision route', async () => {
@@ -64,5 +70,94 @@ describe('local HumanInteraction API', () => {
     expect(humanInteractionDecisionPath('run-1', 'interaction-1')).toBe(
       '/runs/run-1/interactions/interaction-1/decisions'
     );
+  });
+
+  it('revalidates only the exact pending durable interaction', async () => {
+    fetchGetMock.mockResolvedValue({
+      interactions: [
+        {
+          interaction_id: 'interaction-1',
+          status: 'requested',
+          version: 2,
+          action_digest: 'a'.repeat(64),
+        },
+      ],
+    });
+
+    await expect(
+      isHumanInteractionStillPending({
+        interaction_id: 'interaction-1',
+        interaction_type: 'approval',
+        run_id: 'run / 1',
+        version: 2,
+        action_digest: 'a'.repeat(64),
+      })
+    ).resolves.toBe(true);
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/runs/run%20%2F%201/interactions?status=pending'
+    );
+  });
+
+  it('accepts the lightweight pending-list shape while decision POST still enforces the digest', async () => {
+    fetchGetMock.mockResolvedValue({
+      interactions: [
+        {
+          interaction_id: 'interaction-1',
+          status: 'requested',
+          version: 2,
+        },
+      ],
+    });
+
+    await expect(
+      isHumanInteractionStillPending({
+        interaction_id: 'interaction-1',
+        interaction_type: 'approval',
+        run_id: 'run-1',
+        version: 2,
+        action_digest: 'a'.repeat(64),
+      })
+    ).resolves.toBe(true);
+  });
+
+  it('does not unlock a stale version of a pending interaction', async () => {
+    fetchGetMock.mockResolvedValue({
+      interactions: [
+        {
+          interaction_id: 'interaction-1',
+          status: 'requested',
+          version: 3,
+          action_digest: 'a'.repeat(64),
+        },
+      ],
+    });
+
+    await expect(
+      isHumanInteractionStillPending({
+        interaction_id: 'interaction-1',
+        interaction_type: 'approval',
+        run_id: 'run-1',
+        version: 2,
+        action_digest: 'a'.repeat(64),
+      })
+    ).resolves.toBe(false);
+  });
+
+  it('deduplicates concurrent pending reads for cards from the same Run', async () => {
+    fetchGetMock.mockResolvedValue({ interactions: [] });
+    const payload = {
+      interaction_id: 'interaction-1',
+      interaction_type: 'approval' as const,
+      run_id: 'run-1',
+      version: 0,
+    };
+
+    await Promise.all([
+      isHumanInteractionStillPending(payload),
+      isHumanInteractionStillPending(payload),
+      isHumanInteractionStillPending(payload),
+    ]);
+
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
   });
 });

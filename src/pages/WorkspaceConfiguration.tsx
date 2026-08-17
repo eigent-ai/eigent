@@ -168,8 +168,9 @@ export default function WorkspaceConfiguration() {
         if (active) setInstalledBundle(snapshot.proposal);
       })
       .catch(() => {
-        // A 404 means this is a locally authored Workspace. The configuration
-        // editor remains fully usable without an installation proposal.
+        // Real transport/auth failures must not prevent editing the local
+        // configuration. A locally-authored Workspace is represented by the
+        // successful { proposal: null } response and never reaches this path.
       });
     return () => {
       active = false;

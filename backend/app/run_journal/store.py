@@ -8684,6 +8684,38 @@ class SQLiteRunJournal:
             assert result is not None
             return self._memory_scope_state_from_row(result)
 
+    def advance_memory_snapshot_revision_after_cloud_conflict(
+        self,
+        scope_type: str,
+        scope_id: str,
+        *,
+        expected_revision: int,
+        now: float | None = None,
+    ) -> bool:
+        """Publish a changed local projection as a new immutable revision.
+
+        Older Desktop migrations changed snapshot-visible scope settings
+        without advancing ``revision``. Cloud correctly rejects those bytes
+        as a rewrite of an already stored revision. Repair only the scope
+        named by that explicit conflict, and use CAS so a concurrent real
+        Memory mutation always wins.
+        """
+
+        self._validate_memory_scope(scope_type, scope_id)
+        if expected_revision < 0:
+            raise ValueError("expected Memory revision must be non-negative")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE memory_scope_state
+                SET revision = revision + 1, updated_at = ?
+                WHERE scope_type = ? AND scope_id = ? AND revision = ?
+                """,
+                (timestamp, scope_type, scope_id, expected_revision),
+            )
+            return updated.rowcount == 1
+
     def get_memory_entry(self, memory_id: str) -> MemoryEntryRecord | None:
         if not memory_id.strip():
             raise ValueError("memory_id is required")

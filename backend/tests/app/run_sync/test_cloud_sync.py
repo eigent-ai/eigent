@@ -44,6 +44,7 @@ class FakeTransport:
         self.memory_snapshots: list[dict[str, Any]] = []
         self.memory_payloads: list[dict[str, Any]] = []
         self.memory_snapshot_failures: set[tuple[str, str]] = set()
+        self.memory_snapshot_revision_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_claims: list[dict[str, Any]] = []
         self.artifact_uploads = []
@@ -122,6 +123,15 @@ class FakeTransport:
                     "detail": {
                         "code": "memory_scope_writer_conflict",
                         "current_writer_epoch": 4,
+                    }
+                },
+            )
+        if key in self.memory_snapshot_revision_conflicts:
+            raise RunEventSyncHttpError(
+                409,
+                {
+                    "detail": {
+                        "code": "memory_snapshot_same_revision_conflict",
                     }
                 },
             )
@@ -471,6 +481,51 @@ async def test_bad_memory_snapshot_does_not_block_an_unrelated_scope(journal):
     ]
     remaining = journal.claim_ready_memory_mutation_batches(now=float("inf"))
     assert [batch.scope_id for batch in remaining] == ["project-1"]
+
+    assert await worker.drain_once() == 0
+    assert len(transport.memory_snapshots) == 2
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_same_revision_snapshot_conflict_advances_only_that_scope(
+    journal,
+):
+    journal.apply_memory_mutation(
+        mutation_id="mutation-1",
+        idempotency_key="request-1",
+        operation="add",
+        scope_type="project",
+        scope_id="project-1",
+        memory_id="memory-1",
+        actor_type="user",
+        reason="Created in Memory Center",
+        content="Use Chinese.",
+        kind="preference",
+        token_count=3,
+        created_by="user",
+        source_trust="user_confirmed",
+    )
+    journal.bind_memory_scope_owner(
+        "project", "project-1", account_owner_id="7"
+    )
+    transport = FakeTransport()
+    key = ("project", "project-1")
+    transport.memory_snapshot_revision_conflicts.add(key)
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 0
+    assert journal.get_memory_scope_state(*key).revision == 2
+    assert len(transport.memory_snapshots) == 2
+
+    assert await worker.drain_once() == 0
+    assert len(transport.memory_snapshots) == 2
+
+    transport.memory_snapshot_revision_conflicts.clear()
+    worker._memory_snapshot_retry_after[key] = 0  # noqa: SLF001
+    assert await worker.drain_once() == 1
+    assert transport.memory_snapshots[-1]["source_revision"] == 2
+    assert journal.claim_ready_memory_mutation_batches(now=float("inf")) == []
     await worker.close()
 
 

@@ -135,6 +135,13 @@ export interface WorkspaceBundleInstallSnapshot {
   cleanup_secret_refs?: string[];
 }
 
+export interface EmptyWorkspaceBundleInstallation {
+  proposal: null;
+}
+
+export type WorkspaceBundleInstallationLookup =
+  WorkspaceBundleInstallSnapshot | EmptyWorkspaceBundleInstallation;
+
 export interface WorkspaceBundleInstallReview {
   bundle: CloudWorkspaceBundle | null;
   revision: CloudWorkspaceBundleRevision;
@@ -213,7 +220,7 @@ export const fetchWorkspaceBundleInstallProposal = async (
 
 export const fetchWorkspaceBundleInstallForSpace = async (
   spaceId: string
-): Promise<WorkspaceBundleInstallSnapshot> =>
+): Promise<WorkspaceBundleInstallationLookup> =>
   fetchGet(
     `/spaces/${encodeURIComponent(spaceId)}/workspace-bundle-installation`
   );

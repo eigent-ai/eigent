@@ -476,11 +476,26 @@ const rehomeLegacyRuntimeProjects = (
 
 let workspaceReconcileFailureCount = 0;
 const projectSyncInFlight = new Map<string, Promise<void>>();
+const spaceHydrationInFlight = new Map<string, Promise<void>>();
 
 const wait = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+
+const resolveHydrationOwnerId = async (
+  userId?: string | number | null
+): Promise<string> => {
+  if (userId !== undefined) {
+    return canonicalUserId(userId);
+  }
+  try {
+    const { getAuthStore } = await import('@/store/authStore');
+    return canonicalUserId(getAuthStore().user_id);
+  } catch {
+    return canonicalUserId(userId);
+  }
+};
 
 const unbindBrainWorkspaceMirror = async (spaceId: string) => {
   const [{ unbindWorkspaceFromBrain }, { getAuthStore }] = await Promise.all([
@@ -575,6 +590,20 @@ export const useSpaceStore = create<SpaceStore>()(
         }),
 
       hydrateFromServer: async (userId) => {
+        const ownerId = await resolveHydrationOwnerId(userId);
+        const hydrationKey = `${getAuthEnvironmentKey()}::${ownerId}`;
+        const existingHydration = spaceHydrationInFlight.get(hydrationKey);
+        if (existingHydration) {
+          await existingHydration;
+          return;
+        }
+
+        let finishHydration: () => void = () => undefined;
+        const currentHydration = new Promise<void>((resolve) => {
+          finishHydration = resolve;
+        });
+        spaceHydrationInFlight.set(hydrationKey, currentHydration);
+
         try {
           const [
             { proxyCreateSpace, proxyFetchSpaceProjects, proxyFetchSpaces },
@@ -583,7 +612,6 @@ export const useSpaceStore = create<SpaceStore>()(
             import('@/service/spaceApi'),
             import('./projectRuntimeStore'),
           ]);
-          const ownerId = canonicalUserId(userId);
           const serverSpaces = await proxyFetchSpaces();
           if (!(await isHydrationStillCurrentForUser(ownerId))) {
             return;
@@ -593,9 +621,6 @@ export const useSpaceStore = create<SpaceStore>()(
           );
           const activeOwnedSpaces = ownedSpaces.filter(
             (space) => space.status === 'active'
-          );
-          const hasActiveNonLegacySpace = activeOwnedSpaces.some(
-            (space) => !isLegacySpace(space)
           );
           const activeLegacySpaces = activeOwnedSpaces.filter(isLegacySpace);
           const legacySpaceIdsWithProjects = new Set<string>();
@@ -620,11 +645,13 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
-          const shouldCreateInitialBlankSpace =
-            !hasActiveNonLegacySpace &&
-            (activeOwnedSpaces.length === 0 || activeLegacySpaces.length > 0);
-          const shouldPreferInitialBlankSpace =
-            legacySpaceIdsWithProjects.size > 0;
+          const visibleOwnedSpaces = ownedSpaces.filter(
+            (space) =>
+              !isLegacySpace(space) || legacySpaceIdsWithProjects.has(space.id)
+          );
+          const shouldCreateInitialBlankSpace = !visibleOwnedSpaces.some(
+            (space) => space.status === 'active'
+          );
 
           if (shouldCreateInitialBlankSpace) {
             try {
@@ -648,10 +675,6 @@ export const useSpaceStore = create<SpaceStore>()(
             return;
           }
 
-          const visibleOwnedSpaces = ownedSpaces.filter(
-            (space) =>
-              !isLegacySpace(space) || legacySpaceIdsWithProjects.has(space.id)
-          );
           const spaces = initialBlankSpace
             ? [initialBlankSpace, ...visibleOwnedSpaces]
             : visibleOwnedSpaces;
@@ -718,10 +741,7 @@ export const useSpaceStore = create<SpaceStore>()(
               activeSpaceId: pickHydratedActiveSpaceId(
                 nextSpaces,
                 state.activeSpaceId,
-                localLegacyId,
-                shouldPreferInitialBlankSpace
-                  ? initialBlankSpace?.id
-                  : undefined
+                localLegacyId
               ),
             };
           });
@@ -764,6 +784,11 @@ export const useSpaceStore = create<SpaceStore>()(
             '[spaceStore] Failed to hydrate spaces from server:',
             error
           );
+        } finally {
+          if (spaceHydrationInFlight.get(hydrationKey) === currentHydration) {
+            spaceHydrationInFlight.delete(hydrationKey);
+          }
+          finishHydration();
         }
       },
 

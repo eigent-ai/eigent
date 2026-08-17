@@ -528,10 +528,12 @@ async def get_space_bundle_installation(space_id: str) -> dict:
         )
     )
     if proposal is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "bundle_install_proposal_not_found"},
-        )
+        # A locally-authored Space normally has no Bundle installation. This
+        # endpoint is an optional relationship lookup, so absence is a normal
+        # empty state rather than a missing-resource error. Keep the 404 on
+        # the proposal-id endpoint, where the caller asked for a concrete
+        # resource that does not exist.
+        return {"proposal": None}
     return _payload(proposal.proposal_id)
 
 

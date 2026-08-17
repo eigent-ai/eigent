@@ -19,6 +19,8 @@ import {
   canonicalRunEventToLegacyMessage,
   collectTaskUploadFiles,
   createCanonicalRunEventCursor,
+  createChatStoreInstance,
+  hasProjectedHumanInteraction,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   removeResolvedInteractionMessages,
@@ -40,7 +42,7 @@ describe('canonical Run replay projection', () => {
     });
   });
 
-  it('unwraps legacy UI events and projects approval decisions', () => {
+  it('unwraps legacy UI events and projects durable interaction decisions', () => {
     expect(
       canonicalRunEventToLegacyMessage({
         event_type: 'legacy.end',
@@ -71,6 +73,25 @@ describe('canonical Run replay projection', () => {
         __durable_interaction_resolution: true,
       },
       timestamp: 1_786_026_415,
+    });
+    expect(
+      canonicalRunEventToLegacyMessage({
+        event_type: 'interaction.resolved',
+        legacy_step: null,
+        payload: {
+          interaction_id: 'question-2',
+          decision: { reply: 'done' },
+        },
+        created_at: 1_786_026_416,
+      })
+    ).toEqual({
+      step: 'human_reply',
+      data: {
+        interaction_id: 'question-2',
+        decision: { reply: 'done' },
+        __durable_interaction_resolution: true,
+      },
+      timestamp: 1_786_026_416,
     });
     expect(
       canonicalRunEventToLegacyMessage({
@@ -146,6 +167,72 @@ describe('canonical Run replay projection', () => {
     expect(removeResolvedInteractionMessages(messages, 'approval-1')).toEqual([
       messages[1],
     ]);
+  });
+
+  it('keeps resolved interaction ids monotonic and removes replayed cards', () => {
+    const store = createChatStoreInstance();
+    store.getState().create('run-1');
+    const approval = {
+      id: 'approval-card',
+      role: 'agent' as const,
+      content: 'Approve?',
+      step: 'ask',
+      interaction: {
+        interaction_id: 'approval-1',
+        interaction_type: 'approval' as const,
+        run_id: 'run-1',
+        version: 0,
+      },
+    };
+    store.getState().addMessages('run-1', approval);
+
+    store.getState().markHumanInteractionResolved('run-1', 'approval-1');
+    store.getState().markHumanInteractionResolved('run-1', 'approval-1');
+
+    expect(store.getState().tasks['run-1'].messages).toEqual([]);
+    expect(store.getState().tasks['run-1'].resolvedInteractionIds).toEqual([
+      'approval-1',
+    ]);
+    expect(
+      hasProjectedHumanInteraction(
+        store.getState().tasks['run-1'],
+        'approval-1'
+      )
+    ).toBe(true);
+  });
+
+  it('deduplicates a pending interaction across message and queued ASK lanes', () => {
+    const interaction = {
+      interaction_id: 'approval-1',
+      interaction_type: 'approval' as const,
+      run_id: 'run-1',
+      version: 0,
+    };
+    const message = {
+      id: 'approval-card',
+      role: 'agent' as const,
+      content: 'Approve?',
+      interaction,
+    };
+
+    expect(
+      hasProjectedHumanInteraction(
+        { messages: [message], askList: [], resolvedInteractionIds: [] },
+        interaction.interaction_id
+      )
+    ).toBe(true);
+    expect(
+      hasProjectedHumanInteraction(
+        { messages: [], askList: [message], resolvedInteractionIds: [] },
+        interaction.interaction_id
+      )
+    ).toBe(true);
+    expect(
+      hasProjectedHumanInteraction(
+        { messages: [], askList: [], resolvedInteractionIds: [] },
+        interaction.interaction_id
+      )
+    ).toBe(false);
   });
 
   it('deduplicates reconnect replay by sequence and event_id', () => {

@@ -31,11 +31,12 @@ const STORE_NAME = 'projectCache';
 const DB_VERSION = 1;
 
 /**
- * Bump when CachedProject shape or projection semantics change. Version 7
- * invalidates snapshots that could retain an approval card after its
- * canonical approval.decided event had already been persisted.
+ * Bump when CachedProject shape or projection semantics change. Version 9
+ * rejects incomplete task projections (for example hasMessages=true with an
+ * empty messages array) so a disposable cache can never suppress canonical
+ * SQLite replay and leave a Project permanently blank.
  */
-export const PROJECT_CACHE_SCHEMA_VERSION = 7;
+export const PROJECT_CACHE_SCHEMA_VERSION = 9;
 
 export interface CachedTask {
   /** Anything stored on `chatStore.tasks[taskId]` that's safe to serialize. */

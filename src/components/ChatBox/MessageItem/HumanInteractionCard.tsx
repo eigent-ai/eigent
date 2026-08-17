@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   decideHumanInteraction,
+  isHumanInteractionStillPending,
   type HumanInteractionPayload,
 } from '@/service/humanInteractionApi';
 import { useAuthStore } from '@/store/authStore';
@@ -37,6 +38,22 @@ export function isHumanInteractionReadOnly(input: {
   durableRunStatus?: string;
 }): boolean {
   if (input.taskType === 'share') return true;
+  const isExplicitlyTerminal =
+    input.durableRunStatus === 'completed' ||
+    input.durableRunStatus === 'failed' ||
+    input.durableRunStatus === 'cancelled' ||
+    input.durableRunStatus === 'stopped';
+  const belongsToCurrentRun =
+    Boolean(input.interaction.run_id) &&
+    input.interaction.run_id === input.activeTaskId;
+
+  // A requested interaction is a durable, server-CAS-protected action. When
+  // reopening a Project, the legacy task shell can still say replay/finished
+  // for a short time after the Run has already returned to waiting_for_user.
+  // Do not let those stale presentation flags permanently disable the only
+  // recovery control. Explicit canonical terminal status still wins, and a
+  // stale decision is rejected safely by the Brain's version/status checks.
+  if (belongsToCurrentRun && !isExplicitlyTerminal) return false;
   const isDurablyWaiting =
     input.durableRunStatus === 'waiting_for_user' &&
     Boolean(input.interaction.run_id) &&
@@ -58,22 +75,51 @@ export function HumanInteractionCard({
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
   const [resolved, setResolved] = useState(false);
+  const [durablyPending, setDurablyPending] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   useEffect(() => {
     decisionRequestId.current = requestId();
     setSubmitting(false);
     setResolved(false);
+    setDurablyPending(false);
     setSubmissionError(null);
     setFormValues({});
   }, [interaction.interaction_id]);
+  useEffect(() => {
+    let cancelled = false;
+    setDurablyPending(false);
+    if (!readOnly || !interaction.run_id) return;
+    void isHumanInteractionStillPending(interaction)
+      .then((isPending) => {
+        if (!cancelled) setDurablyPending(isPending);
+      })
+      .catch((error) => {
+        // Keep fail-closed on transport/auth failures; the ordinary inline
+        // decision path must not silently treat an unavailable Brain as safe.
+        console.warn(
+          '[HumanInteractionCard] pending interaction revalidation failed',
+          error
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    interaction.action_digest,
+    interaction.interaction_id,
+    interaction.run_id,
+    interaction.version,
+    readOnly,
+  ]);
+  const effectiveReadOnly = readOnly && !durablyPending;
   const targets = useMemo(
     () => interaction.target_resources?.filter(Boolean) || [],
     [interaction.target_resources]
   );
 
   const submit = async (decision: Record<string, unknown>) => {
-    if (readOnly || resolved || submitting) return;
+    if (effectiveReadOnly || resolved || submitting) return;
     setSubmitting(true);
     setSubmissionError(null);
     try {
@@ -100,7 +146,7 @@ export function HumanInteractionCard({
     }
   };
 
-  const disabled = readOnly || resolved || submitting;
+  const disabled = effectiveReadOnly || resolved || submitting;
   const title =
     interaction.title ||
     (interaction.interaction_type === 'approval'

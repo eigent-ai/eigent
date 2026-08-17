@@ -1477,7 +1477,33 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               `[ProjectStore] Discarded stale cache for ${loadProjectId}; replaying latest history`
             );
           }
-          if (!cacheIsStale && cached && cached.taskIds.length > 0) {
+          const cacheHasIncompleteTask = Boolean(
+            cached &&
+            cached.taskIds.some((taskId) => {
+              const taskState = cached.tasks[taskId]?.taskState;
+              if (
+                !taskState ||
+                typeof taskState !== 'object' ||
+                Array.isArray(taskState)
+              ) {
+                return true;
+              }
+              const messages = (taskState as Record<string, unknown>).messages;
+              return !Array.isArray(messages) || messages.length === 0;
+            })
+          );
+          if (!cacheIsStale && cacheHasIncompleteTask) {
+            await deleteCachedProject(cacheScope);
+            console.warn(
+              `[ProjectStore] Discarded incomplete cache for ${loadProjectId}; replaying canonical history`
+            );
+          }
+          if (
+            !cacheIsStale &&
+            !cacheHasIncompleteTask &&
+            cached &&
+            cached.taskIds.length > 0
+          ) {
             const rehydratedStores = new Map<string, VanillaChatStore>();
             let repairedCachedTasks: Record<string, CachedTask> | null = null;
             for (const cachedTaskId of cached.taskIds) {
@@ -1771,6 +1797,20 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             const chatStore = loadedChatStoresByTaskId.get(taskId);
             const taskState = chatStore?.getState().tasks[taskId];
             if (!taskState) {
+              snapshotComplete = false;
+              break;
+            }
+            // Every persisted task has at least its originating user message.
+            // An empty message projection cannot render the conversation and
+            // must never become a freshness-anchored cache hit that suppresses
+            // authoritative SQLite replay on future opens.
+            if (
+              !Array.isArray(taskState.messages) ||
+              taskState.messages.length === 0
+            ) {
+              console.warn(
+                `[ProjectStore] Skipping incomplete cache snapshot for task ${taskId}`
+              );
               snapshotComplete = false;
               break;
             }

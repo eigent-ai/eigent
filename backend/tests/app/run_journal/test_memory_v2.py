@@ -412,6 +412,27 @@ def test_memory_sync_scope_is_enforced_by_sqlite(journal):
         )
 
 
+def test_cloud_snapshot_revision_repair_is_scoped_and_cas_guarded(journal):
+    journal.ensure_memory_scope_state("project", "project-1", now=1)
+    journal.ensure_memory_scope_state("space", "space-1", now=1)
+
+    assert journal.advance_memory_snapshot_revision_after_cloud_conflict(
+        "project",
+        "project-1",
+        expected_revision=0,
+        now=2,
+    )
+    assert not journal.advance_memory_snapshot_revision_after_cloud_conflict(
+        "project",
+        "project-1",
+        expected_revision=0,
+        now=3,
+    )
+
+    assert journal.get_memory_scope_state("project", "project-1").revision == 1
+    assert journal.get_memory_scope_state("space", "space-1").revision == 0
+
+
 def test_memory_outbox_fifo_uses_scope_revision_not_timestamp_or_id(journal):
     journal.apply_memory_mutation(
         mutation_id="z-add",

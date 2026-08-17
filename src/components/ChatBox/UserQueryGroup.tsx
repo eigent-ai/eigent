@@ -523,6 +523,13 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
       {/* Other Messages */}
       {queryGroup.otherMessages.map((message) => {
         if (message.step === AgentStep.ASK && message.interaction) {
+          if (
+            activeTask?.resolvedInteractionIds?.includes(
+              message.interaction.interaction_id
+            )
+          ) {
+            return null;
+          }
           return (
             <HumanInteractionCard
               key={`interaction-${message.id}`}
@@ -537,8 +544,12 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               onResolved={() => {
                 if (!activeTaskId) return;
                 const state = chatStore.getState();
-                const current = state.tasks[activeTaskId];
-                state.removeMessage(activeTaskId, message.id);
+                state.markHumanInteractionResolved(
+                  activeTaskId,
+                  message.interaction.interaction_id
+                );
+                const current = chatStore.getState().tasks[activeTaskId];
+                if (!current) return;
                 const [nextAsk, ...remainingAsks] = current.askList;
                 state.setActiveAskList(activeTaskId, remainingAsks);
                 state.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');

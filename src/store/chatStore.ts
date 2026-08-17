@@ -112,7 +112,10 @@ export const canonicalRunEventToLegacyMessage = (
   // Approval decisions are canonical-only events. Project their durable
   // interaction id into the legacy reducer so reconnect/replay closes the
   // corresponding ASK card instead of resurrecting an already-decided card.
-  if (event.event_type === 'approval.decided') {
+  if (
+    event.event_type === 'approval.decided' ||
+    event.event_type === 'interaction.resolved'
+  ) {
     const payload =
       event.payload && typeof event.payload === 'object'
         ? (event.payload as Record<string, unknown>)
@@ -186,6 +189,29 @@ export function removeResolvedInteractionMessages(
 ): Message[] {
   return messages.filter(
     (message) => message.interaction?.interaction_id !== interactionId
+  );
+}
+
+/** At-least-once ASK delivery must be idempotent across live and replay lanes. */
+export function hasProjectedHumanInteraction(
+  task:
+    | {
+        messages: Message[];
+        askList: Message[];
+        resolvedInteractionIds?: string[];
+      }
+    | undefined,
+  interactionId: string
+): boolean {
+  if (!task || !interactionId) return false;
+  return (
+    task.resolvedInteractionIds?.includes(interactionId) === true ||
+    task.messages.some(
+      (message) => message.interaction?.interaction_id === interactionId
+    ) ||
+    task.askList.some(
+      (message) => message.interaction?.interaction_id === interactionId
+    )
   );
 }
 
@@ -557,6 +583,11 @@ interface Task {
   webViewUrls: { url: string; processTaskId: string }[];
   activeAsk: string;
   askList: Message[];
+  /**
+   * Monotonic interaction projection. Once an interaction is resolved, an
+   * at-least-once ASK replay must never resurrect its actionable card.
+   */
+  resolvedInteractionIds: string[];
   progressValue: number;
   isPending: boolean;
   activeWorkspace: string | null;
@@ -966,6 +997,7 @@ export interface ChatStore {
   setMessages: (taskId: string, messages: Message[]) => void;
   updateMessage: (taskId: string, messageId: string, message: Message) => void;
   removeMessage: (taskId: string, messageId: string) => void;
+  markHumanInteractionResolved: (taskId: string, interactionId: string) => void;
   setAttaches: (taskId: string, attaches: File[]) => void;
   setSummaryTask: (taskId: string, summaryTask: string) => void;
   setHasWaitComfirm: (taskId: string, hasWaitComfirm: boolean) => void;
@@ -1695,6 +1727,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             isPending: false,
             activeAsk: '',
             askList: [],
+            resolvedInteractionIds: Array.isArray(state.resolvedInteractionIds)
+              ? [...new Set(state.resolvedInteractionIds)]
+              : [],
             autoConfirmDeadline: null,
             streamingDecomposeText: '',
             // File handles can't round-trip through JSON, so cached
@@ -1724,6 +1759,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             webViewUrls: [],
             activeAsk: '',
             askList: [],
+            resolvedInteractionIds: [],
             progressValue: 0,
             isPending: false,
             activeWorkspace: 'workflow',
@@ -4849,19 +4885,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               typeof agentMessages.data?.interaction_id === 'string'
                 ? agentMessages.data.interaction_id
                 : null;
+            let interactionWasAlreadyResolved = false;
             if (resolvedInteractionId) {
               const currentStore = getCurrentChatStore();
-              const currentTask = currentStore.tasks[currentTaskId];
-              if (currentTask) {
-                currentStore.setMessages(
-                  currentTaskId,
-                  removeResolvedInteractionMessages(
-                    currentTask.messages,
-                    resolvedInteractionId
-                  )
-                );
-              }
+              interactionWasAlreadyResolved =
+                currentStore.tasks[
+                  currentTaskId
+                ]?.resolvedInteractionIds?.includes(resolvedInteractionId) ===
+                true;
+              currentStore.markHumanInteractionResolved(
+                currentTaskId,
+                resolvedInteractionId
+              );
             }
+            // A local decision closes and advances the queue immediately.
+            // When the canonical decision later arrives, it is confirmation,
+            // not a second signal to consume another queued interaction.
+            if (interactionWasAlreadyResolved) return;
             const reply =
               agentMessages.data?.reply ||
               agentMessages.data?.content ||
@@ -4891,6 +4931,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             return;
           }
           if (agentMessages.step === AgentStep.ASK) {
+            const interactionId =
+              typeof agentMessages.data?.interaction_id === 'string'
+                ? agentMessages.data.interaction_id
+                : null;
+            const currentTask = getCurrentChatStore().tasks[currentTaskId];
+            if (
+              interactionId &&
+              hasProjectedHumanInteraction(currentTask, interactionId)
+            ) {
+              return;
+            }
             const newMessage: Message = {
               id: generateUniqueId(),
               role: 'agent',
@@ -5310,6 +5361,43 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               messages: state.tasks[taskId].messages.filter(
                 (message) => message.id !== messageId
               ),
+            },
+          },
+        };
+      });
+    },
+    markHumanInteractionResolved(taskId, interactionId) {
+      set((state) => {
+        const task = state.tasks[taskId];
+        if (!task || !interactionId) return state;
+        const resolvedInteractionIds = task.resolvedInteractionIds || [];
+        const alreadyResolved = resolvedInteractionIds.includes(interactionId);
+        const messages = removeResolvedInteractionMessages(
+          task.messages,
+          interactionId
+        );
+        const askList = removeResolvedInteractionMessages(
+          task.askList,
+          interactionId
+        );
+        if (
+          alreadyResolved &&
+          messages.length === task.messages.length &&
+          askList.length === task.askList.length
+        ) {
+          return state;
+        }
+        return {
+          ...state,
+          tasks: {
+            ...state.tasks,
+            [taskId]: {
+              ...task,
+              messages,
+              askList,
+              resolvedInteractionIds: alreadyResolved
+                ? resolvedInteractionIds
+                : [...resolvedInteractionIds, interactionId],
             },
           },
         };

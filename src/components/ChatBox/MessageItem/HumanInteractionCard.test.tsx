@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import {
+  decideHumanInteraction,
+  isHumanInteractionStillPending,
+  type HumanInteractionPayload,
+} from '@/service/humanInteractionApi';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -23,7 +27,11 @@ import {
 vi.mock('@/service/humanInteractionApi', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@/service/humanInteractionApi')>();
-  return { ...actual, decideHumanInteraction: vi.fn() };
+  return {
+    ...actual,
+    decideHumanInteraction: vi.fn(),
+    isHumanInteractionStillPending: vi.fn(),
+  };
 });
 
 vi.mock('@/store/authStore', async (importOriginal) => {
@@ -37,7 +45,7 @@ vi.mock('@/store/authStore', async (importOriginal) => {
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 
-const interaction = {
+const interaction: HumanInteractionPayload = {
   interaction_id: 'approval-1',
   interaction_type: 'approval' as const,
   run_id: 'run-1',
@@ -52,6 +60,7 @@ describe('HumanInteractionCard durable approval', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(decideHumanInteraction).mockResolvedValue({});
+    vi.mocked(isHumanInteractionStillPending).mockResolvedValue(false);
   });
 
   it('keeps a waiting durable approval actionable after replay reattachment', async () => {
@@ -91,7 +100,7 @@ describe('HumanInteractionCard durable approval', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps terminal replay history read-only', () => {
+  it('keeps terminal replay history read-only', async () => {
     const readOnly = isHumanInteractionReadOnly({
       interaction,
       activeTaskId: 'run-1',
@@ -103,11 +112,26 @@ describe('HumanInteractionCard durable approval', () => {
       <HumanInteractionCard interaction={interaction} readOnly={readOnly} />
     );
 
+    await waitFor(() =>
+      expect(isHumanInteractionStillPending).toHaveBeenCalledWith(interaction)
+    );
     expect(screen.getByRole('button', { name: 'Approve once' })).toBeDisabled();
   });
 
+  it('keeps a current pending approval actionable while legacy replay flags are stale', () => {
+    const readOnly = isHumanInteractionReadOnly({
+      interaction,
+      activeTaskId: 'run-1',
+      taskType: 'replay',
+      taskStatus: 'finished',
+      durableRunStatus: undefined,
+    });
+
+    expect(readOnly).toBe(false);
+  });
+
   it('offers a Space-scoped approval for an exact opaque tool matcher', async () => {
-    const toolInteraction = {
+    const toolInteraction: HumanInteractionPayload = {
       ...interaction,
       // Legacy pending cards may still carry run. The current UI contract
       // deliberately hides it because one Project contains multiple Runs.
@@ -159,5 +183,30 @@ describe('HumanInteractionCard durable approval', () => {
       'Approval version changed'
     );
     expect(screen.getByRole('button', { name: 'Approve once' })).toBeEnabled();
+  });
+
+  it('unlocks a legacy Project-keyed card only after Brain confirms it is still pending', async () => {
+    vi.mocked(isHumanInteractionStillPending).mockResolvedValueOnce(true);
+    const toolInteraction: HumanInteractionPayload = {
+      ...interaction,
+      allowed_scopes: ['once', 'space'],
+      rule_matcher: {
+        action_pattern: 'action-identity:sha256:opaque-digest',
+        display_operation: 'mcp.tool.write',
+        resource_pattern: 'tool-identity:sha256:abc',
+        matcher_kind: 'literal_tool',
+      },
+    };
+
+    render(<HumanInteractionCard interaction={toolInteraction} readOnly />);
+
+    const persistentButton = screen.getByRole('button', {
+      name: 'Always allow this tool in Space',
+    });
+    expect(persistentButton).toBeDisabled();
+    await waitFor(() => expect(persistentButton).toBeEnabled());
+    expect(isHumanInteractionStillPending).toHaveBeenCalledWith(
+      toolInteraction
+    );
   });
 });

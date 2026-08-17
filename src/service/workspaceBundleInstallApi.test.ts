@@ -144,6 +144,15 @@ describe('workspace Bundle install API', () => {
     );
   });
 
+  it('preserves the successful empty state for a locally-authored Space', async () => {
+    mocks.fetchGet.mockResolvedValue({ proposal: null });
+
+    await expect(
+      fetchWorkspaceBundleInstallForSpace('space-local')
+    ).resolves.toEqual({ proposal: null });
+    expect(mocks.fetchGet).toHaveBeenCalledTimes(1);
+  });
+
   it('sends only opaque vault references to Brain, never plaintext', async () => {
     mocks.fetchPut.mockResolvedValue({ proposal: { proposal_id: 'p-1' } });
     const plaintext = 'secret-value-that-must-not-cross-ipc';
