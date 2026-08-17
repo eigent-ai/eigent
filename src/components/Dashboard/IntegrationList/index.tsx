@@ -23,6 +23,7 @@ import {
 import { CircleAlert, Settings2 } from 'lucide-react';
 
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
+import { MCPEnvDialog } from '@/components/Settings/Connectors/components/MCPEnvDialog';
 import {
   Select,
   SelectContent,
@@ -37,7 +38,6 @@ import {
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
 import { cn } from '@/lib/utils';
-import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -364,7 +364,7 @@ export default function IntegrationList({
               }
             >
               {isSelectMode ? (
-                <div className="gap-2 min-w-0 min-h-0 flex flex-1 items-center">
+                <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
                   {selectWithCheckbox && (
                     <Checkbox
                       disabled={checkboxDisabled}
@@ -380,8 +380,8 @@ export default function IntegrationList({
                   <span className={titleClassName}>{item.name}</span>
                 </div>
               ) : (
-                <div className="gap-xs flex w-full flex-row items-center justify-between">
-                  <div className="gap-xs flex flex-row items-center">
+                <div className="flex w-full flex-row items-center justify-between gap-xs">
+                  <div className="flex flex-row items-center gap-xs">
                     {showStatusDot && (
                       <img
                         src={ellipseIcon}
@@ -406,7 +406,7 @@ export default function IntegrationList({
                       </Tooltip>
                     </div>
                   </div>
-                  <div className="gap-md flex flex-row items-center">
+                  <div className="flex flex-row items-center gap-md">
                     {showConfigButton && (
                       <Button
                         type="button"
@@ -474,8 +474,8 @@ export default function IntegrationList({
             </div>
 
             {!isSelectMode && showSelect && (
-              <div className="mt-6 gap-md border-ds-border-neutral-default-default pt-6 flex w-full flex-row items-center border-x-0 border-b-0 border-solid">
-                <div className="gap-md flex w-full flex-row items-center justify-between">
+              <div className="mt-6 flex w-full flex-row items-center gap-md border-x-0 border-b-0 border-solid border-ds-border-neutral-default-default pt-6">
+                <div className="flex w-full flex-row items-center justify-between gap-md">
                   <div className="text-body-md text-ds-text-neutral-default-default">
                     {' '}
                     Default {item.name}

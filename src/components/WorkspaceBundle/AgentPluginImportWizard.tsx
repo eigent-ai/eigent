@@ -31,6 +31,7 @@ import {
 } from '@/service/agentPluginImportApi';
 import { fetchWorkspaceConfiguration } from '@/service/workspaceConfigurationApi';
 import { useAuthStore } from '@/store/authStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -107,6 +108,9 @@ export function AgentPluginImportWizard({
   initialTargetSpaceId?: string | null;
 }) {
   const navigate = useNavigate();
+  const setActiveWorkspaceTab = usePageTabStore(
+    (state) => state.setActiveWorkspaceTab
+  );
   const host = useHost();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
@@ -287,7 +291,8 @@ export function AgentPluginImportWizard({
     if (!conversion) return;
     setActiveSpace(conversion.target_space_id);
     setActiveProject(null);
-    navigate('/workspace-configuration');
+    setActiveWorkspaceTab('workforce');
+    navigate('/');
   };
 
   if (conversion) {

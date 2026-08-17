@@ -54,7 +54,6 @@ export function useTriggerTaskExecutor() {
 
   /**
    * Helper function to load a project from history if it doesn't exist locally.
-   * Similar to handleSetActive in HistorySidebar.
    */
   const loadProjectFromHistory = useCallback(
     async (

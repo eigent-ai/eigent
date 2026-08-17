@@ -199,6 +199,7 @@ describe('ChatBox Component', async () => {
     },
     setHasMessages: vi.fn(),
     addMessages: vi.fn(),
+    removeMessage: vi.fn(),
     setIsPending: vi.fn(),
     startTask: vi.fn(),
     setActiveAsk: vi.fn(),
@@ -229,6 +230,21 @@ describe('ChatBox Component', async () => {
     setStatus: vi.fn(),
   };
 
+  const preparedRunState = {
+    setNextTaskId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
+    setIsPending: vi.fn(),
+    setHasMessages: vi.fn(),
+    addMessages: vi.fn(),
+    setStatus: vi.fn(),
+  };
+
+  const preparedRunChatStore = {
+    getState: vi.fn(() => preparedRunState),
+  };
+
   const defaultProjectStoreState = {
     activeProjectId: 'test-project-id',
     projects: {},
@@ -242,10 +258,8 @@ describe('ChatBox Component', async () => {
     restoreQueuedMessage: vi.fn(),
     clearQueuedMessages: vi.fn(),
     createChatStore: vi.fn(),
-    appendInitChatStore: vi.fn(() => ({
-      chatStore: {
-        getState: () => defaultChatStoreState,
-      },
+    appendInitChatStore: vi.fn((_projectId: string, _taskId: string) => ({
+      chatStore: preparedRunChatStore,
     })),
     setActiveChatStore: vi.fn(),
     removeChatStore: vi.fn(),
@@ -438,10 +452,36 @@ describe('ChatBox Component', async () => {
       await user.type(messageInput, 'Test message');
       await user.click(sendButton);
 
-      // The component should call fetchPost for continuing conversation
+      // A follow-up is prepared as a new durable Run before admission.
       await waitFor(() => {
-        expect(_mockFetchPost).toHaveBeenCalled();
+        expect(defaultProjectStoreState.appendInitChatStore).toHaveBeenCalled();
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.objectContaining({
+            question: 'Test message',
+          })
+        );
       });
+
+      const nextTaskId =
+        defaultProjectStoreState.appendInitChatStore.mock.calls[0][1];
+      expect(preparedRunState.setNextTaskId).toHaveBeenCalledWith(nextTaskId);
+      expect(preparedRunState.setTaskSessionMode).toHaveBeenCalledWith(
+        nextTaskId,
+        'single-agent'
+      );
+      expect(preparedRunState.setIsPending).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(preparedRunState.setHasMessages).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: nextTaskId })
+      );
     });
 
     it('should not send empty messages', async () => {
@@ -694,6 +734,10 @@ describe('ChatBox Component', async () => {
       await user.click(sendButton);
 
       await waitFor(() => {
+        expect(storeObj.removeMessage).toHaveBeenCalledWith(
+          'test-task-id',
+          expect.any(String)
+        );
         expect(storeObj.setIsPending).toHaveBeenCalledWith(
           'test-task-id',
           false
@@ -768,23 +812,26 @@ describe('ChatBox Component', async () => {
           },
         ],
       };
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': activeAskTask },
+      } as any;
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
-        chatStore: {
-          ...defaultChatStoreState,
-          tasks: { 'test-task-id': activeAskTask },
-        } as any,
+        chatStore: storeObj,
       });
 
       renderChatBox();
-      const autoReplyTimer = timeoutSpy.mock.calls.find(
-        ([, delay]) => delay === 30000
-      );
-      expect(autoReplyTimer).toBeUndefined();
+
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
+      ).toHaveLength(0);
       expect(_mockFetchPost).not.toHaveBeenCalledWith(
         '/chat/test-project-id/human-reply',
         expect.objectContaining({ reply: 'skip' })
       );
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+      expect(storeObj.setIsPending).not.toHaveBeenCalled();
       timeoutSpy.mockRestore();
     });
 

@@ -194,14 +194,8 @@ vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
 vi.mock('@/components/Workspace/WorkspaceAllSessions', () => ({
   WorkspaceAllSessions: () => null,
 }));
-vi.mock('@/components/Workspace/WorkspaceCoworkPanel', () => ({
-  WorkspaceCoworkPanel: () => null,
-}));
 vi.mock('@/components/Workspace/WorkspaceExamplePrompts', () => ({
   WorkspaceExamplePrompts: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceInstructionMd', () => ({
-  WorkspaceInstructionMd: () => null,
 }));
 vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
   WorkspaceProjectPicker: () => null,
@@ -209,7 +203,6 @@ vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
 vi.mock('@/components/Workspace/WorkspaceRecentSessions', () => ({
   WorkspaceRecentSessions: () => null,
 }));
-
 const renderWorkspace = () =>
   render(
     <MemoryRouter>
@@ -217,7 +210,7 @@ const renderWorkspace = () =>
     </MemoryRouter>
   );
 
-describe('Workspace project creation', () => {
+describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
@@ -257,6 +250,14 @@ describe('Workspace project creation', () => {
       'single-agent'
     );
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
+  });
+
+  it('does not show a Workspace Profile control in the header', () => {
+    renderWorkspace();
+
+    expect(
+      screen.queryByRole('button', { name: 'layout.workspace-profile' })
+    ).not.toBeInTheDocument();
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

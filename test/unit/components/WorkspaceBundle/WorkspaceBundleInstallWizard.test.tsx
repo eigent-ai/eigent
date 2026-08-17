@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   setActiveSpace: vi.fn(),
   setActiveProject: vi.fn(),
   setActiveWorkspaceTab: vi.fn(),
+  openSettings: vi.fn(),
 }));
 
 vi.mock('@/service/workspaceBundleInstallApi', () => ({
@@ -114,6 +115,9 @@ vi.mock('@/store/projectRuntimeStore', () => ({
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: (state: object) => unknown) =>
     selector({ setActiveWorkspaceTab: mocks.setActiveWorkspaceTab }),
+}));
+vi.mock('@/store/settingsStore', () => ({
+  openSettings: mocks.openSettings,
 }));
 
 import { WorkspaceBundleInstallWizard } from '@/components/WorkspaceBundle/WorkspaceBundleInstallWizard';
@@ -261,6 +265,75 @@ describe('WorkspaceBundleInstallWizard', () => {
       proposal: { ...snapshot(false).proposal, state: 'proposed', version: 1 },
     });
     mocks.decide.mockResolvedValue(snapshot(false));
+  });
+
+  it('renders without standalone page navigation', () => {
+    renderWizard({});
+
+    expect(
+      screen.queryByRole('button', { name: 'Back to Spaces' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Install Workspace Bundle' })
+    ).toBeInTheDocument();
+  });
+
+  it('resumes an in-progress embedded import without a page URL', async () => {
+    window.localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-1',
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    mocks.fetchProposal.mockResolvedValue(snapshot(false));
+
+    renderWizard({});
+
+    await waitFor(() =>
+      expect(mocks.fetchProposal).toHaveBeenCalledWith('proposal-1')
+    );
+    expect(await screen.findByText('1. Local values')).toBeInTheDocument();
+  });
+
+  it('restores a reviewed handle before a proposal exists', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    const first = renderWizard({
+      initialHandle: '@verified-publisher/research@1',
+    });
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
+    first.unmount();
+    mocks.fetchReview.mockClear();
+
+    renderWizard({});
+
+    await waitFor(() =>
+      expect(mocks.fetchReview).toHaveBeenCalledWith({
+        publisherNamespace: 'verified-publisher',
+        slug: 'research',
+        version: 1,
+        coordinate: '@verified-publisher/research@1',
+      })
+    );
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
+  });
+
+  it('opens the Connectors settings section for a missing connection', async () => {
+    const pendingConnection = snapshot(false);
+    pendingConnection.proposal.install_plan.connector_slots = [
+      {
+        slot_id: 'research-connector',
+        connector_id: 'github',
+        required_grants: [],
+      },
+    ];
+    mocks.fetchProposal.mockResolvedValue(pendingConnection);
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    await user.click(await screen.findByRole('button', { name: 'Connect' }));
+
+    expect(mocks.openSettings).toHaveBeenCalledWith('connectors');
   });
 
   it('requires a separate approval after persisting the install proposal', async () => {

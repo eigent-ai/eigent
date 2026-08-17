@@ -102,7 +102,11 @@ export default function SearchInput({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <TooltipSimple content={searchLabel} variant="instant">
+              <TooltipSimple
+                content={searchLabel}
+                variant="instant"
+                side="bottom"
+              >
                 <Button
                   type="button"
                   variant="ghost"
@@ -143,7 +147,11 @@ export default function SearchInput({
                 }}
                 className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-label-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default"
               />
-              <TooltipSimple content={clearLabel} variant="instant">
+              <TooltipSimple
+                content={clearLabel}
+                variant="instant"
+                side="bottom"
+              >
                 <Button
                   type="button"
                   variant="ghost"
