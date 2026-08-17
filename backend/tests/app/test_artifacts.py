@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from types import SimpleNamespace
@@ -19,6 +20,116 @@ from unittest.mock import MagicMock
 
 from app import artifacts
 from app.run_journal import SQLiteRunJournal
+
+
+def test_managed_space_changes_enter_durable_project_output_lane(
+    monkeypatch, tmp_path
+):
+    eigent_root = tmp_path / "eigent"
+    working_root = eigent_root / "user_42" / "space_alpha"
+    output_root = tmp_path / "run-output"
+    terminal_root = working_root / "terminal_logs"
+    working_root.mkdir(parents=True)
+    output_root.mkdir()
+    terminal_root.mkdir()
+
+    old_local_file = working_root / "private-before-run.txt"
+    generated_report = working_root / "report.csv"
+    internal_todo = working_root / "todo.md"
+    internal_terminal_log = terminal_root / "session.log"
+    old_local_file.write_text("private", encoding="utf-8")
+    generated_report.write_text("a,b\n1,2\n", encoding="utf-8")
+    internal_todo.write_text("internal", encoding="utf-8")
+    internal_terminal_log.write_text("internal", encoding="utf-8")
+    os.utime(old_local_file, (10, 10))
+    for path in (generated_report, internal_todo, internal_terminal_log):
+        os.utime(path, (30, 30))
+
+    monkeypatch.setattr(artifacts, "get_eigent_root", lambda: eigent_root)
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        space_id="space_alpha",
+        user_id="42",
+        task_output_root=str(output_root),
+        working_directory=str(working_root),
+        task_start_time=20,
+        artifact_manifest=None,
+    )
+    policy = artifacts._working_root_upload_policy(  # noqa: SLF001
+        snapshot,
+        email="owner@example.test",
+        user_id="42",
+    )
+
+    result = artifacts.discover_task_changed_files(
+        snapshot,
+        modification_windows=((20, 40),),
+        working_root_upload_policy=policy,
+    )
+
+    by_path = {item["relativePath"]: item for item in result.artifacts}
+    assert "private-before-run.txt" not in by_path
+    assert by_path["report.csv"]["uploadPolicy"] == "agent_generated"
+    assert by_path["todo.md"]["uploadPolicy"] == "metadata_only"
+    assert (
+        by_path["terminal_logs/session.log"]["uploadPolicy"] == "metadata_only"
+    )
+
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        artifacts.record_artifact_manifest(
+            journal,
+            run_id="run-1",
+            project_id="project-1",
+            artifacts=result.artifacts,
+        )
+        journal.append_event(
+            "run-1",
+            artifacts.RunEventDraft(
+                event_id="run-1-completed",
+                event_type="run.completed",
+                payload={},
+            ),
+        )
+
+        uploads = journal.claim_ready_artifact_uploads(now=float("inf"))
+
+        assert [item.filename for item in uploads] == ["report.csv"]
+        assert uploads[0].relative_path == "report.csv"
+    finally:
+        journal.close()
+
+
+def test_user_bound_folder_changes_remain_metadata_only(tmp_path):
+    working_root = tmp_path / "user-selected-folder"
+    output_root = tmp_path / "run-output"
+    working_root.mkdir()
+    output_root.mkdir()
+    report = working_root / "report.csv"
+    report.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    result = artifacts.discover_task_changed_files(
+        SimpleNamespace(
+            task_output_root=str(output_root),
+            working_directory=str(working_root),
+            task_start_time=0,
+        )
+    )
+
+    assert result.artifacts == [
+        {
+            "filename": "report.csv",
+            "path": str(report.resolve()),
+            "relativePath": "report.csv",
+            "changeType": "changed",
+            "size": report.stat().st_size,
+            "modifiedAt": report.stat().st_mtime * 1000,
+            "supportsRanges": True,
+            "uploadPolicy": "metadata_only",
+        }
+    ]
 
 
 def test_finalize_rescans_non_terminal_run_and_reuses_terminal_manifest(
