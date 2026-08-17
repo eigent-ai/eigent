@@ -25,6 +25,7 @@ const api = vi.hoisted(() => ({
   settings: vi.fn(),
   consolidate: vi.fn(),
   remove: vi.fn(),
+  permanentRemove: vi.fn(),
   confirm: vi.fn(),
   pin: vi.fn(),
   restore: vi.fn(),
@@ -39,7 +40,8 @@ vi.mock('@/service/memoryApi', async (importOriginal) => ({
   updateMemoryEntry: api.update,
   updateMemoryScopeSettings: api.settings,
   consolidateMemoryScope: api.consolidate,
-  deleteMemoryEntry: api.remove,
+  archiveMemoryEntry: api.remove,
+  permanentlyDeleteMemoryEntry: api.permanentRemove,
   confirmMemoryEntry: api.confirm,
   pinMemoryEntry: api.pin,
   restoreMemoryEntry: api.restore,
@@ -59,11 +61,11 @@ vi.mock('@/store/authStore', () => ({
     selector({ user_id: 'user-1' }),
 }));
 
-import Memory from './Memory';
+import Memory from '@/components/Settings/Memory';
 
 const scopeState = {
-  scope_type: 'project',
-  scope_id: 'project-1',
+  scope_type: 'user',
+  scope_id: 'user-1',
   owner_kind: 'desktop',
   revision: 1,
   capture_enabled: true,
@@ -94,7 +96,14 @@ describe('Memory Center', () => {
       },
     });
     api.create.mockResolvedValue({});
+    api.settings.mockResolvedValue({
+      ...scopeState,
+      revision: 2,
+      capture_enabled: false,
+    });
     api.consolidate.mockResolvedValue({});
+    api.remove.mockResolvedValue({});
+    api.permanentRemove.mockResolvedValue({});
     api.listReconciliation.mockResolvedValue({ items: [] });
     api.resolveReconciliation.mockResolvedValue({});
   });
@@ -105,19 +114,19 @@ describe('Memory Center', () => {
 
     await screen.findByText(/Synced to your Eigent account/);
     expect(screen.queryByRole('combobox', { name: /sync/i })).toBeNull();
-    const organize = screen.getByRole('button', { name: /Organize/ });
+    const organize = screen.getByRole('button', { name: /Organise/ });
     await waitFor(() => expect(organize).toBeEnabled());
     await user.click(organize);
 
-    expect(api.consolidate).toHaveBeenCalledWith('project', 'project-1');
+    expect(api.consolidate).toHaveBeenCalledWith('user', 'user-1');
   });
 
   it('ignores a stale scope response after the user switches scope', async () => {
-    let resolveProject!: (value: unknown) => void;
+    let resolveUser!: (value: unknown) => void;
     api.list.mockImplementation((scopeType: string) => {
-      if (scopeType === 'project') {
+      if (scopeType === 'user') {
         return new Promise((resolve) => {
-          resolveProject = resolve;
+          resolveUser = resolve;
         });
       }
       return Promise.resolve({
@@ -152,15 +161,15 @@ describe('Memory Center', () => {
     const user = userEvent.setup();
     render(<Memory />);
 
-    await user.click(screen.getByRole('button', { name: 'Space' }));
+    await user.click(screen.getByRole('tab', { name: 'Space' }));
     expect(await screen.findByText('Space response')).toBeInTheDocument();
-    resolveProject({
+    resolveUser({
       scope_state: scopeState,
-      items: [{ content: 'Stale project response' }],
+      items: [{ content: 'Stale user response' }],
     });
 
     await waitFor(() =>
-      expect(screen.queryByText('Stale project response')).toBeNull()
+      expect(screen.queryByText('Stale user response')).toBeNull()
     );
   });
 
@@ -172,7 +181,7 @@ describe('Memory Center', () => {
       screen.getByText(/Canonical task history is stored separately/)
     ).toBeInTheDocument();
     await waitFor(() =>
-      expect(api.list).toHaveBeenCalledWith('project', 'project-1', false)
+      expect(api.list).toHaveBeenCalledWith('user', 'user-1', false)
     );
 
     await user.type(
@@ -182,18 +191,95 @@ describe('Memory Center', () => {
     await user.click(screen.getByRole('button', { name: /Add/ }));
     await waitFor(() =>
       expect(api.create).toHaveBeenCalledWith(
-        'project',
-        'project-1',
+        'user',
+        'user-1',
         expect.objectContaining({ content: 'Use ISO dates.' })
       )
     );
   });
 
+  it('uses scope pills, one-row controls, and saved Memory tools', async () => {
+    render(<Memory />);
+
+    await screen.findByText('Synced');
+    expect(
+      screen.getByRole('tablist', { name: 'Memory scope' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: 'User' })).toHaveAttribute(
+      'data-state',
+      'active'
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Auto Memory' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: 'Use Memory' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Synced' })).toBeDisabled();
+    const storageProgress = screen.getByRole('progressbar', {
+      name: 'Memory storage used',
+    });
+    expect(storageProgress).toHaveClass('bg-ds-bg-neutral-subtle-default');
+    expect(storageProgress.firstElementChild).toHaveClass(
+      'bg-ds-bg-brand-default-default'
+    );
+    expect(
+      screen.getByRole('textbox', { name: 'New Memory' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Memory type' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Order Memory' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show archived' })
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('locks the Space detail Memory view to the selected Space', async () => {
+    render(
+      <Memory
+        fixedScope={{ type: 'space', id: 'selected-space' }}
+        showScopeSelector={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(api.list).toHaveBeenCalledWith('space', 'selected-space', false)
+    );
+    expect(
+      screen.queryByRole('tablist', { name: 'Memory scope' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('updates Auto Memory immediately', async () => {
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    await screen.findByText('Synced');
+    const autoMemory = screen.getByRole('switch', { name: 'Auto Memory' });
+    expect(autoMemory).toBeChecked();
+    expect(autoMemory).toBeDisabled();
+
+    await user.click(screen.getByRole('tab', { name: 'Project' }));
+    await waitFor(() => expect(autoMemory).toBeEnabled());
+
+    await user.click(autoMemory);
+
+    expect(autoMemory).not.toBeChecked();
+    expect(api.settings).toHaveBeenCalledWith('project', 'project-1', {
+      expectedRevision: 1,
+      captureEnabled: false,
+    });
+  });
+
   it('shows archived entries only on request and restores them', async () => {
     const archived = {
       memory_id: 'memory-1',
-      scope_type: 'project',
-      scope_id: 'project-1',
+      scope_type: 'user',
+      scope_id: 'user-1',
       kind: 'fact',
       content: 'Old fact',
       priority: 'normal',
@@ -220,10 +306,81 @@ describe('Memory Center', () => {
     const user = userEvent.setup();
     render(<Memory />);
 
-    await user.click(screen.getByRole('switch', { name: 'Show archived' }));
+    await user.click(screen.getByRole('button', { name: 'Show archived' }));
+    expect(
+      screen.getByRole('button', { name: 'Hide archived' })
+    ).toBeInTheDocument();
     expect(await screen.findByText('Old fact')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Restore/ }));
+    await user.click(
+      screen.getByRole('button', { name: 'More Memory actions' })
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Restore Memory' })
+    );
 
     expect(api.restore).toHaveBeenCalledWith(archived);
+  });
+
+  it('stars, unstars, and permanently deletes Memory from item actions', async () => {
+    const pinned = {
+      memory_id: 'memory-pinned',
+      scope_type: 'user',
+      scope_id: 'user-1',
+      kind: 'fact',
+      content: 'Pinned first',
+      priority: 'normal',
+      version: 2,
+      token_count: 2,
+      pinned_by_user: true,
+      confirmed_by_user: true,
+      created_by: 'user',
+      source_trust: 'user_confirmed',
+      sensitivity: 'normal',
+      source_refs: [],
+      deleted_at: null,
+      created_at: 1,
+      updated_at: 1,
+    };
+    const unpinned = {
+      ...pinned,
+      memory_id: 'memory-unpinned',
+      content: 'Unpinned second',
+      pinned_by_user: false,
+      created_at: 2,
+      updated_at: 2,
+    };
+    api.list.mockResolvedValue({
+      scope_state: scopeState,
+      items: [unpinned, pinned],
+      sync_status: { state: 'synced' },
+    });
+    api.pin.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<Memory />);
+
+    expect(await screen.findByText('Pinned first')).toBeInTheDocument();
+    const memoryItems = screen
+      .getByText('Pinned first')
+      .closest('[data-settings-row]')
+      ?.querySelectorAll('article');
+    expect(memoryItems?.[0]).toHaveTextContent('Pinned first');
+
+    const unstarButton = screen.getByRole('button', {
+      name: 'Unstar Memory',
+    });
+    const starButton = screen.getByRole('button', { name: 'Star Memory' });
+    expect(unstarButton.querySelector('svg')).toHaveClass('fill-current');
+    expect(starButton.querySelector('svg')).toHaveClass('fill-none');
+
+    await user.click(unstarButton);
+    expect(api.pin).toHaveBeenCalledWith(pinned);
+
+    await user.click(
+      screen.getAllByRole('button', { name: 'More Memory actions' })[0]
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Delete Memory' })
+    );
+    expect(api.permanentRemove).toHaveBeenCalledWith(pinned);
   });
 });

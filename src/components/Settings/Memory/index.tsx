@@ -12,30 +12,793 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Brain } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import SettingsSection from '../SettingsSection';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import {
+  archiveMemoryEntry,
+  confirmMemoryEntry,
+  consolidateMemoryScope,
+  createMemoryEntry,
+  listMemoryEntries,
+  listMemoryReconciliation,
+  permanentlyDeleteMemoryEntry,
+  pinMemoryEntry,
+  resolveMemoryReconciliation,
+  restoreMemoryEntry,
+  updateMemoryEntry,
+  updateMemoryScopeSettings,
+  type MemoryEntry,
+  type MemoryKind,
+  type MemoryReconciliationItem,
+  type MemoryScopeState,
+  type MemoryScopeType,
+} from '@/service/memoryApi';
+import { useAuthStore } from '@/store/authStore';
+import { useProjectStore } from '@/store/projectStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import {
+  Archive,
+  ArchiveRestore,
+  Check,
+  Ellipsis,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Star,
+  Trash2,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 
-export default function Memory() {
-  const { t } = useTranslation();
+const KINDS: MemoryKind[] = [
+  'fact',
+  'decision',
+  'constraint',
+  'preference',
+  'todo',
+  'lesson',
+];
+
+const TRUST_LABELS: Record<MemoryEntry['source_trust'], string> = {
+  user_confirmed: 'Confirmed by you',
+  user_asserted: 'From your message',
+  system_verified: 'Eigent system record',
+  tool_observed: 'Observed by a tool',
+  external_untrusted: 'External, untrusted source',
+  model_inferred: 'Agent inference',
+  legacy_unverified: 'Imported, unverified',
+};
+
+interface MemoryProps {
+  fixedScope?: {
+    type: MemoryScopeType;
+    id: string;
+  };
+  showScopeSelector?: boolean;
+}
+
+export default function Memory({
+  fixedScope,
+  showScopeSelector = true,
+}: MemoryProps = {}) {
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const userId = useAuthStore((state) => state.user_id);
+  const [scopeType, setScopeType] = useState<MemoryScopeType>(
+    fixedScope?.type ?? 'user'
+  );
+  const [entries, setEntries] = useState<MemoryEntry[]>([]);
+  const [reconciliationItems, setReconciliationItems] = useState<
+    MemoryReconciliationItem[]
+  >([]);
+  const [scopeState, setScopeState] = useState<MemoryScopeState | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [draft, setDraft] = useState('');
+  const [draftKind, setDraftKind] = useState<MemoryKind>('fact');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'added-time' | 'type'>('added-time');
+  const [syncStatus, setSyncStatus] = useState<
+    'synced' | 'pending' | 'blocked' | 'unknown'
+  >('unknown');
+  const requestGeneration = useRef(0);
+
+  const scopeIds = useMemo(
+    () => ({
+      project: activeProjectId,
+      space: activeSpaceId,
+      user: userId == null ? null : String(userId),
+    }),
+    [activeProjectId, activeSpaceId, userId]
+  );
+  const scopeId = fixedScope?.id ?? scopeIds[scopeType];
+
+  const reload = useCallback(async () => {
+    const generation = ++requestGeneration.current;
+    if (!scopeId) {
+      setEntries([]);
+      setScopeState(null);
+      setSyncStatus('unknown');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const response = await listMemoryEntries(
+        scopeType,
+        scopeId,
+        showArchived
+      );
+      if (generation !== requestGeneration.current) return;
+      setEntries(response.items);
+      setScopeState(response.scope_state);
+      setSyncStatus(response.sync_status?.state ?? 'unknown');
+      try {
+        const reconciliation = await listMemoryReconciliation(
+          scopeType,
+          scopeId
+        );
+        if (generation !== requestGeneration.current) return;
+        setReconciliationItems(reconciliation.items);
+      } catch {
+        if (generation !== requestGeneration.current) return;
+        setReconciliationItems([]);
+      }
+    } catch (caught) {
+      if (generation !== requestGeneration.current) return;
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
+  }, [scopeId, scopeType, showArchived]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const runAndReload = async (operation: () => Promise<unknown>) => {
+    setError('');
+    try {
+      await operation();
+      await reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
+
+  const updateSettings = (patch: {
+    captureEnabled?: boolean;
+    useEnabled?: boolean;
+  }) => {
+    if (!scopeId || !scopeState) return;
+    const previousState = scopeState;
+    const selectedScopeType = scopeType;
+    const selectedScopeId = scopeId;
+
+    setError('');
+    setScopeState({
+      ...scopeState,
+      capture_enabled: patch.captureEnabled ?? scopeState.capture_enabled,
+      use_enabled: patch.useEnabled ?? scopeState.use_enabled,
+    });
+
+    void updateMemoryScopeSettings(scopeType, scopeId, {
+      expectedRevision: scopeState.revision,
+      ...patch,
+    })
+      .then((updatedState) => {
+        setScopeState((currentState) =>
+          currentState?.scope_type === selectedScopeType &&
+          currentState.scope_id === selectedScopeId
+            ? updatedState
+            : currentState
+        );
+      })
+      .catch((caught) => {
+        setScopeState((currentState) =>
+          currentState?.scope_type === selectedScopeType &&
+          currentState.scope_id === selectedScopeId
+            ? previousState
+            : currentState
+        );
+        setError(caught instanceof Error ? caught.message : String(caught));
+      });
+  };
+
+  const capacity = scopeState
+    ? Math.min(
+        100,
+        Math.round(
+          (scopeState.current_token_count / scopeState.token_limit) * 100
+        )
+      )
+    : 0;
+  const visibleEntries = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    const filtered = needle
+      ? entries.filter(
+          (entry) =>
+            entry.content.toLocaleLowerCase().includes(needle) ||
+            entry.kind.includes(needle) ||
+            TRUST_LABELS[entry.source_trust]
+              .toLocaleLowerCase()
+              .includes(needle)
+        )
+      : entries;
+
+    return [...filtered].sort((left, right) => {
+      if (left.pinned_by_user !== right.pinned_by_user) {
+        return left.pinned_by_user ? -1 : 1;
+      }
+      if (sortBy === 'type') {
+        const kindOrder = left.kind.localeCompare(right.kind);
+        if (kindOrder !== 0) return kindOrder;
+      }
+      return right.created_at - left.created_at;
+    });
+  }, [entries, search, sortBy]);
+
+  const syncStatusLabel =
+    syncStatus === 'synced'
+      ? 'Synced'
+      : syncStatus === 'pending'
+        ? 'Pending'
+        : syncStatus === 'blocked'
+          ? 'Needs attention'
+          : 'Unavailable';
 
   return (
     <SettingsSectionPage>
-      <SettingsSection
-        title={t('layout.coming-soon')}
-        boxClassName="items-center justify-between"
-      >
-        <div className="flex h-16 w-16 items-center justify-center">
-          <Brain className="h-8 w-8 text-ds-icon-neutral-muted-default" />
-        </div>
-        <span className="mb-2 block text-body-md font-bold text-ds-text-neutral-default-default">
-          {t('layout.coming-soon')}
-        </span>
-        <span className="block max-w-md text-center text-body-sm text-ds-text-neutral-muted-default">
-          {t('agents.memory-coming-soon-description')}
-        </span>
-      </SettingsSection>
+      {showScopeSelector && !fixedScope ? (
+        <SettingsRowGroup>
+          <SettingsRow
+            title="Memory scope"
+            description="Small, editable notes that Eigent may reuse. Canonical task history is stored separately for replay and reliability; it is not editable or exposed in Memory Center. Agents can always search that history when they need older details."
+            actionClassName="w-[280px]"
+            action={
+              <Tabs
+                value={scopeType}
+                onValueChange={(value) =>
+                  setScopeType(value as MemoryScopeType)
+                }
+                className="w-full"
+              >
+                <TabsList
+                  appearance="default"
+                  aria-label="Memory scope"
+                  className="w-full"
+                >
+                  {(['project', 'space', 'user'] as MemoryScopeType[]).map(
+                    (value) => (
+                      <TabsTrigger
+                        key={value}
+                        value={value}
+                        className="flex-1 !text-body-sm"
+                      >
+                        {value[0].toUpperCase() + value.slice(1)}
+                      </TabsTrigger>
+                    )
+                  )}
+                </TabsList>
+              </Tabs>
+            }
+          />
+        </SettingsRowGroup>
+      ) : null}
+
+      {!scopeId ? (
+        <SettingsRowGroup>
+          <SettingsRow
+            title="Saved Memory"
+            description={`Select a ${scopeType} to manage its Memory.`}
+          />
+        </SettingsRowGroup>
+      ) : (
+        <>
+          {reconciliationItems.length > 0 && (
+            <SettingsRowGroup>
+              <SettingsRow
+                title="Review Memory from another device"
+                description="Eigent did not overwrite either version. Choose which content to keep for each item."
+              >
+                <div className="flex flex-col gap-3 rounded-2xl bg-ds-bg-warning-subtle-default p-4">
+                  {reconciliationItems.map((item) => (
+                    <article
+                      key={item.reconciliation_id}
+                      className="rounded-xl bg-ds-bg-neutral-default-default p-4"
+                    >
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <div className="text-xs font-semibold">
+                            This device
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                            {String(item.local_entry.content ?? 'Archived')}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold">
+                            Cloud copy
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                            {item.cloud_entry.deleted_at
+                              ? 'Archived'
+                              : String(item.cloud_entry.content ?? '')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          buttonRadius="full"
+                          onClick={() =>
+                            void runAndReload(() =>
+                              resolveMemoryReconciliation(
+                                item.reconciliation_id,
+                                'local'
+                              )
+                            )
+                          }
+                        >
+                          Keep this device
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          buttonRadius="full"
+                          onClick={() =>
+                            void runAndReload(() =>
+                              resolveMemoryReconciliation(
+                                item.reconciliation_id,
+                                'cloud'
+                              )
+                            )
+                          }
+                        >
+                          Use cloud copy
+                        </Button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </SettingsRow>
+            </SettingsRowGroup>
+          )}
+
+          <SettingsRowGroup>
+            <SettingsRow
+              title="Auto Memory"
+              description="Incrementally learn a few stable notes."
+              action={
+                <Switch
+                  aria-label="Auto Memory"
+                  checked={scopeState?.capture_enabled ?? false}
+                  disabled={scopeType !== 'project'}
+                  onCheckedChange={(value) =>
+                    updateSettings({ captureEnabled: value })
+                  }
+                />
+              }
+            />
+            <SettingsRow
+              title="Use Memory"
+              description="Include saved notes in future Agent context."
+              action={
+                <Switch
+                  aria-label="Use Memory"
+                  checked={scopeState?.use_enabled ?? false}
+                  onCheckedChange={(value) =>
+                    updateSettings({ useEnabled: value })
+                  }
+                />
+              }
+            />
+            <SettingsRow
+              title="Memory Sync"
+              description={
+                syncStatus === 'synced'
+                  ? 'Synced to your Eigent account'
+                  : syncStatus === 'pending'
+                    ? 'Waiting to sync automatically'
+                    : syncStatus === 'blocked'
+                      ? 'Sync needs attention; local Memory is safe'
+                      : 'Sync status is not available yet'
+              }
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  buttonRadius="full"
+                  disabled={syncStatus === 'synced'}
+                  onClick={() => void reload()}
+                >
+                  {syncStatusLabel}
+                </Button>
+              }
+            />
+            <SettingsRow
+              title="Memory storage"
+              description="Storage used by saved Memory for this scope."
+              actionClassName="w-[280px]"
+              action={
+                <div className="w-full">
+                  <Progress
+                    value={capacity}
+                    aria-label="Memory storage used"
+                    className="bg-ds-bg-neutral-subtle-default"
+                    indicatorClassName="bg-ds-bg-brand-default-default"
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-text-neutral-muted-default">
+                    <span>{capacity}% full</span>
+                    <span>
+                      {scopeState?.current_token_count ?? 0} /{' '}
+                      {scopeState?.token_limit ?? 0} tokens
+                    </span>
+                  </div>
+                </div>
+              }
+            />
+            <SettingsRow
+              title="Organise Memory"
+              description="At 75%, Eigent safely consolidates exact machine-created duplicates. History is never changed."
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  buttonRadius="full"
+                  disabled={loading}
+                  onClick={() =>
+                    void runAndReload(() =>
+                      consolidateMemoryScope(scopeType, scopeId)
+                    )
+                  }
+                >
+                  <RefreshCw className="h-4 w-4" aria-hidden /> Organise
+                </Button>
+              }
+            />
+          </SettingsRowGroup>
+
+          <SettingsRowGroup>
+            <SettingsRow
+              title="Saved Memory"
+              description={`Add, search, and manage notes for this ${scopeType}.`}
+            >
+              <div
+                data-memory-composer
+                className="overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default"
+              >
+                <Textarea
+                  aria-label="New Memory"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="Add a short Memory note"
+                  maxLength={8192}
+                  className="min-h-24 resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+                />
+                <div className="flex items-center justify-end gap-2 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default p-2">
+                  <Select
+                    value={draftKind}
+                    onValueChange={(value) => setDraftKind(value as MemoryKind)}
+                  >
+                    <SelectTrigger
+                      aria-label="Memory type"
+                      size="sm"
+                      variant="primary"
+                      wrapperClassName="w-40"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KINDS.map((kind) => (
+                        <SelectItem key={kind} value={kind}>
+                          {kind}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    buttonRadius="full"
+                    disabled={!draft.trim()}
+                    onClick={() => {
+                      if (!scopeId || !draft.trim()) return;
+                      void runAndReload(() =>
+                        createMemoryEntry(scopeType, scopeId, {
+                          content: draft.trim(),
+                          kind: draftKind,
+                          reason: 'Created in Memory Center',
+                        }).then(() => setDraft(''))
+                      );
+                    }}
+                  >
+                    <Plus aria-hidden /> Add
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2">
+                <Input
+                  size="sm"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search Memory"
+                  aria-label="Search Memory"
+                  className="min-w-52 flex-1"
+                />
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) =>
+                    setSortBy(value as 'added-time' | 'type')
+                  }
+                >
+                  <SelectTrigger
+                    aria-label="Order Memory"
+                    size="sm"
+                    variant="secondary"
+                    wrapperClassName="w-44"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="added-time">Added time</SelectItem>
+                    <SelectItem value="type">Type</SelectItem>
+                  </SelectContent>
+                </Select>
+                <TooltipSimple
+                  content={showArchived ? 'Hide archived' : 'Show archived'}
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="md"
+                    buttonContent="icon-only"
+                    textWeight="bold"
+                    buttonRadius="lg"
+                    aria-label={
+                      showArchived ? 'Hide archived' : 'Show archived'
+                    }
+                    aria-pressed={showArchived}
+                    className={
+                      showArchived
+                        ? 'bg-ds-bg-neutral-strong-default'
+                        : undefined
+                    }
+                    onClick={() => setShowArchived((current) => !current)}
+                  >
+                    {showArchived ? (
+                      <ListChevronsDownUp aria-hidden />
+                    ) : (
+                      <ListChevronsUpDown aria-hidden />
+                    )}
+                  </Button>
+                </TooltipSimple>
+              </div>
+              {error && (
+                <div className="mt-4 text-body-sm text-ds-text-error-default-default">
+                  {error}
+                </div>
+              )}
+              {loading && !scopeState ? (
+                <div className="py-8 text-center text-body-sm">
+                  Loading Memory…
+                </div>
+              ) : visibleEntries.length === 0 ? (
+                <div className="py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
+                  No saved Memory for this {scopeType}. That is okay—History
+                  remains available to the Agent.
+                </div>
+              ) : (
+                <div className="mt-4 flex flex-col gap-3">
+                  {visibleEntries.map((entry) => (
+                    <article
+                      key={entry.memory_id}
+                      className={`rounded-xl bg-ds-bg-neutral-subtle-default p-3 ${entry.deleted_at ? 'opacity-70' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div
+                          className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-ds-text-neutral-muted-default"
+                          title={`${TRUST_LABELS[entry.source_trust]} · Created by ${entry.created_by}`}
+                        >
+                          <span className="shrink-0 font-semibold capitalize text-ds-text-neutral-default-default">
+                            {entry.kind}
+                          </span>
+                          <span aria-hidden>·</span>
+                          <span className="shrink-0">
+                            {entry.confirmed_by_user
+                              ? 'Confirmed by you'
+                              : 'Unconfirmed'}
+                          </span>
+                          <span aria-hidden>·</span>
+                          <span className="truncate capitalize">
+                            Source: {entry.created_by}
+                          </span>
+                          {entry.deleted_at ? (
+                            <>
+                              <span aria-hidden>·</span>
+                              <span className="shrink-0">Archived</span>
+                            </>
+                          ) : null}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          {!entry.deleted_at ? (
+                            editingId === entry.memory_id ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="primary"
+                                buttonRadius="lg"
+                                disabled={!editingText.trim()}
+                                onClick={() =>
+                                  void runAndReload(() =>
+                                    updateMemoryEntry(entry, {
+                                      content: editingText.trim(),
+                                      kind: entry.kind,
+                                      reason: 'Edited in Memory Center',
+                                    }).then(() => setEditingId(null))
+                                  )
+                                }
+                              >
+                                <Save aria-hidden /> Save
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                buttonRadius="lg"
+                                className="opacity-50 transition-opacity hover:opacity-100"
+                                onClick={() => {
+                                  setEditingId(entry.memory_id);
+                                  setEditingText(entry.content);
+                                }}
+                              >
+                                <Pencil aria-hidden /> Edit
+                              </Button>
+                            )
+                          ) : null}
+
+                          {!entry.deleted_at ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              buttonContent="icon-only"
+                              buttonRadius="lg"
+                              aria-label={
+                                entry.pinned_by_user
+                                  ? 'Unstar Memory'
+                                  : 'Star Memory'
+                              }
+                              aria-pressed={entry.pinned_by_user}
+                              onClick={() =>
+                                void runAndReload(() => pinMemoryEntry(entry))
+                              }
+                            >
+                              <Star
+                                aria-hidden
+                                className={
+                                  entry.pinned_by_user
+                                    ? 'fill-current'
+                                    : 'fill-none'
+                                }
+                              />
+                            </Button>
+                          ) : null}
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                buttonContent="icon-only"
+                                buttonRadius="lg"
+                                aria-label="More Memory actions"
+                              >
+                                <Ellipsis aria-hidden />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              {!entry.deleted_at && !entry.confirmed_by_user ? (
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    void runAndReload(() =>
+                                      confirmMemoryEntry(entry)
+                                    )
+                                  }
+                                >
+                                  <Check aria-hidden /> Confirm Memory
+                                </DropdownMenuItem>
+                              ) : null}
+                              {entry.deleted_at ? (
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    void runAndReload(() =>
+                                      restoreMemoryEntry(entry)
+                                    )
+                                  }
+                                >
+                                  <ArchiveRestore aria-hidden /> Restore Memory
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    void runAndReload(() =>
+                                      archiveMemoryEntry(entry)
+                                    )
+                                  }
+                                >
+                                  <Archive aria-hidden /> Archive Memory
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                className="!text-ds-text-status-error-strong-default"
+                                onSelect={() =>
+                                  void runAndReload(() =>
+                                    permanentlyDeleteMemoryEntry(entry)
+                                  )
+                                }
+                              >
+                                <Trash2 aria-hidden /> Delete Memory
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+
+                      {editingId === entry.memory_id ? (
+                        <Textarea
+                          value={editingText}
+                          onChange={(event) =>
+                            setEditingText(event.target.value)
+                          }
+                          aria-label="Edit Memory"
+                          className="mt-3 max-h-20 min-h-20 resize-none"
+                        />
+                      ) : (
+                        <span
+                          className="mt-3 line-clamp-4 block max-h-20 overflow-hidden whitespace-pre-wrap break-words text-body-sm"
+                          title={entry.content}
+                        >
+                          {entry.content}
+                        </span>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </SettingsRow>
+          </SettingsRowGroup>
+        </>
+      )}
     </SettingsSectionPage>
   );
 }

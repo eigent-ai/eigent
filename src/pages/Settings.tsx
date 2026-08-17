@@ -12,6 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import HomeHubRoot, {
+  HomeGreeting,
+  HomeHeader,
+  HomeSections,
+} from '@/components/Home';
+import SpaceDetail, {
+  isSpaceDetailTab,
+  type SpaceDetailTab,
+} from '@/components/Home/SpaceDetail';
+import SpaceDetailSidebar from '@/components/Home/SpaceDetailSidebar';
 import AppShellLayout from '@/components/Layout/AppShellLayout';
 import {
   SettingsHeader,
@@ -19,31 +29,142 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
-import { useSettingsStore } from '@/store/settingsStore';
+import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+  useSettingsStore,
+} from '@/store/settingsStore';
+import { useCallback, useEffect } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+
+function isSettingsSection(value: string | null): value is SettingsSectionId {
+  return SETTINGS_SECTIONS.includes(value as SettingsSectionId);
+}
 
 /**
- * Settings as a first-class page in the app shell: the former dialog menu is
- * the sidebar rail, the section body fills the content pane.
+ * Home and Settings share one page and one navigation rail. Home sections are
+ * URL-addressable while Settings keeps its existing section store.
  */
-export default function SettingsPageRoute() {
-  const activeSection = useSettingsStore((state) => state.activeSection);
+function HomeSettingsPageContent() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const storedActiveSection = useSettingsStore((state) => state.activeSection);
   const setActiveSection = useSettingsStore((state) => state.setActiveSection);
+  const sidebarHidden = usePageTabStore(
+    (state) => state.workspaceSidebarHidden
+  );
+  const sectionFromUrl = searchParams.get('section');
+  const isSpacesView = sectionFromUrl === null || sectionFromUrl === 'spaces';
+  const spaceId = isSpacesView ? searchParams.get('spaceId') : null;
+  const tabFromUrl = searchParams.get('tab');
+  const legacySection = isSettingsSection(sectionFromUrl)
+    ? sectionFromUrl
+    : null;
+  const activeSection = isSettingsSection(tabFromUrl)
+    ? tabFromUrl
+    : (legacySection ?? storedActiveSection);
+  const spaceTabFromUrl = searchParams.get('spaceTab');
+  const activeSpaceTab: SpaceDetailTab = isSpaceDetailTab(spaceTabFromUrl)
+    ? spaceTabFromUrl
+    : 'projects';
+
+  useEffect(() => {
+    if (!isSpacesView && activeSection !== storedActiveSection) {
+      setActiveSection(activeSection);
+    }
+  }, [activeSection, isSpacesView, setActiveSection, storedActiveSection]);
+
+  const navigateHome = useCallback(
+    (search: string) => {
+      navigate(
+        { pathname: '/home', search },
+        { replace: true, state: location.state }
+      );
+    },
+    [location.state, navigate]
+  );
+
+  const handleHomeSectionChange = useCallback(() => {
+    navigateHome('?section=spaces');
+  }, [navigateHome]);
+
+  const handleSettingsSectionChange = useCallback(
+    (section: SettingsSectionId) => {
+      setActiveSection(section);
+      navigateHome(`?section=settings&tab=${section}`);
+    },
+    [navigateHome, setActiveSection]
+  );
+
+  const handleSelectSpace = useCallback(
+    (nextSpaceId: string) => {
+      navigateHome(
+        `?section=spaces&spaceId=${encodeURIComponent(nextSpaceId)}&spaceTab=${activeSpaceTab}`
+      );
+    },
+    [activeSpaceTab, navigateHome]
+  );
+
+  const handleSpaceTabChange = useCallback(
+    (tab: SpaceDetailTab) => {
+      if (!spaceId) return;
+      navigateHome(
+        `?section=spaces&spaceId=${encodeURIComponent(spaceId)}&spaceTab=${tab}`
+      );
+    },
+    [navigateHome, spaceId]
+  );
+
+  const sidebar = spaceId ? (
+    <SpaceDetailSidebar
+      selectedSpaceId={spaceId}
+      onBack={handleHomeSectionChange}
+      onSelectSpace={handleSelectSpace}
+    />
+  ) : (
+    <SettingsSidebar
+      activeHomeSection={isSpacesView ? 'spaces' : null}
+      activeSection={isSpacesView ? null : activeSection}
+      onHomeSectionChange={handleHomeSectionChange}
+      onSectionChange={handleSettingsSectionChange}
+    />
+  );
 
   return (
-    <AppShellLayout
-      sidebar={
-        <SettingsSidebar
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-        />
-      }
-    >
+    <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
       <main className="flex h-full min-h-0 min-w-0 flex-col">
-        <SettingsHeaderProvider activeSection={activeSection}>
-          <SettingsHeader activeSection={activeSection} />
-          <SettingsSectionContent activeSection={activeSection} />
-        </SettingsHeaderProvider>
+        {spaceId ? (
+          <SpaceDetail
+            spaceId={spaceId}
+            activeTab={activeSpaceTab}
+            onTabChange={handleSpaceTabChange}
+            onBack={handleHomeSectionChange}
+          />
+        ) : isSpacesView ? (
+          <>
+            <HomeHeader />
+            <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+              <HomeGreeting />
+              <HomeSections />
+            </div>
+          </>
+        ) : (
+          <SettingsHeaderProvider activeSection={activeSection}>
+            <SettingsHeader activeSection={activeSection} />
+            <SettingsSectionContent activeSection={activeSection} />
+          </SettingsHeaderProvider>
+        )}
       </main>
     </AppShellLayout>
+  );
+}
+
+export default function SettingsPageRoute() {
+  return (
+    <HomeHubRoot>
+      <HomeSettingsPageContent />
+    </HomeHubRoot>
   );
 }

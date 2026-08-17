@@ -15,10 +15,36 @@
 import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/hooks/queries/useTriggerQueries', () => ({
+  useUserTriggerCountQuery: () => ({ data: 0 }),
+}));
+
+vi.mock('@/service/historyApi', () => ({
+  fetchGroupedHistoryTasks: vi.fn(() => new Promise(() => undefined)),
+}));
+
+vi.mock('@/service/triggerApi', () => ({
+  proxyFetchTriggers: vi.fn(() => new Promise(() => undefined)),
+}));
+
+vi.mock('@/components/Settings/General', () => ({
+  default: () => <div data-testid="general-settings" />,
+}));
+
+vi.mock('@/components/Settings/Appearance', () => ({
+  default: () => <div data-testid="appearance-settings" />,
+}));
+
+vi.mock('@/components/Settings/Privacy', () => ({
+  default: () => <div data-testid="privacy-settings" />,
+}));
 
 vi.mock('@/store/authStore', () => {
   const authState = {
@@ -36,11 +62,22 @@ vi.mock('@/store/authStore', () => {
   };
 });
 
-function renderSettingsPage() {
+function renderSettingsPage(
+  initialEntry = '/home?section=settings&tab=models'
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
   return render(
-    <MemoryRouter initialEntries={['/settings']}>
-      <SettingsPage />
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <SettingsPage />
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 
@@ -63,7 +100,7 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     const main = screen.getByRole('main');
     const sidebar = screen.getByRole('complementary', {
-      name: 'Settings',
+      name: 'Home',
     });
     const contentShell = document.querySelector('.scrollbar-always-visible');
     expect(contentShell).toHaveClass(
@@ -72,7 +109,7 @@ describe('SettingsPage', () => {
     );
     expect(contentShell?.firstElementChild).toHaveClass('px-8');
     expect(
-      within(sidebar).getByRole('navigation', { name: 'Settings' })
+      within(sidebar).getByRole('navigation', { name: 'Home' })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Workspace Bundle' })
@@ -107,7 +144,24 @@ describe('SettingsPage', () => {
       'h-8',
       'w-full'
     );
+    const homeLabel = within(sidebar).getByText('Home');
     const globalSettingLabel = within(sidebar).getByText('Global Setting');
+    expect(
+      homeLabel.compareDocumentPosition(globalSettingLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      within(sidebar).getByRole('button', { name: 'Spaces' })
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Projects' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Tasks' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Triggers' })
+    ).not.toBeInTheDocument();
     expect(globalSettingLabel).toBeInTheDocument();
     expect(
       globalSettingLabel.compareDocumentPosition(selectedTab) &
@@ -124,7 +178,71 @@ describe('SettingsPage', () => {
     expect(
       screen.getByRole('button', { name: 'Extension' }).querySelector('svg')
     ).toHaveClass('lucide-puzzle');
-    expect(screen.getByText('General')).toBeInTheDocument();
+    expect(
+      within(sidebar).getByRole('button', { name: 'Settings' })
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'General' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Appearance' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Privacy' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('switches between Home and Settings sections in the same shell', async () => {
+    const user = userEvent.setup();
+
+    renderSettingsPage();
+
+    const spacesTab = screen.getByRole('button', { name: 'Spaces' });
+    const modelsTab = screen.getByRole('button', { name: 'Models' });
+    await user.click(spacesTab);
+
+    await waitFor(() => {
+      expect(spacesTab).toHaveAttribute('aria-current', 'page');
+      expect(modelsTab).not.toHaveAttribute('aria-current');
+    });
+
+    await user.click(modelsTab);
+
+    await waitFor(() => {
+      expect(modelsTab).toHaveAttribute('aria-current', 'page');
+      expect(spacesTab).not.toHaveAttribute('aria-current');
+    });
+  });
+
+  it('combines the app settings categories into one vertical page', async () => {
+    const user = userEvent.setup();
+
+    renderSettingsPage();
+
+    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+    await user.click(within(sidebar).getByRole('button', { name: 'Settings' }));
+
+    const general = await screen.findByTestId('general-settings');
+    const appearance = screen.getByTestId('appearance-settings');
+    const privacy = screen.getByTestId('privacy-settings');
+    const about = screen.getByRole('img', { name: 'Eigent' });
+
+    expect(
+      general.compareDocumentPosition(appearance) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      appearance.compareDocumentPosition(privacy) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      privacy.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', {
+        name: /general|appearance|privacy|about/i,
+      })
+    ).not.toBeInTheDocument();
   });
 
   it('updates the content header for a settings sub-tab', async () => {
@@ -202,6 +320,99 @@ describe('SettingsPage', () => {
         document.querySelector('[data-settings-section="channels"]')
       ).toBeInTheDocument();
     });
+  });
+
+  it('switches to the Space detail layout without changing the shared shell', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'space-1': {
+          id: 'space-1',
+          name: 'Design Space',
+          description: 'Product design work',
+          sourceType: 'folder',
+          rootPath: '/work/design-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'space-1': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'space-1': now,
+      },
+    }));
+
+    renderSettingsPage(
+      '/home?section=spaces&spaceId=space-1&spaceTab=projects'
+    );
+
+    const detailSidebar = screen.getByRole('complementary', { name: 'Spaces' });
+    expect(
+      within(detailSidebar).getByRole('button', { name: 'Design Space' })
+    ).toHaveAttribute('aria-current', 'page');
+    expect(
+      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
+    ).toBeInTheDocument();
+    expect(
+      within(detailSidebar).getByRole('button', { name: 'New Space' })
+    ).toBeInTheDocument();
+    const detailHeader = document.querySelector('main header');
+    expect(detailHeader).toBeEmptyDOMElement();
+    expect(detailHeader).not.toHaveClass('border-b');
+    expect(
+      within(screen.getByRole('main')).getByText('Design Space')
+    ).toHaveClass('!text-body-lg');
+    expect(screen.getByText('Product design work')).toBeInTheDocument();
+    expect(screen.getByText('Local')).toBeInTheDocument();
+
+    for (const tabName of [
+      'Projects',
+      'Tasks',
+      'Triggers',
+      'Context',
+      'Memory',
+      'Workspace Profile',
+    ]) {
+      expect(screen.getByRole('radio', { name: tabName })).toBeInTheDocument();
+    }
+    expect(
+      screen.getByRole('radiogroup', { name: 'Space content' })
+    ).toHaveClass('rounded-full', 'bg-ds-bg-neutral-strong-default');
+    expect(
+      within(screen.getByRole('radio', { name: 'Projects' })).getByText(
+        'Projects'
+      )
+    ).toHaveClass('!text-body-sm');
+    const stickyTabs = document.querySelector('[data-space-tabs-sticky]');
+    expect(stickyTabs).toHaveClass('sticky', 'top-0');
+    expect(stickyTabs).not.toHaveClass('border-b');
+    expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
+      'items-center'
+    );
+
+    await user.click(
+      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('complementary', { name: 'Home' })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Models' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Spaces' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
   });
 
   it('supports horizontal section content while defaulting to vertical', () => {

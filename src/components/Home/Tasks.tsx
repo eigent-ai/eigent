@@ -65,19 +65,31 @@ function TaskRow({
   );
 }
 
-export default function Tasks() {
+interface TasksProps {
+  projectsOverride?: ProjectGroupType[];
+  presentation?: 'home' | 'space-detail';
+}
+
+export default function Tasks({
+  projectsOverride,
+  presentation = 'home',
+}: TasksProps = {}) {
   const { t } = useTranslation();
   const {
     viewMode,
     searchQuery,
     sortBy,
     sortDirection,
-    projects,
+    projects: homeProjects,
     projectsLoading,
     onTaskDelete,
     onTaskShare,
     chatTasks,
   } = useHomeHub();
+  const projects = projectsOverride ?? homeProjects;
+  const effectiveViewMode = presentation === 'space-detail' ? 'list' : viewMode;
+  const effectiveSearchQuery =
+    presentation === 'space-detail' ? '' : searchQuery;
 
   const tasks = useMemo<TaskWithContext[]>(() => {
     return projects.flatMap((project) =>
@@ -95,12 +107,12 @@ export default function Tasks() {
   );
 
   const filteredTasks = useMemo(() => {
-    const filtered = !searchQuery.trim()
+    const filtered = !effectiveSearchQuery.trim()
       ? tasks
       : tasks.filter((task) => {
           const fallbackName = t('layout.new-project');
           return matchesHubNameSearch(
-            searchQuery,
+            effectiveSearchQuery,
             task.question?.trim() || fallbackName
           );
         });
@@ -123,7 +135,7 @@ export default function Tasks() {
       }
       return compareHubByTimestamp(a.created_at, b.created_at, sortDirection);
     });
-  }, [tasks, searchQuery, sortBy, sortDirection, t]);
+  }, [effectiveSearchQuery, sortBy, sortDirection, t, tasks]);
 
   const renderTaskRow = useCallback(
     (task: TaskWithContext, mode: 'grid' | 'list' | 'board') => (
@@ -179,9 +191,9 @@ export default function Tasks() {
               {t('layout.search-no-results')}
             </div>
           </div>
-        ) : viewMode === 'board' ? (
+        ) : effectiveViewMode === 'board' ? (
           <HomeHubBoard columns={boardColumns} />
-        ) : viewMode === 'grid' ? (
+        ) : effectiveViewMode === 'grid' ? (
           <HomeHubGrid>
             {filteredTasks.map((task) => renderTaskRow(task, 'grid'))}
           </HomeHubGrid>

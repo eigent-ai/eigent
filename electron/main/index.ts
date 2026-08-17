@@ -209,7 +209,8 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  { success: true; port: number } | { success: false; error: string };
+  | { success: true; port: number }
+  | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -2854,15 +2855,15 @@ async function createWindowInternal() {
   );
 
   // Platform-specific window configuration
-  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  // All platforms use the shared in-app top bar. Windows keeps its solid
+  // background while Windows/Linux render custom window controls in React.
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1280,
     height: 960,
     minWidth: 1100,
     minHeight: 700,
-    // Use native frame on Windows for better native integration
-    frame: isWindows ? true : false,
+    frame: false,
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,

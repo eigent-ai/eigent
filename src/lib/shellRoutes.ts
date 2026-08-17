@@ -14,7 +14,10 @@
 
 import { matchPath } from 'react-router-dom';
 
-/** Match Settings with the same case-insensitive, trailing-slash rules as Router. */
+/** Match the canonical Home management surface and its legacy Settings URL. */
 export function isSettingsRoutePath(pathname: string): boolean {
-  return Boolean(matchPath({ path: '/settings', end: true }, pathname));
+  return Boolean(
+    matchPath({ path: '/home', end: true }, pathname) ||
+    matchPath({ path: '/settings', end: true }, pathname)
+  );
 }

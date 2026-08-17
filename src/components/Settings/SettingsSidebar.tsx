@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { HomeSidebarNavGroup } from '@/components/Home';
+import type { HomeSection } from '@/components/Home/hooks/useHomeSection';
 import {
   NavTab,
   SidebarNavGroup,
@@ -25,14 +27,18 @@ import { preloadSettingsSection } from './SettingsSectionContent';
 import { SETTINGS_NAVIGATION } from './settingsNavigation';
 
 interface SettingsSidebarProps {
-  activeSection: SettingsSectionId;
+  activeHomeSection: HomeSection | null;
+  activeSection: SettingsSectionId | null;
+  onHomeSectionChange: (section: HomeSection) => void;
   onSectionChange: (section: SettingsSectionId) => void;
   className?: string;
 }
 
-/** Settings rail: the former dialog menu, rebuilt on the shared sidebar kit. */
+/** Combined Home / Settings rail, using the former Settings page layout. */
 export default function SettingsSidebar({
+  activeHomeSection,
   activeSection,
+  onHomeSectionChange,
   onSectionChange,
   className,
 }: SettingsSidebarProps) {
@@ -41,14 +47,18 @@ export default function SettingsSidebar({
   return (
     <SidebarShell
       className={className}
-      ariaLabel={t('layout.settings', { defaultValue: 'Settings' })}
+      ariaLabel={t('layout.home', { defaultValue: 'Home' })}
     >
       <SidebarSection grow="fill">
         <SidebarScrollArea
           role="navigation"
-          ariaLabel={t('layout.settings', { defaultValue: 'Settings' })}
+          ariaLabel={t('layout.home', { defaultValue: 'Home' })}
           className="gap-4 pt-1"
         >
+          <HomeSidebarNavGroup
+            activeSection={activeHomeSection}
+            onSectionChange={onHomeSectionChange}
+          />
           {SETTINGS_NAVIGATION.map((group) => (
             <SidebarNavGroup
               key={group.scope}

@@ -34,7 +34,9 @@ function WorkspaceProbe() {
       />
       <button
         type="button"
-        onClick={() => navigate('/settings', { state: shellBackState('/') })}
+        onClick={() =>
+          navigate('/home?section=settings', { state: shellBackState('/') })
+        }
       >
         Open settings
       </button>
@@ -66,7 +68,7 @@ describe('WorkspaceSettingsRouteLayout', () => {
             }
           >
             <Route index element={null} />
-            <Route path="/settings" element={<SettingsProbe />} />
+            <Route path="/home" element={<SettingsProbe />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -90,7 +92,7 @@ describe('WorkspaceSettingsRouteLayout', () => {
 
   it('does not initialize Workspace for a direct Settings load', () => {
     render(
-      <MemoryRouter initialEntries={['/settings']}>
+      <MemoryRouter initialEntries={['/home?section=settings']}>
         <Routes>
           <Route
             element={
@@ -98,7 +100,7 @@ describe('WorkspaceSettingsRouteLayout', () => {
             }
           >
             <Route index element={null} />
-            <Route path="/settings" element={<SettingsProbe />} />
+            <Route path="/home" element={<SettingsProbe />} />
           </Route>
         </Routes>
       </MemoryRouter>

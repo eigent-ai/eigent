@@ -16,7 +16,7 @@ import { proxyFetchGet } from '@/api/http';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
@@ -71,10 +71,21 @@ vi.mock('@/store/installationStore', () => {
   };
 });
 
-function renderUserMenu() {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <span data-testid="location">
+      {location.pathname}
+      {location.search}
+    </span>
+  );
+}
+
+function renderUserMenu(initialEntry = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <UserMenu />
+      <LocationProbe />
     </MemoryRouter>
   );
 }
@@ -148,5 +159,28 @@ describe('UserMenu subscription summary', () => {
     );
 
     consoleError.mockRestore();
+  });
+
+  it('lists Settings first and opens it inside Home', async () => {
+    const user = userEvent.setup();
+    vi.mocked(proxyFetchGet)
+      .mockResolvedValueOnce({ plan_key: 'pro' })
+      .mockResolvedValueOnce({ credits: 10 });
+
+    renderUserMenu('/?tab=project');
+    await openMenu(user);
+
+    const menuItems = screen.getAllByRole('menuitem');
+    expect(menuItems[0]).toHaveTextContent('Settings');
+
+    await user.click(
+      screen.getByRole('menuitem', {
+        name: 'Settings',
+      })
+    );
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/home?section=settings&tab=settings'
+    );
   });
 });

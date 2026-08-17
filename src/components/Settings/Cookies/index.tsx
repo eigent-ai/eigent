@@ -21,7 +21,7 @@ import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import SettingsSection from '../SettingsSection';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionLoading from '../SettingsSectionLoading';
 import SettingsSectionPage from '../SettingsSectionPage';
 
@@ -219,6 +219,8 @@ export default function Cookies() {
     handleRestartApp();
   };
 
+  const groupedDomains = groupDomainsByMain(cookieDomains);
+
   return (
     <SettingsSectionPage>
       <AlertDialog
@@ -232,35 +234,56 @@ export default function Cookies() {
         confirmVariant="information"
       />
 
-      <SettingsSection title={t('layout.cookie-domains')}>
-        <span className="block max-w-[600px] text-body-sm text-ds-text-neutral-muted-default">
-          {t('layout.browser-cookies-description')}
-        </span>
-        <div className="mt-4 flex w-full flex-col gap-3 border-[0.5px] border-x-0 border-b-0 border-solid border-ds-border-neutral-default-default pt-3">
-          <div className="flex flex-row items-center justify-between py-2">
-            <div className="flex flex-row items-center justify-start gap-2">
-              {cookieDomains.length > 0 && (
-                <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
-                  {groupDomainsByMain(cookieDomains).length}
-                </span>
-              )}
-            </div>
+      <SettingsRowGroup>
+        <SettingsRow
+          title={t('layout.domains', { defaultValue: 'Domains' })}
+          description={t('layout.browser-cookies-description')}
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              buttonRadius="full"
+              onClick={handleBrowserLogin}
+              disabled={loginLoading}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              {loginLoading ? t('layout.opening') : t('layout.open-browser')}
+            </Button>
+          }
+        />
 
+        <SettingsRow
+          title={
+            <span className="flex items-center gap-2">
+              <span>
+                {t('layout.saved-cookies', { defaultValue: 'Saved cookies' })}
+              </span>
+              {groupedDomains.length > 0 ? (
+                <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
+                  {groupedDomains.length}
+                </span>
+              ) : null}
+            </span>
+          }
+          description={t('layout.saved-cookies-description', {
+            defaultValue: 'Cookies saved from browser sessions on this device.',
+          })}
+          action={
             <div className="flex items-center gap-2">
-              {cookieDomains.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDeleteAll}
-                  disabled={deletingAll}
-                  className="uppercase !text-ds-text-status-error-strong-default"
-                >
-                  {deletingAll ? t('layout.deleting') : t('layout.delete-all')}
-                </Button>
-              )}
               <Button
                 variant="ghost"
                 size="sm"
+                buttonRadius="full"
+                onClick={handleDeleteAll}
+                disabled={deletingAll || cookieDomains.length === 0}
+                className="uppercase !text-ds-text-status-error-strong-default"
+              >
+                {deletingAll ? t('layout.deleting') : t('layout.delete-all')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                buttonRadius="full"
                 onClick={handleLoadCookies}
                 disabled={cookiesLoading}
                 aria-label={t('setting.refresh')}
@@ -270,18 +293,9 @@ export default function Cookies() {
                   aria-hidden
                 />
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleBrowserLogin}
-                disabled={loginLoading}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                {loginLoading ? t('layout.opening') : t('layout.open-browser')}
-              </Button>
             </div>
-          </div>
-
+          }
+        >
           {cookiesLoading && cookieDomains.length === 0 ? (
             <SettingsSectionLoading
               label={t('setting.loading-cookies')}
@@ -290,7 +304,7 @@ export default function Cookies() {
             />
           ) : cookieDomains.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {groupDomainsByMain(cookieDomains).map((group, index) => (
+              {groupedDomains.map((group, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-between rounded-xl bg-ds-bg-neutral-subtle-default px-4 py-2"
@@ -337,8 +351,8 @@ export default function Cookies() {
               </span>
             </div>
           )}
-        </div>
-      </SettingsSection>
+        </SettingsRow>
+      </SettingsRowGroup>
 
       <span className="block w-full text-center text-label-xs text-ds-text-neutral-muted-default">
         <span>{t('layout.for-more-info')}</span>

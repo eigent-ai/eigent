@@ -15,6 +15,10 @@
 import { proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
+import {
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from '@/store/settingsStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
@@ -24,7 +28,6 @@ import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
-const Home = lazy(() => import('@/pages/Home'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
@@ -155,6 +158,35 @@ const ProtectedRoute = () => {
   );
 };
 
+/** Keep legacy Settings links working while Home is the canonical surface. */
+function SettingsRouteRedirect() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const sectionFromUrl = searchParams.get('section');
+  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
+    sectionFromUrl as SettingsSectionId
+  );
+
+  if (sectionFromUrl !== 'spaces') {
+    searchParams.set('section', 'settings');
+    if (
+      sectionFromUrl &&
+      isLegacySettingsSection &&
+      sectionFromUrl !== 'settings'
+    ) {
+      searchParams.set('tab', sectionFromUrl);
+    }
+  }
+
+  return (
+    <Navigate
+      to={`/home?${searchParams.toString()}`}
+      replace
+      state={location.state}
+    />
+  );
+}
+
 // Main route configuration
 const AppRoutes = () => (
   <Routes>
@@ -169,19 +201,22 @@ const AppRoutes = () => (
           element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
         >
           <Route index element={null} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/home" element={<Settings />} />
         </Route>
-        <Route path="/home" element={<Home />} />
+        <Route path="/settings" element={<SettingsRouteRedirect />} />
         <Route
           path="/agent-plugins/import"
           element={
             isDesktop() ? <AgentPluginImport /> : <Navigate to="/" replace />
           }
         />
-        <Route path="/setting" element={<Navigate to="/settings" replace />} />
+        <Route
+          path="/setting"
+          element={<Navigate to="/home?section=settings" replace />}
+        />
         <Route
           path="/setting/*"
-          element={<Navigate to="/settings" replace />}
+          element={<Navigate to="/home?section=settings" replace />}
         />
       </Route>
     </Route>

@@ -19,25 +19,23 @@ import {
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
 import type { LucideIcon } from 'lucide-react';
-import { Folder, ListChecks, MessageCircle, Zap } from 'lucide-react';
+import { Folder } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHomeHub } from './context';
-import { type HomeSection, useHomeSection } from './hooks/useHomeSection';
+import {
+  HOME_SECTIONS,
+  type HomeSection,
+  useHomeSection,
+} from './hooks/useHomeSection';
 import { capitalizeLabel } from './utils';
 
 const SECTION_ICONS: Record<HomeSection, LucideIcon> = {
   spaces: Folder,
-  projects: MessageCircle,
-  tasks: ListChecks,
-  triggers: Zap,
 };
 
 const SECTION_LABEL_KEYS: Record<HomeSection, string> = {
   spaces: 'layout.spaces',
-  projects: 'layout.projects',
-  tasks: 'layout.tasks',
-  triggers: 'layout.triggers',
 };
 
 /** Home-only trailing count chip for a sidebar tab. */
@@ -51,43 +49,65 @@ function HomeSidebarCountBadge({ count }: { count: number }) {
   );
 }
 
-/** Home rail: one tab per hub section, each with its item count. */
-export default function HomeSidebarNav({ className }: { className?: string }) {
+interface HomeSidebarNavGroupProps {
+  activeSection: HomeSection | null;
+  onSectionChange: (section: HomeSection) => void;
+  sections?: readonly HomeSection[];
+}
+
+/** Home group shared by the combined Home / Settings navigation rail. */
+export function HomeSidebarNavGroup({
+  activeSection,
+  onSectionChange,
+  sections = HOME_SECTIONS,
+}: HomeSidebarNavGroupProps) {
   const { t } = useTranslation();
   const { sectionCounts } = useHomeHub();
-  const { section: activeSection, setSection } = useHomeSection();
 
   const items = useMemo(
     () =>
-      (Object.keys(SECTION_ICONS) as HomeSection[]).map((id) => ({
+      sections.map((id) => ({
         id,
         label: capitalizeLabel(t(SECTION_LABEL_KEYS[id])),
         icon: SECTION_ICONS[id],
         count: sectionCounts[id],
       })),
-    [sectionCounts, t]
+    [sectionCounts, sections, t]
   );
+
+  return (
+    <SidebarNavGroup label={capitalizeLabel(t('layout.home'))}>
+      {items.map(({ id, label, icon: Icon, count }) => {
+        const active = activeSection === id;
+        return (
+          <NavTab
+            key={id}
+            active={active}
+            onClick={() => onSectionChange(id)}
+            leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
+            label={label}
+            trailing={<HomeSidebarCountBadge count={count} />}
+            ariaLabel={label}
+            ariaCurrentPage={active}
+          />
+        );
+      })}
+    </SidebarNavGroup>
+  );
+}
+
+/** Standalone Home rail retained for embedders outside the combined page. */
+export default function HomeSidebarNav({ className }: { className?: string }) {
+  const { t } = useTranslation();
+  const { section: activeSection, setSection } = useHomeSection();
 
   return (
     <SidebarShell className={className} ariaLabel={t('layout.home')}>
       <SidebarSection>
-        <SidebarNavGroup>
-          {items.map(({ id, label, icon: Icon, count }) => {
-            const active = activeSection === id;
-            return (
-              <NavTab
-                key={id}
-                active={active}
-                onClick={() => setSection(id)}
-                leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
-                label={label}
-                trailing={<HomeSidebarCountBadge count={count} />}
-                ariaLabel={label}
-                ariaCurrentPage={active}
-              />
-            );
-          })}
-        </SidebarNavGroup>
+        <HomeSidebarNavGroup
+          activeSection={activeSection}
+          onSectionChange={setSection}
+        />
       </SidebarSection>
     </SidebarShell>
   );

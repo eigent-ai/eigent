@@ -38,8 +38,8 @@ export interface AppShellLayoutProps {
   /** Rendered after the columns (e.g. always-mounted webview layers). */
   overlay?: ReactNode;
   /**
-   * Collapse the rail away. Only the workspace passes this — Home and Settings
-   * always show their rail, so they simply omit it.
+   * Collapse the destination rail away. The shared top-bar control drives this
+   * on both Workspace and Home.
    */
   sidebarHidden?: boolean;
   /**

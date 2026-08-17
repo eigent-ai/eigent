@@ -58,16 +58,10 @@ import {
 
 const SEARCH_PLACEHOLDER_KEYS: Record<HomeSection, string> = {
   spaces: 'layout.search-spaces',
-  projects: 'layout.search-projects',
-  tasks: 'layout.search-tasks',
-  triggers: 'layout.search-triggers',
 };
 
 const SECTION_TITLE_KEYS: Record<HomeSection, string> = {
   spaces: 'layout.spaces',
-  projects: 'layout.projects',
-  tasks: 'layout.tasks',
-  triggers: 'layout.triggers',
 };
 
 /**

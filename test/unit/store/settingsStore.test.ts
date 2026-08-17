@@ -24,11 +24,11 @@ describe('settingsStore', () => {
   });
 
   it('opens a requested settings section without route state', () => {
-    openSettings('privacy');
+    openSettings('settings');
 
     expect(useSettingsStore.getState()).toMatchObject({
       isOpen: true,
-      activeSection: 'privacy',
+      activeSection: 'settings',
     });
   });
 

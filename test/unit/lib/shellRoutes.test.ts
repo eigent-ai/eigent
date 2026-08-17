@@ -16,14 +16,17 @@ import { isSettingsRoutePath } from '@/lib/shellRoutes';
 import { describe, expect, it } from 'vitest';
 
 describe('isSettingsRoutePath', () => {
-  it.each(['/settings', '/settings/', '/Settings'])(
-    'matches the Settings route for %s',
+  it.each(['/home', '/home/', '/Home', '/settings', '/settings/', '/Settings'])(
+    'matches the Home management route for %s',
     (pathname) => {
       expect(isSettingsRoutePath(pathname)).toBe(true);
     }
   );
 
-  it.each(['/', '/home', '/settings/models'])('rejects %s', (pathname) => {
-    expect(isSettingsRoutePath(pathname)).toBe(false);
-  });
+  it.each(['/', '/home/spaces', '/settings/models'])(
+    'rejects %s',
+    (pathname) => {
+      expect(isSettingsRoutePath(pathname)).toBe(false);
+    }
+  );
 });

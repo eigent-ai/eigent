@@ -19,7 +19,7 @@ import { SITE_URL } from '@/lib';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import SettingsSection from '../SettingsSection';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 export default function SettingPrivacy() {
   const [helpImprove, setHelpImprove] = useState(false);
@@ -43,80 +43,75 @@ export default function SettingPrivacy() {
 
   return (
     <SettingsSectionPage>
-      {/* How We Handle Your Data Section */}
-      <SettingsSection
-        title={t('setting.how-we-handle-your-data')}
-        action={
-          <Button
-            variant="ghost"
-            size="xs"
-            buttonContent="icon-only"
-            onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
-            aria-expanded={isHowWeHandleOpen}
-            aria-controls="how-we-handle-your-data"
-          >
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${isHowWeHandleOpen ? 'rotate-0' : '-rotate-90'}`}
-            />
-          </Button>
-        }
-      >
-        <span className="text-body-sm font-normal text-ds-text-neutral-default-default">
-          {t('setting.data-privacy-description')}{' '}
-          <a
-            className="text-blue-500 no-underline"
-            href={`${SITE_URL}/privacy-policy`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t('setting.privacy-policy')}
-          </a>
-          .
-        </span>
-        {isHowWeHandleOpen && (
-          <div className="mr-10 mt-4 border-x-0 border-b-0 border-t-[0.5px] border-solid border-ds-border-neutral-default-default">
-            <ol
-              id="how-we-handle-your-data"
-              className="pl-5 text-body-sm font-normal text-ds-text-neutral-default-default"
+      <SettingsRowGroup>
+        <SettingsRow
+          title={t('setting.how-we-handle-your-data')}
+          description={
+            <>
+              {t('setting.data-privacy-description')}{' '}
+              <a
+                className="text-ds-text-information-strong-default no-underline"
+                href={`${SITE_URL}/privacy-policy`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('setting.privacy-policy')}
+              </a>
+              .
+            </>
+          }
+          action={
+            <Button
+              variant="ghost"
+              size="xs"
+              buttonContent="icon-only"
+              onClick={() => setIsHowWeHandleOpen((prev) => !prev)}
+              aria-expanded={isHowWeHandleOpen}
+              aria-controls="how-we-handle-your-data"
             >
-              <li>
-                {t(
-                  'setting.we-only-use-the-essential-data-needed-to-run-your-tasks'
-                )}
-                :
-              </li>
-              <ul className="mb-2 pl-4">
-                <li>{t('setting.how-we-handle-your-data-line-1-line-1')}</li>
-                <li>{t('setting.how-we-handle-your-data-line-1-line-2')}</li>
-                <li>{t('setting.how-we-handle-your-data-line-1-line-3')}</li>
-              </ul>
-              <li>{t('setting.how-we-handle-your-data-line-2')}</li>
-              <li>{t('setting.how-we-handle-your-data-line-3')}</li>
-              <li>{t('setting.how-we-handle-your-data-line-4')}</li>
-              <li>{t('setting.how-we-handle-your-data-line-5')}</li>
-            </ol>
-          </div>
-        )}
-      </SettingsSection>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${isHowWeHandleOpen ? 'rotate-0' : '-rotate-90'}`}
+              />
+            </Button>
+          }
+        >
+          {isHowWeHandleOpen && (
+            <div className="pr-12">
+              <ol
+                id="how-we-handle-your-data"
+                className="pl-5 text-body-sm font-normal text-ds-text-neutral-default-default"
+              >
+                <li>
+                  {t(
+                    'setting.we-only-use-the-essential-data-needed-to-run-your-tasks'
+                  )}
+                  :
+                </li>
+                <ul className="mb-2 pl-4">
+                  <li>{t('setting.how-we-handle-your-data-line-1-line-1')}</li>
+                  <li>{t('setting.how-we-handle-your-data-line-1-line-2')}</li>
+                  <li>{t('setting.how-we-handle-your-data-line-1-line-3')}</li>
+                </ul>
+                <li>{t('setting.how-we-handle-your-data-line-2')}</li>
+                <li>{t('setting.how-we-handle-your-data-line-3')}</li>
+                <li>{t('setting.how-we-handle-your-data-line-4')}</li>
+                <li>{t('setting.how-we-handle-your-data-line-5')}</li>
+              </ol>
+            </div>
+          )}
+        </SettingsRow>
 
-      {/* Help Improve Eigent Section */}
-      <SettingsSection
-        title={t('setting.help-improve-eigent')}
-        variant="horizontal"
-        boxClassName="items-center justify-between gap-md"
-      >
-        <div className="flex flex-col gap-2">
-          <div className="text-body-sm font-normal text-ds-text-neutral-default-default">
-            {t('setting.help-improve-eigent-description')}
-          </div>
-        </div>
-        <div className="flex items-center justify-center">
-          <Switch
-            checked={helpImprove}
-            onCheckedChange={handleToggleHelpImprove}
-          />
-        </div>
-      </SettingsSection>
+        <SettingsRow
+          title={t('setting.help-improve-eigent')}
+          description={t('setting.help-improve-eigent-description')}
+          action={
+            <Switch
+              checked={helpImprove}
+              onCheckedChange={handleToggleHelpImprove}
+            />
+          }
+        />
+      </SettingsRowGroup>
     </SettingsSectionPage>
   );
 }

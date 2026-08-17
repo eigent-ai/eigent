@@ -19,9 +19,7 @@ import {
   Brain,
   Cable,
   Cookie,
-  Eye,
   Globe,
-  Palette,
   Puzzle,
   Radio,
   Settings2,
@@ -62,16 +60,16 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
         icon: UsersRound,
       },
       {
-        id: 'connectors',
-        labelKey: 'layout.connectors',
-        defaultLabel: 'Connectors',
-        icon: Cable,
-      },
-      {
         id: 'skills',
         labelKey: 'agents.skills',
         defaultLabel: 'Skills',
         icon: WandSparkles,
+      },
+      {
+        id: 'connectors',
+        labelKey: 'layout.connectors',
+        defaultLabel: 'Connectors',
+        icon: Cable,
       },
       {
         id: 'channels',
@@ -118,22 +116,10 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
     defaultLabel: 'Settings',
     items: [
       {
-        id: 'general',
-        labelKey: 'setting.general',
-        defaultLabel: 'General',
+        id: 'settings',
+        labelKey: 'layout.settings',
+        defaultLabel: 'Settings',
         icon: Settings2,
-      },
-      {
-        id: 'appearance',
-        labelKey: 'setting.appearance-tab',
-        defaultLabel: 'Appearance',
-        icon: Palette,
-      },
-      {
-        id: 'privacy',
-        labelKey: 'setting.privacy',
-        defaultLabel: 'Privacy',
-        icon: Eye,
       },
     ],
   },

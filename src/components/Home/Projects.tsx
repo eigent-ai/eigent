@@ -71,27 +71,39 @@ function ProjectRow({
   );
 }
 
-export default function Projects() {
+interface ProjectsProps {
+  projectsOverride?: ProjectGroup[];
+  presentation?: 'home' | 'space-detail';
+}
+
+export default function Projects({
+  projectsOverride,
+  presentation = 'home',
+}: ProjectsProps = {}) {
   const { t } = useTranslation();
   const {
     viewMode,
     searchQuery,
     sortBy,
     sortDirection,
-    projects,
+    projects: homeProjects,
     projectsLoading,
     onProjectDelete,
     onProjectRename,
     chatTasks,
   } = useHomeHub();
+  const projects = projectsOverride ?? homeProjects;
+  const effectiveViewMode = presentation === 'space-detail' ? 'list' : viewMode;
+  const effectiveSearchQuery =
+    presentation === 'space-detail' ? '' : searchQuery;
 
   const filteredProjects = useMemo(() => {
-    const filtered = !searchQuery.trim()
+    const filtered = !effectiveSearchQuery.trim()
       ? projects
       : projects.filter((project) => {
           const fallbackName = t('layout.new-project');
           return matchesHubNameSearch(
-            searchQuery,
+            effectiveSearchQuery,
             project.project_name?.trim() || fallbackName
           );
         });
@@ -118,7 +130,7 @@ export default function Projects() {
         sortDirection
       );
     });
-  }, [projects, searchQuery, sortBy, sortDirection, t]);
+  }, [effectiveSearchQuery, projects, sortBy, sortDirection, t]);
 
   const boardColumns = useMemo(() => {
     const grouped = groupByBoardColumn(filteredProjects, (project) =>
@@ -182,15 +194,15 @@ export default function Projects() {
               {t('layout.search-no-results')}
             </div>
           </div>
-        ) : viewMode === 'board' ? (
+        ) : effectiveViewMode === 'board' ? (
           <HomeHubBoard columns={boardColumns} />
-        ) : viewMode === 'grid' ? (
+        ) : effectiveViewMode === 'grid' ? (
           <HomeHubGrid>
             {filteredProjects.map((project) => (
               <ProjectRow
                 key={project.project_id}
                 project={project}
-                viewMode={viewMode}
+                viewMode={effectiveViewMode}
                 onProjectDelete={onProjectDelete}
                 onProjectRename={onProjectRename}
               />
@@ -202,7 +214,7 @@ export default function Projects() {
               <ProjectRow
                 key={project.project_id}
                 project={project}
-                viewMode={viewMode}
+                viewMode={effectiveViewMode}
                 onProjectDelete={onProjectDelete}
                 onProjectRename={onProjectRename}
               />
