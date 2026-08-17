@@ -41,7 +41,7 @@ vi.mock('@/components/ChatBox/BottomBox/InputBox', () => ({
     };
     onFilesChange?: (files: { fileName: string; filePath: string }[]) => void;
   }) => (
-    <div data-testid="text-composer">
+    <div data-testid="text-composer" data-bottom-box-input-surface>
       {header && (header.eyebrow || header.title || header.description) ? (
         <section data-bottom-box-header>
           {header.eyebrow}
@@ -49,7 +49,8 @@ vi.mock('@/components/ChatBox/BottomBox/InputBox', () => ({
           {header.description}
         </section>
       ) : null}
-      {value}
+      <span data-text-input>{value}</span>
+      <span data-input-actions />
       {files.map((file) => (
         <div key={file.filePath}>
           {file.fileName}
@@ -138,11 +139,17 @@ describe('BottomBox structure', () => {
     const main = container.querySelector('[data-bottom-box-main]');
     const input = container.querySelector('[data-bottom-box-input]');
     const header = input?.querySelector('[data-bottom-box-header]');
+    const surface = input?.querySelector('[data-bottom-box-input-surface]');
+    const textInput = surface?.querySelector('[data-text-input]');
+    const inputActions = surface?.querySelector('[data-input-actions]');
 
     expect(
       main?.querySelector(':scope > [data-bottom-box-header]')
     ).not.toBeInTheDocument();
     expect(header).toBeInTheDocument();
+    expect(surface).toContainElement(header as HTMLElement);
+    expect(surface).toContainElement(textInput as HTMLElement);
+    expect(surface).toContainElement(inputActions as HTMLElement);
     expect(header).toHaveTextContent('Input required');
     expect(header).toHaveTextContent('Which format should I use?');
   });
@@ -207,6 +214,34 @@ describe('BottomBox structure', () => {
       'data-variant',
       'approval'
     );
+    expect(container.querySelector('[data-bottom-box-footer]')).toBeNull();
+    expect(screen.queryByTestId('project-setup-footer')).toBeNull();
+    const approvalSurface = container.querySelector(
+      '[data-approval-surface][data-bottom-box-input-surface]'
+    );
+    const approvalHeader = approvalSurface?.querySelector(
+      '[data-bottom-box-header]'
+    );
+    const approvalActions = approvalSurface?.querySelector(
+      '[data-approval-actions]'
+    );
+
+    expect(approvalSurface).toBeInTheDocument();
+    expect(approvalHeader).toBeInTheDocument();
+    expect(approvalHeader).toHaveTextContent('Permission required');
+    expect(approvalHeader).toHaveTextContent('Allow todo_write?');
+    expect(approvalSurface).toContainElement(approvalActions as HTMLElement);
+    expect(container.querySelector('[data-approval-actions]')).toHaveClass(
+      'justify-end'
+    );
+    const approvalButtons = within(approvalActions as HTMLElement).getAllByRole(
+      'button'
+    );
+    expect(approvalButtons).toHaveLength(2);
+    approvalButtons.forEach((button) =>
+      expect(button).toHaveClass('!rounded-full')
+    );
+    expect(container.querySelector('p, h1, h2, h3, h4, h5, h6')).toBeNull();
     expect(
       screen.queryByRole('button', { name: /always allow/i })
     ).not.toBeInTheDocument();
@@ -216,6 +251,67 @@ describe('BottomBox structure', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
+  });
+
+  it('animates from the composer into a three-action approval variant', () => {
+    const { container, rerender } = render(
+      <BottomBox
+        state="input"
+        inputProps={{ value: 'Draft query' }}
+        {...footerProps}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        '[data-bottom-box-variant-transition][data-variant="input"]'
+      )
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-bottom-box-main]')).toHaveAttribute(
+      'data-layout-motion',
+      'smooth'
+    );
+
+    rerender(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'approval',
+          header: {
+            eyebrow: 'Input required',
+            title: 'The agent wants to publish the report.',
+          },
+          options: [
+            { scope: 'once', label: 'Approve once' },
+            { scope: 'space', label: 'Always allow in Space' },
+          ],
+          onApprove: vi.fn(),
+          onReject: vi.fn(),
+        }}
+        {...footerProps}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        '[data-bottom-box-variant-transition][data-variant="approval"]'
+      )
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-bottom-box-footer]')).toBeNull();
+    expect(screen.queryByTestId('project-setup-footer')).toBeNull();
+    expect(container.querySelector('[data-bottom-box-main]')).toHaveAttribute(
+      'data-layout-motion',
+      'instant'
+    );
+    expect(screen.getByText('Input required')).toBeInTheDocument();
+    expect(
+      screen.getByText('The agent wants to publish the report.')
+    ).toBeInTheDocument();
+    expect(
+      within(
+        container.querySelector('[data-approval-actions]') as HTMLElement
+      ).getAllByRole('button')
+    ).toHaveLength(3);
   });
 
   it('routes controlled selection changes without owning event state', () => {
@@ -287,8 +383,10 @@ describe('BottomBox structure', () => {
       />
     );
 
-    const inputRegion = document.querySelector('[data-bottom-box-input]');
-    expect(inputRegion).toHaveAttribute('data-variant', 'form');
+    const inputRegion = document.querySelector(
+      '[data-bottom-box-input][data-variant="form"]'
+    );
+    expect(inputRegion).toBeInTheDocument();
     fireEvent.change(within(inputRegion as HTMLElement).getByRole('textbox'), {
       target: { value: 'Executives' },
     });
@@ -498,7 +596,7 @@ describe('BottomBox structure', () => {
       />
     );
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Run controls are unavailable in read-only mode.'
+      'This Run has finished, so its controls are no longer available.'
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

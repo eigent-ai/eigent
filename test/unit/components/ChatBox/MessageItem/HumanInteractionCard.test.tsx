@@ -13,13 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  isHumanInteractionStillPending,
-  type HumanInteractionPayload,
-} from '@/service/humanInteractionApi';
-import {
   HumanInteractionCard,
   isHumanInteractionReadOnly,
 } from '@/components/ChatBox/MessageItem/HumanInteractionCard';
+import {
+  isHumanInteractionStillPending,
+  type HumanInteractionPayload,
+} from '@/service/humanInteractionApi';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -141,37 +141,22 @@ describe('HumanInteractionCard', () => {
     expect(readOnly).toBe(false);
   });
 
-  it('shows progress and keeps a timeline receipt mounted after approval', async () => {
-    let resolveDecision: (() => void) | undefined;
-    mocks.decideHumanInteraction.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveDecision = resolve;
-        })
-    );
-    const onResolved = vi.fn();
-
-    render(
+  it('renders an approval timeline receipt as only Input required', () => {
+    const { container } = render(
       <HumanInteractionCard
         interaction={approvalInteraction}
-        onResolved={onResolved}
+        response="Approved once"
         timelineReceipt
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
-
-    expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Saving decision…');
-
-    resolveDecision?.();
-
-    await waitFor(() => {
-      expect(screen.getByText('Decision saved')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Approved once')).toBeInTheDocument();
-    expect(onResolved).toHaveBeenCalledWith('Approved once');
+    const receipt = container.querySelector('[data-approval-timeline-receipt]');
+    expect(receipt).toHaveTextContent(/^Input required$/);
+    expect(screen.queryByText(approvalInteraction.question!)).toBeNull();
+    expect(screen.queryByText('Your response')).toBeNull();
+    expect(screen.queryByText('Approved once')).toBeNull();
+    expect(screen.queryByText('Decision saved')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('offers a Space-scoped approval for an exact opaque tool matcher', async () => {
@@ -199,7 +184,7 @@ describe('HumanInteractionCard', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Always allow this tool in Space',
+        name: 'Always allow this tool in this Space',
       })
     );
 
@@ -358,7 +343,7 @@ describe('HumanInteractionCard', () => {
     render(<HumanInteractionCard interaction={toolInteraction} readOnly />);
 
     const persistentButton = screen.getByRole('button', {
-      name: 'Always allow this tool in Space',
+      name: 'Always allow this tool in this Space',
     });
     expect(persistentButton).toBeDisabled();
     await waitFor(() => expect(persistentButton).toBeEnabled());

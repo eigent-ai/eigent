@@ -142,9 +142,9 @@ function QueueingItem({
       </div>
 
       <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-        <p className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
+        <span className="block overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
           {content}
-        </p>
+        </span>
       </div>
 
       {canSendNow && (

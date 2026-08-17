@@ -25,6 +25,7 @@ import {
 import { reconcileHumanInteractionEvents } from '@/service/humanInteractionEventReconciliation';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type {
   BottomBoxApprovalScope,
   BottomBoxContextItem,
@@ -294,6 +295,8 @@ export function getStableDecisionRequestId(
   return requestId;
 }
 
+type Translate = ReturnType<typeof useTranslation>['t'];
+
 function humanize(value: string): string {
   return value
     .replace(/[._-]+/g, ' ')
@@ -301,14 +304,15 @@ function humanize(value: string): string {
 }
 
 function displayArgumentsDetail(
-  interaction: HumanControlInteraction
+  interaction: HumanControlInteraction,
+  t: Translate
 ): ControlledBottomBoxVariant['header']['details'] {
   if (Object.keys(interaction.displayArguments).length === 0) return undefined;
   let content = '';
   try {
     content = JSON.stringify(interaction.displayArguments, null, 2);
   } catch {
-    content = 'Arguments are unavailable.';
+    content = t('chat.control-arguments-unavailable');
   }
   const maxCharacters = 16_000;
   if (content.length > maxCharacters) {
@@ -317,7 +321,7 @@ function displayArgumentsDetail(
   return [
     {
       id: 'display-arguments',
-      label: 'Review arguments (secrets redacted)',
+      label: t('chat.control-review-arguments'),
       content,
     },
   ];
@@ -325,7 +329,8 @@ function displayArgumentsDetail(
 
 function headerFor(
   interaction: HumanControlInteraction,
-  submitError: string | null
+  submitError: string | null,
+  t: Translate
 ): ControlledBottomBoxVariant['header'] {
   const contextItems: BottomBoxContextItem[] = [];
   if (interaction.agent) {
@@ -352,11 +357,11 @@ function headerFor(
   });
 
   return {
-    eyebrow: 'Agent input required',
+    eyebrow: t('chat.control-input-required'),
     title: interaction.title || humanize(interaction.interactionType),
     description: [interaction.prompt, submitError].filter(Boolean).join(' '),
     contextItems,
-    details: displayArgumentsDetail(interaction),
+    details: displayArgumentsDetail(interaction, t),
   };
 }
 
@@ -450,6 +455,7 @@ export function useEventNativeHumanControl({
   enabled = true,
   onDurableResolution,
 }: UseEventNativeHumanControlInput): EventNativeHumanControlController {
+  const { t } = useTranslation();
   const authenticatedUserId = useAuthStore((state) => state.user_id);
   const control = useProjectHumanControlProjection(projectId);
   const interaction = useMemo(
@@ -552,8 +558,8 @@ export function useEventNativeHumanControl({
       } catch (error) {
         console.error('[EventNativeHumanControl] decision failed', error);
         const message = decisionAccepted
-          ? 'Decision was saved, but its durable update could not be loaded. Retry to reconcile.'
-          : 'Could not save your decision. Please try again.';
+          ? t('chat.control-decision-unsynced')
+          : t('chat.control-decision-failed');
         setSubmission({ key: controlKey, phase: 'idle', error: message });
       } finally {
         if (inFlightKey.current === controlKey) inFlightKey.current = null;
@@ -567,6 +573,7 @@ export function useEventNativeHumanControl({
       onDurableResolution,
       projectId,
       submitting,
+      t,
     ]
   );
 
@@ -581,9 +588,11 @@ export function useEventNativeHumanControl({
 
   const variant = useMemo<ControlledBottomBoxVariant | null>(() => {
     if (!interaction) return null;
-    const header = headerFor(interaction, activeSubmission.error);
+    const header = headerFor(interaction, activeSubmission.error, t);
     if (pendingCount > 1) {
-      header.eyebrow = `Agent input required · ${pendingCount} pending`;
+      header.eyebrow = t('chat.control-input-required-count', {
+        count: pendingCount,
+      });
     }
     const common = { header, submitting };
     const hasDurableIdentity = !(
@@ -595,8 +604,7 @@ export function useEventNativeHumanControl({
       return {
         kind: 'blocked',
         ...common,
-        message:
-          'This older request has no durable interaction ID and cannot be submitted safely in the event-native view.',
+        message: t('chat.control-blocked-legacy-identity'),
       };
     }
 
@@ -605,17 +613,37 @@ export function useEventNativeHumanControl({
         (scope): scope is BottomBoxApprovalScope =>
           scope === 'once' || scope === 'run' || scope === 'space'
       );
+      const isToolMatcher =
+        interaction.ruleMatcher?.matcherKind === 'literal_tool';
       const labels: Record<BottomBoxApprovalScope, string> = {
-        once: 'Approve once',
-        run: 'Allow for this Run',
-        space: 'Always allow in Space',
+        once: t('chat.control-approve-once'),
+        run: t('chat.control-approve-run'),
+        space: isToolMatcher
+          ? t('chat.control-approve-space-tool')
+          : t('chat.control-approve-space'),
+      };
+      const descriptions: Record<BottomBoxApprovalScope, string> = {
+        once: t('chat.control-approve-once-description'),
+        run: t('chat.control-approve-run-description'),
+        space: t('chat.control-approve-space-description'),
       };
       return {
         kind: 'approval',
-        ...common,
+        header: {
+          eyebrow: t('chat.control-input-required'),
+          title:
+            interaction.prompt ||
+            interaction.title ||
+            t('chat.control-approval-required'),
+          description: activeSubmission.error || undefined,
+          contextItems: header.contextItems,
+          details: header.details,
+        },
+        submitting,
         options: [...new Set(offeredScopes)].map((scope) => ({
           scope,
           label: labels[scope],
+          description: descriptions[scope],
         })),
         onApprove: (scope) => void submit({ decision: 'approved', scope }),
         onReject: () =>
@@ -635,8 +663,7 @@ export function useEventNativeHumanControl({
         return {
           kind: 'blocked',
           ...common,
-          message:
-            'This decision did not include any backend-provided options and cannot be submitted safely.',
+          message: t('chat.control-blocked-no-options'),
         };
       }
       return {
@@ -669,8 +696,7 @@ export function useEventNativeHumanControl({
         return {
           kind: 'blocked',
           ...common,
-          message:
-            'This form contains a sensitive or unsupported field type and cannot be displayed safely.',
+          message: t('chat.control-blocked-unsafe-field'),
         };
       }
       return {
@@ -710,7 +736,7 @@ export function useEventNativeHumanControl({
         kind: 'feedback',
         ...common,
         value: activeDraft.feedback,
-        placeholder: 'Type your response',
+        placeholder: t('chat.control-response-placeholder'),
         onChange: (feedback) =>
           updateDraft((current) => ({ ...current, feedback })),
         onSubmit: () => {
@@ -733,8 +759,7 @@ export function useEventNativeHumanControl({
       return {
         kind: 'blocked',
         ...common,
-        message:
-          'This diff review does not include a structured, display-safe diff decision contract.',
+        message: t('chat.control-blocked-diff-review'),
       };
     }
 
@@ -742,15 +767,16 @@ export function useEventNativeHumanControl({
       return {
         kind: 'blocked',
         ...common,
-        message:
-          'Credential binding requires a dedicated secure input and cannot be handled in this chat control.',
+        message: t('chat.control-blocked-credential'),
       };
     }
 
     return {
       kind: 'blocked',
       ...common,
-      message: `This version does not support ${humanize(interaction.interactionType)} decisions yet.`,
+      message: t('chat.control-blocked-unsupported', {
+        type: humanize(interaction.interactionType),
+      }),
     };
   }, [
     activeDraft.feedback,
@@ -761,6 +787,7 @@ export function useEventNativeHumanControl({
     pendingCount,
     submit,
     submitting,
+    t,
     updateDraft,
   ]);
 

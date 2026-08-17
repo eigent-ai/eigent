@@ -62,14 +62,14 @@ export function BoxHeaderDisplay({
             </span>
           )}
           {title && (
-            <h3 className="m-0 text-body-sm font-bold text-ds-text-neutral-default-default">
+            <span className="block text-body-sm font-bold text-ds-text-neutral-default-default">
               {title}
-            </h3>
+            </span>
           )}
           {description && (
-            <p className="m-0 text-body-xs text-ds-text-neutral-muted-default">
+            <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
               {description}
-            </p>
+            </span>
           )}
         </div>
       )}
@@ -206,9 +206,10 @@ export const BoxHeaderConfirm = ({
             </span>
           )}
           <Button
-            variant="success"
+            variant="primary"
+            tone="success"
             size="sm"
-            className="rounded-full"
+            buttonRadius="full"
             onClick={onStartTask}
             disabled={loading}
           >
@@ -263,9 +264,10 @@ export const BoxHeaderSave = ({
         </Button>
 
         <Button
-          variant="success"
+          variant="primary"
+          tone="success"
           size="sm"
-          className="rounded-full"
+          buttonRadius="full"
           onClick={onSave}
           disabled={loading}
         >

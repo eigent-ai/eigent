@@ -46,7 +46,7 @@ describe('FoldedView preview overflow', () => {
     expect(preview).not.toHaveClass('overflow-y-auto');
     expect(preview).toHaveStyle({ height: '200px' });
     expect(
-      screen.getByRole('button', { name: 'chat.expand-subtasks' })
+      screen.getByRole('button', { name: 'Expand subtasks' })
     ).toBeInTheDocument();
   });
 
@@ -57,7 +57,7 @@ describe('FoldedView preview overflow', () => {
     expect(preview).not.toHaveClass('overflow-hidden');
     expect(preview).toHaveStyle({ height: '200px' });
     expect(
-      screen.queryByRole('button', { name: 'chat.expand-subtasks' })
+      screen.queryByRole('button', { name: 'Expand subtasks' })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'chat.expand-plan' })

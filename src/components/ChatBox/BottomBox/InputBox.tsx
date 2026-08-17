@@ -326,6 +326,7 @@ export const Inputbox = ({
 
   return (
     <div
+      data-bottom-box-input-surface
       className={cn(
         'relative flex w-full flex-col items-start rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 transition-colors',
         (isFocused || hasContent) &&
@@ -388,14 +389,14 @@ export const Inputbox = ({
                 </a>
 
                 {/* File Name */}
-                <p
+                <span
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                    "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
                   )}
                   title={file.fileName}
                 >
                   {file.fileName}
-                </p>
+                </span>
               </div>
             );
           })}
@@ -416,9 +417,9 @@ export const Inputbox = ({
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                  <span className="block whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
                     {remainingCount}+
-                  </p>
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent
@@ -464,9 +465,9 @@ export const Inputbox = ({
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                        <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
                           {file.fileName}
-                        </p>
+                        </span>
                       </div>
                     );
                   })}
@@ -478,7 +479,10 @@ export const Inputbox = ({
       )}
 
       {/* Layer 3: Text input area */}
-      <div className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3">
+      <div
+        data-text-input
+        className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3"
+      >
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
           value={value}
@@ -509,7 +513,10 @@ export const Inputbox = ({
       </div>
 
       {/* Layer 4: Action buttons */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
+      <div
+        data-input-actions
+        className="flex w-full flex-wrap items-center justify-between gap-y-2"
+      >
         {/* Left: add files/photos + connector picker + skill picker */}
         <div className="flex min-w-0 items-center gap-2">
           <TooltipSimple content="Attach" side="top">

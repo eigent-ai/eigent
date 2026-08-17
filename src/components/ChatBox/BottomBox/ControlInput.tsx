@@ -15,8 +15,12 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, TriangleAlert } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { BoxHeaderDisplay } from './BoxHeader';
 import type { InputboxProps } from './InputBox';
 import { Inputbox } from './InputBox';
 import type {
@@ -54,6 +58,7 @@ function ConfirmationInput({
 }: {
   variant: BottomBoxConfirmationVariant;
 }) {
+  const { t } = useTranslation();
   const showNote =
     variant.note !== undefined || variant.onNoteChange !== undefined;
 
@@ -61,7 +66,7 @@ function ConfirmationInput({
     <div className={controlSurfaceClassName}>
       {showNote && (
         <Textarea
-          aria-label="Confirmation note"
+          aria-label={t('chat.control-confirmation-note-label')}
           value={variant.note ?? ''}
           placeholder={variant.notePlaceholder}
           disabled={variant.disabled || variant.submitting}
@@ -73,20 +78,24 @@ function ConfirmationInput({
           type="button"
           variant="ghost"
           size="sm"
+          buttonRadius="full"
           disabled={variant.disabled || variant.submitting}
           onClick={variant.onReject}
         >
-          {variant.rejectLabel ?? 'Reject'}
+          {variant.rejectLabel ?? t('chat.control-reject')}
         </Button>
         <Button
           type="button"
           variant="primary"
           tone="success"
           size="sm"
+          buttonRadius="full"
           disabled={variant.disabled || variant.submitting}
           onClick={variant.onConfirm}
         >
-          {variant.confirmLabel ?? 'Confirm'}
+          {variant.submitting
+            ? t('chat.control-submitting')
+            : (variant.confirmLabel ?? t('chat.control-confirm'))}
         </Button>
       </ControlActions>
     </div>
@@ -94,44 +103,84 @@ function ConfirmationInput({
 }
 
 function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
+  const { t } = useTranslation();
   const approve = (scope: BottomBoxApprovalScope) => {
     if (!variant.disabled && !variant.submitting) variant.onApprove(scope);
   };
+  // Scope descriptions explain a persistent permission grant, so they stay
+  // visible instead of hiding behind a hover-only tooltip.
+  const scopeDescriptions = variant.options.filter(
+    (option) => option.description
+  );
 
   return (
-    <div className={controlSurfaceClassName}>
-      <ControlActions>
-        {variant.options.map((option) => (
+    <div
+      data-bottom-box-input-surface
+      data-approval-surface
+      className={controlSurfaceClassName}
+    >
+      <BoxHeaderDisplay {...variant.header} className="px-0 pb-0 pt-0" />
+      {scopeDescriptions.length > 0 ? (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {scopeDescriptions.map((option) => (
+            <li
+              key={`scope-description-${option.scope}`}
+              className="text-body-xs font-normal text-ds-text-neutral-muted-default"
+            >
+              <span className="font-medium">{option.label}</span>
+              {' — '}
+              {option.description}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div data-approval-actions className="flex w-full justify-end">
+        <ControlActions>
           <Button
-            key={option.scope}
             type="button"
-            variant="primary"
-            tone="success"
+            variant="ghost"
             size="sm"
-            title={option.description}
+            buttonRadius="full"
             disabled={variant.disabled || variant.submitting}
-            onClick={() => approve(option.scope)}
+            onClick={variant.onReject}
           >
-            {option.label}
+            {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-        ))}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={variant.disabled || variant.submitting}
-          onClick={variant.onReject}
-        >
-          {variant.rejectLabel ?? 'Reject'}
-        </Button>
-      </ControlActions>
+          {variant.options.map((option) => {
+            const button = (
+              <Button
+                key={option.scope}
+                type="button"
+                variant="primary"
+                tone="success"
+                size="sm"
+                buttonRadius="full"
+                disabled={variant.disabled || variant.submitting}
+                onClick={() => approve(option.scope)}
+              >
+                {option.label}
+              </Button>
+            );
+            return option.description ? (
+              <TooltipSimple key={option.scope} content={option.description}>
+                {button}
+              </TooltipSimple>
+            ) : (
+              button
+            );
+          })}
+        </ControlActions>
+      </div>
     </div>
   );
 }
 
 function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
+  const { t } = useTranslation();
   const multiple = variant.selectionMode === 'multiple';
   const selected = new Set(variant.selectedIds);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [focusedIndex, setFocusedIndex] = useState(0);
 
   const toggle = (id: string) => {
     if (variant.disabled || variant.submitting) return;
@@ -146,29 +195,79 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
     );
   };
 
+  // A radiogroup exposes a single tab stop and moves selection with the arrow
+  // keys. Without roving tabindex the ARIA role would advertise behaviour the
+  // control does not have.
+  const firstSelectedIndex = variant.options.findIndex((option) =>
+    selected.has(option.id)
+  );
+  const activeIndex = multiple
+    ? -1
+    : firstSelectedIndex >= 0
+      ? firstSelectedIndex
+      : Math.min(focusedIndex, Math.max(0, variant.options.length - 1));
+
+  const moveFocus = (from: number, step: number) => {
+    const count = variant.options.length;
+    if (count === 0) return;
+    for (let offset = 1; offset <= count; offset += 1) {
+      const next = (from + step * offset + count * offset) % count;
+      if (!variant.options[next].disabled) {
+        setFocusedIndex(next);
+        optionRefs.current[next]?.focus();
+        toggle(variant.options[next].id);
+        return;
+      }
+    }
+  };
+
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    if (multiple) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      moveFocus(index, 1);
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      event.preventDefault();
+      moveFocus(index, -1);
+    }
+  };
+
   return (
     <div className={controlSurfaceClassName}>
       <div
         className="flex flex-col gap-1"
         role={multiple ? 'group' : 'radiogroup'}
-        aria-label="Response options"
+        aria-label={t('chat.control-response-options-label')}
       >
-        {variant.options.map((option) => {
+        {variant.options.map((option, index) => {
           const isSelected = selected.has(option.id);
           return (
             <Button
               key={option.id}
+              ref={(node: HTMLButtonElement | null) => {
+                optionRefs.current[index] = node;
+              }}
               type="button"
               role={multiple ? undefined : 'radio'}
               aria-checked={multiple ? undefined : isSelected}
               aria-pressed={multiple ? isSelected : undefined}
+              tabIndex={multiple || index === activeIndex ? 0 : -1}
               variant={isSelected ? 'secondary' : 'ghost'}
               tone={isSelected ? 'information' : 'neutral'}
-              className="h-auto w-full justify-start gap-2 px-2 py-2 text-left"
+              className="h-auto w-full justify-start gap-2 px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ds-border-brand-default-focus"
               disabled={
                 variant.disabled || variant.submitting || option.disabled
               }
-              onClick={() => toggle(option.id)}
+              onKeyDown={(event: React.KeyboardEvent<HTMLButtonElement>) =>
+                handleKeyDown(event, index)
+              }
+              onClick={() => {
+                setFocusedIndex(index);
+                toggle(option.id);
+              }}
             >
               <span
                 aria-hidden
@@ -200,6 +299,7 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
           type="button"
           variant="primary"
           size="sm"
+          buttonRadius="full"
           disabled={
             variant.disabled ||
             variant.submitting ||
@@ -207,7 +307,9 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
           }
           onClick={variant.onSubmit}
         >
-          {variant.submitLabel ?? 'Submit'}
+          {variant.submitting
+            ? t('chat.control-submitting')
+            : (variant.submitLabel ?? t('chat.control-submit'))}
         </Button>
       </ControlActions>
     </div>
@@ -215,10 +317,12 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
 }
 
 function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
+  const { t } = useTranslation();
+
   return (
     <div className={controlSurfaceClassName}>
       <Textarea
-        aria-label="Feedback"
+        aria-label={t('chat.control-feedback-label')}
         value={variant.value}
         placeholder={variant.placeholder}
         disabled={variant.disabled || variant.submitting}
@@ -231,16 +335,18 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
             type="button"
             variant="ghost"
             size="sm"
+            buttonRadius="full"
             disabled={variant.disabled || variant.submitting}
             onClick={variant.onSkip}
           >
-            {variant.skipLabel ?? 'Skip'}
+            {variant.skipLabel ?? t('chat.control-skip')}
           </Button>
         )}
         <Button
           type="button"
           variant="primary"
           size="sm"
+          buttonRadius="full"
           disabled={
             variant.disabled ||
             variant.submitting ||
@@ -248,7 +354,9 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
           }
           onClick={variant.onSubmit}
         >
-          {variant.submitLabel ?? 'Send feedback'}
+          {variant.submitting
+            ? t('chat.control-submitting')
+            : (variant.submitLabel ?? t('chat.control-send-feedback'))}
         </Button>
       </ControlActions>
     </div>
@@ -256,25 +364,47 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
 }
 
 function FormInput({ variant }: { variant: BottomBoxFormVariant }) {
-  const hasMissingRequiredField = variant.fields.some(
-    (field) => field.required && field.value.trim().length === 0
+  const { t } = useTranslation();
+  // Submit stays enabled so a blocked submission can name the field that is
+  // missing instead of leaving the user with a silently disabled button.
+  const [showRequiredErrors, setShowRequiredErrors] = useState(false);
+  const missingRequiredIds = new Set(
+    variant.fields
+      .filter((field) => field.required && field.value.trim().length === 0)
+      .map((field) => field.id)
   );
+
+  const submit = () => {
+    if (missingRequiredIds.size > 0) {
+      setShowRequiredErrors(true);
+      return;
+    }
+    variant.onSubmit();
+  };
 
   return (
     <div className={controlSurfaceClassName}>
       <div className="flex max-h-72 flex-col gap-3 overflow-y-auto">
-        {variant.fields.map((field) =>
-          field.type === 'textarea' ? (
+        {variant.fields.map((field) => {
+          const hasError =
+            showRequiredErrors && missingRequiredIds.has(field.id);
+          const shared = {
+            title: field.label,
+            'aria-label': field.label,
+            'aria-invalid': hasError || undefined,
+            required: field.required,
+            state: hasError ? ('error' as const) : ('default' as const),
+            note: hasError ? t('chat.control-field-required') : undefined,
+            value: field.value,
+            placeholder: field.placeholder,
+            disabled: variant.disabled || variant.submitting || field.disabled,
+          };
+
+          return field.type === 'textarea' ? (
             <Textarea
               key={field.id}
-              aria-label={field.label}
-              title={field.label}
-              required={field.required}
-              value={field.value}
-              placeholder={field.placeholder}
-              disabled={
-                variant.disabled || variant.submitting || field.disabled
-              }
+              {...shared}
+              variant="enhanced"
               onChange={(event) =>
                 variant.onFieldChange(field.id, event.target.value)
               }
@@ -282,33 +412,27 @@ function FormInput({ variant }: { variant: BottomBoxFormVariant }) {
           ) : (
             <Input
               key={field.id}
-              aria-label={field.label}
-              title={field.label}
-              required={field.required}
+              {...shared}
               type={field.type ?? 'text'}
-              value={field.value}
-              placeholder={field.placeholder}
-              disabled={
-                variant.disabled || variant.submitting || field.disabled
-              }
               onChange={(event) =>
                 variant.onFieldChange(field.id, event.target.value)
               }
             />
-          )
-        )}
+          );
+        })}
       </div>
       <ControlActions>
         <Button
           type="button"
           variant="primary"
           size="sm"
-          disabled={
-            variant.disabled || variant.submitting || hasMissingRequiredField
-          }
-          onClick={variant.onSubmit}
+          buttonRadius="full"
+          disabled={variant.disabled || variant.submitting}
+          onClick={submit}
         >
-          {variant.submitLabel ?? 'Submit'}
+          {variant.submitting
+            ? t('chat.control-submitting')
+            : (variant.submitLabel ?? t('chat.control-submit'))}
         </Button>
       </ControlActions>
     </div>
@@ -316,11 +440,13 @@ function FormInput({ variant }: { variant: BottomBoxFormVariant }) {
 }
 
 function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
+  const { t } = useTranslation();
+
   return (
     <div className={controlSurfaceClassName} role="alert">
       <div className="flex items-start gap-2 text-body-sm text-ds-text-warning-default-default">
         <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
-        <p className="m-0">{variant.message}</p>
+        <span className="block font-normal">{variant.message}</span>
       </div>
       {variant.onRecover ? (
         <ControlActions>
@@ -328,10 +454,11 @@ function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
             type="button"
             variant="secondary"
             size="sm"
+            buttonRadius="full"
             disabled={variant.disabled || variant.submitting}
             onClick={variant.onRecover}
           >
-            {variant.recoveryLabel ?? 'Retry'}
+            {variant.recoveryLabel ?? t('chat.control-retry')}
           </Button>
         </ControlActions>
       ) : null}
@@ -340,6 +467,7 @@ function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
 }
 
 function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
+  const { t } = useTranslation();
   const locked = Boolean(variant.disabled || variant.submitting);
   const loading =
     variant.state === 'stopping' ||
@@ -360,13 +488,12 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
       aria-busy={loading || undefined}
     >
       {variant.state === 'read_only' ? (
-        <p
-          className="m-0 text-body-sm text-ds-text-neutral-muted-default"
+        <span
+          className="block text-body-sm font-normal text-ds-text-neutral-muted-default"
           role="status"
         >
-          {variant.readOnlyLabel ??
-            'Run controls are unavailable in read-only mode.'}
-        </p>
+          {variant.readOnlyLabel ?? t('chat.control-read-only')}
+        </span>
       ) : null}
 
       {showStop ? (
@@ -376,12 +503,13 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
             variant="secondary"
             tone="error"
             size="sm"
+            buttonRadius="full"
             disabled={locked || variant.state === 'stopping' || !variant.onStop}
             onClick={() => variant.onStop?.(variant.runId)}
           >
             {variant.state === 'stopping'
-              ? (variant.stoppingLabel ?? 'Stopping…')
-              : (variant.stopLabel ?? 'Stop')}
+              ? (variant.stoppingLabel ?? t('chat.control-stopping'))
+              : (variant.stopLabel ?? t('chat.control-stop'))}
           </Button>
         </ControlActions>
       ) : null}
@@ -393,27 +521,29 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
             variant="ghost"
             tone="error"
             size="sm"
+            buttonRadius="full"
             disabled={
               locked || variant.state !== 'interrupted' || !variant.onCancel
             }
             onClick={() => variant.onCancel?.(variant.runId)}
           >
             {variant.state === 'cancelling'
-              ? (variant.cancellingLabel ?? 'Cancelling…')
-              : (variant.cancelLabel ?? 'Cancel Run')}
+              ? (variant.cancellingLabel ?? t('chat.control-cancelling'))
+              : (variant.cancelLabel ?? t('chat.control-cancel-run'))}
           </Button>
           <Button
             type="button"
             variant="primary"
             size="sm"
+            buttonRadius="full"
             disabled={
               locked || variant.state !== 'interrupted' || !variant.onResume
             }
             onClick={() => variant.onResume?.(variant.runId)}
           >
             {variant.state === 'resuming'
-              ? (variant.resumingLabel ?? 'Resuming…')
-              : (variant.resumeLabel ?? 'Resume')}
+              ? (variant.resumingLabel ?? t('chat.control-resuming'))
+              : (variant.resumeLabel ?? t('chat.control-resume'))}
           </Button>
         </ControlActions>
       ) : null}

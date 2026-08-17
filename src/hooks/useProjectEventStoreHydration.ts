@@ -17,7 +17,7 @@ import {
   ProjectEventStoreHydrationError,
 } from '@/service/projectEventStoreHydration';
 import { getProjectEventStore } from '@/store/projectEventStore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const RETRY_DELAY_MS = 1_000;
 /**
@@ -35,6 +35,11 @@ export type ProjectEventStoreHydrationState = {
   status: 'idle' | 'loading' | 'retrying' | 'ready' | 'error';
   errorCode: ProjectEventStoreHydrationError['code'] | 'request_failed' | null;
   eventsTruncated: boolean;
+  /**
+   * Starts a fresh attempt, including after a non-retryable failure that has
+   * disabled automatic backoff. Safe to call while an attempt is running.
+   */
+  retry: () => void;
 };
 
 function isAbortError(error: unknown): boolean {
@@ -65,12 +70,16 @@ export function useProjectEventStoreHydration({
   projectId,
   enabled,
 }: UseProjectEventStoreHydrationOptions): ProjectEventStoreHydrationState {
-  const [hydrationState, setHydrationState] =
-    useState<ProjectEventStoreHydrationState>({
-      status: 'idle',
-      errorCode: null,
-      eventsTruncated: false,
-    });
+  const [retryToken, setRetryToken] = useState(0);
+  const [hydrationState, setHydrationState] = useState<
+    Omit<ProjectEventStoreHydrationState, 'retry'>
+  >({
+    status: 'idle',
+    errorCode: null,
+    eventsTruncated: false,
+  });
+
+  const retry = useCallback(() => setRetryToken((token) => token + 1), []);
 
   useEffect(() => {
     if (!enabled || !projectId) {
@@ -198,7 +207,9 @@ export function useProjectEventStoreHydration({
       unsubscribe();
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [enabled, projectId]);
+    // `retryToken` restarts the effect, which clears the non-retryable block
+    // and any pending backoff so a manual retry always gets a fresh attempt.
+  }, [enabled, projectId, retryToken]);
 
-  return hydrationState;
+  return { ...hydrationState, retry };
 }

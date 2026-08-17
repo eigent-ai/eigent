@@ -13,6 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
+import type { LucideIcon } from 'lucide-react';
+import {
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  Clock,
+  FileText,
+  Loader,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import type {
   ChatProjectionNodeOfKind,
@@ -24,19 +34,63 @@ function displayStatus(status: string): string {
   return status.replaceAll('_', ' ');
 }
 
-function artifactDisplayLabel(name: string | undefined, path: string): string {
+/** Status colour matches RepeatedToolCallGroup so one status reads the same everywhere. */
+function statusClassName(status: string): string {
+  if (status === 'failed') return 'text-ds-text-error-default-default';
+  if (status === 'running' || status === 'pending') {
+    return 'text-ds-text-information-default-default';
+  }
+  if (status === 'completed') return 'text-ds-text-success-default-default';
+  return 'text-ds-text-neutral-muted-default';
+}
+
+function statusIcon(status: string): LucideIcon {
+  if (status === 'failed') return CircleAlert;
+  if (status === 'running') return Loader;
+  if (status === 'pending') return Clock;
+  if (status === 'completed') return CircleCheck;
+  return CircleSlash;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
+  const Icon = statusIcon(status);
+
+  return (
+    <span
+      className={cn(
+        'flex shrink-0 items-center gap-1 text-label-xs',
+        statusClassName(status)
+      )}
+    >
+      <Icon aria-hidden className="size-3 shrink-0" />
+      {t(`chat.tool-status-${status}`, { defaultValue: displayStatus(status) })}
+    </span>
+  );
+}
+
+function artifactDisplayLabel(
+  name: string | undefined,
+  path: string,
+  fallback: string
+): string {
   const candidate = (name || path).trim().replaceAll('\\', '/');
-  return candidate.split('/').filter(Boolean).at(-1) || 'Artifact';
+  return candidate.split('/').filter(Boolean).at(-1) || fallback;
 }
 
 export function MessageEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'message'>>) {
+  const { t } = useTranslation();
   const isUser = node.role === 'user';
 
   const message = (
     <article
-      aria-label={isUser ? 'User message' : 'Assistant message'}
+      aria-label={
+        isUser
+          ? t('chat.timeline-user-message')
+          : t('chat.timeline-assistant-message')
+      }
       className={cn(
         'w-full whitespace-pre-wrap break-words rounded-xl px-4 py-3 text-body-sm text-ds-text-neutral-default-default',
         isUser
@@ -82,13 +136,14 @@ export function NoticeEventRenderer({
 export function InteractionEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'interaction'>>) {
+  const { t } = useTranslation();
   const requestEventId =
     node.requestEventId ||
     (node.status === 'requested' ? node.eventId : undefined);
 
   return (
     <section
-      aria-label="Agent input"
+      aria-label={t('chat.control-region-label')}
       className="rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-3"
       data-interaction-id={node.interactionId}
       data-interaction-request-event-id={requestEventId}
@@ -97,31 +152,33 @@ export function InteractionEventRenderer({
       data-interaction-status={node.status}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="m-0 text-body-sm font-semibold text-ds-text-neutral-default-default">
-          Input required
-        </p>
+        <span className="block text-body-sm font-semibold text-ds-text-neutral-default-default">
+          {t('chat.control-input-required')}
+        </span>
         <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
-          {displayStatus(node.status)}
+          {t(`chat.tool-status-${node.status}`, {
+            defaultValue: displayStatus(node.status),
+          })}
         </span>
       </div>
       {node.response && node.prompt ? (
         <div className="mt-2" data-interaction-question>
-          <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-            Question
-          </div>
-          <p className="m-0 mt-1 whitespace-pre-wrap break-words text-body-sm text-ds-text-neutral-subtle-default">
+          <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+            {t('chat.timeline-question')}
+          </span>
+          <span className="mt-1 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
             {node.prompt}
-          </p>
+          </span>
         </div>
       ) : null}
       {node.response ? (
         <div className="mt-2" data-interaction-answer>
-          <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-            Answer
-          </div>
-          <p className="m-0 mt-1 whitespace-pre-wrap break-words text-body-sm text-ds-text-neutral-subtle-default">
+          <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+            {t('chat.timeline-answer')}
+          </span>
+          <span className="mt-1 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
             {node.response}
-          </p>
+          </span>
         </div>
       ) : null}
     </section>
@@ -131,22 +188,25 @@ export function InteractionEventRenderer({
 export function PlanEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'plan'>>) {
+  const { t } = useTranslation();
   const taskCount = node.tasks.length;
 
   return (
     <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="m-0 text-body-sm font-semibold text-ds-text-neutral-default-default">
-          {node.title || 'Plan'}
-        </p>
+        <span className="block text-body-sm font-semibold text-ds-text-neutral-default-default">
+          {node.title || t('chat.timeline-plan')}
+        </span>
         <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
-          {taskCount} {taskCount === 1 ? 'task' : 'tasks'}
+          {taskCount === 1
+            ? t('chat.timeline-plan-task-count-one', { count: taskCount })
+            : t('chat.timeline-plan-task-count-other', { count: taskCount })}
         </span>
       </div>
       {node.summary ? (
-        <p className="m-0 mt-2 whitespace-pre-wrap break-words text-body-sm text-ds-text-neutral-subtle-default">
+        <span className="mt-2 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
           {node.summary}
-        </p>
+        </span>
       ) : null}
     </section>
   );
@@ -158,17 +218,15 @@ export function ActivityEventRenderer({
   return (
     <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="m-0 min-w-0 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+        <span className="block min-w-0 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
           {node.title}
-        </p>
-        <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
-          {displayStatus(node.status)}
         </span>
+        <StatusBadge status={node.status} />
       </div>
       {node.detail ? (
-        <p className="m-0 mt-1 whitespace-pre-wrap break-words text-label-sm text-ds-text-neutral-subtle-default">
+        <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
           {node.detail}
-        </p>
+        </span>
       ) : null}
     </section>
   );
@@ -177,14 +235,23 @@ export function ActivityEventRenderer({
 export function ArtifactEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'artifact'>>) {
-  const label = artifactDisplayLabel(node.name, node.path);
+  const { t } = useTranslation();
+  const label = artifactDisplayLabel(
+    node.name,
+    node.path,
+    t('chat.timeline-artifact')
+  );
 
   return (
     <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="m-0 min-w-0 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
-          {label}
-        </p>
+        <span className="flex min-w-0 items-center gap-2 text-body-sm font-medium text-ds-text-neutral-default-default">
+          <FileText
+            aria-hidden
+            className="size-4 shrink-0 text-ds-icon-neutral-subtle-default"
+          />
+          <span className="min-w-0 truncate">{label}</span>
+        </span>
         <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
           {displayStatus(node.operation)}
         </span>
@@ -196,13 +263,23 @@ export function ArtifactEventRenderer({
 export function RunStatusEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'run_status'>>) {
+  const { t } = useTranslation();
+  const Icon = statusIcon(node.status);
+
   return (
     <div
-      className="flex items-center gap-2 px-4 py-2 text-label-sm text-ds-text-neutral-muted-default"
+      className={cn(
+        'flex items-center gap-2 px-4 py-2 text-label-sm',
+        statusClassName(node.status)
+      )}
       role="status"
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-ds-bg-neutral-muted-default" />
-      Run {displayStatus(node.status)}
+      <Icon aria-hidden className="size-3.5 shrink-0" />
+      {t('chat.timeline-run-status', {
+        status: t(`chat.tool-status-${node.status}`, {
+          defaultValue: displayStatus(node.status),
+        }),
+      })}
     </div>
   );
 }

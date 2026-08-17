@@ -266,7 +266,7 @@ export function BrowserTab({
         </TooltipSimple>
       </div>
       {addressError ? (
-        <p className="text-ds-text-danger-default-default shrink-0 px-3 py-1 text-xs">
+        <p className="shrink-0 px-3 py-1 text-xs text-ds-text-error-default-default">
           {addressError}
         </p>
       ) : null}

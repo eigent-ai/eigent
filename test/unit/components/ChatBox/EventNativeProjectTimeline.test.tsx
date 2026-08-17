@@ -30,10 +30,12 @@ import {
 
 const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
+  retry: vi.fn(),
   hydration: {
     status: 'ready',
     errorCode: null,
     eventsTruncated: false,
+    retry: () => mocks.retry(),
   } as ProjectEventStoreHydrationState,
 }));
 
@@ -158,10 +160,12 @@ describe('isChatTimelineNearBottom', () => {
 describe('EventNativeProjectTimeline', () => {
   beforeEach(() => {
     mocks.projection = projection([]);
+    mocks.retry.mockClear();
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
       eventsTruncated: false,
+      retry: mocks.retry,
     };
     if (!globalThis.ResizeObserver) {
       globalThis.ResizeObserver = class {
@@ -193,7 +197,9 @@ describe('EventNativeProjectTimeline', () => {
     );
     expect(screen.getByText('Message 1')).toBeInTheDocument();
     expect(
-      screen.getByText('This event is not available in this version.')
+      screen.getByText(
+        "This part of the conversation can't be shown in this version of Eigent."
+      )
     ).toBeInTheDocument();
   });
 
@@ -216,7 +222,7 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Input required');
     expect(card).toHaveTextContent('Choose a format');
@@ -245,7 +251,7 @@ describe('EventNativeProjectTimeline', () => {
     );
 
     expect(
-      screen.getByText('1 earlier events are not mounted in this preview.')
+      screen.getByText("Older messages aren't shown here.")
     ).toBeInTheDocument();
     expect(screen.queryByText('Message 0')).not.toBeInTheDocument();
     expect(screen.getByText('Message 250')).toBeInTheDocument();
@@ -301,11 +307,11 @@ describe('EventNativeProjectTimeline', () => {
       'data-interaction-resolution-event-id',
       'window-format-resolved'
     );
-    expect(screen.getByLabelText('Agent input')).toHaveTextContent(
+    expect(screen.getByLabelText('Agent request')).toHaveTextContent(
       'PDF document'
     );
     expect(
-      screen.queryByText(/earlier events are not mounted/)
+      screen.queryByText(/Older messages aren't shown here/)
     ).not.toBeInTheDocument();
   });
 
@@ -314,6 +320,7 @@ describe('EventNativeProjectTimeline', () => {
       status: 'error',
       errorCode: 'limit_exceeded',
       eventsTruncated: false,
+      retry: mocks.retry,
     };
 
     render(
@@ -324,8 +331,11 @@ describe('EventNativeProjectTimeline', () => {
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Durable history is unavailable.'
+      "Couldn't load this conversation."
     );
+    expect(
+      screen.getByRole('button', { name: 'Try again' })
+    ).toBeInTheDocument();
   });
 
   it('discloses when the existing Run-list API produced a partial window', () => {
@@ -333,6 +343,7 @@ describe('EventNativeProjectTimeline', () => {
       status: 'ready',
       errorCode: null,
       eventsTruncated: true,
+      retry: mocks.retry,
     };
 
     render(
@@ -343,7 +354,7 @@ describe('EventNativeProjectTimeline', () => {
     );
 
     expect(
-      screen.getByText(/earlier history is outside this local window/)
+      screen.getByText(/Only your most recent activity is shown here/)
     ).toBeInTheDocument();
   });
 

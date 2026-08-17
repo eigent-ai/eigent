@@ -196,6 +196,34 @@ Both timeline paths currently use a real 12px sibling rhythm:
 Do not add a gap to a wrapper that contains only one child. It has no visual
 effect and obscures which parent owns the relationship between components.
 
+## Radius by elevation
+
+Corner radius encodes how far a surface sits from the conversation, so sibling
+surfaces intentionally differ:
+
+| Radius        | Elevation                        | Examples                          |
+| ------------- | -------------------------------- | --------------------------------- |
+| `rounded-3xl` | Composer shell, floats over chat | `BottomBox`, control variants     |
+| `rounded-2xl` | Timeline card, sits in the flow  | `HumanInteractionCard`, banners   |
+| `rounded-xl`  | Nested block inside a card       | Argument detail, scope disclosure |
+| `rounded-lg`  | Inline row inside a block        | Receipts, option lists, skeletons |
+
+Match the surface's elevation rather than the radius of whatever is next to it.
+
+## Staged migration surfaces
+
+Parts of the event-native path are deliberately built ahead of their callers.
+They are not dead code, but nothing exercises them yet:
+
+- `EventTimeline/presentationPolicy.ts` is driven by the `detailLevel` prop.
+  `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
+  always in force until a detail-level control is wired up.
+- `VITE_CHATBOX_EVENT_BUS` gates the entire event-native read and control path
+  and is unset in every checked-in env file, so the legacy path is what ships
+  by default. Set it locally to review the new surfaces.
+
+Remove an entry here as soon as its caller lands.
+
 ## Legacy cleanup inventory
 
 The following files belong to the legacy ChatStore conversation renderer. They

@@ -14,6 +14,7 @@
 
 import { Button } from '@/components/ui/button';
 import { type SessionModeType } from '@/types/constants';
+import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +38,18 @@ export type BottomBoxState =
   | 'finished';
 
 type PickerPanelKind = 'connector' | 'skill';
+
+const VARIANT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const VARIANT_ENTER_TRANSITION = {
+  duration: 0.18,
+  ease: VARIANT_EASE,
+} as const;
+const REDUCED_ENTER_TRANSITION = {
+  duration: 0.12,
+  ease: VARIANT_EASE,
+} as const;
+const LAYOUT_TRANSITION = { duration: 0.22, ease: VARIANT_EASE } as const;
+const INSTANT_TRANSITION = { duration: 0 } as const;
 
 interface BottomBoxCommonProps {
   // General state
@@ -103,6 +116,7 @@ export default function BottomBox({
   onSelectModel,
 }: BottomBoxProps) {
   const { t } = useTranslation();
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const enableQueuedBox = true; //TODO: Fix the reason of queued box disable in https://github.com/eigent-ai/eigent/issues/684
   const inputProps: InputboxProps = providedInputProps ?? {};
   const normalizedVariant: BottomBoxVariant =
@@ -135,6 +149,29 @@ export default function BottomBox({
 
   useEffect(() => {
     if (normalizedVariant.kind !== 'input') setOpenPanel(null);
+  }, [normalizedVariant.kind]);
+
+  // Replacing the composer with an agent request is a mode change. Assistive
+  // technology only learns about it if the new region is announced and focus
+  // follows it, otherwise the caret is left on a control that no longer exists.
+  const variantRegionRef = useRef<HTMLDivElement>(null);
+  const previousVariantKindRef = useRef(normalizedVariant.kind);
+  useEffect(() => {
+    const previousKind = previousVariantKindRef.current;
+    previousVariantKindRef.current = normalizedVariant.kind;
+    if (
+      normalizedVariant.kind === 'input' ||
+      previousKind === normalizedVariant.kind
+    ) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const firstAction = variantRegionRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), textarea:not([disabled]), input:not([disabled])'
+      );
+      firstAction?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [normalizedVariant.kind]);
 
   const inputValue = inputProps.value ?? '';
@@ -179,7 +216,7 @@ export default function BottomBox({
   // Background color reflects current state only
   let backgroundClass = 'bg-ds-bg-neutral-default-default';
   if (state === 'confirm' || state === 'save')
-    backgroundClass = 'bg-ds-bg-completed-default-default';
+    backgroundClass = 'bg-ds-bg-status-completed-subtle-default';
 
   const showQueuedBox = enableQueuedBox && queuedMessages.length > 0;
   const activePickerPanel =
@@ -187,15 +224,28 @@ export default function BottomBox({
   const hasOverlay = !!usageLimitBanner || !!activePickerPanel;
 
   const variantHeader = normalizedVariant.header;
-  // Composer question/details live inside InputBox. Other variants keep the
-  // display header above their control surface.
+  // Composer and approval question/details live inside their input surfaces.
+  // Other controlled variants keep the display header above their controls.
   const externalHeader =
-    normalizedVariant.kind === 'input' ? undefined : variantHeader;
+    normalizedVariant.kind === 'input' || normalizedVariant.kind === 'approval'
+      ? undefined
+      : variantHeader;
 
   const variantDisabled =
     normalizedVariant.kind === 'input'
       ? inputProps.disabled
       : normalizedVariant.disabled || normalizedVariant.submitting;
+  const showFooter =
+    sessionMode !== undefined && normalizedVariant.kind !== 'approval';
+  // Approval removes the footer and its space synchronously. Other variants
+  // can interpolate their height unless the user prefers reduced motion.
+  const instantLayout =
+    shouldReduceMotion || normalizedVariant.kind === 'approval';
+  const enterTransition = shouldReduceMotion
+    ? REDUCED_ENTER_TRANSITION
+    : VARIANT_ENTER_TRANSITION;
+  const enterOffset = shouldReduceMotion ? 0 : 6;
+  const overlayOffset = shouldReduceMotion ? 0 : 4;
 
   return (
     <div
@@ -204,24 +254,33 @@ export default function BottomBox({
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
-        <div data-bottom-box-query>
+        <motion.div
+          key="bottom-box-query"
+          data-bottom-box-query
+          initial={{ opacity: 0, y: overlayOffset }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={enterTransition}
+        >
           <QueuedBox
             queuedMessages={queuedMessages}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
             onSendQueuedMessageNow={onSendQueuedMessageNow}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* Floating utility overlays: never affect BoxMain layout. */}
       {hasOverlay && (
-        <div className="pointer-events-auto absolute inset-x-0 bottom-full z-[60] mb-1 flex flex-col gap-1">
+        <motion.div
+          key={activePickerPanel ?? 'usage-limit'}
+          className="pointer-events-auto absolute inset-x-0 bottom-full z-[60] mb-1 flex flex-col gap-1"
+          initial={{ opacity: 0, y: overlayOffset }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={enterTransition}
+        >
           {usageLimitBanner && <UsageLimitBanner {...usageLimitBanner} />}
           {activePickerPanel && (
-            <div
-              ref={panelRef}
-              className="duration-150 animate-in fade-in-0 slide-in-from-bottom-1"
-            >
+            <div ref={panelRef}>
               {activePickerPanel === 'connector' ? (
                 <ConnectorPickerPanel
                   inputValue={inputValue}
@@ -235,13 +294,18 @@ export default function BottomBox({
               )}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* BoxMain */}
-      <div
+      <motion.div
+        layout={instantLayout ? false : 'size'}
         data-bottom-box-main
+        data-layout-motion={instantLayout ? 'instant' : 'smooth'}
         className={`relative flex w-full flex-col rounded-3xl ${backgroundClass}`}
+        transition={{
+          layout: instantLayout ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
+        }}
       >
         {/* BoxHeader — context/question display only. */}
         {state === 'confirm' && (
@@ -261,45 +325,69 @@ export default function BottomBox({
             loading={loading}
           />
         )}
-        {externalHeader && <BoxHeaderDisplay {...externalHeader} />}
+        <motion.div
+          key={normalizedVariant.kind}
+          ref={variantRegionRef}
+          layout={!shouldReduceMotion}
+          data-bottom-box-variant-transition
+          data-variant={normalizedVariant.kind}
+          className="w-full"
+          role={normalizedVariant.kind === 'input' ? undefined : 'region'}
+          aria-label={
+            normalizedVariant.kind === 'input'
+              ? undefined
+              : t('chat.control-region-label')
+          }
+          aria-live={
+            normalizedVariant.kind === 'approval' ? 'assertive' : 'polite'
+          }
+          initial={{ opacity: 0, y: enterOffset }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={enterTransition}
+        >
+          {externalHeader && <BoxHeaderDisplay {...externalHeader} />}
 
-        {/* InputBox — controlled router selected by event-derived variant. */}
-        <ControlInputRouter
-          variant={normalizedVariant}
-          inputProps={inputProps}
-          connectorPanelOpen={activePickerPanel === 'connector'}
-          onToggleConnectorPanel={() => togglePanel('connector')}
-          skillPanelOpen={activePickerPanel === 'skill'}
-          onToggleSkillPanel={() => togglePanel('skill')}
-        />
+          {/* InputBox — controlled router selected by event-derived variant. */}
+          <ControlInputRouter
+            variant={normalizedVariant}
+            inputProps={inputProps}
+            connectorPanelOpen={activePickerPanel === 'connector'}
+            onToggleConnectorPanel={() => togglePanel('connector')}
+            skillPanelOpen={activePickerPanel === 'skill'}
+            onToggleSkillPanel={() => togglePanel('skill')}
+          />
+        </motion.div>
 
-        {/* BoxFooter remains the stable project-setup region for every variant. */}
-        <div data-bottom-box-footer>
-          {sessionMode !== undefined && (
+        {showFooter ? (
+          <div data-bottom-box-footer>
             <BoxFooter
-              sessionMode={sessionMode}
+              sessionMode={sessionMode!}
               onSessionModeChange={onSessionModeChange}
               projectId={modelSelectProjectId}
               interactive={sessionModeSelectInteractive}
               disabled={variantDisabled}
             />
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {noModelOverlay &&
         onSelectModel &&
         normalizedVariant.kind === 'input' ? (
-          <div
+          <motion.div
+            key="no-model-overlay"
             className="absolute inset-0 z-[15] flex flex-row items-center justify-center gap-3 rounded-3xl bg-ds-bg-warning-subtle-default px-4 py-5 backdrop-blur-lg"
             role="alert"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={enterTransition}
           >
             <TriangleAlert
               className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
-            <p className="text-sm font-medium leading-snug text-ds-text-warning-default-default">
+            <span className="block text-sm font-medium leading-snug text-ds-text-warning-default-default">
               {t('layout.please-select-model')}
-            </p>
+            </span>
             <Button
               type="button"
               variant="primary"
@@ -312,9 +400,9 @@ export default function BottomBox({
                 defaultValue: 'Select a model',
               })}
             </Button>
-          </div>
+          </motion.div>
         ) : null}
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -40,6 +40,7 @@ import {
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
+import { decideHumanInteraction } from '@/service/humanInteractionApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
@@ -65,7 +66,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
+  BottomBoxApprovalScope,
   BottomBoxInputVariant,
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
@@ -379,7 +382,7 @@ export default function ChatBox(): JSX.Element {
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType, token } = useAuthStore();
+  const { modelType, token, user_id } = useAuthStore();
   const [subscriptionUsage, setSubscriptionUsage] =
     useState<SubscriptionLimitInfo | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
@@ -569,6 +572,83 @@ export default function ChatBox(): JSX.Element {
     activeAskTask.type !== 'replay' &&
     activeAskTask.type !== 'share' &&
     activeAskTask.status !== ChatTaskStatus.FINISHED;
+  const [legacyApprovalSubmitting, setLegacyApprovalSubmitting] =
+    useState(false);
+
+  useEffect(() => {
+    setLegacyApprovalSubmitting(false);
+  }, [activeInteraction?.interaction_id]);
+
+  const handleLegacyApprovalDecision = useCallback(
+    async (
+      decision: 'approved' | 'rejected',
+      scope: BottomBoxApprovalScope
+    ) => {
+      const interaction = activeInteraction;
+      const taskId = activeTaskId;
+      if (
+        !interaction ||
+        interaction.interaction_type !== 'approval' ||
+        !taskId ||
+        legacyApprovalSubmitting
+      ) {
+        return;
+      }
+
+      setLegacyApprovalSubmitting(true);
+      try {
+        await decideHumanInteraction(interaction, {
+          decisionRequestId: [
+            'desktop-approval',
+            encodeURIComponent(interaction.interaction_id),
+            String(interaction.version ?? 0),
+            decision,
+            scope,
+          ].join(':'),
+          decision: { decision, scope },
+          actorId: user_id,
+        });
+
+        const activeStore = projectStore.getActiveChatStore();
+        if (!activeStore) return;
+        const state = activeStore.getState();
+        if (!state || state.activeTaskId !== taskId) return;
+
+        state.markHumanInteractionResolved(taskId, interaction.interaction_id);
+        const current = activeStore.getState().tasks[taskId];
+        if (!current) return;
+        const [nextAsk, ...remainingAsks] = current.askList;
+        state.setActiveAskList(taskId, remainingAsks);
+        state.setActiveAsk(taskId, nextAsk?.agent_name || '');
+        state.setIsPending(taskId, false);
+        state.setDurableRunStatus(
+          taskId,
+          nextAsk ? 'waiting_for_user' : 'running'
+        );
+        state.setStatus(taskId, ChatTaskStatus.RUNNING);
+        if (nextAsk) state.addMessages(taskId, nextAsk);
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.detail?.message ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          t('chat.control-decision-failed');
+        toast.error(
+          typeof message === 'string' ? message : JSON.stringify(message)
+        );
+      } finally {
+        setLegacyApprovalSubmitting(false);
+      }
+    },
+    [
+      activeInteraction,
+      activeTaskId,
+      legacyApprovalSubmitting,
+      projectStore,
+      t,
+      user_id,
+    ]
+  );
 
   const handleDurableHumanControlResolved = useCallback(
     (resolved: { interactionId: string; runId: string }) => {
@@ -1884,12 +1964,24 @@ export default function ChatBox(): JSX.Element {
     };
   }
 
+  const legacyApprovalVariant =
+    activeAsk && isInteractiveHumanReply && activeAskMessage
+      ? createLegacyApprovalVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onApprove: (scope) =>
+            void handleLegacyApprovalDecision('approved', scope),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
   const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
     activeAsk && isInteractiveHumanReply && activeAskMessage
       ? {
           kind: 'input',
           header: {
-            eyebrow: 'Input required',
+            eyebrow: t('chat.control-input-required'),
             title:
               activeInteraction?.question || activeAskMessage.content.trim(),
           },
@@ -1899,9 +1991,9 @@ export default function ChatBox(): JSX.Element {
     ? (eventNativeHumanControl.variant ??
       eventNativeRunControlVariant ??
       'input')
-    : legacyHumanInputVariant;
-  const hasEventNativeBottomBoxControl =
-    eventNativeTimelineEnabled && bottomBoxVariant !== 'input';
+    : (legacyApprovalVariant ?? legacyHumanInputVariant);
+  const hasControlledBottomBoxVariant =
+    bottomBoxVariant !== 'input' && bottomBoxVariant.kind !== 'input';
 
   const chatColumn = (
     <>
@@ -2031,7 +2123,7 @@ export default function ChatBox(): JSX.Element {
               )}
               <BottomBox
                 state={
-                  hasEventNativeBottomBoxControl
+                  hasControlledBottomBoxVariant
                     ? 'running'
                     : getBottomBoxState()
                 }

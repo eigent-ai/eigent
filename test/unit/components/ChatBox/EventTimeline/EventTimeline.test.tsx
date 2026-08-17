@@ -179,17 +179,17 @@ describe('EventTimeline', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveAttribute('data-event-node-id', 'message-1');
     expect(items[1]).toHaveAttribute('data-event-node-id', 'message-2');
-    expect(screen.getByLabelText('User message')).toHaveTextContent(
+    expect(screen.getByLabelText('Your message')).toHaveTextContent(
       'Start the Run'
     );
-    expect(screen.getByLabelText('Assistant message')).toHaveTextContent(
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Working on it'
     );
-    expect(screen.getByLabelText('User message')).toHaveClass('rounded-br-sm');
-    expect(screen.getByLabelText('User message').parentElement).toHaveClass(
+    expect(screen.getByLabelText('Your message')).toHaveClass('rounded-br-sm');
+    expect(screen.getByLabelText('Your message').parentElement).toHaveClass(
       'pl-16'
     );
-    expect(screen.getByLabelText('Assistant message')).not.toHaveClass(
+    expect(screen.getByLabelText("Eigent's reply")).not.toHaveClass(
       'rounded-br-sm'
     );
   });
@@ -218,7 +218,7 @@ describe('EventTimeline', () => {
     render(<EventTimeline nodes={sourceNodes} />);
 
     const item = screen.getByRole('listitem');
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(item).toHaveAttribute('data-event-node-id', 'format-request');
     expect(item).toHaveAttribute('data-interaction-id', 'format-choice');
@@ -266,7 +266,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(card).toHaveTextContent('Input required');
     expect(card).not.toHaveTextContent(
       'Which dataset should I use while pending?'
@@ -300,7 +300,7 @@ describe('EventTimeline', () => {
       'todo-toolkit-two',
     ]);
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(card).toHaveTextContent('Input required');
     expect(card).toHaveTextContent('Which dataset should I use?');
     expect(card).toHaveTextContent('Quarterly metrics');
@@ -498,7 +498,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    const cards = screen.getAllByLabelText('Agent input');
+    const cards = screen.getAllByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
     expect(cards.map((card) => card.dataset.interactionStatus)).toEqual([
       'requested',
@@ -521,7 +521,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Input required');
     expect(card).not.toHaveTextContent('Choose a format');
@@ -544,7 +544,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Input required');
     expect(card).toHaveTextContent('Continue with the report?');
@@ -580,7 +580,7 @@ describe('EventTimeline', () => {
       'data-event-node-id',
       'pending-canonical-request'
     );
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(1);
   });
 
   it('collapses canonical and legacy dual writes into one canonical-anchored receipt', () => {
@@ -619,7 +619,7 @@ describe('EventTimeline', () => {
     );
 
     const item = screen.getByRole('listitem');
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(item).toHaveAttribute(
       'data-event-node-id',
       'full-canonical-request'
@@ -629,7 +629,7 @@ describe('EventTimeline', () => {
       'event-full-canonical-resolution'
     );
     expect(card).toHaveTextContent('Use the finance workbook');
-    expect(screen.queryByLabelText('User message')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument();
   });
 
   it('fails closed when a request has multiple legacy ASK mirrors', () => {
@@ -658,7 +658,7 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(3);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(3);
   });
 
   it('prefers one canonical receipt and suppresses its equal legacy mirror', () => {
@@ -676,14 +676,14 @@ describe('EventTimeline', () => {
 
     render(<EventTimeline nodes={sourceNodes} />);
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Use quarterly metrics');
     expect(card).toHaveAttribute(
       'data-interaction-resolution-event-id',
       'event-dual-canonical'
     );
-    expect(screen.queryByLabelText('User message')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument();
     expect(sourceNodes).toHaveLength(3);
   });
 
@@ -706,7 +706,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    const card = screen.getByLabelText('Agent input');
+    const card = screen.getByLabelText('Agent request');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Use the finance workbook');
     expect(card).toHaveAttribute(
@@ -733,8 +733,8 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(2);
-    expect(screen.getByLabelText('User message')).toHaveTextContent(
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(2);
+    expect(screen.getByLabelText('Your message')).toHaveTextContent(
       'Use dataset B'
     );
   });
@@ -765,7 +765,7 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(3);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(3);
   });
 
   it('keeps an uncorrelated human reply separate instead of guessing by adjacency', () => {
@@ -781,11 +781,11 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    expect(screen.getByLabelText('Agent input')).toHaveAttribute(
+    expect(screen.getByLabelText('Agent request')).toHaveAttribute(
       'data-interaction-status',
       'requested'
     );
-    expect(screen.getByLabelText('User message')).toHaveTextContent('Yes');
+    expect(screen.getByLabelText('Your message')).toHaveTextContent('Yes');
   });
 
   it('fails closed when an interaction id has ambiguous duplicate receipts', () => {
@@ -806,7 +806,7 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getAllByLabelText('Agent input')).toHaveLength(3);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(3);
   });
 
   it('allows a product renderer to override one semantic node kind', () => {
@@ -888,7 +888,7 @@ describe('EventTimeline', () => {
     expect(screen.getByTestId('event-type-renderer')).toHaveTextContent(
       'Special answer'
     );
-    expect(screen.getByLabelText('Assistant message')).toHaveTextContent(
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Ordinary answer'
     );
   });
@@ -908,7 +908,7 @@ describe('EventTimeline', () => {
       />
     );
 
-    expect(screen.getByLabelText('Assistant message')).toHaveTextContent(
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Prototype-safe answer'
     );
   });
@@ -926,7 +926,7 @@ describe('EventTimeline', () => {
     });
     expect(timeline).toHaveAttribute('data-requested-detail-level', 'compact');
     expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
-    expect(screen.getByLabelText('Assistant message')).toHaveTextContent(
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Detailed for now'
     );
   });
@@ -974,7 +974,7 @@ describe('EventTimeline', () => {
       name: 'Chat event timeline',
     });
     expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
-    expect(screen.getByLabelText('Assistant message')).toHaveTextContent(
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Preserved output'
     );
   });
@@ -983,7 +983,7 @@ describe('EventTimeline', () => {
     render(<EventTimeline nodes={[unknownNode()]} />);
 
     const fallback = screen.getByRole('status', {
-      name: 'Unsupported chat event',
+      name: 'Unsupported message',
     });
     expect(fallback).toHaveAttribute(
       'data-event-fallback',
@@ -1007,7 +1007,7 @@ describe('EventTimeline', () => {
     render(<EventRenderer node={unknownNode()} registry={{}} />);
 
     expect(
-      screen.getByRole('status', { name: 'Unsupported chat event' })
+      screen.getByRole('status', { name: 'Unsupported message' })
     ).toHaveAttribute('data-event-fallback', 'missing-renderer');
   });
 
@@ -1032,7 +1032,7 @@ describe('EventTimeline', () => {
     );
 
     expect(
-      screen.getByRole('status', { name: 'Unsupported chat event' })
+      screen.getByRole('status', { name: 'Unsupported message' })
     ).toHaveAttribute('data-event-fallback', 'renderer-error');
     expect(screen.getByText('Run is still healthy')).toBeInTheDocument();
     expect(onRendererError).toHaveBeenCalledWith(

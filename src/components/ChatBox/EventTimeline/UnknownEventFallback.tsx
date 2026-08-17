@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useTranslation } from 'react-i18next';
+
 type UnknownEventReason =
   | 'unsupported-event'
   | 'missing-renderer'
@@ -43,14 +45,14 @@ function safeLabel(value: unknown): string | null {
     : label;
 }
 
-function eventLabel(node: unknown): string {
-  if (!isRecord(node)) return 'Unknown event';
+function eventLabel(node: unknown, fallback: string): string {
+  if (!isRecord(node)) return fallback;
 
   return (
     safeLabel(node.eventType) ??
     safeLabel(node.kind) ??
     safeLabel(node.legacyStep) ??
-    'Unknown event'
+    fallback
   );
 }
 
@@ -63,18 +65,20 @@ export function UnknownEventFallback({
   node,
   reason = 'unsupported-event',
 }: UnknownEventFallbackProps) {
+  const { t } = useTranslation();
+
   return (
     <section
-      aria-label="Unsupported chat event"
+      aria-label={t('chat.timeline-unsupported-event-label')}
       className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3"
       data-event-fallback={reason}
       role="status"
     >
       <p className="m-0 text-body-sm font-medium text-ds-text-neutral-default-default">
-        This event is not available in this version.
+        {t('chat.timeline-unsupported-event')}
       </p>
       <p className="m-0 mt-1 truncate text-label-xs text-ds-text-neutral-muted-default">
-        {eventLabel(node)}
+        {eventLabel(node, t('chat.timeline-unknown-event'))}
       </p>
     </section>
   );

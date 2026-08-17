@@ -16,58 +16,42 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
-// Mock react-i18next
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options: Record<string, unknown> = {}) => {
-      // Map translation keys to English text
-      const translations: Record<string, string> = {
-        'chat.welcome-to-eigent': 'Welcome to Eigent',
-        'chat.how-can-i-help-you': 'How can I help you today?',
-        'chat.it-ticket-creation': 'IT Ticket Creation',
-        'chat.bank-transfer-csv-analysis-and-visualization':
-          'Bank Transfer CSV Analysis and Visualization',
-        'chat.help-organize-my-desktop': 'Please Help Organize My Desktop',
-        'setting.search-mcp': 'Search MCPs',
-        'chat.by-messaging-eigent': 'By messaging Eigent, you agree to our',
-        'chat.terms-of-use': 'Terms of Use',
-        'chat.and': 'and',
-        'chat.privacy-policy': 'Privacy Policy',
-        'chat.it-ticket-creation-message': 'Plan a tennis trip to Palm Springs',
-        'chat.bank-transfer-csv-analysis-and-visualization-message':
-          'Analyze and visualize bank transfer CSV',
-        'chat.help-organize-my-desktop-message':
-          'Please Help Organize My Desktop',
-        'chat.no-reply-received-task-continue':
-          'No reply received, task will continue',
-        'chat.repeated-tool-events': '{{tool}} · {{count}} events',
-        'chat.repeated-tool-calls-label': 'Repeated tool calls: {{tool}}',
-        'chat.repeated-tool-failed': '{{count}} failed',
-        'chat.repeated-tool-completed-progress':
-          '{{completed}}/{{count}} completed',
-        'chat.repeated-tool-cancelled': '{{count}} cancelled',
-        'chat.tool-status-completed': 'Completed',
-        'chat.tool-status-failed': 'Failed',
-        'chat.tool-status-cancelled': 'Cancelled',
-        'chat.tool-status-running': 'Running',
-        'chat.tool-status-pending': 'Pending',
-        'chat.tool-status-unknown': 'Unknown',
-      };
-      return (translations[key] || String(options.defaultValue || key)).replace(
-        /{{(\w+)}}/g,
-        (_match, name: string) => String(options[name] ?? '')
+// Mock react-i18next against the shipped en-US bundle so assertions read the
+// real product copy instead of a table that drifts from it.
+vi.mock('react-i18next', async () => {
+  const enUs = (await import('@/i18n/locales/en-us/index')).default;
+
+  const resolve = (key: string): string | undefined => {
+    const value = key
+      .split('.')
+      .reduce<unknown>(
+        (current, segment) =>
+          current && typeof current === 'object'
+            ? (current as Record<string, unknown>)[segment]
+            : undefined,
+        enUs as unknown
       );
+    return typeof value === 'string' ? value : undefined;
+  };
+
+  return {
+    useTranslation: () => ({
+      t: (key: string, options: Record<string, unknown> = {}) =>
+        (resolve(key) ?? String(options.defaultValue ?? key)).replace(
+          /{{(\w+)}}/g,
+          (_match, name: string) => String(options[name] ?? '')
+        ),
+      i18n: {
+        language: 'en',
+        changeLanguage: vi.fn(),
+      },
+    }),
+    initReactI18next: {
+      type: '3rdParty',
+      init: vi.fn(),
     },
-    i18n: {
-      language: 'en',
-      changeLanguage: vi.fn(),
-    },
-  }),
-  initReactI18next: {
-    type: '3rdParty',
-    init: vi.fn(),
-  },
-}));
+  };
+});
 
 // Mock Electron APIs if needed
 global.electronAPI = {

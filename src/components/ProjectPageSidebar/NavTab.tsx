@@ -51,12 +51,12 @@ export function triggerListenerLeadIconClass(
     case 'connected':
       return 'text-ds-icon-neutral-muted-default';
     case 'connecting':
-      return 'text-ds-icon-status-warning-default animate-pulse';
+      return 'text-ds-icon-warning-default-default animate-pulse';
     case 'unhealthy':
-      return 'text-ds-icon-status-error-default';
+      return 'text-ds-icon-status-error-default-default';
     case 'disconnected':
     default:
-      return '!text-ds-icon-status-error-default';
+      return '!text-ds-icon-status-error-default-default';
   }
 }
 

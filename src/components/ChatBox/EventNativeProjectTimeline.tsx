@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import { useProjectEventStoreHydration } from '@/hooks/useProjectEventStoreHydration';
 import { useProjectChatProjection } from '@/hooks/useProjectEventView';
 import {
@@ -25,6 +26,7 @@ import {
   useRef,
   type RefObject,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   animateChatTimelineAnchor,
@@ -78,6 +80,34 @@ export function prepareEventNativeTimelineWindow(
   };
 }
 
+/**
+ * Placeholder rows sized to a short and a long message so the container keeps
+ * its height when the real conversation replaces them.
+ */
+function ChatTimelineSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      aria-busy
+      aria-label={label}
+      className="flex w-full flex-col gap-3"
+      data-chat-timeline-skeleton
+      role="status"
+    >
+      {[
+        ['w-2/5', 'h-16'],
+        ['w-full', 'h-24'],
+        ['w-1/3', 'h-16'],
+      ].map(([width, height], index) => (
+        <div
+          key={`chat-skeleton-${index}`}
+          className={`${height} ${index % 2 === 0 ? 'ml-auto' : ''} ${width} animate-pulse rounded-xl bg-ds-bg-neutral-strong-default`}
+        />
+      ))}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 interface EventNativeProjectTimelineProps {
   detailLevel?: ChatTimelineDetailLevel;
   projectId: string;
@@ -97,6 +127,7 @@ export function EventNativeProjectTimeline({
   scrollContainerRef,
   scrollBottomInsetPx,
 }: EventNativeProjectTimelineProps) {
+  const { t } = useTranslation();
   const hydration = useProjectEventStoreHydration({
     projectId,
     enabled: true,
@@ -239,43 +270,78 @@ export function EventNativeProjectTimeline({
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         {hiddenNodeCount > 0 ? (
-          <p
-            className="px-4 py-2 text-center text-label-sm text-ds-text-neutral-muted-default"
+          <span
+            className="block px-4 py-2 text-center text-label-sm font-normal text-ds-text-neutral-muted-default"
             role="status"
           >
-            {hiddenNodeCount} earlier events are not mounted in this preview.
-          </p>
+            {t('chat.timeline-older-hidden')}
+          </span>
         ) : null}
         {hydration.eventsTruncated ? (
-          <p
-            className="px-4 py-2 text-center text-label-sm text-ds-text-neutral-muted-default"
+          <span
+            className="block px-4 py-2 text-center text-label-sm font-normal text-ds-text-neutral-muted-default"
             role="status"
           >
-            Showing the latest durable Runs; earlier history is outside this
-            local window.
-          </p>
+            {t('chat.timeline-history-window')}
+          </span>
         ) : null}
         {hydration.status === 'error' && allNodes.length > 0 ? (
-          <p
-            className="px-4 py-2 text-center text-body-sm text-ds-text-status-error-default-default"
+          <div
+            className="flex flex-col items-center gap-2 px-4 py-2"
             role="alert"
           >
-            Durable history could not be loaded safely.
-          </p>
+            <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+              {t('chat.timeline-history-partial-error')}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              buttonRadius="full"
+              onClick={hydration.retry}
+            >
+              {t('chat.timeline-history-retry')}
+            </Button>
+          </div>
         ) : null}
         <EventTimeline
+          ariaLabel={t('chat.timeline-label')}
           detailLevel={detailLevel}
           emptyState={
-            <p
-              className="px-4 py-6 text-center text-body-sm text-ds-text-neutral-muted-default"
-              role={hydration.status === 'error' ? 'alert' : 'status'}
-            >
-              {hydration.status === 'error'
-                ? 'Durable history is unavailable.'
-                : hydration.status === 'retrying'
-                  ? 'Reconnecting durable history…'
-                  : 'Loading durable history…'}
-            </p>
+            hydration.status === 'error' ? (
+              <div
+                className="flex flex-col items-center gap-2 px-4 py-6"
+                role="alert"
+              >
+                <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+                  {t('chat.timeline-history-error')}
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  buttonRadius="full"
+                  onClick={hydration.retry}
+                >
+                  {t('chat.timeline-history-retry')}
+                </Button>
+              </div>
+            ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
+              <span
+                className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
+                role="status"
+              >
+                {t('chat.timeline-empty')}
+              </span>
+            ) : (
+              <ChatTimelineSkeleton
+                label={
+                  hydration.status === 'retrying'
+                    ? t('chat.timeline-history-reconnecting')
+                    : t('chat.timeline-history-loading')
+                }
+              />
+            )
           }
           nodes={visibleNodes}
         />

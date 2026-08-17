@@ -22,7 +22,12 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import {
+  approvalScopeLabels,
+  type HumanControlTranslate,
+} from '../BottomBox/legacyHumanControl';
 
 interface HumanInteractionCardProps {
   interaction: HumanInteractionPayload;
@@ -73,7 +78,8 @@ const requestId = () =>
 
 function decisionDisplayText(
   interaction: HumanInteractionPayload,
-  decision: Record<string, unknown>
+  decision: Record<string, unknown>,
+  t: HumanControlTranslate
 ): string | null {
   const selectedOptionId =
     typeof decision.option_id === 'string' ? decision.option_id : null;
@@ -88,11 +94,11 @@ function decisionDisplayText(
     const normalized = decision.decision.toLowerCase();
     if (normalized === 'approved') {
       const scope = typeof decision.scope === 'string' ? decision.scope : '';
-      if (scope === 'run') return 'Allowed for this Run';
-      if (scope === 'space') return 'Always allowed in this Space';
-      return 'Approved once';
+      if (scope === 'run') return t('chat.control-approved-run-receipt');
+      if (scope === 'space') return t('chat.control-approved-space-receipt');
+      return t('chat.control-approved-once-receipt');
     }
-    if (normalized === 'rejected') return 'Rejected';
+    if (normalized === 'rejected') return t('chat.control-rejected');
     return decision.decision;
   }
 
@@ -103,17 +109,19 @@ function decisionDisplayText(
       const fieldType = (field.type || 'text').toLowerCase();
       const sensitive = /password|secret|credential|token|key/.test(fieldType);
       const displayValue = sensitive
-        ? '[redacted]'
+        ? t('chat.control-redacted')
         : typeof rawValue === 'string' || typeof rawValue === 'number'
           ? String(rawValue)
           : typeof rawValue === 'boolean'
             ? rawValue
-              ? 'Yes'
-              : 'No'
-            : '[submitted]';
+              ? t('chat.control-yes')
+              : t('chat.control-no')
+            : t('chat.control-submitted');
       return `${field.label}: ${displayValue}`;
     });
-    return fieldReceipts.length ? fieldReceipts.join('\n') : 'Form submitted';
+    return fieldReceipts.length
+      ? fieldReceipts.join('\n')
+      : t('chat.control-form-submitted');
   }
 
   return null;
@@ -126,6 +134,7 @@ export function HumanInteractionCard({
   onResolved,
   timelineReceipt = false,
 }: HumanInteractionCardProps) {
+  const { t } = useTranslation();
   const userId = useAuthStore((state) => state.user_id);
   const decisionRequestId = useRef(requestId());
   const [submitting, setSubmitting] = useState(false);
@@ -187,7 +196,7 @@ export function HumanInteractionCard({
         decision,
         actorId: userId,
       });
-      const decisionText = decisionDisplayText(interaction, decision);
+      const decisionText = decisionDisplayText(interaction, decision, t);
       setSubmittedResponse(decisionText);
       setResolved(true);
       onResolved?.(decisionText || undefined);
@@ -197,7 +206,7 @@ export function HumanInteractionCard({
         (error as any)?.response?.data?.detail?.message ||
         (error as any)?.response?.data?.detail ||
         (error as Error)?.message ||
-        'Could not save your decision. Please try again.';
+        t('chat.control-decision-failed');
       const readableMessage =
         typeof message === 'string' ? message : JSON.stringify(message);
       setSubmissionError(readableMessage);
@@ -211,17 +220,38 @@ export function HumanInteractionCard({
   const disabled =
     effectiveReadOnly || Boolean(displayedResponse) || resolved || submitting;
   const title = timelineReceipt
-    ? 'Input required'
+    ? t('chat.control-input-required')
     : interaction.title ||
       (interaction.interaction_type === 'approval'
-        ? 'Approval required'
-        : 'Input required');
+        ? t('chat.control-approval-required')
+        : t('chat.control-input-required'));
   const isToolMatcher =
     interaction.rule_matcher?.matcher_kind === 'literal_tool';
+  // Approval wording is shared with the BottomBox control so the same
+  // permission grant never reads differently in two places.
+  const scopeLabels = approvalScopeLabels(t, isToolMatcher);
 
   // Preserve the legacy card's remove-on-resolution behavior. Work-log
   // receipts remain mounted so their submitted decision can be displayed.
   if (resolved && !timelineReceipt) return null;
+
+  if (timelineReceipt && interaction.interaction_type === 'approval') {
+    return (
+      <div
+        data-human-input-receipt
+        data-approval-timeline-receipt
+        className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+      >
+        <ShieldAlert
+          aria-hidden
+          className="size-4 shrink-0 text-ds-icon-warning-default-default"
+        />
+        <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+          {t('chat.control-input-required')}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -232,24 +262,28 @@ export function HumanInteractionCard({
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default" />
         <div className="min-w-0 flex-1 space-y-3">
           <div>
-            <div className="text-sm font-semibold text-ds-text-neutral-default-default">
+            <span className="block text-sm font-semibold text-ds-text-neutral-default-default">
               {title}
-            </div>
+            </span>
             {interaction.question &&
             (!timelineReceipt || Boolean(displayedResponse)) ? (
-              <p className="mt-1 text-sm text-ds-text-neutral-subtle-default">
+              <span className="mt-1 block text-sm font-normal text-ds-text-neutral-subtle-default">
                 {interaction.question}
-              </p>
+              </span>
             ) : null}
           </div>
 
           {!timelineReceipt && interaction.operation ? (
             <div className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
-              <div>{interaction.operation}</div>
+              <span className="block font-normal">{interaction.operation}</span>
               {targets.slice(0, 3).map((target) => (
-                <div key={target} className="truncate font-mono" title={target}>
+                <span
+                  key={target}
+                  className="block truncate font-mono font-normal"
+                  title={target}
+                >
                   {target}
-                </div>
+                </span>
               ))}
             </div>
           ) : null}
@@ -259,7 +293,7 @@ export function HumanInteractionCard({
           Object.keys(interaction.display_arguments).length > 0 ? (
             <details className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
               <summary className="cursor-pointer font-medium">
-                Review arguments (secrets redacted)
+                {t('chat.control-review-arguments')}
               </summary>
               <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
                 {JSON.stringify(interaction.display_arguments, null, 2)}
@@ -269,15 +303,17 @@ export function HumanInteractionCard({
 
           {!timelineReceipt && interaction.rule_matcher?.resource_pattern ? (
             <div className="rounded-xl border border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
-              <div className="font-medium">Persistent approval matcher</div>
-              <div
-                className="mt-1 font-mono"
+              <span className="block font-medium">
+                {t('chat.control-persistent-approval-applies-to')}
+              </span>
+              <span
+                className="mt-1 block font-mono font-normal"
                 title={interaction.rule_matcher.resource_pattern}
               >
                 {interaction.rule_matcher.display_operation ||
                   interaction.rule_matcher.action_pattern}{' '}
                 {interaction.rule_matcher.resource_pattern}
-              </div>
+              </span>
             </div>
           ) : null}
 
@@ -286,12 +322,12 @@ export function HumanInteractionCard({
               data-interaction-response
               className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2"
             >
-              <div className="text-xs font-medium text-ds-text-neutral-muted-default">
-                Your response
-              </div>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ds-text-neutral-default-default">
+              <span className="block text-xs font-medium text-ds-text-neutral-muted-default">
+                {t('chat.control-your-response')}
+              </span>
+              <span className="mt-1 block whitespace-pre-wrap break-words text-sm font-normal text-ds-text-neutral-default-default">
                 {displayedResponse}
-              </p>
+              </span>
             </div>
           ) : null}
 
@@ -319,45 +355,51 @@ export function HumanInteractionCard({
           ) : null}
 
           {!displayedResponse ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               {interaction.interaction_type === 'approval' ? (
                 <>
                   <Button
                     type="button"
                     size="sm"
-                    disabled={disabled}
-                    onClick={() =>
-                      void submit({ decision: 'approved', scope: 'once' })
-                    }
-                  >
-                    {submitting ? 'Approving…' : 'Approve once'}
-                  </Button>
-                  {(interaction.allowed_scopes || []).includes('space') ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={disabled}
-                      onClick={() =>
-                        void submit({ decision: 'approved', scope: 'space' })
-                      }
-                    >
-                      {isToolMatcher
-                        ? 'Always allow this tool in Space'
-                        : 'Always allow in Space'}
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
                     variant="ghost"
+                    buttonRadius="full"
                     disabled={disabled}
                     onClick={() =>
                       void submit({ decision: 'rejected', scope: 'once' })
                     }
                   >
-                    Reject
+                    {t('chat.control-reject')}
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="primary"
+                    tone="success"
+                    buttonRadius="full"
+                    disabled={disabled}
+                    onClick={() =>
+                      void submit({ decision: 'approved', scope: 'once' })
+                    }
+                  >
+                    {submitting
+                      ? t('chat.control-approving')
+                      : scopeLabels.once}
+                  </Button>
+                  {(interaction.allowed_scopes || []).includes('space') ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="primary"
+                      tone="success"
+                      buttonRadius="full"
+                      disabled={disabled}
+                      onClick={() =>
+                        void submit({ decision: 'approved', scope: 'space' })
+                      }
+                    >
+                      {scopeLabels.space}
+                    </Button>
+                  ) : null}
                 </>
               ) : interaction.interaction_type === 'choice' ? (
                 (interaction.options || []).map((option) => (
@@ -365,7 +407,8 @@ export function HumanInteractionCard({
                     type="button"
                     key={option.option_id || option.id || option.label}
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
+                    buttonRadius="full"
                     disabled={disabled}
                     onClick={() =>
                       void submit({
@@ -381,54 +424,64 @@ export function HumanInteractionCard({
                 <Button
                   type="button"
                   size="sm"
+                  variant="primary"
+                  buttonRadius="full"
                   disabled={disabled}
                   onClick={() => void submit({ values: formValues })}
                 >
-                  Submit
+                  {submitting
+                    ? t('chat.control-submitting')
+                    : t('chat.control-submit')}
                 </Button>
               ) : interaction.interaction_type !== 'question' ? (
                 <>
                   <Button
                     type="button"
                     size="sm"
+                    variant="ghost"
+                    buttonRadius="full"
                     disabled={disabled}
-                    onClick={() => void submit({ decision: 'approved' })}
+                    onClick={() => void submit({ decision: 'rejected' })}
                   >
-                    Confirm
+                    {t('chat.control-reject')}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
-                    variant="ghost"
+                    variant="primary"
+                    tone="success"
+                    buttonRadius="full"
                     disabled={disabled}
-                    onClick={() => void submit({ decision: 'rejected' })}
+                    onClick={() => void submit({ decision: 'approved' })}
                   >
-                    Reject
+                    {submitting
+                      ? t('chat.control-submitting')
+                      : t('chat.control-confirm')}
                   </Button>
                 </>
               ) : null}
             </div>
           ) : null}
           {resolved ? (
-            <div className="text-xs text-ds-text-success-default-default">
-              Decision saved
-            </div>
+            <span className="block text-xs font-normal text-ds-text-success-default-default">
+              {t('chat.control-decision-saved')}
+            </span>
           ) : null}
           {submitting ? (
-            <div
+            <span
               role="status"
-              className="text-xs text-ds-text-neutral-subtle-default"
+              className="block text-xs font-normal text-ds-text-neutral-subtle-default"
             >
-              Saving decision…
-            </div>
+              {t('chat.control-decision-saving')}
+            </span>
           ) : null}
           {submissionError ? (
-            <div
+            <span
               role="alert"
-              className="text-xs text-ds-text-error-default-default"
+              className="block text-xs font-normal text-ds-text-error-default-default"
             >
               {submissionError}
-            </div>
+            </span>
           ) : null}
         </div>
       </div>

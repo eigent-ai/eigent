@@ -437,10 +437,10 @@ export default function Memory() {
                 {visibleEntries.map((entry) => (
                   <article
                     key={entry.memory_id}
-                    className={`border-ds-border-neutral-default rounded-xl border p-4 ${entry.deleted_at ? 'opacity-70' : ''}`}
+                    className={`rounded-xl border border-ds-border-neutral-default-default p-4 ${entry.deleted_at ? 'opacity-70' : ''}`}
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="bg-ds-bg-neutral-subtle rounded-full px-2 py-1">
+                      <span className="rounded-full bg-ds-bg-neutral-subtle-default px-2 py-1">
                         {entry.kind}
                       </span>
                       <span>{TRUST_LABELS[entry.source_trust]}</span>

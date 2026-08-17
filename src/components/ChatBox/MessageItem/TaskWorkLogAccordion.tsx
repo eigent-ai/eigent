@@ -1309,28 +1309,28 @@ const HumanInputReceiptRow = memo(function HumanInputReceiptRow({
       data-human-input-receipt
       className="w-full min-w-0 rounded-lg border border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
     >
-      <div className="text-label-sm font-medium text-ds-text-neutral-default-default">
+      <span className="block text-label-sm font-medium text-ds-text-neutral-default-default">
         Input required
-      </div>
+      </span>
       {item.response ? (
         <>
           {item.question ? (
             <div className="mt-2" data-human-input-question>
-              <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+              <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
                 Question
-              </div>
-              <div className="mt-1 whitespace-pre-wrap break-words text-label-sm text-ds-text-neutral-subtle-default">
+              </span>
+              <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
                 {item.question}
-              </div>
+              </span>
             </div>
           ) : null}
           <div className="mt-2" data-human-input-response>
-            <div className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+            <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
               Answer
-            </div>
-            <div className="mt-1 whitespace-pre-wrap break-words text-label-sm text-ds-text-neutral-subtle-default">
+            </span>
+            <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
               {item.response}
-            </div>
+            </span>
           </div>
         </>
       ) : null}
@@ -1456,9 +1456,9 @@ const AgentBlockRow = memo(function AgentBlockRow({
               {block.items.length === 0 &&
                 taskRunning &&
                 block.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <span className="block !text-label-sm font-normal italic text-ds-text-neutral-subtle-default">
                     Waiting for tool calls…
-                  </p>
+                  </span>
                 )}
             </div>
           </motion.div>
@@ -1717,9 +1717,9 @@ const AgentGroupRow = memo(function AgentGroupRow({
               {group.items.length === 0 &&
                 taskRunning &&
                 group.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <span className="block !text-label-sm font-normal italic text-ds-text-neutral-subtle-default">
                     Waiting for tool calls…
-                  </p>
+                  </span>
                 )}
             </div>
           </motion.div>

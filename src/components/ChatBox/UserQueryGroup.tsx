@@ -95,6 +95,7 @@ const ArtifactChangeList: React.FC<{
   scanStatus?: string;
   truncated?: boolean;
 }> = ({ files, onOpen, scanStatus = 'complete', truncated = false }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const fileItems = files || [];
   const scanWarning = truncated
@@ -117,11 +118,11 @@ const ArtifactChangeList: React.FC<{
   return (
     <section className="my-3 overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
       <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-default-default px-4 py-3">
-        <span className="bg-ds-bg-neutral-secondary-default flex size-4 shrink-0 items-center justify-center rounded-lg text-ds-icon-neutral-default-default">
+        <span className="flex size-4 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-strong-default text-ds-icon-neutral-default-default">
           <FileText size={18} aria-hidden />
         </span>
         <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-          Files changed
+          {t('chat.files-changed')}
         </span>
         <span className="text-body-sm font-medium text-ds-text-success-default-default">
           {fileItems.length}

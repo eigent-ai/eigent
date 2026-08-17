@@ -139,6 +139,11 @@ describe('useEventNativeHumanControl', () => {
     expect(
       result.current.variant.options.map((option) => option.scope)
     ).toEqual(['once', 'space']);
+    expect(result.current.variant.header.eyebrow).toBe('Input required');
+    expect(result.current.variant.header.title).toBe(
+      'The agent wants to write a todo.'
+    );
+    expect(result.current.variant.header.description).toBeUndefined();
 
     act(
       () =>
