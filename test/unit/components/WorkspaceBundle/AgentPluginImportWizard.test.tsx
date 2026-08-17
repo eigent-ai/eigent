@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   convert: vi.fn(),
   setActiveSpace: vi.fn(),
   setActiveProject: vi.fn(),
+  setActiveWorkspaceTab: vi.fn(),
   fetchWorkspaceConfiguration: vi.fn(),
 }));
 
@@ -72,6 +73,11 @@ vi.mock('@/store/spaceStore', () => {
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: (selector: (value: object) => unknown) =>
     selector({ setActiveProject: mocks.setActiveProject }),
+}));
+
+vi.mock('@/store/pageTabStore', () => ({
+  usePageTabStore: (selector: (value: object) => unknown) =>
+    selector({ setActiveWorkspaceTab: mocks.setActiveWorkspaceTab }),
 }));
 
 import { AgentPluginImportWizard } from '@/components/WorkspaceBundle/AgentPluginImportWizard';
@@ -290,6 +296,13 @@ describe('AgentPluginImportWizard', () => {
     expect(
       screen.getByText(/has not been published or installed/i)
     ).toBeVisible();
+
+    await user.click(
+      screen.getByRole('button', { name: /review workspace draft/i })
+    );
+    expect(mocks.setActiveSpace).toHaveBeenCalledWith('space-1');
+    expect(mocks.setActiveProject).toHaveBeenCalledWith(null);
+    expect(mocks.setActiveWorkspaceTab).toHaveBeenCalledWith('workforce');
   });
 
   it('retries a lost conversion response with the same request id and pinned target version', async () => {

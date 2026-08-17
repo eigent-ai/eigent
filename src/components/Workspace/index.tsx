@@ -14,21 +14,17 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
 import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import { WorkspaceAllSessions } from '@/components/Workspace/WorkspaceAllSessions';
-import { WorkspaceCoworkPanel } from '@/components/Workspace/WorkspaceCoworkPanel';
 import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
-import { WorkspaceInstructionMd } from '@/components/Workspace/WorkspaceInstructionMd';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
 import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
-import { useProjectMemorySetting } from '@/hooks/useProjectMemorySetting';
 import { useHost } from '@/host';
 import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
@@ -37,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { openSettings } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
@@ -49,15 +46,13 @@ import {
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
 
 interface WorkspaceProps {
   /**
-   * `'workspace'` (default): full landing — header, composer, recent runs,
-   * and the docked instructions panel.
+   * `'workspace'` (default): full landing — header, composer, and recent runs.
    * `'new-project'`: composer-first layout; use with `embedded` inside Session.
    */
   variant?: 'workspace' | 'new-project';
@@ -80,7 +75,6 @@ export default function Workspace({
 }: WorkspaceProps) {
   const { t } = useTranslation();
   const isNewProjectVariant = variant === 'new-project';
-  const navigate = useNavigate();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
@@ -213,14 +207,13 @@ export default function Workspace({
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
     null
   );
-  type WorkspaceSubPage = 'all-sessions' | 'instruction-md' | null;
+
+  type WorkspaceSubPage = 'all-sessions' | null;
   const [workspaceSubPage, setWorkspaceSubPage] =
     useState<WorkspaceSubPage>(null);
   const SUB_PAGE_TITLES: Record<NonNullable<WorkspaceSubPage>, string> = {
     'all-sessions': t('layout.projects'),
-    'instruction-md': t('layout.instructions-rules-tone'),
   };
-  const projectMemory = useProjectMemorySetting(activeProjectId);
   const textareaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -255,7 +248,7 @@ export default function Workspace({
 
     if (!hasModel) {
       toast.error(t('layout.please-select-model-first'));
-      navigate('/history?tab=agents');
+      openSettings('models');
       return;
     }
 
@@ -361,7 +354,7 @@ export default function Workspace({
     }
   }, [host, t]);
 
-  const composerInputProps = {
+  const buildComposerInputProps = () => ({
     value: message,
     onChange: setMessage,
     onSend: handleSend,
@@ -378,7 +371,7 @@ export default function Workspace({
             'Legacy Spaces are read-only. Create a new Space to start a Project.',
         })
       : t('layout.project-task-placeholder'),
-  };
+  });
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -410,12 +403,9 @@ export default function Workspace({
     [chatStore, host]
   );
 
-  const onEditWorkerFromMenu = useCallback(
-    (agent: Agent) => {
-      setEditingWorkerAgent(agent);
-    },
-    [setEditingWorkerAgent]
-  );
+  const onEditWorkerFromMenu = useCallback((agent: Agent) => {
+    setEditingWorkerAgent(agent);
+  }, []);
 
   const onDuplicateUserAgent = useCallback(
     (agent: Agent) => {
@@ -501,8 +491,8 @@ export default function Workspace({
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
-          onSelectModel={() => navigate('/history?tab=agents')}
-          inputProps={composerInputProps}
+          onSelectModel={() => openSettings('models')}
+          inputProps={buildComposerInputProps()}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive
@@ -553,34 +543,6 @@ export default function Workspace({
     );
   }
 
-  const sidePanel =
-    workspaceSubPage === null ? (
-      <div className="shrink-0 overflow-hidden">
-        <div
-          className={cn(
-            'flex h-full flex-col overflow-hidden',
-            SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
-          )}
-        >
-          <WorkspaceCoworkPanel
-            memoryOn={projectMemory.enabled}
-            memoryAvailable={projectMemory.available}
-            memoryLoading={projectMemory.loading}
-            onMemoryToggle={() => {
-              void projectMemory.toggle().catch((caught) => {
-                toast.error(
-                  caught instanceof Error ? caught.message : String(caught)
-                );
-              });
-            }}
-            onMemoryManage={() =>
-              navigate('/history?tab=agents&section=memory')
-            }
-          />
-        </div>
-      </div>
-    ) : null;
-
   return (
     <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
       {/* Center section: header + content */}
@@ -614,26 +576,6 @@ export default function Workspace({
             </div>
           )}
           <div className="flex-1" />
-          {!isNewProjectVariant &&
-            workspaceSubPage === 'instruction-md' &&
-            activeProjectId && (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                buttonContent="text"
-                className="no-drag shrink-0"
-                onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent('workspace-instruction-md-save', {
-                      detail: { projectId: activeProjectId },
-                    })
-                  );
-                }}
-              >
-                Save
-              </Button>
-            )}
         </div>
 
         {/* Content */}
@@ -649,15 +591,6 @@ export default function Workspace({
               }}
             />
           )}
-          {!isNewProjectVariant &&
-            workspaceSubPage === 'instruction-md' &&
-            activeProjectId && (
-              <WorkspaceInstructionMd
-                key={activeProjectId}
-                projectId={activeProjectId}
-              />
-            )}
-
           {/* Main content (hidden when a sub-page is active) */}
           {workspaceSubPage === null && (
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
@@ -694,8 +627,6 @@ export default function Workspace({
           )}
         </div>
       </div>
-
-      {sidePanel}
     </div>
   );
 }

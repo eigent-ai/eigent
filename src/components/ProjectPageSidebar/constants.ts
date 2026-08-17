@@ -12,23 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Transition } from 'framer-motion';
-
-/** Keep in sync with `HOME_MAIN_LAYOUT_SPRING` in `pages/Workspace.tsx`. */
-export const PROJECT_SIDEBAR_FOLD_SPRING: Transition = {
-  type: 'spring',
-  stiffness: 380,
-  damping: 38,
-  mass: 0.85,
-};
-
-/**
- * Icon rail width: outer `aside` padding (`p-1`, 4+4) + tab `px-3` padding
- * (12+12) + 16px icon = 48px. Keeps the folded leading icon in the same
- * position as the expanded `NavTab` / `workspaceTabButtonClass` column.
- */
-export const PROJECT_SIDEBAR_RAIL_WIDTH_PX = 48;
-
-/** Radix tooltip content: cap width so long labels (e.g. session titles) wrap. */
-export const SIDEBAR_TOOLTIP_CONTENT_CLASS =
-  'max-w-[400px] break-words whitespace-normal';
+/** Project / tab name tooltips: narrower so they sit beside the row without covering it. */
+export const SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS =
+  'max-w-[160px] break-words whitespace-normal';

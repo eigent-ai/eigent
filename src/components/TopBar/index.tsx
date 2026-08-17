@@ -13,20 +13,23 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
-import giftWhiteIcon from '@/assets/custom/gift-white.svg';
-import giftIcon from '@/assets/custom/gift.svg';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
-import { type HistoryTabId } from '@/components/Dashboard/HistoryTabsNav';
-import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import {
+  TOP_BAR_CONTROL_SELECTED_CLASS,
+  TOP_BAR_CONTROL_STATE_CLASS,
+  TOP_BAR_PILL_CLASS,
+} from '@/components/TopBar/controlStyles';
 import UpdateButton from '@/components/TopBar/UpdateButton';
+import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
+import { shellBackState, useShellBackTarget } from '@/hooks/useShellBackTarget';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
@@ -39,104 +42,39 @@ import {
 } from '@/lib/replay';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import { isSettingsRoutePath } from '@/lib/shellRoutes';
 import {
   getActiveSpaceTriggerLabel,
   getDefaultNewSpaceName,
 } from '@/lib/spaceLabel';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { openSettings, useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   isDisposableBlankSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
-import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowLeft,
   ChevronsUpDown,
   CircleHelp,
-  Folder,
   Minus,
   PanelLeft,
-  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
-  SlidersHorizontal,
   Square,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  NavigationType,
-  useLocation,
-  useNavigate,
-  useNavigationType,
-} from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-/** Tracks linear in-app history so back/forward buttons can enable/disable like a browser. */
-function useStackNavigationBounds() {
-  const location = useLocation();
-  const navigationType = useNavigationType();
-  const seededRef = useRef(false);
-  const stackRef = useRef<string[]>([]);
-  const indexRef = useRef(0);
-  const [bounds, setBounds] = useState({
-    canGoBack: false,
-    canGoForward: false,
-  });
-
-  useEffect(() => {
-    const fullPath = `${location.pathname}${location.search}`;
-
-    if (!seededRef.current) {
-      seededRef.current = true;
-      stackRef.current = [fullPath];
-      indexRef.current = 0;
-      setBounds({ canGoBack: false, canGoForward: false });
-      return;
-    }
-
-    if (navigationType === NavigationType.Push) {
-      const stack = stackRef.current;
-      const idx = indexRef.current;
-      stackRef.current = [...stack.slice(0, idx + 1), fullPath];
-      indexRef.current = stackRef.current.length - 1;
-    } else if (navigationType === NavigationType.Replace) {
-      stackRef.current[indexRef.current] = fullPath;
-    } else {
-      const stack = stackRef.current;
-      let idx = indexRef.current;
-      if (idx > 0 && stack[idx - 1] === fullPath) {
-        indexRef.current = idx - 1;
-      } else if (idx < stack.length - 1 && stack[idx + 1] === fullPath) {
-        indexRef.current = idx + 1;
-      } else {
-        const found = stack.lastIndexOf(fullPath);
-        if (found !== -1) {
-          indexRef.current = found;
-        }
-      }
-    }
-
-    const i = indexRef.current;
-    const s = stackRef.current;
-    setBounds({
-      canGoBack: i > 0,
-      canGoForward: i < s.length - 1,
-    });
-  }, [location.pathname, location.search, navigationType]);
-
-  return bounds;
-}
-
-const topBarCrossfade = {
-  duration: 0.2,
-  ease: [0.4, 0, 0.2, 1] as const,
-};
+import ShellBackButton from './ShellBackButton';
 
 function HeaderWin() {
   const { t } = useTranslation();
@@ -146,9 +84,7 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { canGoBack } = useStackNavigationBounds();
   const [reportBugOpen, setReportBugOpen] = useState(false);
-  const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
@@ -162,13 +98,16 @@ function HeaderWin() {
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const renameSpaceOnServer = useSpaceStore((s) => s.renameSpaceOnServer);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const workspaceSidebarHidden = usePageTabStore(
+    (s) => s.workspaceSidebarHidden
+  );
+  const toggleWorkspaceSidebar = usePageTabStore(
+    (s) => s.toggleWorkspaceSidebar
+  );
   const requestWorkspaceChatFocus = usePageTabStore(
     (s) => s.requestWorkspaceChatFocus
   );
-  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
-  const toggleProjectSidebarFolded = usePageTabStore(
-    (s) => s.toggleProjectSidebarFolded
-  );
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
   const appearance = useAuthStore((state) => state.appearance);
   const email = useAuthStore((s) => s.email);
   const userId = useAuthStore((s) => s.user_id);
@@ -182,21 +121,25 @@ function HeaderWin() {
     setPlatform(p);
   }, [host]);
 
-  const isHistoryRoute = useMemo(() => {
-    const path = location.pathname.replace(/\/$/, '') || '/';
-    return path === '/history' || path.endsWith('/history');
-  }, [location.pathname]);
+  /**
+   * Home and Settings drop the workspace chrome (sidebar toggle, Home /
+   * Space switcher) for a single way back. The center slot stays: page
+   * title here, Home / Space switcher on the workspace.
+   */
+  const isSettingsPage = isSettingsRoutePath(location.pathname);
+  const isShellSubPage = location.pathname === '/home' || isSettingsPage;
+  const shellSubPageTitle = isSettingsPage
+    ? t('setting.settings')
+    : location.pathname === '/home'
+      ? t('layout.home')
+      : null;
+  // Same origin as Settings' own back control — used when the gear toggles off.
+  const { goBack: leaveSettings, label: leaveSettingsLabel } =
+    useShellBackTarget();
 
-  const isHomeRoute = location.pathname === '/';
-
-  const handleExitHistoryOrSettings = useCallback(() => {
-    if (canGoBack) {
-      navigate(-1);
-    } else {
-      setActiveWorkspaceTab('workforce');
-      navigate('/');
-    }
-  }, [canGoBack, navigate, setActiveWorkspaceTab]);
+  const sidebarToggleLabel = workspaceSidebarHidden
+    ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
+    : t('layout.hide-sidebar', { defaultValue: 'Hide sidebar' });
 
   const activeSpaceTitle = useMemo(
     () =>
@@ -246,28 +189,31 @@ function HeaderWin() {
     [activeSpaceId, projectsBySpaceId, spacesById]
   );
 
-  const openInviteCodeDialog = () => {
-    setInviteCodeDialogOpen(true);
-  };
+  const openHome = useCallback(() => {
+    // Home is a project-independent management surface. Clear the active
+    // Project so returning to it always runs the normal hydration path.
+    projectStore.setActiveProject(null);
+    closeSettings();
+    // Record the origin so Home's title-bar back button returns to it.
+    navigate('/home?section=spaces', {
+      state: shellBackState(`${location.pathname}${location.search}`),
+    });
+  }, [
+    closeSettings,
+    location.pathname,
+    location.search,
+    navigate,
+    projectStore,
+  ]);
 
-  const navigateToHistoryTab = useCallback(
-    (tab: HistoryTabId) => {
-      if (tab === 'home') {
-        // The Home/Spaces hub is a project-independent surface and may
-        // re-select the same project the user just left. Clearing
-        // activeProjectId routes through `setActiveProject(null)`, which
-        // runs the stale-eviction hook on the outgoing project. Without
-        // this, returning to a stale-marked project from the hub would
-        // short-circuit on `setActiveProject(id)`'s same-id no-op and
-        // keep serving the cached state for the rest of the session.
-        projectStore.setActiveProject(null);
-        navigate('/history?tab=home&section=spaces');
-        return;
-      }
-      navigate(`/history?tab=${tab}`);
-    },
-    [navigate, projectStore]
-  );
+  /** Gear is a toggle: open Settings, press again to return to the origin. */
+  const toggleSettings = useCallback(() => {
+    if (isSettingsPage) {
+      leaveSettings();
+      return;
+    }
+    openSettings('models');
+  }, [isSettingsPage, leaveSettings]);
 
   const ensureProjectLoaded = useCallback(
     async (projectId: string) => {
@@ -485,7 +431,7 @@ function HeaderWin() {
   return (
     <div
       className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
-        platform === 'darwin' ? 'pl-[68px] pr-[2px]' : 'pl-2'
+        platform === 'darwin' ? 'pl-[68px] pr-1.5' : 'pl-2'
       }`}
       id="titlebar"
       ref={titlebarRef}
@@ -533,284 +479,209 @@ function HeaderWin() {
           }}
         />
       </AlertDialog>
-      {/* Leading: workspace controls, or a single back button on history */}
-      <div className="no-drag flex shrink-0 items-center justify-center gap-0.5">
-        {isHistoryRoute ? (
-          // History page: one "back to workspace" button (arrow + text)
-          <Button
-            variant="ghost"
-            size="sm"
-            className="no-drag shrink-0 gap-1.5 rounded-full font-bold"
-            onClick={handleExitHistoryOrSettings}
-            aria-label={t('layout.back-to-workspace', {
-              defaultValue: 'Back to workspace',
-            })}
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            {t('layout.back-to-workspace', {
-              defaultValue: 'Back to workspace',
-            })}
-          </Button>
-        ) : (
-          <>
-            {/* Left panel: fold / expand the project sidebar */}
-            <TooltipSimple
-              content={
-                projectSidebarFolded
-                  ? t('layout.expand-project-sidebar', {
-                      defaultValue: 'Expand sidebar',
-                    })
-                  : t('layout.fold-project-sidebar', {
-                      defaultValue: 'Fold sidebar',
-                    })
+      {/*
+        Unified title bar: left controls | center display | right controls.
+        Equal flex-1 wings keep the center true-center; interactive chrome
+        uses `no-drag` so the surrounding drag region can still move the window.
+      */}
+      <div className="flex min-h-0 min-w-0 flex-1 items-center">
+        {/* Left */}
+        <div className="flex min-w-0 flex-1 items-center justify-start">
+          <div className="no-drag relative z-50 flex shrink-0 items-center">
+            <img
+              src={
+                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
               }
-              side="bottom"
-              align="center"
-              variant="instant"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                buttonContent="icon-only"
-                className="no-drag shrink-0 rounded-full"
-                onClick={() => toggleProjectSidebarFolded()}
-                aria-pressed={!projectSidebarFolded}
-                aria-label={
-                  projectSidebarFolded
-                    ? t('layout.expand-project-sidebar', {
-                        defaultValue: 'Expand sidebar',
-                      })
-                    : t('layout.fold-project-sidebar', {
-                        defaultValue: 'Fold sidebar',
-                      })
-                }
-              >
-                {projectSidebarFolded ? (
-                  <PanelLeft className="h-4 w-4" aria-hidden />
-                ) : (
-                  <PanelLeftClose className="h-4 w-4" aria-hidden />
-                )}
-              </Button>
-            </TooltipSimple>
-
-            {/* Home button: go straight to the Home/Spaces hub */}
-            <button
-              type="button"
-              onClick={() => navigateToHistoryTab('home')}
-              aria-label={t('layout.home')}
-              className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
-            >
-              <img
-                src={
-                  appearance === 'dark'
-                    ? eigentAppIconWhite
-                    : eigentAppIconBlack
-                }
-                alt=""
-                className="h-5 w-5 select-none"
-                width={16}
-                height={16}
-                draggable={false}
-              />
-              {t('layout.home')}
-            </button>
-
-            {/* Workspace dropdown: the whole button opens the space switcher */}
-            <SpaceSwitchDropdown
-              contentSideOffset={6}
-              onOpenChange={(open) => {
-                if (open && versionHistory.supported) {
-                  void versionHistory.loadStatus();
-                }
-              }}
-              trigger={
-                <button
-                  id="active-space-title-btn"
-                  type="button"
-                  className="no-drag focus-visible:ring-ds-ring-brand-default-focus/50 flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 text-label-sm font-bold text-ds-text-neutral-default-default outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-[3px]"
-                  aria-haspopup="menu"
-                  aria-label={activeSpaceTitle}
-                >
-                  <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
-                    {activeSpaceTitle}
-                  </span>
-                  <ChevronsUpDown
-                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
-                    aria-hidden
-                  />
-                </button>
-              }
-              spaces={activeSpaces}
-              activeSpaceId={activeSpaceId}
-              switchingSpaceId={switchingSpaceId}
-              canRenameActiveSpace={canRenameActiveSpace}
-              createSpaceMenu={{
-                onStartFromScratch: handleCreateBlankSpace,
-                onSelectFolder: handleCreateSpaceFromFolder,
-              }}
-              onRenameSpace={openRenameSpaceDialog}
-              onSpaceSelect={handleTopBarSpaceSelect}
-              contentAlign="start"
-              savePointMenu={
-                versionHistory.supported
-                  ? {
-                      loading:
-                        versionHistory.loading ||
-                        versionHistory.status === null,
-                      saving: versionHistory.saving,
-                      enabled: versionHistory.status?.enabled === true,
-                      needsAttention:
-                        versionHistory.status?.enabled === true &&
-                        (versionHistory.status.state !== 'ready' ||
-                          versionHistory.status.diagnostics?.healthy === false),
-                      pendingCount:
-                        versionHistory.status?.pending_managed_paths?.length ||
-                        0,
-                      pendingTruncated:
-                        versionHistory.status
-                          ?.pending_managed_paths_truncated === true,
-                      onEnable: versionHistory.requestEnable,
-                      onSave: versionHistory.save,
-                      onOpenHistory: () => setVersionHistoryOpen(true),
-                    }
-                  : undefined
-              }
+              alt=""
+              className="mx-1.5 mt-[0.5px] h-6 w-6 select-none"
+              width={20}
+              height={20}
+              draggable={false}
             />
-          </>
-        )}
-      </div>
+            {isShellSubPage ? (
+              <ShellBackButton />
+            ) : (
+              <TooltipSimple
+                content={sidebarToggleLabel}
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
+                >
+                  {workspaceSidebarHidden ? (
+                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <PanelLeft className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+            )}
+          </div>
+        </div>
 
-      {/* Middle: draggable spacer that pushes trailing controls to the right */}
-      <div className="drag h-7 min-h-0 min-w-0 flex-1" aria-hidden />
-
-      {/* Trailing: project actions (home only) + utilities + settings/back + update */}
-      <div
-        className={`${
-          platform === 'darwin' && 'px-1.5'
-        } no-drag relative z-50 flex h-7 shrink-0 items-center`}
-      >
-        <div className="flex h-full shrink-0 items-center gap-0.5">
-          {/* Update slot: hidden → background download progress → launch new version */}
-          <UpdateButton />
-          <TooltipSimple
-            content={t('layout.support')}
-            side="bottom"
-            align="end"
-            variant="instant"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="no-drag rounded-full"
-              aria-label={t('layout.support')}
-              onClick={() => setReportBugOpen(true)}
-              buttonContent="icon-only"
-            >
-              <CircleHelp aria-hidden />
-            </Button>
-          </TooltipSimple>
-          <TooltipSimple
-            content={t('layout.refer-friends')}
-            side="bottom"
-            align="end"
-            variant="instant"
-          >
-            <Button
-              onClick={openInviteCodeDialog}
-              variant="ghost"
-              size="sm"
-              className="no-drag rounded-full"
-              buttonContent="icon-only"
-              aria-label={t('layout.refer-friends')}
-            >
-              <img
-                src={appearance === 'dark' ? giftWhiteIcon : giftIcon}
-                alt=""
-                width={16}
-                height={16}
+        {/* Center: page title (Home / Settings) or Home / Space switch (workspace) */}
+        <div className="no-drag flex shrink-0 items-center justify-center px-2">
+          {isShellSubPage ? (
+            <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+              {shellSubPageTitle}
+            </span>
+          ) : (
+            <div className="flex min-w-0 items-center">
+              <button
+                type="button"
+                onClick={openHome}
+                aria-label={t('layout.home')}
+                className={TOP_BAR_PILL_CLASS}
+              >
+                {t('layout.home')}
+              </button>
+              <span
+                className="shrink-0 select-none !text-label-sm font-bold text-ds-text-neutral-subtle-default"
                 aria-hidden
+              >
+                /
+              </span>
+              <SpaceSwitchDropdown
+                contentSideOffset={6}
+                onOpenChange={(open) => {
+                  if (open && versionHistory.supported) {
+                    void versionHistory.loadStatus();
+                  }
+                }}
+                trigger={
+                  <button
+                    id="active-space-title-btn"
+                    type="button"
+                    className={TOP_BAR_PILL_CLASS}
+                    aria-haspopup="menu"
+                    aria-label={activeSpaceTitle}
+                  >
+                    <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                      {activeSpaceTitle}
+                    </span>
+                    <ChevronsUpDown
+                      className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                      aria-hidden
+                    />
+                  </button>
+                }
+                spaces={activeSpaces}
+                activeSpaceId={activeSpaceId}
+                switchingSpaceId={switchingSpaceId}
+                canRenameActiveSpace={canRenameActiveSpace}
+                createSpaceMenu={{
+                  onStartFromScratch: handleCreateBlankSpace,
+                  onSelectFolder: handleCreateSpaceFromFolder,
+                }}
+                onRenameSpace={openRenameSpaceDialog}
+                onSpaceSelect={handleTopBarSpaceSelect}
+                contentAlign="center"
+                savePointMenu={
+                  versionHistory.supported
+                    ? {
+                        loading:
+                          versionHistory.loading ||
+                          versionHistory.status === null,
+                        saving: versionHistory.saving,
+                        enabled: versionHistory.status?.enabled === true,
+                        needsAttention:
+                          versionHistory.status?.enabled === true &&
+                          (versionHistory.status.state !== 'ready' ||
+                            versionHistory.status.diagnostics?.healthy ===
+                              false),
+                        pendingCount:
+                          versionHistory.status?.pending_managed_paths
+                            ?.length || 0,
+                        pendingTruncated:
+                          versionHistory.status
+                            ?.pending_managed_paths_truncated === true,
+                        onEnable: versionHistory.requestEnable,
+                        onSave: versionHistory.save,
+                        onOpenHistory: () => setVersionHistoryOpen(true),
+                      }
+                    : undefined
+                }
               />
-            </Button>
-          </TooltipSimple>
+            </div>
+          )}
+        </div>
 
-          <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
-            <AnimatePresence mode="wait" initial={false}>
-              {isHomeRoute ? (
-                <motion.div
-                  key="trailing-settings"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={topBarCrossfade}
-                  className="flex"
+        {/* Right */}
+        <div className="flex min-w-0 flex-1 items-center justify-end">
+          <div
+            className={`${
+              platform === 'darwin' && 'px-1.5'
+            } no-drag relative z-50 flex h-7 shrink-0 items-center`}
+          >
+            <div className="flex h-full shrink-0 items-center gap-0.5">
+              {/* Update slot: hidden → background download progress → launch new version */}
+              <UpdateButton />
+              <TooltipSimple
+                content={t('layout.support')}
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS
+                  )}
+                  aria-label={t('layout.support')}
+                  onClick={() => setReportBugOpen(true)}
+                  buttonContent="icon-only"
                 >
-                  <TooltipSimple
-                    content="Workspace Configuration"
-                    side="bottom"
-                    align="end"
-                    variant="instant"
-                  >
-                    <Button
-                      onClick={() => navigate('/workspace-configuration')}
-                      variant="ghost"
-                      buttonContent="icon-only"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      aria-label="Workspace Configuration"
-                    >
-                      <SlidersHorizontal aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                  <TooltipSimple
-                    content={t('layout.settings')}
-                    side="bottom"
-                    align="end"
-                    variant="instant"
-                  >
-                    <Button
-                      onClick={() => navigate('/history?tab=settings')}
-                      variant="ghost"
-                      buttonContent="icon-only"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      aria-label={t('layout.settings')}
-                    >
-                      <Settings aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="trailing-back"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={topBarCrossfade}
-                  className="flex"
+                  <CircleHelp aria-hidden />
+                </Button>
+              </TooltipSimple>
+              <TooltipSimple
+                content={
+                  isSettingsPage ? leaveSettingsLabel : t('setting.settings')
+                }
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    isSettingsPage && TOP_BAR_CONTROL_SELECTED_CLASS
+                  )}
+                  buttonContent="icon-only"
+                  aria-label={
+                    isSettingsPage ? leaveSettingsLabel : t('setting.settings')
+                  }
+                  aria-pressed={isSettingsPage}
+                  onClick={toggleSettings}
                 >
-                  <TooltipSimple
-                    content={t('layout.back', { defaultValue: 'Back' })}
-                    side="bottom"
-                    align="end"
-                    variant="instant"
-                  >
-                    <Button
-                      type="button"
-                      onClick={handleExitHistoryOrSettings}
-                      variant="ghost"
-                      buttonContent="icon-only"
-                      size="sm"
-                      className="no-drag rounded-full"
-                      aria-label={t('layout.back', { defaultValue: 'Back' })}
-                    >
-                      <X className="h-4 w-4" aria-hidden />
-                    </Button>
-                  </TooltipSimple>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <Settings className="h-4 w-4" aria-hidden />
+                </Button>
+              </TooltipSimple>
+
+              <div className="ml-1.5 flex h-full shrink-0 items-center gap-1 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1.5">
+                <UserMenu />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -823,19 +694,19 @@ function HeaderWin() {
           ref={controlsRef}
         >
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" />
           </div>
           <div
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-default-hover"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center text-center leading-5 hover:bg-ds-bg-neutral-subtle-default"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" />
@@ -843,10 +714,6 @@ function HeaderWin() {
         </div>
       )}
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
-      <InviteCodeDialog
-        open={inviteCodeDialogOpen}
-        onOpenChange={setInviteCodeDialogOpen}
-      />
     </div>
   );
 }

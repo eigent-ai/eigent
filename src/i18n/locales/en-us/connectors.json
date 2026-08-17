@@ -15,8 +15,11 @@
   "gateway-connectors": "Connectors",
   "source-open": "Cloud",
   "source-built-in": "Built-in",
-  "source-local": "Local",
-  "source-remote": "Remote",
+  "source-local": "Custom local",
+  "source-remote": "Custom remote",
+  "type": "Type",
+  "connected": "Connected",
+  "not-connected": "Not connected",
   "load-built-in-failed": "Failed to load Built-in connectors",
   "load-custom-failed": "Failed to load Custom connectors",
   "load-gateway-failed": "Failed to load connectors",
@@ -128,5 +131,10 @@
   "search-engine-id": "Search Engine ID",
   "search-engine-id-placeholder": "Enter the Custom Search Engine ID associated with your API key",
   "google-search-custom-desc": "Connect to Google Custom Search. Requires a Google API key and a Custom Search Engine (CSE) ID.",
-  "google-search-default-desc": "Google Search is enabled by default. No API key required."
+  "google-search-default-desc": "Google Search is enabled by default. No API key required.",
+  "exa-api-key": "Exa API Key",
+  "google-check-failed": "Google credentials could not be verified.",
+  "exa-check-failed": "The Exa API key could not be verified.",
+  "optional": "Optional",
+  "enter-field": "Enter {{field}}"
 }

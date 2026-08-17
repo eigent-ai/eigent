@@ -19,19 +19,15 @@ import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
-const History = lazy(() => import('@/pages/History'));
+const Home = lazy(() => import('@/pages/Home'));
+const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
-const WorkspaceConfiguration = lazy(
-  () => import('@/pages/WorkspaceConfiguration')
-);
-const WorkspaceBundleInstall = lazy(
-  () => import('@/pages/WorkspaceBundleInstall')
-);
 const AgentPluginImport = lazy(() => import('@/pages/AgentPluginImport'));
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
@@ -169,29 +165,23 @@ const AppRoutes = () => (
     ) : null}
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Workspace />} />
-        <Route path="/history" element={<History />} />
         <Route
-          path="/workspace-configuration"
-          element={<WorkspaceConfiguration />}
-        />
-        <Route
-          path="/workspace-bundles/install"
-          element={<WorkspaceBundleInstall />}
-        />
+          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+        >
+          <Route index element={null} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+        <Route path="/home" element={<Home />} />
         <Route
           path="/agent-plugins/import"
           element={
             isDesktop() ? <AgentPluginImport /> : <Navigate to="/" replace />
           }
         />
-        <Route
-          path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
-        />
+        <Route path="/setting" element={<Navigate to="/settings" replace />} />
         <Route
           path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/settings" replace />}
         />
       </Route>
     </Route>

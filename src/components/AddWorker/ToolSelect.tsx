@@ -31,6 +31,7 @@ import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import { openSettings } from '@/store/settingsStore';
 import type { TFunction } from 'i18next';
 import { CircleAlert, X } from 'lucide-react';
 import {
@@ -43,7 +44,6 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { TooltipSimple } from '../ui/tooltip';
@@ -260,7 +260,6 @@ const ToolSelect = forwardRef<
   const host = useHost();
   const electronAPI = host?.electronAPI;
   const { t } = useTranslation();
-  const navigate = useNavigate();
   // state management - remove internal selected state, use parent passed initialSelectedTools
   const [keyword, setKeyword] = useState<string>('');
   const { email } = useAuthStore();
@@ -943,7 +942,7 @@ const ToolSelect = forwardRef<
                   variant="ghost"
                   size="xs"
                   buttonContent="text"
-                  onClick={() => navigate('/history?tab=connectors')}
+                  onClick={() => openSettings('connectors')}
                 >
                   {t('chat.input-attach-manage-connectors')}
                 </Button>

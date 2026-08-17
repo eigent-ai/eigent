@@ -1,0 +1,87 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import HomeHubRoot, {
+  HomeHeader,
+  HomeSections,
+  HomeSidebarNav,
+} from '@/components/Home';
+import AppShellLayout from '@/components/Layout/AppShellLayout';
+import WordCarousel from '@/components/ui/WordCarousel';
+import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from 'react-i18next';
+
+function formatWelcomeName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const local = trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+  const pretty = local.replace(/[._-]+/g, ' ').trim();
+  if (!pretty) return trimmed;
+  return pretty
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function HomeGreeting() {
+  const { t } = useTranslation();
+  const { username, email } = useAuthStore();
+  const welcomeName = formatWelcomeName(username || email || '');
+  const hour = new Date().getHours();
+  const timeGreetingKey =
+    hour >= 5 && hour < 12
+      ? 'layout.greeting-morning'
+      : hour >= 12 && hour < 17
+        ? 'layout.greeting-afternoon'
+        : 'layout.greeting-evening';
+
+  return (
+    <div className="flex w-full items-center justify-center py-6">
+      <p className="m-0 inline-flex flex-wrap items-baseline gap-2">
+        <WordCarousel
+          words={[t(timeGreetingKey)]}
+          className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
+          rotateIntervalMs={100}
+          sweepDurationMs={2000}
+          sweepOnce
+          gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+        />
+        {welcomeName ? (
+          <span className="history-welcome-headline text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+            {`, ${welcomeName}!`}
+          </span>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Home runs in the same shell as Workspace and Settings: the rail picks the
+ * section (spaces / projects / tasks / triggers), the content pane carries the
+ * header controls and the section tables.
+ */
+export default function Home() {
+  return (
+    <HomeHubRoot>
+      <AppShellLayout sidebar={<HomeSidebarNav />}>
+        <HomeHeader />
+        <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+          <HomeGreeting />
+          <HomeSections />
+        </div>
+      </AppShellLayout>
+    </HomeHubRoot>
+  );
+}

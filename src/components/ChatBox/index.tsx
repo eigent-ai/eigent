@@ -47,6 +47,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -59,7 +60,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
@@ -496,11 +497,9 @@ export default function ChatBox(): JSX.Element {
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
 
-  const navigate = useNavigate();
-
   const handleSelectModel = useCallback(() => {
-    navigate('/history?tab=agents');
-  }, [navigate]);
+    openSettings('models');
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
@@ -798,7 +797,7 @@ export default function ChatBox(): JSX.Element {
           return;
         }
         toast.error('Please select a model first.');
-        navigate('/history?tab=agents');
+        openSettings('models');
         return;
       }
 
@@ -836,7 +835,6 @@ export default function ChatBox(): JSX.Element {
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
-      navigate,
       t,
     ]
   );
@@ -900,7 +898,7 @@ export default function ChatBox(): JSX.Element {
         return;
       }
       toast.error('Please select a model first.');
-      navigate('/history?tab=agents');
+      openSettings('models');
       return;
     }
 

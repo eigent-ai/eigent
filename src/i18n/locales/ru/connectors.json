@@ -15,8 +15,11 @@
   "gateway-connectors": "Connectors",
   "source-open": "Облако",
   "source-built-in": "Встроенный",
-  "source-local": "Локальный",
-  "source-remote": "Удалённый",
+  "source-local": "Пользовательский локальный",
+  "source-remote": "Пользовательский удалённый",
+  "type": "Тип",
+  "connected": "Подключено",
+  "not-connected": "Не подключено",
   "load-built-in-failed": "Не удалось загрузить встроенные коннекторы",
   "load-custom-failed": "Не удалось загрузить пользовательские коннекторы",
   "load-gateway-failed": "Не удалось загрузить connectors",
@@ -128,5 +131,10 @@
   "search-engine-id": "Идентификатор поисковой системы",
   "search-engine-id-placeholder": "Введите идентификатор пользовательской поисковой системы, связанный с ключом API",
   "google-search-custom-desc": "Подключите Google Custom Search. Требуются ключ API Google и идентификатор пользовательской поисковой системы (CSE).",
-  "google-search-default-desc": "Поиск Google включён по умолчанию. Ключ API не требуется."
+  "google-search-default-desc": "Поиск Google включён по умолчанию. Ключ API не требуется.",
+  "exa-api-key": "Ключ API Exa",
+  "google-check-failed": "Не удалось проверить учётные данные Google.",
+  "exa-check-failed": "Не удалось проверить ключ API Exa.",
+  "optional": "Необязательно",
+  "enter-field": "Введите {{field}}"
 }

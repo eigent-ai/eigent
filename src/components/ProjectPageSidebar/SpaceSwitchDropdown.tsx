@@ -62,7 +62,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from './constants';
+import { SIDEBAR_TOOLTIP_CONTENT_CLASS } from '@/components/Layout/AppSidebar';
 
 const SPACE_LIST_ITEM_HEIGHT_CLASS = 'h-8';
 const SPACE_LIST_MAX_HEIGHT_CLASS = 'max-h-40';

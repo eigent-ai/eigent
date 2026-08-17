@@ -84,16 +84,16 @@ function TaskQueryScrollLabel({
     <div
       ref={outerRef}
       className={cn(
-        'min-w-0 text-ds-text-neutral-muted-default w-full overflow-hidden'
+        'w-full min-w-0 overflow-hidden text-ds-text-neutral-muted-default'
       )}
     >
       <span
         ref={innerRef}
         title={queryLabel}
         className={cn(
-          'text-body-sm font-normal inline-block whitespace-nowrap first-letter:uppercase',
+          'inline-block whitespace-nowrap text-body-sm font-normal first-letter:uppercase',
           'transition-[transform]',
-          slide ? 'ease-linear' : 'ease-out duration-300'
+          slide ? 'ease-linear' : 'duration-300 ease-out'
         )}
         style={{
           transform: slide ? `translateX(-${scrollPx}px)` : 'translateX(0)',
@@ -171,7 +171,7 @@ function ChatTimelineRow({
       onMouseEnter={() => setRowHovered(true)}
       onMouseLeave={() => setRowHovered(false)}
       className={cn(
-        'no-drag h-8 rounded-lg min-w-0 gap-3 px-3 relative flex w-full max-w-full shrink-0 cursor-pointer items-center text-left transition-colors',
+        'no-drag relative flex h-8 w-full min-w-0 max-w-full shrink-0 cursor-pointer items-center gap-3 rounded-lg px-3 text-left transition-colors',
         rowBg
       )}
       aria-current={active ? 'true' : undefined}
@@ -214,28 +214,28 @@ export function ChatTimeline({
   return (
     <div
       className={cn(
-        'min-h-0 min-w-0 p-1 flex w-full max-w-[200px] flex-col overflow-hidden',
-        collapsed ? 'max-h-0 pointer-events-none flex-none' : 'min-h-0 flex-1'
+        'flex min-h-0 w-full min-w-0 max-w-[200px] flex-col overflow-hidden p-1',
+        collapsed ? 'pointer-events-none max-h-0 flex-none' : 'min-h-0 flex-1'
       )}
       style={{ minHeight: 0 }}
     >
       <div
         className={cn(
-          'gap-2 pl-3 pr-3 py-2 flex w-full shrink-0 items-center',
+          'flex w-full shrink-0 items-center gap-2 py-2 pl-3 pr-3',
           collapsed && 'hidden'
         )}
       >
-        <span className="min-w-0 text-xs font-semibold text-ds-text-neutral-muted-default truncate">
+        <span className="min-w-0 truncate text-xs font-semibold text-ds-text-neutral-muted-default">
           {title}
         </span>
       </div>
-      <div className="min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto">
+      <div className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
         {entries.length === 0 ? (
-          <p className="px-3 text-xs text-ds-text-neutral-muted-default w-full">
+          <p className="w-full px-3 text-xs text-ds-text-neutral-muted-default">
             {emptyLabel}
           </p>
         ) : (
-          <div className="gap-2 min-w-0 flex w-full flex-col">
+          <div className="flex w-full min-w-0 flex-col gap-2">
             {entries.map(({ chatId, taskId, task, firstUserMessageId }) => (
               <ChatTimelineRow
                 key={`${chatId}-${taskId}`}

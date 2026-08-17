@@ -15,8 +15,11 @@
   "gateway-connectors": "Connectors",
   "source-open": "クラウド",
   "source-built-in": "組み込み",
-  "source-local": "ローカル",
-  "source-remote": "リモート",
+  "source-local": "カスタムローカル",
+  "source-remote": "カスタムリモート",
+  "type": "種類",
+  "connected": "接続済み",
+  "not-connected": "未接続",
   "load-built-in-failed": "組み込みコネクタの読み込みに失敗しました",
   "load-custom-failed": "カスタムコネクタの読み込みに失敗しました",
   "load-gateway-failed": "Connectors の読み込みに失敗しました",
@@ -128,5 +131,10 @@
   "search-engine-id": "検索エンジン ID",
   "search-engine-id-placeholder": "API キーに関連付けられたカスタム検索エンジン ID を入力してください",
   "google-search-custom-desc": "Google カスタム検索に接続します。Google API キーとカスタム検索エンジン（CSE）ID が必要です。",
-  "google-search-default-desc": "Google 検索はデフォルトで有効です。API キーは必要ありません。"
+  "google-search-default-desc": "Google 検索はデフォルトで有効です。API キーは必要ありません。",
+  "exa-api-key": "Exa API キー",
+  "google-check-failed": "Google の認証情報を確認できませんでした。",
+  "exa-check-failed": "Exa API キーを確認できませんでした。",
+  "optional": "任意",
+  "enter-field": "{{field}}を入力"
 }

@@ -14,11 +14,12 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
+import CDP from '@/components/Settings/Browser';
 import { useHost } from '@/host';
-import CDP from '@/pages/Browser/CDP';
 import { toast } from 'sonner';
 
 vi.mock('@/api/http', () => ({
@@ -94,7 +95,11 @@ describe('CDP Browser Page', () => {
   });
 
   it('launches a browser through the backend in web mode', async () => {
-    render(<CDP />);
+    render(
+      <MemoryRouter>
+        <CDP />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(mockFetchGet).toHaveBeenCalledWith('/browser/cdp/list');
