@@ -44,7 +44,7 @@ import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import SettingsSection from '../SettingsSection';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 
 const DEFAULT_EDITABLE_THEME_IDS = [
@@ -398,138 +398,145 @@ export default function AppearanceSettings() {
 
   return (
     <SettingsSectionPage>
-      <SettingsSection
-        title={t('setting.color-mode')}
-        variant="horizontal"
-        boxClassName="items-center justify-end"
-      >
-        <Tabs
-          value={appearanceMode}
-          onValueChange={(value) =>
-            setAppearanceMode(value as 'light' | 'dark' | 'system')
-          }
-        >
-          <TabsList appearance="default">
-            <TabsTrigger value="light">
-              <span className="flex items-center gap-1 text-label-sm">
-                <Sun size={16} />
-                <span>{t('setting.light')}</span>
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="dark">
-              <span className="flex items-center gap-1 text-label-sm">
-                <Moon size={16} />
-                <span>{t('setting.dark')}</span>
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="system">
-              <span className="flex items-center gap-1 text-label-sm">
-                <Monitor size={16} />
-                <span>{t('setting.system-default')}</span>
-              </span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </SettingsSection>
-
-      <SettingsSection title={t('setting.accent-palette')} boxClassName="gap-4">
-        <div className="flex w-full items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
-              <TabsList appearance="default" className="min-w-max">
-                {themeOptions.map((option) => (
-                  <TabsTrigger
-                    key={option.id}
-                    value={option.id}
-                    appearance="default"
-                  >
-                    <span className="flex items-center gap-1 text-label-sm">
-                      {option.label}
-                    </span>
-                  </TabsTrigger>
-                ))}
+      <SettingsRowGroup>
+        <SettingsRow
+          title={t('setting.color-mode')}
+          description={t('setting.color-mode-description', {
+            defaultValue: 'Choose how Eigent looks on this device.',
+          })}
+          actionClassName="w-[280px]"
+          action={
+            <Tabs
+              className="w-[280px]"
+              value={appearanceMode}
+              onValueChange={(value) =>
+                setAppearanceMode(value as 'light' | 'dark' | 'system')
+              }
+            >
+              <TabsList appearance="default" className="w-full">
+                <TabsTrigger value="light" className="flex-1">
+                  <span className="flex items-center gap-1 text-label-sm">
+                    <Sun size={16} />
+                    <span>{t('setting.light')}</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="dark" className="flex-1">
+                  <span className="flex items-center gap-1 text-label-sm">
+                    <Moon size={16} />
+                    <span>{t('setting.dark')}</span>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="system" className="flex-1">
+                  <span className="flex items-center gap-1 text-label-sm">
+                    <Monitor size={16} />
+                    <span>{t('setting.system-default')}</span>
+                  </span>
+                </TabsTrigger>
               </TabsList>
             </Tabs>
-          </div>
+          }
+        />
 
-          <Button
-            variant="outline"
-            size="sm"
-            buttonContent="text"
-            buttonRadius="full"
-            textWeight="semibold"
-            onClick={resetActiveTheme}
-          >
-            <span className="flex items-center gap-1 text-label-sm">
-              <RotateCcw />
-              <span>{t('setting.reset')}</span>
-            </span>
-          </Button>
-        </div>
-
-        <div className="flex flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <ColorSeedEditor
-            label={t('setting.theme-accent')}
-            value={accent}
-            onChange={handleAccentChange}
-          />
-          <ColorSeedEditor
-            label={t('setting.theme-background')}
-            value={background}
-            onChange={handleBackgroundChange}
-          />
-          <ColorSeedEditor
-            label={t('setting.theme-ink')}
-            value={ink}
-            onChange={handleInkChange}
-          />
-          <ContrastSlider value={themeContrast} onChange={setThemeContrast} />
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        title={t('setting.workspace-main-background')}
-        variant="horizontal"
-        boxClassName="items-center justify-between gap-4"
-      >
-        <div className="flex max-w-[55%] flex-col gap-1">
-          <span className="text-body-sm text-ds-text-neutral-muted-default">
-            {t('setting.workspace-main-background-description')}
-          </span>
-        </div>
-        <Select
-          value={workspaceMainBackground ?? 'empty'}
-          onValueChange={(v) =>
-            setWorkspaceMainBackground(v as WorkspaceMainBackground)
+        <SettingsRow
+          title={t('setting.theme', { defaultValue: 'Theme' })}
+          description={t('setting.theme-description', {
+            defaultValue: 'Choose the app color theme.',
+          })}
+          action={
+            <div data-theme-select className="flex max-w-full justify-end">
+              <Tabs value={activeThemeId} onValueChange={handleThemeChange}>
+                <TabsList appearance="default" className="min-w-max">
+                  {themeOptions.map((option) => (
+                    <TabsTrigger
+                      key={option.id}
+                      value={option.id}
+                      appearance="default"
+                    >
+                      <span className="flex items-center gap-1 text-label-sm">
+                        {option.label}
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
           }
         >
-          <SelectTrigger variant="secondary" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="empty">
-                {t('setting.workspace-main-background-empty')}
-              </SelectItem>
-              <SelectItem value="dots">
-                {t('setting.workspace-main-background-dots')}
-              </SelectItem>
-              <SelectItem value="ruled">
-                {t('setting.workspace-main-background-ruled')}
-              </SelectItem>
-              <SelectItem value="dotted">
-                {t('setting.workspace-main-background-dotted')}
-              </SelectItem>
-              <SelectItem value="dashed">
-                {t('setting.workspace-main-background-dashed')}
-              </SelectItem>
-              <SelectItem value="blocks">
-                {t('setting.workspace-main-background-blocks')}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </SettingsSection>
+          <div className="flex flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+            <ColorSeedEditor
+              label={t('setting.theme-accent')}
+              value={accent}
+              onChange={handleAccentChange}
+            />
+            <ColorSeedEditor
+              label={t('setting.theme-background')}
+              value={background}
+              onChange={handleBackgroundChange}
+            />
+            <ColorSeedEditor
+              label={t('setting.theme-ink')}
+              value={ink}
+              onChange={handleInkChange}
+            />
+            <ContrastSlider value={themeContrast} onChange={setThemeContrast} />
+          </div>
+          <div data-theme-reset-row className="flex w-full justify-end pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              buttonContent="text"
+              buttonRadius="full"
+              textWeight="semibold"
+              onClick={resetActiveTheme}
+            >
+              <span className="flex items-center gap-1 text-label-sm">
+                <RotateCcw />
+                <span>{t('setting.reset')}</span>
+              </span>
+            </Button>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title={t('setting.workspace-main-background')}
+          description={t('setting.workspace-main-background-description')}
+          actionClassName="w-[280px]"
+          action={
+            <Select
+              value={workspaceMainBackground ?? 'empty'}
+              onValueChange={(v) =>
+                setWorkspaceMainBackground(v as WorkspaceMainBackground)
+              }
+            >
+              <SelectTrigger variant="secondary" className="w-[280px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="empty">
+                    {t('setting.workspace-main-background-empty')}
+                  </SelectItem>
+                  <SelectItem value="dots">
+                    {t('setting.workspace-main-background-dots')}
+                  </SelectItem>
+                  <SelectItem value="ruled">
+                    {t('setting.workspace-main-background-ruled')}
+                  </SelectItem>
+                  <SelectItem value="dotted">
+                    {t('setting.workspace-main-background-dotted')}
+                  </SelectItem>
+                  <SelectItem value="dashed">
+                    {t('setting.workspace-main-background-dashed')}
+                  </SelectItem>
+                  <SelectItem value="blocks">
+                    {t('setting.workspace-main-background-blocks')}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          }
+        />
+      </SettingsRowGroup>
     </SettingsSectionPage>
   );
 }

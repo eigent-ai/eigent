@@ -81,24 +81,36 @@ function TriggerRow({
   );
 }
 
-export default function Triggers() {
+interface TriggersProps {
+  triggersOverride?: Trigger[];
+  presentation?: 'home' | 'space-detail';
+}
+
+export default function Triggers({
+  triggersOverride,
+  presentation = 'home',
+}: TriggersProps = {}) {
   const { t } = useTranslation();
   const {
     viewMode,
     searchQuery,
     sortBy,
     sortDirection,
-    triggers,
+    triggers: homeTriggers,
     triggersLoading,
     reloadTriggers,
   } = useHomeHub();
+  const triggers = triggersOverride ?? homeTriggers;
+  const effectiveViewMode = presentation === 'space-detail' ? 'list' : viewMode;
+  const effectiveSearchQuery =
+    presentation === 'space-detail' ? '' : searchQuery;
   const { openTrigger } = useHomeHubNavigation();
 
   const filteredTriggers = useMemo(() => {
-    const filtered = !searchQuery.trim()
+    const filtered = !effectiveSearchQuery.trim()
       ? triggers
       : triggers.filter((trigger) =>
-          matchesHubNameSearch(searchQuery, trigger.name)
+          matchesHubNameSearch(effectiveSearchQuery, trigger.name)
         );
 
     return [...filtered].sort((a, b) => {
@@ -114,7 +126,7 @@ export default function Triggers() {
       }
       return compareHubByTimestamp(a.created_at, b.created_at, sortDirection);
     });
-  }, [triggers, searchQuery, sortBy, sortDirection]);
+  }, [effectiveSearchQuery, sortBy, sortDirection, triggers]);
 
   const handleEditTrigger = useCallback(
     (trigger: Trigger) => {
@@ -207,9 +219,9 @@ export default function Triggers() {
               {t('layout.search-no-results')}
             </div>
           </div>
-        ) : viewMode === 'board' ? (
+        ) : effectiveViewMode === 'board' ? (
           <HomeHubBoard columns={boardColumns} />
-        ) : viewMode === 'grid' ? (
+        ) : effectiveViewMode === 'grid' ? (
           <HomeHubGrid>
             {filteredTriggers.map((trigger) =>
               renderTriggerRow(trigger, 'grid')

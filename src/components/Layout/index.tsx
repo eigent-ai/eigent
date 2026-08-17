@@ -39,23 +39,45 @@ function SettingsRouteBridge() {
   const navigate = useNavigate();
   const location = useLocation();
   const isOpen = useSettingsStore((state) => state.isOpen);
+  const activeSection = useSettingsStore((state) => state.activeSection);
   const closeSettings = useSettingsStore((state) => state.closeSettings);
 
   useEffect(() => {
     if (!isOpen) return;
     closeSettings();
-    if (isSettingsRoutePath(location.pathname)) return;
+    if (isSettingsRoutePath(location.pathname)) {
+      const searchParams = new URLSearchParams(location.search);
+      if (
+        searchParams.get('section') !== 'settings' ||
+        searchParams.get('tab') !== activeSection
+      ) {
+        navigate(`/home?section=settings&tab=${activeSection}`, {
+          replace: true,
+          state: location.state,
+        });
+      }
+      return;
+    }
     // Record where the user came from so the title-bar back button returns there.
-    navigate('/settings', {
+    navigate(`/home?section=settings&tab=${activeSection}`, {
       state: shellBackState(`${location.pathname}${location.search}`),
     });
-  }, [closeSettings, isOpen, location.pathname, location.search, navigate]);
+  }, [
+    closeSettings,
+    activeSection,
+    isOpen,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ]);
 
   return null;
 }
 
 const Layout = () => {
   const host = useHost();
+  const location = useLocation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const {
     initState,
@@ -138,6 +160,8 @@ const Layout = () => {
     !isBackendReady ||
     (isFirstLaunch && !onboardingCompleted);
   const shouldShowMainContent = !actualShouldShowInstallScreen;
+  const showTopBar =
+    location.pathname === '/' || isSettingsRoutePath(location.pathname);
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
@@ -148,7 +172,7 @@ const Layout = () => {
             : undefined
         }
       >
-        <TopBar />
+        {showTopBar ? <TopBar /> : null}
       </div>
       <SettingsRouteBridge />
       <div className="relative h-full min-h-0 flex-1 overflow-hidden">

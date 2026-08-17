@@ -894,17 +894,22 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   await downloadFromUrl(file.path, filename);
 }
 
-export default function Folder({ data: _data }: { data?: Agent }) {
+interface FolderProps {
+  data?: Agent;
+  spaceId?: string;
+}
+
+export default function Folder({ data: _data, spaceId }: FolderProps) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const authStore = useAuthStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = spaceId ? null : projectStore.activeProjectId;
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const resolvedSpaceId =
-    activeProjectMeta?.spaceId || activeSpaceId || undefined;
+    spaceId || activeProjectMeta?.spaceId || activeSpaceId || undefined;
   const activeSpace = useSpaceStore((s) => {
     return resolvedSpaceId ? (s.spaces[resolvedSpaceId] ?? null) : null;
   });
@@ -958,6 +963,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
 
   const rememberSelectedFile = (file: FileInfo) => {
+    if (spaceId) return;
     if (!chatStore?.activeTaskId) return;
     chatStore.setSelectedFile(chatStore.activeTaskId, file);
   };
@@ -1055,7 +1061,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const activeTaskId = chatStore?.activeTaskId ?? undefined;
+  const activeTaskId = spaceId
+    ? undefined
+    : (chatStore?.activeTaskId ?? undefined);
   const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
   const projectedFileRevision = useMemo(
     () => getSidePanelOutputFilesRevision(activeTask),
@@ -1131,7 +1139,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         setWorkingFolderPath(activeSpace.rootPath);
         return;
       }
-      if (!authStore.email || !projectStore.activeProjectId) {
+      if (!authStore.email || !activeProjectId) {
         setWorkingFolderPath(null);
         return;
       }
@@ -1142,7 +1150,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       try {
         const folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId as string,
+          activeProjectId,
           authStore.user_id
         );
         if (!cancelled) setWorkingFolderPath(folderPath || null);
@@ -1158,7 +1166,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     activeSpace?.rootPath,
     authStore.email,
     authStore.user_id,
-    projectStore.activeProjectId,
+    activeProjectId,
     electronAPI,
   ]);
 
@@ -1486,12 +1494,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       let folderPath = activeSpace?.rootPath || '';
       if (
         !folderPath &&
-        projectStore.activeProjectId &&
+        activeProjectId &&
         typeof electronAPI.getProjectFolderPath === 'function'
       ) {
         folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId,
+          activeProjectId,
           authStore.user_id
         );
       }

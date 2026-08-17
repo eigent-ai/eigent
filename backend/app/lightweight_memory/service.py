@@ -29,6 +29,7 @@ from app.run_journal import (
     MemoryEntryRecord,
     MemoryMutationResult,
     MemoryScopeStateRecord,
+    OptimisticConcurrencyError,
     SQLiteRunJournal,
     get_default_run_journal,
 )
@@ -602,6 +603,45 @@ class LightweightMemoryService:
             activity_id=activity_id,
             decision_id=decision_id,
             confirmed_by_user_action=decision_id is not None,
+        )
+
+    def permanently_delete_entry(
+        self,
+        *,
+        memory_id: str,
+        expected_version: int,
+        reason: str,
+        request_id: str,
+        actor_id: str | None = None,
+    ) -> MemoryMutationResult:
+        """Archive if necessary, then remove the archived record."""
+
+        existing = self._require_entry(memory_id)
+        if existing.version != expected_version:
+            raise OptimisticConcurrencyError(
+                f"Memory entry expected version {expected_version}, "
+                f"found {existing.version}"
+            )
+        if existing.deleted_at is None:
+            archived = self.transition_entry(
+                memory_id=memory_id,
+                expected_version=expected_version,
+                operation="remove",
+                actor_type="user",
+                reason="Archived before permanent deletion",
+                request_id=f"{request_id}:archive",
+                actor_id=actor_id,
+            )
+            assert archived.entry is not None
+            expected_version = archived.entry.version
+        return self.transition_entry(
+            memory_id=memory_id,
+            expected_version=expected_version,
+            operation="remove",
+            actor_type="user",
+            reason=reason,
+            request_id=f"{request_id}:delete",
+            actor_id=actor_id,
         )
 
     def search_memory(

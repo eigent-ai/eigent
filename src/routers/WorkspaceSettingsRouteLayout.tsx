@@ -24,8 +24,8 @@ interface WorkspaceSettingsRouteLayoutProps {
 /**
  * Settings is a full-page surface, but opening it must not destroy transient
  * workspace state. Keep the workspace subtree mounted across the Workspace ↔
- * Settings transition so drafts, forms, and live preview webviews survive.
- * Home remains a separate route and still releases the workspace subtree.
+ * Home / Settings transition so drafts, forms, and live preview webviews
+ * survive while the combined management page is open.
  */
 export default function WorkspaceSettingsRouteLayout({
   workspace,

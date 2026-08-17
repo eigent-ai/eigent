@@ -12,12 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import HomeHubRoot, {
-  HomeHeader,
-  HomeSections,
-  HomeSidebarNav,
-} from '@/components/Home';
-import AppShellLayout from '@/components/Layout/AppShellLayout';
 import WordCarousel from '@/components/ui/WordCarousel';
 import { useAuthStore } from '@/store/authStore';
 import { useTranslation } from 'react-i18next';
@@ -34,7 +28,7 @@ function formatWelcomeName(raw: string): string {
     .join(' ');
 }
 
-function HomeGreeting() {
+export default function HomeGreeting() {
   const { t } = useTranslation();
   const { username, email } = useAuthStore();
   const welcomeName = formatWelcomeName(username || email || '');
@@ -64,24 +58,5 @@ function HomeGreeting() {
         ) : null}
       </p>
     </div>
-  );
-}
-
-/**
- * Home runs in the same shell as Workspace and Settings: the rail picks the
- * section (spaces / projects / tasks / triggers), the content pane carries the
- * header controls and the section tables.
- */
-export default function Home() {
-  return (
-    <HomeHubRoot>
-      <AppShellLayout sidebar={<HomeSidebarNav />}>
-        <HomeHeader />
-        <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
-          <HomeGreeting />
-          <HomeSections />
-        </div>
-      </AppShellLayout>
-    </HomeHubRoot>
   );
 }

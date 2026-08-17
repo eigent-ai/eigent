@@ -31,6 +31,7 @@ vi.mock('@/api/http', () => ({
 import {
   createMemoryEntry,
   listMemoryEntries,
+  permanentlyDeleteMemoryEntry,
   updateMemoryScopeSettings,
 } from './memoryApi';
 
@@ -55,6 +56,10 @@ describe('local Memory API contract', () => {
       expectedRevision: 2,
       captureEnabled: false,
     });
+    await permanentlyDeleteMemoryEntry({
+      memory_id: 'memory-1',
+      version: 3,
+    } as never);
 
     expect(http.get).toHaveBeenCalledWith('/memory/entries', {
       scope_type: 'project',
@@ -66,6 +71,9 @@ describe('local Memory API contract', () => {
     );
     expect(http.patch.mock.calls[0][0]).toBe(
       '/memory/scopes/space/space-1/settings'
+    );
+    expect(http.del.mock.calls[0][0]).toBe(
+      '/memory/entries/memory-1/permanent'
     );
     expect(http.get.mock.calls.flat().join(' ')).not.toContain('/api/v1');
   });

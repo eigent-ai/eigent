@@ -26,10 +26,11 @@ import type {
   ProjectGroup as ProjectGroupType,
 } from '@/types/history';
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export function useHomeHubNavigation() {
   const navigate = useNavigate();
+  const location = useLocation();
   const projectStore = useProjectRuntimeStore();
   const setActiveSpace = useSpaceStore((s) => s.setActiveSpace);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -38,12 +39,12 @@ export function useHomeHubNavigation() {
 
   const openSpace = useCallback(
     (spaceId: string) => {
-      setActiveSpace(spaceId);
-      projectStore.setActiveProject(null);
-      setActiveWorkspaceTab('workforce');
-      navigate('/');
+      navigate(
+        `/home?section=spaces&spaceId=${encodeURIComponent(spaceId)}&spaceTab=projects`,
+        { state: location.state }
+      );
     },
-    [navigate, projectStore, setActiveSpace, setActiveWorkspaceTab]
+    [location.state, navigate]
   );
 
   const openProject = useCallback(

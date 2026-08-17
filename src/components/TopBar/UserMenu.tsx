@@ -32,8 +32,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { shellBackState } from '@/hooks/useShellBackTarget';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
+import { isSettingsRoutePath } from '@/lib/shellRoutes';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
@@ -47,11 +49,12 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Settings2,
   Sun,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const IS_LOCAL_PROXY = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 
@@ -99,6 +102,7 @@ function applyLanguage(key: string) {
 export function UserMenu() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [languageSubOpen, setLanguageSubOpen] = useState(false);
   const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
@@ -189,6 +193,14 @@ export function UserMenu() {
     window.location.href = `${SITE_URL}/dashboard`;
   };
 
+  const handleOpenSettings = () => {
+    navigate('/home?section=settings&tab=settings', {
+      state: isSettingsRoutePath(location.pathname)
+        ? location.state
+        : shellBackState(`${location.pathname}${location.search}`),
+    });
+  };
+
   const handleLogout = () => {
     chatStore?.clearTasks?.();
     resetInstallation();
@@ -236,6 +248,15 @@ export function UserMenu() {
             {email?.trim() || profileDisplayName || t('setting.profile')}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            className="gap-2"
+            onPointerEnter={closeLanguageSub}
+            onSelect={handleOpenSettings}
+          >
+            <Settings2 className="h-4 w-4" aria-hidden />
+            {t('setting.settings')}
+          </DropdownMenuItem>
 
           {!IS_LOCAL_PROXY ? (
             <DropdownMenuItem

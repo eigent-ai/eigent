@@ -28,15 +28,15 @@ export default function WindowControls() {
     const p = host.electronAPI.getPlatform();
     setPlatform(p);
 
-    if (p === 'darwin' || p === 'win32') {
+    if (p === 'darwin') {
       if (controlsRef.current) {
         controlsRef.current.style.display = 'none';
       }
     }
-  }, []);
+  }, [host]);
 
   if (!host?.electronAPI) return null;
-  if (platform === 'darwin' || platform === 'win32') return null;
+  if (platform === 'darwin') return null;
 
   return (
     <div
@@ -45,20 +45,26 @@ export default function WindowControls() {
       ref={controlsRef}
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
-      <div
-        className="control-btn h-full flex-1"
+      <button
+        type="button"
+        aria-label="Minimize"
+        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.minimizeWindow()}
       >
-        <Minus className="h-4 w-4" />
-      </div>
-      <div
-        className="control-btn h-full flex-1"
+        <Minus className="h-4 w-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label="Maximize"
+        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
       >
-        <Square className="h-4 w-4" />
-      </div>
-      <div
-        className="control-btn h-full flex-1"
+        <Square className="h-4 w-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label="Close"
+        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
@@ -70,8 +76,8 @@ export default function WindowControls() {
           e.stopPropagation();
         }}
       >
-        <X className="h-4 w-4" />
-      </div>
+        <X className="h-4 w-4" aria-hidden />
+      </button>
     </div>
   );
 }

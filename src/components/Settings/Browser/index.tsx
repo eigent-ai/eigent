@@ -27,7 +27,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import SettingsSection from '../SettingsSection';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionLoading from '../SettingsSectionLoading';
 import SettingsSectionPage from '../SettingsSectionPage';
 
@@ -48,6 +48,7 @@ export default function CDP() {
   const [browsersLoading, setBrowsersLoading] = useState(true);
   const [browsersError, setBrowsersError] = useState<string | null>(null);
   const [deletingBrowser, setDeletingBrowser] = useState<string | null>(null);
+  const [closingAll, setClosingAll] = useState(false);
   const [browserToRemove, setBrowserToRemove] = useState<CdpBrowser | null>(
     null
   );
@@ -162,6 +163,45 @@ export default function CDP() {
     setShowConnectDialog(true);
   };
 
+  const handleCloseAllBrowsers = async () => {
+    if (cdpBrowsers.length === 0) return;
+    setClosingAll(true);
+    try {
+      if (electronAPI?.removeCdpBrowser && isDesktopMode) {
+        const results = await Promise.all(
+          cdpBrowsers.map((browser) => electronAPI.removeCdpBrowser(browser.id))
+        );
+        const failed = results.find((result) => !result.success);
+        if (failed) throw new Error(failed.error);
+        setCdpBrowsers([]);
+      } else {
+        const results = await Promise.all(
+          cdpBrowsers.map((browser) =>
+            fetchDelete(`/browser/cdp/${browser.port}`)
+          )
+        );
+        const failed = results.find((result) => !result?.success);
+        if (failed) throw new Error(failed.error);
+        await loadCdpBrowsers();
+      }
+      toast.success(
+        t('layout.closed-all-browsers', {
+          defaultValue: 'Closed all browsers',
+        })
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('layout.failed-to-close-all-browsers', {
+              defaultValue: 'Failed to close all browsers',
+            })
+      );
+    } finally {
+      setClosingAll(false);
+    }
+  };
+
   const handleCheckAndConnect = async () => {
     const portNum = parseInt(connectPort, 10);
     if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
@@ -250,39 +290,73 @@ export default function CDP() {
         confirmVariant="caution"
       />
 
-      <SettingsSection
-        title={t('layout.cdp-browser-pool')}
-        action={
-          <div className="flex flex-row gap-2">
+      <SettingsRowGroup>
+        <SettingsRow
+          title={t('layout.browser', { defaultValue: 'Browser' })}
+          description={t('layout.cdp-browser-pool-description')}
+          action={
+            <div className="flex flex-row gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                buttonContent="text"
+                buttonRadius="full"
+                tone="neutral"
+                textWeight="semibold"
+                onClick={handleOpenNewBrowser}
+              >
+                <Plus className="h-4 w-4" />
+                {t('layout.open-new-browser')}
+              </Button>
+              <Button
+                variant="outline"
+                textWeight="semibold"
+                buttonContent="text"
+                buttonRadius="full"
+                tone="neutral"
+                size="sm"
+                onClick={handleConnectExistingBrowser}
+              >
+                <Link2 />
+                {t('layout.connect-existing-browser')}
+              </Button>
+            </div>
+          }
+        />
+
+        <SettingsRow
+          title={
+            <span className="flex items-center gap-2">
+              <span>
+                {t('layout.browser-pool', { defaultValue: 'Browser Pool' })}
+              </span>
+              <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
+                {cdpBrowsers.length}
+              </span>
+            </span>
+          }
+          description={t('layout.browser-pool-description', {
+            defaultValue: 'Browsers available for task execution.',
+          })}
+          action={
             <Button
-              variant="primary"
+              variant="ghost"
               size="sm"
               buttonContent="text"
-              buttonRadius="lg"
-              tone="neutral"
+              buttonRadius="full"
               textWeight="semibold"
-              onClick={handleOpenNewBrowser}
+              onClick={handleCloseAllBrowsers}
+              disabled={
+                closingAll || browsersLoading || cdpBrowsers.length === 0
+              }
+              className="uppercase !text-ds-text-status-error-strong-default"
             >
-              <Plus className="h-4 w-4" />
-              {t('layout.open-new-browser')}
+              {closingAll
+                ? t('layout.closing', { defaultValue: 'Closing' })
+                : t('layout.close-all', { defaultValue: 'Close all' })}
             </Button>
-            <Button
-              variant="outline"
-              textWeight="semibold"
-              buttonContent="text"
-              buttonRadius="lg"
-              tone="neutral"
-              size="sm"
-              onClick={handleConnectExistingBrowser}
-            >
-              <Link2 />
-              {t('layout.connect-existing-browser')}
-            </Button>
-          </div>
-        }
-        boxClassName="min-h-[200px] gap-2"
-      >
-        <div className="flex w-full flex-col gap-2">
+          }
+        >
           {browsersLoading && cdpBrowsers.length === 0 ? (
             <SettingsSectionLoading
               label={t('layout.loading-browser-connections')}
@@ -346,8 +420,8 @@ export default function CDP() {
               </span>
             </div>
           )}
-        </div>
-      </SettingsSection>
+        </SettingsRow>
+      </SettingsRowGroup>
 
       <Dialog
         open={showConnectDialog}

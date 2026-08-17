@@ -12,16 +12,5 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import Spaces from './Spaces';
-import { useHomeSection } from './hooks/useHomeSection';
-
-/** Table / grid / board body for the section selected in the sidebar rail. */
-export default function HomeSections() {
-  const { section } = useHomeSection();
-
-  return (
-    <div className="w-full min-w-0 flex-1 pb-12 pl-3 pr-2">
-      {section === 'spaces' && <Spaces />}
-    </div>
-  );
-}
+// Keep the Memory Center regression suite in Vitest's unit-test include path.
+import '../../../src/pages/Agents/Memory.test';

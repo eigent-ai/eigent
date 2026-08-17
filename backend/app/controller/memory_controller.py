@@ -285,6 +285,24 @@ async def delete_memory_entry(memory_id: str, body: TransitionMemoryBody):
     return await _transition(memory_id, body, "remove")
 
 
+@router.delete("/memory/entries/{memory_id}/permanent")
+async def permanently_delete_memory_entry(
+    memory_id: str, body: TransitionMemoryBody
+):
+    service = get_lightweight_memory_service()
+    try:
+        result = service.permanently_delete_entry(
+            memory_id=memory_id,
+            expected_version=body.expected_version,
+            reason=body.reason,
+            request_id=body.request_id,
+            actor_id=body.actor_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate_error(exc) from exc
+    return _serialize_result(result)
+
+
 @router.post("/memory/entries/{memory_id}/restore")
 async def restore_memory_entry(memory_id: str, body: TransitionMemoryBody):
     return await _transition(memory_id, body, "restore")

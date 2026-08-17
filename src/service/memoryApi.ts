@@ -17,7 +17,12 @@ import { fetchDelete, fetchGet, fetchPatch, fetchPost } from '@/api/http';
 
 export type MemoryScopeType = 'project' | 'space' | 'user';
 export type MemoryKind =
-  'fact' | 'decision' | 'constraint' | 'preference' | 'todo' | 'lesson';
+  | 'fact'
+  | 'decision'
+  | 'constraint'
+  | 'preference'
+  | 'todo'
+  | 'lesson';
 export type MemorySyncScope = 'full_memory';
 
 export interface MemoryScopeState {
@@ -191,11 +196,26 @@ const transitionMemoryEntry = (
   return fetchPost(`${path}/${operation}`, body);
 };
 
-export const deleteMemoryEntry = (entry: MemoryEntry) =>
-  transitionMemoryEntry(entry, 'delete', 'Deleted in Memory Center');
+export const archiveMemoryEntry = (entry: MemoryEntry) =>
+  transitionMemoryEntry(entry, 'delete', 'Archived in Memory Center');
+export const permanentlyDeleteMemoryEntry = (entry: MemoryEntry) =>
+  fetchDelete(
+    `/memory/entries/${encodeURIComponent(entry.memory_id)}/permanent`,
+    {
+      request_id: crypto.randomUUID(),
+      expected_version: entry.version,
+      reason: 'Permanently deleted in Memory Center',
+    }
+  );
 export const restoreMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'restore', 'Restored in Memory Center');
 export const confirmMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'confirm', 'Confirmed in Memory Center');
 export const pinMemoryEntry = (entry: MemoryEntry) =>
-  transitionMemoryEntry(entry, 'pin', 'Pinned in Memory Center');
+  transitionMemoryEntry(
+    entry,
+    'pin',
+    entry.pinned_by_user
+      ? 'Unpinned in Memory Center'
+      : 'Pinned in Memory Center'
+  );

@@ -24,9 +24,7 @@ export const SETTINGS_SECTIONS = [
   'browser-connections',
   'browser-plugins',
   'cookies',
-  'general',
-  'appearance',
-  'privacy',
+  'settings',
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number];

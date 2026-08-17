@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import SettingsSection from '../SettingsSection';
+import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 
 type GeneralSettingsSection = 'all' | 'profile' | 'language' | 'network-proxy';
@@ -194,15 +194,11 @@ export default function SettingGeneral({
 
   return (
     <SettingsSectionPage>
-      {/* Profile Section */}
-      {(section === 'all' || section === 'profile') && (
-        <SettingsSection
-          title={t('setting.profile')}
-          variant="horizontal"
-          boxClassName="items-center justify-between gap-4"
-        >
-          <div className="flex flex-col gap-2">
-            <div className="text-body-sm">
+      <SettingsRowGroup>
+        {(section === 'all' || section === 'profile') && (
+          <SettingsRow
+            title={t('setting.profile')}
+            description={
               <Trans
                 i18nKey="setting.you-are-currently-signed-in-with"
                 values={{ email: authStore.email }}
@@ -212,131 +208,136 @@ export default function SettingGeneral({
                   ),
                 }}
               />
-            </div>
-          </div>
-          <div className="flex items-center gap-sm">
-            <Button
-              onClick={() => {
-                window.location.href = `${SITE_URL}/dashboard?email=${authStore.email}`;
-              }}
-              variant="primary"
-              textWeight="semibold"
-              buttonContent="text"
-              buttonRadius="lg"
-              tone="neutral"
-              size="sm"
-            >
-              <Settings />
-              {t('setting.manage')}
-            </Button>
-            <Button
-              variant="outline"
-              textWeight="semibold"
-              buttonContent="text"
-              buttonRadius="lg"
-              tone="neutral"
-              size="sm"
-              onClick={() => {
-                chatStore?.clearTasks?.();
-
-                resetInstallation(); // Reset installation state for new account
-                setNeedsBackendRestart(true); // Mark that backend is restarting
-
-                authStore.logout();
-                navigate('/login');
-              }}
-            >
-              <LogOut />
-              {t('setting.log-out')}
-            </Button>
-          </div>
-        </SettingsSection>
-      )}
-
-      {/* Language Section */}
-      {(section === 'all' || section === 'language') && (
-        <SettingsSection
-          title={t('setting.language')}
-          variant="horizontal"
-          boxClassName="items-center justify-end"
-        >
-          <Select value={language} onValueChange={switchLanguage}>
-            <SelectTrigger
-              variant="secondary"
-              className="w-48 !bg-ds-bg-neutral-subtle-default hover:!bg-ds-bg-neutral-subtle-default data-[state=open]:!bg-ds-bg-neutral-subtle-default"
-            >
-              <SelectValue placeholder={t('setting.select-language')} />
-            </SelectTrigger>
-            <SelectContent className="border bg-input-bg-default">
-              <SelectGroup>
-                <SelectItem
-                  value="system"
-                  className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
-                >
-                  {t('setting.system-default')}
-                </SelectItem>
-                {languageList.map((item) => (
-                  <SelectItem
-                    key={item.key}
-                    value={item.key}
-                    className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
-                  >
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </SettingsSection>
-      )}
-
-      {/* Network Proxy Section */}
-      {(section === 'all' || section === 'network-proxy') && (
-        <SettingsSection
-          title={t('setting.network-proxy')}
-          boxClassName="gap-4"
-        >
-          <div className="flex flex-col gap-1">
-            <div className="text-sm leading-13 text-ds-text-neutral-muted-default">
-              {t('setting.network-proxy-description')}
-            </div>
-          </div>
-          <Input
-            placeholder={t('setting.proxy-placeholder')}
-            value={proxyUrl}
-            onChange={(e) => {
-              setProxyUrl(e.target.value);
-              setProxyNeedsRestart(false);
-            }}
-            className="flex-1"
-            size="default"
-            disabled={proxyLoading}
-            note={
-              proxyNeedsRestart ? t('setting.proxy-restart-hint') : undefined
             }
-            trailingButton={
-              <Button
-                variant={proxyNeedsRestart ? 'outline' : 'primary'}
-                size="sm"
-                onClick={
-                  proxyNeedsRestart
-                    ? () => host?.electronAPI?.restartApp()
-                    : handleSaveProxy
-                }
-                disabled={proxyLoading || (!proxyNeedsRestart && isProxySaving)}
-              >
-                {proxyLoading
-                  ? t('setting.loading')
-                  : proxyNeedsRestart
-                    ? t('setting.restart-to-apply')
-                    : isProxySaving
-                      ? t('setting.saving')
-                      : t('setting.save')}
-              </Button>
+            action={
+              <div className="flex items-center gap-sm">
+                <Button
+                  onClick={() => {
+                    window.location.href = `${SITE_URL}/dashboard?email=${authStore.email}`;
+                  }}
+                  variant="primary"
+                  textWeight="semibold"
+                  buttonContent="text"
+                  buttonRadius="lg"
+                  tone="neutral"
+                  size="sm"
+                >
+                  <Settings />
+                  {t('setting.manage')}
+                </Button>
+                <Button
+                  variant="outline"
+                  textWeight="semibold"
+                  buttonContent="text"
+                  buttonRadius="lg"
+                  tone="neutral"
+                  size="sm"
+                  onClick={() => {
+                    chatStore?.clearTasks?.();
+
+                    resetInstallation();
+                    setNeedsBackendRestart(true);
+
+                    authStore.logout();
+                    navigate('/login');
+                  }}
+                >
+                  <LogOut />
+                  {t('setting.log-out')}
+                </Button>
+              </div>
             }
           />
-        </SettingsSection>
-      )}
+        )}
+
+        {(section === 'all' || section === 'language') && (
+          <SettingsRow
+            title={t('setting.language')}
+            description={t('setting.language-description', {
+              defaultValue: 'Language for the app interface.',
+            })}
+            actionClassName="w-[280px]"
+            action={
+              <Select value={language} onValueChange={switchLanguage}>
+                <SelectTrigger
+                  variant="secondary"
+                  className="w-[280px] !bg-ds-bg-neutral-subtle-default hover:!bg-ds-bg-neutral-subtle-default data-[state=open]:!bg-ds-bg-neutral-subtle-default"
+                >
+                  <SelectValue placeholder={t('setting.select-language')} />
+                </SelectTrigger>
+                <SelectContent className="border bg-input-bg-default">
+                  <SelectGroup>
+                    <SelectItem
+                      value="system"
+                      className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                    >
+                      {t('setting.system-default')}
+                    </SelectItem>
+                    {languageList.map((item) => (
+                      <SelectItem
+                        key={item.key}
+                        value={item.key}
+                        className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                      >
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            }
+          />
+        )}
+
+        {(section === 'all' || section === 'network-proxy') && (
+          <SettingsRow
+            title={t('setting.network-proxy')}
+            description={t('setting.network-proxy-description')}
+            actionClassName="w-[280px]"
+            action={
+              <Input
+                placeholder={t('setting.proxy-placeholder')}
+                value={proxyUrl}
+                onChange={(e) => {
+                  setProxyUrl(e.target.value);
+                  setProxyNeedsRestart(false);
+                }}
+                className="w-[280px]"
+                size="default"
+                disabled={proxyLoading}
+                note={
+                  proxyNeedsRestart
+                    ? t('setting.proxy-restart-hint')
+                    : undefined
+                }
+                trailingButton={
+                  <Button
+                    variant={proxyNeedsRestart ? 'outline' : 'primary'}
+                    size="sm"
+                    buttonRadius="full"
+                    onClick={
+                      proxyNeedsRestart
+                        ? () => host?.electronAPI?.restartApp()
+                        : handleSaveProxy
+                    }
+                    disabled={
+                      proxyLoading || (!proxyNeedsRestart && isProxySaving)
+                    }
+                  >
+                    {proxyLoading
+                      ? t('setting.loading')
+                      : proxyNeedsRestart
+                        ? t('setting.restart-to-apply')
+                        : isProxySaving
+                          ? t('setting.saving')
+                          : t('setting.save')}
+                  </Button>
+                }
+              />
+            }
+          />
+        )}
+      </SettingsRowGroup>
     </SettingsSectionPage>
   );
 }

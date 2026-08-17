@@ -29,9 +29,7 @@ const sectionLoaders = {
   'browser-connections': () => import('./Browser'),
   'browser-plugins': () => import('./Extension'),
   cookies: () => import('./Cookies'),
-  general: () => import('./General'),
-  appearance: () => import('./Appearance'),
-  privacy: () => import('./Privacy'),
+  settings: () => import('./SettingsOverview'),
 } satisfies Partial<
   Record<SettingsSectionId, () => Promise<{ default: React.ComponentType }>>
 >;
@@ -45,9 +43,7 @@ const Channels = lazy(sectionLoaders.channels);
 const BrowserConnections = lazy(sectionLoaders['browser-connections']);
 const BrowserPlugins = lazy(sectionLoaders['browser-plugins']);
 const Cookies = lazy(sectionLoaders.cookies);
-const General = lazy(sectionLoaders.general);
-const Appearance = lazy(sectionLoaders.appearance);
-const Privacy = lazy(sectionLoaders.privacy);
+const SettingsOverview = lazy(sectionLoaders.settings);
 
 export function preloadSettingsSection(section: SettingsSectionId) {
   void sectionLoaders[section as keyof typeof sectionLoaders]?.().catch(
@@ -96,12 +92,8 @@ function SettingsSection({ section }: { section: SettingsSectionId }) {
       return <BrowserPlugins />;
     case 'cookies':
       return <Cookies />;
-    case 'general':
-      return <General />;
-    case 'appearance':
-      return <Appearance />;
-    case 'privacy':
-      return <Privacy />;
+    case 'settings':
+      return <SettingsOverview />;
   }
 }
 
