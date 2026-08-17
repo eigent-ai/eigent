@@ -25,6 +25,7 @@ from camel.types import ModelPlatformType
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.model_platform import (
+    azure_reasoning_tools_require_responses_api,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
 )
@@ -256,6 +257,32 @@ def agent_model(
                 and effort_value != "provider_default"
             ):
                 model_config[effort_parameter] = effort_value
+
+        # Azure GPT-5.6 rejects function tools + reasoning_effort on
+        # /chat/completions. CAMEL's Azure adapter supports /responses, so
+        # select that transport only for the incompatible combination. This is
+        # runtime-owned: an explicit chat-completions value cannot make this
+        # request shape valid.
+        has_function_tools = bool(
+            tools or tool_names or toolkits_to_register_agent
+        )
+        if (
+            has_function_tools
+            and model_config.get("reasoning_effort")
+            not in {None, "", "provider_default"}
+            and azure_reasoning_tools_require_responses_api(
+                model_platform=str(effective_config["model_platform"]),
+                model_type=str(effective_config["model_type"]),
+            )
+        ):
+            reasoning_effort = model_config.pop("reasoning_effort")
+            model_config["reasoning"] = {"effort": reasoning_effort}
+            init_params["api_mode"] = "responses"
+            logger.info(
+                "Using Azure Responses API for model %s because function "
+                "tools and reasoning_effort are enabled",
+                effective_config["model_type"],
+            )
         if is_effective_cloud:
             model_config["user"] = str(options.project_id)
         if use_subscription_runtime:

@@ -8139,18 +8139,28 @@ class SQLiteRunJournal:
                     f"run_id {run_id!r} belongs to another project"
                 )
 
-            unknown_tool = connection.execute(
+            unresolved_tools = connection.execute(
                 """
-                SELECT tool_call_id FROM tool_calls
+                SELECT tool_call_id, safety_class, idempotency_key
+                FROM tool_calls
                 WHERE run_id = ? AND status IN ('dispatched', 'outcome_unknown')
-                ORDER BY created_at, tool_call_id LIMIT 1
+                ORDER BY created_at, tool_call_id
                 """,
                 (run_id,),
-            ).fetchone()
-            if unknown_tool is not None:
+            ).fetchall()
+            blocking_tool = next(
+                (
+                    tool
+                    for tool in unresolved_tools
+                    if self._tool_call_requires_fail_closed(tool)
+                ),
+                None,
+            )
+            if blocking_tool is not None:
                 raise InvalidRunTransitionError(
-                    "a Run with an unresolved Tool outcome cannot complete "
-                    f"successfully ({unknown_tool['tool_call_id']})"
+                    "a Run with an unresolved Tool outcome that is "
+                    "non-replayable cannot complete successfully "
+                    f"({blocking_tool['tool_call_id']})"
                 )
 
             # Artifact discovery happens outside this short transaction and
@@ -12125,10 +12135,7 @@ class SQLiteRunJournal:
                         f"tool call {outcome.tool_call_id!r} cannot time out from "
                         f"{tool['status']!r}"
                     )
-                safety = ToolSafetyClass(tool["safety_class"])
-                replayable = automatic_tool_replay_allowed(
-                    safety, idempotency_key=tool["idempotency_key"]
-                )
+                replayable = not self._tool_call_requires_fail_closed(tool)
                 tool_status = "timed_out" if replayable else "outcome_unknown"
                 event_type = (
                     "tool.timed_out" if replayable else "tool.outcome_unknown"
@@ -12512,28 +12519,51 @@ class SQLiteRunJournal:
             for tool in tool_rows:
                 try:
                     with self._savepoint(connection, "startup_tool"):
+                        replayable = not self._tool_call_requires_fail_closed(
+                            tool
+                        )
+                        tool_status = (
+                            "timed_out" if replayable else "outcome_unknown"
+                        )
+                        tool_outcome = (
+                            "retry_allowed"
+                            if replayable
+                            else "outcome_unknown"
+                        )
+                        event_type = (
+                            "tool.timed_out"
+                            if replayable
+                            else "tool.outcome_unknown"
+                        )
                         connection.execute(
                             """
                             UPDATE tool_calls
-                            SET status = 'outcome_unknown',
-                                outcome = 'outcome_unknown', updated_at = ?
+                            SET status = ?, outcome = ?, timeout_reason = ?,
+                                updated_at = ?
                             WHERE tool_call_id = ? AND status = 'dispatched'
                             """,
-                            (timestamp, tool["tool_call_id"]),
+                            (
+                                tool_status,
+                                tool_outcome,
+                                "brain_restart_after_dispatch",
+                                timestamp,
+                                tool["tool_call_id"],
+                            ),
                         )
                         self._append_event_in_transaction(
                             connection,
                             tool["run_id"],
                             RunEventDraft(
                                 event_id=(
-                                    "startup:tool-outcome-unknown:"
+                                    f"startup:{event_type}:"
                                     f"{tool['tool_call_id']}"
                                 ),
-                                event_type="tool.outcome_unknown",
+                                event_type=event_type,
                                 payload={
                                     "tool_call_id": tool["tool_call_id"],
                                     "safety_class": tool["safety_class"],
                                     "reason": "brain_restart_after_dispatch",
+                                    "outcome": tool_outcome,
                                 },
                                 created_at=timestamp,
                             ),
@@ -12544,7 +12574,8 @@ class SQLiteRunJournal:
                         extra={"tool_call_id": tool["tool_call_id"]},
                     )
                     continue
-                unknown_tools.append(tool["tool_call_id"])
+                if not replayable:
+                    unknown_tools.append(tool["tool_call_id"])
             expired_approvals = connection.execute(
                 """
                 SELECT approvals.*, runs.status AS run_status
@@ -15300,6 +15331,14 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             )
 
     @staticmethod
+    def _tool_call_requires_fail_closed(tool: sqlite3.Row) -> bool:
+        safety = ToolSafetyClass(tool["safety_class"])
+        return not automatic_tool_replay_allowed(
+            safety,
+            idempotency_key=tool["idempotency_key"],
+        )
+
+    @staticmethod
     def _unsafe_resume_blockers(
         connection: sqlite3.Connection, run_id: str
     ) -> list[str]:
@@ -15313,14 +15352,11 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             """,
             (run_id,),
         ).fetchall()
-        blockers: list[str] = []
-        for row in rows:
-            safety = ToolSafetyClass(row["safety_class"])
-            if not automatic_tool_replay_allowed(
-                safety, idempotency_key=row["idempotency_key"]
-            ):
-                blockers.append(row["tool_call_id"])
-        return blockers
+        return [
+            row["tool_call_id"]
+            for row in rows
+            if SQLiteRunJournal._tool_call_requires_fail_closed(row)
+        ]
 
     def _finish_command_result_batch(
         self,

@@ -114,6 +114,36 @@ const durableRunDisplayStatus = (
     ? (value as DurableRunDisplayStatus)
     : undefined;
 
+const cachedTaskProjectionIsIncomplete = (
+  taskState: unknown,
+  localRunStatus?: DurableRunDisplayStatus
+): boolean => {
+  if (!taskState || typeof taskState !== 'object' || Array.isArray(taskState)) {
+    return true;
+  }
+  const messages = (taskState as Record<string, unknown>).messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return true;
+  }
+
+  // A terminal canonical Run must have a visible agent result or error. An
+  // earlier renderer failure could leave an IDB snapshot containing only the
+  // seeded user prompt; its freshness anchors still matched SQLite, so it
+  // suppressed authoritative replay forever. Treat that shape as a partial
+  // projection for both successful and failed Runs.
+  if (localRunStatus === 'completed' || localRunStatus === 'failed') {
+    return !messages.some(
+      (message) =>
+        message !== null &&
+        typeof message === 'object' &&
+        (message as Record<string, unknown>).role === 'agent' &&
+        typeof (message as Record<string, unknown>).content === 'string' &&
+        Boolean(((message as Record<string, unknown>).content as string).trim())
+    );
+  }
+  return false;
+};
+
 const polishCompletedHistoryTask = (
   chatStore: VanillaChatStore,
   taskId: string
@@ -1481,15 +1511,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             cached &&
             cached.taskIds.some((taskId) => {
               const taskState = cached.tasks[taskId]?.taskState;
-              if (
-                !taskState ||
-                typeof taskState !== 'object' ||
-                Array.isArray(taskState)
-              ) {
-                return true;
-              }
-              const messages = (taskState as Record<string, unknown>).messages;
-              return !Array.isArray(messages) || messages.length === 0;
+              return cachedTaskProjectionIsIncomplete(
+                taskState,
+                localRunsById.get(taskId)?.status
+              );
             })
           );
           if (!cacheIsStale && cacheHasIncompleteTask) {

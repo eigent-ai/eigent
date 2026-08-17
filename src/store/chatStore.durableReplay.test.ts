@@ -21,13 +21,32 @@ import {
   collectTaskUploadFiles,
   createCanonicalRunEventCursor,
   createChatStoreInstance,
+  extractAgentMessageContent,
   hasProjectedHumanInteraction,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   removeResolvedInteractionMessages,
+  shouldAppendTaskForConfirmedEvent,
 } from './chatStore';
 
 describe('canonical Run replay projection', () => {
+  it('keeps structured interaction payloads out of Message.content', () => {
+    expect(
+      extractAgentMessageContent({
+        interaction_id: 'approval-1',
+        interaction_type: 'approval',
+        title: 'Allow write?',
+      })
+    ).toBe('');
+    expect(
+      extractAgentMessageContent({
+        interaction_id: 'question-1',
+        question: 'Which account?',
+      })
+    ).toBe('Which account?');
+    expect(extractAgentMessageContent('legacy text')).toBe('legacy text');
+  });
+
   it('surfaces Resume admission failures before execution starts', async () => {
     const error = Object.assign(new Error('Unsafe tool outcome'), {
       status: 409,
@@ -126,6 +145,24 @@ describe('canonical Run replay projection', () => {
     });
     expect(
       canonicalRunEventToLegacyMessage({
+        event_type: 'run.failed',
+        legacy_step: null,
+        payload: {
+          error_type: 'InvalidRunTransitionError',
+          message: 'An unresolved Tool outcome prevents completion.',
+        },
+        created_at: 1_786_026_417,
+      })
+    ).toEqual({
+      step: 'error',
+      data: {
+        error_type: 'InvalidRunTransitionError',
+        message: 'An unresolved Tool outcome prevents completion.',
+      },
+      timestamp: 1_786_026_417,
+    });
+    expect(
+      canonicalRunEventToLegacyMessage({
         event_type: 'tool.completed',
         legacy_step: null,
         payload: { outcome: 'completed' },
@@ -137,6 +174,30 @@ describe('canonical Run replay projection', () => {
         after_sequence: 3,
       })
     ).toBeNull();
+  });
+
+  it('keeps Resume attempts of one local durable Run in one task', () => {
+    expect(
+      shouldAppendTaskForConfirmedEvent({
+        projectId: 'project-1',
+        question: 'Resume from persisted context',
+        messageContent: 'Original prompt',
+        skipFirstConfirm: false,
+        replaySource: 'local_durable',
+      })
+    ).toBe(false);
+
+    // A later confirmed frame on the legacy cloud Project stream still marks
+    // a genuinely new Run and retains the migration behaviour.
+    expect(
+      shouldAppendTaskForConfirmedEvent({
+        projectId: 'project-1',
+        question: 'A new follow-up',
+        messageContent: 'Original prompt',
+        skipFirstConfirm: false,
+        replaySource: 'cloud',
+      })
+    ).toBe(true);
   });
 
   it('removes only the message for the resolved interaction', () => {

@@ -287,7 +287,14 @@ def test_safe_read_timeout_can_create_a_new_attempt(tmp_path):
         )
         journal.checkpoint_tool_call(status="prepared", now=2, **values)
         journal.checkpoint_tool_call(status="dispatched", now=3, **values)
-        journal.reconcile_startup(now=4)
+        result = journal.reconcile_startup(now=4)
+
+        assert result.outcome_unknown_tool_call_ids == ()
+        recovered_tool = journal.list_tool_calls("run-1")[0]
+        assert recovered_tool.status == "timed_out"
+        assert recovered_tool.outcome == "retry_allowed"
+        assert recovered_tool.timeout_reason == "brain_restart_after_dispatch"
+        assert journal.list_events("run-1")[-1].event_type == "tool.timed_out"
 
         resumed = journal.create_run_attempt(
             "run-1",

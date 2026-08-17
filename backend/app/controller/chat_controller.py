@@ -614,21 +614,23 @@ async def _resolve_continuation_admission(
         limit=1,
     )
     latest = recent[0] if recent else None
+    latest_tool_calls = (
+        await asyncio.to_thread(journal.list_tool_calls, latest.run_id)
+        if latest
+        else []
+    )
+    latest_has_unknown_tool_outcome = any(
+        tool.status == "outcome_unknown" for tool in latest_tool_calls
+    )
     if latest is not None and latest.status == "interrupted":
-        unknown = any(
-            tool.status == "outcome_unknown"
-            for tool in await asyncio.to_thread(
-                journal.list_tool_calls, latest.run_id
-            )
-        )
         message = (
             "The interrupted Run has an unknown external side effect. Review it and explicitly Resume or Cancel."
-            if unknown
+            if latest_has_unknown_tool_outcome
             else "The latest Run was interrupted. Use the explicit Resume action; the word continue never resumes it."
         )
         code_value = (
             "continuation_outcome_unknown"
-            if unknown
+            if latest_has_unknown_tool_outcome
             else "continuation_resume_required"
         )
         await _reject_pending_continuation(
@@ -647,6 +649,42 @@ async def _resolve_continuation_admission(
     frontier = state.frontier or {}
     next_action = frontier.get("next_action")
     remaining = frontier.get("remaining")
+    retry_failed_run = False
+    if latest is not None and latest.status == "failed":
+        blocked_by = frontier.get("blocked_by")
+        if (
+            latest_has_unknown_tool_outcome
+            or blocked_by == "external_tool_outcome_unknown"
+        ):
+            message = (
+                "The failed Run has an unknown external side effect. Review "
+                "the durable tool outcome before starting new work."
+            )
+            await _reject_pending_continuation(
+                journal,
+                project_id=project_id,
+                request_id=run_id,
+                code_value="continuation_outcome_unknown",
+                message=message,
+            )
+            raise _continuation_http_error(
+                code_value="continuation_outcome_unknown",
+                message=message,
+                project_state_version=state.state_version,
+            )
+        retry_failed_run = True
+        if not isinstance(next_action, str) or not next_action.strip():
+            objective = frontier.get("objective")
+            if (
+                not latest_tool_calls
+                and isinstance(objective, str)
+                and objective.strip()
+            ):
+                # A provider/admission failure can terminate before the Agent
+                # produces a Todo frontier. Retrying the durable objective is
+                # safe only after proving no tool execution began; this is a
+                # new Run, never an implicit Resume.
+                next_action = objective.strip()
     if not isinstance(next_action, str) or not next_action.strip():
         message = (
             "The saved Project frontier has no unfinished next action. "
@@ -694,14 +732,19 @@ async def _resolve_continuation_admission(
             message=message,
             project_state_version=state.state_version,
         )
+    continuation_mode = (
+        "retry_failed_run" if retry_failed_run else "advance_frontier"
+    )
     directive = (
         "=== Durable Continuation Intent ===\n"
         "intent: continue_project\n"
+        f"mode: {continuation_mode}\n"
         f"project_state_version: {state.state_version}\n"
         f"base_run_id: {state.frontier_run_id or ''}\n"
         f"next_action: {next_action.strip()}\n"
         f"remaining: {json.dumps(remaining, ensure_ascii=False)}\n"
-        "Continue from this frontier. Do not repeat the prior final answer.\n"
+        "Continue from durable Project history. Do not repeat completed "
+        "external actions or the prior final answer.\n"
         "=== End Durable Continuation Intent ==="
     )
     # The Workforce execution path does not consume ``project_context``.

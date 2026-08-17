@@ -35,6 +35,15 @@ BEDROCK_CONVERSE_REGION: Final[str] = "us-west-2"
 # does not surface api_version in extra_params.
 AZURE_DEFAULT_API_VERSION: Final[str] = "2024-10-21"
 
+# Azure's GPT-5.6 model family rejects function tools combined with
+# `reasoning_effort` on the legacy chat-completions transport. CAMEL supports
+# Azure's Responses API explicitly, so select that transport for this known
+# incompatible combination instead of asking users to disable either tools or
+# thinking effort.
+AZURE_RESPONSES_REASONING_TOOL_MODEL_PREFIXES: Final[tuple[str, ...]] = (
+    "gpt-5.6",
+)
+
 
 def patch_bedrock_cloud_config(
     api_url: str, extra_params: dict
@@ -63,6 +72,22 @@ def patch_azure_cloud_config(extra_params: dict) -> dict:
     extra_params = dict(extra_params)
     extra_params.setdefault("api_version", AZURE_DEFAULT_API_VERSION)
     return extra_params
+
+
+def azure_reasoning_tools_require_responses_api(
+    *, model_platform: str, model_type: str
+) -> bool:
+    """Return whether Azure requires Responses for reasoning plus tools.
+
+    Keep this compatibility rule transport-specific and model-family-specific:
+    older Azure deployments continue using chat completions unless their own
+    configuration explicitly opts into Responses.
+    """
+    normalized_platform = model_platform.strip().lower()
+    normalized_model = model_type.strip().lower()
+    return normalized_platform == "azure" and normalized_model.startswith(
+        AZURE_RESPONSES_REASONING_TOOL_MODEL_PREFIXES
+    )
 
 
 def normalize_model_platform(platform: str) -> str:

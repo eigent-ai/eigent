@@ -35,7 +35,7 @@ from app.run_journal import (
     SQLiteRunJournal,
 )
 from app.run_journal.cloud_projection import cloud_event_payload
-from app.run_policy import ToolSafetyClass
+from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
 from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
@@ -1683,6 +1683,105 @@ def test_successful_completion_rejects_unknown_tool_outcome(journal):
     event_types = [event.event_type for event in journal.list_events("run-1")]
     assert "assistant.final" not in event_types
     assert "run.completed" not in event_types
+
+
+def test_successful_completion_allows_replayable_tool_timeout(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="read_page",
+        safety_class=ToolSafetyClass.SAFE_READ,
+        status="prepared",
+        request={"url": "https://example.com"},
+        now=1,
+    )
+    journal.checkpoint_tool_call(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="read_page",
+        safety_class=ToolSafetyClass.SAFE_READ,
+        status="dispatched",
+        request={"url": "https://example.com"},
+        now=2,
+    )
+    journal.record_timeout_outcome(
+        TimeoutOutcome(
+            scope=TimeoutScope.TOOL,
+            policy_version="v1",
+            reason="brain_restart_after_dispatch",
+            started_at=2,
+            ended_at=3,
+            run_id="run-1",
+            tool_call_id="tool-1",
+        )
+    )
+    manifest = _test_artifact_manifest(journal, "run-1")
+
+    result, terminal = journal.complete_successful_run(
+        "run-1",
+        assistant_final=RunEventDraft(
+            event_id="assistant-final:run-1",
+            event_type="assistant.final",
+            payload={"message": "Done without unsafe side effects"},
+        ),
+        terminal=RunEventDraft(
+            event_id="run-completed:run-1",
+            event_type="run.completed",
+            payload={"reason": "success"},
+        ),
+        artifact_manifest=manifest,
+        expected_project_id="project-1",
+    )
+
+    assert result.event_type == "assistant.final"
+    assert terminal.event_type == "run.completed"
+    assert journal.get_run("run-1").status == "completed"
+
+
+def test_successful_completion_allows_legacy_safe_read_outcome_unknown(
+    journal,
+):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    values = dict(
+        tool_call_id="tool-1",
+        run_id="run-1",
+        attempt_id=None,
+        tool_name="read_page",
+        safety_class=ToolSafetyClass.SAFE_READ,
+        request={"url": "https://example.com"},
+    )
+    journal.checkpoint_tool_call(status="prepared", now=1, **values)
+    journal.checkpoint_tool_call(status="dispatched", now=2, **values)
+    journal.checkpoint_tool_call(
+        status="outcome_unknown",
+        outcome="outcome_unknown",
+        timeout_reason="legacy_brain_restart_after_dispatch",
+        now=3,
+        **values,
+    )
+    manifest = _test_artifact_manifest(journal, "run-1")
+
+    _, terminal = journal.complete_successful_run(
+        "run-1",
+        assistant_final=RunEventDraft(
+            event_id="assistant-final:run-1",
+            event_type="assistant.final",
+            payload={"message": "Done after a safe Resume"},
+        ),
+        terminal=RunEventDraft(
+            event_id="run-completed:run-1",
+            event_type="run.completed",
+            payload={"reason": "success"},
+        ),
+        artifact_manifest=manifest,
+        expected_project_id="project-1",
+    )
+
+    assert terminal.event_type == "run.completed"
+    assert journal.get_run("run-1").status == "completed"
 
 
 def test_cancel_marks_dispatched_tool_outcome_unknown_before_terminal(journal):

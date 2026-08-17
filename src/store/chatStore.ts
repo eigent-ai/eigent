@@ -134,6 +134,30 @@ export const canonicalRunEventToLegacyMessage = (
           : undefined,
     } as AgentMessage;
   }
+  if (event.event_type === 'run.failed') {
+    const payload =
+      event.payload && typeof event.payload === 'object'
+        ? (event.payload as Record<string, unknown>)
+        : null;
+    return {
+      step: AgentStep.ERROR,
+      data: {
+        message:
+          typeof payload?.message === 'string' && payload.message.trim()
+            ? payload.message
+            : 'This Run failed before it produced a final response.',
+        error_type:
+          typeof payload?.error_type === 'string'
+            ? payload.error_type
+            : undefined,
+      },
+      timestamp:
+        typeof event.created_at === 'number' &&
+        Number.isFinite(event.created_at)
+          ? event.created_at
+          : undefined,
+    } as AgentMessage;
+  }
   if (event.event_type === 'artifact.manifest.finalized') {
     const payload =
       event.payload && typeof event.payload === 'object'
@@ -305,6 +329,33 @@ export function resolveConfirmedUserMessageContent({
   }
 
   return capturedStartMessage || eventQuestion || '';
+}
+
+type ConfirmedTaskAppendDecision = {
+  projectId?: string | null;
+  question?: unknown;
+  messageContent?: unknown;
+  skipFirstConfirm: boolean;
+  replaySource?: 'cloud' | 'local_durable';
+};
+
+/**
+ * Legacy Project streams use later `confirmed` frames to start another Run.
+ * A local durable stream is already scoped to exactly one immutable Run, so a
+ * later `confirmed` frame represents another attempt (Resume) of that same
+ * Run and must remain in the existing ChatStore task.
+ */
+export function shouldAppendTaskForConfirmedEvent({
+  projectId,
+  question,
+  messageContent,
+  skipFirstConfirm,
+  replaySource,
+}: ConfirmedTaskAppendDecision): boolean {
+  if (skipFirstConfirm || replaySource === 'local_durable') return false;
+  return Boolean(
+    projectId && (nonEmptyString(question) || nonEmptyString(messageContent))
+  );
 }
 
 const hasApiCode = (value: unknown, code: string) =>
@@ -709,11 +760,15 @@ function syncProjectDisplayName(
   useProjectStore.getState().updateProject(projectId, { name: displayName });
 }
 
-const compactContextText = (value?: string | null) =>
-  (value ?? '').replace(/\s+/g, ' ').trim();
+const compactContextText = (value?: unknown) =>
+  typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 
-const stripSummaryTag = (value?: string | null) =>
-  compactContextText(value?.replace(/<summary>.*?<\/summary>/gs, ''));
+const stripSummaryTag = (value?: unknown) =>
+  compactContextText(
+    typeof value === 'string'
+      ? value.replace(/<summary>.*?<\/summary>/gs, '')
+      : ''
+  );
 
 function taskContextResult(task: Task): string {
   const summaryParts = (task.summaryTask || '').split('|');
@@ -746,6 +801,27 @@ export function extractEndPayloadText(endData: unknown): string {
     }
   }
 
+  return '';
+}
+
+export function extractAgentMessageContent(data: unknown): string {
+  if (typeof data === 'string') {
+    return data;
+  }
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+
+  for (const key of ['content', 'notice', 'answer', 'question']) {
+    const value = (data as Record<string, unknown>)[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+
+  // Approval/question payloads are structured objects. Their UI is rendered
+  // from `message.interaction`; never smuggle the object into the string-only
+  // Message.content field through a TypeScript assertion.
   return '';
 }
 
@@ -2830,6 +2906,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const isMultiTurnSimpleAnswer =
             agentMessages.step === AgentStep.WAIT_CONFIRM;
 
+          const isPostCompletionProjectionEvent =
+            agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
+            agentMessages.step === AgentStep.ARTIFACT_UPLOADED;
+
           if (!currentTask) {
             console.log(
               `Task ${lockedTaskId} not found, ignoring SSE message for step: ${agentMessages.step}`
@@ -2840,7 +2920,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
             !isTaskSwitchingEvent &&
-            !isMultiTurnSimpleAnswer
+            !isMultiTurnSimpleAnswer &&
+            !isPostCompletionProjectionEvent
           ) {
             // Ignore messages for finished tasks except:
             // 1. Task switching events (create new chatStore)
@@ -2870,11 +2951,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const previousChatStore = getCurrentChatStore();
           if (agentMessages.step === AgentStep.CONFIRMED) {
             const { question } = agentMessages.data;
-            const shouldCreateNewChat =
-              project_id && (question || messageContent);
+            const shouldCreateNewChat = shouldAppendTaskForConfirmedEvent({
+              projectId: project_id,
+              question,
+              messageContent,
+              skipFirstConfirm,
+              replaySource: startOptions.replaySource,
+            });
 
             //All except first confirmed event to reuse the existing chatStore
-            if (shouldCreateNewChat && !skipFirstConfirm) {
+            if (shouldCreateNewChat) {
               /**
                * For Tasks where appended to existing project by
                * reusing same projectId. Need to create new chatStore
@@ -4431,7 +4517,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A busy Project means another run in the same long conversation
               // is still active. Do not stop that active Project while marking
               // only this rejected run as failed.
-              if (!isProjectBusyError) {
+              if (!isProjectBusyError && type !== 'replay') {
                 try {
                   await fetchDelete(`/chat/${project_id}`);
                 } catch (error) {
@@ -4978,13 +5064,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               id: generateUniqueId(),
               role: 'agent',
               agent_name: agentMessages.data.agent || '',
-              content:
-                agentMessages.data?.content ||
-                agentMessages.data?.notice ||
-                agentMessages.data?.answer ||
-                agentMessages.data?.question ||
-                (agentMessages.data as string) ||
-                '',
+              content: extractAgentMessageContent(agentMessages.data),
               step: agentMessages.step,
               isConfirm: false,
               interaction:
@@ -5011,13 +5091,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const newMessage: Message = {
             id: generateUniqueId(),
             role: 'agent',
-            content:
-              agentMessages.data?.content ||
-              agentMessages.data?.notice ||
-              agentMessages.data?.answer ||
-              agentMessages.data?.question ||
-              (agentMessages.data as string) ||
-              '',
+            content: extractAgentMessageContent(agentMessages.data),
             step: agentMessages.step,
             isConfirm: false,
           };
@@ -5028,11 +5102,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const contentType = respond.headers.get('content-type') || '';
           if (!respond.ok || !contentType.startsWith('text/event-stream')) {
             let detail = `HTTP ${respond.status}`;
+            let errorCode: string | undefined;
+            let userMessage: string | undefined;
             try {
               const body = await respond.clone().json();
               const bodyDetail = body?.detail ?? body?.message ?? body?.text;
-              if (typeof bodyDetail === 'string') detail = bodyDetail;
-              else if (bodyDetail) detail = JSON.stringify(bodyDetail);
+              if (typeof bodyDetail === 'string') {
+                detail = bodyDetail;
+                userMessage = bodyDetail;
+              } else if (bodyDetail) {
+                detail = JSON.stringify(bodyDetail);
+                if (typeof bodyDetail?.code === 'string') {
+                  errorCode = bodyDetail.code;
+                }
+                if (typeof bodyDetail?.message === 'string') {
+                  userMessage = bodyDetail.message;
+                }
+              }
             } catch {
               // Preserve the HTTP fallback for non-JSON error responses.
             }
@@ -5042,6 +5128,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 : `Run admission did not return an event stream: ${detail}`
             );
             error.status = respond.status;
+            error.code = errorCode;
+            error.userMessage = userMessage;
             rejectResumeStreamOpen?.(error);
             throw error;
           }
@@ -5096,6 +5184,39 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (!resumeStreamOpened) rejectResumeStreamOpen?.(err);
+
+          if (!resumeStreamOpened) {
+            // Admission failed before the event stream existed. Unlike an
+            // execution error, no later END frame can clear the optimistic
+            // pending state, so close it here and surface the typed Brain
+            // reason instead of leaving the composer stuck on "Preparing".
+            finishStartupFailure();
+            const failureState = targetChatStore.getState();
+            const failureTask = failureState.tasks[newTaskId];
+            const userMessage =
+              typeof err?.userMessage === 'string' && err.userMessage.trim()
+                ? err.userMessage.trim()
+                : typeof err?.message === 'string' && err.message.trim()
+                  ? err.message.trim()
+                  : 'The Run could not be admitted. Please try again.';
+            const isContinuationClarification =
+              typeof err?.code === 'string' &&
+              err.code.startsWith('continuation_');
+            const content = isContinuationClarification
+              ? `Input required: ${userMessage}`
+              : `❌ **Error**: ${userMessage}`;
+            const alreadyRendered = failureTask?.messages.some(
+              (message) =>
+                message.role === 'agent' && message.content === content
+            );
+            if (failureTask && !alreadyRendered) {
+              failureState.addMessages(newTaskId, {
+                id: generateUniqueId(),
+                role: 'agent',
+                content,
+              });
+            }
+          }
 
           const currentTaskId = getCurrentTaskId();
           // Update trigger execution status to Completed for connection closed by server
@@ -5188,6 +5309,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // the background and retains the existing reconnect behavior.
         void ssePromise.catch((error) => {
           console.error(`SSE stream failed for task ${newTaskId}:`, error);
+        });
+      }
+      if (!resumeStreamOpenPromise && type !== 'replay') {
+        // Live starts intentionally return after admission scheduling. Always
+        // observe the transport promise so a typed 4xx admission response is
+        // rendered by onerror without becoming an unhandled rejection.
+        void ssePromise.catch((error) => {
+          console.error(`SSE admission failed for task ${newTaskId}:`, error);
         });
       }
       if (type === 'replay') {
