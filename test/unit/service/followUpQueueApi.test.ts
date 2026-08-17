@@ -130,7 +130,10 @@ describe('followUpQueueApi local Brain routes', () => {
   });
 
   it('deduplicates concurrent pending-list reads without caching failures', async () => {
-    vi.mocked(fetchPost).mockResolvedValue({});
+    vi.mocked(fetchPost).mockResolvedValue({
+      request_id: 'request-2',
+      content: 'New message',
+    });
     vi.mocked(fetchGet).mockResolvedValueOnce({
       items: [{ request_id: 'request-1' }],
     });

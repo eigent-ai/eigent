@@ -59,7 +59,7 @@ export type ProjectedRun = {
   lastSequence: number;
   runVersion: number;
   updatedAt: string;
-  origin?: 'local' | 'cloud_restore' | 'remote';
+  origin?: 'local' | 'cloud_restore' | 'remote' | null;
   resumeBlockedReason?: string | null;
   latestAttempt?: {
     attemptNumber: number;

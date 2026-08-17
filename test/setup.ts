@@ -84,6 +84,33 @@ global.ipcRenderer = {
 // Mock environment variables
 process.env.NODE_ENV = 'test';
 
+// Node can expose a partial localStorage object when no backing file is
+// configured. Replace it with a deterministic in-memory implementation so
+// persisted Zustand stores behave consistently in unit tests.
+const localStorageValues = new Map<string, string>();
+const localStorageMock: Storage = {
+  get length() {
+    return localStorageValues.size;
+  },
+  clear: vi.fn(() => localStorageValues.clear()),
+  getItem: vi.fn((key: string) => localStorageValues.get(key) ?? null),
+  key: vi.fn((index: number) => [...localStorageValues.keys()][index] ?? null),
+  removeItem: vi.fn((key: string) => {
+    localStorageValues.delete(key);
+  }),
+  setItem: vi.fn((key: string, value: string) => {
+    localStorageValues.set(key, String(value));
+  }),
+};
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: localStorageMock,
+});
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  value: localStorageMock,
+});
+
 // Global test utilities
 global.waitFor = async (callback: () => boolean, timeout = 5000) => {
   const startTime = Date.now();

@@ -58,6 +58,12 @@ function snapshotRunVersion(
     : null;
 }
 
+function snapshotRunOrigin(value: unknown): ProjectedRun['origin'] {
+  return value === 'local' || value === 'cloud_restore' || value === 'remote'
+    ? value
+    : null;
+}
+
 export function projectRawEvents(
   projectId: string,
   rawEvents: unknown[],
@@ -121,7 +127,7 @@ export function projectSnapshot(
       updatedAt: replayIsAtLeastAsFresh
         ? recent!.updatedAt
         : aggregate.updated_at,
-      origin: aggregate.origin ?? recent?.origin ?? null,
+      origin: snapshotRunOrigin(aggregate.origin ?? recent?.origin),
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
     };

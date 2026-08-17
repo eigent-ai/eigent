@@ -74,7 +74,7 @@ function projectedRunToDurableSummary(
     project_id: projectId,
     status: run.status,
     updated_at: Date.parse(run.updatedAt) / 1000,
-    origin: run.origin,
+    origin: run.origin ?? undefined,
     resume_blocked_reason: run.resumeBlockedReason,
     latest_attempt: run.latestAttempt
       ? {
