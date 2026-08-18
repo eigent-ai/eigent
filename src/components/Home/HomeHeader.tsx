@@ -75,7 +75,7 @@ export default function HomeHeader() {
     <section
       data-home-spaces-toolbar
       aria-label="Spaces toolbar"
-      className="flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default pb-4"
+      className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default py-4"
     >
       <div className="flex min-w-0 items-center gap-2">
         <h2 className="!text-body-lg font-bold text-ds-text-neutral-default-default">
@@ -161,7 +161,7 @@ export default function HomeHeader() {
           variant="primary"
           size="sm"
           buttonContent="text"
-          className="rounded-lg"
+          className="rounded-full"
           onClick={() => setNewSpaceDialogOpen(true)}
         >
           {t('layout.spaces-new-space')}

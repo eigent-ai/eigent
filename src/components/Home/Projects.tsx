@@ -24,6 +24,7 @@ import HomeHubListItem from './components/HomeHubListItem';
 import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
 import { useSpaceLabel } from './hooks/useSpaceLabel';
+import { SpaceDetailListSkeleton } from './SpaceDetailLoadingSkeleton';
 import {
   compareHubByName,
   compareHubByTimestamp,
@@ -169,6 +170,9 @@ export default function Projects({
   }, [chatTasks, filteredProjects, onProjectDelete, onProjectRename]);
 
   if (projectsLoading) {
+    if (presentation === 'space-detail') {
+      return <SpaceDetailListSkeleton kind="project" />;
+    }
     return (
       <div className="flex w-full min-w-0 flex-col">
         <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">

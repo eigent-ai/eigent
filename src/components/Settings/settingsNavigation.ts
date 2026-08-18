@@ -23,7 +23,7 @@ import {
   Puzzle,
   Radio,
   Settings,
-  UsersRound,
+  Sparkles,
   WandSparkles,
 } from 'lucide-react';
 
@@ -45,19 +45,19 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
   {
     scope: 'global',
     labelKey: 'layout.global-setting',
-    defaultLabel: 'Global Setting',
+    defaultLabel: 'Global Settings',
     items: [
       {
         id: 'models',
         labelKey: 'setting.models',
         defaultLabel: 'Models',
-        icon: Bot,
+        icon: Sparkles,
       },
       {
         id: 'sub-agents',
         labelKey: 'agents.sub-agents',
         defaultLabel: 'Sub-agents',
-        icon: UsersRound,
+        icon: Bot,
       },
       {
         id: 'skills',

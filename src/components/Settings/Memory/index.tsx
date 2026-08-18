@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,7 +40,6 @@ import {
   createMemoryEntry,
   listMemoryEntries,
   listMemoryReconciliation,
-  permanentlyDeleteMemoryEntry,
   pinMemoryEntry,
   resolveMemoryReconciliation,
   restoreMemoryEntry,
@@ -66,11 +66,12 @@ import {
   RefreshCw,
   Save,
   Star,
-  Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
+import { MemoryScopeNotice } from './MemoryScopeNotice';
 
 const KINDS: MemoryKind[] = [
   'fact',
@@ -96,13 +97,18 @@ interface MemoryProps {
     type: MemoryScopeType;
     id: string;
   };
+  fixedScopeLabel?: string;
+  homeOverview?: boolean;
   showScopeSelector?: boolean;
 }
 
 export default function Memory({
   fixedScope,
+  fixedScopeLabel,
+  homeOverview = false,
   showScopeSelector = true,
 }: MemoryProps = {}) {
+  const { t } = useTranslation();
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const userId = useAuthStore((state) => state.user_id);
@@ -136,12 +142,17 @@ export default function Memory({
     }),
     [activeProjectId, activeSpaceId, userId]
   );
-  const scopeId = fixedScope?.id ?? scopeIds[scopeType];
+  const showScopeDirectory =
+    homeOverview && !fixedScope && scopeType !== 'user';
+  const scopeId = showScopeDirectory
+    ? null
+    : (fixedScope?.id ?? scopeIds[scopeType]);
 
   const reload = useCallback(async () => {
     const generation = ++requestGeneration.current;
     if (!scopeId) {
       setEntries([]);
+      setReconciliationItems([]);
       setScopeState(null);
       setSyncStatus('unknown');
       return;
@@ -271,6 +282,7 @@ export default function Memory({
         : syncStatus === 'blocked'
           ? 'Needs attention'
           : 'Unavailable';
+  const initialLoading = loading && !scopeState;
 
   return (
     <SettingsSectionPage>
@@ -293,7 +305,7 @@ export default function Memory({
                   aria-label="Memory scope"
                   className="w-full"
                 >
-                  {(['project', 'space', 'user'] as MemoryScopeType[]).map(
+                  {(['user', 'space', 'project'] as MemoryScopeType[]).map(
                     (value) => (
                       <TabsTrigger
                         key={value}
@@ -311,7 +323,11 @@ export default function Memory({
         </SettingsRowGroup>
       ) : null}
 
-      {!scopeId ? (
+      {showScopeDirectory ? (
+        <MemoryScopeNotice
+          scopeType={scopeType === 'space' ? 'space' : 'project'}
+        />
+      ) : !scopeId ? (
         <SettingsRowGroup>
           <SettingsRow
             title="Saved Memory"
@@ -320,6 +336,16 @@ export default function Memory({
         </SettingsRowGroup>
       ) : (
         <>
+          {fixedScopeLabel ? (
+            <SettingsRowGroup>
+              <SettingsRow
+                title={t('layout.memory-editor-title', {
+                  scopeName: fixedScopeLabel,
+                })}
+                description={t('layout.memory-editor-project-description')}
+              />
+            </SettingsRowGroup>
+          ) : null}
           {reconciliationItems.length > 0 && (
             <SettingsRowGroup>
               <SettingsRow
@@ -395,51 +421,73 @@ export default function Memory({
               title="Auto Memory"
               description="Incrementally learn a few stable notes."
               action={
-                <Switch
-                  aria-label="Auto Memory"
-                  checked={scopeState?.capture_enabled ?? false}
-                  disabled={scopeType !== 'project'}
-                  onCheckedChange={(value) =>
-                    updateSettings({ captureEnabled: value })
-                  }
-                />
+                initialLoading ? (
+                  <Skeleton
+                    aria-label="Loading Auto Memory setting"
+                    className="h-6 w-11 rounded-full"
+                  />
+                ) : (
+                  <Switch
+                    aria-label="Auto Memory"
+                    checked={scopeState?.capture_enabled ?? false}
+                    disabled={scopeType !== 'project'}
+                    onCheckedChange={(value) =>
+                      updateSettings({ captureEnabled: value })
+                    }
+                  />
+                )
               }
             />
             <SettingsRow
               title="Use Memory"
               description="Include saved notes in future Agent context."
               action={
-                <Switch
-                  aria-label="Use Memory"
-                  checked={scopeState?.use_enabled ?? false}
-                  onCheckedChange={(value) =>
-                    updateSettings({ useEnabled: value })
-                  }
-                />
+                initialLoading ? (
+                  <Skeleton
+                    aria-label="Loading Use Memory setting"
+                    className="h-6 w-11 rounded-full"
+                  />
+                ) : (
+                  <Switch
+                    aria-label="Use Memory"
+                    checked={scopeState?.use_enabled ?? false}
+                    onCheckedChange={(value) =>
+                      updateSettings({ useEnabled: value })
+                    }
+                  />
+                )
               }
             />
             <SettingsRow
               title="Memory Sync"
               description={
-                syncStatus === 'synced'
-                  ? 'Synced to your Eigent account'
-                  : syncStatus === 'pending'
-                    ? 'Waiting to sync automatically'
-                    : syncStatus === 'blocked'
-                      ? 'Sync needs attention; local Memory is safe'
-                      : 'Sync status is not available yet'
+                initialLoading ? (
+                  <Skeleton className="h-3 w-52" />
+                ) : syncStatus === 'synced' ? (
+                  'Synced to your Eigent account'
+                ) : syncStatus === 'pending' ? (
+                  'Waiting to sync automatically'
+                ) : syncStatus === 'blocked' ? (
+                  'Sync needs attention; local Memory is safe'
+                ) : (
+                  'Sync status is not available yet'
+                )
               }
               action={
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  buttonRadius="full"
-                  disabled={syncStatus === 'synced'}
-                  onClick={() => void reload()}
-                >
-                  {syncStatusLabel}
-                </Button>
+                initialLoading ? (
+                  <Skeleton className="h-7 w-24 rounded-full" />
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    buttonRadius="full"
+                    disabled={syncStatus === 'synced'}
+                    onClick={() => void reload()}
+                  >
+                    {syncStatusLabel}
+                  </Button>
+                )
               }
             />
             <SettingsRow
@@ -447,40 +495,54 @@ export default function Memory({
               description="Storage used by saved Memory for this scope."
               actionClassName="w-[280px]"
               action={
-                <div className="w-full">
-                  <Progress
-                    value={capacity}
-                    aria-label="Memory storage used"
-                    className="bg-ds-bg-neutral-subtle-default"
-                    indicatorClassName="bg-ds-bg-brand-default-default"
-                  />
-                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-text-neutral-muted-default">
-                    <span>{capacity}% full</span>
-                    <span>
-                      {scopeState?.current_token_count ?? 0} /{' '}
-                      {scopeState?.token_limit ?? 0} tokens
-                    </span>
+                initialLoading ? (
+                  <div className="w-full">
+                    <Skeleton className="h-2 w-full rounded-full" />
+                    <div className="mt-2 flex justify-between">
+                      <Skeleton className="h-2.5 w-12" />
+                      <Skeleton className="h-2.5 w-24" />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="w-full">
+                    <Progress
+                      value={capacity}
+                      aria-label="Memory storage used"
+                      className="bg-ds-bg-neutral-subtle-default"
+                      indicatorClassName="bg-ds-bg-brand-default-default"
+                    />
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-text-neutral-muted-default">
+                      <span>{capacity}% full</span>
+                      <span>
+                        {scopeState?.current_token_count ?? 0} /{' '}
+                        {scopeState?.token_limit ?? 0} tokens
+                      </span>
+                    </div>
+                  </div>
+                )
               }
             />
             <SettingsRow
               title="Organise Memory"
               description="At 75%, Eigent safely consolidates exact machine-created duplicates. History is never changed."
               action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  buttonRadius="full"
-                  disabled={loading}
-                  onClick={() =>
-                    void runAndReload(() =>
-                      consolidateMemoryScope(scopeType, scopeId)
-                    )
-                  }
-                >
-                  <RefreshCw className="h-4 w-4" aria-hidden /> Organise
-                </Button>
+                initialLoading ? (
+                  <Skeleton className="h-7 w-24 rounded-full" />
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    buttonRadius="full"
+                    disabled={loading}
+                    onClick={() =>
+                      void runAndReload(() =>
+                        consolidateMemoryScope(scopeType, scopeId)
+                      )
+                    }
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden /> Organise
+                  </Button>
+                )
               }
             />
           </SettingsRowGroup>
@@ -606,8 +668,14 @@ export default function Memory({
                 </div>
               )}
               {loading && !scopeState ? (
-                <div className="py-8 text-center text-body-sm">
-                  Loading Memory…
+                <div
+                  role="status"
+                  aria-label="Loading saved Memory"
+                  className="mt-4 flex flex-col gap-3"
+                >
+                  {Array.from({ length: 3 }, (_, index) => (
+                    <Skeleton key={index} className="h-16 w-full rounded-xl" />
+                  ))}
                 </div>
               ) : visibleEntries.length === 0 ? (
                 <div className="py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
@@ -685,32 +753,36 @@ export default function Memory({
                             )
                           ) : null}
 
+                          {/* Starring is one-way: the backend `pin` mutation
+                              has no un-pin transition, so a starred entry
+                              shows the filled star as state, not a control. */}
                           {!entry.deleted_at ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              buttonContent="icon-only"
-                              buttonRadius="lg"
-                              aria-label={
-                                entry.pinned_by_user
-                                  ? 'Unstar Memory'
-                                  : 'Star Memory'
-                              }
-                              aria-pressed={entry.pinned_by_user}
-                              onClick={() =>
-                                void runAndReload(() => pinMemoryEntry(entry))
-                              }
-                            >
-                              <Star
-                                aria-hidden
-                                className={
-                                  entry.pinned_by_user
-                                    ? 'fill-current'
-                                    : 'fill-none'
+                            entry.pinned_by_user ? (
+                              <span
+                                role="img"
+                                aria-label="Starred Memory"
+                                className="box-border flex h-[28px] min-h-[28px] w-[28px] min-w-[28px] shrink-0 items-center justify-center text-ds-icon-neutral-default-default"
+                              >
+                                <Star
+                                  aria-hidden
+                                  className="h-4 w-4 fill-current"
+                                />
+                              </span>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                buttonContent="icon-only"
+                                buttonRadius="lg"
+                                aria-label="Star Memory"
+                                onClick={() =>
+                                  void runAndReload(() => pinMemoryEntry(entry))
                                 }
-                              />
-                            </Button>
+                              >
+                                <Star aria-hidden className="fill-none" />
+                              </Button>
+                            )
                           ) : null}
 
                           <DropdownMenu>
@@ -759,16 +831,6 @@ export default function Memory({
                                   <Archive aria-hidden /> Archive Memory
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem
-                                className="!text-ds-text-status-error-strong-default"
-                                onSelect={() =>
-                                  void runAndReload(() =>
-                                    permanentlyDeleteMemoryEntry(entry)
-                                  )
-                                }
-                              >
-                                <Trash2 aria-hidden /> Delete Memory
-                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

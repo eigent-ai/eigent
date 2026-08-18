@@ -16,19 +16,20 @@ import { proxyFetchGet } from '@/api/http';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import {
   TOP_BAR_CONTROL_SELECTED_CLASS,
   TOP_BAR_CONTROL_STATE_CLASS,
   TOP_BAR_PILL_CLASS,
 } from '@/components/TopBar/controlStyles';
+import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
-import { shellBackState } from '@/hooks/useShellBackTarget';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
@@ -41,7 +42,7 @@ import {
 } from '@/lib/replay';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
-import { isSettingsRoutePath } from '@/lib/shellRoutes';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getActiveSpaceTriggerLabel,
   getDefaultNewSpaceName,
@@ -83,6 +84,7 @@ function HeaderWin() {
   const location = useLocation();
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
@@ -120,6 +122,7 @@ function HeaderWin() {
 
   const isWorkspacePage = location.pathname === '/';
   const isHomePage = isSettingsRoutePath(location.pathname);
+  const topBarLeadingInset = platform === 'darwin' ? 68 : 8;
 
   const sidebarToggleLabel = workspaceSidebarHidden
     ? t('layout.show-sidebar', { defaultValue: 'Show sidebar' })
@@ -192,6 +195,32 @@ function HeaderWin() {
     navigate,
     projectStore,
   ]);
+
+  const openActiveSpaceHomeTab = useCallback(
+    (spaceTab: 'memory' | 'workspace-profile') => {
+      if (!activeSpaceId) return;
+      projectStore.setActiveProject(null);
+      closeSettings();
+      navigate(
+        `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=${spaceTab}`,
+        {
+          state: isHomePage
+            ? location.state
+            : shellBackState(`${location.pathname}${location.search}`),
+        }
+      );
+    },
+    [
+      activeSpaceId,
+      closeSettings,
+      isHomePage,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+      projectStore,
+    ]
+  );
 
   const openWorkspace = useCallback(() => {
     closeSettings();
@@ -290,11 +319,13 @@ function HeaderWin() {
       projectStore.setActiveProject(null);
       setActiveWorkspaceTab('workforce');
       requestWorkspaceChatFocus();
+      return true;
     } catch (error) {
       console.error('Failed to create Space:', error);
       toast.error(t('layout.spaces-create-failed'), {
         closeButton: true,
       });
+      return false;
     }
   }, [
     createSpaceOnServer,
@@ -317,14 +348,16 @@ function HeaderWin() {
         projectStore,
         createdFrom: 'top_bar_space_selector',
       });
-      if (!spaceId) return;
+      if (!spaceId) return false;
       setActiveWorkspaceTab('workforce');
       requestWorkspaceChatFocus();
+      return true;
     } catch (error) {
       console.warn('[TopBar] Failed to create folder Space:', error);
       toast.error(getFolderSpaceErrorMessage(error, t), {
         closeButton: true,
       });
+      return false;
     }
   }, [
     activeSpaceId,
@@ -413,9 +446,11 @@ function HeaderWin() {
 
   return (
     <div
-      className={`drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1 ${
-        platform === 'darwin' ? 'pl-[68px] pr-1.5' : 'pl-2'
-      }`}
+      className={cn(
+        'drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        platform === 'darwin' && 'pr-1'
+      )}
+      style={{ paddingLeft: topBarLeadingInset }}
       id="titlebar"
       ref={titlebarRef}
     >
@@ -439,6 +474,12 @@ function HeaderWin() {
         email={email}
         userId={userId}
         actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={handleCreateBlankSpace}
+        onUseLocalFolder={handleCreateSpaceFromFolder}
       />
       <AlertDialog
         isOpen={renameSpaceDialogOpen}
@@ -464,145 +505,156 @@ function HeaderWin() {
       </AlertDialog>
       {/* Two-sided global navigation: destinations on the left, utilities on the right. */}
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-between">
-        <div className="no-drag relative z-50 flex min-w-0 items-center gap-0.5">
-          <TooltipSimple
-            content={sidebarToggleLabel}
-            side="bottom"
-            align="center"
-            variant="instant"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="icon-only"
-              className={cn(
-                'no-drag rounded-full',
-                TOP_BAR_CONTROL_STATE_CLASS,
-                'aria-pressed:!bg-transparent'
-              )}
-              onClick={toggleWorkspaceSidebar}
-              aria-pressed={!workspaceSidebarHidden}
-              aria-label={sidebarToggleLabel}
-            >
-              {workspaceSidebarHidden ? (
-                <PanelLeftOpen className="h-4 w-4" aria-hidden />
-              ) : (
-                <PanelLeft className="h-4 w-4" aria-hidden />
-              )}
-            </Button>
-          </TooltipSimple>
-
-          <button
-            type="button"
-            onClick={openHome}
-            aria-label={t('layout.home')}
-            aria-current={isHomePage ? 'page' : undefined}
-            className={cn(
-              TOP_BAR_PILL_CLASS,
-              isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
-            )}
-          >
-            <img
-              src={
-                appearance === 'dark' ? eigentAppIconWhite : eigentAppIconBlack
-              }
-              alt=""
-              className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
-              width={16}
-              height={16}
-              draggable={false}
-            />
-            <span>{t('layout.home')}</span>
-          </button>
-
-          {isWorkspacePage ? (
-            <SpaceSwitchDropdown
-              contentSideOffset={6}
-              onOpenChange={(open) => {
-                if (open && versionHistory.supported) {
-                  void versionHistory.loadStatus();
-                }
-              }}
-              trigger={
-                <button
-                  id="active-space-title-btn"
+        <TopBarPrimaryNavigation
+          sidebarHidden={workspaceSidebarHidden}
+          leadingInset={topBarLeadingInset}
+          sidebarControls={
+            <>
+              <TooltipSimple
+                content={sidebarToggleLabel}
+                side="bottom"
+                align="center"
+                variant="instant"
+              >
+                <Button
                   type="button"
-                  className={TOP_BAR_PILL_CLASS}
-                  aria-haspopup="menu"
-                  aria-label={activeSpaceTitle}
+                  variant="ghost"
+                  size="sm"
+                  buttonContent="icon-only"
+                  className={cn(
+                    'no-drag rounded-full',
+                    TOP_BAR_CONTROL_STATE_CLASS,
+                    'aria-pressed:!bg-transparent'
+                  )}
+                  onClick={toggleWorkspaceSidebar}
+                  aria-pressed={!workspaceSidebarHidden}
+                  aria-label={sidebarToggleLabel}
                 >
-                  <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
-                    {activeSpaceTitle}
-                  </span>
-                  <ChevronsUpDown
-                    className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
-                    aria-hidden
-                  />
-                </button>
-              }
-              spaces={activeSpaces}
-              activeSpaceId={activeSpaceId}
-              switchingSpaceId={switchingSpaceId}
-              canRenameActiveSpace={canRenameActiveSpace}
-              createSpaceMenu={{
-                onStartFromScratch: handleCreateBlankSpace,
-                onSelectFolder: handleCreateSpaceFromFolder,
-              }}
-              onRenameSpace={openRenameSpaceDialog}
-              onSpaceSelect={handleTopBarSpaceSelect}
-              contentAlign="start"
-              triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
-              savePointMenu={
-                versionHistory.supported
-                  ? {
-                      loading:
-                        versionHistory.loading ||
-                        versionHistory.status === null,
-                      saving: versionHistory.saving,
-                      enabled: versionHistory.status?.enabled === true,
-                      needsAttention:
-                        versionHistory.status?.enabled === true &&
-                        (versionHistory.status.state !== 'ready' ||
-                          versionHistory.status.diagnostics?.healthy === false),
-                      pendingCount:
-                        versionHistory.status?.pending_managed_paths?.length ||
-                        0,
-                      pendingTruncated:
-                        versionHistory.status
-                          ?.pending_managed_paths_truncated === true,
-                      onEnable: versionHistory.requestEnable,
-                      onSave: versionHistory.save,
-                      onOpenHistory: () => setVersionHistoryOpen(true),
-                    }
-                  : undefined
-              }
-            />
-          ) : (
-            <button
-              id="active-space-title-btn"
-              type="button"
-              className={TOP_BAR_PILL_CLASS}
-              aria-label={activeSpaceTitle}
-              onClick={openWorkspace}
-            >
-              <Folder className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
-                {activeSpaceTitle}
-              </span>
-              <ChevronsUpDown
-                className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
-                aria-hidden
+                  {workspaceSidebarHidden ? (
+                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <PanelLeft className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+              </TooltipSimple>
+
+              <button
+                type="button"
+                onClick={openHome}
+                aria-label={t('layout.home')}
+                aria-current={isHomePage ? 'page' : undefined}
+                className={cn(
+                  TOP_BAR_PILL_CLASS,
+                  isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
+                )}
+              >
+                <img
+                  src={
+                    appearance === 'dark'
+                      ? eigentAppIconWhite
+                      : eigentAppIconBlack
+                  }
+                  alt=""
+                  className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
+                  width={16}
+                  height={16}
+                  draggable={false}
+                />
+                <span>{t('layout.home')}</span>
+              </button>
+            </>
+          }
+          contentControls={
+            isWorkspacePage ? (
+              <SpaceSwitchDropdown
+                contentSideOffset={6}
+                onOpenChange={(open) => {
+                  if (open && versionHistory.supported) {
+                    void versionHistory.loadStatus();
+                  }
+                }}
+                trigger={
+                  <button
+                    id="active-space-title-btn"
+                    type="button"
+                    className={TOP_BAR_PILL_CLASS}
+                    aria-haspopup="menu"
+                    aria-label={activeSpaceTitle}
+                  >
+                    <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                      {activeSpaceTitle}
+                    </span>
+                    <ChevronsUpDown
+                      className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                      aria-hidden
+                    />
+                  </button>
+                }
+                spaces={activeSpaces}
+                activeSpaceId={activeSpaceId}
+                switchingSpaceId={switchingSpaceId}
+                canRenameActiveSpace={canRenameActiveSpace}
+                onOpenCreateSpace={() => setNewSpaceDialogOpen(true)}
+                onRenameSpace={openRenameSpaceDialog}
+                onOpenSpaceSettings={() =>
+                  openActiveSpaceHomeTab('workspace-profile')
+                }
+                onOpenMemorySettings={() => openActiveSpaceHomeTab('memory')}
+                onSpaceSelect={handleTopBarSpaceSelect}
+                contentAlign="start"
+                triggerWrapperClassName="min-w-0 overflow-hidden rounded-full"
+                savePointMenu={
+                  versionHistory.supported
+                    ? {
+                        loading:
+                          versionHistory.loading ||
+                          versionHistory.status === null,
+                        saving: versionHistory.saving,
+                        enabled: versionHistory.status?.enabled === true,
+                        needsAttention:
+                          versionHistory.status?.enabled === true &&
+                          (versionHistory.status.state !== 'ready' ||
+                            versionHistory.status.diagnostics?.healthy ===
+                              false),
+                        pendingCount:
+                          versionHistory.status?.pending_managed_paths
+                            ?.length || 0,
+                        pendingTruncated:
+                          versionHistory.status
+                            ?.pending_managed_paths_truncated === true,
+                        onEnable: versionHistory.requestEnable,
+                        onSave: versionHistory.save,
+                        onOpenHistory: () => setVersionHistoryOpen(true),
+                      }
+                    : undefined
+                }
               />
-            </button>
-          )}
-        </div>
+            ) : (
+              <button
+                id="active-space-title-btn"
+                type="button"
+                className={TOP_BAR_PILL_CLASS}
+                aria-label={activeSpaceTitle}
+                onClick={openWorkspace}
+              >
+                <Folder className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                  {activeSpaceTitle}
+                </span>
+                <ChevronsUpDown
+                  className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                  aria-hidden
+                />
+              </button>
+            )
+          }
+        />
 
         <div
           className={cn(
             'no-drag relative z-50 flex h-7 shrink-0 items-center gap-0.5',
-            platform === 'darwin' && 'px-0.5'
+            platform === 'darwin' && 'px-0'
           )}
         >
           <TooltipSimple
@@ -630,8 +682,8 @@ function HeaderWin() {
         </div>
       </div>
 
-      {/* Windows and Linux use the in-app window controls. */}
-      {(platform === 'linux' || platform === 'win32') && (
+      {/* Linux uses the in-app window controls; macOS and Windows use native chrome. */}
+      {platform === 'linux' && (
         <div
           className="no-drag flex h-full items-center"
           id="window-controls"

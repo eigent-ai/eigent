@@ -30,6 +30,7 @@ import HomeHubListTable from './components/HomeHubListTable';
 import { useHomeHub } from './context';
 import { useHomeHubNavigation } from './hooks/useHomeHubNavigation';
 import { useSpaceLabel } from './hooks/useSpaceLabel';
+import { SpaceDetailListSkeleton } from './SpaceDetailLoadingSkeleton';
 import {
   compareHubByName,
   compareHubByTimestamp,
@@ -194,6 +195,9 @@ export default function Triggers({
   }, [filteredTriggers, renderTriggerRow]);
 
   if (triggersLoading) {
+    if (presentation === 'space-detail') {
+      return <SpaceDetailListSkeleton kind="trigger" />;
+    }
     return (
       <div className="flex w-full min-w-0 flex-col">
         <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">

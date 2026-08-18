@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isDesktop } from '@/client/platform';
 import {
   Dialog,
   DialogContent,
@@ -28,7 +29,7 @@ import {
   Puzzle,
   type LucideIcon,
 } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const WorkspaceBundleInstallWizard = lazy(() =>
@@ -42,12 +43,24 @@ const AgentPluginImportWizard = lazy(() =>
   )
 );
 
-type NewSpaceDialogPage =
+export type NewSpaceDialogPage =
   | 'options'
   | 'import-options'
   | 'workspace-bundle'
   | 'agent-plugin';
 type PendingOption = 'scratch' | 'folder' | null;
+
+export interface NewSpaceDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onStartFromScratch: () => Promise<boolean>;
+  onUseLocalFolder: () => Promise<boolean>;
+  initialPage?: NewSpaceDialogPage;
+  initialWorkspaceBundleHandle?: string;
+  initialWorkspaceBundleProposalId?: string;
+  initialAgentPluginTargetSpaceId?: string | null;
+  agentPluginTargetMode?: 'existing' | 'create-space';
+}
 
 function NewSpaceOption({
   icon: Icon,
@@ -105,15 +118,20 @@ export default function NewSpaceDialog({
   onOpenChange,
   onStartFromScratch,
   onUseLocalFolder,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onStartFromScratch: () => Promise<boolean>;
-  onUseLocalFolder: () => Promise<boolean>;
-}) {
+  initialPage = 'options',
+  initialWorkspaceBundleHandle,
+  initialWorkspaceBundleProposalId,
+  initialAgentPluginTargetSpaceId,
+  agentPluginTargetMode = 'create-space',
+}: NewSpaceDialogProps) {
   const { t } = useTranslation();
-  const [page, setPage] = useState<NewSpaceDialogPage>('options');
+  const canImportAgentPlugin = isDesktop();
+  const [page, setPage] = useState<NewSpaceDialogPage>(initialPage);
   const [pendingOption, setPendingOption] = useState<PendingOption>(null);
+
+  useEffect(() => {
+    if (open) setPage(initialPage);
+  }, [initialPage, open]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -193,7 +211,10 @@ export default function NewSpaceDialog({
               <div
                 role="group"
                 aria-label="Bundle import options"
-                className="grid grid-cols-2 gap-3"
+                className={cn(
+                  'grid gap-3',
+                  canImportAgentPlugin ? 'grid-cols-2' : 'grid-cols-1'
+                )}
               >
                 <NewSpaceOption
                   icon={PackagePlus}
@@ -201,12 +222,14 @@ export default function NewSpaceDialog({
                   description="Enter a shared Bundle name or handle and create a Space."
                   onClick={() => setPage('workspace-bundle')}
                 />
-                <NewSpaceOption
-                  icon={Puzzle}
-                  title="Import Agent Plugin as Bundle"
-                  description="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
-                  onClick={() => setPage('agent-plugin')}
-                />
+                {canImportAgentPlugin ? (
+                  <NewSpaceOption
+                    icon={Puzzle}
+                    title="Import Agent Plugin as Bundle"
+                    description="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
+                    onClick={() => setPage('agent-plugin')}
+                  />
+                ) : null}
               </div>
             </DialogContentSection>
           </>
@@ -236,6 +259,8 @@ export default function NewSpaceDialog({
                 }
               >
                 <WorkspaceBundleInstallWizard
+                  initialHandle={initialWorkspaceBundleHandle}
+                  initialProposalId={initialWorkspaceBundleProposalId}
                   showHeader={false}
                   onWorkspaceOpen={() => handleOpenChange(false)}
                 />
@@ -266,8 +291,9 @@ export default function NewSpaceDialog({
                 }
               >
                 <AgentPluginImportWizard
+                  initialTargetSpaceId={initialAgentPluginTargetSpaceId}
                   showHeader={false}
-                  targetMode="create-space"
+                  targetMode={agentPluginTargetMode}
                   onConfigurationOpen={() => handleOpenChange(false)}
                 />
               </Suspense>

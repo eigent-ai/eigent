@@ -141,8 +141,22 @@ const TooltipSimple = React.forwardRef<
     ref
   ) => {
     const hasTooltipProvider = React.useContext(TooltipProviderPresenceContext);
+    const [open, setOpen] = React.useState(false);
+
+    React.useLayoutEffect(() => {
+      if (!enabled) {
+        setOpen(false);
+      }
+    }, [enabled]);
+
     const tooltip = (
       <Tooltip
+        open={enabled && open}
+        onOpenChange={(nextOpen) => {
+          if (enabled) {
+            setOpen(nextOpen);
+          }
+        }}
         delayDuration={delayDuration ?? (variant === 'instant' ? 0 : undefined)}
       >
         <TooltipTrigger asChild>{children}</TooltipTrigger>

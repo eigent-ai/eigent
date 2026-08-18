@@ -700,7 +700,7 @@ describe('Electron Main Index Functions', () => {
         height: 860,
         minWidth: 1100,
         minHeight: 700,
-        frame: false,
+        frame: true,
         transparent: false,
         backgroundColor: '#ffffff',
         titleBarStyle: undefined,
@@ -710,7 +710,6 @@ describe('Electron Main Index Functions', () => {
 
       expect(mockConfig.titleBarStyle).toBeUndefined();
       expect(mockConfig.trafficLightPosition).toBeUndefined();
-      expect(mockConfig.frame).toBe(false);
 
       // Restore original platform
       Object.defineProperty(process, 'platform', { value: originalPlatform });

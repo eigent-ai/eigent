@@ -2855,15 +2855,15 @@ async function createWindowInternal() {
   );
 
   // Platform-specific window configuration
-  // All platforms use the shared in-app top bar. Windows keeps its solid
-  // background while Windows/Linux render custom window controls in React.
+  // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
   win = new BrowserWindow({
     title: 'Eigent',
     width: 1280,
     height: 960,
     minWidth: 1100,
     minHeight: 700,
-    frame: false,
+    // Use native frame on Windows for better native integration
+    frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
     // Only use transparency on macOS and Linux (not supported well on Windows)
     transparent: !isWindows,

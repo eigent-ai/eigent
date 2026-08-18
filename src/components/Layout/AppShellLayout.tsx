@@ -20,8 +20,10 @@ import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
 
 /** Fixed rail width. The sidebar is no longer resizable. */
 export const APP_SHELL_SIDEBAR_WIDTH_PX = 240;
+/** Sidebar tabs sit inside the rail's shared `p-1` inset. */
+export const APP_SHELL_SIDEBAR_TAB_INSET_PX = 4;
 /** Gap between the rail and the content pane. */
-const SHELL_COLUMN_GAP_PX = 2;
+export const APP_SHELL_COLUMN_GAP_PX = 2;
 
 /** Content pane surface — the rounded card every page renders its body into. */
 export const APP_SHELL_CONTENT_SURFACE_CLASS =
@@ -96,7 +98,7 @@ export default function AppShellLayout({
           animate={{
             width: sidebarHidden
               ? 0
-              : APP_SHELL_SIDEBAR_WIDTH_PX + SHELL_COLUMN_GAP_PX,
+              : APP_SHELL_SIDEBAR_WIDTH_PX + APP_SHELL_COLUMN_GAP_PX,
           }}
           transition={SIDEBAR_FOLD_SPRING}
           aria-hidden={sidebarHidden}

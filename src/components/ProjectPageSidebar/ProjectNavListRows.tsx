@@ -98,8 +98,11 @@ function ProjectNavRowMenu({
   return (
     <div
       className={cn(
-        'shrink-0 items-center',
-        open ? 'flex' : 'hidden group-hover/session-item:flex'
+        'flex max-w-0 shrink-0 items-center justify-end overflow-hidden opacity-0',
+        'pointer-events-none',
+        'group-hover/session-item:pointer-events-auto group-hover/session-item:max-w-10 group-hover/session-item:opacity-100',
+        'focus-within:pointer-events-auto focus-within:max-w-10 focus-within:opacity-100',
+        open && 'pointer-events-auto max-w-10 opacity-100'
       )}
     >
       <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -211,6 +214,7 @@ function ProjectNavRow({
         sideOffset={4}
         avoidCollisions={false}
         variant="instant"
+        enabled={!menuOpen}
         className={SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS}
       >
         <div

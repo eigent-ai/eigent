@@ -29,18 +29,220 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
+import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
   SETTINGS_SECTIONS,
-  type SettingsSectionId,
   useSettingsStore,
+  type SettingsSectionId,
 } from '@/store/settingsStore';
 import {
   isUnconfiguredPlaceholderSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
-import { useCallback, useEffect } from 'react';
+import {
+  AnimatePresence,
+  motion,
+  useIsPresent,
+  useReducedMotion,
+} from 'framer-motion';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+
+type SpaceNavigationDirection = 1 | -1;
+type SpaceNavigationMotion = 'full' | 'fade' | 'instant';
+type NavigationInput = 'pointer' | 'keyboard' | 'programmatic';
+
+type SpaceNavigationMotionContext = {
+  direction: SpaceNavigationDirection;
+  mode: SpaceNavigationMotion;
+};
+
+const DRAWER_EASE = [0.32, 0.72, 0, 1] as const;
+const UI_EASE_OUT = [0.23, 1, 0.32, 1] as const;
+const SIDEBAR_TRANSITION_DURATION = 0.22;
+const CONTENT_TRANSITION_DURATION = 0.14;
+const REDUCED_TRANSITION_DURATION = 0.12;
+const RESTING_TRANSFORM = 'translate3d(0, 0, 0)';
+
+const sidebarTransitionVariants = {
+  enter: ({ direction, mode }: SpaceNavigationMotionContext) => ({
+    opacity: mode === 'instant' ? 1 : 0,
+    transform:
+      mode === 'full'
+        ? `translate3d(${direction === 1 ? '8%' : '-8%'}, 0, 0)`
+        : RESTING_TRANSFORM,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : SIDEBAR_TRANSITION_DURATION,
+      ease: DRAWER_EASE,
+    },
+  }),
+  center: ({ mode }: SpaceNavigationMotionContext) => ({
+    opacity: 1,
+    transform: RESTING_TRANSFORM,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : SIDEBAR_TRANSITION_DURATION,
+      ease: DRAWER_EASE,
+    },
+  }),
+  exit: ({ direction, mode }: SpaceNavigationMotionContext) => ({
+    opacity: mode === 'instant' ? 1 : 0,
+    transform:
+      mode === 'full'
+        ? `translate3d(${direction === 1 ? '-8%' : '8%'}, 0, 0)`
+        : RESTING_TRANSFORM,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : SIDEBAR_TRANSITION_DURATION,
+      ease: DRAWER_EASE,
+    },
+  }),
+};
+
+const contentTransitionVariants = {
+  enter: ({ mode }: SpaceNavigationMotionContext) => ({
+    opacity: mode === 'instant' ? 1 : 0,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : CONTENT_TRANSITION_DURATION,
+      ease: UI_EASE_OUT,
+    },
+  }),
+  center: ({ mode }: SpaceNavigationMotionContext) => ({
+    opacity: 1,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : CONTENT_TRANSITION_DURATION,
+      ease: UI_EASE_OUT,
+    },
+  }),
+  exit: ({ mode }: SpaceNavigationMotionContext) => ({
+    opacity: mode === 'instant' ? 1 : 0,
+    transition: {
+      duration:
+        mode === 'instant'
+          ? 0
+          : mode === 'fade'
+            ? REDUCED_TRANSITION_DURATION
+            : CONTENT_TRANSITION_DURATION,
+      ease: UI_EASE_OUT,
+    },
+  }),
+};
+
+function useExitingPaneGuard(elementRef: RefObject<HTMLElement | null>) {
+  const isPresent = useIsPresent();
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    if (isPresent) {
+      element.removeAttribute('inert');
+    } else {
+      element.setAttribute('inert', '');
+    }
+  }, [elementRef, isPresent]);
+
+  return isPresent;
+}
+
+function AnimatedSidebarPane({
+  children,
+  motionContext,
+  pane,
+}: {
+  children: ReactNode;
+  motionContext: SpaceNavigationMotionContext;
+  pane: 'home' | 'detail';
+}) {
+  const paneRef = useRef<HTMLDivElement>(null);
+  const isPresent = useExitingPaneGuard(paneRef);
+
+  return (
+    <motion.div
+      ref={paneRef}
+      data-home-space-sidebar-pane={pane}
+      data-space-navigation-direction={
+        motionContext.direction === 1 ? 'forward' : 'back'
+      }
+      data-space-navigation-motion={motionContext.mode}
+      aria-hidden={isPresent ? undefined : true}
+      className="absolute inset-0 h-full min-h-0 w-full"
+      custom={motionContext}
+      variants={sidebarTransitionVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function AnimatedContentPane({
+  children,
+  motionContext,
+  pane,
+}: {
+  children: ReactNode;
+  motionContext: SpaceNavigationMotionContext;
+  pane: 'home' | 'detail';
+}) {
+  const paneRef = useRef<HTMLElement>(null);
+  const isPresent = useExitingPaneGuard(paneRef);
+
+  return (
+    <motion.main
+      ref={paneRef}
+      data-home-space-content-pane={pane}
+      data-space-navigation-direction={
+        motionContext.direction === 1 ? 'forward' : 'back'
+      }
+      data-space-navigation-motion={motionContext.mode}
+      aria-hidden={isPresent ? undefined : true}
+      className="absolute inset-0 flex h-full min-h-0 min-w-0 flex-col"
+      custom={motionContext}
+      variants={contentTransitionVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
+    >
+      {children}
+    </motion.main>
+  );
+}
 
 function isSettingsSection(value: string | null): value is SettingsSectionId {
   return SETTINGS_SECTIONS.includes(value as SettingsSectionId);
@@ -54,6 +256,9 @@ function HomeSettingsPageContent() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const reduceMotion = Boolean(useReducedMotion());
+  const [navigationInput, setNavigationInput] =
+    useState<NavigationInput>('programmatic');
   const storedActiveSection = useSettingsStore((state) => state.activeSection);
   const setActiveSection = useSettingsStore((state) => state.setActiveSection);
   const sidebarHidden = usePageTabStore(
@@ -82,6 +287,38 @@ function HomeSettingsPageContent() {
   const activeSpaceTab: SpaceDetailTab = isSpaceDetailTab(spaceTabFromUrl)
     ? spaceTabFromUrl
     : 'projects';
+  const isSpaceDetailView = Boolean(visibleSpaceId);
+  const navigationDirection: SpaceNavigationDirection = isSpaceDetailView
+    ? 1
+    : -1;
+  const navigationMotion: SpaceNavigationMotion =
+    navigationInput === 'keyboard'
+      ? 'instant'
+      : reduceMotion
+        ? 'fade'
+        : navigationInput === 'pointer'
+          ? 'full'
+          : 'instant';
+  const navigationMotionContext: SpaceNavigationMotionContext = {
+    direction: navigationDirection,
+    mode: navigationMotion,
+  };
+
+  useEffect(() => {
+    const handlePointerDown = () => {
+      setNavigationInput('pointer');
+    };
+    const handleKeyDown = () => {
+      setNavigationInput('keyboard');
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSpacesView && activeSection !== storedActiveSection) {
@@ -136,50 +373,82 @@ function HomeSettingsPageContent() {
     [navigateHome, spaceId]
   );
 
-  const sidebar = visibleSpaceId ? (
-    <SpaceDetailSidebar
-      selectedSpaceId={visibleSpaceId}
+  const sidebarPane = visibleSpaceId ? 'detail' : 'home';
+  const sidebar = (
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
+      <AnimatePresence
+        initial={false}
+        mode="sync"
+        custom={navigationMotionContext}
+      >
+        <AnimatedSidebarPane
+          key={sidebarPane}
+          pane={sidebarPane}
+          motionContext={navigationMotionContext}
+        >
+          {visibleSpaceId ? (
+            <SpaceDetailSidebar
+              selectedSpaceId={visibleSpaceId}
+              onBack={handleHomeSectionChange}
+              onSelectSpace={handleSelectSpace}
+            />
+          ) : (
+            <SettingsSidebar
+              activeHomeSection={isSpacesView ? 'spaces' : null}
+              activeSection={isSpacesView ? null : activeSection}
+              onHomeSectionChange={handleHomeSectionChange}
+              onSectionChange={handleSettingsSectionChange}
+            />
+          )}
+        </AnimatedSidebarPane>
+      </AnimatePresence>
+    </div>
+  );
+
+  const contentPane = visibleSpaceId ? 'detail' : 'home';
+  const content = visibleSpaceId ? (
+    <SpaceDetail
+      spaceId={visibleSpaceId}
+      activeTab={activeSpaceTab}
+      onTabChange={handleSpaceTabChange}
       onBack={handleHomeSectionChange}
-      onSelectSpace={handleSelectSpace}
     />
+  ) : isSpacesView ? (
+    <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+      <div className="min-h-full px-8 py-6">
+        <div className="mx-auto w-full max-w-[1100px]">
+          <HomeGreeting />
+          <div className="mt-8">
+            <HomeHeader />
+            <HomeSections />
+          </div>
+        </div>
+      </div>
+    </div>
   ) : (
-    <SettingsSidebar
-      activeHomeSection={isSpacesView ? 'spaces' : null}
-      activeSection={isSpacesView ? null : activeSection}
-      onHomeSectionChange={handleHomeSectionChange}
-      onSectionChange={handleSettingsSectionChange}
-    />
+    <SettingsHeaderProvider activeSection={activeSection}>
+      <SettingsHeader activeSection={activeSection} />
+      <SettingsSectionContent activeSection={activeSection} />
+    </SettingsHeaderProvider>
   );
 
   return (
     <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
-      <main className="flex h-full min-h-0 min-w-0 flex-col">
-        {visibleSpaceId ? (
-          <SpaceDetail
-            spaceId={visibleSpaceId}
-            activeTab={activeSpaceTab}
-            onTabChange={handleSpaceTabChange}
-            onBack={handleHomeSectionChange}
-          />
-        ) : isSpacesView ? (
-          <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
-            <div className="min-h-full px-8 py-6">
-              <div className="mx-auto w-full max-w-[1100px]">
-                <HomeGreeting />
-                <div className="mt-8">
-                  <HomeHeader />
-                  <HomeSections />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <SettingsHeaderProvider activeSection={activeSection}>
-            <SettingsHeader activeSection={activeSection} />
-            <SettingsSectionContent activeSection={activeSection} />
-          </SettingsHeaderProvider>
-        )}
-      </main>
+      <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
+        <AnimatePresence
+          initial={false}
+          mode="sync"
+          custom={navigationMotionContext}
+        >
+          <AnimatedContentPane
+            key={contentPane}
+            pane={contentPane}
+            motionContext={navigationMotionContext}
+          >
+            {content}
+          </AnimatedContentPane>
+        </AnimatePresence>
+      </div>
     </AppShellLayout>
   );
 }
@@ -188,6 +457,7 @@ export default function SettingsPageRoute() {
   return (
     <HomeHubRoot>
       <HomeSettingsPageContent />
+      <LegacyRouteWorkflowDialog />
     </HomeHubRoot>
   );
 }

@@ -16,9 +16,8 @@ import { InstallDependencies } from '@/components/InstallStep/InstallDependencie
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
-import { shellBackState } from '@/hooks/useShellBackTarget';
 import { useHost } from '@/host';
-import { isSettingsRoutePath } from '@/lib/shellRoutes';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -58,7 +57,8 @@ function SettingsRouteBridge() {
       }
       return;
     }
-    // Record where the user came from so the title-bar back button returns there.
+    // Record the origin so the route layout can retain Workspace state while
+    // the full-page Home / Settings surface is active.
     navigate(`/home?section=settings&tab=${activeSection}`, {
       state: shellBackState(`${location.pathname}${location.search}`),
     });

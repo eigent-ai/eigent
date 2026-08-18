@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { WorkspaceSettingsSkeleton } from '@/components/Home/SpaceDetailLoadingSkeleton';
 import {
   SIDEBAR_TAB_LABEL_CLASS,
   sidebarTabButtonClass,
@@ -22,6 +23,12 @@ import {
 } from '@/components/Settings/SettingsRowGroup';
 import SettingsSectionPage from '@/components/Settings/SettingsSectionPage';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -32,20 +39,35 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { EnvironmentRequirementsEditor } from '@/components/WorkspaceConfiguration/EnvironmentRequirementsEditor';
 import { WorkspaceBundleSaveDialog } from '@/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog';
+import {
+  contextDraftForKind,
+  WorkspaceResourceEditorPanel,
+  type WorkspaceResourceEditorState,
+} from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
+import { WorkspaceResourceListItem } from '@/components/WorkspaceConfiguration/WorkspaceResourceListItem';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 import { cn } from '@/lib/utils';
 import {
   workspaceEnvironmentVariables,
   type ThinkingEffort,
   type WorkspaceConfigurationDocument,
-  type WorkspaceContextSource,
 } from '@/service/workspaceConfigurationApi';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { Plus, RefreshCw, ShareIcon, ShieldCheck, Trash2 } from 'lucide-react';
+import { AnimatePresence, useReducedMotion } from 'framer-motion';
+import {
+  Bot,
+  Cable,
+  FileText,
+  KeyRound,
+  MoreHorizontal,
+  Package,
+  Plus,
+  Server,
+  ShareIcon,
+  Trash2,
+} from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -55,17 +77,37 @@ import {
   type ReactNode,
 } from 'react';
 
-const csv = (value: string): string[] =>
-  value
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-
 const nextId = (prefix: string, existing: string[]): string => {
   for (let index = 1; ; index += 1) {
     const candidate = `${prefix}_${index}`;
     if (!existing.includes(candidate)) return candidate;
   }
+};
+
+const humanizeIdentifier = (value: string): string => {
+  const withoutProtocol = value.replace(/^[a-z]+:\/\//, '');
+  const leaf = withoutProtocol.split('/').filter(Boolean).at(-1) || value;
+  const withoutVersion = leaf.split('@')[0].replace(/\.[a-z0-9]+$/i, '');
+  return withoutVersion
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const resourceVersion = (value: string): string | null => {
+  const match = value.match(/@([^/]+)$/);
+  return match?.[1] ? `v${match[1].replace(/^v/, '')}` : null;
+};
+
+const removeAgentReferences = (
+  document: WorkspaceConfigurationDocument,
+  agentId: string
+) => {
+  document.spec.skills.forEach((skill) => {
+    skill.assignTo = skill.assignTo.filter((id) => id !== agentId);
+  });
+  document.spec.mcpServers.forEach((server) => {
+    server.assignTo = server.assignTo.filter((id) => id !== agentId);
+  });
 };
 
 const nextEnvironmentVariableName = (
@@ -131,6 +173,43 @@ function AddSectionButton({
   );
 }
 
+function CollectionActions({
+  label,
+  count,
+  onDeleteAll,
+}: {
+  label: string;
+  count: number;
+  onDeleteAll: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          buttonContent="icon-only"
+          buttonRadius="full"
+          aria-label={`${label} actions`}
+          disabled={count === 0}
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          className="!text-ds-text-status-error-strong-default focus:!text-ds-text-status-error-strong-default [&>svg]:!text-current"
+          onSelect={onDeleteAll}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden />
+          Delete all
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SettingRow({
   label,
   description,
@@ -141,15 +220,18 @@ function SettingRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-16 items-center gap-4 px-4 py-3 md:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)]">
-      <div className="min-w-0">
-        <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+    <div
+      data-workspace-setting-row
+      className="grid min-h-16 items-center gap-4 px-4 py-3 md:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)]"
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
           {label}
-        </span>
+        </div>
         {description ? (
-          <span className="mt-0.5 text-body-xs text-ds-text-neutral-muted-default">
+          <div className="text-body-xs text-ds-text-neutral-muted-default">
             {description}
-          </span>
+          </div>
         ) : null}
       </div>
       <div className="min-w-0 md:justify-self-stretch">{children}</div>
@@ -173,7 +255,27 @@ type WorkspaceSettingSectionId =
   (typeof workspaceSettingSections)[number]['id'];
 
 const tableBoxClassName =
-  'w-full overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default p-0 divide-y divide-ds-border-neutral-subtle-default';
+  'w-full rounded-xl bg-ds-bg-neutral-subtle-default p-0';
+
+function CollectionSummaryTitle({
+  label,
+  count,
+}: {
+  label: string;
+  count: number;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span>{label}</span>
+      <span
+        data-workspace-collection-count
+        className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold tabular-nums text-ds-text-information-strong-default"
+      >
+        {count}
+      </span>
+    </span>
+  );
+}
 
 function WorkspaceSettingsSection({
   id,
@@ -198,7 +300,65 @@ function WorkspaceSettingsSection({
     >
       <SettingsRowGroup>
         <SettingsRow title={title} description={description} action={action}>
-          <div className={cn('w-full', boxClassName)}>{children}</div>
+          <SettingsRowGroup className={cn('w-full', boxClassName)}>
+            {children}
+          </SettingsRowGroup>
+        </SettingsRow>
+      </SettingsRowGroup>
+    </section>
+  );
+}
+
+function WorkspaceCollectionSection({
+  id,
+  title,
+  description,
+  summaryTitle,
+  addLabel,
+  count,
+  emptyState,
+  onAdd,
+  onDeleteAll,
+  children,
+}: {
+  id: WorkspaceSettingSectionId;
+  title: string;
+  description: string;
+  summaryTitle: string;
+  addLabel: string;
+  count: number;
+  emptyState: ReactNode;
+  onAdd: () => void;
+  onDeleteAll: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      data-workspace-settings-section={id}
+      className="scroll-mt-24"
+    >
+      <SettingsRowGroup>
+        <SettingsRow
+          title={title}
+          description={description}
+          action={<AddSectionButton label={addLabel} onClick={onAdd} />}
+        />
+        <SettingsRow
+          title={<CollectionSummaryTitle label={summaryTitle} count={count} />}
+          action={
+            <CollectionActions
+              label={summaryTitle}
+              count={count}
+              onDeleteAll={onDeleteAll}
+            />
+          }
+        >
+          {count === 0 ? (
+            <EmptyRow>{emptyState}</EmptyRow>
+          ) : (
+            <div className="flex w-full min-w-0 flex-col gap-2">{children}</div>
+          )}
         </SettingsRow>
       </SettingsRowGroup>
     </section>
@@ -214,7 +374,10 @@ export function WorkspaceConfigurationEditor({
   presentation = 'page',
   spaceId,
 }: WorkspaceConfigurationEditorProps) {
+  const reduceMotion = Boolean(useReducedMotion());
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [resourceEditor, setResourceEditor] =
+    useState<WorkspaceResourceEditorState | null>(null);
   const [activeSectionId, setActiveSectionId] =
     useState<WorkspaceSettingSectionId>('space-settings-identity');
   const settingsContentRef = useRef<HTMLDivElement>(null);
@@ -246,6 +409,11 @@ export function WorkspaceConfigurationEditor({
     },
     [setDocument]
   );
+  const closeResourceEditor = useCallback(() => setResourceEditor(null), []);
+
+  useEffect(() => {
+    setResourceEditor(null);
+  }, [targetSpaceId]);
 
   const syncActiveSection = useCallback(() => {
     const content = settingsContentRef.current;
@@ -324,11 +492,11 @@ export function WorkspaceConfigurationEditor({
     (sectionId: WorkspaceSettingSectionId) => {
       setActiveSectionId(sectionId);
       globalThis.document.getElementById(sectionId)?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: reduceMotion ? 'auto' : 'smooth',
         block: 'start',
       });
     },
-    []
+    [reduceMotion]
   );
 
   if (!targetSpaceId || !targetSpace) {
@@ -349,15 +517,287 @@ export function WorkspaceConfigurationEditor({
 
   if (!document) {
     return (
-      <main className="flex h-full items-center justify-center gap-3 p-8 text-ds-text-neutral-muted-default">
-        <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
-        Loading Workspace Configuration…
+      <main
+        role="status"
+        aria-label="Loading Workspace Configuration"
+        className={cn(
+          'h-full overflow-y-auto',
+          presentation === 'page' && 'bg-ds-bg-neutral-muted-default',
+          presentation === 'settings' &&
+            'h-auto overflow-visible bg-transparent'
+        )}
+      >
+        <div
+          className={cn(
+            'w-full',
+            presentation === 'page' && 'mx-auto max-w-5xl px-6 py-8'
+          )}
+        >
+          <WorkspaceSettingsSkeleton />
+        </div>
       </main>
     );
   }
 
   const instructions = Object.entries(document.spec.instructions);
   const environmentVariables = workspaceEnvironmentVariables(document);
+  const sectionItemCounts: Partial<Record<WorkspaceSettingSectionId, number>> =
+    {
+      'space-settings-environment': environmentVariables.length,
+      'space-settings-instructions': instructions.length,
+      'space-settings-context': document.spec.context.length,
+      'space-settings-agents': document.spec.agents.length,
+      'space-settings-skills': document.spec.skills.length,
+      'space-settings-connectors': document.spec.connectors.length,
+      'space-settings-mcp-servers': document.spec.mcpServers.length,
+    };
+
+  const openCreateResource = (kind: WorkspaceResourceEditorState['kind']) => {
+    if (kind === 'environment') {
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'editor',
+        item: {
+          name: nextEnvironmentVariableName(document),
+          required: true,
+          sensitive: true,
+        },
+      });
+      return;
+    }
+    if (kind === 'instruction') {
+      const role = nextId('role', Object.keys(document.spec.instructions));
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'editor',
+        item: { role, ref: `bundle://instructions/${role}.md` },
+      });
+      return;
+    }
+    if (kind === 'context') {
+      const id = nextId(
+        'context',
+        document.spec.context.map((item) => item.id)
+      );
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'picker',
+        item: contextDraftForKind(id, 'inline'),
+        queryText: '{}',
+      });
+      return;
+    }
+    if (kind === 'agent') {
+      const id = nextId(
+        'agent',
+        document.spec.agents.map((item) => item.id)
+      );
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'editor',
+        item: { id, role: 'worker', modelProfile: 'default' },
+      });
+      return;
+    }
+    if (kind === 'skill') {
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'picker',
+        item: { ref: '', assignTo: [] },
+      });
+      return;
+    }
+    if (kind === 'connector') {
+      const id = nextId(
+        'connector',
+        document.spec.connectors.map((item) => item.id)
+      );
+      setResourceEditor({
+        kind,
+        mode: 'create',
+        step: 'picker',
+        item: {
+          id,
+          connector: '',
+          connectionSlot: '',
+          requiredGrants: [],
+        },
+      });
+      return;
+    }
+    const id = nextId(
+      'mcp',
+      document.spec.mcpServers.map((item) => item.id)
+    );
+    setResourceEditor({
+      kind: 'mcp',
+      mode: 'create',
+      step: 'picker',
+      item: { id, definition: '', secretSlots: [], assignTo: [] },
+    });
+  };
+
+  const handleResourceEditorChange = (
+    nextEditor: WorkspaceResourceEditorState
+  ) => {
+    const previousEditor = resourceEditor;
+    setResourceEditor(nextEditor);
+    if (
+      !previousEditor ||
+      previousEditor.kind !== nextEditor.kind ||
+      nextEditor.mode !== 'edit'
+    ) {
+      return;
+    }
+
+    update((next) => {
+      if (nextEditor.kind === 'environment' && nextEditor.index !== undefined) {
+        const variables = workspaceEnvironmentVariables(next);
+        next.spec.environment = {
+          variables: variables.map((variable, index) =>
+            index === nextEditor.index ? nextEditor.item : variable
+          ),
+        };
+        return;
+      }
+      if (
+        nextEditor.kind === 'instruction' &&
+        previousEditor.kind === 'instruction'
+      ) {
+        if (previousEditor.item.role !== nextEditor.item.role) {
+          delete next.spec.instructions[previousEditor.item.role];
+        }
+        next.spec.instructions[nextEditor.item.role] = nextEditor.item.ref;
+        return;
+      }
+      if (nextEditor.kind === 'context' && nextEditor.index !== undefined) {
+        next.spec.context[nextEditor.index] = nextEditor.item;
+        return;
+      }
+      if (
+        nextEditor.kind === 'agent' &&
+        previousEditor.kind === 'agent' &&
+        nextEditor.index !== undefined
+      ) {
+        const previousAgent = previousEditor.item;
+        next.spec.agents[nextEditor.index] = nextEditor.item;
+        if (previousAgent.id !== nextEditor.item.id) {
+          next.spec.skills.forEach((skill) => {
+            skill.assignTo = skill.assignTo.map((id) =>
+              id === previousAgent.id ? nextEditor.item.id : id
+            );
+          });
+          next.spec.mcpServers.forEach((server) => {
+            server.assignTo = server.assignTo.map((id) =>
+              id === previousAgent.id ? nextEditor.item.id : id
+            );
+          });
+        }
+        if (
+          previousAgent.role !== nextEditor.item.role &&
+          next.spec.instructions[previousAgent.role] &&
+          !next.spec.instructions[nextEditor.item.role]
+        ) {
+          next.spec.instructions[nextEditor.item.role] =
+            next.spec.instructions[previousAgent.role];
+          delete next.spec.instructions[previousAgent.role];
+        }
+        return;
+      }
+      if (nextEditor.kind === 'skill' && nextEditor.index !== undefined) {
+        next.spec.skills[nextEditor.index] = nextEditor.item;
+        return;
+      }
+      if (nextEditor.kind === 'connector' && nextEditor.index !== undefined) {
+        next.spec.connectors[nextEditor.index] = nextEditor.item;
+        return;
+      }
+      if (nextEditor.kind === 'mcp' && nextEditor.index !== undefined) {
+        next.spec.mcpServers[nextEditor.index] = nextEditor.item;
+      }
+    });
+  };
+
+  const commitNewResource = () => {
+    if (!resourceEditor || resourceEditor.mode !== 'create') return;
+    update((next) => {
+      if (resourceEditor.kind === 'environment') {
+        next.spec.environment = {
+          variables: [
+            ...workspaceEnvironmentVariables(next),
+            resourceEditor.item,
+          ],
+        };
+      } else if (resourceEditor.kind === 'instruction') {
+        next.spec.instructions[resourceEditor.item.role] =
+          resourceEditor.item.ref;
+      } else if (resourceEditor.kind === 'context') {
+        next.spec.context.push(resourceEditor.item);
+      } else if (resourceEditor.kind === 'agent') {
+        next.spec.agents.push(resourceEditor.item);
+      } else if (resourceEditor.kind === 'skill') {
+        next.spec.skills.push(resourceEditor.item);
+      } else if (resourceEditor.kind === 'connector') {
+        next.spec.connectors.push(resourceEditor.item);
+      } else {
+        next.spec.mcpServers.push(resourceEditor.item);
+      }
+    });
+    closeResourceEditor();
+  };
+
+  const deleteEditedResource = () => {
+    if (!resourceEditor || resourceEditor.mode !== 'edit') {
+      closeResourceEditor();
+      return;
+    }
+    update((next) => {
+      if (
+        resourceEditor.kind === 'environment' &&
+        resourceEditor.index !== undefined
+      ) {
+        next.spec.environment = {
+          variables: workspaceEnvironmentVariables(next).filter(
+            (_variable, index) => index !== resourceEditor.index
+          ),
+        };
+      } else if (resourceEditor.kind === 'instruction') {
+        delete next.spec.instructions[resourceEditor.item.role];
+      } else if (
+        resourceEditor.kind === 'context' &&
+        resourceEditor.index !== undefined
+      ) {
+        next.spec.context.splice(resourceEditor.index, 1);
+      } else if (
+        resourceEditor.kind === 'agent' &&
+        resourceEditor.index !== undefined
+      ) {
+        removeAgentReferences(next, resourceEditor.item.id);
+        next.spec.agents.splice(resourceEditor.index, 1);
+      } else if (
+        resourceEditor.kind === 'skill' &&
+        resourceEditor.index !== undefined
+      ) {
+        next.spec.skills.splice(resourceEditor.index, 1);
+      } else if (
+        resourceEditor.kind === 'connector' &&
+        resourceEditor.index !== undefined
+      ) {
+        next.spec.connectors.splice(resourceEditor.index, 1);
+      } else if (
+        resourceEditor.kind === 'mcp' &&
+        resourceEditor.index !== undefined
+      ) {
+        next.spec.mcpServers.splice(resourceEditor.index, 1);
+      }
+    });
+    closeResourceEditor();
+  };
 
   return (
     <main
@@ -396,75 +836,82 @@ export function WorkspaceConfigurationEditor({
           </header>
         ) : null}
 
-        <SettingsSectionPage className="md:grid md:grid-cols-[300px_minmax(0,1fr)] md:items-start md:gap-6">
+        <SettingsSectionPage className="md:grid md:grid-cols-[180px_minmax(0,1fr)] md:items-start md:gap-6">
           <aside
-            aria-label="Space identity profile"
+            aria-label="Space settings navigation"
             className={cn(
-              'w-full min-w-0 md:sticky md:w-[300px]',
+              'w-full min-w-0 md:sticky md:w-[180px]',
               presentation === 'settings' ? 'md:top-16' : 'md:top-4'
             )}
           >
-            <div className="w-full min-w-0 rounded-2xl bg-ds-bg-neutral-default-default p-4">
-              <div className="flex min-w-0 flex-col gap-2 px-2">
-                <div className="flex h-7 min-w-0 items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
-                    Profile
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    buttonContent="icon-only"
-                    buttonRadius="full"
-                    aria-label="Share workspace bundle"
-                    title="Share workspace bundle"
-                    onClick={() => setSaveDialogOpen(true)}
-                    disabled={!draft?.persisted || saveState !== 'saved'}
-                  >
-                    <ShareIcon className="h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-
-                <span
-                  className="block min-w-0 truncate text-body-md font-bold text-ds-text-neutral-default-default"
-                  title={document.metadata.name}
-                >
-                  {document.metadata.name}
-                </span>
-              </div>
-
-              <nav
-                aria-label="Space settings sections"
-                className="mt-4 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default pt-4"
+            <nav
+              aria-label="Space settings sections"
+              className="w-full min-w-0 rounded-2xl bg-ds-bg-neutral-default-default p-1"
+            >
+              <ul
+                data-workspace-settings-tab-list
+                className="m-0 list-none space-y-0.5 p-0"
               >
-                <ul
-                  data-workspace-settings-tab-list
-                  className="m-0 list-none space-y-0.5 p-0"
-                >
-                  {workspaceSettingSections.map((section) => {
-                    const active = activeSectionId === section.id;
-                    return (
-                      <li key={section.id} className="m-0 list-none p-0">
-                        <button
-                          type="button"
-                          className={sidebarTabButtonClass(active)}
-                          data-workspace-settings-tab={section.id}
-                          aria-current={active ? 'location' : undefined}
-                          onClick={() => scrollToSection(section.id)}
-                        >
-                          <span className={SIDEBAR_TAB_LABEL_CLASS}>
-                            {section.label}
+                {workspaceSettingSections.map((section) => {
+                  const active = activeSectionId === section.id;
+                  const itemCount = sectionItemCounts[section.id];
+                  return (
+                    <li key={section.id} className="m-0 list-none p-0">
+                      <button
+                        type="button"
+                        className={sidebarTabButtonClass(active)}
+                        data-workspace-settings-tab={section.id}
+                        aria-current={active ? 'location' : undefined}
+                        onClick={() => scrollToSection(section.id)}
+                      >
+                        <span className={SIDEBAR_TAB_LABEL_CLASS}>
+                          {section.label}
+                        </span>
+                        {itemCount !== undefined ? (
+                          <span
+                            data-workspace-settings-tab-count={section.id}
+                            aria-hidden
+                            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-lg bg-ds-bg-information-subtle-default px-1.5 text-label-xs font-bold tabular-nums text-ds-text-information-strong-default"
+                          >
+                            {itemCount}
                           </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </nav>
-            </div>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
           </aside>
 
-          <div ref={settingsContentRef} className="min-w-0 space-y-4">
+          <div
+            ref={settingsContentRef}
+            data-workspace-settings-content
+            className="relative min-w-0 space-y-4 [&>[data-workspace-resource-panel-anchor]+*]:!mt-0"
+          >
+            <AnimatePresence initial={false}>
+              {resourceEditor ? (
+                <div
+                  key="workspace-resource-panel"
+                  data-workspace-resource-panel-anchor
+                  className={cn(
+                    'pointer-events-none sticky z-40 h-0 min-w-0',
+                    presentation === 'settings' ? 'top-16' : 'top-4'
+                  )}
+                >
+                  <WorkspaceResourceEditorPanel
+                    editor={resourceEditor}
+                    document={document}
+                    saveState={saveState}
+                    onChange={handleResourceEditorChange}
+                    onClose={closeResourceEditor}
+                    onCommit={commitNewResource}
+                    onDelete={deleteEditedResource}
+                  />
+                </div>
+              ) : null}
+            </AnimatePresence>
+
             {error ? (
               <div className="flex items-center justify-between gap-4 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-body-sm text-ds-text-error-strong-default">
                 <span>{error}</span>
@@ -479,14 +926,62 @@ export function WorkspaceConfigurationEditor({
               </div>
             ) : null}
 
+            <section data-workspace-profile-status-section>
+              <SettingsRowGroup
+                data-testid="profile-status-settings-group"
+                className="w-full"
+              >
+                <SettingRow label={`Draft version ${draft?.version ?? 0}`}>
+                  <div className="flex min-h-10 items-center justify-end gap-2">
+                    <span className="text-body-sm text-ds-text-neutral-muted-default">
+                      {saveState === 'saving'
+                        ? 'Saving…'
+                        : saveState === 'saved'
+                          ? 'Saved'
+                          : saveState === 'needs_attention'
+                            ? 'Needs attention'
+                            : 'Local draft'}
+                    </span>
+                    {saveState === 'needs_attention' ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={retrySave}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                  </div>
+                </SettingRow>
+                <SettingRow label="Profile">
+                  <div className="flex min-h-10 items-center justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      buttonContent="icon-only"
+                      buttonRadius="full"
+                      aria-label="Share workspace bundle"
+                      title="Share workspace bundle"
+                      onClick={() => setSaveDialogOpen(true)}
+                      disabled={!draft?.persisted || saveState !== 'saved'}
+                    >
+                      <ShareIcon className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </div>
+                </SettingRow>
+              </SettingsRowGroup>
+            </section>
+
             <section
               id="space-settings-identity"
               data-workspace-settings-section="space-settings-identity"
               className="scroll-mt-24"
             >
-              <div
+              <SettingsRowGroup
                 data-testid="identity-settings-group"
-                className="w-full divide-y divide-ds-border-neutral-subtle-default overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default"
+                className="w-full"
               >
                 <SettingRow
                   label="Bundle name"
@@ -595,73 +1090,25 @@ export function WorkspaceConfigurationEditor({
                     </SelectContent>
                   </Select>
                 </SettingRow>
-              </div>
+              </SettingsRowGroup>
             </section>
 
             <WorkspaceSettingsSection
               id="space-settings-model"
               title="Model"
-              description="Set the default model and reasoning effort inherited by this Space."
-              boxClassName={tableBoxClassName}
-            >
-              <SettingRow label="Default model reference">
-                <Input
-                  value={document.spec.models.default.modelRef}
-                  aria-label="Default model reference"
-                  onChange={(event) =>
-                    update((next) => {
-                      next.spec.models.default.modelRef = event.target.value;
-                    })
-                  }
-                />
-              </SettingRow>
-              <SettingRow label="Thinking effort">
-                <Select
-                  value={document.spec.models.default.thinkingEffort}
-                  onValueChange={(value) =>
-                    update((next) => {
-                      next.spec.models.default.thinkingEffort =
-                        value as ThinkingEffort;
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    aria-label="Thinking effort"
-                    wrapperClassName="w-full"
-                    className="w-full"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="xhigh">Extra high</SelectItem>
-                      <SelectItem value="max">Max</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-            </WorkspaceSettingsSection>
-
-            <WorkspaceSettingsSection
-              id="space-settings-environment"
-              title="Environment"
-              description="Declare portable variable names only; local and secret values are never shared."
+              description="Define reusable model profiles for the agents in this Space."
               action={
                 <AddSectionButton
+                  label="Add profile"
                   onClick={() =>
                     update((next) => {
-                      next.spec.environment = {
-                        variables: [
-                          ...workspaceEnvironmentVariables(next),
-                          {
-                            name: nextEnvironmentVariableName(next),
-                            required: true,
-                            sensitive: true,
-                          },
-                        ],
+                      const profileName = nextId(
+                        'model',
+                        Object.keys(next.spec.models)
+                      );
+                      next.spec.models[profileName] = {
+                        modelRef: 'provider://default',
+                        thinkingEffort: 'medium',
                       };
                     })
                   }
@@ -669,564 +1116,398 @@ export function WorkspaceConfigurationEditor({
               }
               boxClassName={tableBoxClassName}
             >
-              <EnvironmentRequirementsEditor
-                variables={environmentVariables}
-                showAddAction={false}
-                onChange={(variables) =>
-                  update((next) => {
-                    next.spec.environment = { variables };
-                  })
-                }
-              />
-            </WorkspaceSettingsSection>
-
-            <WorkspaceSettingsSection
-              id="space-settings-instructions"
-              title="Instructions"
-              description="Assign versioned instruction assets to workforce roles."
-              action={
-                <AddSectionButton
-                  onClick={() =>
-                    update((next) => {
-                      const role = nextId(
-                        'role',
-                        Object.keys(next.spec.instructions)
-                      );
-                      next.spec.instructions[role] =
-                        `bundle://instructions/${role}.md`;
-                    })
-                  }
-                />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {instructions.length === 0 ? (
-                <EmptyRow>
-                  Add an instruction asset for a coordinator or worker role.
-                </EmptyRow>
-              ) : (
-                instructions.map(([role, ref], index) => (
-                  <SettingRow key={role} label={`Instruction ${index + 1}`}>
-                    <div className="grid items-end gap-2 md:grid-cols-[1fr_2fr_auto]">
+              {Object.entries(document.spec.models).map(
+                ([profileName, profile]) => (
+                  <SettingRow
+                    key={profileName}
+                    label={humanizeIdentifier(profileName)}
+                    description={
+                      profileName === 'default'
+                        ? 'Inherited when an agent has no custom profile.'
+                        : 'Available to assign from the agent editor.'
+                    }
+                  >
+                    <div className="grid w-full items-end gap-2 xl:grid-cols-[1fr_2fr_1fr_auto]">
                       <Input
-                        title="Role"
-                        value={role}
+                        title="Profile name"
+                        value={profileName}
+                        disabled={profileName === 'default'}
                         onChange={(event) => {
                           const replacement = event.target.value;
                           update((next) => {
-                            const value = next.spec.instructions[role];
-                            delete next.spec.instructions[role];
-                            next.spec.instructions[replacement] = value;
+                            const current = next.spec.models[profileName];
+                            delete next.spec.models[profileName];
+                            next.spec.models[replacement] = current;
+                            next.spec.agents.forEach((agent) => {
+                              if (agent.modelProfile === profileName) {
+                                agent.modelProfile = replacement;
+                              }
+                            });
                           });
                         }}
                       />
                       <Input
-                        title="Instruction asset"
-                        value={ref}
+                        title="Model reference"
+                        value={profile.modelRef}
+                        aria-label={`${profileName} model reference`}
                         onChange={(event) =>
                           update((next) => {
-                            next.spec.instructions[role] = event.target.value;
+                            next.spec.models[profileName].modelRef =
+                              event.target.value;
                           })
                         }
                       />
-                      <RemoveButton
-                        label={`Remove ${role} instructions`}
-                        onClick={() =>
+                      <Select
+                        value={profile.thinkingEffort}
+                        onValueChange={(value) =>
                           update((next) => {
-                            delete next.spec.instructions[role];
+                            next.spec.models[profileName].thinkingEffort =
+                              value as ThinkingEffort;
                           })
                         }
-                      />
-                    </div>
-                  </SettingRow>
-                ))
-              )}
-            </WorkspaceSettingsSection>
-
-            <WorkspaceSettingsSection
-              id="space-settings-context"
-              title="Context"
-              description="Declare shareable context or named local path slots."
-              action={
-                <AddSectionButton
-                  onClick={() =>
-                    update((next) => {
-                      const id = nextId(
-                        'context',
-                        next.spec.context.map((item) => item.id)
-                      );
-                      next.spec.context.push({
-                        id,
-                        kind: 'inline',
-                        content: '',
-                        sharing: 'reference_only',
-                      });
-                    })
-                  }
-                />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {document.spec.context.length === 0 ? (
-                <EmptyRow>No workspace context is configured yet.</EmptyRow>
-              ) : (
-                document.spec.context.map((item, index) => (
-                  <SettingRow
-                    key={`${item.id}-${index}`}
-                    label={item.id || `Context ${index + 1}`}
-                  >
-                    <div className="space-y-3">
-                      <div className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto]">
-                        <Input
-                          title="Context id"
-                          value={item.id}
-                          onChange={(event) =>
-                            update((next) => {
-                              next.spec.context[index].id = event.target.value;
-                            })
-                          }
-                        />
-                        <Select
-                          value={item.kind}
-                          onValueChange={(value) =>
-                            update((next) => {
-                              const kind =
-                                value as WorkspaceContextSource['kind'];
-                              next.spec.context[index] = {
-                                id: next.spec.context[index].id,
-                                kind,
-                                ...(kind === 'inline'
-                                  ? { content: '' }
-                                  : kind === 'local_path_slot'
-                                    ? { slot: 'workspace_folder' }
-                                    : kind === 'bundle_asset'
-                                      ? {
-                                          path: 'bundle://context/context.md',
-                                        }
-                                      : {}),
-                                sharing: 'reference_only',
-                              };
-                            })
-                          }
+                      >
+                        <SelectTrigger
+                          title="Thinking effort"
+                          aria-label={`${profileName} thinking effort`}
+                          wrapperClassName="w-full"
+                          className="w-full"
                         >
-                          <SelectTrigger
-                            title="Kind"
-                            wrapperClassName="w-full"
-                            className="w-full"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="inline">Inline</SelectItem>
-                              <SelectItem value="local_path_slot">
-                                Local path slot
-                              </SelectItem>
-                              <SelectItem value="bundle_asset">
-                                Bundle asset
-                              </SelectItem>
-                              <SelectItem value="artifact_ref">
-                                Artifact reference
-                              </SelectItem>
-                              <SelectItem value="memory_scope">
-                                Memory scope
-                              </SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="xhigh">Extra high</SelectItem>
+                            <SelectItem value="max">Max</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      {profileName === 'default' ? (
+                        <span className="h-9 w-9" aria-hidden />
+                      ) : (
                         <RemoveButton
-                          label={`Remove context ${item.id}`}
+                          label={`Remove model profile ${profileName}`}
                           onClick={() =>
                             update((next) => {
-                              next.spec.context.splice(index, 1);
-                            })
-                          }
-                        />
-                      </div>
-                      {item.kind === 'inline' ? (
-                        <Textarea
-                          variant="enhanced"
-                          title="Content"
-                          value={item.content || ''}
-                          onChange={(event) =>
-                            update((next) => {
-                              next.spec.context[index].content =
-                                event.target.value;
-                            })
-                          }
-                        />
-                      ) : (
-                        <Input
-                          title={
-                            item.kind === 'local_path_slot'
-                              ? 'Slot name'
-                              : 'Logical reference'
-                          }
-                          value={
-                            item.kind === 'local_path_slot'
-                              ? item.slot || ''
-                              : item.path || ''
-                          }
-                          onChange={(event) =>
-                            update((next) => {
-                              if (
-                                next.spec.context[index].kind ===
-                                'local_path_slot'
-                              ) {
-                                next.spec.context[index].slot =
-                                  event.target.value;
-                              } else {
-                                next.spec.context[index].path =
-                                  event.target.value;
-                              }
+                              delete next.spec.models[profileName];
+                              next.spec.agents.forEach((agent) => {
+                                if (agent.modelProfile === profileName) {
+                                  agent.modelProfile = 'default';
+                                }
+                              });
                             })
                           }
                         />
                       )}
                     </div>
                   </SettingRow>
-                ))
+                )
               )}
             </WorkspaceSettingsSection>
 
-            <WorkspaceSettingsSection
+            <WorkspaceCollectionSection
+              id="space-settings-environment"
+              title="Environment"
+              description="Declare portable variable names only; local and secret values are never shared."
+              summaryTitle="Environment variables"
+              addLabel="Add variable"
+              count={environmentVariables.length}
+              emptyState="No environment variables are required."
+              onAdd={() => openCreateResource('environment')}
+              onDeleteAll={() => {
+                update((next) => {
+                  next.spec.environment = { variables: [] };
+                });
+              }}
+            >
+              {environmentVariables.map((variable, index) => (
+                <WorkspaceResourceListItem
+                  key={`${variable.name}-${index}`}
+                  leading={<KeyRound className="h-4 w-4" aria-hidden />}
+                  title={variable.name || `Variable ${index + 1}`}
+                  subtitle={variable.description || 'No description'}
+                  meta={`${variable.required ? 'Required' : 'Optional'}${variable.sensitive ? ' · Sensitive' : ''}`}
+                  editLabel={`Edit ${variable.name || `variable ${index + 1}`}`}
+                  deleteLabel={`Remove ${variable.name || `variable ${index + 1}`}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'environment',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item: variable,
+                    })
+                  }
+                  onDelete={() =>
+                    update((next) => {
+                      next.spec.environment = {
+                        variables: workspaceEnvironmentVariables(next).filter(
+                          (_variable, variableIndex) => variableIndex !== index
+                        ),
+                      };
+                    })
+                  }
+                />
+              ))}
+            </WorkspaceCollectionSection>
+
+            <WorkspaceCollectionSection
+              id="space-settings-instructions"
+              title="Instructions"
+              description="Assign versioned instruction assets to workforce roles."
+              summaryTitle="Instruction assets"
+              addLabel="Add instruction"
+              count={instructions.length}
+              emptyState="Add an instruction asset for a coordinator or worker role."
+              onAdd={() => openCreateResource('instruction')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.instructions = {};
+                })
+              }
+            >
+              {instructions.map(([role, ref]) => (
+                <WorkspaceResourceListItem
+                  key={role}
+                  leading={<FileText className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(role)}
+                  subtitle={ref}
+                  meta="Instruction"
+                  editLabel={`Edit ${role} instructions`}
+                  deleteLabel={`Remove ${role} instructions`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'instruction',
+                      mode: 'edit',
+                      step: 'editor',
+                      item: { role, ref },
+                    })
+                  }
+                  onDelete={() =>
+                    update((next) => {
+                      delete next.spec.instructions[role];
+                    })
+                  }
+                />
+              ))}
+            </WorkspaceCollectionSection>
+
+            <WorkspaceCollectionSection
+              id="space-settings-context"
+              title="Context"
+              description="Declare shareable context or named local path slots."
+              summaryTitle="Context items"
+              addLabel="Add context"
+              count={document.spec.context.length}
+              emptyState="No workspace context is configured yet."
+              onAdd={() => openCreateResource('context')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.context = [];
+                })
+              }
+            >
+              {document.spec.context.map((item, index) => (
+                <WorkspaceResourceListItem
+                  key={`${item.id}-${index}`}
+                  leading={<FileText className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(item.id)}
+                  subtitle={`${humanizeIdentifier(item.kind)} · ${humanizeIdentifier(item.sharing || 'reference_only')}`}
+                  meta="Context"
+                  editLabel={`Edit context ${item.id}`}
+                  deleteLabel={`Remove context ${item.id}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'context',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item,
+                      queryText: JSON.stringify(item.query || {}, null, 2),
+                    })
+                  }
+                  onDelete={() =>
+                    update((next) => {
+                      next.spec.context.splice(index, 1);
+                    })
+                  }
+                />
+              ))}
+            </WorkspaceCollectionSection>
+
+            <WorkspaceCollectionSection
               id="space-settings-agents"
               title="Agents"
               description="Define the workforce roles available in this Space."
-              action={
-                <AddSectionButton
-                  onClick={() =>
+              summaryTitle="Configured agents"
+              addLabel="Add agent"
+              count={document.spec.agents.length}
+              emptyState="No agents configured."
+              onAdd={() => openCreateResource('agent')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.agents.forEach((agent) =>
+                    removeAgentReferences(next, agent.id)
+                  );
+                  next.spec.agents = [];
+                })
+              }
+            >
+              {document.spec.agents.map((item, index) => (
+                <WorkspaceResourceListItem
+                  key={`${item.id}-${index}`}
+                  leading={<Bot className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(item.id)}
+                  subtitle={`${humanizeIdentifier(item.role)} · ${humanizeIdentifier(item.modelProfile)} model`}
+                  meta={`${document.spec.skills.filter((skill) => skill.assignTo.includes(item.id)).length + document.spec.mcpServers.filter((server) => server.assignTo.includes(item.id)).length} assigned`}
+                  editLabel={`Edit agent ${item.id}`}
+                  deleteLabel={`Remove agent ${item.id}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'agent',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item,
+                    })
+                  }
+                  onDelete={() =>
                     update((next) => {
-                      const id = nextId(
-                        'agent',
-                        next.spec.agents.map((item) => item.id)
-                      );
-                      next.spec.agents.push({
-                        id,
-                        role: 'worker',
-                        modelProfile: 'default',
-                      });
+                      removeAgentReferences(next, item.id);
+                      next.spec.agents.splice(index, 1);
                     })
                   }
                 />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {document.spec.agents.length === 0 ? (
-                <EmptyRow>No agents configured.</EmptyRow>
-              ) : (
-                document.spec.agents.map((item, index) => (
-                  <SettingRow
-                    key={`${item.id}-${index}`}
-                    label={item.id || `Agent ${index + 1}`}
-                  >
-                    <div className="grid items-end gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
-                      <Input
-                        title="Agent id"
-                        value={item.id}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.agents[index].id = event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Role"
-                        value={item.role}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.agents[index].role = event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Model profile"
-                        value={item.modelProfile}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.agents[index].modelProfile =
-                              event.target.value;
-                          })
-                        }
-                      />
-                      <RemoveButton
-                        label={`Remove agent ${item.id}`}
-                        onClick={() =>
-                          update((next) => {
-                            next.spec.agents.splice(index, 1);
-                          })
-                        }
-                      />
-                    </div>
-                  </SettingRow>
-                ))
-              )}
-            </WorkspaceSettingsSection>
+              ))}
+            </WorkspaceCollectionSection>
 
-            <WorkspaceSettingsSection
+            <WorkspaceCollectionSection
               id="space-settings-skills"
               title="Skills"
               description="Assign portable skill packages to workforce roles."
-              action={
-                <AddSectionButton
-                  onClick={() =>
+              summaryTitle="Assigned skills"
+              addLabel="Add skill"
+              count={document.spec.skills.length}
+              emptyState="No skills assigned."
+              onAdd={() => openCreateResource('skill')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.skills = [];
+                })
+              }
+            >
+              {document.spec.skills.map((item, index) => (
+                <WorkspaceResourceListItem
+                  key={`${item.ref}-${index}`}
+                  leading={<Package className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(item.ref)}
+                  subtitle={`${resourceVersion(item.ref) || 'Bundle skill'} · ${item.assignTo.length ? `Assigned to ${item.assignTo.map(humanizeIdentifier).join(', ')}` : 'Not assigned'}`}
+                  meta={`${item.assignTo.length} agents`}
+                  editLabel={`Edit skill ${item.ref}`}
+                  deleteLabel={`Remove skill ${item.ref}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'skill',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item,
+                    })
+                  }
+                  onDelete={() =>
                     update((next) => {
-                      const id = next.spec.skills.length + 1;
-                      next.spec.skills.push({
-                        ref: `bundle://skills/skill_${id}`,
-                        assignTo: [],
-                      });
+                      next.spec.skills.splice(index, 1);
                     })
                   }
                 />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {document.spec.skills.length === 0 ? (
-                <EmptyRow>No skills assigned.</EmptyRow>
-              ) : (
-                document.spec.skills.map((item, index) => (
-                  <SettingRow
-                    key={`${item.ref}-${index}`}
-                    label={`Skill ${index + 1}`}
-                  >
-                    <div className="grid items-end gap-2 md:grid-cols-[2fr_1fr_auto]">
-                      <Input
-                        title="Skill reference"
-                        value={item.ref}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.skills[index].ref = event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Assign to"
-                        value={item.assignTo.join(', ')}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.skills[index].assignTo = csv(
-                              event.target.value
-                            );
-                          })
-                        }
-                      />
-                      <RemoveButton
-                        label={`Remove skill ${item.ref}`}
-                        onClick={() =>
-                          update((next) => {
-                            next.spec.skills.splice(index, 1);
-                          })
-                        }
-                      />
-                    </div>
-                  </SettingRow>
-                ))
-              )}
-            </WorkspaceSettingsSection>
+              ))}
+            </WorkspaceCollectionSection>
 
-            <WorkspaceSettingsSection
+            <WorkspaceCollectionSection
               id="space-settings-connectors"
               title="Connectors"
               description="Declare connection slots and required grants without storing credentials."
-              action={
-                <AddSectionButton
-                  onClick={() =>
+              summaryTitle="Connector requirements"
+              addLabel="Add connector"
+              count={document.spec.connectors.length}
+              emptyState="No connector requirements."
+              onAdd={() => openCreateResource('connector')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.connectors = [];
+                })
+              }
+            >
+              {document.spec.connectors.map((item, index) => (
+                <WorkspaceResourceListItem
+                  key={`${item.id}-${index}`}
+                  leading={<Cable className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(item.connector)}
+                  subtitle={`${humanizeIdentifier(item.id)} · ${item.requiredGrants.length} required grants`}
+                  meta={humanizeIdentifier(item.connectionSlot)}
+                  editLabel={`Edit connector ${item.id}`}
+                  deleteLabel={`Remove connector ${item.id}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'connector',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item,
+                    })
+                  }
+                  onDelete={() =>
                     update((next) => {
-                      const id = nextId(
-                        'connector',
-                        next.spec.connectors.map((item) => item.id)
-                      );
-                      next.spec.connectors.push({
-                        id,
-                        connector: id,
-                        connectionSlot: `${id}_connection`,
-                        requiredGrants: [],
-                      });
+                      next.spec.connectors.splice(index, 1);
                     })
                   }
                 />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {document.spec.connectors.length === 0 ? (
-                <EmptyRow>No connector requirements.</EmptyRow>
-              ) : (
-                document.spec.connectors.map((item, index) => (
-                  <SettingRow
-                    key={`${item.id}-${index}`}
-                    label={item.id || `Connector ${index + 1}`}
-                  >
-                    <div className="grid items-end gap-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-                      <Input
-                        title="Id"
-                        value={item.id}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.connectors[index].id = event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Connector"
-                        value={item.connector}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.connectors[index].connector =
-                              event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Connection slot"
-                        value={item.connectionSlot}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.connectors[index].connectionSlot =
-                              event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Required grants"
-                        value={item.requiredGrants.join(', ')}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.connectors[index].requiredGrants = csv(
-                              event.target.value
-                            );
-                          })
-                        }
-                      />
-                      <RemoveButton
-                        label={`Remove connector ${item.id}`}
-                        onClick={() =>
-                          update((next) => {
-                            next.spec.connectors.splice(index, 1);
-                          })
-                        }
-                      />
-                    </div>
-                  </SettingRow>
-                ))
-              )}
-            </WorkspaceSettingsSection>
+              ))}
+            </WorkspaceCollectionSection>
 
-            <WorkspaceSettingsSection
+            <WorkspaceCollectionSection
               id="space-settings-mcp-servers"
               title="MCP servers"
               description="Configure portable MCP definitions and local secret slots."
-              action={
-                <AddSectionButton
-                  onClick={() =>
+              summaryTitle="Configured MCP servers"
+              addLabel="Add MCP server"
+              count={document.spec.mcpServers.length}
+              emptyState="No MCP servers."
+              onAdd={() => openCreateResource('mcp')}
+              onDeleteAll={() =>
+                update((next) => {
+                  next.spec.mcpServers = [];
+                })
+              }
+            >
+              {document.spec.mcpServers.map((item, index) => (
+                <WorkspaceResourceListItem
+                  key={`${item.id}-${index}`}
+                  leading={<Server className="h-4 w-4" aria-hidden />}
+                  title={humanizeIdentifier(item.id)}
+                  subtitle={`${humanizeIdentifier(item.definition)} · ${item.assignTo.length ? `Assigned to ${item.assignTo.map(humanizeIdentifier).join(', ')}` : 'Not assigned'}`}
+                  meta={`${item.secretSlots.length} secret slots`}
+                  editLabel={`Edit MCP ${item.id}`}
+                  deleteLabel={`Remove MCP ${item.id}`}
+                  onEdit={() =>
+                    setResourceEditor({
+                      kind: 'mcp',
+                      mode: 'edit',
+                      step: 'editor',
+                      index,
+                      item,
+                    })
+                  }
+                  onDelete={() =>
                     update((next) => {
-                      const id = nextId(
-                        'mcp',
-                        next.spec.mcpServers.map((item) => item.id)
-                      );
-                      next.spec.mcpServers.push({
-                        id,
-                        definition: `bundle://mcp/${id}.json`,
-                        secretSlots: [],
-                        assignTo: [],
-                      });
+                      next.spec.mcpServers.splice(index, 1);
                     })
                   }
                 />
-              }
-              boxClassName={tableBoxClassName}
-            >
-              {document.spec.mcpServers.length === 0 ? (
-                <EmptyRow>No MCP servers.</EmptyRow>
-              ) : (
-                document.spec.mcpServers.map((item, index) => (
-                  <SettingRow
-                    key={`${item.id}-${index}`}
-                    label={item.id || `MCP server ${index + 1}`}
-                  >
-                    <div className="grid items-end gap-2 xl:grid-cols-[1fr_2fr_1fr_1fr_auto]">
-                      <Input
-                        title="Id"
-                        value={item.id}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.mcpServers[index].id = event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Definition"
-                        value={item.definition}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.mcpServers[index].definition =
-                              event.target.value;
-                          })
-                        }
-                      />
-                      <Input
-                        title="Secret slots"
-                        value={item.secretSlots.join(', ')}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.mcpServers[index].secretSlots = csv(
-                              event.target.value
-                            );
-                          })
-                        }
-                      />
-                      <Input
-                        title="Assign to"
-                        value={item.assignTo.join(', ')}
-                        onChange={(event) =>
-                          update((next) => {
-                            next.spec.mcpServers[index].assignTo = csv(
-                              event.target.value
-                            );
-                          })
-                        }
-                      />
-                      <RemoveButton
-                        label={`Remove MCP ${item.id}`}
-                        onClick={() =>
-                          update((next) => {
-                            next.spec.mcpServers.splice(index, 1);
-                          })
-                        }
-                      />
-                    </div>
-                  </SettingRow>
-                ))
-              )}
-            </WorkspaceSettingsSection>
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
-              <div className="flex min-w-0 items-center gap-2">
-                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
-                <span>
-                  Draft version {draft?.version ?? 0} is stored locally. Secret
-                  values and physical paths are excluded.
-                </span>
-              </div>
-              <span className="shrink-0">
-                {saveState === 'saving'
-                  ? 'Saving…'
-                  : saveState === 'saved'
-                    ? 'Saved'
-                    : saveState === 'needs_attention'
-                      ? 'Needs attention'
-                      : 'Local draft'}
-              </span>
-              {saveState === 'needs_attention' ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={retrySave}
-                >
-                  Retry
-                </Button>
-              ) : null}
-            </div>
+              ))}
+            </WorkspaceCollectionSection>
           </div>
         </SettingsSectionPage>
 

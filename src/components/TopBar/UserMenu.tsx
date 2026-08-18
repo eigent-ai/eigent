@@ -32,10 +32,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { shellBackState } from '@/hooks/useShellBackTarget';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
-import { isSettingsRoutePath } from '@/lib/shellRoutes';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
