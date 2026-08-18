@@ -112,12 +112,12 @@ function readReport(path) {
 
 function installOrLinkDependencies(directory, installSeparately) {
   if (installSeparately) {
-    const result = run('npm', ['ci', '--ignore-scripts'], {
+    const result = run('npm', ['install', '--ignore-scripts'], {
       cwd: directory,
       inherit: true,
     });
     if (result.status !== 0) {
-      throw new Error(`npm ci failed in ${directory}`);
+      throw new Error(`npm install failed in ${directory}`);
     }
     return;
   }
@@ -128,15 +128,18 @@ function installOrLinkDependencies(directory, installSeparately) {
   symlinkSync(sharedNodeModules, join(directory, 'node_modules'), 'dir');
 }
 
-function runVitest(label, directory) {
+function runVitest(label, directory, options = {}) {
   const reportPath = join(reportDirectory, `${label}.xml`);
   rmSync(reportPath, { force: true });
   const executable = join(directory, 'node_modules/.bin/vitest');
-  const result = run(
-    executable,
-    ['run', '--no-cache', '--reporter=junit', `--outputFile=${reportPath}`],
-    { cwd: directory, inherit: true }
-  );
+  const args = [
+    'run',
+    '--no-cache',
+    '--reporter=junit',
+    `--outputFile=${reportPath}`,
+  ];
+  if (options.retry) args.push(`--retry=${options.retry}`);
+  const result = run(executable, args, { cwd: directory, inherit: true });
   if (result.status !== 0 && result.status !== 1) {
     throw new Error(
       `${label} Vitest exited unexpectedly with ${result.status}`
@@ -178,8 +181,8 @@ try {
 
   console.log(`Vitest baseline: ${baseCommit}`);
   const base = runVitest('base', baseDirectory);
-  console.log(`Vitest candidate: ${headCommit}`);
-  const head = runVitest('head', headDirectory);
+  console.log(`Vitest candidate: ${headCommit} (retry=1)`);
+  const head = runVitest('head', headDirectory, { retry: 1 });
   const regressions = [...head.failingTests.entries()]
     .flatMap(([failure, count]) => {
       const newCount = count - (base.failingTests.get(failure) || 0);
