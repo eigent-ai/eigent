@@ -562,6 +562,90 @@ describe('buildProjectSessionPanelData', () => {
     ).toEqual([]);
   });
 
+  it('shows a trusted realtime write and converges on its terminal artifact', () => {
+    const liveDecision = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'write_file',
+          data: {
+            file_path: '/private/run/reports/summary.md',
+            relative_path: 'reports/summary.md',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-current',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+    expect(liveDecision).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'artifact',
+        path: 'reports/summary.md',
+        relativePath: 'reports/summary.md',
+      },
+    });
+    if (liveDecision.kind !== 'display') {
+      throw new Error('Expected artifact node');
+    }
+
+    const liveData = buildProjectSessionPanelData(
+      [makeRun('run-current', true, [liveDecision.node])],
+      []
+    );
+    expect(liveData.files).toMatchObject([
+      {
+        id: 'reports/summary.md',
+        previewable: false,
+        taskId: 'run-current',
+        file: { relativePath: 'reports/summary.md' },
+      },
+    ]);
+
+    const terminalArtifact: ChatArtifactNode = {
+      ...baseNode('run-current', 'artifact-terminal', 2),
+      eventType: 'artifact.created',
+      kind: 'artifact',
+      operation: 'created',
+      artifactId: 'artifact-summary',
+      path: 'reports/summary.md',
+      relativePath: 'reports/summary.md',
+      name: 'summary.md',
+    };
+    const finalized = buildProjectSessionPanelData(
+      [makeRun('run-current', true, [liveDecision.node, terminalArtifact])],
+      []
+    );
+
+    expect(finalized.files).toHaveLength(1);
+    expect(finalized.files[0]).toMatchObject({
+      id: 'artifact-summary',
+      file: {
+        artifactId: 'artifact-summary',
+        relativePath: 'reports/summary.md',
+      },
+    });
+    expect(
+      mergeProjectFiles(finalized.files, [
+        {
+          name: 'summary.md',
+          type: 'md',
+          path: '/workspace/reports/summary.md',
+          relativePath: 'reports/summary.md',
+        },
+      ])
+    ).toMatchObject([
+      {
+        previewable: true,
+        file: { path: '/workspace/reports/summary.md' },
+      },
+    ]);
+  });
+
   it('quarantines workspace-loaded todo state without a todo_write call', () => {
     const staleStartupPlan: ChatPlanNode = {
       ...baseNode('run-current', 'stale-todos', 2),

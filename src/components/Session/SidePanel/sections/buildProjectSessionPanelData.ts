@@ -685,6 +685,23 @@ function artifactIdentity(
   return null;
 }
 
+function fileEntryForRunRelativePath(
+  files: Map<string, SessionFileItem>,
+  runId: string,
+  relativePath: string
+): [string, SessionFileItem] | null {
+  for (const entry of files.entries()) {
+    const [, item] = entry;
+    if (
+      item.taskId === runId &&
+      normalizeWorkspaceRelativePath(item.file.relativePath) === relativePath
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
 function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
   const files = new Map<string, SessionFileItem>();
   for (const run of [...runs].reverse()) {
@@ -692,23 +709,39 @@ function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
       if (node.kind !== 'artifact' || !node.path || httpUrlOrNull(node.path)) {
         continue;
       }
-      const key = artifactIdentity(node);
+      let key = artifactIdentity(node);
       // A display-only basename must never become Run identity or an openable
-      // workspace path. Wait for an artifact id or resolver-owned relative path.
+      // workspace path. Wait for an artifact id or a trusted portable path.
       if (!key) continue;
+      const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
+      const matchingRunPath = relativePath
+        ? fileEntryForRunRelativePath(files, run.runId, relativePath)
+        : null;
       if (node.operation === 'deleted') {
         files.delete(key);
+        if (matchingRunPath) files.delete(matchingRunPath[0]);
         continue;
       }
       const time = nodeTime(node, run.createdAt);
-      const existing = files.get(key);
-      const id =
-        node.artifactId?.trim() ||
-        normalizeWorkspaceRelativePath(node.relativePath) ||
-        node.eventId;
+      let existing = files.get(key);
+      if (matchingRunPath && matchingRunPath[0] !== key) {
+        existing ??= matchingRunPath[1];
+        if (node.artifactId?.trim()) {
+          // The terminal manifest upgrades the realtime relative identity to
+          // its canonical artifact id without creating a second visible row.
+          files.delete(matchingRunPath[0]);
+        } else {
+          // Preserve a canonical artifact key if an older realtime frame is
+          // replayed after terminal finalization.
+          key = matchingRunPath[0];
+        }
+      }
+      const file = fileInfoFromArtifact(node);
+      file.artifactId ??= existing?.file.artifactId;
+      const id = file.artifactId?.trim() || relativePath || node.eventId;
       files.set(key, {
         id,
-        file: fileInfoFromArtifact(node),
+        file,
         previewable: false,
         taskId: run.runId,
         historical: existing?.historical === false ? false : !run.isCurrent,

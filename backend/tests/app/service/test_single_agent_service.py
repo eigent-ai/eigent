@@ -52,6 +52,50 @@ def test_retryable_turn_error_classification(error, expected):
     assert _is_retryable_turn_error(error) is expected
 
 
+def test_write_file_sse_carries_portable_relative_identity():
+    from app.service.single_agent_service import _action_to_sse
+    from app.service.task import ActionWriteFileData
+
+    line = _action_to_sse(
+        ActionWriteFileData(
+            process_task_id="task-1",
+            data="/private/run/reports/summary.md",
+            relative_path="reports/summary.md",
+        )
+    )
+
+    assert line is not None
+    assert _parse_sse(line) == (
+        "write_file",
+        {
+            "file_path": "/private/run/reports/summary.md",
+            "process_task_id": "task-1",
+            "relative_path": "reports/summary.md",
+        },
+    )
+
+
+def test_write_file_sse_omits_untrusted_relative_identity():
+    from app.service.single_agent_service import _action_to_sse
+    from app.service.task import ActionWriteFileData
+
+    line = _action_to_sse(
+        ActionWriteFileData(
+            process_task_id="task-1",
+            data="/outside/summary.md",
+        )
+    )
+
+    assert line is not None
+    assert _parse_sse(line) == (
+        "write_file",
+        {
+            "file_path": "/outside/summary.md",
+            "process_task_id": "task-1",
+        },
+    )
+
+
 @pytest.mark.asyncio
 async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
     from app.model.chat import Chat

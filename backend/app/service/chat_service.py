@@ -83,6 +83,7 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    write_file_event_payload,
 )
 from app.utils.agent_memory import (
     build_memory_context,
@@ -1745,13 +1746,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.deactivate_toolkit:
                 yield sse_json("deactivate_toolkit", item.data)
             elif item.action == Action.write_file:
-                yield sse_json(
-                    "write_file",
-                    {
-                        "file_path": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("write_file", write_file_event_payload(item))
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
