@@ -13,12 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
 
+import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   Activity,
   ArrowLeft,
@@ -28,13 +31,21 @@ import {
   FolderOpen,
   HardDrive,
   ListChecks,
-  LoaderCircle,
   Zap,
 } from 'lucide-react';
-import { lazy, Suspense, useCallback, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
+import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
 import { SpaceDetailTabsNav, type SpaceDetailTab } from './SpaceDetailTabsNav';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
@@ -55,16 +66,76 @@ const WorkspaceConfigurationEditor = lazy(() =>
 );
 
 const SPACE_DETAIL_RAIL_CLASS = 'mx-auto w-full max-w-[1100px]';
+const uiEaseOut = [0.23, 1, 0.32, 1] as const;
 
-function DetailFallback() {
+function CommittedSpaceDetailFallback({
+  tab,
+  onCommit,
+}: {
+  tab: SpaceDetailTab;
+  onCommit: (tab: SpaceDetailTab) => void;
+}) {
+  useEffect(() => {
+    onCommit(tab);
+  }, [onCommit, tab]);
+
+  return <SpaceDetailTabSkeleton tab={tab} />;
+}
+
+export function SpaceDetailSuspenseContent({
+  activeTab,
+  contextLikeTab,
+  children,
+}: {
+  activeTab: SpaceDetailTab;
+  contextLikeTab: boolean;
+  children: ReactNode;
+}) {
+  const reduceMotion = Boolean(useReducedMotion());
+  const [pendingRevealTab, setPendingRevealTab] =
+    useState<SpaceDetailTab | null>(null);
+
+  useEffect(() => {
+    setPendingRevealTab((current) => (current === activeTab ? current : null));
+  }, [activeTab]);
+
+  const handleFallbackCommit = useCallback((tab: SpaceDetailTab) => {
+    setPendingRevealTab(tab);
+  }, []);
+  const shouldReveal = pendingRevealTab === activeTab;
+  const revealDuration = reduceMotion ? 0.12 : 0.2;
+
   return (
-    <div
-      role="status"
-      className="flex min-h-72 items-center justify-center text-ds-icon-neutral-muted-default"
+    <Suspense
+      fallback={
+        <CommittedSpaceDetailFallback
+          tab={activeTab}
+          onCommit={handleFallbackCommit}
+        />
+      }
     >
-      <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
-      <span className="sr-only">Loading Space content</span>
-    </div>
+      <motion.div
+        key={activeTab}
+        data-space-detail-resolved-content={activeTab}
+        data-space-detail-content-reveal={shouldReveal ? 'true' : 'false'}
+        data-space-detail-reveal-duration={shouldReveal ? revealDuration : 0}
+        className={contextLikeTab ? 'h-full' : 'min-h-full'}
+        initial={{ opacity: shouldReveal ? 0 : 1 }}
+        animate={{ opacity: 1 }}
+        transition={{
+          duration: shouldReveal ? revealDuration : 0,
+          ease: uiEaseOut,
+        }}
+        onAnimationComplete={() => {
+          if (!shouldReveal) return;
+          setPendingRevealTab((current) =>
+            current === activeTab ? null : current
+          );
+        }}
+      >
+        {children}
+      </motion.div>
+    </Suspense>
   );
 }
 
@@ -72,10 +143,12 @@ function Stat({
   icon,
   label,
   value,
+  loading = false,
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
+  loading?: boolean;
 }) {
   return (
     <div data-space-stat={label} className="flex min-w-0 items-center gap-3">
@@ -89,12 +162,19 @@ function Stat({
         <span className="block truncate !text-label-xs font-semibold uppercase tracking-wide text-ds-text-neutral-muted-default">
           {label}
         </span>
-        <span
-          className="mt-1 block truncate !text-body-md font-semibold text-ds-text-neutral-default-default"
-          title={typeof value === 'string' ? value : undefined}
-        >
-          {value}
-        </span>
+        {loading ? (
+          <Skeleton
+            data-space-stat-skeleton={label}
+            className="mt-1 h-4 w-10"
+          />
+        ) : (
+          <span
+            className="mt-1 block truncate !text-body-md font-semibold text-ds-text-neutral-default-default"
+            title={typeof value === 'string' ? value : undefined}
+          >
+            {value}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -113,7 +193,9 @@ export default function SpaceDetail({
   onTabChange,
   onBack,
 }: SpaceDetailProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setActiveSpace = useSpaceStore((state) => state.setActiveSpace);
   const projectStore = useProjectRuntimeStore();
   const setActiveWorkspaceTab = usePageTabStore(
@@ -124,6 +206,11 @@ export default function SpaceDetail({
   );
   const data = useSpaceDetailData(spaceId);
   const { space } = data;
+  const memoryTarget = resolveSpaceDetailMemoryTarget(
+    spaceId,
+    searchParams,
+    data.projects
+  );
 
   const handleOpenWorkspace = useCallback(() => {
     setActiveSpace(spaceId);
@@ -188,8 +275,14 @@ export default function SpaceDetail({
       case 'memory':
         return (
           <Memory
-            key={spaceId}
-            fixedScope={{ type: 'space', id: spaceId }}
+            key={`${memoryTarget.scope.type}:${memoryTarget.scope.id}`}
+            fixedScope={memoryTarget.scope}
+            fixedScopeLabel={
+              memoryTarget.scope.type === 'project'
+                ? (memoryTarget.label ??
+                  t('layout.memory-overview-untitled-project'))
+                : undefined
+            }
             showScopeSelector={false}
           />
         );
@@ -237,16 +330,19 @@ export default function SpaceDetail({
                   icon={<FolderKanban className={statIconClassName} />}
                   label="Projects"
                   value={data.projectCount}
+                  loading={data.projectsLoading}
                 />
                 <Stat
                   icon={<ListChecks className={statIconClassName} />}
                   label="Tasks"
                   value={data.taskCount}
+                  loading={data.projectsLoading}
                 />
                 <Stat
                   icon={<Zap className={statIconClassName} />}
                   label="Triggers"
                   value={data.triggerCount}
+                  loading={data.triggersLoading}
                 />
                 <Stat
                   icon={<Activity className={statIconClassName} />}
@@ -293,7 +389,8 @@ export default function SpaceDetail({
                   type="button"
                   variant="primary"
                   size="sm"
-                  className="h-8 shrink-0 rounded-lg font-bold"
+                  buttonRadius="full"
+                  className="h-8 shrink-0 font-bold"
                   onClick={handleOpenWorkspace}
                 >
                   Open Workspace
@@ -317,7 +414,12 @@ export default function SpaceDetail({
                 contextLikeTab ? 'h-full' : 'min-h-full'
               )}
             >
-              <Suspense fallback={<DetailFallback />}>{tabContent}</Suspense>
+              <SpaceDetailSuspenseContent
+                activeTab={activeTab}
+                contextLikeTab={contextLikeTab}
+              >
+                {tabContent}
+              </SpaceDetailSuspenseContent>
             </div>
           </div>
         </div>

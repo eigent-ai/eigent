@@ -14,6 +14,18 @@
 
 import { matchPath } from 'react-router-dom';
 
+/**
+ * Router state key used by every entry into Home / Settings. The route layout
+ * uses it to retain the Workspace subtree when the user arrived from there,
+ * so browser history can restore the still-mounted Workspace state.
+ */
+export const SHELL_BACK_STATE_KEY = 'from';
+
+/** Build the `state` payload for a navigation into a full-page shell surface. */
+export function shellBackState(from: string): { from: string } {
+  return { [SHELL_BACK_STATE_KEY]: from };
+}
+
 /** Match the canonical Home management surface and its legacy Settings URL. */
 export function isSettingsRoutePath(pathname: string): boolean {
   return Boolean(

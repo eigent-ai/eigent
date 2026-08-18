@@ -23,6 +23,7 @@ import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
 import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
@@ -203,6 +204,22 @@ const AppRoutes = () => (
           <Route path="/home" element={<Settings />} />
         </Route>
         <Route path="/settings" element={<SettingsRouteRedirect />} />
+        <Route
+          path="/history"
+          element={<LegacyRouteRedirect kind="history" />}
+        />
+        <Route
+          path="/workspace-configuration"
+          element={<LegacyRouteRedirect kind="workspace-configuration" />}
+        />
+        <Route
+          path="/workspace-bundles/install"
+          element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+        />
+        <Route
+          path="/agent-plugins/import"
+          element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+        />
         <Route
           path="/setting"
           element={<Navigate to="/home?section=settings" replace />}

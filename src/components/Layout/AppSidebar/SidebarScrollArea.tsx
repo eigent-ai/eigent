@@ -71,9 +71,12 @@ export function SidebarScrollArea({
       ref={ref}
       role={role}
       aria-label={ariaLabel}
+      data-sidebar-scroll-overflow={overflowing ? 'true' : 'false'}
       className={cn(
         'flex min-h-0 min-w-0 flex-1 flex-col',
-        overflowing ? 'scrollbar overflow-y-auto' : 'overflow-hidden',
+        overflowing
+          ? 'scrollbar-always-visible overflow-y-auto'
+          : 'overflow-hidden',
         className
       )}
     >

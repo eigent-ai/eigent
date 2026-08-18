@@ -85,7 +85,7 @@ function SettingsSection({ section }: { section: SettingsSectionId }) {
     case 'channels':
       return <Channels />;
     case 'memory':
-      return <Memory />;
+      return <Memory homeOverview />;
     case 'browser-connections':
       return <BrowserConnections />;
     case 'browser-plugins':

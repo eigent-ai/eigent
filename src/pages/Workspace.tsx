@@ -29,7 +29,6 @@ import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
-import { SpaceSettings } from '@/components/WorkspaceConfiguration/SpaceSettings';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
@@ -470,12 +469,6 @@ export default function WorkspacePage() {
             }}
             onDeleteSession={handleSessionGroupDeleteSession}
           />
-        );
-      case 'space-settings':
-        return (
-          <div className={mainPanelContentClass}>
-            <SpaceSettings />
-          </div>
         );
       default:
         return null;

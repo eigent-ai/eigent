@@ -33,9 +33,9 @@ describe('WindowControls', () => {
     vi.clearAllMocks();
   });
 
-  it.each(['linux', 'win32'])('renders controls on %s', async (platform) => {
+  it('renders accessible controls on Linux', async () => {
     const user = userEvent.setup();
-    electronAPI.getPlatform.mockReturnValue(platform);
+    electronAPI.getPlatform.mockReturnValue('linux');
 
     render(<WindowControls />);
 
@@ -48,11 +48,14 @@ describe('WindowControls', () => {
     expect(electronAPI.closeWindow).toHaveBeenCalledWith(false);
   });
 
-  it('keeps macOS native traffic-light controls', () => {
-    electronAPI.getPlatform.mockReturnValue('darwin');
+  it.each(['darwin', 'win32'])(
+    'keeps native window controls on %s',
+    (platform) => {
+      electronAPI.getPlatform.mockReturnValue(platform);
 
-    render(<WindowControls />);
+      render(<WindowControls />);
 
-    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
-  });
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    }
+  );
 });

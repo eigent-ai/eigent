@@ -17,7 +17,13 @@ import SettingsPage from '@/pages/Settings';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +31,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const homeOverviewMocks = vi.hoisted(() => ({
   fetchConnectedProviders: vi.fn(),
   listMemoryEntries: vi.fn(),
+}));
+
+const pageMotionMocks = vi.hoisted(() => ({
+  reduced: false,
+}));
+
+const platformMocks = vi.hoisted(() => ({
+  desktop: true,
+}));
+
+vi.mock('@/client/platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/client/platform')>()),
+  isDesktop: () => platformMocks.desktop,
+}));
+
+vi.mock('framer-motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('framer-motion')>()),
+  useReducedMotion: () => pageMotionMocks.reduced,
 }));
 
 vi.mock('@/api/connectors', async (importOriginal) => ({
@@ -108,6 +132,8 @@ function getSettingsHeader() {
 
 describe('SettingsPage', () => {
   beforeEach(() => {
+    pageMotionMocks.reduced = false;
+    platformMocks.desktop = true;
     useSettingsStore.setState({
       activeSection: 'models',
     });
@@ -122,6 +148,27 @@ describe('SettingsPage', () => {
       },
       items: [],
     });
+  });
+
+  it('hides Desktop-only Agent Plugin import from the web dialog', async () => {
+    platformMocks.desktop = false;
+    const user = userEvent.setup();
+    renderSettingsPage('/home?section=spaces');
+
+    await user.click(await screen.findByRole('button', { name: 'New Space' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Import from Workspace Bundle' })
+    );
+
+    const bundleOptions = screen.getByRole('group', {
+      name: 'Bundle import options',
+    });
+    expect(bundleOptions).toHaveClass('grid-cols-1');
+    expect(
+      within(bundleOptions).queryByRole('button', {
+        name: 'Import Agent Plugin as Bundle',
+      })
+    ).not.toBeInTheDocument();
   });
 
   it('renders scoped navigation in the shared app shell', () => {
@@ -175,7 +222,7 @@ describe('SettingsPage', () => {
       'w-full'
     );
     const homeLabel = within(sidebar).getByText('Home');
-    const globalSettingLabel = within(sidebar).getByText('Global Setting');
+    const globalSettingLabel = within(sidebar).getByText('Global Settings');
     expect(
       homeLabel.compareDocumentPosition(globalSettingLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING
@@ -199,6 +246,12 @@ describe('SettingsPage', () => {
     ).toBeTruthy();
     expect(screen.getByText('Browser')).toBeInTheDocument();
     expect(screen.getByText('Extension')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Models' }).querySelector('svg')
+    ).toHaveClass('lucide-sparkles');
+    expect(
+      screen.getByRole('button', { name: 'Sub Agents' }).querySelector('svg')
+    ).toHaveClass('lucide-bot');
     expect(
       screen.getByRole('button', { name: 'Skills' }).querySelector('svg')
     ).toHaveClass('lucide-wand-sparkles');
@@ -245,6 +298,12 @@ describe('SettingsPage', () => {
       '[data-home-spaces-toolbar]'
     ) as HTMLElement;
     const list = document.querySelector('[data-home-spaces-list]');
+    expect(toolbar).toHaveClass(
+      'sticky',
+      '-top-px',
+      'z-20',
+      'bg-ds-bg-neutral-subtle-default'
+    );
     expect(document.querySelector('main > header')).not.toBeInTheDocument();
     expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
     expect(overview).toHaveTextContent('Douglas');
@@ -527,11 +586,26 @@ describe('SettingsPage', () => {
       },
     }));
 
-    renderSettingsPage(
-      '/home?section=spaces&spaceId=space-1&spaceTab=projects'
-    );
+    renderSettingsPage('/home?section=spaces');
 
-    const detailSidebar = screen.getByRole('complementary', { name: 'Spaces' });
+    const homeSpaceCard = (await screen.findByText('Design Space')).closest(
+      '[role="button"]'
+    ) as HTMLElement;
+    expect(homeSpaceCard).toBeInTheDocument();
+    await user.click(homeSpaceCard);
+
+    const detailSidebar = await screen.findByRole('complementary', {
+      name: 'Spaces',
+    });
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="detail"]')
+    ).toHaveAttribute('data-space-navigation-direction', 'forward');
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="detail"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'full');
+    expect(
+      document.querySelector('[data-home-space-content-pane="detail"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'full');
     expect(
       within(detailSidebar).getByRole('button', { name: 'Design Space' })
     ).toHaveAttribute('aria-current', 'page');
@@ -621,11 +695,14 @@ describe('SettingsPage', () => {
       name: 'Space content',
     }).parentElement;
     expect(spaceTabRow).toHaveClass('justify-between');
-    expect(
-      within(spaceTabRow as HTMLElement).getByRole('button', {
+    const openWorkspaceButton = within(spaceTabRow as HTMLElement).getByRole(
+      'button',
+      {
         name: 'Open Workspace',
-      })
-    ).toHaveAttribute('data-variant', 'primary');
+      }
+    );
+    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
+    expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
       within(screen.getByRole('tab', { name: 'Projects' })).getByText(
         'Projects'
@@ -636,10 +713,20 @@ describe('SettingsPage', () => {
       'true'
     );
     expect(
+      screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
+    ).toHaveClass('lucide-library');
+    expect(
       screen.getByRole('tab', { name: 'Space Settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
+    fireEvent.pointerEnter(screen.getByRole('tab', { name: 'Memory' }), {
+      pointerType: 'mouse',
+    });
     expect(document.querySelector('[data-space-detail-tab-hover]')).toHaveClass(
+      'rounded-full',
       'bg-ds-bg-neutral-default-default'
+    );
+    expect(screen.getByRole('tab', { name: 'Memory' })).toHaveClass(
+      'rounded-full'
     );
     const stickyTabs = document.querySelector('[data-space-tabs-sticky]');
     expect(stickyTabs).toHaveClass(
@@ -683,6 +770,15 @@ describe('SettingsPage', () => {
         screen.getByRole('complementary', { name: 'Home' })
       ).toBeInTheDocument();
     });
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="home"]')
+    ).toHaveAttribute('data-space-navigation-direction', 'back');
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="home"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'full');
+    expect(
+      document.querySelector('[data-home-space-content-pane="home"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'full');
     expect(screen.getByRole('button', { name: 'Models' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Spaces' })).toHaveAttribute(
       'aria-current',
@@ -732,6 +828,68 @@ describe('SettingsPage', () => {
       listWorkspaceButtons[0]
     );
     await user.click(within(homeToolbar).getByRole('tab', { name: 'Grid' }));
+  });
+
+  it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
+    pageMotionMocks.reduced = true;
+    const user = userEvent.setup();
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'motion-space': {
+          id: 'motion-space',
+          name: 'Motion Space',
+          description: 'Motion test space',
+          sourceType: 'folder',
+          rootPath: '/work/motion-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'motion-space': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'motion-space': now,
+      },
+    }));
+
+    renderSettingsPage('/home?section=spaces');
+
+    const spaceCard = (await screen.findByText('Motion Space')).closest(
+      '[role="button"]'
+    ) as HTMLElement;
+    await user.click(spaceCard);
+
+    const detailSidebar = await screen.findByRole('complementary', {
+      name: 'Spaces',
+    });
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="detail"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'fade');
+    expect(
+      document.querySelector('[data-home-space-content-pane="detail"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'fade');
+
+    const backButton = within(detailSidebar).getByRole('button', {
+      name: 'Back to Home',
+    });
+    backButton.focus();
+    await user.keyboard('{Enter}');
+    await screen.findByRole('complementary', { name: 'Home' });
+
+    expect(
+      document.querySelector('[data-home-space-sidebar-pane="home"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'instant');
+    expect(
+      document.querySelector('[data-home-space-content-pane="home"]')
+    ).toHaveAttribute('data-space-navigation-motion', 'instant');
   });
 
   it('redirects an empty placeholder Space to Home without listing it', async () => {

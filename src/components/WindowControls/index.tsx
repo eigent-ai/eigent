@@ -28,7 +28,7 @@ export default function WindowControls() {
     const p = host.electronAPI.getPlatform();
     setPlatform(p);
 
-    if (p === 'darwin') {
+    if (p === 'darwin' || p === 'win32') {
       if (controlsRef.current) {
         controlsRef.current.style.display = 'none';
       }
@@ -36,7 +36,7 @@ export default function WindowControls() {
   }, [host]);
 
   if (!host?.electronAPI) return null;
-  if (platform === 'darwin') return null;
+  if (platform === 'darwin' || platform === 'win32') return null;
 
   return (
     <div

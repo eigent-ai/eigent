@@ -42,7 +42,7 @@ export const TOP_BAR_CONTROL_SELECTED_CLASS =
  * font would otherwise size the label.
  */
 export const TOP_BAR_PILL_CLASS = [
-  'no-drag flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2',
+  'no-drag flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 ml-1.5',
   '!text-label-sm font-bold text-ds-text-neutral-default-default',
   'outline-none transition-colors',
   'focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px]',

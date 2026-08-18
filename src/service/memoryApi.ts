@@ -198,24 +198,10 @@ const transitionMemoryEntry = (
 
 export const archiveMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'delete', 'Archived in Memory Center');
-export const permanentlyDeleteMemoryEntry = (entry: MemoryEntry) =>
-  fetchDelete(
-    `/memory/entries/${encodeURIComponent(entry.memory_id)}/permanent`,
-    {
-      request_id: crypto.randomUUID(),
-      expected_version: entry.version,
-      reason: 'Permanently deleted in Memory Center',
-    }
-  );
 export const restoreMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'restore', 'Restored in Memory Center');
 export const confirmMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'confirm', 'Confirmed in Memory Center');
+/** The `pin` mutation only sets the flag; there is no un-pin transition yet. */
 export const pinMemoryEntry = (entry: MemoryEntry) =>
-  transitionMemoryEntry(
-    entry,
-    'pin',
-    entry.pinned_by_user
-      ? 'Unpinned in Memory Center'
-      : 'Pinned in Memory Center'
-  );
+  transitionMemoryEntry(entry, 'pin', 'Pinned in Memory Center');

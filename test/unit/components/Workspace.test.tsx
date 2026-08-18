@@ -15,6 +15,7 @@
 import Workspace from '@/components/Workspace';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -191,39 +192,20 @@ vi.mock('@/components/Workspace/SingleAgentList', () => ({
 vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
   WorkforceAgentList: () => null,
 }));
-vi.mock('@/components/Workspace/WorkspaceAllSessions', () => ({
-  WorkspaceAllSessions: () => <div>All Projects content</div>,
-}));
 vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
   WorkspaceProjectPicker: () => <div>Space switch</div>,
 }));
-vi.mock('@/components/Settings/Memory', () => ({
-  default: ({ fixedScope }: { fixedScope: { type: string; id: string } }) => (
-    <div>
-      Memory Settings content for {fixedScope.type} {fixedScope.id}
-    </div>
-  ),
-}));
-vi.mock('@/components/WorkspaceConfiguration/SpaceSettings', () => ({
-  SpaceSettings: ({ onBack }: { onBack?: () => void }) => (
-    <div>
-      <span>Space Settings content</span>
-      <button type="button" onClick={onBack}>
-        Back to Workspace
-      </button>
-    </div>
-  ),
-}));
-const renderWorkspace = () =>
+const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
   render(
     <MemoryRouter>
-      <Workspace />
+      <Workspace {...props} />
     </MemoryRouter>
   );
 
 describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.spaceState.projectsBySpaceId = {};
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
       spaceId: 'space-1',
@@ -271,23 +253,25 @@ describe('Workspace', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows a sidebar-width management panel beside the composer and an empty content section', () => {
+  it('centers the composer without Workspace management subpages', () => {
     renderWorkspace();
 
-    const managementPanel = screen.getByRole('complementary', {
-      name: 'Workspace management',
-    });
-    expect(managementPanel).toHaveStyle({ width: '240px' });
     expect(
-      screen.getByRole('button', { name: 'Space settings' })
-    ).toBeInTheDocument();
+      screen.queryByRole('complementary', { name: 'Workspace management' })
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Memory settings' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Space settings' })
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'All projects' })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Workspace content')).toBeEmptyDOMElement();
+      screen.queryByRole('button', { name: 'Memory settings' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /All projects/ })
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace header')).toHaveClass(
+      'flex-1',
+      'items-center'
+    );
   });
 
   it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
@@ -295,6 +279,7 @@ describe('Workspace', () => {
 
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
     const coworkLabel = screen.getByText('Cowork with');
+    const singleAgentLabel = screen.getByText('Single Agent');
     const coworkRow = coworkLabel.closest('[data-workspace-cowork-row]');
     const agentList = container.querySelector('[data-workspace-agent-list]');
     const bottomBox = container.querySelector('[data-workspace-bottom-box]');
@@ -302,39 +287,52 @@ describe('Workspace', () => {
       '[data-workspace-input-section]'
     );
     const workspaceHeader = screen.getByLabelText('Workspace header');
-    const managementPanel = screen.getByRole('complementary', {
-      name: 'Workspace management',
-    });
 
-    expect(coworkLabel).toHaveClass('h-10', 'items-center');
-    expect(workspaceHeader).toHaveClass('gap-0');
-    expect(inputSection).toHaveClass('p-4');
-    expect(managementPanel).toHaveClass('p-1');
-    expect(coworkRow).toHaveClass('h-10', 'items-center', 'justify-start');
-    expect(agentList).toHaveClass('h-10', 'items-center', 'justify-start');
+    expect(coworkLabel).toHaveClass('text-heading-lg', 'font-display');
+    expect(singleAgentLabel).toHaveClass('text-heading-lg', 'font-display');
+    expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
+    expect(inputSection).toHaveClass('items-center', 'p-4');
+    expect(coworkRow).toHaveClass(
+      'min-h-[46px]',
+      'items-center',
+      'justify-start'
+    );
+    expect(agentList).toHaveClass(
+      'h-[46px]',
+      'min-h-[46px]',
+      'items-center',
+      'justify-start',
+      'overflow-visible'
+    );
     expect(coworkRow?.nextElementSibling).toBe(bottomBox);
   });
 
-  it('opens all Workspace management subpages and returns to the landing page', async () => {
-    renderWorkspace();
+  it('keeps the agent-list height fixed across Single Agent and Workforce modes', () => {
+    const singleAgentView = renderWorkspace({ sessionMode: 'single-agent' });
+    const singleAgentList = singleAgentView.container.querySelector(
+      '[data-workspace-agent-list]'
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'All projects' }));
-    expect(screen.getByText('All Projects content')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Back to workspace' }));
+    expect(singleAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Memory settings' }));
-    expect(
-      await screen.findByText('Memory Settings content for space space-1')
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Back to workspace' }));
+    singleAgentView.unmount();
+    const workforceView = renderWorkspace({ sessionMode: 'workforce' });
+    const workforceAgentList = workforceView.container.querySelector(
+      '[data-workspace-agent-list]'
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Space settings' }));
-    expect(screen.getByText('Space Settings content')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Back to Workspace' }));
+    expect(workforceAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
+  });
 
-    expect(
-      screen.getByRole('complementary', { name: 'Workspace management' })
-    ).toBeInTheDocument();
+  it('shows the mode label only for Single Agent mode', () => {
+    const { unmount } = renderWorkspace({ sessionMode: 'single-agent' });
+
+    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+
+    unmount();
+    renderWorkspace({ sessionMode: 'workforce' });
+
+    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

@@ -12,8 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SHELL_BACK_STATE_KEY } from '@/hooks/useShellBackTarget';
-import { isSettingsRoutePath } from '@/lib/shellRoutes';
+import { isSettingsRoutePath, SHELL_BACK_STATE_KEY } from '@/lib/shellRoutes';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 

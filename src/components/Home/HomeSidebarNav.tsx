@@ -12,22 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  NavTab,
-  SidebarNavGroup,
-  SidebarSection,
-  SidebarShell,
-} from '@/components/Layout/AppSidebar';
+import { NavTab, SidebarNavGroup } from '@/components/Layout/AppSidebar';
 import type { LucideIcon } from 'lucide-react';
 import { Folder } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHomeHub } from './context';
-import {
-  HOME_SECTIONS,
-  type HomeSection,
-  useHomeSection,
-} from './hooks/useHomeSection';
+import { HOME_SECTIONS, type HomeSection } from './hooks/useHomeSection';
 import { capitalizeLabel } from './utils';
 
 const SECTION_ICONS: Record<HomeSection, LucideIcon> = {
@@ -93,22 +84,5 @@ export function HomeSidebarNavGroup({
         );
       })}
     </SidebarNavGroup>
-  );
-}
-
-/** Standalone Home rail retained for embedders outside the combined page. */
-export default function HomeSidebarNav({ className }: { className?: string }) {
-  const { t } = useTranslation();
-  const { section: activeSection, setSection } = useHomeSection();
-
-  return (
-    <SidebarShell className={className} ariaLabel={t('layout.home')}>
-      <SidebarSection>
-        <HomeSidebarNavGroup
-          activeSection={activeSection}
-          onSectionChange={setSection}
-        />
-      </SidebarSection>
-    </SidebarShell>
   );
 }

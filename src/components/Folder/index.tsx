@@ -27,6 +27,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
@@ -928,6 +929,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
@@ -1195,6 +1197,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       !projectFetchTargetsRef.current.length ||
       !authStore.email
     ) {
+      setFilesLoading(false);
       return;
     }
 
@@ -1414,10 +1417,12 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
             inFlightController = null;
             inFlightMode = null;
           }
+          if (mode === 'full' && !cancelled) setFilesLoading(false);
         });
     };
 
     if (shouldFetch) {
+      setFilesLoading(true);
       debounceTimer = setTimeout(() => {
         lastFetchKey.current = fetchKey;
         runFileList(projectFetchTargetsRef.current, { merge: false });
@@ -1702,16 +1707,34 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
               <div className="h-full pl-1.5">
-                <FileTree
-                  node={sidebarFileTree}
-                  selectedFile={selectedFile}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={toggleFolder}
-                  onSelectFile={(file) =>
-                    selectedFileChange(file, isShowSourceCode)
-                  }
-                  isShowSourceCode={isShowSourceCode}
-                />
+                {filesLoading && fileListRef.current.length === 0 ? (
+                  <div
+                    role="status"
+                    aria-label="Loading files"
+                    className="space-y-3 px-2 py-3"
+                  >
+                    {Array.from({ length: 7 }, (_, index) => (
+                      <Skeleton
+                        key={index}
+                        className={cn(
+                          'h-3',
+                          index % 3 === 0 ? 'w-40' : 'ml-4 w-32'
+                        )}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <FileTree
+                    node={sidebarFileTree}
+                    selectedFile={selectedFile}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={toggleFolder}
+                    onSelectFile={(file) =>
+                      selectedFileChange(file, isShowSourceCode)
+                    }
+                    isShowSourceCode={isShowSourceCode}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1725,6 +1748,16 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           breadcrumbSegments={fileBreadcrumbSegments}
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          emptyState={
+            filesLoading && fileListRef.current.length === 0 ? (
+              <div className="flex h-full min-h-64 w-full flex-1 flex-col gap-3 p-4">
+                <Skeleton className="h-3 w-48" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-[82%]" />
+                <Skeleton className="h-3 w-[68%]" />
+              </div>
+            ) : undefined
+          }
           onRevealFile={() => {
             if (!selectedFile) return;
             // if file is remote, don't call reveal-in-folder
@@ -2771,7 +2804,7 @@ function HtmlRenderer({
         onWheel={handleWheel}
       >
         <div
-          className="h-full origin-top-left transition-transform duration-150"
+          className="h-full origin-top-left transition-transform duration-150 motion-reduce:transition-none"
           style={{
             transform: `scale(${zoom / 100})`,
             width: `${10000 / zoom}%`,

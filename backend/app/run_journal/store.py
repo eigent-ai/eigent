@@ -9948,30 +9948,19 @@ class SQLiteRunJournal:
                         ),
                     )
                 elif operation == "remove":
-                    if was_active:
-                        token_delta = -old_tokens
-                        connection.execute(
-                            """
-                            UPDATE memory_entries
-                            SET deleted_at = ?, version = version + 1,
-                                updated_at = ?
-                            WHERE memory_id = ? AND version = ?
-                            """,
-                            (
-                                timestamp,
-                                timestamp,
-                                memory_id,
-                                expected_version,
-                            ),
+                    if not was_active:
+                        raise InvalidRunTransitionError(
+                            "Memory is already deleted"
                         )
-                    else:
-                        connection.execute(
-                            """
-                            DELETE FROM memory_entries
-                            WHERE memory_id = ? AND version = ?
-                            """,
-                            (memory_id, expected_version),
-                        )
+                    token_delta = -old_tokens
+                    connection.execute(
+                        """
+                        UPDATE memory_entries
+                        SET deleted_at = ?, version = version + 1, updated_at = ?
+                        WHERE memory_id = ? AND version = ?
+                        """,
+                        (timestamp, timestamp, memory_id, expected_version),
+                    )
                 elif operation == "restore":
                     if was_active:
                         raise InvalidRunTransitionError(
@@ -10009,8 +9998,7 @@ class SQLiteRunJournal:
                     connection.execute(
                         """
                         UPDATE memory_entries
-                        SET pinned_by_user = CASE pinned_by_user
-                                WHEN 1 THEN 0 ELSE 1 END,
+                        SET pinned_by_user = 1,
                             version = version + 1, updated_at = ?
                         WHERE memory_id = ? AND version = ?
                         """,

@@ -40,10 +40,7 @@ import { persistHomeViewMode, readStoredHomeViewMode } from './utils';
 export { default as HomeGreeting } from './HomeGreeting';
 export { default as HomeHeader } from './HomeHeader';
 export { default as HomeSections } from './HomeSections';
-export {
-  default as HomeSidebarNav,
-  HomeSidebarNavGroup,
-} from './HomeSidebarNav';
+export { HomeSidebarNavGroup } from './HomeSidebarNav';
 
 /**
  * Data + dialog host for the home surface. Rendered above the app shell so the

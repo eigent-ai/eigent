@@ -19,12 +19,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /** Visual style of the tab strip (not `UiVariant` / `Button` chrome). */
-export type TabsAppearance =
-  | 'default'
-  | 'outline'
-  | 'border'
-  | 'ghost'
-  | 'header';
+export type TabsAppearance = 'default' | 'outline' | 'border' | 'ghost';
 
 /**
  * @deprecated Use {@link TabsAppearance} and the `appearance` prop instead of
@@ -51,10 +46,6 @@ const tabsTriggerBorderClassName =
 /** Borderless tab strip for sidebar navigation (Agents, Channels, Browser, Settings). */
 const tabsTriggerGhostClassName =
   'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex w-full items-center justify-start gap-2 rounded-xl border-0 bg-transparent px-3 py-1.5 text-body-sm font-semibold text-ds-text-neutral-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
-
-/** Compact inset tabs designed to sit inside a 44px application header. */
-const tabsTriggerHeaderClassName =
-  'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex h-7 min-h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-0 bg-transparent px-3 py-0 text-label-sm font-semibold text-ds-text-neutral-muted-default shadow-none transition-colors hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-current';
 
 /** Gap (px) between the tab row and its underline. */
 const BORDER_TAB_UNDERLINE_GAP_PX = 8;
@@ -189,8 +180,6 @@ const TabsList = React.forwardRef<
                 'rounded-xl bg-ds-bg-neutral-strong-default ring-1 ring-ds-ring-neutral-subtle-default',
               appearance === 'ghost' &&
                 'gap-1.5 rounded-none border-0 bg-transparent p-0 shadow-none ring-0',
-              appearance === 'header' &&
-                'h-8 gap-0.5 rounded-xl border-0 bg-ds-bg-neutral-strong-default p-0.5 shadow-none ring-1 ring-ds-ring-neutral-subtle-default',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',
               className
             )}
@@ -261,9 +250,7 @@ const TabsTrigger = React.forwardRef<
         ? tabsTriggerBorderClassName
         : appearance === 'ghost'
           ? tabsTriggerGhostClassName
-          : appearance === 'header'
-            ? tabsTriggerHeaderClassName
-            : tabsTriggerClassName;
+          : tabsTriggerClassName;
 
     return (
       <TabsPrimitive.Trigger

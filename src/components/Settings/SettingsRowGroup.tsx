@@ -13,15 +13,27 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { Children, Fragment, type ReactNode } from 'react';
+import { Children, Fragment, type HTMLAttributes, type ReactNode } from 'react';
 
-export function SettingsRowGroup({ children }: { children: ReactNode }) {
+interface SettingsRowGroupProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode;
+}
+
+export function SettingsRowGroup({
+  children,
+  className,
+  ...props
+}: SettingsRowGroupProps) {
   const rows = Children.toArray(children);
 
   return (
     <div
+      {...props}
       data-settings-row-group
-      className="overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default"
+      className={cn(
+        'overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default',
+        className
+      )}
     >
       {rows.map((row, index) => (
         <Fragment key={index}>
@@ -41,7 +53,7 @@ export function SettingsRowGroup({ children }: { children: ReactNode }) {
 
 interface SettingsRowProps {
   title: ReactNode;
-  description: ReactNode;
+  description?: ReactNode;
   action?: ReactNode;
   children?: ReactNode;
   actionClassName?: string;
@@ -61,9 +73,11 @@ export function SettingsRow({
           <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
             {title}
           </div>
-          <div className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
-            {description}
-          </div>
+          {description ? (
+            <div className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+              {description}
+            </div>
+          ) : null}
         </div>
         {action ? (
           <div

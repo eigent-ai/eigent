@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { shellBackState } from '@/hooks/useShellBackTarget';
+import { shellBackState } from '@/lib/shellRoutes';
 import WorkspaceSettingsRouteLayout from '@/routers/WorkspaceSettingsRouteLayout';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

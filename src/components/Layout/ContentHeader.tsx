@@ -32,8 +32,6 @@ export const CONTENT_HEADER_BORDER_CLASS =
  * the 44px row: `size="sm"` (28px) with `buttonContent="icon-only"` for icon
  * buttons and `buttonContent="text"` for labelled ones.
  */
-export const CONTENT_HEADER_CONTROL_HEIGHT_CLASS = 'h-7 min-h-[28px]';
-
 export interface ContentHeaderProps {
   /** Leading control before the title (e.g. back/toggle button). */
   leading?: ReactNode;

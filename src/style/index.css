@@ -424,6 +424,8 @@ code {
 
 .scrollbar-always-visible {
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar {

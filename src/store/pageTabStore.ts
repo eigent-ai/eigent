@@ -30,7 +30,6 @@ export const WorkspaceTab = {
   Runs: 'runs',
   Project: 'project',
   Dispatch: 'dispatch',
-  SpaceSettings: 'space-settings',
   NewProject: 'new-project',
 } as const;
 
