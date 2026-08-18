@@ -26,8 +26,10 @@ from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.model_platform import (
     azure_reasoning_tools_require_responses_api,
+    is_eigent_cloud_model_endpoint,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
+    resolve_cloud_model_runtime_platform,
 )
 from app.model.subscription_runtime import (
     apply_subscription_runtime,
@@ -146,10 +148,7 @@ def agent_model(
             )
 
         effective_api_url = effective_config.get("api_url")
-        is_effective_cloud = isinstance(effective_api_url, str) and any(
-            marker in effective_api_url
-            for marker in ("eigent-proxy", "proxy.eigent.ai")
-        )
+        is_effective_cloud = is_eigent_cloud_model_endpoint(effective_api_url)
 
         # Cloud mode: inject default Bedrock region and adjust URL for proxy.
         if (
@@ -290,6 +289,22 @@ def agent_model(
                 "Using Responses API reasoning for model %s",
                 effective_config["model_type"],
             )
+
+        runtime_model_platform = resolve_cloud_model_runtime_platform(
+            model_platform=str(effective_config["model_platform"]),
+            api_url=effective_api_url,
+            api_mode=init_params.get("api_mode"),
+        )
+        if runtime_model_platform != effective_config["model_platform"]:
+            # These options belong to AzureOpenAI's constructor.  Passing
+            # them to AsyncOpenAI would fail before the request is sent.
+            for azure_only_param in (
+                "api_version",
+                "azure_ad_token",
+                "azure_ad_token_provider",
+                "azure_deployment_name",
+            ):
+                init_params.pop(azure_only_param, None)
         if is_effective_cloud:
             model_config["user"] = str(options.project_id)
         if use_subscription_runtime:
@@ -342,7 +357,7 @@ def agent_model(
                 stream_options.setdefault("include_usage", True)
 
         model_backend = ModelFactory.create(
-            model_platform=effective_config["model_platform"],
+            model_platform=runtime_model_platform,
             model_type=effective_config["model_type"],
             api_key=effective_config["api_key"],
             url=effective_config["api_url"],

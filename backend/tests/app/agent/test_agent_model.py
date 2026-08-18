@@ -321,7 +321,10 @@ class TestAgentFactoryFunctions:
             )
 
         kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["model_platform"] == "openai-compatible-model"
         assert kwargs["api_mode"] == "responses"
+        assert "api_version" not in kwargs
+        assert "azure_deployment_name" not in kwargs
         assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
         assert "reasoning_effort" not in kwargs["model_config_dict"]
         assert "stream_options" not in kwargs["model_config_dict"]
@@ -360,6 +363,7 @@ class TestAgentFactoryFunctions:
             )
 
         kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["model_platform"] == "azure"
         assert kwargs["api_mode"] == "responses"
         assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
         assert "reasoning_effort" not in kwargs["model_config_dict"]
