@@ -462,6 +462,19 @@ class WorkspaceMutationService:
             commits = [outcome.merged_commit]
         return tuple(commits)
 
+    def renew_broad_write(
+        self,
+        prepared: PreparedWorkspaceExecution,
+        *,
+        now: float | None = None,
+    ) -> None:
+        """Renew the lease while an admitted broad process is still running."""
+
+        self.workforce.renew_workspace(
+            prepared.agent_workspace,
+            now=now,
+        )
+
     def complete_file_write(
         self,
         prepared: PreparedWorkspaceWrite,

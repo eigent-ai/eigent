@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Per-agent worktrees and serialized integration into a Run workspace."""
 
 from __future__ import annotations
@@ -285,6 +299,28 @@ class WorkforceGitService:
     def release_workspace(self, workspace: GitAgentWorkspace) -> None:
         self.journal.release_git_agent_workspace_lease(
             workspace.record.workspace_id,
+            lease_token=workspace.lease_token,
+        )
+
+    def renew_workspace(
+        self,
+        workspace: GitAgentWorkspace,
+        *,
+        now: float | None = None,
+    ) -> GitAgentWorkspace:
+        """Keep a long-running Agent operation's workspace lease alive."""
+
+        timestamp = now if now is not None else time.time()
+        record = self.journal.renew_git_agent_workspace_lease(
+            workspace.record.workspace_id,
+            lease_token=workspace.lease_token,
+            lease_until=timestamp + self.lease_seconds,
+            now=timestamp,
+        )
+        return GitAgentWorkspace(
+            record=record,
+            run_workspace=workspace.run_workspace,
+            agent_worktree=workspace.agent_worktree,
             lease_token=workspace.lease_token,
         )
 

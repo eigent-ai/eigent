@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import subprocess
@@ -597,6 +611,49 @@ def test_broad_write_imports_only_overlay_paths_already_pinned_by_run(
     assert (
         prepared_again.agent_workspace.agent_worktree / "visible.txt"
     ).read_text() == "visible user data"
+
+
+def test_broad_write_renews_lease_for_long_running_process(
+    tmp_path,
+    journal,
+):
+    content, coordinator, mutations, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = mutations.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="terminal-call-long-running",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared is not None
+    before = journal.get_git_agent_workspace("run-1", "developer-agent")
+    assert before is not None and before.lease_until is not None
+
+    mutations.renew_broad_write(
+        prepared,
+        now=before.lease_until - 1.0,
+    )
+
+    renewed = journal.get_git_agent_workspace("run-1", "developer-agent")
+    assert renewed is not None and renewed.lease_until is not None
+    assert renewed.lease_token == before.lease_token
+    assert renewed.lease_until > before.lease_until
+    mutations.complete_broad_write(
+        prepared,
+        operation_request_id="terminal-call-long-running",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
 
 
 def test_broad_write_checkpoints_only_actual_process_delta(tmp_path, journal):

@@ -45,6 +45,7 @@ from app.permission_policy import (
 from app.run_runtime.active_timeout import ActiveExecutionTimeout
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
+    ToolInvocationNotDispatchedError,
     declared_tool_safety,
     dispatch_tool_checkpoint,
     finish_tool_checkpoint,
@@ -99,6 +100,32 @@ def _reported_tool_error(result: Any) -> RuntimeError | None:
     if isinstance(result, dict) and result.get("error"):
         return RuntimeError(str(result["error"]))
     return None
+
+
+def _tool_failure_outcome_known(
+    error: BaseException,
+    *,
+    checkpoint_dispatched: bool,
+) -> bool:
+    """Return whether an exception proves the external action never started."""
+
+    if not checkpoint_dispatched:
+        return True
+
+    pending: list[BaseException] = [error]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        identity = id(current)
+        if identity in visited:
+            continue
+        visited.add(identity)
+        if isinstance(current, ToolInvocationNotDispatchedError):
+            return True
+        for linked in (current.__cause__, current.__context__):
+            if linked is not None:
+                pending.append(linked)
+    return False
 
 
 class ListenChatAgent(ChatAgent):
@@ -1005,7 +1032,10 @@ class ListenChatAgent(ChatAgent):
             finish_tool_checkpoint(
                 checkpoint,
                 error=e,
-                outcome_known=not dispatched,
+                outcome_known=_tool_failure_outcome_known(
+                    e,
+                    checkpoint_dispatched=dispatched,
+                ),
             )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
@@ -1228,7 +1258,10 @@ class ListenChatAgent(ChatAgent):
                 finish_tool_checkpoint,
                 checkpoint,
                 error=e,
-                outcome_known=not dispatched,
+                outcome_known=_tool_failure_outcome_known(
+                    e,
+                    checkpoint_dispatched=dispatched,
+                ),
             )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"

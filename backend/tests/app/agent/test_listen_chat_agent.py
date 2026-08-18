@@ -27,11 +27,16 @@ from camel.responses import ChatAgentResponse
 from camel.toolkits import FunctionTool
 from camel.types.agents import ToolCallingRecord
 
-from app.agent.listen_chat_agent import ListenChatAgent, _reported_tool_error
+from app.agent.listen_chat_agent import (
+    ListenChatAgent,
+    _reported_tool_error,
+    _tool_failure_outcome_known,
+)
 from app.model.chat import Chat
 from app.run_runtime.active_timeout import pause_active_execution_timeout
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
+    ToolInvocationNotDispatchedError,
     UnsafeToolOutcomeError,
 )
 from app.service.task import process_task
@@ -47,6 +52,27 @@ def test_reported_tool_error_detects_adapter_error_mapping():
     assert isinstance(error, RuntimeError)
     assert str(error) == "remote write failed"
     assert _reported_tool_error({"result": "ok"}) is None
+
+
+def test_wrapped_pre_dispatch_error_is_a_known_tool_outcome():
+    try:
+        raise ToolInvocationNotDispatchedError("workspace is leased")
+    except ToolInvocationNotDispatchedError:
+        try:
+            # CAMEL FunctionTool currently wraps tool exceptions this way.
+            raise ValueError("Execution of function shell_exec failed")
+        except ValueError as wrapped:
+            assert _tool_failure_outcome_known(
+                wrapped,
+                checkpoint_dispatched=True,
+            )
+
+
+def test_unrelated_post_dispatch_error_remains_outcome_unknown():
+    assert not _tool_failure_outcome_known(
+        TimeoutError("provider outcome unknown"),
+        checkpoint_dispatched=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -213,6 +239,48 @@ def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():
     finish.assert_called_once()
     assert finish.call_args.kwargs["result"] == {"error": "rate limited"}
     assert isinstance(finish.call_args.kwargs["error"], RuntimeError)
+    assert finish.call_args.kwargs["outcome_known"] is True
+
+
+def test_sync_tool_pre_dispatch_marker_is_recorded_as_known_failure():
+    def terminal_command():
+        raise ToolInvocationNotDispatchedError("workspace is leased")
+
+    tool = FunctionTool(terminal_command)
+    agent = object.__new__(ListenChatAgent)
+    agent._internal_tools = {"terminal_command": tool}
+    agent.api_task_id = "project-1"
+    agent.agent_name = "developer"
+    agent.process_task_id = "process-1"
+    agent.mask_tool_output = False
+    agent._secure_result_store = {}
+    agent._record_tool_calling = MagicMock(return_value="recorded")
+    checkpoint = MagicMock()
+    request = ToolCallRequest(
+        tool_name="terminal_command",
+        args={},
+        tool_call_id="call-lease-conflict",
+    )
+
+    with (
+        patch(f"{_LCA}.get_task_lock", return_value=MagicMock()),
+        patch(f"{_LCA}.prepare_tool_checkpoint", return_value=checkpoint),
+        patch(f"{_LCA}.authorize_tool_checkpoint", new=AsyncMock()),
+        patch(f"{_LCA}.dispatch_tool_checkpoint"),
+        patch(f"{_LCA}.finish_tool_checkpoint") as finish,
+        patch(f"{_LCA}._schedule_async_task"),
+    ):
+        assert agent._execute_tool(request) == "recorded"
+
+    finish.assert_called_once()
+    # CAMEL intentionally wraps tool exceptions in ValueError. The marker is
+    # retained as __context__, which is what the checkpoint outcome classifier
+    # must inspect.
+    assert isinstance(finish.call_args.kwargs["error"], ValueError)
+    assert isinstance(
+        finish.call_args.kwargs["error"].__context__,
+        ToolInvocationNotDispatchedError,
+    )
     assert finish.call_args.kwargs["outcome_known"] is True
 
 

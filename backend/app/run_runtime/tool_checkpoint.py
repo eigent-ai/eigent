@@ -94,6 +94,15 @@ class ToolCheckpointError(RuntimeError):
     pass
 
 
+class ToolInvocationNotDispatchedError(RuntimeError):
+    """The tool failed before its external operation could start.
+
+    This is deliberately not a ``ToolCheckpointError``: callers still need to
+    persist the invocation as a known tool failure.  The marker survives
+    framework wrappers through the exception cause/context chain.
+    """
+
+
 class ToolCheckpointPersistenceError(ToolCheckpointError):
     pass
 

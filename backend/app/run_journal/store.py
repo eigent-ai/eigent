@@ -5299,6 +5299,40 @@ class SQLiteRunJournal:
             assert row is not None
             return self._git_agent_workspace_from_row(row)
 
+    def renew_git_agent_workspace_lease(
+        self,
+        workspace_id: str,
+        *,
+        lease_token: str,
+        lease_until: float,
+        now: float | None = None,
+    ) -> GitAgentWorkspaceRecord:
+        """Extend an active Agent workspace lease using token CAS."""
+
+        timestamp = now if now is not None else time.time()
+        if lease_until <= timestamp:
+            raise ValueError("Agent workspace lease must expire in the future")
+        with self._write_transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE git_agent_workspaces
+                SET lease_until = ?, version = version + 1, updated_at = ?
+                WHERE workspace_id = ? AND lease_token = ?
+                  AND lease_until IS NOT NULL AND state != 'archived'
+                """,
+                (lease_until, timestamp, workspace_id, lease_token),
+            )
+            if updated.rowcount != 1:
+                raise OutboxLeaseLostError(
+                    f"Agent workspace {workspace_id!r} lease changed"
+                )
+            row = connection.execute(
+                "SELECT * FROM git_agent_workspaces WHERE workspace_id = ?",
+                (workspace_id,),
+            ).fetchone()
+            assert row is not None
+            return self._git_agent_workspace_from_row(row)
+
     def get_git_agent_workspace(
         self, run_id: str, agent_id: str
     ) -> GitAgentWorkspaceRecord | None:

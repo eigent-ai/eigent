@@ -36,7 +36,11 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
-from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
+from app.run_journal import OutboxLeaseLostError
+from app.run_runtime.tool_checkpoint import (
+    ToolInvocationNotDispatchedError,
+    get_current_tool_checkpoint,
+)
 from app.service.task import (
     Action,
     ActionTerminalData,
@@ -95,6 +99,8 @@ _LOCAL_PROCESS_GROUP_BOOTSTRAP = (
     'os.execv("/bin/sh", ["/bin/sh", "-c", sys.argv[1]])'
 )
 _LOCAL_PROCESS_GROUP_GRACE_SECONDS = 0.35
+_WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS = 0.1
+_WORKSPACE_LEASE_WAIT_MAX_SECONDS = 5.0
 
 
 def is_secret_broker_environment_key(name: str) -> bool:
@@ -771,12 +777,26 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 else f"local-terminal:{uuid.uuid4().hex}"
             )
             mutation_service = get_default_workspace_mutation_service()
-            prepared = mutation_service.prepare_broad_write(
-                context=run_context,
-                operation_request_id=request_id,
-                actor_id=self.agent_name,
-                trigger="terminal.execute",
-            )
+            try:
+                prepared = self._prepare_terminal_workspace(
+                    mutation_service=mutation_service,
+                    run_context=run_context,
+                    operation_request_id=request_id,
+                )
+            except Exception as error:
+                # Workspace admission happens before CAMEL can spawn the
+                # command. Preserve that boundary even though FunctionTool
+                # later wraps this exception in a generic ValueError.
+                recovery_hint = (
+                    " Wait for or stop the active background Terminal "
+                    "session, then retry."
+                    if isinstance(error, OutboxLeaseLostError)
+                    else ""
+                )
+                raise ToolInvocationNotDispatchedError(
+                    "Terminal command was not started because its Workspace "
+                    f"could not be prepared: {error}.{recovery_hint}"
+                ) from error
             if prepared is not None:
                 # CAMEL reads this field immediately before process spawn.
                 # Existing sessions keep their original cwd; a new command is
@@ -831,8 +851,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             self._record_local_process_group(id, original_command=command)
 
         process_continues = (
-            isinstance(result, str)
-            and "Process continues in background" in result
+            not block
+            or self._workspace_session_running(id)
+            or (
+                isinstance(result, str)
+                and "Process continues in background" in result
+            )
         )
         if (
             prepared is not None
@@ -867,6 +891,38 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def _prepare_terminal_workspace(
+        self,
+        *,
+        mutation_service,
+        run_context,
+        operation_request_id: str,
+    ):
+        """Serialize adjacent Terminal writes without killing the Run.
+
+        A blocking command that reaches its CAMEL timeout can remain alive as
+        a managed background session. Its workspace lease is normally released
+        moments later by the session watcher. Give that hand-off a bounded
+        chance to finish before surfacing a known pre-dispatch failure.
+        """
+
+        deadline = time.monotonic() + _WORKSPACE_LEASE_WAIT_MAX_SECONDS
+        while True:
+            try:
+                return mutation_service.prepare_broad_write(
+                    context=run_context,
+                    operation_request_id=operation_request_id,
+                    actor_id=self.agent_name,
+                    trigger="terminal.execute",
+                )
+            except OutboxLeaseLostError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(
+                    min(_WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS, remaining)
+                )
 
     def _record_local_process_group(
         self,
@@ -1068,8 +1124,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         def wait_and_checkpoint() -> None:
             try:
+                lease_seconds = float(
+                    getattr(
+                        getattr(mutation_service, "workforce", None),
+                        "lease_seconds",
+                        300.0,
+                    )
+                )
+                renew_interval = max(0.05, min(30.0, lease_seconds / 3.0))
                 while self._workspace_session_running(session_id):
-                    threading.Event().wait(0.25)
+                    threading.Event().wait(renew_interval)
+                    if self._workspace_session_running(session_id):
+                        mutation_service.renew_broad_write(prepared)
                 mutation_service.complete_broad_write(
                     prepared,
                     operation_request_id=operation_request_id,
