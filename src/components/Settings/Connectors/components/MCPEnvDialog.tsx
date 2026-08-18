@@ -378,7 +378,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
             </div>
           </div>
           <DialogFooter
-            className="!rounded-b-xl bg-white-100% p-md"
+            className="!rounded-b-xl p-md"
             showCancelButton
             cancelButtonText={t('setting.cancel')}
             onCancel={handleCloseMcpEnvSetting}

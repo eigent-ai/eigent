@@ -180,7 +180,7 @@ const DialogHeader = React.forwardRef<HTMLDivElement, DialogHeaderProps>(
     <div
       ref={ref}
       className={cn(
-        'relative flex w-full shrink-0 items-center justify-between gap-2 overflow-hidden rounded-t-xl bg-ds-bg-neutral-strong-default p-4',
+        'relative flex w-full shrink-0 items-center justify-between gap-2 overflow-hidden rounded-t-xl bg-ds-bg-neutral-subtle-default p-4',
         className
       )}
       {...props}

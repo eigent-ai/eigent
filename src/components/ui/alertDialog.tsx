@@ -85,7 +85,7 @@ export default function ConfirmModal({
             aria-describedby={descriptionId}
             className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
           >
-            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-6 shadow-perfect">
+            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-6 shadow-perfect">
               <span
                 id={titleId}
                 className="mb-2 block text-body-lg font-bold text-ds-text-neutral-default-default"
