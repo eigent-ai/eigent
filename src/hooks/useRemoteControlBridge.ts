@@ -689,35 +689,32 @@ function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
   ensureRemoteProjectLoaded(command);
 
   const projectStore = useProjectStore.getState();
-  const chatStore = projectStore.getChatStore(projectId);
-  const chatState = chatStore?.getState();
-  const activeTaskId = chatState?.activeTaskId;
-  if (
-    !chatStore ||
-    !chatState ||
-    !activeTaskId ||
-    !chatState.tasks[activeTaskId]
-  ) {
-    return;
-  }
+  const prepared = projectStore.appendInitChatStore(projectId, nextTaskId);
+  if (!prepared) return;
+
+  const chatState = prepared.chatStore.getState();
+  const project = projectStore.getProjectById(projectId);
 
   const messageId = `remote-command:${command.id}`;
-  const alreadySeeded = chatState.tasks[activeTaskId].messages.some(
+  const alreadySeeded = chatState.tasks[nextTaskId].messages.some(
     (message) => message.id === messageId
   );
-  if (alreadySeeded) {
-    return;
-  }
-
   chatState.setNextTaskId(nextTaskId);
-  chatState.setIsPending(activeTaskId, true);
-  chatState.addMessages(activeTaskId, {
-    id: messageId,
-    role: 'user',
-    content,
-    attaches: [],
-  });
-  chatState.setHasMessages(activeTaskId, true);
+  chatState.setTaskSessionMode(
+    nextTaskId,
+    (project?.mode || 'single-agent') as SessionModeType
+  );
+  chatState.setTaskSource(nextTaskId, 'user');
+  chatState.setIsPending(nextTaskId, true);
+  chatState.setHasMessages(nextTaskId, true);
+  if (!alreadySeeded) {
+    chatState.addMessages(nextTaskId, {
+      id: messageId,
+      role: 'user',
+      content,
+      attaches: [],
+    });
+  }
   scheduleRemoteProjectHistoryHydration(command);
 }
 
@@ -814,6 +811,11 @@ async function executeRemoteCommand(
   switch (command.type) {
     case 'user_message': {
       const requestId = command.next_task_id || command.id;
+      // getCommandProjectId falls back to '', which would otherwise be sent as
+      // a request to /projects//follow-ups.
+      if (!projectId) {
+        throw new Error('Remote user_message requires a target Project');
+      }
       const content = String(
         command.payload.content || command.payload.question || ''
       );

@@ -40,7 +40,19 @@ vi.mock('@/api/http', () => ({
     })
   ),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-id' })),
-  fetchPost: vi.fn(),
+  fetchPost: vi.fn((url: string, body: Record<string, unknown> = {}) =>
+    Promise.resolve({
+      request_id: body.request_id,
+      project_id: url.split('/')[2],
+      content: body.content,
+      attachment_paths: body.attachment_paths ?? [],
+      delivery_mode: body.delivery_mode ?? 'wait',
+      status: 'pending',
+      source: body.source ?? 'scheduled',
+      created_at: 0,
+      updated_at: 0,
+    })
+  ),
 }));
 
 vi.mock('@/service/triggerApi', () => ({

@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { usePageTabStore } from '@/store/pageTabStore';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('pageTabStore turn selection', () => {
   beforeEach(() => {
@@ -56,5 +56,32 @@ describe('pageTabStore turn selection', () => {
       taskBoxFocusProjectId: 'project-1',
       taskBoxFocusTaskId: 'task-2',
     });
+  });
+});
+
+describe('pageTabStore side-panel viewport selection', () => {
+  beforeEach(() => {
+    usePageTabStore.setState({
+      sidePanelManualUntilByProject: {},
+      sidePanelSelectedTurnByProject: {},
+      sidePanelViewedTurnByProject: {},
+    });
+  });
+
+  it('does not publish duplicate state for repeated observer callbacks', () => {
+    const listener = vi.fn();
+    const unsubscribe = usePageTabStore.subscribe(listener);
+
+    usePageTabStore
+      .getState()
+      .setSidePanelViewedTurn('project_one', 'task_one');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    usePageTabStore
+      .getState()
+      .setSidePanelViewedTurn('project_one', 'task_one');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
   });
 });

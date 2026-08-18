@@ -39,6 +39,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { HumanInteractionCard } from './HumanInteractionCard';
 import { formatSplittingElapsed } from './TokenUtils';
 
 const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
@@ -104,9 +105,20 @@ type TaggedLog = {
   agentName: string;
 };
 
-function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
+/**
+ * Legacy state stores one log array per agent. New events carry a Run-scoped
+ * receive sequence, so a workforce timeline can reconstruct the original
+ * cross-agent order instead of rendering the arrays agent-by-agent.
+ *
+ * Histories created before sequence stamping are intentionally left in their
+ * original stable order. We also keep mixed histories stable: without a
+ * sequence for every row there is no trustworthy relative order to infer.
+ */
+export function mergeTaggedAgentLogs(
+  taskAssigning: Agent[] | undefined
+): TaggedLog[] {
   if (!taskAssigning?.length) return [];
-  return taskAssigning.flatMap((a) =>
+  const tagged = taskAssigning.flatMap((a) =>
     (a.log ?? []).map((entry) => ({
       entry,
       agentId: a.agent_id,
@@ -114,6 +126,24 @@ function mergeTaggedAgentLogs(taskAssigning: Agent[] | undefined): TaggedLog[] {
       agentName: agentMap[a.type as WorkflowAgentType]?.name ?? a.name,
     }))
   );
+
+  const hasCompleteTimeline = tagged.every(
+    ({ entry }) =>
+      typeof entry.timelineSequence === 'number' &&
+      Number.isInteger(entry.timelineSequence) &&
+      entry.timelineSequence > 0
+  );
+  if (!hasCompleteTimeline) return tagged;
+
+  return tagged
+    .map((value, stableIndex) => ({ value, stableIndex }))
+    .sort(
+      (left, right) =>
+        left.value.entry.timelineSequence! -
+          right.value.entry.timelineSequence! ||
+        left.stableIndex - right.stableIndex
+    )
+    .map(({ value }) => value);
 }
 
 /**
@@ -187,7 +217,7 @@ function looksLikeNarration(raw: string): boolean {
   return true;
 }
 
-type ToolItem = {
+export type ToolItem = {
   kind: 'tool';
   id: string;
   rowTitle: string;
@@ -217,7 +247,105 @@ type MessageItem = {
   pairKey: string | null;
 };
 
-export type TimelineItem = ToolItem | MessageItem;
+/**
+ * A human-control receipt embedded at the point where execution paused.
+ * While pending, the prompt lives only in BottomBox. Once answered, history
+ * shows the question and answer together in this same chronological receipt.
+ */
+type HumanInputItem = {
+  kind: 'human-input';
+  id: string;
+  question: string;
+  response: string | null;
+  interaction?: NonNullable<Message['interaction']>;
+};
+
+export type TimelineItem = ToolItem | MessageItem | HumanInputItem;
+
+export type RepeatedToolItem = {
+  kind: 'repeated-tool';
+  id: string;
+  rowTitle: string;
+  toolkitName: string;
+  method: string;
+  calls: readonly ToolItem[];
+  status: 'running' | 'done';
+};
+
+export type WorkLogDisplayItem = TimelineItem | RepeatedToolItem;
+
+function normalizedToolIdentity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function repeatedToolKey(item: ToolItem): string | null {
+  const toolkit = normalizedToolIdentity(item.toolkitName);
+  const method = normalizedToolIdentity(item.method);
+  return toolkit && method ? JSON.stringify([toolkit, method]) : null;
+}
+
+/**
+ * Collapse only consecutive identical toolkit/method rows for presentation.
+ * Messages and human-input receipts are hard chronology boundaries, and the
+ * source work-log items remain unchanged.
+ */
+export function groupConsecutiveToolItems(
+  items: readonly TimelineItem[]
+): WorkLogDisplayItem[] {
+  const grouped: WorkLogDisplayItem[] = [];
+
+  for (let index = 0; index < items.length;) {
+    const item = items[index]!;
+    if (item.kind !== 'tool') {
+      grouped.push(item);
+      index += 1;
+      continue;
+    }
+
+    const identity = repeatedToolKey(item);
+    if (!identity) {
+      grouped.push(item);
+      index += 1;
+      continue;
+    }
+
+    const calls: ToolItem[] = [item];
+    let cursor = index + 1;
+    while (cursor < items.length) {
+      const candidate = items[cursor]!;
+      if (
+        candidate.kind !== 'tool' ||
+        repeatedToolKey(candidate) !== identity
+      ) {
+        break;
+      }
+      calls.push(candidate);
+      cursor += 1;
+    }
+
+    if (calls.length === 1) {
+      grouped.push(item);
+    } else {
+      grouped.push({
+        kind: 'repeated-tool',
+        id: `repeated-tool:${item.id}`,
+        rowTitle: item.rowTitle,
+        toolkitName: item.toolkitName,
+        method: item.method,
+        calls,
+        status: calls.some((call) => call.status === 'running')
+          ? 'running'
+          : 'done',
+      });
+    }
+    index = cursor;
+  }
+
+  return grouped;
+}
 
 /**
  * One agent's slice of work — a chronological list of inline messages
@@ -262,6 +390,21 @@ export type GroupedEntry = AgentGroup | AgentBlock;
 const PREPARATION_BLOCK_ID = 'b-prep';
 const PREPARATION_BLOCK_LABEL = 'Preparing agents';
 const PREPARATION_BLOCK_LABEL_SINGLE = 'Preparing agent';
+
+function isHumanAskTool(toolkitName: string, method: string): boolean {
+  const normalizedToolkit = toolkitName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  const normalizedMethod = method
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  return (
+    normalizedToolkit === 'humantoolkit' &&
+    normalizedMethod === 'askhumanviagui'
+  );
+}
 
 function pairKey(toolkit: string, method: string): string {
   return `${toolkit}::${method}`;
@@ -339,14 +482,15 @@ export function buildAgentBlocks(
     const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
 
     if (entry.step === AgentStep.ACTIVATE_TOOLKIT) {
+      const hideHumanControlDetail = isHumanAskTool(name, method);
       p.items.push({
         kind: 'tool',
         id: `t-prep-${idx}`,
         rowTitle: `${tag.agentName} · ${name}`,
         toolkitName: name,
         method,
-        detail: rawMsg,
-        input: rawMsg,
+        detail: hideHumanControlDetail ? '' : rawMsg,
+        input: hideHumanControlDetail ? '' : rawMsg,
         output: '',
         status: 'running',
       });
@@ -359,8 +503,10 @@ export function buildAgentBlocks(
       if (it.status !== 'running') continue;
       if (it.toolkitName !== name || it.method !== method) continue;
       it.status = 'done';
-      it.output = [it.output, rawMsg].filter(Boolean).join('\n\n').trim();
-      it.detail = [it.detail, rawMsg].filter(Boolean).join('\n\n').trim();
+      if (!isHumanAskTool(it.toolkitName, it.method)) {
+        it.output = [it.output, rawMsg].filter(Boolean).join('\n\n').trim();
+        it.detail = [it.detail, rawMsg].filter(Boolean).join('\n\n').trim();
+      }
       break;
     }
   };
@@ -386,6 +532,16 @@ export function buildAgentBlocks(
       return startNew(tag);
     }
     return c;
+  };
+
+  const findLatestActionBlockForAgent = (
+    agentId: string
+  ): AgentBlock | null => {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const block = blocks[i]!;
+      if (block.kind === 'action' && block.agentId === agentId) return block;
+    }
+    return null;
   };
 
   for (let i = 0; i < tagged.length; i++) {
@@ -414,8 +570,8 @@ export function buildAgentBlocks(
     }
 
     if (entry.step === AgentStep.DEACTIVATE_AGENT) {
-      const cur = cursor.current;
-      if (cur && cur.agentId === tag.agentId) cur.status = 'done';
+      const latest = findLatestActionBlockForAgent(tag.agentId);
+      if (latest) latest.status = 'done';
       continue;
     }
 
@@ -439,6 +595,7 @@ export function buildAgentBlocks(
       const name = (entry.data?.toolkit_name ?? '').trim() || 'Tool';
       const method = (entry.data?.method_name ?? '').trim();
       const rawMsg = normalizeToolkitMessage(entry.data?.message).trim();
+      const hideHumanControlDetail = isHumanAskTool(name, method);
 
       // Backend sometimes emits "notice" through the toolkit channel.
       if (name.toLowerCase() === 'notice') {
@@ -463,7 +620,7 @@ export function buildAgentBlocks(
       // Show narration above the tool row so the user always sees what the
       // agent is doing, even with the fold closed. Payload-shaped messages
       // stay inside the fold to avoid clutter.
-      if (looksLikeNarration(rawMsg)) {
+      if (!hideHumanControlDetail && looksLikeNarration(rawMsg)) {
         b.items.push({
           kind: 'message',
           id: `m-${i}-narr`,
@@ -480,8 +637,8 @@ export function buildAgentBlocks(
         rowTitle: toolRowTitle(name, method),
         toolkitName: name,
         method,
-        detail: rawMsg,
-        input: rawMsg,
+        detail: hideHumanControlDetail ? '' : rawMsg,
+        input: hideHumanControlDetail ? '' : rawMsg,
         output: '',
         status: 'running',
       });
@@ -489,29 +646,52 @@ export function buildAgentBlocks(
     }
 
     if (entry.step === AgentStep.DEACTIVATE_TOOLKIT) {
-      const cur = cursor.current;
-      if (!cur) continue;
       const name = (entry.data?.toolkit_name ?? '').trim();
       const method = (entry.data?.method_name ?? '').trim();
       const msg = normalizeToolkitMessage(entry.data?.message).trim();
       const pk = pairKey(name, method);
+      let matchedBlock: AgentBlock | null = null;
 
-      // Match the most recent running tool of the same toolkit/method.
-      for (let j = cur.items.length - 1; j >= 0; j--) {
-        const it = cur.items[j]!;
-        if (it.kind !== 'tool') continue;
-        if (it.status !== 'running') continue;
-        if (it.toolkitName !== name || it.method !== method) continue;
-        it.status = 'done';
-        it.output = [it.output, msg].filter(Boolean).join('\n\n').trim();
-        it.detail = [it.detail, msg].filter(Boolean).join('\n\n').trim();
-        break;
+      // Another agent may have become current before this response arrives.
+      // Search the originating agent's blocks, newest first, so the response
+      // still settles the exact prior tool and its sibling narration.
+      for (let blockIndex = blocks.length - 1; blockIndex >= 0; blockIndex--) {
+        const block = blocks[blockIndex]!;
+        if (block.kind !== 'action' || block.agentId !== tag.agentId) continue;
+        for (
+          let itemIndex = block.items.length - 1;
+          itemIndex >= 0;
+          itemIndex--
+        ) {
+          const item = block.items[itemIndex]!;
+          if (item.kind !== 'tool') continue;
+          if (item.status !== 'running') continue;
+          if (item.toolkitName !== name || item.method !== method) continue;
+          item.status = 'done';
+          if (!isHumanAskTool(item.toolkitName, item.method)) {
+            item.output = [item.output, msg]
+              .filter(Boolean)
+              .join('\n\n')
+              .trim();
+            item.detail = [item.detail, msg]
+              .filter(Boolean)
+              .join('\n\n')
+              .trim();
+          }
+          matchedBlock = block;
+          break;
+        }
+        if (matchedBlock) break;
       }
 
       // Settle the sibling narration message (if any) that paired with this
       // tool — turns off the shimmer once the tool is done.
-      for (let j = cur.items.length - 1; j >= 0; j--) {
-        const it = cur.items[j]!;
+      for (
+        let j = (matchedBlock?.items.length ?? 0) - 1;
+        matchedBlock && j >= 0;
+        j--
+      ) {
+        const it = matchedBlock.items[j]!;
         if (it.kind !== 'message') continue;
         if (it.pairKey !== pk) continue;
         if (!it.running) continue;
@@ -533,25 +713,30 @@ export function buildAgentBlocks(
 
 /**
  * Post-processes the flat `AgentBlock[]` from `buildAgentBlocks` into a
- * grouped list: preparation blocks pass through, and all action blocks
- * for the same `agentId` are merged into a single `AgentGroup`.
- *
- * Groups are ordered by first appearance (the position of the agent's
- * earliest block in the original array).
+ * grouped list. Preparation stays pinned first. Multi-agent action blocks
+ * merge only while contiguous, preserving a chronological A / B / A shape;
+ * single-agent mode can still fold every action block into one group.
  *
  * Exported for unit tests.
  */
-export function groupBlocksByAgent(blocks: AgentBlock[]): GroupedEntry[] {
-  const result: GroupedEntry[] = [];
+export function groupBlocksByAgent(
+  blocks: AgentBlock[],
+  isSingleAgent = false
+): GroupedEntry[] {
+  const result: GroupedEntry[] = blocks.filter(
+    (block) => block.kind === 'preparation'
+  );
   const groupMap = new Map<string, AgentGroup>();
 
   for (const block of blocks) {
-    if (block.kind === 'preparation') {
-      result.push(block);
-      continue;
-    }
+    if (block.kind === 'preparation') continue;
 
-    const existing = groupMap.get(block.agentId);
+    const last = result[result.length - 1];
+    const existing = isSingleAgent
+      ? groupMap.get(block.agentId)
+      : last?.kind === 'agent-group' && last.agentId === block.agentId
+        ? last
+        : undefined;
     if (existing) {
       existing.items.push(...block.items);
       if (block.status === 'running') {
@@ -560,7 +745,7 @@ export function groupBlocksByAgent(blocks: AgentBlock[]): GroupedEntry[] {
     } else {
       const group: AgentGroup = {
         kind: 'agent-group',
-        id: `group-${block.agentId}`,
+        id: isSingleAgent ? `group-${block.agentId}` : `group-${block.id}`,
         agentId: block.agentId,
         agentType: block.agentType,
         agentName: block.agentName,
@@ -569,15 +754,168 @@ export function groupBlocksByAgent(blocks: AgentBlock[]): GroupedEntry[] {
         doneToolCount: 0,
         totalToolCount: 0,
       };
-      groupMap.set(block.agentId, group);
+      if (isSingleAgent) groupMap.set(block.agentId, group);
       result.push(group);
     }
   }
 
-  for (const group of groupMap.values()) {
+  for (const entry of result) {
+    if (entry.kind !== 'agent-group') continue;
+    const group = entry;
     const tools = group.items.filter((i): i is ToolItem => i.kind === 'tool');
     group.totalToolCount = tools.length;
     group.doneToolCount = tools.filter((t) => t.status === 'done').length;
+  }
+
+  return result;
+}
+
+type HumanControlMessage = Pick<
+  Message,
+  | 'id'
+  | 'role'
+  | 'content'
+  | 'step'
+  | 'agent_name'
+  | 'interaction'
+  | 'interactionResponseTo'
+>;
+
+function normalizedAgentIdentity(value: unknown): string {
+  return typeof value === 'string'
+    ? value.toLowerCase().replace(/[^a-z0-9]/g, '')
+    : '';
+}
+
+function isAgentMatch(entry: GroupedEntry, requestedBy: string): boolean {
+  if (!requestedBy) return true;
+  const type = normalizedAgentIdentity(entry.agentType);
+  const name = normalizedAgentIdentity(entry.agentName);
+  return (
+    type === requestedBy ||
+    name === requestedBy ||
+    type.includes(requestedBy) ||
+    requestedBy.includes(type)
+  );
+}
+
+function safeHumanResponse(
+  ask: HumanControlMessage,
+  response: HumanControlMessage | undefined
+): string | null {
+  if (!response?.content?.trim()) return null;
+  const interactionType = ask.interaction?.interaction_type;
+  if (interactionType === 'form' || interactionType === 'credential_binding') {
+    return 'Response submitted';
+  }
+  return response.content.trim() === 'skip'
+    ? 'Skipped'
+    : response.content.trim();
+}
+
+/**
+ * Place each ASK receipt directly after the Human Toolkit call that caused
+ * it. Explicit interaction ids are authoritative; old ASK frames without an
+ * id use only the immediately-adjacent user row, never a nearby normal turn.
+ *
+ * Exported for focused ordering tests.
+ */
+export function injectHumanInputReceipts(
+  entries: GroupedEntry[],
+  messages: HumanControlMessage[]
+): GroupedEntry[] {
+  const asks = messages
+    .map((message, index) => ({ message, index }))
+    .filter(({ message }) => message.step === AgentStep.ASK);
+  if (!asks.length) return entries;
+
+  const result = entries.map((entry) => ({
+    ...entry,
+    items: [...entry.items],
+  })) as GroupedEntry[];
+  const unusedHumanTools: Array<{
+    entryIndex: number;
+    itemIndex: number;
+  }> = [];
+
+  result.forEach((entry, entryIndex) => {
+    entry.items.forEach((item, itemIndex) => {
+      if (
+        item.kind === 'tool' &&
+        isHumanAskTool(item.toolkitName, item.method)
+      ) {
+        unusedHumanTools.push({ entryIndex, itemIndex });
+      }
+    });
+  });
+
+  // Inserting shifts later item indexes within the same entry.
+  const insertedPerEntry = new Map<number, number>();
+  for (const { message: ask, index: askIndex } of asks) {
+    const interactionId = ask.interaction?.interaction_id;
+    const explicitlyCorrelated = interactionId
+      ? messages.find(
+          (candidate, candidateIndex) =>
+            candidateIndex > askIndex &&
+            candidate.role === 'user' &&
+            candidate.interactionResponseTo === interactionId
+        )
+      : undefined;
+    const adjacent = messages[askIndex + 1];
+    const adjacentReply =
+      adjacent?.role === 'user' &&
+      (!adjacent.interactionResponseTo ||
+        adjacent.interactionResponseTo === interactionId)
+        ? adjacent
+        : undefined;
+    const response = explicitlyCorrelated || adjacentReply;
+    const requestedBy = normalizedAgentIdentity(
+      ask.agent_name || ask.interaction?.agent
+    );
+
+    let toolIndex = unusedHumanTools.findIndex(({ entryIndex }) =>
+      isAgentMatch(result[entryIndex]!, requestedBy)
+    );
+    if (toolIndex === -1) toolIndex = unusedHumanTools.length ? 0 : -1;
+
+    const receipt: HumanInputItem = {
+      kind: 'human-input',
+      id: `human-input:${ask.id}`,
+      question: ask.interaction?.question?.trim() || ask.content.trim(),
+      response: safeHumanResponse(ask, response),
+      interaction: ask.interaction,
+    };
+
+    if (toolIndex !== -1) {
+      const [{ entryIndex, itemIndex }] = unusedHumanTools.splice(toolIndex, 1);
+      const offset = insertedPerEntry.get(entryIndex) ?? 0;
+      result[entryIndex]!.items.splice(itemIndex + offset + 1, 0, receipt);
+      insertedPerEntry.set(entryIndex, offset + 1);
+      continue;
+    }
+
+    // Compatibility fallback for old histories where toolkit logs were
+    // filtered out: retain the receipt in the matching agent's work log.
+    let fallbackIndex = result.findIndex((entry) =>
+      isAgentMatch(entry, requestedBy)
+    );
+    if (fallbackIndex === -1 && result.length === 0) {
+      result.push({
+        kind: 'agent-group',
+        id: `group-human-input:${ask.id}`,
+        agentId: ask.agent_name || ask.interaction?.agent || 'agent',
+        agentType: ask.agent_name || ask.interaction?.agent || 'agent',
+        agentName: ask.agent_name || ask.interaction?.agent || 'Agent',
+        items: [],
+        status: 'running',
+        doneToolCount: 0,
+        totalToolCount: 0,
+      });
+      fallbackIndex = 0;
+    }
+    result[
+      fallbackIndex === -1 ? result.length - 1 : fallbackIndex
+    ]!.items.push(receipt);
   }
 
   return result;
@@ -672,7 +1010,16 @@ function useTaskWorkStoreSnapshot(
       // (carried on each task's `content`). Fold the running/last-completed
       // step into the digest so the header re-renders as todos advance.
       const activeFormDigest = getSingleAgentActiveForm(t);
-      return `${t.status}|${t.durableRunStatus ?? ''}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}`;
+      const humanInputDigest = (t.messages ?? [])
+        .filter(
+          (message) => message.step === AgentStep.ASK || message.role === 'user'
+        )
+        .map(
+          (message) =>
+            `${message.id}:${message.step ?? ''}:${message.interaction?.interaction_id ?? ''}:${message.interactionResponseTo ?? ''}:${message.content}`
+        )
+        .join('>');
+      return `${t.status}|${t.durableRunStatus ?? ''}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}|${humanInputDigest}`;
     },
     () => ''
   );
@@ -691,7 +1038,10 @@ function useTaskWorkLogData(
   const tagged = mergeTaggedAgentLogs(t?.taskAssigning);
   const isSingleAgent = t?.sessionMode === SessionMode.SINGLE_AGENT;
   const blocks = buildAgentBlocks(tagged, isSingleAgent);
-  const groups = groupBlocksByAgent(blocks);
+  const groups = injectHumanInputReceipts(
+    groupBlocksByAgent(blocks, isSingleAgent),
+    t?.messages ?? []
+  );
   return { task: t, groups };
 }
 
@@ -805,6 +1155,89 @@ const ToolDetailRow = memo(function ToolDetailRow({
 });
 ToolDetailRow.displayName = 'ToolDetailRow';
 
+const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
+  item,
+  active,
+}: {
+  item: RepeatedToolItem;
+  active: boolean;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const rowTitle = t('chat.repeated-tool-events', {
+    tool: item.rowTitle,
+    count: item.calls.length,
+  });
+  const running = active && item.status === 'running';
+
+  return (
+    <div
+      className="flex w-full min-w-0 flex-col items-start"
+      data-repeated-tool-group
+      data-repeated-tool-count={item.calls.length}
+      data-toolkit={item.toolkitName}
+      data-method={item.method}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+      >
+        {running ? (
+          <ShinyText
+            text={rowTitle}
+            speed={2.5}
+            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default"
+          />
+        ) : (
+          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal text-ds-text-neutral-subtle-default">
+            {rowTitle}
+          </span>
+        )}
+        <ChevronRight
+          size={16}
+          aria-hidden
+          className={cn(
+            'shrink-0 text-ds-icon-neutral-subtle-default transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+          )}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="repeated-tool-calls"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={HEIGHT_MOTION}
+            className="w-full min-w-0 overflow-hidden"
+          >
+            <div className="flex w-full min-w-0 flex-col gap-1">
+              {item.calls.map((call) => (
+                <ToolDetailRow
+                  key={call.id}
+                  rowTitle={call.rowTitle}
+                  input={call.input}
+                  output={call.output}
+                  status={
+                    active && call.status === 'running' ? 'running' : 'done'
+                  }
+                />
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+});
+RepeatedToolDetailRow.displayName = 'RepeatedToolDetailRow';
+
 const InlineMessageRow = memo(function InlineMessageRow({
   text,
   source,
@@ -852,16 +1285,75 @@ const InlineMessageRow = memo(function InlineMessageRow({
 });
 InlineMessageRow.displayName = 'InlineMessageRow';
 
+const HumanInputReceiptRow = memo(function HumanInputReceiptRow({
+  item,
+  readOnly,
+  onResolved,
+}: {
+  item: HumanInputItem;
+  readOnly: boolean;
+  onResolved: (item: HumanInputItem, response?: string) => void;
+}) {
+  if (item.interaction && item.interaction.interaction_type !== 'question') {
+    return (
+      <HumanInteractionCard
+        interaction={item.interaction}
+        response={item.response ?? undefined}
+        readOnly={readOnly || Boolean(item.response)}
+        timelineReceipt
+        onResolved={(response) => onResolved(item, response)}
+      />
+    );
+  }
+  return (
+    <div
+      data-human-input-receipt
+      className="w-full min-w-0 rounded-lg border border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+    >
+      <span className="block text-label-sm font-medium text-ds-text-neutral-default-default">
+        Input required
+      </span>
+      {item.response ? (
+        <>
+          {item.question ? (
+            <div className="mt-2" data-human-input-question>
+              <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+                Question
+              </span>
+              <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
+                {item.question}
+              </span>
+            </div>
+          ) : null}
+          <div className="mt-2" data-human-input-response>
+            <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+              Answer
+            </span>
+            <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
+              {item.response}
+            </span>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+});
+HumanInputReceiptRow.displayName = 'HumanInputReceiptRow';
+
 const AgentBlockRow = memo(function AgentBlockRow({
   block,
   taskRunning,
   open,
   onToggle,
+  humanInputReadOnly,
+  onHumanInputResolved,
 }: {
   block: AgentBlock;
   taskRunning: boolean;
   open: boolean;
   onToggle: () => void;
+  humanInputReadOnly: boolean;
+  onHumanInputResolved: (item: HumanInputItem, response?: string) => void;
 }) {
   const { agentLabel, detail } = getBlockHeaderParts(block);
 
@@ -939,6 +1431,13 @@ const AgentBlockRow = memo(function AgentBlockRow({
                     source={item.source}
                     running={item.running && taskRunning}
                   />
+                ) : item.kind === 'human-input' ? (
+                  <HumanInputReceiptRow
+                    key={item.id}
+                    item={item}
+                    readOnly={humanInputReadOnly}
+                    onResolved={onHumanInputResolved}
+                  />
                 ) : (
                   <ToolDetailRow
                     key={item.id}
@@ -958,9 +1457,9 @@ const AgentBlockRow = memo(function AgentBlockRow({
               {block.items.length === 0 &&
                 taskRunning &&
                 block.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <span className="block !text-label-sm font-normal italic text-ds-text-neutral-subtle-default">
                     Waiting for tool calls…
-                  </p>
+                  </span>
                 )}
             </div>
           </motion.div>
@@ -1021,6 +1520,8 @@ const AgentGroupRow = memo(function AgentGroupRow({
   onToggle,
   isSingleAgent,
   singleAgentActiveForm,
+  humanInputReadOnly,
+  onHumanInputResolved,
 }: {
   group: AgentGroup;
   taskRunning: boolean;
@@ -1028,8 +1529,10 @@ const AgentGroupRow = memo(function AgentGroupRow({
   onToggle: () => void;
   isSingleAgent: boolean;
   singleAgentActiveForm: string;
+  humanInputReadOnly: boolean;
+  onHumanInputResolved: (item: HumanInputItem, response?: string) => void;
 }) {
-  const { agentLabel, progressLabel, latestToolTitle, latestToolRunning } =
+  const { agentLabel, progressLabel, latestToolTitle } =
     getGroupHeaderParts(group);
 
   const headerRunning = taskRunning && group.status === 'running';
@@ -1039,6 +1542,10 @@ const AgentGroupRow = memo(function AgentGroupRow({
     : (agentDisplay?.icon ?? DEFAULT_BOT_ICON);
   const useSingleAgentLiveHeader =
     isSingleAgent && group.agentType === 'single_agent';
+  const displayItems = useMemo(
+    () => groupConsecutiveToolItems(group.items),
+    [group.items]
+  );
 
   // Single agent: surface the live in-progress `active_form` in place of the
   // static "CAMEL Agent" label. Fall back to the static label only when no
@@ -1171,13 +1678,26 @@ const AgentGroupRow = memo(function AgentGroupRow({
             className="min-w-0 overflow-hidden"
           >
             <div className="flex flex-col gap-2 py-1 pl-6">
-              {group.items.map((item) =>
+              {displayItems.map((item) =>
                 item.kind === 'message' ? (
                   <InlineMessageRow
                     key={item.id}
                     text={item.text}
                     source={item.source}
                     running={item.running && taskRunning}
+                  />
+                ) : item.kind === 'human-input' ? (
+                  <HumanInputReceiptRow
+                    key={item.id}
+                    item={item}
+                    readOnly={humanInputReadOnly}
+                    onResolved={onHumanInputResolved}
+                  />
+                ) : item.kind === 'repeated-tool' ? (
+                  <RepeatedToolDetailRow
+                    key={item.id}
+                    item={item}
+                    active={taskRunning && group.status === 'running'}
                   />
                 ) : (
                   <ToolDetailRow
@@ -1198,9 +1718,9 @@ const AgentGroupRow = memo(function AgentGroupRow({
               {group.items.length === 0 &&
                 taskRunning &&
                 group.status === 'running' && (
-                  <p className="m-0 !text-label-sm italic text-ds-text-neutral-subtle-default">
+                  <span className="block !text-label-sm font-normal italic text-ds-text-neutral-subtle-default">
                     Waiting for tool calls…
-                  </p>
+                  </span>
                 )}
             </div>
           </motion.div>
@@ -1291,6 +1811,10 @@ export interface TaskWorkLogAccordionProps {
   className?: string;
 }
 
+/** Bottom-only separator for the outer “Working on tasks for …” trigger. */
+export const WORK_LOG_SUMMARY_TRIGGER_BORDER_CLASS =
+  'border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default';
+
 export function TaskWorkLogAccordion({
   chatStore,
   taskId,
@@ -1307,6 +1831,37 @@ export function TaskWorkLogAccordion({
   const singleAgentActiveForm = isSingleAgent
     ? getSingleAgentActiveForm(task)
     : '';
+  const humanInputReadOnly =
+    task?.type === 'replay' ||
+    task?.type === 'share' ||
+    task?.status === ChatTaskStatus.FINISHED;
+  const onHumanInputResolved = useCallback(
+    (item: HumanInputItem, response?: string) => {
+      if (!taskId || !item.interaction) return;
+      const state = chatStore.getState();
+      const current = state.tasks[taskId];
+      if (!current) return;
+      const responseId = `interaction-response:${item.interaction.interaction_id}`;
+      if (
+        response &&
+        !current.messages.some((candidate) => candidate.id === responseId)
+      ) {
+        state.addMessages(taskId, {
+          id: responseId,
+          role: 'user',
+          content: response,
+          attaches: [],
+          interactionResponseTo: item.interaction.interaction_id,
+        });
+      }
+      const [nextAsk, ...remainingAsks] = current.askList;
+      state.setActiveAskList(taskId, remainingAsks);
+      state.setActiveAsk(taskId, nextAsk?.agent_name || '');
+      state.setIsPending(taskId, false);
+      if (nextAsk) state.addMessages(taskId, nextAsk);
+    },
+    [chatStore, taskId]
+  );
 
   // Normalize status with task-level context — once the task stops,
   // every entry (and any running message/tool) is done regardless of whether
@@ -1314,11 +1869,11 @@ export function TaskWorkLogAccordion({
   const effectiveGroups = useMemo(() => {
     if (taskRunning) return groups;
     return groups.map((entry): GroupedEntry => {
-      const settledItems = entry.items.map((it) =>
-        it.kind === 'tool'
-          ? { ...it, status: 'done' as const }
-          : { ...it, running: false }
-      );
+      const settledItems = entry.items.map((it) => {
+        if (it.kind === 'tool') return { ...it, status: 'done' as const };
+        if (it.kind === 'message') return { ...it, running: false };
+        return it;
+      });
       if (entry.kind === 'agent-group') {
         return {
           ...entry,
@@ -1365,7 +1920,10 @@ export function TaskWorkLogAccordion({
         type="button"
         aria-expanded={outerOpen}
         onClick={() => setOuterOpen((v) => !v)}
-        className="flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left"
+        className={cn(
+          'flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
+          WORK_LOG_SUMMARY_TRIGGER_BORDER_CLASS
+        )}
       >
         <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
           {status === ChatTaskStatus.RUNNING ||
@@ -1429,6 +1987,8 @@ export function TaskWorkLogAccordion({
                     onToggle={() => toggle(entry.id)}
                     isSingleAgent={isSingleAgent}
                     singleAgentActiveForm={singleAgentActiveForm}
+                    humanInputReadOnly={humanInputReadOnly}
+                    onHumanInputResolved={onHumanInputResolved}
                   />
                 ) : (
                   <AgentBlockRow
@@ -1437,6 +1997,8 @@ export function TaskWorkLogAccordion({
                     taskRunning={taskRunning}
                     open={isOpen(entry)}
                     onToggle={() => toggle(entry.id)}
+                    humanInputReadOnly={humanInputReadOnly}
+                    onHumanInputResolved={onHumanInputResolved}
                   />
                 )
               )}

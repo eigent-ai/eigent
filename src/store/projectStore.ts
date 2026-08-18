@@ -44,6 +44,10 @@ import {
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
+  releaseProjectEventStore,
+  resetProjectEventStore,
+} from './projectEventStore';
+import {
   projectMetaFromServer,
   useSpaceStore,
   type SpaceProjectMeta,
@@ -417,7 +421,10 @@ interface ProjectStore {
   setProjectSpace: (projectId: string, spaceId: string) => void;
   upsertProjectsFromServer: (serverProjects: ServerProject[]) => void;
   cleanupAutoCreatedEmptyProjects: () => void;
-  removeProject: (projectId: string) => void;
+  removeProject: (
+    projectId: string,
+    options?: { preserveEventStore?: boolean }
+  ) => void;
   updateProject: (
     projectId: string,
     updates: Partial<Omit<Project, 'id' | 'createdAt'>>
@@ -935,6 +942,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       };
     });
 
+    // Publish Project removal before disposing its event-store subscribers so
+    // mounted consumers are already scheduled to unmount from this runtime.
+    for (const projectId of projectIdsToRemove) {
+      releaseProjectEventStore(projectId);
+    }
+
     console.warn(
       `[ProjectStore] Removed ${projectIdsToRemove.length} auto-created empty Project(s).`
     );
@@ -1035,8 +1048,17 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       return null;
     }
 
-    // Create a new task in the new chat store with the queued content
-    const newTaskId = newChatStore.getState().create(customTaskId);
+    // Follow-up turns are seeded optimistically so their pending timeline is
+    // visible before the long-lived /chat stream emits CONFIRMED.  When that
+    // event arrives it calls this helper again with the same Run id.  Reuse
+    // the seeded task instead of recreating it (which would erase the user
+    // message and the pending task-log state).
+    const existingTaskId =
+      customTaskId && newChatStore.getState().tasks[customTaskId]
+        ? customTaskId
+        : null;
+    const newTaskId =
+      existingTaskId || newChatStore.getState().create(customTaskId);
 
     //Set the initTask as the active taskId
     newChatStore.getState().setActiveTaskId(newTaskId);
@@ -1145,6 +1167,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // helper is in the middle of a transition and will overwrite it.
       return update;
     });
+    releaseProjectEventStore(projectId);
   },
 
   _evictStaleOnTransition: (nextProjectId: string | null) => {
@@ -1172,7 +1195,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     get()._evictProjectRuntime(previousProjectId);
   },
 
-  removeProject: (projectId: string) => {
+  removeProject: (
+    projectId: string,
+    options?: { preserveEventStore?: boolean }
+  ) => {
     const { activeProjectId, projects } = get();
 
     if (!projects[projectId]) {
@@ -1202,6 +1228,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         staleProjectIds: nextStale,
       };
     });
+    if (options?.preserveEventStore) {
+      resetProjectEventStore(projectId);
+    } else {
+      releaseProjectEventStore(projectId);
+    }
     usePageTabStore.getState().removeSessionPreviewProject(projectId);
     useSpaceStore.getState().removeProjectMeta(projectId);
   },
@@ -1268,7 +1299,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (projectId) {
       if (projects[projectId]) {
         console.log(`[ProjectStore] Overwriting existing project ${projectId}`);
-        removeProject(projectId);
+        removeProject(projectId, { preserveEventStore: true });
       }
       // Create project with the specific naming
       replayProjectId = createProject(
@@ -1373,7 +1404,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       console.log(
         `[ProjectStore] Overwriting existing project ${projectId} for load`
       );
-      removeProject(projectId);
+      removeProject(projectId, { preserveEventStore: true });
     }
 
     const loadProjectId = createProject(

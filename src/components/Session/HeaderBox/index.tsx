@@ -26,6 +26,8 @@ import { useTranslation } from 'react-i18next';
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
+  /** Display-only identity for the active Project. */
+  projectName?: string | null;
   /** Optional extra class names for the outer container */
   className?: string;
   /** Reserve header height without controls or token count. */
@@ -34,6 +36,7 @@ export interface HeaderBoxProps {
 
 export function HeaderBox({
   totalTokens = 0,
+  projectName,
   className,
   empty = false,
 }: HeaderBoxProps) {
@@ -67,8 +70,8 @@ export function HeaderBox({
     <div
       className={`flex h-[44px] w-full flex-row items-center justify-between pl-3 pr-1.5 ${className || ''}`}
     >
-      {/* Left: return to project workspace */}
-      <div className="flex items-center gap-2">
+      {/* Left: return to workspace + display-only Project identity. */}
+      <div className="flex min-w-0 items-center gap-2">
         <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
           <Button
             type="button"
@@ -82,6 +85,14 @@ export function HeaderBox({
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
+        {projectName ? (
+          <span
+            className="min-w-0 max-w-[200px] truncate text-body-sm font-semibold text-ds-text-neutral-default-default"
+            title={projectName}
+          >
+            {projectName}
+          </span>
+        ) : null}
       </div>
 
       {/* Right: project total token count + unified preview toggle */}

@@ -50,11 +50,11 @@ export const FloatingAction = ({
   return (
     <div
       className={cn(
-        'bottom-32 left-0 right-0 top-2 mt-4 pointer-events-none sticky z-20 flex w-full items-center justify-center',
+        'pointer-events-none sticky bottom-40 left-0 right-0 top-2 z-20 mt-4 flex w-full items-center justify-center',
         className
       )}
     >
-      <div className="gap-2 p-1 backdrop-blur-md border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default shadow-button-shadow pointer-events-auto flex items-center rounded-full border">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-1 shadow-button-shadow backdrop-blur-md">
         {/* Always show Stop Task button when running (removed pause/resume logic) */}
         <Button
           variant="outline"

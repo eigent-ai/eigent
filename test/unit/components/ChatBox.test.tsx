@@ -219,6 +219,10 @@ describe('ChatBox Component', async () => {
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
     setNextExecutionId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
+    removeMessage: vi.fn(),
     removeTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
@@ -238,7 +242,11 @@ describe('ChatBox Component', async () => {
     restoreQueuedMessage: vi.fn(),
     clearQueuedMessages: vi.fn(),
     createChatStore: vi.fn(),
-    appendInitChatStore: vi.fn(),
+    appendInitChatStore: vi.fn(() => ({
+      chatStore: {
+        getState: () => defaultChatStoreState,
+      },
+    })),
     setActiveChatStore: vi.fn(),
     removeChatStore: vi.fn(),
     saveChatStore: vi.fn(),

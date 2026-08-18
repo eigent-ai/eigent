@@ -696,6 +696,8 @@ describe('projector pipeline', () => {
       lastSequence: 16,
       runVersion: 0,
       updatedAt: '2026-08-05T09:00:00Z',
+      origin: null,
+      resumeBlockedReason: null,
     });
     expect(snapshot.lastSyncedAt).toBeNull();
   });

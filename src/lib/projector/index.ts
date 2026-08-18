@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+export * from './adapters';
 export * from './decode';
 export * from './effects';
 export * from './importers';
@@ -32,7 +33,10 @@ import type {
 } from './types';
 
 const SNAPSHOT_RUN_STATUSES = new Set<ProjectedRun['status']>([
+  'pending',
   'running',
+  'waiting_for_user',
+  'cancelling',
   'completed',
   'failed',
   'cancelled',
@@ -42,7 +46,22 @@ const SNAPSHOT_RUN_STATUSES = new Set<ProjectedRun['status']>([
 function snapshotRunStatus(value: string): ProjectedRun['status'] {
   return SNAPSHOT_RUN_STATUSES.has(value as ProjectedRun['status'])
     ? (value as ProjectedRun['status'])
-    : 'running';
+    : 'unknown';
+}
+
+function snapshotRunVersion(
+  aggregate: NonNullable<ProjectSnapshotInput['runs']>[number]
+): number | null {
+  const value = aggregate.run_version ?? aggregate.version;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function snapshotRunOrigin(value: unknown): ProjectedRun['origin'] {
+  return value === 'local' || value === 'cloud_restore' || value === 'remote'
+    ? value
+    : null;
 }
 
 export function projectRawEvents(
@@ -86,15 +105,31 @@ export function projectSnapshot(
   const runs = { ...projected.runs };
   for (const aggregate of snapshot.runs || []) {
     const recent = runs[aggregate.run_id];
+    const aggregateRunVersion = snapshotRunVersion(aggregate);
+    // GET /runs is read before the event pages. If the Run changes while the
+    // pages are loading, replay is the newer status authority; otherwise the
+    // older aggregate could overwrite a terminal or decision event.
+    const replayIsAtLeastAsFresh = Boolean(
+      recent &&
+      aggregateRunVersion !== null &&
+      recent.runVersion >= aggregateRunVersion
+    );
     runs[aggregate.run_id] = {
       runId: aggregate.run_id,
-      status: snapshotRunStatus(aggregate.status),
+      status: replayIsAtLeastAsFresh
+        ? recent!.status
+        : snapshotRunStatus(aggregate.status),
       lastSequence: Math.max(
         recent?.lastSequence || 0,
         aggregate.expected_next_run_sequence - 1
       ),
-      runVersion: recent?.runVersion || 0,
-      updatedAt: aggregate.updated_at,
+      runVersion: Math.max(recent?.runVersion || 0, aggregateRunVersion || 0),
+      updatedAt: replayIsAtLeastAsFresh
+        ? recent!.updatedAt
+        : aggregate.updated_at,
+      origin: snapshotRunOrigin(aggregate.origin ?? recent?.origin),
+      resumeBlockedReason:
+        aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
     };
   }
   const mergeExistingState =

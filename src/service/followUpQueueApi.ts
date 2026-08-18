@@ -79,7 +79,37 @@ function basePath(projectId: string): string {
   return `/projects/${encodeURIComponent(projectId)}/follow-ups`;
 }
 
-export function createFollowUpRequest(input: {
+/**
+ * Validate one durable follow-up record at the transport boundary.
+ *
+ * The list helpers below already guard their array shape. Without the same
+ * guard on single-record reads, an empty or error-shaped body flows out under
+ * a `DurableFollowUpRequest` annotation the runtime never checked, and the
+ * failure surfaces much later as a property access on `undefined`.
+ */
+function parseFollowUpRecord(
+  response: unknown,
+  context: string
+): DurableFollowUpRequest {
+  const record = response as Partial<DurableFollowUpRequest> | null;
+  if (
+    !record ||
+    typeof record !== 'object' ||
+    typeof record.request_id !== 'string' ||
+    !record.request_id ||
+    typeof record.content !== 'string'
+  ) {
+    throw new Error(`${context} returned an invalid follow-up record`);
+  }
+  return {
+    ...(record as DurableFollowUpRequest),
+    attachment_paths: Array.isArray(record.attachment_paths)
+      ? record.attachment_paths
+      : [],
+  };
+}
+
+export async function createFollowUpRequest(input: {
   projectId: string;
   requestId: string;
   content: string;
@@ -88,7 +118,7 @@ export function createFollowUpRequest(input: {
   sourceCommandId?: string;
 }): Promise<DurableFollowUpRequest> {
   invalidatePendingFollowUps(input.projectId);
-  return fetchPost(basePath(input.projectId), {
+  const response = await fetchPost(basePath(input.projectId), {
     request_id: input.requestId,
     content: input.content,
     attachment_paths: input.attachmentPaths,
@@ -96,6 +126,7 @@ export function createFollowUpRequest(input: {
     source: input.source || 'local',
     source_command_id: input.sourceCommandId,
   });
+  return parseFollowUpRecord(response, 'createFollowUpRequest');
 }
 
 export async function listPendingRemoteFollowUpRequests(): Promise<
@@ -107,12 +138,13 @@ export async function listPendingRemoteFollowUpRequests(): Promise<
   return Array.isArray(response?.items) ? response.items : [];
 }
 
-export function getRemoteFollowUpByCommandId(
+export async function getRemoteFollowUpByCommandId(
   sourceCommandId: string
 ): Promise<DurableFollowUpRequest> {
-  return fetchGet(
+  const response = await fetchGet(
     `/follow-ups/source-command/${encodeURIComponent(sourceCommandId)}`
   );
+  return parseFollowUpRecord(response, 'getRemoteFollowUpByCommandId');
 }
 
 export async function listPendingFollowUpRequests(
@@ -135,32 +167,37 @@ export async function listPendingFollowUpRequests(
   return request;
 }
 
-export function prioritizeFollowUpRequest(
+export async function prioritizeFollowUpRequest(
   projectId: string,
   requestId: string
 ): Promise<DurableFollowUpRequest> {
   invalidatePendingFollowUps(projectId);
-  return fetchPost(
+  const response = await fetchPost(
     `${basePath(projectId)}/${encodeURIComponent(requestId)}/send-now`
   );
+  return parseFollowUpRecord(response, 'prioritizeFollowUpRequest');
 }
 
-export function cancelFollowUpRequest(
+export async function cancelFollowUpRequest(
   projectId: string,
   requestId: string
 ): Promise<DurableFollowUpRequest> {
   invalidatePendingFollowUps(projectId);
-  return fetchDelete(`${basePath(projectId)}/${encodeURIComponent(requestId)}`);
+  const response = await fetchDelete(
+    `${basePath(projectId)}/${encodeURIComponent(requestId)}`
+  );
+  return parseFollowUpRecord(response, 'cancelFollowUpRequest');
 }
 
-export function markFollowUpRequestAdmitted(
+export async function markFollowUpRequestAdmitted(
   projectId: string,
   requestId: string,
   runId: string
 ): Promise<DurableFollowUpRequest> {
   invalidatePendingFollowUps(projectId);
-  return fetchPost(
+  const response = await fetchPost(
     `${basePath(projectId)}/${encodeURIComponent(requestId)}/admitted`,
     { run_id: runId }
   );
+  return parseFollowUpRecord(response, 'markFollowUpRequestAdmitted');
 }
