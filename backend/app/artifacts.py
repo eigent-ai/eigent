@@ -161,6 +161,87 @@ def _artifact_upload_policy(root: _ArtifactRoot, relative_path: str) -> str:
     return root.upload_policy
 
 
+def _git_run_changed_artifacts(
+    journal: SQLiteRunJournal,
+    run: RunRecord,
+) -> ArtifactScanResult | None:
+    """Project exact committed Run changes from Git into Artifact metadata."""
+
+    materialization = journal.get_run_git_materialization(run.run_id)
+    if (
+        materialization is None
+        or materialization.workspace_base_commit is None
+        or materialization.promoted_commit is None
+        or materialization.materialization_state
+        not in {"promoted", "archived"}
+    ):
+        return None
+    repository = journal.get_git_repository(materialization.repository_id)
+    project = journal.get_project_git_state(run.project_id)
+    if repository is None or project is None:
+        return None
+
+    try:
+        from app.workspace_git.backend import GitBackend
+
+        git = GitBackend()
+        changes = git.changed_paths_between(
+            Path(repository.root_path),
+            base_commit=materialization.workspace_base_commit,
+            target_commit=materialization.promoted_commit,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to derive authoritative Git Artifact changes",
+            extra={"run_id": run.run_id},
+        )
+        return None
+
+    visible_root = Path(repository.root_path).expanduser().resolve()
+    if project.pending_apply:
+        if project.worktree_path is None:
+            return None
+        visible_root = Path(project.worktree_path).expanduser().resolve()
+    values: list[dict[str, Any]] = []
+    truncated = len(changes) > MAX_ARTIFACTS_PER_RUN
+    artifact_root = _ArtifactRoot(
+        path=visible_root,
+        scan_all=False,
+        upload_policy=_AGENT_GENERATED_UPLOAD_POLICY,
+    )
+    for change in changes[:MAX_ARTIFACTS_PER_RUN]:
+        if change.status in {"D", "T"}:
+            continue
+        path = visible_root / change.relative_path
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            stat_result = path.stat()
+        except OSError:
+            continue
+        values.append(
+            {
+                "filename": path.name,
+                "path": str(path.resolve()),
+                "relativePath": change.relative_path,
+                "changeType": (
+                    "generated" if change.status == "A" else "changed"
+                ),
+                "size": stat_result.st_size,
+                "modifiedAt": stat_result.st_mtime * 1000,
+                "supportsRanges": True,
+                "uploadPolicy": _artifact_upload_policy(
+                    artifact_root, change.relative_path
+                ),
+            }
+        )
+    return ArtifactScanResult(
+        artifacts=values,
+        scan_status="partial" if truncated else "complete",
+        truncated=truncated,
+    )
+
+
 def discover_task_changed_files(
     snapshot: TaskSnapshot,
     max_entries: int = MAX_ARTIFACTS_PER_RUN,
@@ -482,9 +563,33 @@ def finalize_run_artifacts(
                 user_id=user_id,
             ),
         )
-        artifacts = scan_result.artifacts
-        scan_status = scan_result.scan_status
-        truncated = scan_result.truncated
+        git_result = _git_run_changed_artifacts(journal, run)
+        if git_result is None:
+            artifacts = scan_result.artifacts
+            scan_status = scan_result.scan_status
+            truncated = scan_result.truncated
+        else:
+            # Git owns Project output attribution. Keep direct Space internals
+            # (todo/terminal logs) discovered outside the Git workspace, while
+            # exact committed changes win for matching relative paths.
+            git_by_path = {
+                item["relativePath"]: item for item in git_result.artifacts
+            }
+            direct_only = [
+                item
+                for item in scan_result.artifacts
+                if item["relativePath"] not in git_by_path
+            ]
+            ordered = sorted(
+                git_by_path.values(), key=lambda item: item["relativePath"]
+            ) + sorted(direct_only, key=lambda item: item["relativePath"])
+            artifacts = ordered[:MAX_ARTIFACTS_PER_RUN]
+            truncated = (
+                scan_result.truncated
+                or git_result.truncated
+                or len(ordered) > MAX_ARTIFACTS_PER_RUN
+            )
+            scan_status = "partial" if truncated else "complete"
 
     manifest = record_artifact_manifest(
         journal,

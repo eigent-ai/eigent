@@ -51,6 +51,7 @@ export function useWorkspaceSavePoint({
     !spaceId.startsWith('legacy_') &&
     isLocalWorkspaceSpace(space)
   );
+  const eigentOwnedSpace = space?.sourceType === 'blank';
 
   const loadStatus = useCallback(async () => {
     if (!supported || !spaceId || !email) {
@@ -84,7 +85,12 @@ export function useWorkspaceSavePoint({
       if (!spaceId || !email || loading) return;
       setLoading(true);
       try {
-        await bootstrapWorkspaceGit(spaceId, { email, userId }, allowInit);
+        await bootstrapWorkspaceGit(
+          spaceId,
+          { email, userId },
+          allowInit,
+          eigentOwnedSpace
+        );
         await loadStatus();
         toast.success(t('layout.workspace-version-enabled'));
       } catch (error) {
@@ -97,7 +103,7 @@ export function useWorkspaceSavePoint({
         setLoading(false);
       }
     },
-    [email, loadStatus, loading, spaceId, t, userId]
+    [email, eigentOwnedSpace, loadStatus, loading, spaceId, t, userId]
   );
 
   const requestEnable = useCallback(() => {

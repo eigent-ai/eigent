@@ -70,7 +70,9 @@ class GitCommandError(GitBackendError):
 class GitCommandTimeoutError(GitBackendError):
     """Raised when a bounded Git command exceeds its execution budget."""
 
-    def __init__(self, *, args: tuple[str, ...], timeout_seconds: float) -> None:
+    def __init__(
+        self, *, args: tuple[str, ...], timeout_seconds: float
+    ) -> None:
         self.args_safe = args
         self.timeout_seconds = timeout_seconds
         super().__init__(
@@ -151,6 +153,12 @@ class GitObjectMetadata:
     oid: str
     object_type: str
     size_bytes: int
+
+
+@dataclass(frozen=True)
+class GitPathChange:
+    status: str
+    relative_path: str
 
 
 class GitBackend:
@@ -382,11 +390,7 @@ class GitBackend:
         for line in result.stdout.splitlines():
             oid, separator, remainder = line.partition(" ")
             object_type, separator_two, raw_size = remainder.partition(" ")
-            if (
-                not separator
-                or not separator_two
-                or not raw_size.isdigit()
-            ):
+            if not separator or not separator_two or not raw_size.isdigit():
                 raise GitBackendError("Git returned invalid object metadata")
             records.append(
                 GitObjectMetadata(
@@ -676,6 +680,70 @@ class GitBackend:
             args.append(source)
         args.extend(("--", *pathspecs))
         return self._run(repository_root, tuple(args)).stdout
+
+    def changed_paths_between(
+        self,
+        repository_root: Path,
+        *,
+        base_commit: str,
+        target_commit: str,
+    ) -> tuple[GitPathChange, ...]:
+        """Return exact non-rename path changes between two commits."""
+
+        self._validate_object_name(base_commit)
+        self._validate_object_name(target_commit)
+        result = self._run(
+            repository_root,
+            (
+                "diff",
+                "--name-status",
+                "-z",
+                "--no-renames",
+                base_commit,
+                target_commit,
+                "--",
+            ),
+        )
+        fields = result.stdout.split("\0")
+        if fields and fields[-1] == "":
+            fields.pop()
+        if len(fields) % 2:
+            raise GitBackendError("Git returned malformed path changes")
+        changes: list[GitPathChange] = []
+        for offset in range(0, len(fields), 2):
+            status = fields[offset]
+            path = self._normalize_relative_git_path(fields[offset + 1])
+            if status not in {"A", "M", "D", "T"}:
+                raise GitBackendError(
+                    f"unsupported Git path change status: {status!r}"
+                )
+            changes.append(GitPathChange(status=status, relative_path=path))
+        return tuple(changes)
+
+    def hash_worktree_file(
+        self,
+        repository_root: Path,
+        path: Path,
+    ) -> str:
+        """Hash one regular file as a raw Git blob without clean filters."""
+
+        root = repository_root.expanduser().resolve()
+        target = path.expanduser().resolve()
+        try:
+            target.relative_to(root)
+        except ValueError as exc:
+            raise GitBackendError(
+                "file is outside the repository root"
+            ) from exc
+        if target.is_symlink() or not target.is_file():
+            raise GitBackendError("Git blob hashing requires a regular file")
+        result = self._run(
+            root,
+            ("hash-object", "--no-filters", "--", str(target)),
+        )
+        oid = result.stdout.strip()
+        self._validate_object_name(oid)
+        return oid
 
     def commit_parent(
         self,

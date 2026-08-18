@@ -17,6 +17,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +30,7 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.utils.workspace_paths import get_eigent_root
 from app.workspace_config import canonical_digest
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_git.coordinator import WorkspaceGitCoordinator
@@ -105,6 +109,13 @@ class WorkspaceGitLifecycle:
         if run is None or run.materialization_state == "unmaterialized":
             return GitRunFinalization(run_id, "not_materialized", None, None)
         if run.materialization_state == "archived":
+            try:
+                self._auto_apply_project_to_space(run_id)
+            except Exception:
+                logger.exception(
+                    "Archived Project output apply needs attention",
+                    extra={"run_id": run_id, "project_id": run.project_id},
+                )
             return GitRunFinalization(
                 run_id,
                 "archived",
@@ -175,12 +186,310 @@ class WorkspaceGitLifecycle:
             )
         self._archive_agent_workspaces(run_id)
         self._refresh_project_projection(run.project_id)
+        try:
+            self._auto_apply_project_to_space(run_id)
+        except Exception:
+            logger.exception(
+                "Terminal Project output apply needs attention",
+                extra={"run_id": run_id, "project_id": run.project_id},
+            )
         archived = self._archive(run_id)
         return GitRunFinalization(
             run_id,
             "archived",
             archived.promoted_commit,
             archived.run_ref,
+        )
+
+    def prepare_successful_run(self, run_id: str) -> GitRunFinalization:
+        """Promote and safely expose a successful Run before its manifest.
+
+        Agent and Run worktrees remain internal implementation details. For an
+        Eigent-created Space, a conflict-free Project result is projected into
+        the visible Space root before Artifact discovery. Archival still waits
+        for the durable terminal event.
+        """
+
+        canonical_run = self.journal.get_run(run_id)
+        if canonical_run is None:
+            raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
+        if canonical_run.status in {"completed", "failed", "cancelled"}:
+            return GitRunFinalization(run_id, "already_terminal", None, None)
+        run = self.journal.get_run_git_materialization(run_id)
+        if run is None or run.materialization_state == "unmaterialized":
+            return GitRunFinalization(run_id, "not_materialized", None, None)
+        agent_workspaces = self.journal.list_git_agent_workspaces(
+            run_id=run_id
+        )
+        run_head = (
+            self.git.current_head(Path(run.worktree_path))
+            if run.worktree_path
+            else None
+        )
+        if any(
+            self._agent_workspace_requires_deferral(item, run_head)
+            for item in agent_workspaces
+        ):
+            return GitRunFinalization(
+                run_id, "deferred_agent_workspace", run.promoted_commit, None
+            )
+        change_sets = [
+            item
+            for item in self.journal.list_git_change_sets()
+            if item.run_id == run_id
+        ]
+        pending_mutation_intents = self.journal.list_git_mutation_intents(
+            statuses=("prepared", "needs_attention")
+        )
+        for change_set in change_sets:
+            if (
+                change_set.state == "needs_attention"
+                or any(
+                    item.change_set_id == change_set.change_set_id
+                    for item in pending_mutation_intents
+                )
+                or self.journal.list_git_change_set_items(
+                    change_set.change_set_id,
+                    states=("pending", "preimage_checkpointed"),
+                )
+            ):
+                return GitRunFinalization(
+                    run_id, "deferred_mutation", run.promoted_commit, None
+                )
+            if change_set.state == "open":
+                self.journal.update_git_change_set_state(
+                    change_set_id=change_set.change_set_id,
+                    expected_state="open",
+                    state="checkpointed",
+                )
+        if run.materialization_state == "materialized":
+            run = self._promote(run_id)
+        if run.materialization_state != "promoted":
+            return GitRunFinalization(
+                run_id,
+                f"deferred_{run.materialization_state}",
+                run.promoted_commit,
+                None,
+            )
+        self._refresh_project_projection(run.project_id)
+        try:
+            applied = self._auto_apply_project_to_space(run_id)
+        except Exception:
+            logger.exception(
+                "Automatic Project output apply needs attention",
+                extra={"run_id": run_id, "project_id": run.project_id},
+            )
+            applied = False
+        return GitRunFinalization(
+            run_id,
+            "prepared_space" if applied else "prepared_project",
+            run.promoted_commit,
+            None,
+        )
+
+    def _auto_apply_project_to_space(self, run_id: str) -> bool:
+        run = self.journal.get_run_git_materialization(run_id)
+        if (
+            run is None
+            or run.materialization_state not in {"promoted", "archived"}
+            or run.workspace_base_commit is None
+            or run.promoted_commit is None
+        ):
+            return False
+        project = self.journal.get_project_git_state(run.project_id)
+        repository = self.journal.get_git_repository(run.repository_id)
+        if (
+            project is None
+            or repository is None
+            or not project.pending_apply
+            or project.integration_head != run.promoted_commit
+            or project.projected_head != run.promoted_commit
+            or project.worktree_path is None
+            or not self._is_eigent_managed_space(
+                repository.root_path, repository.ownership
+            )
+        ):
+            return False
+
+        root = Path(repository.root_path).expanduser().resolve()
+        source_root = Path(project.worktree_path).expanduser().resolve()
+        changes = self.git.changed_paths_between(
+            root,
+            base_commit=run.workspace_base_commit,
+            target_commit=run.promoted_commit,
+        )
+        # Deletions and type changes require an explicit user-visible Apply;
+        # automatic projection is intentionally limited to regular outputs.
+        if len(changes) > 5000 or any(
+            item.status in {"D", "T"} for item in changes
+        ):
+            return False
+        paths = tuple(item.relative_path for item in changes)
+        path_sources = {
+            item.relative_path: (
+                "agent_created" if item.status == "A" else "agent_modified"
+            )
+            for item in changes
+        }
+        if not paths:
+            return False
+
+        operation_id = (
+            "gitop_"
+            + canonical_digest(
+                {
+                    "repository_id": repository.repository_id,
+                    "request_id": f"terminal-auto-apply:{run_id}",
+                }
+            )[:32]
+        )
+        payload = {
+            "run_id": run_id,
+            "project_id": run.project_id,
+            "base_commit": run.workspace_base_commit,
+            "target_commit": run.promoted_commit,
+            "paths": list(paths),
+        }
+        with self.content.repository_lock(
+            self.content.repository_lock_path(repository.space_id)
+        ):
+            current_token = self.git.repo_state_token(root)
+            existing_operation = self.journal.get_git_operation(operation_id)
+            expected_digest = (
+                existing_operation.expected_repo_state_digest
+                if existing_operation is not None
+                else current_token.digest
+            )
+            if expected_digest is None:
+                raise ContentRepositoryError(
+                    "Project auto-apply has no expected RepoStateToken"
+                )
+            operation = self.journal.begin_git_operation(
+                operation_id=operation_id,
+                repository_id=repository.repository_id,
+                request_id=f"terminal-auto-apply:{run_id}",
+                operation_type="project.auto_apply",
+                payload_digest=canonical_digest(payload),
+                expected_repo_state_digest=expected_digest,
+            )
+            if operation.status == "completed":
+                return True
+
+            plan: list[tuple[Path, Path, str, str | None]] = []
+            for relative_path in paths:
+                relative = Path(relative_path)
+                if ".git" in relative.parts:
+                    return False
+                source = source_root / relative
+                target = root / relative
+                try:
+                    target.resolve(strict=False).relative_to(root)
+                except ValueError:
+                    return False
+                if source.is_symlink() or not source.is_file():
+                    return False
+                desired_oid = self.git.blob_oid_at_path(
+                    root, run.promoted_commit, relative_path
+                )
+                if desired_oid is None:
+                    return False
+                base_oid = self.git.blob_oid_at_path(
+                    root, run.workspace_base_commit, relative_path
+                )
+                if target.exists() or target.is_symlink():
+                    if target.is_symlink() or not target.is_file():
+                        return False
+                    observed_oid = self.git.hash_worktree_file(root, target)
+                    if observed_oid == desired_oid:
+                        continue
+                    if base_oid is None or observed_oid != base_oid:
+                        return False
+                    expected_target_oid = observed_oid
+                elif base_oid is not None:
+                    return False
+                else:
+                    expected_target_oid = None
+                plan.append((source, target, desired_oid, expected_target_oid))
+
+            if operation.status == "prepared":
+                self.journal.mark_git_operation_dispatched(
+                    operation_id,
+                    observed_repo_state_digest=current_token.digest,
+                )
+            elif operation.status != "dispatched":
+                raise ContentRepositoryError(
+                    f"Project auto-apply is {operation.status!r}"
+                )
+
+            for source, target, desired_oid, expected_target_oid in plan:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=".eigent-apply-", dir=target.parent
+                )
+                os.close(descriptor)
+                temporary = Path(temporary_name)
+                try:
+                    shutil.copy2(source, temporary)
+                    if (
+                        self.git.hash_worktree_file(root, temporary)
+                        != desired_oid
+                    ):
+                        raise ContentRepositoryError(
+                            "Project output changed during automatic apply"
+                        )
+                    if target.exists() or target.is_symlink():
+                        if target.is_symlink() or not target.is_file():
+                            raise ContentRepositoryError(
+                                "Space output target changed during apply"
+                            )
+                        current_target_oid = self.git.hash_worktree_file(
+                            root, target
+                        )
+                        if current_target_oid == desired_oid:
+                            continue
+                        if (
+                            expected_target_oid is None
+                            or current_target_oid != expected_target_oid
+                        ):
+                            raise ContentRepositoryError(
+                                "Space output target changed during apply"
+                            )
+                    elif expected_target_oid is not None:
+                        raise ContentRepositoryError(
+                            "Space output target disappeared during apply"
+                        )
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+
+            observed = self.git.repo_state_token(root)
+            self.journal.complete_project_auto_apply(
+                operation_id=operation_id,
+                project_id=run.project_id,
+                expected_version=project.version,
+                expected_integration_head=run.promoted_commit,
+                applied_path_sources=path_sources,
+                observed_repo_state_digest=observed.digest,
+            )
+        return True
+
+    @staticmethod
+    def _is_eigent_managed_space(root_path: str, ownership: str) -> bool:
+        if ownership == "eigent_owned":
+            return True
+        # Compatibility for blank Spaces created while the Renderer always
+        # sent eigent_owned_space=false. Only the Brain-managed Space layout is
+        # eligible; arbitrary adopted folders keep explicit Apply semantics.
+        root = Path(root_path).expanduser().resolve()
+        managed_root = get_eigent_root().expanduser().resolve()
+        try:
+            relative = root.relative_to(managed_root)
+        except ValueError:
+            return False
+        return (
+            len(relative.parts) == 2
+            and relative.parts[0].startswith("user_")
+            and relative.parts[1].startswith("space_")
         )
 
     def _archive_agent_workspaces(self, run_id: str) -> None:
@@ -318,14 +627,17 @@ class WorkspaceGitLifecycle:
 
     @staticmethod
     def _agent_archive_operation_id(record: GitAgentWorkspaceRecord) -> str:
-        return "gitop_" + canonical_digest(
-            {
-                "repository_id": record.repository_id,
-                "request_id": (
-                    f"terminal-agent-archive:{record.workspace_id}"
-                ),
-            }
-        )[:32]
+        return (
+            "gitop_"
+            + canonical_digest(
+                {
+                    "repository_id": record.repository_id,
+                    "request_id": (
+                        f"terminal-agent-archive:{record.workspace_id}"
+                    ),
+                }
+            )[:32]
+        )
 
     @staticmethod
     def _agent_archive_ref(record: GitAgentWorkspaceRecord) -> str:
