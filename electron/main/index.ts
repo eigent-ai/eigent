@@ -34,13 +34,9 @@ import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
-import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
 import { copyBrowserData } from './copy';
-import { getOrCreateDesktopInstanceId } from './desktopIdentity';
-import { resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -53,13 +49,6 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
-import {
-  authorizeLocalFilePath,
-  authorizeLocalPreviewPath,
-  isExecutableExternalOpenPath,
-  isMainRendererSender,
-} from './localFileSecurity';
-import { filePathFromLocalFileUrl } from './localFileUrl';
 import { setRoundedCorners } from './native/macos-window';
 import {
   completeCodexOAuthCallback,
@@ -84,12 +73,6 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
-import {
-  closeWorkspaceSecretBroker,
-  ensureWorkspaceSecretBroker,
-  getDefaultWorkspaceSecretVault,
-  registerWorkspaceSecretIpcHandlers,
-} from './workspaceSecrets';
 
 const userData = app.getPath('userData');
 
@@ -110,39 +93,9 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
-const localControlCapability = crypto.randomBytes(32).toString('base64url');
-let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
-const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
-const activeLocalFileRoots = new Set<string>();
-
-function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
-  if (!desktopInstanceId) {
-    desktopInstanceId = getOrCreateDesktopInstanceId(
-      userData,
-      legacyRendererId
-    );
-  }
-  return desktopInstanceId;
-}
-
-async function primeDesktopInstanceIdFromRenderer(): Promise<void> {
-  if (desktopInstanceId || !win || win.isDestroyed()) return;
-  let legacyRendererId: string | null = null;
-  try {
-    legacyRendererId = await win.webContents.executeJavaScript(
-      `window.localStorage.getItem(${JSON.stringify(
-        LEGACY_DESKTOP_INSTANCE_STORAGE_KEY
-      )})`,
-      true
-    );
-  } catch (error) {
-    log.warn('Unable to read legacy renderer device identity', error);
-  }
-  resolveDesktopInstanceId(legacyRendererId);
-}
 
 const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
 
@@ -155,40 +108,6 @@ const isHttpOrHttpsUrl = (url: unknown): url is string => {
     return false;
   }
 };
-
-function assertMainRendererSender(event: Electron.IpcMainInvokeEvent): void {
-  if (
-    !win ||
-    win.isDestroyed() ||
-    !isMainRendererSender(event.sender.id, win.webContents.id) ||
-    event.senderFrame !== event.sender.mainFrame
-  ) {
-    throw new Error('This operation is restricted to the main renderer');
-  }
-}
-
-function localFileAllowedRoots(): string[] {
-  // Only active Space roots plus the renderer's static application assets are
-  // readable through localfile://. In particular, HOME, userData and the OS
-  // temp directory are not trust boundaries for agent-authored HTML.
-  return [...activeLocalFileRoots, RENDERER_DIST, VITE_PUBLIC];
-}
-
-async function requireAuthorizedPreviewFile(
-  event: Electron.IpcMainInvokeEvent,
-  filePath: string
-): Promise<string> {
-  assertMainRendererSender(event);
-  const authorization = await authorizeLocalPreviewPath(
-    filePath,
-    activeLocalFileRoots,
-    [RENDERER_DIST, VITE_PUBLIC]
-  );
-  if (!authorization.allowed) {
-    throw new Error('Preview file is outside the active workspace');
-  }
-  return authorization.filePath;
-}
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -868,11 +787,6 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
   registerTerminalIpcHandlers();
-  registerWorkspaceSecretIpcHandlers(
-    ipcMain,
-    getDefaultWorkspaceSecretVault(),
-    assertMainRendererSender
-  );
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -884,19 +798,6 @@ function registerIpcHandlers() {
   ipcMain.handle('get-browser-port', () => {
     log.info('Getting browser port');
     return browser_port;
-  });
-
-  ipcMain.handle('get-embedded-browser-runtime', () => {
-    const targets = webViewManager?.listAvailableBrowserToolkitTargets() ?? [];
-    const targetAvailable = targets.length > 0;
-    log.info(
-      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, available_targets=${targets.length}`
-    );
-    return {
-      port: browser_port,
-      targetAvailable,
-      targets,
-    };
   });
 
   // Set browser port
@@ -1158,48 +1059,6 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
-  ipcMain.handle('get-local-control-capability', (event) => {
-    if (!win || event.sender.id !== win.webContents.id) {
-      throw new Error(
-        'Local control capability is restricted to the main renderer'
-      );
-    }
-    return localControlCapability;
-  });
-  ipcMain.handle('get-desktop-instance-id', (event, legacyRendererId) => {
-    if (!win || event.sender.id !== win.webContents.id) {
-      throw new Error('Desktop identity is restricted to the main renderer');
-    }
-    return resolveDesktopInstanceId(
-      typeof legacyRendererId === 'string' ? legacyRendererId : null
-    );
-  });
-  ipcMain.handle(
-    'set-local-file-preview-roots',
-    async (event, roots: unknown) => {
-      assertMainRendererSender(event);
-      if (!Array.isArray(roots) || roots.length > 4) {
-        throw new Error('Invalid local file preview roots');
-      }
-
-      const nextRoots = new Set<string>();
-      for (const root of roots) {
-        if (typeof root !== 'string' || !path.isAbsolute(root)) {
-          throw new Error('Local file preview roots must be absolute paths');
-        }
-        const realRoot = await fsp.realpath(root);
-        const stats = await fsp.stat(realRoot);
-        if (!stats.isDirectory()) {
-          throw new Error('Local file preview roots must be directories');
-        }
-        nextRoots.add(realRoot);
-      }
-
-      activeLocalFileRoots.clear();
-      nextRoots.forEach((root) => activeLocalFileRoots.add(root));
-      return { success: true, roots: activeLocalFileRoots.size };
-    }
-  );
 
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
@@ -1320,20 +1179,9 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
-      const authorizedPath = await requireAuthorizedPreviewFile(
-        event,
-        filePath
-      );
-      const stats = await fsp.stat(authorizedPath);
-      if (stats.size > FILE_PREVIEW_LIMITS.imageBytes) {
-        throw new Error(
-          `FILE_PREVIEW_TOO_LARGE:${stats.size}:${FILE_PREVIEW_LIMITS.imageBytes}`
-        );
-      }
-      const file = fs.readFileSync(authorizedPath);
+      const file = fs.readFileSync(filePath);
       const mimeType =
-        mime.getType(path.extname(authorizedPath)) ||
-        'application/octet-stream';
+        mime.getType(path.extname(filePath)) || 'application/octet-stream';
       return `data:${mimeType};base64,${file.toString('base64')}`;
     } catch (error: any) {
       log.error('Failed to read file as data URL:', filePath, error);
@@ -1780,64 +1628,6 @@ function registerIpcHandlers() {
     };
   });
 
-  ipcMain.handle('select-agent-plugin-source', async (event) => {
-    assertMainRendererSender(event);
-
-    const sourceChoice = await dialog.showMessageBox(win!, {
-      type: 'question',
-      title: 'Import Agent Plugin',
-      message: 'Choose the Agent Plugin source',
-      detail:
-        'A plugin directory is the standard package format. Archives are supported only as an Eigent import transport.',
-      buttons: ['Plugin directory', 'Archive', 'Cancel'],
-      defaultId: 0,
-      cancelId: 2,
-      noLink: true,
-    });
-    if (sourceChoice.response === 2) {
-      return { canceled: true };
-    }
-
-    const sourceKind = sourceChoice.response === 0 ? 'directory' : 'archive';
-    const result = await dialog.showOpenDialog(win!, {
-      title:
-        sourceKind === 'directory'
-          ? 'Select Agent Plugin directory'
-          : 'Select Agent Plugin archive',
-      properties: sourceKind === 'directory' ? ['openDirectory'] : ['openFile'],
-      filters:
-        sourceKind === 'archive'
-          ? [
-              {
-                name: 'Agent Plugin archives',
-                extensions: ['zip'],
-              },
-            ]
-          : undefined,
-    });
-    if (result.canceled || result.filePaths.length !== 1) {
-      return { canceled: true };
-    }
-
-    const selectedPath = await fsp.realpath(result.filePaths[0]);
-    const selectedStat = await fsp.stat(selectedPath);
-    if (
-      (sourceKind === 'directory' && !selectedStat.isDirectory()) ||
-      (sourceKind === 'archive' &&
-        (!selectedStat.isFile() ||
-          path.extname(selectedPath).toLowerCase() !== '.zip'))
-    ) {
-      throw new Error('Selected Agent Plugin source has an invalid type');
-    }
-
-    return {
-      canceled: false,
-      source_path: selectedPath,
-      display_name: path.basename(selectedPath),
-      source_kind: sourceKind,
-    };
-  });
-
   // Handle drag-and-drop files - convert File objects to file paths
   ipcMain.handle(
     'process-dropped-files',
@@ -1911,32 +1701,6 @@ function registerIpcHandlers() {
     } catch (e) {
       log.error('reveal in folder failed', e);
     }
-  });
-
-  ipcMain.handle('open-local-file', async (event, filePath: string) => {
-    assertMainRendererSender(event);
-    const authorization = await authorizeLocalFilePath(
-      filePath,
-      localFileAllowedRoots()
-    );
-    if (!authorization.allowed) {
-      return { success: false, error: 'File is outside the active workspace' };
-    }
-    const stats = await fsp.stat(authorization.filePath).catch(() => null);
-    if (!stats?.isFile()) {
-      return { success: false, error: 'File does not exist' };
-    }
-    if (isExecutableExternalOpenPath(authorization.filePath, stats.mode)) {
-      shell.showItemInFolder(authorization.filePath);
-      return {
-        success: false,
-        error: 'Executable files cannot be opened from an agent result',
-      };
-    }
-    const error = await shell.openPath(authorization.filePath);
-    return error
-      ? { success: false, error }
-      : { success: true, error: undefined };
   });
 
   // Skills: all operations via Brain REST API (backend). No IPC.
@@ -2308,48 +2072,9 @@ function registerIpcHandlers() {
   // ==================== FileReader handler ====================
   ipcMain.handle(
     'open-file',
-    async (
-      event,
-      type: string,
-      filePath: string,
-      isShowSourceCode: boolean
-    ) => {
+    async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      const authorizedPath = await requireAuthorizedPreviewFile(
-        event,
-        filePath
-      );
-      return manager.openFile(type, authorizedPath, isShowSourceCode);
-    }
-  );
-
-  ipcMain.handle(
-    'get-file-preview-metadata',
-    async (event, filePath: string) => {
-      const manager = checkManagerInstance(fileReader, 'FileReader');
-      const authorizedPath = await requireAuthorizedPreviewFile(
-        event,
-        filePath
-      );
-      return manager.getPreviewMetadata(authorizedPath);
-    }
-  );
-
-  ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
-    const manager = checkManagerInstance(fileReader, 'FileReader');
-    const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
-    return manager.previewCsvFile(authorizedPath);
-  });
-
-  ipcMain.handle(
-    'preview-text-file',
-    async (event, filePath: string, limit?: number) => {
-      const manager = checkManagerInstance(fileReader, 'FileReader');
-      const authorizedPath = await requireAuthorizedPreviewFile(
-        event,
-        filePath
-      );
-      return manager.previewTextFile(authorizedPath, limit);
+      return manager.openFile(type, filePath, isShowSourceCode);
     }
   );
 
@@ -2412,20 +2137,6 @@ function registerIpcHandlers() {
     ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
       return manager.getFileList(email, taskId, projectId, userId);
-    }
-  );
-
-  ipcMain.handle(
-    'get-camel-log-file-list',
-    async (
-      _,
-      email: string,
-      taskId: string,
-      projectId?: string,
-      userId?: string | number | null
-    ) => {
-      const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.getCamelLogFileList(email, taskId, projectId, userId);
     }
   );
 
@@ -2790,10 +2501,6 @@ const startBackendAfterInstall = async () => {
   // Add a small delay to ensure any previous processes are fully cleaned up
   await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // Existing installations originally stored the device id in renderer
-  // localStorage. Migrate it before the Brain environment first resolves the
-  // new main-process-owned identity file.
-  await primeDesktopInstanceIdFromRenderer();
   await checkAndStartBackend();
 };
 
@@ -2891,7 +2598,7 @@ async function createWindowInternal() {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
       partition: 'persist:main_window',
-      webSecurity: true,
+      webSecurity: false,
       preload,
       nodeIntegration: true,
       contextIsolation: true,
@@ -3394,16 +3101,6 @@ const setupExternalLinkHandling = () => {
     }
     // For internal URLs (localhost, hash navigation), allow navigation to proceed
   });
-
-  // srcDoc report previews are sandboxed child frames. Never turn a scripted
-  // child-frame navigation into an outbound request: it could encode local
-  // workspace contents in the URL even when connect-src is disabled.
-  win.webContents.on('will-frame-navigate', (details) => {
-    if (!details.isMainFrame && isExternalUrl(details.url)) {
-      details.preventDefault();
-      log.warn('[HTML PREVIEW] Blocked external frame navigation');
-    }
-  });
 };
 
 // ==================== check and start backend ====================
@@ -3461,7 +3158,6 @@ const checkAndStartBackend = async (
       if (isToolInstalled.success) {
         log.info('Tool installed, starting backend service...');
         const codexResolverEnv = await getCodexResolverEnv();
-        const workspaceSecretBroker = await ensureWorkspaceSecretBroker();
         const exampleSkillsDir = getExampleSkillsSourceDir();
 
         // Start backend and wait for health check to pass
@@ -3473,13 +3169,6 @@ const checkAndStartBackend = async (
           {
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
-            EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
-            EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
-            EIGENT_ELECTRON_CDP_PORT: String(browser_port),
-            EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
-              workspaceSecretBroker.endpoint,
-            EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY:
-              workspaceSecretBroker.capability,
           }
         );
 
@@ -3662,73 +3351,95 @@ app.whenReady().then(async () => {
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, _webContents) => {
     item.once('done', (_event, _state) => {
-      const itemUrl = item.getURL();
-      if (itemUrl.startsWith('localfile:')) {
-        shell.showItemInFolder(filePathFromLocalFileUrl(itemUrl));
-      }
+      shell.showItemInFolder(item.getURL().replace('localfile://', ''));
     });
   });
 
   // ==================== protocol handle ====================
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
-    const url = filePathFromLocalFileUrl(request.url);
+    const url = decodeURIComponent(request.url.replace('localfile://', ''));
     const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
     const filePath = path.resolve(path.normalize(normalizedUrl));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
 
-    const authorization = await authorizeLocalFilePath(
-      filePath,
-      localFileAllowedRoots()
-    );
-    if (!authorization.allowed) {
+    // Security: Restrict file access to allowed directories only.
+    // Without this check, path traversal (e.g. /../../../etc/passwd)
+    // would allow reading arbitrary files on the filesystem.
+    const allowedBases = [
+      os.homedir(),
+      app.getPath('userData'),
+      app.getPath('temp'),
+    ];
+
+    const isPathAllowed = allowedBases.some((base) => {
+      const resolvedBase = path.resolve(base);
+      return (
+        filePath === resolvedBase ||
+        filePath.startsWith(resolvedBase + path.sep)
+      );
+    });
+
+    if (!isPathAllowed) {
       log.error(
-        `[PROTOCOL] Security: Blocked local file (${authorization.reason}): ${filePath}`
+        `[PROTOCOL] Security: Blocked access to path outside allowed directories: ${filePath}`
       );
-      return new Response(
-        authorization.reason === 'missing' ? 'File Not Found' : 'Forbidden',
-        { status: authorization.reason === 'missing' ? 404 : 403 }
-      );
+      return new Response('Forbidden', { status: 403 });
     }
-    const authorizedFilePath = authorization.filePath;
 
     try {
       // Check if file exists
-      const stats = await fsp.stat(authorizedFilePath);
-      if (!stats.isFile()) return new Response('Not Found', { status: 404 });
-      const contentType =
-        mime.getType(authorizedFilePath) || 'application/octet-stream';
-      const resolvedRange = resolveFileByteRange(
-        request.headers.get('range'),
-        stats.size
-      );
-      if (resolvedRange.status === 416) {
-        return new Response('Range Not Satisfiable', {
-          status: 416,
-          headers: { 'Content-Range': `bytes */${stats.size}` },
-        });
-      }
-      const { start, end, status } = resolvedRange;
-
-      const contentLength = stats.size === 0 ? 0 : end - start + 1;
-      const headers: Record<string, string> = {
-        'Accept-Ranges': 'bytes',
-        'Content-Type': contentType,
-        'Content-Length': contentLength.toString(),
-      };
-      if (status === 206) {
-        headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;
-      }
-      if (request.method === 'HEAD' || stats.size === 0) {
-        return new Response(null, { status, headers });
+      const fileExists = await fsp
+        .access(filePath)
+        .then(() => true)
+        .catch(() => false);
+      if (!fileExists) {
+        log.error(`[PROTOCOL] File not found: ${filePath}`);
+        return new Response('File Not Found', { status: 404 });
       }
 
-      const stream = fs.createReadStream(authorizedFilePath, { start, end });
-      return new Response(Readable.toWeb(stream) as BodyInit, {
-        status,
-        headers,
+      const data = await fsp.readFile(filePath);
+      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
+
+      // set correct Content-Type according to file extension
+      const ext = path.extname(filePath).toLowerCase();
+      let contentType = 'application/octet-stream';
+
+      switch (ext) {
+        case '.pdf':
+          contentType = 'application/pdf';
+          break;
+        case '.html':
+        case '.htm':
+          contentType = 'text/html';
+          break;
+        case '.png':
+          contentType = 'image/png';
+          break;
+        case '.jpg':
+        case '.jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case '.gif':
+          contentType = 'image/gif';
+          break;
+        case '.svg':
+          contentType = 'image/svg+xml';
+          break;
+        case '.webp':
+          contentType = 'image/webp';
+          break;
+      }
+
+      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
+
+      return new Response(new Uint8Array(data), {
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': data.length.toString(),
+        },
       });
     } catch (err) {
       log.error(`[PROTOCOL] Error reading file: ${err}`);
@@ -3825,7 +3536,6 @@ app.on('before-quit', async (event) => {
 
     // Wait for Python process cleanup
     await cleanupPythonProcess();
-    await closeWorkspaceSecretBroker();
 
     // Clean up file reader if exists
     if (fileReader) {

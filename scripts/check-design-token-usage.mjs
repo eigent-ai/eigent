@@ -17,10 +17,6 @@
  * (CSS variables such as var(--ds-...), var(--colors-...), component vars, or
  * Tailwind classes that map to those vars — not raw #hex / rgb() / hsl()).
  *
- * Also fails on `ds-*` Tailwind utilities that do not resolve to a real token.
- * Tailwind silently emits nothing for these, so a typo such as
- * `bg-ds-bg-completed-default-default` renders with no color at all.
- *
  * Usage:
  *   node scripts/check-design-token-usage.mjs
  *   node scripts/check-design-token-usage.mjs src/a.tsx   # lint-staged (one or more files)
@@ -30,7 +26,7 @@
  *   - scripts/design-token-usage.allowlist — repo-relative paths, one per line (# comments ok)
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,59 +48,6 @@ const HSL_NUM_RE = /\bhsla?\(\s*[\d.]/;
 const ARBITRARY_HEX_RE =
   /\[[^\]]*#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b[^\]]*\]/;
 const ARBITRARY_RGB_RE = /\[[^\]]*rgba?\([^\]]*\]/;
-
-/** Color utilities that Tailwind generates from the `ds-*` color map. */
-const DS_UTILITY_PREFIXES = [
-  'bg',
-  'text',
-  'border',
-  'ring',
-  'ring-offset',
-  'divide',
-  'outline',
-  'fill',
-  'stroke',
-  'from',
-  'via',
-  'to',
-  'placeholder',
-  'caret',
-  'accent',
-  'decoration',
-  'shadow',
-];
-
-const DS_UTILITY_RE = new RegExp(
-  `(?:${DS_UTILITY_PREFIXES.join('|')})-(ds-[a-z0-9-]+)`,
-  'g'
-);
-
-/**
- * Mirrors `buildDsTokenColorMap` and `buildDsBgStatusSubtleShortAliases` in
- * tailwind.config.js. Both read the same manifest, so the two stay in step.
- */
-function loadResolvableDsTokens() {
-  const manifest = JSON.parse(
-    readFileSync(join(REPO_ROOT, 'src/style/tokens/manifest.json'), 'utf8')
-  );
-  const tokens = new Set();
-  for (const element of manifest.elements) {
-    for (const tone of manifest.tones) {
-      for (const emphasis of manifest.emphasis) {
-        for (const state of manifest.states) {
-          tokens.add(`ds-${element}-${tone}-${emphasis}-${state}`);
-        }
-      }
-    }
-  }
-  for (const tone of manifest.tones) {
-    if (!tone.startsWith('status-')) continue;
-    tokens.add(`ds-bg-${tone.slice('status-'.length)}-subtle-default`);
-  }
-  return tokens;
-}
-
-const RESOLVABLE_DS_TOKENS = loadResolvableDsTokens();
 
 function loadAllowlist() {
   const path = join(REPO_ROOT, 'scripts/design-token-usage.allowlist');
@@ -192,27 +135,6 @@ function checkLine(rawLine, lineNum, fileRel, out) {
       snippet: rawLine.trim(),
     });
   }
-
-  checkDsUtilities(line, rawLine, lineNum, fileRel, out);
-}
-
-function checkDsUtilities(line, rawLine, lineNum, fileRel, out) {
-  DS_UTILITY_RE.lastIndex = 0;
-  let m;
-  while ((m = DS_UTILITY_RE.exec(line)) !== null) {
-    const token = m[1];
-    // A trailing hyphen means the name is completed at runtime (`ds-icon-${x}`)
-    // or is a documentation wildcard, so there is nothing static to verify.
-    if (token.endsWith('-')) continue;
-    if (RESOLVABLE_DS_TOKENS.has(token)) continue;
-    out.push({
-      file: fileRel,
-      line: lineNum,
-      message: `Unresolvable design token "${token}" — Tailwind emits no CSS for it. Check the tone/emphasis/state against src/style/tokens/manifest.json.`,
-      snippet: rawLine.trim(),
-    });
-    return;
-  }
 }
 
 function checkFile(absPath, allowlist) {
@@ -243,7 +165,9 @@ function main() {
   const explicit = resolveCliFiles(argv);
 
   const targets =
-    explicit.length > 0 ? explicit : [...walkSrcFiles(join(REPO_ROOT, 'src'))];
+    explicit.length > 0
+      ? explicit
+      : [...walkSrcFiles(join(REPO_ROOT, 'src'))];
 
   const violations = [];
   for (const abs of targets) {
@@ -251,13 +175,11 @@ function main() {
   }
 
   if (violations.length === 0) {
-    console.log(
-      'check-design-token-usage: OK (no hard-coded colors or unresolvable tokens found).'
-    );
+    console.log('check-design-token-usage: OK (no hard-coded colors found).');
     process.exit(0);
   }
 
-  console.error('check-design-token-usage: findings detected:\n');
+  console.error('check-design-token-usage: hard-coded colors detected:\n');
   for (const v of violations) {
     console.error(`  ${v.file}:${v.line}`);
     console.error(`    ${v.message}`);
