@@ -232,6 +232,7 @@ export default function ProjectPageSidebar({
         project?.metadata?.remoteHistoryHydrationPending === true;
       if (
         projectStore.peekActiveChatStore(projectId) &&
+        !projectStore.historyLoadIncompleteProjectIds[projectId] &&
         !needsRemoteHistoryHydration
       ) {
         return;
@@ -282,7 +283,8 @@ export default function ProjectPageSidebar({
           historyProject.project_name,
           undefined,
           taskQuestionsById,
-          computeProjectFreshnessAnchor(historyProject)
+          computeProjectFreshnessAnchor(historyProject),
+          { requireActiveSelection: true }
         );
       } catch (error) {
         console.error(
@@ -307,6 +309,7 @@ export default function ProjectPageSidebar({
       // Already loaded — flip to the live Project shell immediately.
       if (
         projectStore.peekActiveChatStore(projectId) &&
+        !projectStore.historyLoadIncompleteProjectIds[projectId] &&
         !needsRemoteHistoryHydration
       ) {
         setActiveWorkspaceTab('project');
@@ -317,6 +320,11 @@ export default function ProjectPageSidebar({
       // showing 'project' while empty (which the Session redirect bounces
       // to 'workforce', producing a flicker on slow loads).
       await ensureProjectLoaded(projectId);
+
+      // A slower, older click may finish after the user selected another
+      // Project. It must not change the shared shell for the newer selection.
+      if (projectStore.activeProjectId !== projectId) return;
+      if (projectStore.historyLoadIncompleteProjectIds[projectId]) return;
 
       // History-loaded projects are known to have content. Trust the project
       // type tag (set by createProject(REPLAY)) over `projectHasStarted`,
@@ -455,6 +463,7 @@ export default function ProjectPageSidebar({
         ?.remoteHistoryHydrationPending === true;
     if (
       !projectStore.peekActiveChatStore(projectId) ||
+      projectStore.historyLoadIncompleteProjectIds[projectId] ||
       needsRemoteHistoryHydration
     ) {
       void ensureProjectLoaded(projectId);

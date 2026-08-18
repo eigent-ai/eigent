@@ -103,6 +103,7 @@ describe('projectStore runtime shape', () => {
       projects: {},
       navLeadByProjectId: {},
       historyLoadingProjectIds: {},
+      historyLoadIncompleteProjectIds: {},
       staleProjectIds: new Set(),
     });
     globalThis.electronAPI = {
@@ -451,6 +452,110 @@ describe('projectStore runtime shape', () => {
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }
+  });
+
+  it('does not let a stale sidebar history request steal the active Project', async () => {
+    const activeProjectId = useProjectStore
+      .getState()
+      .createProject('Current Project', undefined, 'project_current');
+
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_old'],
+        'old prompt',
+        'project_old',
+        'history_old',
+        'Old Project',
+        'space_test',
+        { task_old: 'old prompt' },
+        null,
+        { requireActiveSelection: true }
+      );
+
+    expect(useProjectStore.getState().activeProjectId).toBe(activeProjectId);
+    expect(useProjectStore.getState().projects.project_old).toBeUndefined();
+    expect(fetchGetMock).not.toHaveBeenCalled();
+    expect(replayMock).not.toHaveBeenCalled();
+  });
+
+  it('retries a cancelled history shell instead of treating it as loaded', async () => {
+    let resolveRuns: ((value: { runs: never[] }) => void) | undefined;
+    fetchGetMock.mockImplementationOnce(
+      () =>
+        new Promise<{ runs: never[] }>((resolve) => {
+          resolveRuns = resolve;
+        })
+    );
+
+    const firstLoad = useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_retry'],
+        'retry prompt',
+        'project_retry',
+        'history_retry',
+        'Retry Project',
+        'space_test'
+      );
+    await vi.waitFor(() => expect(resolveRuns).toBeDefined());
+
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_retry'],
+        'retry prompt',
+        'project_retry',
+        'history_retry',
+        'Retry Project',
+        'space_test'
+      );
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+
+    useProjectStore
+      .getState()
+      .createProject('Other Project', undefined, 'project_other');
+    resolveRuns?.({ runs: [] });
+    await firstLoad;
+
+    expect(
+      useProjectStore.getState().historyLoadIncompleteProjectIds.project_retry
+    ).toBe(true);
+    expect(
+      useProjectStore.getState().peekActiveChatStore('project_retry')
+    ).toBeDefined();
+
+    replayMock.mockImplementationOnce(async (taskId: string) => {
+      const project = useProjectStore.getState().projects.project_retry;
+      const chatStore = project.chatStores[project.activeChatId!];
+      chatStore.getState().create(taskId, 'replay');
+      chatStore.getState().addMessages(taskId, {
+        id: 'retry-user-message',
+        role: 'user',
+        content: 'retry prompt',
+      });
+    });
+
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_retry'],
+        'retry prompt',
+        'project_retry',
+        'history_retry',
+        'Retry Project',
+        'space_test'
+      );
+
+    expect(
+      useProjectStore.getState().historyLoadIncompleteProjectIds.project_retry
+    ).toBeUndefined();
+    expect(replayMock).toHaveBeenCalledWith(
+      'task_retry',
+      'retry prompt',
+      0,
+      'project_retry'
+    );
   });
 
   it('replays canonical local Run history when its cache anchor is stale', async () => {

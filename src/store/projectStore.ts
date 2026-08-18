@@ -364,6 +364,16 @@ interface CreateProjectOptions {
   updatedAt?: number;
 }
 
+interface LoadProjectFromHistoryOptions {
+  /**
+   * Abort before rebuilding runtime state when an async navigation request is
+   * no longer the active Project selection. Sidebar history discovery can
+   * resolve out of order, so an older request must not steal focus back from
+   * the Project the user selected most recently.
+   */
+  requireActiveSelection?: boolean;
+}
+
 interface ProjectStore {
   activeProjectId: string | null;
   projects: { [projectId: string]: Project };
@@ -371,6 +381,13 @@ interface ProjectStore {
   navLeadByProjectId: Record<string, SessionNavLeadPresentation>;
   /** Projects currently replaying history at delay 0 — sidebar uses cached lead. */
   historyLoadingProjectIds: Record<string, true>;
+  /**
+   * Projects whose latest history rebuild did not finish completely. A replay
+   * creates its Project shell before awaiting SQLite/cache reads; if the user
+   * switches Projects during that await, the shell can legitimately remain
+   * but must never be mistaken for loaded history.
+   */
+  historyLoadIncompleteProjectIds: Record<string, true>;
   /**
    * Projects whose IDB cache was just detected stale during this session.
    * The in-memory hydrated state keeps rendering (so the current view is
@@ -451,7 +468,8 @@ interface ProjectStore {
     projectName?: string,
     spaceId?: string,
     taskQuestionsById?: Record<string, string>,
-    serverUpdatedAt?: number | null
+    serverUpdatedAt?: number | null,
+    options?: LoadProjectFromHistoryOptions
   ) => Promise<string>;
   mergeProjectHistory: (
     projectId: string,
@@ -466,6 +484,7 @@ interface ProjectStore {
     leads: Record<string, SessionNavLeadPresentation>
   ) => void;
   setHistoryLoadingProject: (projectId: string, loading: boolean) => void;
+  setHistoryLoadIncomplete: (projectId: string, incomplete: boolean) => void;
 
   // Project-level queued messages management
   addQueuedMessage: (
@@ -615,6 +634,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   projects: {},
   navLeadByProjectId: {},
   historyLoadingProjectIds: {},
+  historyLoadIncompleteProjectIds: {},
   staleProjectIds: new Set<string>(),
 
   setProjectNavLead: (projectId, lead) =>
@@ -662,6 +682,23 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       const next = { ...state.historyLoadingProjectIds };
       delete next[projectId];
       return { historyLoadingProjectIds: next };
+    }),
+
+  setHistoryLoadIncomplete: (projectId, incomplete) =>
+    set((state) => {
+      if (incomplete) {
+        if (state.historyLoadIncompleteProjectIds[projectId]) return state;
+        return {
+          historyLoadIncompleteProjectIds: {
+            ...state.historyLoadIncompleteProjectIds,
+            [projectId]: true,
+          },
+        };
+      }
+      if (!state.historyLoadIncompleteProjectIds[projectId]) return state;
+      const next = { ...state.historyLoadIncompleteProjectIds };
+      delete next[projectId];
+      return { historyLoadIncompleteProjectIds: next };
     }),
 
   createProject: (
@@ -727,13 +764,20 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (setActive) {
       get()._evictStaleOnTransition(targetProjectId);
     }
-    set((state) => ({
-      projects: {
-        ...state.projects,
-        [targetProjectId]: newProject,
-      },
-      ...(setActive ? { activeProjectId: targetProjectId } : {}),
-    }));
+    set((state) => {
+      const nextIncompleteProjectIds = {
+        ...state.historyLoadIncompleteProjectIds,
+      };
+      delete nextIncompleteProjectIds[targetProjectId];
+      return {
+        projects: {
+          ...state.projects,
+          [targetProjectId]: newProject,
+        },
+        historyLoadIncompleteProjectIds: nextIncompleteProjectIds,
+        ...(setActive ? { activeProjectId: targetProjectId } : {}),
+      };
+    });
     upsertSpaceProjectMetaFromProject(newProject);
 
     return targetProjectId;
@@ -1153,6 +1197,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         delete nextNavLeadByProjectId[projectId];
         update.navLeadByProjectId = nextNavLeadByProjectId;
       }
+      if (state.historyLoadIncompleteProjectIds[projectId]) {
+        const nextIncompleteProjectIds = {
+          ...state.historyLoadIncompleteProjectIds,
+        };
+        delete nextIncompleteProjectIds[projectId];
+        update.historyLoadIncompleteProjectIds = nextIncompleteProjectIds;
+      }
       // Clearing the stale flag belongs to this helper, not the caller —
       // if the same project id is re-created later (e.g. loadProjectFromHistory
       // calls removeProject(id) then createProject(id, …)), a leftover entry
@@ -1213,6 +1264,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       delete newProjects[projectId];
       const nextNavLeadByProjectId = { ...state.navLeadByProjectId };
       delete nextNavLeadByProjectId[projectId];
+      const nextIncompleteProjectIds = {
+        ...state.historyLoadIncompleteProjectIds,
+      };
+      delete nextIncompleteProjectIds[projectId];
       // Drop any leftover stale flag for this id so a future recreation
       // (same id, different runtime) does not inherit the eviction signal.
       let nextStale = state.staleProjectIds;
@@ -1225,6 +1280,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         projects: newProjects,
         activeProjectId: newActiveId,
         navLeadByProjectId: nextNavLeadByProjectId,
+        historyLoadIncompleteProjectIds: nextIncompleteProjectIds,
         staleProjectIds: nextStale,
       };
     });
@@ -1380,8 +1436,25 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     projectName?: string,
     spaceId?: string,
     taskQuestionsById?: Record<string, string>,
-    serverUpdatedAt?: number | null
+    serverUpdatedAt?: number | null,
+    options?: LoadProjectFromHistoryOptions
   ) => {
+    if (
+      options?.requireActiveSelection &&
+      get().activeProjectId !== projectId
+    ) {
+      console.log(
+        `[ProjectStore] Ignored stale history load for ${projectId}; active selection is ${get().activeProjectId}`
+      );
+      return projectId;
+    }
+    if (get().historyLoadingProjectIds[projectId]) {
+      console.log(
+        `[ProjectStore] Ignored duplicate in-flight history load for ${projectId}`
+      );
+      return projectId;
+    }
+
     const { projects, removeProject, createProject, createChatStore } = get();
     const existingProject = projects[projectId];
     const existingMeta = useSpaceStore.getState().getProjectMeta(projectId);
@@ -1435,6 +1508,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     get()._evictStaleOnTransition(loadProjectId);
     set({ activeProjectId: loadProjectId });
     get().setHistoryLoadingProject(loadProjectId, true);
+    get().setHistoryLoadIncomplete(loadProjectId, true);
     console.log(
       `[ProjectStore] Loading project ${loadProjectId} with ${taskIds.length} tasks (final state, no replay)`
     );
@@ -1648,6 +1722,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
               );
 
+              get().setHistoryLoadIncomplete(loadProjectId, false);
+
               if (
                 repairedCachedTasks &&
                 getAuthStore().user_id === cacheScope.userId
@@ -1837,9 +1913,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         //    cache the missing-task state as "final" — the next open would
         //    hit the cache and never retry the failed task.
         const liveUserId = getAuthStore().user_id;
-        const allTasksLoaded = taskIds.every((taskId) =>
-          loadedChatStoresByTaskId.has(taskId)
-        );
+        const allTasksLoaded = taskIds.every((taskId) => {
+          const loadedStore = loadedChatStoresByTaskId.get(taskId);
+          return Boolean(loadedStore?.getState().tasks[taskId]);
+        });
+        if (allTasksLoaded && taskIds.length > 0) {
+          get().setHistoryLoadIncomplete(loadProjectId, false);
+        }
         if (
           cacheScope &&
           liveUserId === cacheScope.userId &&
