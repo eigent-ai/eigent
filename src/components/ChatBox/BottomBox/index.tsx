@@ -31,11 +31,7 @@ import {
 } from './UsageLimitBanner';
 
 export type BottomBoxState =
-  | 'input'
-  | 'confirm'
-  | 'save'
-  | 'running'
-  | 'finished';
+  'input' | 'confirm' | 'save' | 'running' | 'finished';
 
 type PickerPanelKind = 'connector' | 'skill';
 

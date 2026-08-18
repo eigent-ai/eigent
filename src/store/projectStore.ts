@@ -186,10 +186,7 @@ export enum ProjectType {
 
 export type ProjectMode = 'single-agent' | 'workforce';
 export type ProjectWorkdirMode =
-  | 'worktree'
-  | 'copy'
-  | 'direct-write'
-  | 'artifact-only';
+  'worktree' | 'copy' | 'direct-write' | 'artifact-only';
 
 interface TaskQueue {
   task_id: string;

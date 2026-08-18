@@ -4,9 +4,11 @@ name: Test
   pull_request:
     branches:
       - main
+      - feat/workforce-bundle-product
   push:
     branches:
       - main
+      - feat/workforce-bundle-product
 
 permissions:
   contents: read
@@ -48,10 +50,14 @@ jobs:
   frontend-quality:
     name: Run Frontend Guardrails
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -64,27 +70,31 @@ jobs:
       - name: Run type check
         run: npm run type-check
 
-      - name: Run ChatBox event-bus unit contract shard
-        run: |
-          npx --no-install vitest run \
-            src/components/ChatBox/MessageItem/HumanInteractionCard.test.tsx \
-            src/hooks/useRemoteControlBridge.test.ts \
-            test/unit/components/ChatBox \
-            test/unit/hooks/useChatStoreAdapter.test.tsx \
-            test/unit/hooks/useRemoteControlBridge.test.ts \
-            test/unit/hooks/useRemoteControlBridge.followup.test.ts \
-            test/unit/lib/chatProjectionActivity.test.ts \
-            test/unit/lib/chatProjectionContract.test.ts \
-            test/unit/lib/projector.test.ts \
-            test/unit/service/projectEventStoreHydration.test.ts \
-            test/unit/store/chatStore.durableReplay.test.ts \
-            test/unit/store/projectStore.test.ts
+      - name: Reject new Vitest failures relative to target
+        env:
+          VITEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          VITEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/check-vitest-regressions.mjs
+
+      - name: Upload Vitest comparison reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-regression-reports
+          path: test-results/regression/*.xml
+          if-no-files-found: error
 
       - name: Check Electron Access Guard
         run: bash scripts/check-electron-access.sh
 
       - name: Design tokens (engine + no hard-coded colors in UI)
         run: npm run check:design-tokens
+
+      - name: Check frontend formatting
+        env:
+          FORMAT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORMAT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/check-changed-format.mjs
 
   pytest:
     name: Run Python Tests

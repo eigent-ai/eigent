@@ -1059,6 +1059,13 @@ export function adaptChatProjectionEvent(
     }
 
     const typed = typedNode(base, data);
+    if (
+      base.eventType === 'assistant.final' &&
+      typed?.kind === 'message' &&
+      !typed.content.trim()
+    ) {
+      return { kind: 'hidden', reason: 'assistant.final.empty' };
+    }
     return typed ? displayDecision(typed) : unsupportedDecision(base);
   }
 

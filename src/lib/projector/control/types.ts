@@ -20,14 +20,10 @@ import type { CanonicalProjectEvent, ProjectedLegacyStep } from '../types';
  * summarized, or bounded for rendering.
  */
 export type HumanControlProjectionInput =
-  | CanonicalProjectEvent
-  | ProjectedLegacyStep;
+  CanonicalProjectEvent | ProjectedLegacyStep;
 
 export type HumanControlStatus =
-  | 'requested'
-  | 'resolved'
-  | 'expired'
-  | 'cancelled';
+  'requested' | 'resolved' | 'expired' | 'cancelled';
 
 export type HumanControlTimestamp = string | number;
 

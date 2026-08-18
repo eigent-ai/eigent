@@ -167,6 +167,24 @@ describe('chat projection presentation contract', () => {
     expect(JSON.stringify(state)).not.toContain('../');
   });
 
+  it('hides an empty assistant final instead of rendering an empty bubble', () => {
+    expect(adaptChatProjectionEvent(event('assistant.final', {}, 1))).toEqual({
+      kind: 'hidden',
+      reason: 'assistant.final.empty',
+    });
+
+    const state = projectChatEvents('project-1', [
+      event('assistant.final', {}, 1),
+      event('run.completed', {}, 2),
+    ]);
+    expect(selectRenderableChatNodes(state)).toEqual([
+      expect.objectContaining({
+        kind: 'run_status',
+        status: 'completed',
+      }),
+    ]);
+  });
+
   it('prefers canonical transcript events over legacy history fallbacks per Run', () => {
     const mixed = projectChatEvents('project-1', [
       event('legacy.confirmed', { content: 'Legacy prompt' }, 1, {

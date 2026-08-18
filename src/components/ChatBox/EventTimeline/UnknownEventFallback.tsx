@@ -15,9 +15,7 @@
 import { useTranslation } from 'react-i18next';
 
 type UnknownEventReason =
-  | 'unsupported-event'
-  | 'missing-renderer'
-  | 'renderer-error';
+  'unsupported-event' | 'missing-renderer' | 'renderer-error';
 
 interface UnknownEventFallbackProps {
   node: unknown;
