@@ -10,7 +10,11 @@ from app.agent.toolkit.hybrid_browser_toolkit import WebSocketBrowserWrapper
 
 
 def _tab(tab_id: str, *, current: bool = False) -> dict[str, Any]:
-    return {"tab_id": tab_id, "is_current": current, "url": f"https://{tab_id}"}
+    return {
+        "tab_id": tab_id,
+        "is_current": current,
+        "url": f"https://{tab_id}",
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +50,9 @@ def _install_fake_browser(
     monkeypatch.setattr(
         BaseWebSocketBrowserWrapper, "get_tab_info", fake_get_tab_info
     )
-    monkeypatch.setattr(BaseWebSocketBrowserWrapper, "close_tab", fake_close_tab)
+    monkeypatch.setattr(
+        BaseWebSocketBrowserWrapper, "close_tab", fake_close_tab
+    )
     monkeypatch.setattr(
         BaseWebSocketBrowserWrapper, "visit_page", fake_visit_page
     )

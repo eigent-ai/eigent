@@ -12,6 +12,16 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from app.workspace_git.advanced import (
+    AdvancedGitApprovalRequired,
+    AdvancedGitCommandClassifier,
+    AdvancedGitCommandRejected,
+    AdvancedGitError,
+    AdvancedGitOutcomeUnknown,
+    AdvancedGitPreview,
+    AdvancedGitService,
+    get_default_advanced_git_service,
+)
 from app.workspace_git.backend import (
     GitBackend,
     GitBackendError,
@@ -22,16 +32,6 @@ from app.workspace_git.backend import (
     RepositoryDiagnostics,
     RepositoryProbe,
     RepoStateToken,
-)
-from app.workspace_git.advanced import (
-    AdvancedGitApprovalRequired,
-    AdvancedGitCommandClassifier,
-    AdvancedGitCommandRejected,
-    AdvancedGitError,
-    AdvancedGitOutcomeUnknown,
-    AdvancedGitPreview,
-    AdvancedGitService,
-    get_default_advanced_git_service,
 )
 from app.workspace_git.configuration import (
     ConfigurationRepositoryError,
@@ -78,6 +78,10 @@ from app.workspace_git.observer import (
     ExternalGitObservation,
     WorkspaceGitObserver,
 )
+from app.workspace_git.retention import (
+    DEFAULT_GIT_RETENTION_POLICY,
+    GitRetentionPolicy,
+)
 from app.workspace_git.snapshot import (
     MaterializedOverlay,
     WorkspaceOverlayConflictError,
@@ -94,10 +98,6 @@ from app.workspace_git.workforce import (
     GitAgentWorkspace,
     WorkforceGitService,
     get_default_workforce_git_service,
-)
-from app.workspace_git.retention import (
-    DEFAULT_GIT_RETENTION_POLICY,
-    GitRetentionPolicy,
 )
 
 __all__ = [

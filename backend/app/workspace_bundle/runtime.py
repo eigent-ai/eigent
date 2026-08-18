@@ -6,10 +6,11 @@ import copy
 import hashlib
 import json
 import os
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable
+from typing import Any
 
 import yaml
 
@@ -19,17 +20,17 @@ from app.run_journal import (
     WorkspaceBundleLocalBindingRecord,
     WorkspaceBundleSecretBindingRecord,
 )
-from app.workspace_bundle.secrets import (
-    WorkspaceSecretBroker,
-    WorkspaceSecretBrokerError,
-    WorkspaceSecretIdentity,
-)
 from app.workspace_bundle.mcp_destination import (
     McpDestinationError,
     attestation_from_grants,
     inspect_bundle_mcp_destination,
     secret_binding_attestation,
     secret_binding_attestation_from_grants,
+)
+from app.workspace_bundle.secrets import (
+    WorkspaceSecretBroker,
+    WorkspaceSecretBrokerError,
+    WorkspaceSecretIdentity,
 )
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
@@ -99,9 +100,7 @@ class ResolvedRuntimeEnvironment:
     permission_profile: str
     permission_rules: tuple[tuple[str, str], ...]
     _mcp_servers: dict[str, dict[str, Any]] = field(repr=False)
-    _secret_identities: tuple[WorkspaceSecretIdentity, ...] = field(
-        repr=False
-    )
+    _secret_identities: tuple[WorkspaceSecretIdentity, ...] = field(repr=False)
     _environment_bindings: tuple[tuple[str, str], ...] = field(repr=False)
     _secret_broker_factory: Callable[[], WorkspaceSecretBroker] = field(
         repr=False,
@@ -256,8 +255,7 @@ def _verify_bound_secret_identities(
             ["workspace_secrets_unavailable"]
         ) from exc
     if len(verifications) != len(identities) or any(
-        verification.identity != expected
-        or verification.state != "available"
+        verification.identity != expected or verification.state != "available"
         for expected, verification in zip(
             identities,
             verifications,
@@ -401,9 +399,12 @@ class RuntimeEnvironmentAssembler:
         secret_bindings = self.journal.list_workspace_bundle_secret_bindings(
             proposal.proposal_id
         )
-        if bundle_runtime_binding_digest(
-            proposal, local_bindings, secret_bindings
-        ) != spec.local_materialization.bundle_binding_digest:
+        if (
+            bundle_runtime_binding_digest(
+                proposal, local_bindings, secret_bindings
+            )
+            != spec.local_materialization.bundle_binding_digest
+        ):
             raise EnvironmentSetupRequiredError(["bundle_bindings_changed"])
 
         expected_root = self._configuration_root(
@@ -417,8 +418,8 @@ class RuntimeEnvironmentAssembler:
                 ["configuration_root_pin_missing"]
             )
         try:
-            configuration_root = Path(pinned_root).expanduser().resolve(
-                strict=True
+            configuration_root = (
+                Path(pinned_root).expanduser().resolve(strict=True)
             )
         except OSError as exc:
             raise EnvironmentSetupRequiredError(
@@ -704,7 +705,8 @@ class RuntimeEnvironmentAssembler:
             candidate = root / ".eigent"
         elif placement == "sidecar":
             if not space_id or any(
-                character not in (
+                character
+                not in (
                     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
                     "0123456789._-"
                 )
@@ -927,9 +929,7 @@ class RuntimeEnvironmentAssembler:
                 raise EnvironmentSetupRequiredError(
                     [f"{availability_issue}:{server.id}"]
                 )
-            expected_destination_digest = destination.get(
-                "attestation_digest"
-            )
+            expected_destination_digest = destination.get("attestation_digest")
             if not isinstance(expected_destination_digest, str):
                 raise EnvironmentSetupRequiredError([issue])
             if not server.definition.startswith("bundle://"):

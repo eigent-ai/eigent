@@ -137,9 +137,7 @@ async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
     toolkit_config["mcp"].update(
         {
             "config_dict": {
-                "mcpServers": {
-                    "request-override": {"command": "malicious"}
-                }
+                "mcpServers": {"request-override": {"command": "malicious"}}
             },
             "skip_failed": True,
         }
@@ -155,9 +153,7 @@ async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
     options = _bedrock_chat(sample_chat_data).model_copy(
         update={
             "installed_mcp": {
-                "mcpServers": {
-                    "legacy-global": {"command": "legacy-command"}
-                }
+                "mcpServers": {"legacy-global": {"command": "legacy-command"}}
             },
             "toolkit_config": toolkit_config,
         }
@@ -225,9 +221,7 @@ async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
         agent_aliases=("coordinator",),
         permission_profile="request_approval",
         permission_rules=(("git.remote_write", "deny"),),
-        _mcp_servers={
-            "bundle-local": {"command": "python", "args": ["-V"]}
-        },
+        _mcp_servers={"bundle-local": {"command": "python", "args": ["-V"]}},
         _secret_identities=(),
         _environment_bindings=(),
         _secret_broker_factory=lambda: None,  # never called
@@ -245,8 +239,9 @@ async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
     assert list(captured["skills"].values())[0].endswith("Pinned body")
     assert set(captured["mcp"]["mcpServers"]) == {"bundle-local"}
     assert "legacy-global" not in captured["mcp"]["mcpServers"]
-    assert "MCP_REMOTE_CONFIG_DIR" not in (
-        captured["mcp"]["mcpServers"]["bundle-local"]["env"]
+    assert (
+        "MCP_REMOTE_CONFIG_DIR"
+        not in (captured["mcp"]["mcpServers"]["bundle-local"]["env"])
     )
     assert captured["skip_failed"] is False
     assert captured["connected"] is True

@@ -14,13 +14,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from app.workspace_config import canonical_digest
 
-
-MCP_DESTINATION_ATTESTATION_PREFIX = (
-    "__eigent_mcp_destination_attestation_v1:"
-)
-MCP_SECRET_BINDING_ATTESTATION_PREFIX = (
-    "__eigent_mcp_secret_bindings_v1:"
-)
+MCP_DESTINATION_ATTESTATION_PREFIX = "__eigent_mcp_destination_attestation_v1:"
+MCP_SECRET_BINDING_ATTESTATION_PREFIX = "__eigent_mcp_secret_bindings_v1:"
 MAX_MCP_ARGUMENTS = 64
 MAX_MCP_ARGUMENT_CHARS = 512
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
@@ -216,9 +211,7 @@ def inspect_bundle_mcp_destination(
                 or not isinstance(value, str)
                 or _contains_control(name)
             ):
-                raise McpDestinationError(
-                    "MCP destination mapping is invalid"
-                )
+                raise McpDestinationError("MCP destination mapping is invalid")
             if category == "env" and not _ENVIRONMENT_NAME.fullmatch(name):
                 raise McpDestinationError(
                     "MCP environment variable name is invalid"
@@ -248,9 +241,7 @@ def inspect_bundle_mcp_destination(
                 raise McpDestinationError(
                     "MCP destination references an undeclared secret slot"
                 )
-            mappings.append(
-                {"category": category, "name": name, "slot": slot}
-            )
+            mappings.append({"category": category, "name": name, "slot": slot})
     if {item["slot"] for item in mappings} != declared_slots:
         raise McpDestinationError(
             "MCP destination does not map every declared secret slot"
@@ -309,15 +300,15 @@ def inspect_bundle_mcp_destination(
         cwd_scope = f"bundle://{cwd_relative.as_posix()}"
         executable_relative: PurePosixPath | None = None
         if command.startswith("${PLUGIN_ROOT}/"):
-            executable_relative = definition_relative.parent / command.removeprefix(
-                "${PLUGIN_ROOT}/"
+            executable_relative = (
+                definition_relative.parent
+                / command.removeprefix("${PLUGIN_ROOT}/")
             )
         elif command.startswith("./"):
             executable_relative = definition_relative.parent / command[2:]
         if executable_relative is not None:
             if any(
-                part in {"", ".", ".."}
-                for part in executable_relative.parts
+                part in {"", ".", ".."} for part in executable_relative.parts
             ):
                 raise McpDestinationError(
                     "MCP executable asset path is invalid"
@@ -409,7 +400,11 @@ def inspect_bundle_mcp_destination(
         canonical_digest(descriptor) if availability_issue is None else None
     )
     return {
-        **{key: value for key, value in descriptor.items() if key != "revision_id"},
+        **{
+            key: value
+            for key, value in descriptor.items()
+            if key != "revision_id"
+        },
         "attestation_digest": attestation_digest,
         "requires_secret_confirmation": bool(secret_slots),
         "availability_issue": availability_issue,

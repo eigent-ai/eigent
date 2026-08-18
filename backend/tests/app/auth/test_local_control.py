@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -64,7 +63,9 @@ def test_electron_control_requires_matching_loopback_capability(monkeypatch):
     assert "EIGENT_LOCAL_CONTROL_CAPABILITY" not in os.environ
 
 
-def test_device_and_link_identity_do_not_replace_renderer_capability(monkeypatch):
+def test_device_and_link_identity_do_not_replace_renderer_capability(
+    monkeypatch,
+):
     monkeypatch.setenv("EIGENT_RUNTIME", "electron")
     monkeypatch.setenv("EIGENT_LOCAL_CONTROL_CAPABILITY", "secret-1")
     client = TestClient(_app(), client=("127.0.0.1", 50000))
@@ -182,7 +183,9 @@ def test_run_and_command_routers_enforce_the_control_principal(monkeypatch):
     journal.list_reconcilable_commands.return_value = []
 
     assert client.get("/runs/missing").status_code == 401
-    assert client.get("/remote-control/commands/inbox/pending").status_code == 401
+    assert (
+        client.get("/remote-control/commands/inbox/pending").status_code == 401
+    )
     with (
         patch(
             "app.controller.run_controller.get_default_run_journal",
