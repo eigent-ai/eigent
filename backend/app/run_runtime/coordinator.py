@@ -403,6 +403,21 @@ class RunCoordinator:
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
             return True
+        try:
+            from app.workspace_git import get_default_workspace_git_lifecycle
+
+            await asyncio.to_thread(
+                get_default_workspace_git_lifecycle().prepare_successful_run,
+                run_id,
+            )
+        except Exception:
+            # The Run result remains durable even when an adopted or modified
+            # User Worktree requires an explicit Apply. Artifact discovery
+            # below still records the visible Space state in that case.
+            logger.exception(
+                "Successful Run Git output preparation needs attention",
+                extra={"run_id": run_id, "project_id": project_id},
+            )
         artifact_manifest = await asyncio.to_thread(
             finalize_run_artifacts,
             self._journal,

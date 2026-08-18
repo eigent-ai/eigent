@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import subprocess
@@ -100,6 +114,25 @@ def test_user_folder_init_requires_consent_and_never_auto_stages_files(
     assert result.repository.version_coverage == "managed_files_only"
     assert _git(space, "status", "--porcelain") == "?? private.txt"
     assert _git(space, "rev-parse", "--verify", "HEAD", check=False) == ""
+
+
+def test_eigent_owned_space_survives_bootstrap_retry_after_git_init(
+    tmp_path, journal
+):
+    space = tmp_path / "blank-space"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+    backend.init_repository(space)
+
+    result = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=False,
+        eigent_owned_space=True,
+    )
+
+    assert result.initialized is False
+    assert result.repository.ownership == "eigent_owned"
 
 
 def test_adopt_preserves_branch_remote_and_repository_config(

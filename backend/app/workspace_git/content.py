@@ -198,11 +198,10 @@ class ContentRepositoryService:
                     :32
                 ]
             )
-            ownership = (
-                "eigent_owned"
-                if initialized and eigent_owned_space
-                else "adopted"
-            )
+            # Ownership describes the Space, not whether this particular
+            # request happened to run `git init`. A retry after init but before
+            # the SQLite binding must preserve an Eigent-created blank Space.
+            ownership = "eigent_owned" if eigent_owned_space else "adopted"
             repository = self.journal.put_git_repository(
                 repository_id=repository_id,
                 space_id=space_id,
@@ -231,12 +230,10 @@ class ContentRepositoryService:
             diagnostics,
         )
         managed_paths = self.journal.list_git_managed_paths(repository_id)
-        pending_managed_paths, pending_truncated = (
-            self._pending_managed_paths(
-                root,
-                managed_paths,
-                limit=500,
-            )
+        pending_managed_paths, pending_truncated = self._pending_managed_paths(
+            root,
+            managed_paths,
+            limit=500,
         )
         return ContentRepositoryStatus(
             repository=repository,

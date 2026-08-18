@@ -1,9 +1,26 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from app import artifacts
 from app.run_context import RunContext
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import (
@@ -39,7 +56,9 @@ def _context(space: Path) -> RunContext:
     )
 
 
-def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
+def test_terminal_run_promotes_refreshes_and_archives(
+    tmp_path, journal, monkeypatch
+):
     hooks = tmp_path / "empty-hooks"
     hooks.mkdir()
     git = GitBackend(hooks_path=hooks)
@@ -70,6 +89,7 @@ def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
         space_id="space-1",
         space_root=space,
         allow_init=True,
+        eigent_owned_space=True,
     )
     seed = space / "seed.txt"
     seed.write_text("seed", encoding="utf-8")
@@ -103,6 +123,65 @@ def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
     agent_worktree = Path(agent_before.worktree_path)
     agent_ref = agent_before.agent_ref
     agent_head = agent_before.head_commit
+
+    original_complete_apply = journal.complete_project_auto_apply
+    crashed = False
+
+    def crash_after_files_before_sqlite(**kwargs):
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise RuntimeError("simulated crash after Space file projection")
+        return original_complete_apply(**kwargs)
+
+    monkeypatch.setattr(
+        journal, "complete_project_auto_apply", crash_after_files_before_sqlite
+    )
+    interrupted_apply = lifecycle.prepare_successful_run("run-1")
+
+    assert interrupted_apply.outcome == "prepared_project"
+    assert (space / "generated.txt").read_text() == "project continuity"
+    interrupted_project = journal.get_project_git_state("project-1")
+    assert interrupted_project is not None
+    assert interrupted_project.pending_apply is True
+
+    monkeypatch.setattr(
+        journal, "complete_project_auto_apply", original_complete_apply
+    )
+    prepared_result = lifecycle.prepare_successful_run("run-1")
+
+    assert prepared_result.outcome == "prepared_space"
+    assert (space / "generated.txt").read_text() == "project continuity"
+    prepared_project = journal.get_project_git_state("project-1")
+    assert prepared_project is not None
+    assert prepared_project.pending_apply is False
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        space_id="space-1",
+        user_id="user-1",
+        task_output_root=str(tmp_path / "missing-output-root"),
+        working_directory=str(space),
+        # Deliberately exclude every mtime. The committed Git delta remains
+        # authoritative and must still produce the Artifact manifest.
+        task_start_time=10_000_000_000,
+        artifact_manifest=None,
+    )
+    resolver = MagicMock()
+    resolver.store.find_snapshot.return_value = ("user@example.com", snapshot)
+    monkeypatch.setattr(artifacts, "get_workspace_resolver", lambda: resolver)
+    canonical_run = journal.get_run("run-1")
+    assert canonical_run is not None
+    manifest = artifacts.finalize_run_artifacts(journal, canonical_run)
+    generated_artifact = next(
+        item
+        for item in manifest.payload["artifacts"]
+        if item["relativePath"] == "generated.txt"
+    )
+    assert generated_artifact["path"] == str(
+        (space / "generated.txt").resolve()
+    )
+    assert generated_artifact["uploadPolicy"] == "agent_generated"
     journal.append_event(
         "run-1",
         RunEventDraft(
@@ -148,6 +227,70 @@ def test_terminal_run_promotes_refreshes_and_archives(tmp_path, journal):
     assert archive_operation.result is not None
     agent_archive_ref = archive_operation.result["archive_ref"]
     assert git.ref_oid(space, agent_archive_ref) == agent_head
+
+
+def test_eigent_space_auto_apply_never_overwrites_a_user_edit(
+    tmp_path, journal
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    git = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal, state_root=state_root, git_backend=git
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal, state_root=state_root, git_backend=git
+    )
+    mutations = WorkspaceMutationService(
+        journal, state_root=state_root, coordinator=coordinator
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal, state_root=state_root, coordinator=coordinator
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+        eigent_owned_space=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    git.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    assert (
+        coordinator.admit_run(
+            space_id="space-1", project_id="project-1", run_id="run-1"
+        )
+        is not None
+    )
+    prepared = mutations.prepare_file_write(
+        context=_context(space),
+        filename="generated.txt",
+        operation_request_id="tool-call-conflict",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    prepared.target_path.write_text("agent result", encoding="utf-8")
+    mutations.complete_file_write(
+        prepared,
+        operation_request_id="tool-call-conflict",
+        actor_id="agent-1",
+        trigger="filesystem.write",
+    )
+    visible = space / "generated.txt"
+    visible.write_text("user edit", encoding="utf-8")
+
+    result = lifecycle.prepare_successful_run("run-1")
+
+    assert result.outcome == "prepared_project"
+    assert visible.read_text(encoding="utf-8") == "user edit"
+    project = journal.get_project_git_state("project-1")
+    assert project is not None
+    assert project.pending_apply is True
     change_set = journal.get_git_change_set_for_run("run-1")
     assert change_set is not None
     assert change_set.state == "checkpointed"
@@ -189,11 +332,14 @@ def test_terminal_run_waits_for_unfinished_change_set_item(tmp_path, journal):
     seed.write_text("seed", encoding="utf-8")
     git.commit_paths(space, (seed,), message="seed")
     journal.ensure_run(run_id="run-1", project_id="project-1")
-    assert coordinator.admit_run(
-        space_id="space-1",
-        project_id="project-1",
-        run_id="run-1",
-    ) is not None
+    assert (
+        coordinator.admit_run(
+            space_id="space-1",
+            project_id="project-1",
+            run_id="run-1",
+        )
+        is not None
+    )
     prepared = mutations.prepare_file_write(
         context=_context(space),
         filename="generated.txt",

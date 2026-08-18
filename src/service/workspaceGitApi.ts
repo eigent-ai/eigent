@@ -148,12 +148,13 @@ export const fetchWorkspaceGitStatus = async (
 export const bootstrapWorkspaceGit = async (
   spaceId: string,
   identity: WorkspaceGitIdentity,
-  allowInit: boolean
+  allowInit: boolean,
+  eigentOwnedSpace = false
 ): Promise<WorkspaceGitStatus> =>
   fetchPost(`/spaces/${encodeURIComponent(spaceId)}/git/bootstrap`, {
     ...identityParams(identity),
     allow_init: allowInit,
-    eigent_owned_space: false,
+    eigent_owned_space: eigentOwnedSpace,
   });
 
 export const createWorkspaceSavePoint = async (

@@ -25,6 +25,7 @@ vi.mock('@/api/http', () => ({
 }));
 
 import {
+  bootstrapWorkspaceGit,
   executeAdvancedGit,
   fetchWorkspaceGitHistory,
   previewAdvancedGit,
@@ -53,6 +54,27 @@ describe('workspace Git advanced API', () => {
       user_id: 42,
       limit: 25,
     });
+  });
+
+  it('marks an Eigent-created blank Space as Eigent-owned at bootstrap', async () => {
+    fetchPostMock.mockResolvedValue({ enabled: true });
+
+    await bootstrapWorkspaceGit(
+      'space-1',
+      { email: 'user@example.com', userId: 42 },
+      true,
+      true
+    );
+
+    expect(fetchPostMock).toHaveBeenCalledWith(
+      '/spaces/space-1/git/bootstrap',
+      {
+        email: 'user@example.com',
+        user_id: 42,
+        allow_init: true,
+        eigent_owned_space: true,
+      }
+    );
   });
 
   it('keeps preview and exact confirmed execution on separate calls', async () => {

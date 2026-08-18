@@ -5915,6 +5915,111 @@ class SQLiteRunJournal:
             assert row is not None
             return self._project_git_state_from_row(row)
 
+    def complete_project_auto_apply(
+        self,
+        *,
+        operation_id: str,
+        project_id: str,
+        expected_version: int,
+        expected_integration_head: str,
+        applied_path_sources: dict[str, str],
+        observed_repo_state_digest: str,
+        now: float | None = None,
+    ) -> ProjectGitStateRecord:
+        """Durably finish one safe Project Integration -> Space projection."""
+
+        timestamp = now if now is not None else time.time()
+        result = {
+            "project_id": project_id,
+            "integration_head": expected_integration_head,
+            "applied_paths": sorted(applied_path_sources),
+        }
+        result_json = canonical_json(result)
+        with self._write_transaction() as connection:
+            operation = connection.execute(
+                "SELECT * FROM git_operations WHERE operation_id = ?",
+                (operation_id,),
+            ).fetchone()
+            project = connection.execute(
+                "SELECT * FROM git_project_integrations WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            if operation is None or project is None:
+                raise ValueError("unknown Project auto-apply operation")
+            if operation["operation_type"] != "project.auto_apply":
+                raise ValueError("Git operation is not Project auto-apply")
+            if operation["status"] == "completed":
+                if operation["result_json"] != result_json:
+                    raise IdempotencyConflictError(
+                        "completed Project auto-apply has another result"
+                    )
+                return self._project_git_state_from_row(project)
+            if operation["status"] != "dispatched":
+                raise InvalidRunTransitionError(
+                    "Project auto-apply must be dispatched before completion"
+                )
+            if (
+                int(project["version"]) != expected_version
+                or project["integration_head"] != expected_integration_head
+                or project["projected_head"] != expected_integration_head
+            ):
+                raise OptimisticConcurrencyError(
+                    "Project changed during automatic Space apply"
+                )
+            if set(applied_path_sources.values()) - {
+                "agent_created",
+                "agent_modified",
+            }:
+                raise ValueError("invalid Project auto-apply path source")
+            for relative_path, source in applied_path_sources.items():
+                connection.execute(
+                    """
+                    INSERT INTO git_managed_paths(
+                        repository_id, relative_path, source,
+                        first_checkpoint_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, NULL, ?, ?)
+                    ON CONFLICT(repository_id, relative_path) DO UPDATE SET
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        project["repository_id"],
+                        relative_path,
+                        source,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+            connection.execute(
+                """
+                UPDATE git_project_integrations
+                SET pending_apply = 0, state = 'ready', version = version + 1,
+                    updated_at = ?
+                WHERE project_id = ? AND version = ?
+                """,
+                (timestamp, project_id, expected_version),
+            )
+            connection.execute(
+                """
+                UPDATE git_operations
+                SET status = 'completed', result_json = ?,
+                    observed_repo_state_digest = ?, error_code = NULL,
+                    error_message = NULL, updated_at = ?
+                WHERE operation_id = ? AND status = 'dispatched'
+                """,
+                (
+                    result_json,
+                    observed_repo_state_digest,
+                    timestamp,
+                    operation_id,
+                ),
+            )
+            project = connection.execute(
+                "SELECT * FROM git_project_integrations WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            assert project is not None
+            return self._project_git_state_from_row(project)
+
     def mark_project_git_attention(
         self,
         *,
