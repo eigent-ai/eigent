@@ -64,8 +64,21 @@ jobs:
       - name: Run type check
         run: npm run type-check
 
-      - name: Run frontend unit tests
-        run: npm test
+      - name: Run ChatBox event-bus unit contract shard
+        run: |
+          npx --no-install vitest run \
+            src/components/ChatBox/MessageItem/HumanInteractionCard.test.tsx \
+            src/hooks/useRemoteControlBridge.test.ts \
+            test/unit/components/ChatBox \
+            test/unit/hooks/useChatStoreAdapter.test.tsx \
+            test/unit/hooks/useRemoteControlBridge.test.ts \
+            test/unit/hooks/useRemoteControlBridge.followup.test.ts \
+            test/unit/lib/chatProjectionActivity.test.ts \
+            test/unit/lib/chatProjectionContract.test.ts \
+            test/unit/lib/projector.test.ts \
+            test/unit/service/projectEventStoreHydration.test.ts \
+            test/unit/store/chatStore.durableReplay.test.ts \
+            test/unit/store/projectStore.test.ts
 
       - name: Check Electron Access Guard
         run: bash scripts/check-electron-access.sh

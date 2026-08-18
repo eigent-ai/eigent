@@ -108,6 +108,33 @@ function firstText(...values: unknown[]): string {
   return '';
 }
 
+function portableRelativePath(value: unknown): string {
+  const normalized = firstText(value).trim().replaceAll('\\', '/');
+  if (!normalized) return '';
+
+  const withoutCurrentDirectory = normalized.replace(/^(\.\/)+/, '');
+  if (
+    !withoutCurrentDirectory ||
+    withoutCurrentDirectory.startsWith('/') ||
+    withoutCurrentDirectory.startsWith('~/') ||
+    /^[a-zA-Z]:\//.test(withoutCurrentDirectory) ||
+    /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(withoutCurrentDirectory) ||
+    withoutCurrentDirectory.split('/').includes('..')
+  ) {
+    return '';
+  }
+  return withoutCurrentDirectory;
+}
+
+function safeArtifactBasename(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = firstText(value).trim().replaceAll('\\', '/');
+    const basename = normalized.split('/').filter(Boolean).at(-1);
+    if (basename && basename !== '.' && basename !== '..') return basename;
+  }
+  return '';
+}
+
 /** Message bodies and delta fragments must preserve significant whitespace. */
 function firstContent(...values: unknown[]): string {
   for (const value of values) {
@@ -747,16 +774,17 @@ function artifactNode(
   const isTypedArtifact = !base.eventType.startsWith('legacy.');
   // Shared typed projections carry only portable identity. A Desktop-local
   // absolute path belongs in the resolver/transport layer, never in this node.
-  const path = isTypedArtifact
-    ? firstText(payload.relative_path, payload.relativePath, payload.name)
+  const rawPath = isTypedArtifact
+    ? firstText(payload.relative_path, payload.relativePath)
     : firstText(
-        payload.file_path,
-        payload.filePath,
-        payload.path,
         payload.relative_path,
         payload.relativePath,
-        payload.name
+        payload.file_path,
+        payload.filePath,
+        payload.path
       );
+  const name = safeArtifactBasename(payload.name, rawPath);
+  const path = portableRelativePath(rawPath) || name;
   return {
     ...base,
     kind: 'artifact',
@@ -766,9 +794,7 @@ function artifactNode(
     ),
     artifactId: firstText(payload.artifact_id, payload.artifactId) || undefined,
     path,
-    name:
-      firstText(payload.name, path.split('/').filter(Boolean).at(-1)) ||
-      undefined,
+    name: name || safeArtifactBasename(path) || undefined,
     mimeType: firstText(payload.mime_type, payload.mimeType) || undefined,
     agentId: firstText(payload.agent_id, payload.agentId) || undefined,
     taskId:

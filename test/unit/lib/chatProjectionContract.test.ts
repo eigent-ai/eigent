@@ -90,6 +90,7 @@ describe('chat projection presentation contract', () => {
           artifact_id: 'artifact-1',
           path: '/Users/alice/private/report.md',
           relativePath: 'reports/report.md',
+          name: 'C:\\Users\\alice\\private\\report.md',
         },
         6
       ),
@@ -134,9 +135,36 @@ describe('chat projection presentation contract', () => {
       name: 'report.md',
     });
     expect(JSON.stringify(state)).not.toContain('/Users/alice');
+    expect(JSON.stringify(state)).not.toContain('C:\\\\Users');
     expect(state.seenEventIds).toEqual(
       Object.fromEntries(inputs.map((input) => [input.eventId, true]))
     );
+  });
+
+  it('never retains absolute or parent-traversing artifact paths', () => {
+    const state = projectChatEvents('project-1', [
+      event(
+        'artifact.created',
+        {
+          artifact_id: 'artifact-absolute',
+          relative_path: '../../Users/alice/secret.txt',
+          path: '/Users/alice/secret.txt',
+          name: '/Users/alice/secret.txt',
+        },
+        1
+      ),
+    ]);
+
+    expect(selectRenderableChatNodes(state)).toEqual([
+      expect.objectContaining({
+        kind: 'artifact',
+        artifactId: 'artifact-absolute',
+        path: 'secret.txt',
+        name: 'secret.txt',
+      }),
+    ]);
+    expect(JSON.stringify(state)).not.toContain('/Users/alice');
+    expect(JSON.stringify(state)).not.toContain('../');
   });
 
   it('prefers canonical transcript events over legacy history fallbacks per Run', () => {
