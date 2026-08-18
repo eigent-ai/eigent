@@ -33,7 +33,7 @@ import {
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
 import { EventTimeline, type ChatTimelineDetailLevel } from './EventTimeline';
-import { presentHumanInteractionReceipts } from './EventTimeline/presentationPolicy';
+import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
 
 /** Temporary DOM window until the event timeline has variable-height virtualization. */
 const MAX_MOUNTED_EVENT_NODES = 250;
@@ -54,16 +54,15 @@ interface EventNativeTimelineWindow {
 }
 
 /**
- * Resolve correlated interaction receipts before applying the temporary DOM
- * window. A late resolution can otherwise enter the window without its
- * request, rendering an orphan row instead of one receipt anchored where the
- * agent originally asked for input.
+ * Resolve transcript/message/control entities before applying the temporary
+ * DOM window. Late receipts can otherwise enter the window without the
+ * semantic entity they complete.
  */
 export function prepareEventNativeTimelineWindow(
   sourceNodes: readonly ChatProjectionNode[],
   maxMountedNodes = MAX_MOUNTED_EVENT_NODES
 ): EventNativeTimelineWindow {
-  const presentedNodes = presentHumanInteractionReceipts(sourceNodes);
+  const presentedNodes = presentChatSemanticEntities(sourceNodes);
   const safeLimit = Number.isFinite(maxMountedNodes)
     ? Math.max(0, Math.floor(maxMountedNodes))
     : MAX_MOUNTED_EVENT_NODES;

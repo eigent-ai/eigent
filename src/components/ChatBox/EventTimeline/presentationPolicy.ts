@@ -15,9 +15,9 @@
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 
 type InteractionNode = Extract<ChatProjectionNode, { kind: 'interaction' }>;
+type MessageNode = Extract<ChatProjectionNode, { kind: 'message' }>;
 type InteractionResolutionNode =
-  | InteractionNode
-  | Extract<ChatProjectionNode, { kind: 'message' }>;
+  InteractionNode | Extract<ChatProjectionNode, { kind: 'message' }>;
 
 interface PresentableInteractionReceipt {
   request: InteractionNode;
@@ -280,6 +280,114 @@ function presentHumanInteractionReceipts(
   });
 }
 
+/** Prefer canonical transcript events while preserving legacy-only history. */
+function presentLegacyTranscriptFallbacks(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const canonicalUserRuns = new Set(
+    nodes
+      .filter(
+        (node): node is MessageNode =>
+          node.kind === 'message' && node.eventType === 'user.message'
+      )
+      .map((node) => node.runId)
+  );
+  const canonicalAssistantRuns = new Set(
+    nodes
+      .filter(
+        (node): node is MessageNode =>
+          node.kind === 'message' && node.eventType === 'assistant.final'
+      )
+      .map((node) => node.runId)
+  );
+
+  return nodes.filter(
+    (node) =>
+      !(
+        node.kind === 'message' &&
+        ((node.eventType === 'legacy.confirmed' &&
+          canonicalUserRuns.has(node.runId)) ||
+          (node.eventType === 'legacy.end' &&
+            canonicalAssistantRuns.has(node.runId)))
+      )
+  );
+}
+
+function typedMessageLifecycleKey(node: MessageNode): string | null {
+  if (
+    !node.messageId ||
+    !['message.created', 'message.delta', 'message.completed'].includes(
+      node.eventType
+    )
+  ) {
+    return null;
+  }
+  return JSON.stringify([node.runId, node.messageId]);
+}
+
+/**
+ * Fold typed message receipts by the backend-provided message identity.
+ * Missing-identity created/delta receipts stay in the immutable source ledger
+ * but are hidden until a completed semantic message is available.
+ */
+function presentTypedMessageLifecycles(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const messagesByKey = new Map<string, MessageNode[]>();
+  for (const node of nodes) {
+    if (node.kind !== 'message') continue;
+    const key = typedMessageLifecycleKey(node);
+    if (!key) continue;
+    messagesByKey.set(key, [...(messagesByKey.get(key) || []), node]);
+  }
+
+  const presentedByEventId = new Map<string, MessageNode>();
+  const suppressedEventIds = new Set<string>();
+  for (const messages of messagesByKey.values()) {
+    const first = messages[0];
+    if (!first) continue;
+    const completed = messages
+      .filter((message) => message.eventType === 'message.completed')
+      .at(-1);
+    const accumulatedContent = messages
+      .filter((message) => message.eventType !== 'message.completed')
+      .map((message) => message.content)
+      .join('');
+    presentedByEventId.set(first.eventId, {
+      ...first,
+      eventType: completed?.eventType ?? first.eventType,
+      role: completed?.role ?? first.role,
+      content: completed?.content || accumulatedContent,
+      status: completed ? 'complete' : 'streaming',
+    });
+    for (const message of messages.slice(1)) {
+      suppressedEventIds.add(message.eventId);
+    }
+  }
+
+  return nodes.flatMap((node): ChatProjectionNode[] => {
+    if (node.kind !== 'message') return [node];
+    const presented = presentedByEventId.get(node.eventId);
+    if (presented) return [presented];
+    if (suppressedEventIds.has(node.eventId)) return [];
+    if (
+      !node.messageId &&
+      ['message.created', 'message.delta'].includes(node.eventType)
+    ) {
+      return [];
+    }
+    return [node];
+  });
+}
+
+function presentChatSemanticEntities(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  return presentHumanInteractionReceipts(
+    presentTypedMessageLifecycles(presentLegacyTranscriptFallbacks(nodes))
+  );
+}
+
 const defaultChatTimelinePresentationPolicyRegistry = Object.freeze({
   detailed: detailedPresentationPolicy,
 }) satisfies ChatTimelinePresentationPolicyRegistry;
@@ -306,7 +414,7 @@ function applyPresentationPolicy(
   try {
     const presentedNodes = policy(nodes, { requestedDetailLevel });
     return Array.isArray(presentedNodes)
-      ? presentHumanInteractionReceipts(presentedNodes)
+      ? presentChatSemanticEntities(presentedNodes)
       : null;
   } catch {
     return null;
@@ -357,7 +465,10 @@ export {
   chatTimelineDetailLevels,
   createChatTimelinePresentationPolicyRegistry,
   defaultChatTimelinePresentationPolicyRegistry,
+  presentChatSemanticEntities,
   presentHumanInteractionReceipts,
+  presentLegacyTranscriptFallbacks,
+  presentTypedMessageLifecycles,
   resolveChatTimelinePresentation,
 };
 export type {

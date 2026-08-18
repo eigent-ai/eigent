@@ -39,9 +39,9 @@ export type ChatEventProjectionInput = {
 export function isChatEventProjectionEnabled(): boolean {
   return (
     import.meta.env.VITE_CHATBOX_EVENT_SHADOW === 'true' ||
-    // The visible read path still needs the legacy /chat source bridge while
-    // the canonical companion owns typed Run events. Keep the flags
-    // independently deployable, but make cutover imply bridge ingestion.
+    // The visible read path still needs not-yet-migrated legacy families.
+    // Canonical-owned families are filtered below before they can become a
+    // second durable writer.
     isChatEventTimelineEnabled()
   );
 }
@@ -65,15 +65,30 @@ export function isChatEventTimelineEnabled(): boolean {
  * "the feature is switched off".
  */
 export type ChatEventProjectionOutcome =
-  | 'accepted'
-  | 'disabled'
-  | 'rejected'
-  | 'overflowed';
+  'accepted' | 'disabled' | 'filtered' | 'rejected' | 'overflowed';
+
+const CANONICAL_OWNED_LIVE_LEGACY_STEPS = new Set([
+  'confirmed',
+  'end',
+  'decompose_text',
+  'write_file',
+]);
+
+export function shouldProjectLegacyChatStep(
+  step: string,
+  timelineEnabled = isChatEventTimelineEnabled()
+): boolean {
+  return (
+    !timelineEnabled ||
+    !CANONICAL_OWNED_LIVE_LEGACY_STEPS.has(step.trim().toLowerCase())
+  );
+}
 
 /** Never allow migration projection failures to affect the legacy UI path. */
 export function enqueueChatEventProjection(
   input: ChatEventProjectionInput,
-  enabled = isChatEventProjectionEnabled()
+  enabled = isChatEventProjectionEnabled(),
+  timelineEnabled = isChatEventTimelineEnabled()
 ): ChatEventProjectionOutcome {
   if (!enabled || !input.projectId) return 'disabled';
   if (
@@ -83,6 +98,15 @@ export function enqueueChatEventProjection(
       typeof (input.raw as { step?: unknown }).step !== 'string')
   ) {
     return 'rejected';
+  }
+  if (
+    input.transport === 'legacy_chat' &&
+    !shouldProjectLegacyChatStep(
+      (input.raw as { step: string }).step,
+      timelineEnabled
+    )
+  ) {
+    return 'filtered';
   }
 
   try {
