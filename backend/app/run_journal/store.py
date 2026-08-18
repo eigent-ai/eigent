@@ -122,6 +122,9 @@ from app.workspace_config.models import (
 
 SCHEMA_VERSION = 30
 logger = logging.getLogger("run_journal")
+# Per redacted request or response. Oversized documents retain a bounded JSON
+# prefix plus the byte count and digest of the full redacted projection.
+_MODEL_INVOCATION_DOCUMENT_MAX_BYTES = 1024 * 1024
 
 
 def _redact_model_document(key: str, value: dict[str, Any]) -> dict[str, Any]:
@@ -132,6 +135,52 @@ def _redact_model_document(key: str, value: dict[str, Any]) -> dict[str, Any]:
     projected = redact_action_arguments({key: value})[key]
     assert isinstance(projected, dict)
     return projected
+
+
+def _project_model_document(
+    key: str,
+    value: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Redact and bound one model document before it reaches SQLite."""
+
+    projected = _redact_model_document(key, value)
+    encoded = canonical_json(projected)
+    encoded_bytes = encoded.encode("utf-8")
+    if len(encoded_bytes) <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES:
+        return projected, encoded
+
+    metadata = {
+        "truncated": True,
+        "kind": key,
+        "original_bytes": len(encoded_bytes),
+        "original_sha256": hashlib.sha256(encoded_bytes).hexdigest(),
+    }
+    low = 0
+    # A stored prefix cannot contain more characters than the byte budget.
+    # Keeping this upper bound independent of the source size prevents the
+    # budget calculation itself from copying very large candidate strings.
+    high = min(len(encoded), _MODEL_INVOCATION_DOCUMENT_MAX_BYTES)
+    bounded: dict[str, Any] = {}
+    bounded_json = ""
+    while low <= high:
+        midpoint = (low + high) // 2
+        candidate = {
+            "_eigent_capture": metadata,
+            "json_prefix": encoded[:midpoint],
+        }
+        candidate_json = canonical_json(candidate)
+        if (
+            len(candidate_json.encode("utf-8"))
+            <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
+        ):
+            bounded = candidate
+            bounded_json = candidate_json
+            low = midpoint + 1
+        else:
+            high = midpoint - 1
+    if not bounded_json:
+        raise ValueError("model invocation document budget is too small")
+    return bounded, bounded_json
 
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
@@ -7039,8 +7088,9 @@ class SQLiteRunJournal:
         if not agent_id.strip() or not provider.strip() or not model.strip():
             raise ValueError("model invocation identity is incomplete")
         timestamp = now if now is not None else time.time()
-        safe_request = _redact_model_document("request", request)
-        request_json = canonical_json(safe_request)
+        safe_request, request_json = _project_model_document(
+            "request", request
+        )
         request_digest = hashlib.sha256(
             request_json.encode("utf-8")
         ).hexdigest()
@@ -7215,9 +7265,9 @@ class SQLiteRunJournal:
         response_json: str | None = None
         response_digest: str | None = None
         if response is not None:
-            projected = _redact_model_document("response", response)
-            safe_response = projected
-            response_json = canonical_json(safe_response)
+            safe_response, response_json = _project_model_document(
+                "response", response
+            )
             response_digest = hashlib.sha256(
                 response_json.encode("utf-8")
             ).hexdigest()

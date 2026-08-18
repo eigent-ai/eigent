@@ -52,6 +52,9 @@ class RunContext:
     model_parameters: dict[str, Any] = field(default_factory=dict)
     permissions: frozenset[str] = field(default_factory=frozenset)
     credential_sources: dict[str, str] = field(default_factory=dict)
+    # Bound after durable Attempt admission and then inherited by child tasks.
+    # Preparation code may temporarily carry ``None`` before an Attempt exists.
+    attempt_id: str | None = None
 
     def env_overrides(self) -> dict[str, str]:
         values: dict[str, str] = {

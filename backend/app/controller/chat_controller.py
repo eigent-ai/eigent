@@ -1352,6 +1352,8 @@ async def _prepare_chat_run(
             source="chat",
             attaches=data.attaches or [],
         )
+    if attempt is not None:
+        run_context = replace(run_context, attempt_id=attempt.attempt_id)
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -1524,8 +1526,14 @@ async def start_chat_stream(data: Chat, request: Request):
                             binding_source
                         ),
                     )
+                bound_context = replace(
+                    prepared.run_context,
+                    attempt_id=attempt.attempt_id,
+                )
+                prepared.task_lock.run_context = bound_context
                 prepared = replace(
                     prepared,
+                    run_context=bound_context,
                     attempt_id=attempt.attempt_id,
                     initial_action=prepared.initial_action.model_copy(
                         update={"attempt_id": attempt.attempt_id}
@@ -1980,6 +1988,7 @@ async def _improve_chat(
                         task_output_root=frozen_dirs.task_output_root,
                         camel_log_dir=camel_log,
                         binding_source=frozen_dirs.binding_source,
+                        attempt_id=None,
                         browser_port=int(
                             getattr(request.state, "browser_port", port)
                         ),
@@ -2167,6 +2176,11 @@ async def _improve_chat(
                 source="improve",
                 attaches=data.attaches or [],
             )
+            refreshed_context = replace(
+                refreshed_context,
+                attempt_id=attempt.attempt_id,
+            )
+            task_lock.run_context = refreshed_context
         except Exception:
             await rollback_runtime_binding()
             raise

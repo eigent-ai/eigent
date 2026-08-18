@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -284,7 +286,11 @@ class _FakeCamelLoggingModel(_FakeModel):
         return self.response
 
 
-def _context(tmp_path: Path) -> RunContext:
+def _context(
+    tmp_path: Path,
+    *,
+    attempt_id: str | None = None,
+) -> RunContext:
     return RunContext(
         space_id="space-1",
         project_id="project-1",
@@ -298,6 +304,7 @@ def _context(tmp_path: Path) -> RunContext:
         binding_source="test",
         workdir_mode="test",
         browser_port=9222,
+        attempt_id=attempt_id,
     )
 
 
@@ -338,6 +345,43 @@ def test_non_streaming_call_is_committed_without_changing_camel_logger(
     # fake backend does not implement CAMEL logging, so the directory remains
     # empty while SQLite still contains the invocation above.
     assert not _context(tmp_path).camel_log_dir.exists()
+
+
+def test_invocation_uses_attempt_pinned_in_immutable_context(
+    tmp_path: Path,
+) -> None:
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="request-1",
+        reason="initial_execution",
+        activate=False,
+    )
+    model = instrument_model_backend(
+        _FakeModel(_Response()),
+        agent_id="agent-1",
+        provider="openai",
+        model_name="gpt-test",
+        journal=journal,
+    )
+
+    with (
+        patch.object(
+            journal,
+            "get_run",
+            return_value=SimpleNamespace(active_attempt_id="mutable-attempt"),
+        ),
+        run_context_scope(_context(tmp_path, attempt_id=attempt.attempt_id)),
+    ):
+        model.run([{"role": "user", "content": "hello"}])
+
+    record = journal.list_model_invocations("run-1")[0]
+    assert record.attempt_id == attempt.attempt_id
 
 
 def test_native_camel_log_bytes_are_not_rewritten(tmp_path: Path) -> None:

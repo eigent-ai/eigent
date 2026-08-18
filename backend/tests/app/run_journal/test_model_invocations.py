@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.run_journal.store import (
+    _MODEL_INVOCATION_DOCUMENT_MAX_BYTES,
     IdempotencyConflictError,
     InvalidRunTransitionError,
     SQLiteRunJournal,
@@ -117,6 +118,50 @@ def test_model_invocation_retry_index_is_allocated_under_writer_lock(
         )
 
     assert values == [0, 1]
+
+
+def test_model_invocation_documents_respect_sqlite_byte_budget(
+    tmp_path: Path,
+) -> None:
+    journal = _journal(tmp_path)
+    oversized = '"\\🙂' * _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
+
+    started = journal.start_model_invocation(
+        invocation_id="inv-budget",
+        run_id="run-1",
+        attempt_id=None,
+        agent_id="agent-1",
+        logical_call_id="logical-budget",
+        provider="openai",
+        model="gpt-test",
+        transport="responses",
+        thinking_effort=None,
+        request={"messages": [{"role": "user", "content": oversized}]},
+    )
+    completed = journal.finish_model_invocation(
+        "inv-budget",
+        status="completed",
+        response={"output": oversized},
+    )
+
+    assert started.request["_eigent_capture"]["truncated"] is True
+    assert started.request["_eigent_capture"]["original_bytes"] > (
+        _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
+    )
+    assert len(started.request["_eigent_capture"]["original_sha256"]) == 64
+    assert completed.response is not None
+    assert completed.response["_eigent_capture"]["truncated"] is True
+    sizes = journal._connection.execute(
+        """
+        SELECT length(CAST(request_json AS BLOB)),
+               length(CAST(response_json AS BLOB))
+        FROM model_invocations WHERE invocation_id = ?
+        """,
+        ("inv-budget",),
+    ).fetchone()
+    assert sizes is not None
+    assert sizes[0] <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
+    assert sizes[1] <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
 
 
 def test_model_invocation_attempt_mismatch_rolls_back_all_rows(

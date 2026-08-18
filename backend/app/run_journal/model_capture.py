@@ -658,8 +658,7 @@ def _start_capture(
                 "request_digest": request_digest,
             }
         )
-        run = journal.get_run(context.run_id)
-        if run is None:
+        if journal.get_run(context.run_id) is None:
             logger.warning(
                 "Skipping model capture because Run %s is not admitted",
                 context.run_id,
@@ -668,7 +667,7 @@ def _start_capture(
         record = journal.start_model_invocation(
             invocation_id=f"modelinv_{uuid.uuid4().hex}",
             run_id=context.run_id,
-            attempt_id=run.active_attempt_id,
+            attempt_id=context.attempt_id,
             agent_id=agent_id,
             logical_call_id=logical_call_id,
             provider=provider,
@@ -700,6 +699,12 @@ def instrument_model_backend(
     journal: SQLiteRunJournal | None = None,
 ) -> Any:
     """Install one idempotent capture adapter on a CAMEL model instance."""
+
+    # TODO(camel): Replace this public run/arun adapter when CAMEL exposes a
+    # transport-attempt hook with pre-dispatch, terminal/stream, provider
+    # request-id, and SDK retry-index callbacks. Without that upstream hook,
+    # one CAMEL model call is durable here but hidden HTTP retries cannot be
+    # represented as separate ModelInvocation rows.
 
     if getattr(model_backend, _CAPTURE_INSTALLED, False):
         return model_backend
