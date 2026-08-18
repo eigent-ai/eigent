@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import mimetypes
 import re
@@ -143,6 +144,12 @@ class RunEventSyncTransport(Protocol):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
+    async def heartbeat_memory_scopes(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
     async def claim_memory_writer(
         self,
         configuration: CloudSyncConfiguration,
@@ -173,11 +180,26 @@ class HttpRunEventSyncTransport:
     def __init__(
         self,
         *,
-        timeout_seconds: float = 15.0,
+        timeout_seconds: float | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        timeout = (
+            httpx.Timeout(
+                connect=10.0,
+                read=30.0,
+                write=60.0,
+                pool=5.0,
+            )
+            if timeout_seconds is None
+            else httpx.Timeout(timeout_seconds)
+        )
         self._client = httpx.AsyncClient(
-            timeout=timeout_seconds,
+            timeout=timeout,
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=90.0,
+            ),
             transport=transport,
         )
         self._registered_devices: dict[tuple[str, str], str] = {}
@@ -415,6 +437,36 @@ class HttpRunEventSyncTransport:
             payload,
         )
 
+    async def heartbeat_memory_scopes(
+        self,
+        configuration: CloudSyncConfiguration,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        await self._ensure_device(configuration)
+        items = payload.get("items")
+        if not isinstance(items, list):
+            raise RunEventSyncProtocolError(
+                "Memory heartbeat payload must contain an items array"
+            )
+        acknowledged: list[dict[str, Any]] = []
+        verified_at: str | None = None
+        for offset in range(0, len(items), 100):
+            response = await self._json_request(
+                "POST",
+                f"{self._sync_base(configuration)}/memory/heartbeats",
+                configuration,
+                {"items": items[offset : offset + 100]},
+            )
+            response_items = response.get("items")
+            if not isinstance(response_items, list):
+                raise RunEventSyncProtocolError(
+                    "Memory heartbeat response omitted acknowledged items"
+                )
+            acknowledged.extend(response_items)
+            if isinstance(response.get("verified_at"), str):
+                verified_at = response["verified_at"]
+        return {"items": acknowledged, "verified_at": verified_at}
+
     async def claim_memory_writer(
         self,
         configuration: CloudSyncConfiguration,
@@ -539,6 +591,10 @@ class CloudSyncWorker:
         self._memory_snapshot_failed_revisions: dict[tuple[str, str], int] = {}
         self._memory_snapshot_retry_after: dict[tuple[str, str], float] = {}
         self._memory_snapshot_repair_revisions: dict[tuple[str, str], int] = {}
+        self._memory_writer_epochs: dict[tuple[str, str], int] = {}
+        self._memory_heartbeat_next_at = 0.0
+        self._memory_heartbeat_failure_count = 0
+        self._memory_heartbeat_disabled = False
         self._artifact_tasks: set[asyncio.Task[int]] = set()
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
@@ -552,6 +608,10 @@ class CloudSyncWorker:
             self._memory_snapshot_failed_revisions.clear()
             self._memory_snapshot_retry_after.clear()
             self._memory_snapshot_repair_revisions.clear()
+            self._memory_writer_epochs.clear()
+            self._memory_heartbeat_next_at = 0.0
+            self._memory_heartbeat_failure_count = 0
+            self._memory_heartbeat_disabled = False
         self._configuration = configuration
         self.notify()
 
@@ -949,7 +1009,19 @@ class CloudSyncWorker:
             account_owner_id,
         )
         ready: set[tuple[str, str]] = set()
+        heartbeat_items: list[dict[str, Any]] = []
         now = time.monotonic()
+        active_keys = {
+            (str(snapshot["scope_type"]), str(snapshot["scope_id"]))
+            for snapshot in snapshots
+        }
+        for cache in (
+            self._memory_snapshot_revisions,
+            self._memory_snapshot_verified_at,
+            self._memory_writer_epochs,
+        ):
+            for stale_key in set(cache) - active_keys:
+                cache.pop(stale_key, None)
         for snapshot in snapshots:
             key = (str(snapshot["scope_type"]), str(snapshot["scope_id"]))
             revision = int(snapshot["revision"])
@@ -958,12 +1030,18 @@ class CloudSyncWorker:
                 self._clear_memory_snapshot_failure(key)
             elif now < self._memory_snapshot_retry_after.get(key, 0.0):
                 continue
-            if (
-                self._memory_snapshot_revisions.get(key) == revision
-                and now - self._memory_snapshot_verified_at.get(key, 0.0)
-                < 30.0
-            ):
+            if self._memory_snapshot_revisions.get(key) == revision:
                 ready.add(key)
+                writer_epoch = self._memory_writer_epochs.get(key)
+                if writer_epoch is not None:
+                    heartbeat_items.append(
+                        {
+                            "scope_type": key[0],
+                            "scope_id": key[1],
+                            "source_revision": revision,
+                            "writer_epoch": writer_epoch,
+                        }
+                    )
                 continue
             payload = {
                 "scope_type": key[0],
@@ -1110,16 +1188,15 @@ class CloudSyncWorker:
                                 "entries": refreshed["entries"],
                             }
                         response = await put_snapshot(configuration, payload)
-                    except Exception:
+                    except Exception as transfer_error:
                         delay = self._defer_memory_snapshot_retry(
                             key, revision
                         )
-                        logger.exception(
-                            "Cloud Memory writer transfer failed for %s/%s; "
-                            "retrying in %.1fs",
-                            key[0],
-                            key[1],
+                        self._log_memory_snapshot_failure(
+                            key,
+                            transfer_error,
                             delay,
+                            operation="writer transfer",
                         )
                         continue
                 else:
@@ -1134,13 +1211,11 @@ class CloudSyncWorker:
                     continue
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as snapshot_error:
                 delay = self._defer_memory_snapshot_retry(key, revision)
-                logger.exception(
-                    "Cloud Memory snapshot sync failed for %s/%s; retrying "
-                    "in %.1fs",
-                    key[0],
-                    key[1],
+                self._log_memory_snapshot_failure(
+                    key,
+                    snapshot_error,
                     delay,
                 )
                 continue
@@ -1154,6 +1229,15 @@ class CloudSyncWorker:
                     raise RunEventSyncProtocolError(
                         "Memory snapshot response does not acknowledge the "
                         "source revision"
+                    )
+                writer_epoch = response.get("writer_epoch")
+                if writer_epoch is not None and (
+                    isinstance(writer_epoch, bool)
+                    or not isinstance(writer_epoch, int)
+                    or writer_epoch < 1
+                ):
+                    raise RunEventSyncProtocolError(
+                        "Memory snapshot response contains an invalid writer epoch"
                     )
             except asyncio.CancelledError:
                 raise
@@ -1173,8 +1257,198 @@ class CloudSyncWorker:
             self._memory_snapshot_repair_revisions.pop(key, None)
             self._memory_snapshot_revisions[key] = revision
             self._memory_snapshot_verified_at[key] = now
+            if writer_epoch is None:
+                # Additive compatibility with a pre-heartbeat Cloud.  The
+                # snapshot remains authoritative, but this Desktop cannot
+                # renew its writer lease until a newer Server returns an epoch.
+                self._memory_writer_epochs.pop(key, None)
+            else:
+                self._memory_writer_epochs[key] = writer_epoch
             ready.add(key)
+        await self._heartbeat_memory_scopes_if_due(
+            configuration,
+            heartbeat_items,
+            ready,
+            now=now,
+        )
         return ready
+
+    async def _heartbeat_memory_scopes_if_due(
+        self,
+        configuration: CloudSyncConfiguration,
+        items: list[dict[str, Any]],
+        ready: set[tuple[str, str]],
+        *,
+        now: float,
+    ) -> None:
+        """Renew unchanged Memory scopes without re-uploading their contents."""
+
+        if self._memory_heartbeat_disabled:
+            return
+        if self._memory_heartbeat_next_at <= 0.0:
+            self._memory_heartbeat_next_at = (
+                now + self._memory_heartbeat_interval(configuration)
+            )
+            return
+        if now < self._memory_heartbeat_next_at:
+            return
+        heartbeat = getattr(self._transport, "heartbeat_memory_scopes", None)
+        if not callable(heartbeat):
+            self._memory_heartbeat_disabled = True
+            logger.warning(
+                "Cloud Memory heartbeat transport is unavailable; unchanged "
+                "snapshots will not be re-uploaded"
+            )
+            return
+        if not items:
+            self._memory_heartbeat_next_at = (
+                now + self._memory_heartbeat_interval(configuration)
+            )
+            return
+
+        expected = {
+            (str(item["scope_type"]), str(item["scope_id"])): (
+                int(item["source_revision"]),
+                int(item["writer_epoch"]),
+            )
+            for item in items
+        }
+        try:
+            response = await heartbeat(configuration, {"items": items})
+            raw_acknowledged = response.get("items")
+            if not isinstance(raw_acknowledged, list):
+                raise RunEventSyncProtocolError(
+                    "Memory heartbeat response omitted acknowledged items"
+                )
+            acknowledged: set[tuple[str, str]] = set()
+            for item in raw_acknowledged:
+                if not isinstance(item, dict):
+                    raise RunEventSyncProtocolError(
+                        "Memory heartbeat acknowledgement is invalid"
+                    )
+                key = (str(item.get("scope_type")), str(item.get("scope_id")))
+                expected_identity = expected.get(key)
+                if (
+                    expected_identity is None
+                    or item.get("source_revision") != expected_identity[0]
+                    or item.get("writer_epoch") != expected_identity[1]
+                    or key in acknowledged
+                ):
+                    raise RunEventSyncProtocolError(
+                        "Memory heartbeat acknowledgement does not match its request"
+                    )
+                acknowledged.add(key)
+        except RunEventSyncHttpError as exc:
+            if exc.status_code in {404, 405}:
+                self._memory_heartbeat_disabled = True
+                logger.warning(
+                    "Cloud does not support lightweight Memory heartbeats yet; "
+                    "unchanged snapshots will not be re-uploaded"
+                )
+                return
+            delay = self._defer_memory_heartbeat_retry(configuration, now)
+            self._log_memory_heartbeat_failure(exc, delay)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            delay = self._defer_memory_heartbeat_retry(configuration, now)
+            self._log_memory_heartbeat_failure(exc, delay)
+            return
+
+        self._memory_heartbeat_failure_count = 0
+        self._memory_heartbeat_next_at = now + self._memory_heartbeat_interval(
+            configuration
+        )
+        for key in acknowledged:
+            self._memory_snapshot_verified_at[key] = now
+        missing = set(expected) - acknowledged
+        for key in missing:
+            # A missing CAS acknowledgement means the Cloud writer epoch,
+            # route, or revision moved.  Invalidate only that scope so the
+            # next drain repairs it with one full anti-entropy snapshot.
+            self._memory_snapshot_revisions.pop(key, None)
+            self._memory_snapshot_verified_at.pop(key, None)
+            self._memory_writer_epochs.pop(key, None)
+            ready.discard(key)
+        if missing:
+            logger.info(
+                "Cloud Memory heartbeat requested full repair for %d scope(s)",
+                len(missing),
+            )
+            self.notify()
+
+    @staticmethod
+    def _memory_heartbeat_interval(
+        configuration: CloudSyncConfiguration,
+    ) -> float:
+        digest = hashlib.sha256(
+            configuration.desktop_instance_id.encode("utf-8")
+        ).digest()
+        return 25.0 + float(digest[0] % 11)
+
+    def _defer_memory_heartbeat_retry(
+        self,
+        configuration: CloudSyncConfiguration,
+        now: float,
+    ) -> float:
+        self._memory_heartbeat_failure_count += 1
+        delay = min(
+            5.0 * (2 ** min(self._memory_heartbeat_failure_count - 1, 6)),
+            self._max_retry_seconds,
+        )
+        digest = hashlib.sha256(
+            configuration.desktop_instance_id.encode("utf-8")
+        ).digest()
+        jitter = (float(digest[1]) / 255.0) * min(5.0, delay * 0.2)
+        delay += jitter
+        self._memory_heartbeat_next_at = now + delay
+        return delay
+
+    def _log_memory_heartbeat_failure(
+        self,
+        exc: Exception,
+        delay: float,
+    ) -> None:
+        if self._memory_heartbeat_failure_count <= 2:
+            logger.warning(
+                "Cloud Memory heartbeat failed (%s); retrying in %.1fs",
+                type(exc).__name__,
+                delay,
+            )
+            return
+        logger.exception(
+            "Cloud Memory heartbeat repeatedly failed; retrying in %.1fs",
+            delay,
+            exc_info=exc,
+        )
+
+    def _log_memory_snapshot_failure(
+        self,
+        key: tuple[str, str],
+        exc: Exception,
+        delay: float,
+        *,
+        operation: str = "snapshot sync",
+    ) -> None:
+        attempts = self._memory_snapshot_failure_counts.get(key, 0)
+        if isinstance(exc, httpx.ConnectTimeout) and attempts <= 2:
+            logger.warning(
+                "Cloud Memory %s timed out for %s/%s; retrying in %.1fs",
+                operation,
+                key[0],
+                key[1],
+                delay,
+            )
+            return
+        logger.exception(
+            "Cloud Memory %s failed for %s/%s; retrying in %.1fs",
+            operation,
+            key[0],
+            key[1],
+            delay,
+            exc_info=exc,
+        )
 
     def _defer_memory_snapshot_retry(
         self,

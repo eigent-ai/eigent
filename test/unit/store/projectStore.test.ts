@@ -668,6 +668,11 @@ describe('projectStore runtime shape', () => {
               hasMessages: true,
               messages: [
                 { id: 'user-1', role: 'user', content: 'cached prompt' },
+                {
+                  id: 'agent-1',
+                  role: 'agent',
+                  content: 'Cached canonical result',
+                },
               ],
               taskInfo: [],
               taskRunning: [],
@@ -697,7 +702,7 @@ describe('projectStore runtime shape', () => {
         project.chatStores[project.activeChatId].getState().tasks
           .task_cached_local;
       expect(task.elapsed).toBe(613_328);
-      expect(task.messages).toHaveLength(1);
+      expect(task.messages).toHaveLength(2);
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
     }
@@ -767,6 +772,159 @@ describe('projectStore runtime shape', () => {
     }
   });
 
+  it('replays a completed local Run when its cache contains only the seeded user prompt', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_partial_completed_cache',
+            status: 'completed',
+            updated_at: 300,
+            total_attempt_elapsed_ms: 10_000,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_partial_completed_cache'],
+        tasks: {
+          task_partial_completed_cache: {
+            taskState: {
+              status: 'finished',
+              durableRunStatus: 'completed',
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+      replayMock.mockImplementationOnce(async (taskId: string) => {
+        const project =
+          useProjectStore.getState().projects.project_partial_completed_cache;
+        const chatStore = project.chatStores[project.activeChatId];
+        chatStore.getState().create(taskId, 'replay');
+        chatStore.getState().addMessages(taskId, {
+          id: 'agent-final',
+          role: 'agent',
+          content: 'Replayed canonical result',
+        });
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_partial_completed_cache'],
+          'cached prompt',
+          'project_partial_completed_cache',
+          'history_partial_completed_cache',
+          'Partial completed cache',
+          'space_test',
+          { task_partial_completed_cache: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_partial_completed_cache',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_partial_completed_cache',
+        'cached prompt',
+        0,
+        'project_partial_completed_cache',
+        'local_durable'
+      );
+      const project =
+        useProjectStore.getState().projects.project_partial_completed_cache;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_partial_completed_cache;
+      expect(task.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: 'Replayed canonical result' }),
+        ])
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('replays a failed local Run when its cache contains only the seeded user prompt', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_partial_failed_cache',
+            status: 'failed',
+            updated_at: 300,
+            total_attempt_elapsed_ms: 12_000,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_partial_failed_cache'],
+        tasks: {
+          task_partial_failed_cache: {
+            taskState: {
+              status: 'finished',
+              durableRunStatus: 'failed',
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_partial_failed_cache'],
+          'cached prompt',
+          'project_partial_failed_cache',
+          'history_partial_failed_cache',
+          'Partial failed cache',
+          'space_test',
+          { task_partial_failed_cache: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_partial_failed_cache',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_partial_failed_cache',
+        'cached prompt',
+        0,
+        'project_partial_failed_cache',
+        'local_durable'
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
   it('repairs zero duration in a current cache from the canonical local Run', async () => {
     const { useAuthStore } = await import('@/store/authStore');
     const previousUserId = useAuthStore.getState().user_id;
@@ -797,6 +955,11 @@ describe('projectStore runtime shape', () => {
               taskTime: 123,
               messages: [
                 { id: 'user-1', role: 'user', content: 'cached prompt' },
+                {
+                  id: 'agent-1',
+                  role: 'agent',
+                  content: 'Cached completed result',
+                },
               ],
               taskInfo: [],
               taskRunning: [],

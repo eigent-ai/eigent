@@ -412,7 +412,24 @@ class TestChatController:
         )
         coordinator = RunCoordinator()
         release = asyncio.Event()
-        run_context = SimpleNamespace(run_id=run_id)
+        run_context = RunContext(
+            space_id="space-1",
+            project_id=chat_data.project_id,
+            run_id=run_id,
+            task_id=chat_data.task_id,
+            email=chat_data.email,
+            user_id=(
+                str(chat_data.user_id)
+                if chat_data.user_id is not None
+                else None
+            ),
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            camel_log_dir=tmp_path / "camel-log",
+            binding_source="test",
+            workdir_mode=None,
+            browser_port=chat_data.browser_port,
+        )
         mock_task_lock.queue = asyncio.Queue()
 
         async def source():
@@ -614,6 +631,10 @@ class TestChatController:
             assert rebound is not None
             assert rebound.environment_spec_id is not None
             assert prepared.attempt_id == resume_attempt.attempt_id
+            assert prepared.run_context.attempt_id == resume_attempt.attempt_id
+            assert mock_task_lock.run_context.attempt_id == (
+                resume_attempt.attempt_id
+            )
             assert mock_task_lock.environment_spec_id == (
                 rebound.environment_spec_id
             )
@@ -922,6 +943,7 @@ class TestChatController:
             binding_source="test",
             workdir_mode=None,
             browser_port=9222,
+            attempt_id="attempt-old",
         )
         mock_request.state = SimpleNamespace(browser_port=9222, cdp_url=None)
         frozen_dirs = SimpleNamespace(
@@ -1002,6 +1024,9 @@ class TestChatController:
         assert await coordinator.get_handle("run-new") is subscription.handle
         mock_task_lock.put_queue.assert_awaited_once()
         admission_service.persist_for_run.assert_called_once()
+        assert mock_task_lock.run_context.attempt_id == "attempt-1"
+        queued = mock_task_lock.put_queue.await_args.args[0]
+        assert queued.attempt_id == mock_task_lock.run_context.attempt_id
 
         await subscription.aclose()
         release.set()

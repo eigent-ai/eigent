@@ -134,7 +134,6 @@ import {
   collectTaskUploadFiles,
   extractEndPayloadText,
   extractFinalOutputFileList,
-  getCloudModelPlatform,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -654,17 +653,6 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
-  describe('Cloud Model Platform Mapping', () => {
-    it('maps cloud model ids to backend platforms', () => {
-      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
-      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
-        'aws-bedrock-converse'
-      );
-      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
-      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
-    });
-  });
-
   describe('Task Creation', () => {
     it('should create a task with unique ID', () => {
       const { result } = renderHook(() => useChatStore());
@@ -1092,6 +1080,9 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
       const appendInitChatStore = vi.fn(() => {
         const optimisticTaskId = result.current
           .getState()
@@ -1102,9 +1093,6 @@ describe('ChatStore - Core Functionality', () => {
           chatStore: result.current,
         };
       });
-      const getProjectStoreState = vi.mocked(useProjectStore.getState);
-      const previousProjectStoreImplementation =
-        getProjectStoreState.getMockImplementation();
       getProjectStoreState.mockReturnValue({
         activeProjectId: 'project-1',
         appendInitChatStore,
@@ -1154,6 +1142,102 @@ describe('ChatStore - Core Functionality', () => {
       expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
         isPending: false,
         status: ChatTaskStatus.FINISHED,
+      });
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+
+    it('clears optimistic pending state after a typed admission rejection', async () => {
+      vi.mocked(proxyFetchGet).mockResolvedValue({
+        value: 'test-cloud-key',
+        api_url: 'https://models.example.test',
+        items: [],
+        warning_code: null,
+      });
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, options) => {
+        const response = new Response(
+          JSON.stringify({
+            detail: {
+              code: 'continuation_clarification_required',
+              message:
+                'The saved Project frontier has no unfinished next action.',
+              project_state_version: 1,
+            },
+          }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          }
+        );
+        try {
+          await options.onopen?.(response);
+        } catch (error) {
+          options.onerror?.(error);
+        }
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      const appendInitChatStore = vi.fn(() => {
+        const optimisticTaskId = result.current
+          .getState()
+          .create('rejected-task');
+        result.current.getState().setActiveTaskId(optimisticTaskId);
+        return {
+          taskId: optimisticTaskId,
+          chatStore: result.current,
+        };
+      });
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+        getAllChatStores: () => [],
+        getProjectModel: () => null,
+        setProjectModel: vi.fn(),
+        setProjectSpace: vi.fn(),
+        setHistoryId: vi.fn(),
+        getProjectThinkingEffortOverride: () => undefined,
+      } as any);
+
+      await act(async () => {
+        const initialTaskId = result.current.getState().create('initial-task');
+        await result.current
+          .getState()
+          .startTask(
+            initialTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'continue',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+        await Promise.resolve();
+      });
+
+      expect(result.current.getState().tasks['rejected-task']).toMatchObject({
+        isPending: false,
+        status: ChatTaskStatus.FINISHED,
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'agent',
+            content:
+              'Input required: The saved Project frontier has no unfinished next action.',
+          }),
+        ]),
       });
       if (previousProjectStoreImplementation) {
         getProjectStoreState.mockImplementation(
@@ -1230,6 +1314,7 @@ describe('ChatStore - Core Functionality', () => {
   describe('SSE onerror - no retry when task already finished (issue #1212)', () => {
     it('should stop retry when task is already FINISHED (avoids duplicate execution)', async () => {
       const mockFetchEventSource = vi.mocked(fetchEventSource);
+      vi.mocked(proxyFetchGet).mockResolvedValueOnce([]);
       mockFetchEventSource.mockImplementation((_url, opts) => {
         // Simulate connection error; when onerror runs, store checks task status
         // and throws to stop retry (issue #1212 fix)
@@ -1259,7 +1344,9 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       await act(async () => {
-        await result.current.getState().startTask(taskId!);
+        await result.current
+          .getState()
+          .startTask(taskId!, 'replay', undefined, 0);
       });
 
       expect(mockFetchEventSource).toHaveBeenCalledTimes(1);

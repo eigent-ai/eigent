@@ -28,6 +28,13 @@ const PENDING_COMMAND_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 const PENDING_COMMAND_REQUEST_LIMIT = 32;
 
 let remoteControlBridgeConnected = false;
+let remoteControlBridgeError: RemoteControlBridgeError | null = null;
+
+export type RemoteControlBridgeError = {
+  code: string;
+  message: string;
+  retryable: boolean;
+};
 
 type PendingCommandRequest = {
   fingerprint: string;
@@ -130,15 +137,29 @@ export function getRemoteControlDesktopInstanceId(): Promise<string> {
   return getDesktopInstanceId();
 }
 
-export function setRemoteControlBridgeConnected(connected: boolean): void {
+export function setRemoteControlBridgeConnected(
+  connected: boolean,
+  error?: RemoteControlBridgeError | null
+): void {
   remoteControlBridgeConnected = connected;
+  if (connected) {
+    remoteControlBridgeError = null;
+  } else if (error !== undefined) {
+    remoteControlBridgeError = error;
+  }
   window.dispatchEvent(
-    new CustomEvent(BRIDGE_READY_EVENT, { detail: { connected } })
+    new CustomEvent(BRIDGE_READY_EVENT, {
+      detail: { connected, error: remoteControlBridgeError },
+    })
   );
 }
 
 export function isRemoteControlBridgeConnected(): boolean {
   return remoteControlBridgeConnected;
+}
+
+export function getRemoteControlBridgeError(): RemoteControlBridgeError | null {
+  return remoteControlBridgeError;
 }
 
 export function waitForRemoteControlBridgeConnected(
@@ -154,8 +175,14 @@ export function waitForRemoteControlBridgeConnected(
     }, timeoutMs);
 
     const onReady = (event: Event) => {
-      const connected = Boolean((event as CustomEvent).detail?.connected);
+      const detail = (event as CustomEvent).detail;
+      const connected = Boolean(detail?.connected);
       if (!connected) {
+        if (detail?.error?.retryable === false) {
+          window.clearTimeout(timeout);
+          window.removeEventListener(BRIDGE_READY_EVENT, onReady);
+          resolve(false);
+        }
         return;
       }
       window.clearTimeout(timeout);

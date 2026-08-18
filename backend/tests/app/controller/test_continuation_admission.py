@@ -20,6 +20,7 @@ from fastapi import HTTPException
 from app.controller.chat_controller import _resolve_continuation_admission
 from app.model.chat import SupplementChat
 from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_policy import ToolSafetyClass
 
 pytestmark = pytest.mark.unit
 
@@ -116,6 +117,190 @@ async def test_continue_never_infers_resume_for_interrupted_run(tmp_path):
                 run_id="run-2",
             )
         assert captured.value.detail["code"] == "continuation_resume_required"
+
+
+@pytest.mark.asyncio
+async def test_continue_retries_failed_objective_before_any_tool_dispatch(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="failed-run", project_id="project-1", status="pending"
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="user:failed-run",
+                event_type="user.message",
+                payload={"content": "Create the requested ticket"},
+            ),
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="failed:failed-run",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+            ),
+        )
+
+        admitted = await _resolve_continuation_admission(
+            journal,
+            data=SupplementChat(question="continue", task_id="run-2"),
+            project_id="project-1",
+            run_id="run-2",
+        )
+
+        assert "mode: retry_failed_run" in admitted.question
+        assert "next_action: Create the requested ticket" in admitted.question
+        assert "Do not repeat completed external actions" in admitted.question
+
+
+@pytest.mark.asyncio
+async def test_continue_never_retries_failed_run_with_unknown_tool_outcome(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="failed-run", project_id="project-1", status="pending"
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="user:failed-run",
+                event_type="user.message",
+                payload={"content": "Create the requested ticket"},
+            ),
+        )
+        tool = {
+            "tool_call_id": "tool-1",
+            "run_id": "failed-run",
+            "attempt_id": None,
+            "tool_name": "create_ticket",
+            "safety_class": ToolSafetyClass.UNSAFE_WRITE,
+            "request": {"title": "Incident"},
+        }
+        journal.checkpoint_tool_call(status="prepared", now=1, **tool)
+        journal.checkpoint_tool_call(status="dispatched", now=2, **tool)
+        journal.checkpoint_tool_call(
+            status="outcome_unknown",
+            outcome="outcome_unknown",
+            now=3,
+            **tool,
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="failed:failed-run",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+            ),
+        )
+
+        with pytest.raises(HTTPException) as captured:
+            await _resolve_continuation_admission(
+                journal,
+                data=SupplementChat(question="continue", task_id="run-2"),
+                project_id="project-1",
+                run_id="run-2",
+            )
+
+        assert captured.value.detail["code"] == "continuation_outcome_unknown"
+
+
+@pytest.mark.asyncio
+async def test_continue_does_not_replay_whole_objective_after_known_tool_action(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="failed-run", project_id="project-1", status="pending"
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="user:failed-run",
+                event_type="user.message",
+                payload={"content": "Create the requested ticket"},
+            ),
+        )
+        tool = {
+            "tool_call_id": "tool-1",
+            "run_id": "failed-run",
+            "attempt_id": None,
+            "tool_name": "create_ticket",
+            "safety_class": ToolSafetyClass.UNSAFE_WRITE,
+            "request": {"title": "Incident"},
+        }
+        journal.checkpoint_tool_call(status="prepared", now=1, **tool)
+        journal.checkpoint_tool_call(status="dispatched", now=2, **tool)
+        journal.checkpoint_tool_call(
+            status="completed",
+            result={"ticket_id": "T-1"},
+            outcome="success",
+            now=3,
+            **tool,
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="failed:failed-run",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+            ),
+        )
+
+        with pytest.raises(HTTPException) as captured:
+            await _resolve_continuation_admission(
+                journal,
+                data=SupplementChat(question="continue", task_id="run-2"),
+                project_id="project-1",
+                run_id="run-2",
+            )
+
+        assert (
+            captured.value.detail["code"]
+            == "continuation_clarification_required"
+        )
+
+
+@pytest.mark.asyncio
+async def test_continue_completed_run_without_next_action_still_clarifies(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="completed-run", project_id="project-1", status="pending"
+        )
+        journal.append_event(
+            "completed-run",
+            RunEventDraft(
+                event_id="user:completed-run",
+                event_type="user.message",
+                payload={"content": "Create the requested ticket"},
+            ),
+        )
+        journal.append_event(
+            "completed-run",
+            RunEventDraft(
+                event_id="completed:completed-run",
+                event_type="run.completed",
+                payload={"reason": "turn_completed"},
+            ),
+        )
+
+        with pytest.raises(HTTPException) as captured:
+            await _resolve_continuation_admission(
+                journal,
+                data=SupplementChat(question="continue", task_id="run-2"),
+                project_id="project-1",
+                run_id="run-2",
+            )
+
+        assert (
+            captured.value.detail["code"]
+            == "continuation_clarification_required"
+        )
 
 
 @pytest.mark.asyncio

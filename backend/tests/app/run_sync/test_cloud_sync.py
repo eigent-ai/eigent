@@ -48,9 +48,15 @@ class FakeTransport:
         self.memory_snapshots: list[dict[str, Any]] = []
         self.memory_payloads: list[dict[str, Any]] = []
         self.memory_snapshot_failures: set[tuple[str, str]] = set()
+        self.memory_snapshot_error: Exception | None = None
         self.memory_snapshot_revision_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_conflicts: set[tuple[str, str]] = set()
         self.memory_writer_claims: list[dict[str, Any]] = []
+        self.memory_writer_epochs: dict[tuple[str, str], int] = {}
+        self.memory_heartbeats: list[dict[str, Any]] = []
+        self.memory_heartbeat_missing: set[tuple[str, str]] = set()
+        self.memory_heartbeat_error: Exception | None = None
+        self.memory_snapshot_includes_writer_epoch = True
         self.artifact_uploads = []
         self.artifact_upload_gate: asyncio.Event | None = None
         self.artifact_upload_error: Exception | None = None
@@ -118,6 +124,8 @@ class FakeTransport:
 
     async def put_memory_snapshot(self, configuration, payload):
         self.memory_snapshots.append(payload)
+        if self.memory_snapshot_error is not None:
+            raise self.memory_snapshot_error
         key = (payload["scope_type"], payload["scope_id"])
         if key in self.memory_writer_conflicts:
             self.memory_writer_conflicts.remove(key)
@@ -143,11 +151,30 @@ class FakeTransport:
             self.memory_snapshot_failures
         ):
             raise RuntimeError("malformed Memory scope")
-        return {
+        response = {
             "scope_type": payload["scope_type"],
             "scope_id": payload["scope_id"],
             "source_revision": payload["source_revision"],
             "entry_count": len(payload["entries"]),
+        }
+        if self.memory_snapshot_includes_writer_epoch:
+            response["writer_epoch"] = self.memory_writer_epochs.setdefault(
+                key, 1
+            )
+        return response
+
+    async def heartbeat_memory_scopes(self, configuration, payload):
+        self.memory_heartbeats.append(payload)
+        if self.memory_heartbeat_error is not None:
+            raise self.memory_heartbeat_error
+        return {
+            "items": [
+                item
+                for item in payload["items"]
+                if (item["scope_type"], item["scope_id"])
+                not in self.memory_heartbeat_missing
+            ],
+            "verified_at": "2026-08-18T00:00:00+00:00",
         }
 
     async def account_owner_id(self, configuration):
@@ -164,9 +191,11 @@ class FakeTransport:
 
     async def claim_memory_writer(self, configuration, payload):
         self.memory_writer_claims.append(payload)
+        key = (payload["scope_type"], payload["scope_id"])
+        self.memory_writer_epochs[key] = payload["expected_writer_epoch"] + 1
         return {
             **payload,
-            "writer_epoch": payload["expected_writer_epoch"] + 1,
+            "writer_epoch": self.memory_writer_epochs[key],
             "owner_device_id": configuration.desktop_instance_id,
             "rebase_required": True,
             "baseline_source_revision": 7,
@@ -238,6 +267,33 @@ def _append(journal: SQLiteRunJournal, run_id: str, count: int = 1) -> None:
                 created_at=float(sequence),
             ),
         )
+
+
+def _add_memory_scope(
+    journal: SQLiteRunJournal,
+    scope_type: str,
+    scope_id: str,
+) -> None:
+    journal.apply_memory_mutation(
+        mutation_id=f"mutation-{scope_type}-{scope_id}",
+        idempotency_key=f"request-{scope_type}-{scope_id}",
+        operation="add",
+        scope_type=scope_type,
+        scope_id=scope_id,
+        memory_id=f"memory-{scope_type}-{scope_id}",
+        actor_type="user",
+        reason="Created in Memory Center",
+        content=f"Remember {scope_type} {scope_id}.",
+        kind="preference",
+        token_count=4,
+        created_by="user",
+        source_trust="user_confirmed",
+    )
+    journal.bind_memory_scope_owner(
+        scope_type,
+        scope_id,
+        account_owner_id="7",
+    )
 
 
 @pytest.mark.asyncio
@@ -503,6 +559,137 @@ async def test_worker_syncs_full_memory_snapshot_and_independent_outbox(
     )
     assert transport.memory_payloads[0]["mutations"][0]["scope_revision"] == 1
     assert journal.claim_ready_memory_mutation_batches(now=float("inf")) == []
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_unchanged_memory_uses_lightweight_heartbeat_not_full_snapshot(
+    journal,
+):
+    _add_memory_scope(journal, "project", "project-1")
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+    assert len(transport.memory_snapshots) == 1
+
+    worker._memory_snapshot_verified_at[  # noqa: SLF001
+        ("project", "project-1")
+    ] = 0.0
+    worker._memory_heartbeat_next_at = 0.001  # noqa: SLF001
+    assert await worker.drain_once() == 0
+
+    assert len(transport.memory_snapshots) == 1
+    assert transport.memory_heartbeats == [
+        {
+            "items": [
+                {
+                    "scope_type": "project",
+                    "scope_id": "project-1",
+                    "source_revision": 1,
+                    "writer_epoch": 1,
+                }
+            ]
+        }
+    ]
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_heartbeat_batches_all_unchanged_scopes_per_desktop(
+    journal,
+):
+    _add_memory_scope(journal, "project", "project-1")
+    _add_memory_scope(journal, "user", "user-7")
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 2
+    worker._memory_heartbeat_next_at = 0.001  # noqa: SLF001
+    assert await worker.drain_once() == 0
+
+    assert len(transport.memory_heartbeats) == 1
+    assert {
+        (item["scope_type"], item["scope_id"])
+        for item in transport.memory_heartbeats[0]["items"]
+    } == {("project", "project-1"), ("user", "user-7")}
+    assert len(transport.memory_snapshots) == 2
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_memory_heartbeat_ack_repairs_only_that_scope(journal):
+    _add_memory_scope(journal, "project", "project-1")
+    _add_memory_scope(journal, "user", "user-7")
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 2
+    transport.memory_heartbeat_missing.add(("project", "project-1"))
+    worker._memory_heartbeat_next_at = 0.001  # noqa: SLF001
+    assert await worker.drain_once() == 0
+    assert len(transport.memory_snapshots) == 2
+
+    assert await worker.drain_once() == 0
+    assert len(transport.memory_snapshots) == 3
+    assert transport.memory_snapshots[-1]["scope_id"] == "project-1"
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_heartbeat_timeout_backs_off_without_snapshot_storm(
+    journal,
+    caplog,
+):
+    _add_memory_scope(journal, "project", "project-1")
+    transport = FakeTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+    transport.memory_heartbeat_error = httpx.ConnectTimeout("TLS timed out")
+    worker._memory_heartbeat_next_at = 0.001  # noqa: SLF001
+    with caplog.at_level("WARNING"):
+        assert await worker.drain_once() == 0
+
+    assert len(transport.memory_snapshots) == 1
+    assert len(transport.memory_heartbeats) == 1
+    assert worker._memory_heartbeat_next_at > 0.001  # noqa: SLF001
+    assert "Cloud Memory heartbeat failed (ConnectTimeout)" in caplog.text
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_initial_memory_snapshot_connect_timeout_uses_concise_warning(
+    journal,
+    caplog,
+):
+    _add_memory_scope(journal, "project", "project-1")
+    transport = FakeTransport()
+    transport.memory_snapshot_error = httpx.ConnectTimeout("TLS timed out")
+    worker = _worker(journal, transport)
+
+    with caplog.at_level("WARNING"):
+        assert await worker.drain_once() == 0
+
+    assert len(transport.memory_snapshots) == 1
+    assert "snapshot sync timed out for project/project-1" in caplog.text
+    assert "Traceback" not in caplog.text
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_snapshot_without_writer_epoch_is_not_reuploaded(journal):
+    _add_memory_scope(journal, "project", "project-1")
+    transport = FakeTransport()
+    transport.memory_snapshot_includes_writer_epoch = False
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 1
+    worker._memory_heartbeat_next_at = 0.001  # noqa: SLF001
+    assert await worker.drain_once() == 0
+
+    assert len(transport.memory_snapshots) == 1
+    assert transport.memory_heartbeats == []
     await worker.close()
 
 
@@ -979,4 +1166,59 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
         "event_limit=1&include_artifacts=false" in str(request.url)
         for request in requests
     )
+    await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_http_transport_batches_memory_heartbeats_with_device_auth():
+    heartbeat_batches: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == "Bearer secret"
+        assert request.headers["X-Desktop-Instance-ID"] == "desk-1"
+        if request.url.path.endswith("/devices/register"):
+            return httpx.Response(
+                200,
+                json={
+                    "device_id": "desk-1",
+                    "account_owner_id": "user-1",
+                    "credential_version": 1,
+                    "registered_at": "2026-08-18T00:00:00+00:00",
+                },
+            )
+        assert request.url.path.endswith("/sync/memory/heartbeats")
+        body = json.loads(request.content)
+        heartbeat_batches.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "items": body["items"],
+                "verified_at": "2026-08-18T00:00:00+00:00",
+            },
+        )
+
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    configuration = CloudSyncConfiguration(
+        endpoint_url="https://example.test/api/v1/sync/events:ingest",
+        authorization="Bearer secret",
+        desktop_instance_id="desk-1",
+    )
+    items = [
+        {
+            "scope_type": "project",
+            "scope_id": f"project-{index}",
+            "source_revision": 1,
+            "writer_epoch": 1,
+        }
+        for index in range(101)
+    ]
+
+    response = await transport.heartbeat_memory_scopes(
+        configuration, {"items": items}
+    )
+
+    assert [len(batch["items"]) for batch in heartbeat_batches] == [100, 1]
+    assert response["items"] == items
     await transport.close()

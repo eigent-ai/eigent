@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from datetime import UTC, datetime
@@ -44,6 +45,18 @@ _EXECUTABLE_INBOX_STATES = frozenset({"received", "dispatched"})
 class CommandSyncInfrastructureError(RuntimeError):
     """Device registration failure, not a poison command result event."""
 
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _sync_error_code(detail: Any) -> str | None:
+    body = detail.get("detail", detail) if isinstance(detail, dict) else None
+    if not isinstance(body, dict):
+        return None
+    code = body.get("code")
+    return str(code) if isinstance(code, str) and code else None
+
 
 def _timestamp(value: str | float | int) -> float:
     if isinstance(value, (float, int)):
@@ -65,7 +78,7 @@ class HttpCommandSyncTransport:
             timeout=timeout_seconds,
             transport=transport,
         )
-        self._registered: set[tuple[str, str]] = set()
+        self._registered: set[tuple[str, str, str]] = set()
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -116,7 +129,14 @@ class HttpCommandSyncTransport:
     async def ensure_registered(
         self, configuration: CloudSyncConfiguration
     ) -> None:
-        key = (self._base(configuration), configuration.desktop_instance_id)
+        authorization_digest = hashlib.sha256(
+            configuration.authorization.encode("utf-8")
+        ).hexdigest()
+        key = (
+            self._base(configuration),
+            configuration.desktop_instance_id,
+            authorization_digest,
+        )
         if key in self._registered:
             return
         async with self._lock:
@@ -136,7 +156,9 @@ class HttpCommandSyncTransport:
                     },
                 )
             except RunEventSyncHttpError as exc:
-                raise CommandSyncInfrastructureError(str(exc)) from exc
+                raise CommandSyncInfrastructureError(
+                    str(exc), code=_sync_error_code(exc.detail)
+                ) from exc
             self._registered.add(key)
 
     async def pull_pending(
@@ -227,6 +249,8 @@ class CommandControlWorker:
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._closed = False
+        self._inbound_retry_attempt = 0
+        self._next_inbound_attempt_at = 0.0
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         self._configuration = configuration
@@ -377,16 +401,49 @@ class CommandControlWorker:
     async def _pull_and_reconcile(
         self, configuration: CloudSyncConfiguration
     ) -> int:
+        if time.monotonic() < self._next_inbound_attempt_at:
+            return 0
         pulled_count = 0
         try:
             pulled = await self._transport.pull_pending(
                 configuration, limit=self._max_commands
             )
-        except Exception:
-            logger.exception(
-                "Remote command pull failed; outbound lane remains live"
+        except Exception as exc:
+            self._inbound_retry_attempt += 1
+            delay = min(
+                2 ** min(self._inbound_retry_attempt, 8),
+                self._max_retry_seconds,
             )
-            pulled = []
+            if isinstance(exc, CommandSyncInfrastructureError):
+                error_code = exc.code
+            elif isinstance(exc, RunEventSyncHttpError):
+                error_code = _sync_error_code(exc.detail)
+            else:
+                error_code = None
+            if error_code == "device_owner_mismatch":
+                # This cannot heal through a one-second retry loop. Keep the
+                # outbound lane live, but slow the device registration path
+                # enough to avoid a local/Cloud request and log storm.
+                delay = max(delay, min(60.0, self._max_retry_seconds))
+                logger.warning(
+                    "Remote command pull paused: Desktop device belongs to "
+                    "another account; explicit device transfer or reset is "
+                    "required",
+                    extra={
+                        "error_code": error_code,
+                        "retry_in_seconds": delay,
+                    },
+                )
+            else:
+                logger.exception(
+                    "Remote command pull failed; outbound lane remains live; "
+                    "retrying with backoff",
+                    extra={"retry_in_seconds": delay},
+                )
+            self._next_inbound_attempt_at = time.monotonic() + delay
+            return 0
+        self._inbound_retry_attempt = 0
+        self._next_inbound_attempt_at = 0.0
         for item in pulled:
             try:
                 await self.persist_command(

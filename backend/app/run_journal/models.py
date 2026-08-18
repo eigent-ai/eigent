@@ -94,6 +94,48 @@ class ContextProjectionDiagnosticRecord:
 
 
 @dataclass(frozen=True)
+class ModelInvocationRecord:
+    """One actual provider call captured as a durable Run fact."""
+
+    invocation_id: str
+    run_id: str
+    attempt_id: str | None
+    agent_id: str
+    logical_call_id: str
+    retry_index: int
+    status: str
+    provider: str
+    model: str
+    transport: str
+    thinking_effort: str | None
+    request: dict[str, Any]
+    response: dict[str, Any] | None
+    request_digest: str
+    response_digest: str | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    finish_reason: str | None
+    error_code: str | None
+    error_message: str | None
+    redaction_version: str
+    started_at: float
+    first_token_at: float | None
+    completed_at: float | None
+
+
+@dataclass(frozen=True)
+class ModelInvocationEventRecord:
+    event_id: str
+    invocation_id: str
+    event_index: int
+    event_type: str
+    payload: dict[str, Any]
+    created_at: float
+
+
+@dataclass(frozen=True)
 class ProjectHistoryEventRecord:
     project_id: str
     journal_cursor: int
@@ -735,6 +777,7 @@ class StartupReconciliationResult:
     pending_approval_ids: tuple[str, ...]
     reconcilable_command_ids: tuple[str, ...]
     reconcilable_bundle_install_ids: tuple[str, ...] = ()
+    outcome_unknown_model_invocation_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

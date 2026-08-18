@@ -19,6 +19,7 @@ from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import declared_tool_safety
 
@@ -85,6 +86,36 @@ def test_untrusted_mcp_todo_write_name_does_not_bypass_approval():
     _tag_tools([todo_write], "Third Party MCP")
 
     assert declared_tool_safety(todo_write, "todo_write", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_code_owned_terminal_session_cleanup_is_replay_safe():
+    kill_session = NamedTool("shell_kill_process")
+    shell_exec = NamedTool("shell_exec")
+
+    _tag_tools(
+        [kill_session, shell_exec],
+        TerminalToolkit.toolkit_name(),
+    )
+
+    assert declared_tool_safety(kill_session, "shell_kill_process", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    assert declared_tool_safety(shell_exec, "shell_exec", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_untrusted_terminal_cleanup_name_remains_conservative():
+    kill_session = NamedTool("shell_kill_process")
+
+    _tag_tools([kill_session], "Third Party MCP")
+
+    assert declared_tool_safety(kill_session, "shell_kill_process", {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )

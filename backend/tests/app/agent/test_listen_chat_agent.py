@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import json
 import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -69,6 +70,114 @@ async def test_agent_step_timeout_excludes_durable_human_wait():
         result = await agent._astep_with_active_timeout("wait for approval")
 
     assert result is response
+
+
+def _malformed_tool_arguments_error() -> json.JSONDecodeError:
+    return json.JSONDecodeError(
+        "Expecting property name enclosed in double quotes",
+        '{"path":"report.csv",\ncontent:"..."}',
+        22,
+    )
+
+
+def test_sync_model_response_retries_malformed_json_with_error_feedback():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    original_messages = [{"role": "user", "content": "Create the report"}]
+    response = MagicMock()
+
+    with patch.object(
+        ChatAgent,
+        "_get_model_response",
+        side_effect=[
+            _malformed_tool_arguments_error(),
+            _malformed_tool_arguments_error(),
+            response,
+        ],
+    ) as parent:
+        result = agent._get_model_response(
+            original_messages,
+            current_iteration=11,
+            tool_schemas=[{"name": "write_file"}],
+        )
+
+    assert result is response
+    assert parent.call_count == 3
+    assert original_messages == [
+        {"role": "user", "content": "Create the report"}
+    ]
+    for retry_index, call in enumerate(parent.call_args_list[1:], start=1):
+        retry_messages = call.args[0]
+        assert retry_messages[:-1] == original_messages
+        feedback = retry_messages[-1]["content"]
+        assert "Expecting property name enclosed in double quotes" in feedback
+        assert "before any new tool call was executed" in feedback
+        assert f"correction retry {retry_index} of 2" in feedback
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_retries_malformed_json_twice():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    original_messages = [{"role": "user", "content": "Create the report"}]
+    response = MagicMock()
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(
+            side_effect=[
+                _malformed_tool_arguments_error(),
+                _malformed_tool_arguments_error(),
+                response,
+            ]
+        ),
+    ) as parent:
+        result = await agent._aget_model_response(original_messages)
+
+    assert result is response
+    assert parent.await_count == 3
+    assert original_messages == [
+        {"role": "user", "content": "Create the report"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_raises_after_two_correction_retries():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+    errors = [_malformed_tool_arguments_error() for _ in range(3)]
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(side_effect=errors),
+    ) as parent:
+        with pytest.raises(json.JSONDecodeError) as raised:
+            await agent._aget_model_response(
+                [{"role": "user", "content": "Create the report"}]
+            )
+
+    assert raised.value is errors[-1]
+    assert parent.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_async_model_response_does_not_retry_unrelated_errors():
+    agent = object.__new__(ListenChatAgent)
+    agent.agent_name = "single_agent"
+
+    with patch.object(
+        ChatAgent,
+        "_aget_model_response",
+        new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+    ) as parent:
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            await agent._aget_model_response(
+                [{"role": "user", "content": "Create the report"}]
+            )
+
+    assert parent.await_count == 1
 
 
 def test_sync_tool_soft_error_is_recorded_as_known_failure_not_raised():

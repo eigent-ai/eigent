@@ -206,6 +206,9 @@ async def startup_event():
             "outcome_unknown_tools": len(
                 reconciliation.outcome_unknown_tool_call_ids
             ),
+            "outcome_unknown_model_invocations": len(
+                reconciliation.outcome_unknown_model_invocation_ids
+            ),
             "pending_approvals": len(reconciliation.pending_approval_ids),
             "recovered_agent_workspaces": len(
                 workforce_reconciliation.recovered_workspace_ids

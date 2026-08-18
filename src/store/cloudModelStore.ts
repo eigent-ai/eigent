@@ -35,6 +35,26 @@ export interface CloudModel {
   replaced_by_model_id?: string | null;
 }
 
+export type CloudModelPreferredTransport = 'chat_completions' | 'responses';
+
+export function cloudModelRequestExtraParams(
+  model: Pick<CloudModel, 'capabilities'>
+): Record<string, unknown> {
+  const compatibility = model.capabilities?.request_compatibility;
+  if (!compatibility || typeof compatibility !== 'object') return {};
+
+  const preferredTransport = (
+    compatibility as { preferred_transport?: unknown }
+  ).preferred_transport;
+  if (
+    preferredTransport !== 'chat_completions' &&
+    preferredTransport !== 'responses'
+  ) {
+    return {};
+  }
+  return { api_mode: preferredTransport };
+}
+
 export interface RetiredCloudModel {
   id: string;
   replaced_by_model_id?: string | null;

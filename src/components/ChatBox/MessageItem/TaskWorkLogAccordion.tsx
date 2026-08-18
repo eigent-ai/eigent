@@ -81,7 +81,8 @@ export function getTaskRunDisplayStatus(task: {
   const hasRecordedError = task.messages?.some(
     (message) =>
       message.step === AgentStep.ERROR ||
-      message.content?.trimStart().startsWith('❌ **Error**')
+      (typeof message.content === 'string' &&
+        message.content.trimStart().startsWith('❌ **Error**'))
   );
   return hasRecordedError ? 'failed' : task.durableRunStatus;
 }

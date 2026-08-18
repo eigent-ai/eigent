@@ -72,6 +72,9 @@ logger = logging.getLogger("agent")
 # Default 30 minutes; long agent turns (e.g. writing many chapters in one
 # run) can legitimately exceed it, so allow tuning without a rebuild.
 # A non-positive value disables the per-step timeout entirely.
+_MALFORMED_MODEL_JSON_RETRIES = 2
+
+
 def default_step_timeout() -> float | None:
     raw = env("AGENT_STEP_TIMEOUT_SECONDS", "1800")
     try:
@@ -188,6 +191,117 @@ class ListenChatAgent(ChatAgent):
         self._model_reload_lock = threading.Lock()
 
     process_task_id: str = ""
+
+    @staticmethod
+    def _messages_with_model_json_error(
+        openai_messages: list[Any],
+        error: json.JSONDecodeError,
+        *,
+        retry_number: int,
+    ) -> list[Any]:
+        """Ask the model to regenerate only its rejected response.
+
+        The correction is deliberately request-local: it is not written to
+        Agent memory, and CAMEL has not recorded or dispatched the malformed
+        tool call because parsing failed inside ``_get_model_response``.
+        """
+
+        return [
+            *openai_messages,
+            {
+                "role": "user",
+                "content": (
+                    "Your previous response was rejected before any new "
+                    "tool call was executed because its JSON arguments were "
+                    f"invalid. Parser error: {error}. Regenerate the same "
+                    "intended next response now. If you call a tool, follow "
+                    "its schema exactly, use double-quoted JSON property "
+                    "names, and do not repeat actions that were already "
+                    f"completed. This is correction retry {retry_number} of "
+                    f"{_MALFORMED_MODEL_JSON_RETRIES}."
+                ),
+            },
+        ]
+
+    def _get_model_response(
+        self,
+        openai_messages,
+        current_iteration=0,
+        response_format=None,
+        tool_schemas=None,
+        prev_num_openai_messages=0,
+    ):
+        """Retry a malformed model JSON response without replaying the step."""
+
+        retry_messages = openai_messages
+        for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
+            try:
+                return super()._get_model_response(
+                    retry_messages,
+                    current_iteration=current_iteration,
+                    response_format=response_format,
+                    tool_schemas=tool_schemas,
+                    prev_num_openai_messages=prev_num_openai_messages,
+                )
+            except json.JSONDecodeError as error:
+                if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
+                    raise
+                next_retry = retry_number + 1
+                logger.warning(
+                    "Agent %s received malformed model JSON; retrying "
+                    "current response (%s/%s): %s",
+                    self.agent_name,
+                    next_retry,
+                    _MALFORMED_MODEL_JSON_RETRIES,
+                    error,
+                )
+                retry_messages = self._messages_with_model_json_error(
+                    openai_messages,
+                    error,
+                    retry_number=next_retry,
+                )
+
+        raise AssertionError("malformed model JSON retry loop exhausted")
+
+    async def _aget_model_response(
+        self,
+        openai_messages,
+        current_iteration=0,
+        response_format=None,
+        tool_schemas=None,
+        prev_num_openai_messages=0,
+    ):
+        """Async variant of the bounded malformed-response retry."""
+
+        retry_messages = openai_messages
+        for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
+            try:
+                return await super()._aget_model_response(
+                    retry_messages,
+                    current_iteration=current_iteration,
+                    response_format=response_format,
+                    tool_schemas=tool_schemas,
+                    prev_num_openai_messages=prev_num_openai_messages,
+                )
+            except json.JSONDecodeError as error:
+                if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
+                    raise
+                next_retry = retry_number + 1
+                logger.warning(
+                    "Agent %s received malformed model JSON; retrying "
+                    "current response (%s/%s): %s",
+                    self.agent_name,
+                    next_retry,
+                    _MALFORMED_MODEL_JSON_RETRIES,
+                    error,
+                )
+                retry_messages = self._messages_with_model_json_error(
+                    openai_messages,
+                    error,
+                    retry_number=next_retry,
+                )
+
+        raise AssertionError("malformed model JSON retry loop exhausted")
 
     async def _astep_with_active_timeout(
         self,

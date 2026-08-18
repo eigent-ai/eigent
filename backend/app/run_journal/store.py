@@ -68,6 +68,8 @@ from app.run_journal.models import (
     MemoryMutationSyncItem,
     MemoryReconciliationRecord,
     MemoryScopeStateRecord,
+    ModelInvocationEventRecord,
+    ModelInvocationRecord,
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
     ProjectHistoryEventRecord,
@@ -118,8 +120,68 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 logger = logging.getLogger("run_journal")
+# Per redacted request or response. Oversized documents retain a bounded JSON
+# prefix plus the byte count and digest of the full redacted projection.
+_MODEL_INVOCATION_DOCUMENT_MAX_BYTES = 1024 * 1024
+
+
+def _redact_model_document(key: str, value: dict[str, Any]) -> dict[str, Any]:
+    # Import lazily: permission_policy.service depends on RunJournal, so an
+    # eager package import here would create a module-initialization cycle.
+    from app.permission_policy.models import redact_action_arguments
+
+    projected = redact_action_arguments({key: value})[key]
+    assert isinstance(projected, dict)
+    return projected
+
+
+def _project_model_document(
+    key: str,
+    value: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Redact and bound one model document before it reaches SQLite."""
+
+    projected = _redact_model_document(key, value)
+    encoded = canonical_json(projected)
+    encoded_bytes = encoded.encode("utf-8")
+    if len(encoded_bytes) <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES:
+        return projected, encoded
+
+    metadata = {
+        "truncated": True,
+        "kind": key,
+        "original_bytes": len(encoded_bytes),
+        "original_sha256": hashlib.sha256(encoded_bytes).hexdigest(),
+    }
+    low = 0
+    # A stored prefix cannot contain more characters than the byte budget.
+    # Keeping this upper bound independent of the source size prevents the
+    # budget calculation itself from copying very large candidate strings.
+    high = min(len(encoded), _MODEL_INVOCATION_DOCUMENT_MAX_BYTES)
+    bounded: dict[str, Any] = {}
+    bounded_json = ""
+    while low <= high:
+        midpoint = (low + high) // 2
+        candidate = {
+            "_eigent_capture": metadata,
+            "json_prefix": encoded[:midpoint],
+        }
+        candidate_json = canonical_json(candidate)
+        if (
+            len(candidate_json.encode("utf-8"))
+            <= _MODEL_INVOCATION_DOCUMENT_MAX_BYTES
+        ):
+            bounded = candidate
+            bounded_json = candidate_json
+            low = midpoint + 1
+        else:
+            high = midpoint - 1
+    if not bounded_json:
+        raise ValueError("model invocation document budget is too small")
+    return bounded, bounded_json
+
 
 _MEMORY_SCOPE_TYPES = {"project", "space", "user"}
 _MEMORY_KINDS = {
@@ -1894,6 +1956,81 @@ VALUES (29, CAST(strftime('%s', 'now') AS REAL));
 PRAGMA user_version = 29;
 COMMIT;
 PRAGMA foreign_keys = ON;
+"""
+
+_MIGRATION_V30 = """
+BEGIN IMMEDIATE;
+
+-- Model requests and responses are structured Run facts.  Legacy camel_log
+-- JSON files are projections of these rows, never the authoritative source.
+CREATE TABLE IF NOT EXISTS model_invocations(
+    invocation_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    attempt_id TEXT REFERENCES run_attempts(attempt_id) ON DELETE SET NULL,
+    agent_id TEXT NOT NULL,
+    logical_call_id TEXT NOT NULL,
+    retry_index INTEGER NOT NULL CHECK(retry_index >= 0),
+    status TEXT NOT NULL CHECK(
+        status IN ('dispatched', 'completed', 'failed', 'outcome_unknown')
+    ),
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    transport TEXT NOT NULL,
+    thinking_effort TEXT,
+    request_json TEXT NOT NULL,
+    response_json TEXT,
+    request_digest TEXT NOT NULL CHECK(length(request_digest) = 64),
+    response_digest TEXT CHECK(
+        response_digest IS NULL OR length(response_digest) = 64
+    ),
+    prompt_tokens INTEGER CHECK(prompt_tokens IS NULL OR prompt_tokens >= 0),
+    completion_tokens INTEGER CHECK(
+        completion_tokens IS NULL OR completion_tokens >= 0
+    ),
+    cache_read_tokens INTEGER CHECK(
+        cache_read_tokens IS NULL OR cache_read_tokens >= 0
+    ),
+    cache_write_tokens INTEGER CHECK(
+        cache_write_tokens IS NULL OR cache_write_tokens >= 0
+    ),
+    finish_reason TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    redaction_version TEXT NOT NULL,
+    started_at REAL NOT NULL,
+    first_token_at REAL,
+    completed_at REAL,
+    UNIQUE(logical_call_id, retry_index)
+);
+CREATE INDEX IF NOT EXISTS model_invocations_run_idx
+ON model_invocations(run_id, started_at, invocation_id);
+CREATE INDEX IF NOT EXISTS model_invocations_attempt_idx
+ON model_invocations(attempt_id, started_at)
+WHERE attempt_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS model_invocation_events(
+    event_id TEXT PRIMARY KEY,
+    invocation_id TEXT NOT NULL REFERENCES model_invocations(invocation_id)
+        ON DELETE CASCADE,
+    event_index INTEGER NOT NULL CHECK(event_index > 0),
+    event_type TEXT NOT NULL CHECK(
+        event_type IN (
+            'dispatched', 'first_token', 'completed', 'failed',
+            'outcome_unknown'
+        )
+    ),
+    payload_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    UNIQUE(invocation_id, event_index)
+);
+CREATE INDEX IF NOT EXISTS model_invocation_events_timeline_idx
+ON model_invocation_events(invocation_id, event_index);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (30, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 30;
+COMMIT;
 """
 
 
@@ -6923,6 +7060,362 @@ class SQLiteRunJournal:
             ).fetchone()
             return self._run_from_row(row) if row is not None else None
 
+    def start_model_invocation(
+        self,
+        *,
+        invocation_id: str,
+        run_id: str,
+        attempt_id: str | None,
+        agent_id: str,
+        logical_call_id: str,
+        provider: str,
+        model: str,
+        transport: str,
+        thinking_effort: str | None,
+        request: dict[str, Any],
+        redaction_version: str = "model-invocation-v1",
+        now: float | None = None,
+    ) -> ModelInvocationRecord:
+        """Persist the redacted CAMEL model-boundary request before dispatch.
+
+        The caller may retry a logical model turn.  SQLite allocates the
+        retry index while holding the writer lock so concurrent calls cannot
+        claim the same trajectory position.
+        """
+
+        if not invocation_id.strip() or not logical_call_id.strip():
+            raise ValueError("model invocation ids are required")
+        if not agent_id.strip() or not provider.strip() or not model.strip():
+            raise ValueError("model invocation identity is incomplete")
+        timestamp = now if now is not None else time.time()
+        safe_request, request_json = _project_model_document(
+            "request", request
+        )
+        request_digest = hashlib.sha256(
+            request_json.encode("utf-8")
+        ).hexdigest()
+
+        with self._write_transaction() as connection:
+            duplicate = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            if duplicate is not None:
+                if (
+                    duplicate["run_id"] != run_id
+                    or duplicate["logical_call_id"] != logical_call_id
+                    or duplicate["request_digest"] != request_digest
+                ):
+                    raise IdempotencyConflictError(
+                        "model invocation id was reused with different input"
+                    )
+                return self._model_invocation_from_row(duplicate)
+
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if attempt_id is not None:
+                attempt = connection.execute(
+                    "SELECT run_id FROM run_attempts WHERE attempt_id = ?",
+                    (attempt_id,),
+                ).fetchone()
+                if attempt is None or attempt["run_id"] != run_id:
+                    raise IdempotencyConflictError(
+                        "model invocation attempt does not belong to the Run"
+                    )
+            retry_index = int(
+                connection.execute(
+                    """
+                    SELECT COALESCE(MAX(retry_index), -1) + 1
+                    FROM model_invocations WHERE logical_call_id = ?
+                    """,
+                    (logical_call_id,),
+                ).fetchone()[0]
+            )
+            connection.execute(
+                """
+                INSERT INTO model_invocations(
+                    invocation_id, run_id, attempt_id, agent_id,
+                    logical_call_id, retry_index, status, provider, model,
+                    transport, thinking_effort, request_json, response_json,
+                    request_digest, response_digest, prompt_tokens,
+                    completion_tokens, cache_read_tokens, cache_write_tokens,
+                    finish_reason, error_code, error_message,
+                    redaction_version, started_at, first_token_at, completed_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?, ?, NULL,
+                    ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                    ?, ?, NULL, NULL
+                )
+                """,
+                (
+                    invocation_id,
+                    run_id,
+                    attempt_id,
+                    agent_id,
+                    logical_call_id,
+                    retry_index,
+                    provider,
+                    model,
+                    transport,
+                    thinking_effort,
+                    request_json,
+                    request_digest,
+                    redaction_version,
+                    timestamp,
+                ),
+            )
+            event_payload = {
+                "invocation_id": invocation_id,
+                "attempt_id": attempt_id,
+                "agent_id": agent_id,
+                "logical_call_id": logical_call_id,
+                "retry_index": retry_index,
+                "provider": provider,
+                "model": model,
+                "transport": transport,
+                "request_digest": request_digest,
+                "redaction_version": redaction_version,
+            }
+            self._insert_model_invocation_event(
+                connection,
+                invocation_id=invocation_id,
+                event_type="dispatched",
+                payload=event_payload,
+                created_at=timestamp,
+            )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"model-invocation:{invocation_id}:dispatched",
+                    event_type="model.invocation.dispatched",
+                    payload=event_payload,
+                    created_at=timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            assert row is not None
+            return self._model_invocation_from_row(row)
+
+    def mark_model_invocation_first_token(
+        self,
+        invocation_id: str,
+        *,
+        now: float | None = None,
+    ) -> ModelInvocationRecord:
+        """Persist one latency marker; token deltas are never journaled."""
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            if row is None:
+                raise RunJournalError("model invocation does not exist")
+            if row["first_token_at"] is None:
+                connection.execute(
+                    """
+                    UPDATE model_invocations SET first_token_at = ?
+                    WHERE invocation_id = ? AND first_token_at IS NULL
+                    """,
+                    (timestamp, invocation_id),
+                )
+                self._insert_model_invocation_event(
+                    connection,
+                    invocation_id=invocation_id,
+                    event_type="first_token",
+                    payload={"invocation_id": invocation_id},
+                    created_at=timestamp,
+                )
+            updated = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._model_invocation_from_row(updated)
+
+    def finish_model_invocation(
+        self,
+        invocation_id: str,
+        *,
+        status: str,
+        response: dict[str, Any] | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        cache_read_tokens: int | None = None,
+        cache_write_tokens: int | None = None,
+        finish_reason: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        now: float | None = None,
+    ) -> ModelInvocationRecord:
+        """Close one provider call and append its lightweight Run event."""
+
+        if status not in {"completed", "failed", "outcome_unknown"}:
+            raise ValueError("invalid terminal model invocation status")
+        timestamp = now if now is not None else time.time()
+        safe_response: dict[str, Any] | None = None
+        response_json: str | None = None
+        response_digest: str | None = None
+        if response is not None:
+            safe_response, response_json = _project_model_document(
+                "response", response
+            )
+            response_digest = hashlib.sha256(
+                response_json.encode("utf-8")
+            ).hexdigest()
+        safe_error = None
+        if error_message:
+            from app.permission_policy.models import redact_action_arguments
+
+            safe_error = str(
+                redact_action_arguments({"message": error_message})["message"]
+            )[:16_384]
+
+        for name, value in {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+        }.items():
+            if value is not None and value < 0:
+                raise ValueError(f"{name} cannot be negative")
+
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            if row is None:
+                raise RunJournalError("model invocation does not exist")
+            if row["status"] != "dispatched":
+                if (
+                    row["status"] == status
+                    and row["response_digest"] == response_digest
+                    and row["error_code"] == error_code
+                    and row["error_message"] == safe_error
+                    and row["prompt_tokens"] == prompt_tokens
+                    and row["completion_tokens"] == completion_tokens
+                    and row["cache_read_tokens"] == cache_read_tokens
+                    and row["cache_write_tokens"] == cache_write_tokens
+                    and row["finish_reason"] == finish_reason
+                ):
+                    return self._model_invocation_from_row(row)
+                raise InvalidRunTransitionError(
+                    f"model invocation {invocation_id!r} is already "
+                    f"{row['status']!r}"
+                )
+
+            connection.execute(
+                """
+                UPDATE model_invocations
+                SET status = ?, response_json = ?, response_digest = ?,
+                    prompt_tokens = ?, completion_tokens = ?,
+                    cache_read_tokens = ?, cache_write_tokens = ?,
+                    finish_reason = ?, error_code = ?, error_message = ?,
+                    completed_at = ?
+                WHERE invocation_id = ? AND status = 'dispatched'
+                """,
+                (
+                    status,
+                    response_json,
+                    response_digest,
+                    prompt_tokens,
+                    completion_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens,
+                    finish_reason,
+                    error_code,
+                    safe_error,
+                    timestamp,
+                    invocation_id,
+                ),
+            )
+            event_payload: dict[str, Any] = {
+                "invocation_id": invocation_id,
+                "attempt_id": row["attempt_id"],
+                "agent_id": row["agent_id"],
+                "status": status,
+                "request_digest": row["request_digest"],
+                "response_digest": response_digest,
+                "finish_reason": finish_reason,
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_write_tokens": cache_write_tokens,
+                },
+                "error_code": error_code,
+            }
+            self._insert_model_invocation_event(
+                connection,
+                invocation_id=invocation_id,
+                event_type=status,
+                payload=event_payload,
+                created_at=timestamp,
+            )
+            self._append_event_in_transaction(
+                connection,
+                str(row["run_id"]),
+                RunEventDraft(
+                    event_id=f"model-invocation:{invocation_id}:{status}",
+                    event_type=f"model.invocation.{status}",
+                    payload=event_payload,
+                    created_at=timestamp,
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._model_invocation_from_row(updated)
+
+    def get_model_invocation(
+        self, invocation_id: str
+    ) -> ModelInvocationRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM model_invocations WHERE invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+        return self._model_invocation_from_row(row) if row else None
+
+    def list_model_invocations(
+        self, run_id: str
+    ) -> tuple[ModelInvocationRecord, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM model_invocations
+                WHERE run_id = ? ORDER BY started_at, invocation_id
+                """,
+                (run_id,),
+            ).fetchall()
+        return tuple(self._model_invocation_from_row(row) for row in rows)
+
+    def list_model_invocation_events(
+        self, invocation_id: str
+    ) -> tuple[ModelInvocationEventRecord, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM model_invocation_events
+                WHERE invocation_id = ? ORDER BY event_index
+                """,
+                (invocation_id,),
+            ).fetchall()
+        return tuple(
+            self._model_invocation_event_from_row(row) for row in rows
+        )
+
     def list_runs(
         self,
         *,
@@ -8139,18 +8632,28 @@ class SQLiteRunJournal:
                     f"run_id {run_id!r} belongs to another project"
                 )
 
-            unknown_tool = connection.execute(
+            unresolved_tools = connection.execute(
                 """
-                SELECT tool_call_id FROM tool_calls
+                SELECT tool_call_id, safety_class, idempotency_key
+                FROM tool_calls
                 WHERE run_id = ? AND status IN ('dispatched', 'outcome_unknown')
-                ORDER BY created_at, tool_call_id LIMIT 1
+                ORDER BY created_at, tool_call_id
                 """,
                 (run_id,),
-            ).fetchone()
-            if unknown_tool is not None:
+            ).fetchall()
+            blocking_tool = next(
+                (
+                    tool
+                    for tool in unresolved_tools
+                    if self._tool_call_requires_fail_closed(tool)
+                ),
+                None,
+            )
+            if blocking_tool is not None:
                 raise InvalidRunTransitionError(
-                    "a Run with an unresolved Tool outcome cannot complete "
-                    f"successfully ({unknown_tool['tool_call_id']})"
+                    "a Run with an unresolved Tool outcome that is "
+                    "non-replayable cannot complete successfully "
+                    f"({blocking_tool['tool_call_id']})"
                 )
 
             # Artifact discovery happens outside this short transaction and
@@ -12125,10 +12628,7 @@ class SQLiteRunJournal:
                         f"tool call {outcome.tool_call_id!r} cannot time out from "
                         f"{tool['status']!r}"
                     )
-                safety = ToolSafetyClass(tool["safety_class"])
-                replayable = automatic_tool_replay_allowed(
-                    safety, idempotency_key=tool["idempotency_key"]
-                )
+                replayable = not self._tool_call_requires_fail_closed(tool)
                 tool_status = "timed_out" if replayable else "outcome_unknown"
                 event_type = (
                     "tool.timed_out" if replayable else "tool.outcome_unknown"
@@ -12274,7 +12774,85 @@ class SQLiteRunJournal:
         deadline_runs: list[str] = []
         detached_attempts: list[str] = []
         unknown_tools: list[str] = []
+        unknown_model_invocations: list[str] = []
         with self._write_transaction() as connection:
+            # A provider call is already across its dispatch boundary.  If the
+            # Brain exited before committing its response, the model outcome
+            # cannot be inferred from the interrupted Run.  Close it
+            # explicitly so training/replay consumers never mistake a stale
+            # `dispatched` row for a response that can still arrive.
+            pending_model_invocations = connection.execute(
+                """
+                SELECT * FROM model_invocations
+                WHERE status = 'dispatched'
+                ORDER BY started_at, invocation_id
+                """
+            ).fetchall()
+            for invocation in pending_model_invocations:
+                try:
+                    with self._savepoint(
+                        connection, "startup_model_invocation"
+                    ):
+                        updated = connection.execute(
+                            """
+                            UPDATE model_invocations
+                            SET status = 'outcome_unknown',
+                                error_code = 'brain_restart_after_dispatch',
+                                error_message = ?, completed_at = ?
+                            WHERE invocation_id = ? AND status = 'dispatched'
+                            """,
+                            (
+                                "Brain restarted after model dispatch and "
+                                "before the response was durably recorded",
+                                timestamp,
+                                invocation["invocation_id"],
+                            ),
+                        )
+                        if updated.rowcount != 1:
+                            continue
+                        payload = {
+                            "invocation_id": invocation["invocation_id"],
+                            "attempt_id": invocation["attempt_id"],
+                            "agent_id": invocation["agent_id"],
+                            "status": "outcome_unknown",
+                            "request_digest": invocation["request_digest"],
+                            "response_digest": None,
+                            "finish_reason": None,
+                            "usage": {
+                                "prompt_tokens": None,
+                                "completion_tokens": None,
+                                "cache_read_tokens": None,
+                                "cache_write_tokens": None,
+                            },
+                            "error_code": "brain_restart_after_dispatch",
+                        }
+                        self._insert_model_invocation_event(
+                            connection,
+                            invocation_id=invocation["invocation_id"],
+                            event_type="outcome_unknown",
+                            payload=payload,
+                            created_at=timestamp,
+                        )
+                        self._append_event_in_transaction(
+                            connection,
+                            invocation["run_id"],
+                            RunEventDraft(
+                                event_id=(
+                                    "startup:model-invocation-outcome-unknown:"
+                                    f"{invocation['invocation_id']}"
+                                ),
+                                event_type="model.invocation.outcome_unknown",
+                                payload=payload,
+                                created_at=timestamp,
+                            ),
+                        )
+                except Exception:
+                    logger.exception(
+                        "Startup reconciliation skipped one model invocation",
+                        extra={"invocation_id": invocation["invocation_id"]},
+                    )
+                    continue
+                unknown_model_invocations.append(invocation["invocation_id"])
             # A prepared ToolCall has not crossed the dispatch boundary.  It
             # therefore has a known, side-effect-free outcome after a process
             # restart and must not remain as a permanent Project-wide blocker.
@@ -12512,28 +13090,51 @@ class SQLiteRunJournal:
             for tool in tool_rows:
                 try:
                     with self._savepoint(connection, "startup_tool"):
+                        replayable = not self._tool_call_requires_fail_closed(
+                            tool
+                        )
+                        tool_status = (
+                            "timed_out" if replayable else "outcome_unknown"
+                        )
+                        tool_outcome = (
+                            "retry_allowed"
+                            if replayable
+                            else "outcome_unknown"
+                        )
+                        event_type = (
+                            "tool.timed_out"
+                            if replayable
+                            else "tool.outcome_unknown"
+                        )
                         connection.execute(
                             """
                             UPDATE tool_calls
-                            SET status = 'outcome_unknown',
-                                outcome = 'outcome_unknown', updated_at = ?
+                            SET status = ?, outcome = ?, timeout_reason = ?,
+                                updated_at = ?
                             WHERE tool_call_id = ? AND status = 'dispatched'
                             """,
-                            (timestamp, tool["tool_call_id"]),
+                            (
+                                tool_status,
+                                tool_outcome,
+                                "brain_restart_after_dispatch",
+                                timestamp,
+                                tool["tool_call_id"],
+                            ),
                         )
                         self._append_event_in_transaction(
                             connection,
                             tool["run_id"],
                             RunEventDraft(
                                 event_id=(
-                                    "startup:tool-outcome-unknown:"
+                                    f"startup:{event_type}:"
                                     f"{tool['tool_call_id']}"
                                 ),
-                                event_type="tool.outcome_unknown",
+                                event_type=event_type,
                                 payload={
                                     "tool_call_id": tool["tool_call_id"],
                                     "safety_class": tool["safety_class"],
                                     "reason": "brain_restart_after_dispatch",
+                                    "outcome": tool_outcome,
                                 },
                                 created_at=timestamp,
                             ),
@@ -12544,7 +13145,8 @@ class SQLiteRunJournal:
                         extra={"tool_call_id": tool["tool_call_id"]},
                     )
                     continue
-                unknown_tools.append(tool["tool_call_id"])
+                if not replayable:
+                    unknown_tools.append(tool["tool_call_id"])
             expired_approvals = connection.execute(
                 """
                 SELECT approvals.*, runs.status AS run_status
@@ -12772,6 +13374,9 @@ class SQLiteRunJournal:
             ),
             reconcilable_bundle_install_ids=tuple(
                 row["proposal_id"] for row in bundle_installs
+            ),
+            outcome_unknown_model_invocation_ids=tuple(
+                unknown_model_invocations
             ),
         )
 
@@ -15022,6 +15627,41 @@ class SQLiteRunJournal:
         )
 
     @staticmethod
+    def _insert_model_invocation_event(
+        connection: sqlite3.Connection,
+        *,
+        invocation_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        created_at: float,
+    ) -> None:
+        event_index = int(
+            connection.execute(
+                """
+                SELECT COALESCE(MAX(event_index), 0) + 1
+                FROM model_invocation_events WHERE invocation_id = ?
+                """,
+                (invocation_id,),
+            ).fetchone()[0]
+        )
+        connection.execute(
+            """
+            INSERT INTO model_invocation_events(
+                event_id, invocation_id, event_index, event_type,
+                payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"model-invocation-event:{invocation_id}:{event_index}",
+                invocation_id,
+                event_index,
+                event_type,
+                canonical_json(payload),
+                created_at,
+            ),
+        )
+
+    @staticmethod
     def _allocate_project_history_cursor_in_transaction(
         connection: sqlite3.Connection,
         *,
@@ -15196,6 +15836,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(migration)
         if version < 29:
             self._connection.executescript(_MIGRATION_V29)
+        if version < 30:
+            self._connection.executescript(_MIGRATION_V30)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -15300,6 +15942,14 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             )
 
     @staticmethod
+    def _tool_call_requires_fail_closed(tool: sqlite3.Row) -> bool:
+        safety = ToolSafetyClass(tool["safety_class"])
+        return not automatic_tool_replay_allowed(
+            safety,
+            idempotency_key=tool["idempotency_key"],
+        )
+
+    @staticmethod
     def _unsafe_resume_blockers(
         connection: sqlite3.Connection, run_id: str
     ) -> list[str]:
@@ -15313,14 +15963,11 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             """,
             (run_id,),
         ).fetchall()
-        blockers: list[str] = []
-        for row in rows:
-            safety = ToolSafetyClass(row["safety_class"])
-            if not automatic_tool_replay_allowed(
-                safety, idempotency_key=row["idempotency_key"]
-            ):
-                blockers.append(row["tool_call_id"])
-        return blockers
+        return [
+            row["tool_call_id"]
+            for row in rows
+            if SQLiteRunJournal._tool_call_requires_fail_closed(row)
+        ]
 
     def _finish_command_result_batch(
         self,
@@ -16295,6 +16942,80 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             legacy_step=row["legacy_step"],
             created_at=float(row["created_at"]),
             run_version=int(row["run_version"]),
+        )
+
+    @staticmethod
+    def _model_invocation_from_row(
+        row: sqlite3.Row,
+    ) -> ModelInvocationRecord:
+        return ModelInvocationRecord(
+            invocation_id=row["invocation_id"],
+            run_id=row["run_id"],
+            attempt_id=row["attempt_id"],
+            agent_id=row["agent_id"],
+            logical_call_id=row["logical_call_id"],
+            retry_index=int(row["retry_index"]),
+            status=row["status"],
+            provider=row["provider"],
+            model=row["model"],
+            transport=row["transport"],
+            thinking_effort=row["thinking_effort"],
+            request=json.loads(row["request_json"]),
+            response=(
+                json.loads(row["response_json"])
+                if row["response_json"] is not None
+                else None
+            ),
+            request_digest=row["request_digest"],
+            response_digest=row["response_digest"],
+            prompt_tokens=(
+                int(row["prompt_tokens"])
+                if row["prompt_tokens"] is not None
+                else None
+            ),
+            completion_tokens=(
+                int(row["completion_tokens"])
+                if row["completion_tokens"] is not None
+                else None
+            ),
+            cache_read_tokens=(
+                int(row["cache_read_tokens"])
+                if row["cache_read_tokens"] is not None
+                else None
+            ),
+            cache_write_tokens=(
+                int(row["cache_write_tokens"])
+                if row["cache_write_tokens"] is not None
+                else None
+            ),
+            finish_reason=row["finish_reason"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+            redaction_version=row["redaction_version"],
+            started_at=float(row["started_at"]),
+            first_token_at=(
+                float(row["first_token_at"])
+                if row["first_token_at"] is not None
+                else None
+            ),
+            completed_at=(
+                float(row["completed_at"])
+                if row["completed_at"] is not None
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _model_invocation_event_from_row(
+        row: sqlite3.Row,
+    ) -> ModelInvocationEventRecord:
+        return ModelInvocationEventRecord(
+            event_id=row["event_id"],
+            invocation_id=row["invocation_id"],
+            event_index=int(row["event_index"]),
+            event_type=row["event_type"],
+            payload=json.loads(row["payload_json"]),
+            created_at=float(row["created_at"]),
         )
 
     @staticmethod

@@ -34,6 +34,11 @@ from app.run_context import get_current_run_context
 from app.run_journal.models import CommittedRunEvent, RunEventDraft, RunRecord
 from app.run_journal.store import SQLiteRunJournal
 from app.utils.file_utils import list_files
+from app.utils.workspace_paths import (
+    get_eigent_root,
+    runtime_owner_key,
+    sanitize_identity,
+)
 from app.utils.workspace_resolver import TaskSnapshot, get_workspace_resolver
 
 logger = logging.getLogger("artifacts")
@@ -42,6 +47,10 @@ MAX_ARTIFACTS_PER_RUN = 500
 MAX_ARTIFACT_SCAN_SECONDS = 3.0
 MAX_ARTIFACT_SCAN_ENTRIES = 100_000
 _ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
+_AGENT_GENERATED_UPLOAD_POLICY = "agent_generated"
+_METADATA_ONLY_UPLOAD_POLICY = "metadata_only"
+_SPACE_INTERNAL_ARTIFACT_NAMES = {"todo.md"}
+_SPACE_INTERNAL_ARTIFACT_ROOTS = {"terminal_logs"}
 
 
 @dataclass(frozen=True)
@@ -61,17 +70,95 @@ def _canonical_digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _task_change_roots(snapshot: TaskSnapshot) -> list[tuple[Path, bool]]:
-    """Return Run roots as ``(path, include_all)`` tuples."""
+@dataclass(frozen=True)
+class _ArtifactRoot:
+    path: Path
+    scan_all: bool
+    upload_policy: str
+
+
+def _task_change_roots(
+    snapshot: TaskSnapshot,
+    *,
+    working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
+) -> list[_ArtifactRoot]:
+    """Return the independently-scoped roots used by Artifact discovery.
+
+    ``scan_all`` and ``upload_policy`` deliberately remain separate. A
+    Brain-owned Space root is still scanned only inside the Run's mutation
+    window, but files attributed to that Run may be uploaded. A user-bound
+    folder keeps the same bounded scan while remaining metadata-only.
+    """
 
     output_root = Path(snapshot.task_output_root).expanduser().resolve()
     working_root = Path(snapshot.working_directory).expanduser().resolve()
-    roots: list[tuple[Path, bool]] = []
+    roots: list[_ArtifactRoot] = []
     if output_root.is_dir():
-        roots.append((output_root, True))
+        roots.append(
+            _ArtifactRoot(
+                path=output_root,
+                scan_all=True,
+                upload_policy=_AGENT_GENERATED_UPLOAD_POLICY,
+            )
+        )
     if working_root != output_root and working_root.is_dir():
-        roots.append((working_root, False))
+        roots.append(
+            _ArtifactRoot(
+                path=working_root,
+                scan_all=False,
+                upload_policy=working_root_upload_policy,
+            )
+        )
     return roots
+
+
+def _brain_owned_space_root(
+    snapshot: TaskSnapshot,
+    *,
+    email: str,
+    user_id: str | int | None,
+) -> Path:
+    safe_space_id = sanitize_identity(
+        getattr(snapshot, "space_id", None)
+    ).removeprefix("space_")
+    return (
+        get_eigent_root()
+        / runtime_owner_key(email, user_id)
+        / f"space_{safe_space_id or 'scratch'}"
+    ).resolve()
+
+
+def _working_root_upload_policy(
+    snapshot: TaskSnapshot,
+    *,
+    email: str,
+    user_id: str | int | None,
+) -> str:
+    """Return the upload boundary for one frozen Space working root."""
+
+    try:
+        working_root = Path(snapshot.working_directory).expanduser().resolve()
+        managed_root = _brain_owned_space_root(
+            snapshot,
+            email=email,
+            user_id=user_id,
+        )
+    except (OSError, RuntimeError, ValueError):
+        return _METADATA_ONLY_UPLOAD_POLICY
+    if working_root == managed_root:
+        return _AGENT_GENERATED_UPLOAD_POLICY
+    return _METADATA_ONLY_UPLOAD_POLICY
+
+
+def _artifact_upload_policy(root: _ArtifactRoot, relative_path: str) -> str:
+    """Keep execution internals out of the project-output upload lane."""
+
+    path = Path(relative_path)
+    if path.name in _SPACE_INTERNAL_ARTIFACT_NAMES:
+        return _METADATA_ONLY_UPLOAD_POLICY
+    if path.parts and path.parts[0] in _SPACE_INTERNAL_ARTIFACT_ROOTS:
+        return _METADATA_ONLY_UPLOAD_POLICY
+    return root.upload_policy
 
 
 def discover_task_changed_files(
@@ -79,6 +166,7 @@ def discover_task_changed_files(
     max_entries: int = MAX_ARTIFACTS_PER_RUN,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
+    working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
     list_files_fn: Callable[..., list[str]] = list_files,
 ) -> ArtifactScanResult:
     """Discover files generated or modified by one Run within hard budgets."""
@@ -117,11 +205,15 @@ def discover_task_changed_files(
             scan_limited = True
         return values[:limit]
 
-    for root, include_all in _task_change_roots(snapshot):
+    for artifact_root in _task_change_roots(
+        snapshot,
+        working_root_upload_policy=working_root_upload_policy,
+    ):
+        root = artifact_root.path
         if remaining <= 0:
             scan_limited = True
             break
-        if include_all:
+        if artifact_root.scan_all:
             paths = bounded_list_files(root, limit=remaining)
         else:
             paths = []
@@ -162,15 +254,14 @@ def discover_task_changed_files(
                     "filename": path.name,
                     "path": identity,
                     "relativePath": relative_path,
-                    "changeType": "generated" if include_all else "changed",
+                    "changeType": (
+                        "generated" if artifact_root.scan_all else "changed"
+                    ),
                     "size": stat_result.st_size,
                     "modifiedAt": stat_result.st_mtime * 1000,
                     "supportsRanges": True,
-                    # Files copied/generated in the Run-owned output root may
-                    # be uploaded by the existing explicit upload pipeline.
-                    # Edited files from a selected user folder are metadata-only.
-                    "uploadPolicy": (
-                        "agent_generated" if include_all else "metadata_only"
+                    "uploadPolicy": _artifact_upload_policy(
+                        artifact_root, relative_path
                     ),
                 }
             )
@@ -189,6 +280,7 @@ def scan_task_changed_files(
     max_entries: int = MAX_ARTIFACTS_PER_RUN,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
+    working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
     list_files_fn: Callable[..., list[str]] = list_files,
 ) -> list[dict[str, Any]]:
     """Compatibility wrapper returning only the bounded Artifact list."""
@@ -197,6 +289,7 @@ def scan_task_changed_files(
         snapshot,
         max_entries=max_entries,
         modification_windows=modification_windows,
+        working_root_upload_policy=working_root_upload_policy,
         list_files_fn=list_files_fn,
     ).artifacts
 
@@ -381,7 +474,13 @@ def finalize_run_artifacts(
             journal, run.run_id, run.project_id
         )
         scan_result = discover_task_changed_files(
-            snapshot, modification_windows=windows
+            snapshot,
+            modification_windows=windows,
+            working_root_upload_policy=_working_root_upload_policy(
+                snapshot,
+                email=email,
+                user_id=user_id,
+            ),
         )
         artifacts = scan_result.artifacts
         scan_status = scan_result.scan_status

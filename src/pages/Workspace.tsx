@@ -34,6 +34,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
+import { workspacePanelDefaultLayout } from '@/lib/workspacePanelLayout';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
 import { motion } from 'framer-motion';
@@ -177,6 +178,11 @@ export default function WorkspacePage() {
     }
     return mainPanelPct.max;
   }, [projectSidebarFolded, sidebarPct.rail, mainPanelPct.max]);
+
+  const defaultPanelLayout = useMemo(
+    () => workspacePanelDefaultLayout(sidebarPct, projectSidebarFolded),
+    [projectSidebarFolded, sidebarPct]
+  );
 
   const schedulePersistSidebarWidth = useCallback((px: number) => {
     if (persistSidebarWidthTimeoutRef.current) {
@@ -768,7 +774,7 @@ export default function WorkspacePage() {
           >
             <ResizablePanel
               ref={projectSidebarPanelRef}
-              defaultSize={24}
+              defaultSize={defaultPanelLayout[0]}
               minSize={sidebarPct.rail}
               maxSize={sidebarPct.max}
               className="min-h-0 min-w-0 py-1 pl-1"
@@ -783,7 +789,7 @@ export default function WorkspacePage() {
               )}
             />
             <ResizablePanel
-              defaultSize={76}
+              defaultSize={defaultPanelLayout[1]}
               minSize={mainPanelPct.min}
               maxSize={mainPanelMaxSize}
               className="min-h-0 min-w-[300px]"

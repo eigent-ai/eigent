@@ -20,7 +20,10 @@ import httpx
 import pytest
 
 from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
-from app.run_sync.cloud_sync import CloudSyncConfiguration
+from app.run_sync.cloud_sync import (
+    CloudSyncConfiguration,
+    RunEventSyncHttpError,
+)
 from app.run_sync.command_sync import (
     CommandControlWorker,
     HttpCommandSyncTransport,
@@ -33,8 +36,10 @@ class FakeCommandTransport:
         self.confirmed: list[str] = []
         self.ingested: list[Any] = []
         self.pull_error: Exception | None = None
+        self.pull_count = 0
 
     async def pull_pending(self, _configuration, *, limit):
+        self.pull_count += 1
         if self.pull_error is not None:
             raise self.pull_error
         return self.pending[:limit]
@@ -167,6 +172,36 @@ async def test_inbound_pull_failure_does_not_starve_outbound_results(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_device_owner_mismatch_backs_off_inbound_without_hot_loop(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        transport = FakeCommandTransport()
+        transport.pull_error = RunEventSyncHttpError(
+            409,
+            {
+                "detail": {
+                    "code": "device_owner_mismatch",
+                    "message": "Desktop device belongs to another user",
+                }
+            },
+        )
+        worker = CommandControlWorker(
+            journal,
+            transport,
+            poll_interval_seconds=0.01,
+            max_retry_seconds=300,
+        )
+        worker.configure(_configuration())
+
+        assert await worker.drain_once() == 0
+        assert await worker.drain_once() == 0
+        assert transport.pull_count == 1
+        assert worker._next_inbound_attempt_at > 0
+        await worker.close()
+
+
+@pytest.mark.asyncio
 async def test_device_registration_error_retries_command_lane(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/devices/register")
@@ -184,6 +219,35 @@ async def test_device_registration_error_retries_command_lane(tmp_path):
         batch = journal.claim_command_result_batches(now=float("inf"))[0]
         assert batch.attempt_count == 1
         await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_transport_reregisters_when_authenticated_credential_changes():
+    registrations: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/devices/register"):
+            registrations.append(request.headers["authorization"])
+            return httpx.Response(200, json={})
+        assert request.url.path.endswith("/commands/pending")
+        return httpx.Response(200, json={"items": []})
+
+    transport = HttpCommandSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    first = _configuration()
+    second = CloudSyncConfiguration(
+        endpoint_url=first.endpoint_url,
+        authorization="Bearer another-account-token",
+        desktop_instance_id=first.desktop_instance_id,
+    )
+
+    assert await transport.pull_pending(first, limit=1) == []
+    assert await transport.pull_pending(first, limit=1) == []
+    assert await transport.pull_pending(second, limit=1) == []
+
+    assert registrations == ["Bearer token", "Bearer another-account-token"]
+    await transport.close()
 
 
 def test_command_inbox_terminal_state_cannot_move_backwards(tmp_path):
