@@ -70,7 +70,10 @@ import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
 import { getAuthStore, getWorkerList } from './authStore';
-import { getCloudModelStore } from './cloudModelStore';
+import {
+  cloudModelRequestExtraParams,
+  getCloudModelStore,
+} from './cloudModelStore';
 import { usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { getServerCapabilityStore } from './serverCapabilityStore';
@@ -2425,7 +2428,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           model_platform: resolvedCloudModel.model.model_platform,
           api_url: res.api_url,
           model_config_dict: {},
-          extra_params: {},
+          extra_params: cloudModelRequestExtraParams(resolvedCloudModel.model),
           auth_source: undefined,
         };
         resolvedCloudModelId = resolvedCloudModel.model.id;

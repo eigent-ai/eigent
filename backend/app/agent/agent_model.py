@@ -259,32 +259,35 @@ def agent_model(
             ):
                 model_config[effort_parameter] = effort_value
 
-        # Direct Azure GPT-5.6 endpoints reject function tools plus
-        # reasoning_effort on /chat/completions, so use Responses there. Cloud
-        # proxy requests deliberately stay on Chat Completions: eigent_server
-        # owns their compatibility policy and can safely omit the incompatible
-        # effort field without requiring a Desktop release for every future
-        # model family. This also avoids known Azure/LiteLLM Responses proxy
-        # failures while preserving Responses for user-managed endpoints.
+        # Eigent Cloud transports are declared by the server-owned model
+        # catalog. This lets future models select Responses without a Desktop
+        # release. User-managed Azure GPT-5.6 endpoints retain the model-family
+        # fallback because they do not have server capability metadata.
         has_function_tools = bool(
             tools or tool_names or toolkits_to_register_agent
         )
-        if (
-            has_function_tools
+        uses_responses_transport = init_params.get("api_mode") == "responses"
+        should_use_azure_responses_fallback = (
+            not is_effective_cloud
+            and has_function_tools
             and model_config.get("reasoning_effort")
             not in {None, "", "provider_default"}
             and azure_reasoning_tools_require_responses_api(
                 model_platform=str(effective_config["model_platform"]),
                 model_type=str(effective_config["model_type"]),
             )
-            and not is_effective_cloud
-        ):
+        )
+        if should_use_azure_responses_fallback:
+            init_params["api_mode"] = "responses"
+            uses_responses_transport = True
+
+        if uses_responses_transport and model_config.get(
+            "reasoning_effort"
+        ) not in {None, "", "provider_default"}:
             reasoning_effort = model_config.pop("reasoning_effort")
             model_config["reasoning"] = {"effort": reasoning_effort}
-            init_params["api_mode"] = "responses"
             logger.info(
-                "Using Azure Responses API for model %s because function "
-                "tools and reasoning_effort are enabled",
+                "Using Responses API reasoning for model %s",
                 effective_config["model_type"],
             )
         if is_effective_cloud:
@@ -324,7 +327,11 @@ def agent_model(
         # is set, which would otherwise make request-level accounting count 0.
         # `stream_options: false` in extra_params opts out entirely, for
         # endpoints that reject the parameter (e.g. older vLLM/Azure).
-        if model_config.get("stream_options") is False:
+        if uses_responses_transport:
+            # stream_options belongs to Chat Completions. Azure Responses
+            # rejects it, including when a caller supplied it explicitly.
+            model_config.pop("stream_options", None)
+        elif model_config.get("stream_options") is False:
             model_config.pop("stream_options")
         elif model_config.get("stream") and (
             effective_config["model_platform"].lower()

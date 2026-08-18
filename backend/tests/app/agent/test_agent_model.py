@@ -277,9 +277,14 @@ class TestAgentFactoryFunctions:
 
     @pytest.mark.parametrize(
         "model_type",
-        ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+        [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.7-future",
+        ],
     )
-    def test_cloud_azure_gpt_5_6_uses_server_managed_chat_compatibility(
+    def test_cloud_azure_uses_server_declared_responses_transport(
         self, sample_chat_data, model_type
     ):
         """Cloud transport remains server-controlled for future models."""
@@ -289,7 +294,10 @@ class TestAgentFactoryFunctions:
                 "model_platform": "azure",
                 "model_type": model_type,
                 "api_url": "https://proxy.eigent.ai",
-                "extra_params": {"api_mode": "chat_completions"},
+                "extra_params": {
+                    "api_mode": "responses",
+                    "stream_options": {"include_usage": True},
+                },
             }
         )
         mock_task_lock = MagicMock()
@@ -313,9 +321,10 @@ class TestAgentFactoryFunctions:
             )
 
         kwargs = mock_model_factory.create.call_args.kwargs
-        assert kwargs["api_mode"] == "chat_completions"
-        assert kwargs["model_config_dict"]["reasoning_effort"] == "high"
-        assert "reasoning" not in kwargs["model_config_dict"]
+        assert kwargs["api_mode"] == "responses"
+        assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in kwargs["model_config_dict"]
+        assert "stream_options" not in kwargs["model_config_dict"]
 
     def test_direct_azure_gpt_5_6_reasoning_with_tools_uses_responses_api(
         self, sample_chat_data
@@ -354,6 +363,7 @@ class TestAgentFactoryFunctions:
         assert kwargs["api_mode"] == "responses"
         assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
         assert "reasoning_effort" not in kwargs["model_config_dict"]
+        assert "stream_options" not in kwargs["model_config_dict"]
 
     @pytest.mark.parametrize(
         ("model_type", "effort", "has_tools"),
