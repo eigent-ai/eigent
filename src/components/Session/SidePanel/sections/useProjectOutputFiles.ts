@@ -28,6 +28,8 @@ type SidePanelTask = {
 function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
   return items.map((item: any) => {
     const filename = item.filename || '';
+    const relativePath = item.relative_path || item.relativePath;
+    const artifactId = item.artifact_id || item.artifactId;
     const url = item.url?.startsWith('http')
       ? item.url
       : `${baseURL}${item.url || ''}`;
@@ -35,7 +37,14 @@ function normalizeRemoteFiles(items: any[], baseURL: string): FileInfo[] {
       name: filename,
       type: filename.split('.').pop() || '',
       path: url,
-      relativePath: item.relativePath || filename,
+      relativePath:
+        typeof relativePath === 'string' && relativePath.trim()
+          ? relativePath
+          : undefined,
+      artifactId:
+        typeof artifactId === 'string' && artifactId.trim()
+          ? artifactId
+          : undefined,
       isRemote: true,
     };
   });
@@ -48,6 +57,7 @@ function sameFileList(left: FileInfo[], right: FileInfo[]): boolean {
     return (
       file.path === other?.path &&
       file.relativePath === other?.relativePath &&
+      file.artifactId === other?.artifactId &&
       file.name === other?.name &&
       file.type === other?.type &&
       file.isRemote === other?.isRemote
@@ -55,6 +65,7 @@ function sameFileList(left: FileInfo[], right: FileInfo[]): boolean {
   });
 }
 
+/** Loads generated output files for the SidePanel Files section. */
 export function useProjectOutputFiles(
   projectId: string | null | undefined,
   activeTask: SidePanelTask | undefined,

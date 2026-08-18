@@ -218,9 +218,26 @@ They are not dead code, but nothing exercises them yet:
 - `EventTimeline/presentationPolicy.ts` is driven by the `detailLevel` prop.
   `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
   always in force until a detail-level control is wired up.
-- `VITE_CHATBOX_EVENT_BUS` gates the entire event-native read and control path
-  and is unset in every checked-in env file, so the legacy path is what ships
-  by default. Set it locally to review the new surfaces.
+- `VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
+  path and is unset in every checked-in env file, so the legacy conversation
+  renderer ships by default. It does **not** gate the Session-level Project
+  event runtime or the new SidePanel.
+
+### Project runtime cutover
+
+`ProjectEventRuntimeProvider` is mounted by the Session shell whenever a
+Project is active. The SidePanel uses that durable snapshot as its Run and
+activity source even while ChatBox still renders its legacy path. This runtime
+ownership is therefore an intentional default cutover, not a staged surface
+behind `VITE_CHATBOX_EVENT_BUS`.
+
+An HTTP 404 from Project replay is treated as an unsupported backend
+capability and stops automatic retry for that Project-store incarnation;
+manual retry remains available. Network and 5xx failures keep the bounded
+exponential retry path. The Files lane still watches the scoped legacy
+ChatStore task to know when resolver metadata may have changed, but Project
+filesystem results may only enrich durable artifact rows and never create Run
+ownership.
 
 Remove an entry here as soon as its caller lands.
 

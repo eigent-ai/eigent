@@ -38,6 +38,7 @@ from app.utils.listen.toolkit_listen import (
 from app.utils.space_overlay_client import (
     path_write_lock,
     post_overlay_write,
+    relative_to_artifact_root,
     relative_to_workdir,
     run_context_for_task,
     sha256_of_file,
@@ -116,6 +117,7 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
     ) -> str:
         run_context = run_context_for_task(self.api_task_id)
         prepared_write = None
+        relative_path = None
         operation_request_id = None
         mutation_service = None
         if run_context is not None:
@@ -154,6 +156,7 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                     "Content successfully written to file: "
                     f"{prepared_write.relative_path}"
                 )
+                relative_path = prepared_write.relative_path
         else:
             res = self._write_legacy_or_cloud_overlay(
                 title=title,
@@ -163,6 +166,13 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 use_latex=use_latex,
             )
         if "Content successfully written to file: " in res:
+            written_path = res.replace(
+                "Content successfully written to file: ", ""
+            )
+            if relative_path is None and run_context is not None:
+                relative_path = relative_to_artifact_root(
+                    run_context, written_path
+                )
             task_lock = get_task_lock(self.api_task_id)
             # Capture ContextVar value before creating async task
             current_process_task_id = process_task.get("")
@@ -172,9 +182,8 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 task_lock,
                 ActionWriteFileData(
                     process_task_id=current_process_task_id,
-                    data=res.replace(
-                        "Content successfully written to file: ", ""
-                    ),
+                    data=written_path,
+                    relative_path=relative_path,
                 ),
             )
         return res

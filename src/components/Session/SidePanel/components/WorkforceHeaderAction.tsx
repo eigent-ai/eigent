@@ -17,15 +17,15 @@ import { TooltipSimple } from '@/components/ui/tooltip';
 import { Maximize, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-export interface WorkforceSidePanelHeaderEndProps {
+export interface WorkforceHeaderActionProps {
   isExpandedOverlayOpen: boolean;
   onToggleExpandedOverlay: () => void;
 }
 
-export function WorkforceSidePanelHeaderEnd({
+export function WorkforceHeaderAction({
   isExpandedOverlayOpen,
   onToggleExpandedOverlay,
-}: WorkforceSidePanelHeaderEndProps) {
+}: WorkforceHeaderActionProps) {
   const { t } = useTranslation();
   return (
     <TooltipSimple

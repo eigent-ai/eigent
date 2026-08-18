@@ -118,6 +118,10 @@ vi.mock('../../../src/store/projectStore', () => ({
     getState: vi.fn(() => ({
       activeProjectId: null,
       getHistoryId: () => null,
+      getProjectById: (projectId: string) => ({
+        id: projectId,
+        mode: 'single-agent',
+      }),
     })),
   },
 }));
@@ -1046,6 +1050,28 @@ describe('ChatStore - Core Functionality', () => {
 
         // 2 out of 4 = 50%
         expect(result.current.getState().tasks[taskId].progressValue).toBe(50);
+      });
+    });
+
+    it('writes computed progress to the requested run instead of the active run', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      act(() => {
+        const historicalTaskId = result.current.getState().create('historical');
+        const activeTaskId = result.current.getState().create('active');
+
+        result.current.getState().setTaskRunning(historicalTaskId, [
+          { id: '1', content: 'Done', status: 'completed' },
+          { id: '2', content: 'Waiting', status: 'waiting' },
+        ] as any);
+        result.current.getState().computedProgressValue(historicalTaskId);
+
+        expect(
+          result.current.getState().tasks[historicalTaskId].progressValue
+        ).toBe(50);
+        expect(
+          result.current.getState().tasks[activeTaskId].progressValue
+        ).toBe(0);
       });
     });
   });

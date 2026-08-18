@@ -12,11 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { normalizeLegacyChatStep } from '@/lib/projector';
 import { adaptChatProjectionEvent } from '@/lib/projector/chat';
 import type { CanonicalProjectEvent } from '@/lib/projector/types';
 import { describe, expect, it } from 'vitest';
 
-function event(payload: Record<string, unknown>): CanonicalProjectEvent {
+function event(
+  payload: Record<string, unknown>,
+  eventType = 'tool.started'
+): CanonicalProjectEvent {
   return {
     eventId: 'tool-event-1',
     projectId: 'project-1',
@@ -24,7 +28,7 @@ function event(payload: Record<string, unknown>): CanonicalProjectEvent {
     runSequence: 1,
     runVersion: 1,
     cloudCursor: 1,
-    eventType: 'tool.started',
+    eventType,
     payload,
     legacyStep: null,
     createdAt: '2026-08-13T00:00:00Z',
@@ -78,6 +82,57 @@ describe('chat activity projection', () => {
         methodName: 'read_file',
         toolName: 'read',
         toolCallId: 'read-1',
+      },
+    });
+  });
+
+  it('keeps artifact identity separate from a machine-local path', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          artifact_id: 'artifact-1',
+          file_path: '/private/workspace/outputs/report.md',
+          relative_path: 'outputs/report.md',
+          name: 'report.md',
+        },
+        'artifact.created'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'artifact',
+        artifactId: 'artifact-1',
+        path: 'outputs/report.md',
+        relativePath: 'outputs/report.md',
+      },
+    });
+  });
+
+  it('preserves a portable legacy file path as artifact identity', () => {
+    const node = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'write_file',
+          data: { file_path: 'reports/quarterly/summary.md' },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-1',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'artifact',
+        path: 'reports/quarterly/summary.md',
+        relativePath: 'reports/quarterly/summary.md',
       },
     });
   });

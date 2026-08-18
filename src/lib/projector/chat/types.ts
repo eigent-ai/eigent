@@ -168,8 +168,11 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
 export interface ChatArtifactNode extends ChatProjectionNodeBase {
   kind: 'artifact';
   operation: ChatArtifactOperation;
-  artifactId?: string;
   path: string;
+  /** Stable backend-owned identity for one generated artifact. */
+  artifactId?: string;
+  /** Workspace-scoped identity; never inferred from an absolute local path. */
+  relativePath?: string;
   name?: string;
   mimeType?: string;
   agentId?: string;

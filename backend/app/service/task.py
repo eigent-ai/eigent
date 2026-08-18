@@ -219,6 +219,17 @@ class ActionWriteFileData(BaseModel):
     action: Literal[Action.write_file] = Action.write_file
     process_task_id: str
     data: str
+    relative_path: str | None = None
+
+
+def write_file_event_payload(item: ActionWriteFileData) -> dict[str, str]:
+    payload = {
+        "file_path": item.data,
+        "process_task_id": item.process_task_id,
+    }
+    if item.relative_path:
+        payload["relative_path"] = item.relative_path
+    return payload
 
 
 class ActionNoticeData(BaseModel):

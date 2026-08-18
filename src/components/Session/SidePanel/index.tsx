@@ -12,22 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SessionSidePanelHeader } from '@/components/Session/SessionSidePanelHeader';
-import { SingleAgentSidePanel } from '@/components/Session/SingleAgent/SingleAgentSidePanel';
-import { TurnTabs } from '@/components/Session/TurnTabs';
-import { WorkforceSidePanel } from '@/components/Session/Workforce/WorkforceSidePanel';
-import { WorkforceSidePanelHeaderEnd } from '@/components/Session/Workforce/WorkforceSidePanelHeaderEnd';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import { SessionActivityPanel } from '@/components/Session/SidePanel/components/ActivityPanel';
+import ExpandedOverlay from '@/components/Session/SidePanel/components/ExpandedOverlay';
+import { SidePanelHeader } from '@/components/Session/SidePanel/components/Header';
+import { WorkforceHeaderAction } from '@/components/Session/SidePanel/components/WorkforceHeaderAction';
+import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
+import type { SessionPanelScope } from '@/components/Session/SidePanel/sections/sessionPanelScope';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { ChevronLeft } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface SessionSidePanelProps {
   mode: SessionModeType;
   workforcePanelKey: string;
-  hasAnyMessages: boolean;
   isSidePanelVisible: boolean;
   onToggleSidePanel: () => void;
   isExpandedOverlayOpen: boolean;
@@ -38,7 +45,6 @@ export interface SessionSidePanelProps {
 export function SessionSidePanel({
   mode,
   workforcePanelKey,
-  hasAnyMessages,
   isSidePanelVisible,
   onToggleSidePanel,
   isExpandedOverlayOpen,
@@ -47,20 +53,24 @@ export function SessionSidePanel({
 }: SessionSidePanelProps) {
   const { t } = useTranslation();
   const isFolded = !isSidePanelVisible;
+  const [scope, setScope] = useState<SessionPanelScope>('latest');
 
-  const headerTitle =
-    mode === SessionMode.WORKFORCE
-      ? t('layout.aiWorkforce')
-      : t('layout.workspace-session-single-agent');
+  const headerTitle = t('layout.session-summary', {
+    defaultValue: 'Summary',
+  });
+  const scopeLabel = t('layout.session-summary-scope', {
+    defaultValue: 'Summary content',
+  });
+  const latestOnlyLabel = t('layout.session-summary-latest-only', {
+    defaultValue: 'Latest only',
+  });
+  const allLabel = t('layout.session-summary-all', {
+    defaultValue: 'All',
+  });
 
-  const expandFoldedTooltip =
-    mode === SessionMode.WORKFORCE
-      ? t('layout.show-workforce-panel', {
-          defaultValue: 'Show workforce panel',
-        })
-      : t('layout.show-side-panel', {
-          defaultValue: 'Show side panel',
-        });
+  const expandFoldedTooltip = t('layout.show-side-panel', {
+    defaultValue: 'Show side panel',
+  });
 
   return (
     <div className="group relative h-full min-h-0 w-full overflow-hidden">
@@ -73,36 +83,61 @@ export function SessionSidePanel({
             'pointer-events-none opacity-40 transition-opacity duration-200 group-hover:opacity-80'
         )}
       >
-        <SessionSidePanelHeader
+        <SidePanelHeader
           title={headerTitle}
           mode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggleSidePanel}
-          start={<TurnTabs />}
           end={
-            mode === SessionMode.WORKFORCE ? (
-              <WorkforceSidePanelHeaderEnd
-                isExpandedOverlayOpen={isExpandedOverlayOpen}
-                onToggleExpandedOverlay={onToggleExpandedOverlay}
-              />
-            ) : null
+            <Select
+              value={scope}
+              onValueChange={(value) => {
+                if (value === 'latest' || value === 'all') setScope(value);
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                variant="secondary"
+                aria-label={scopeLabel}
+                wrapperClassName="w-fit max-w-full"
+                className="h-7 w-auto justify-center gap-0 rounded-lg border-transparent px-2 !text-body-xs [&>svg]:hidden"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="latest">{latestOnlyLabel}</SelectItem>
+                <SelectItem value="all">{allLabel}</SelectItem>
+              </SelectContent>
+            </Select>
           }
         />
 
-        {mode === SessionMode.WORKFORCE ? (
-          <WorkforceSidePanel
-            workforcePanelKey={workforcePanelKey}
-            hasAnyMessages={hasAnyMessages}
-            isSidePanelVisible={isSidePanelVisible}
-            onToggleSidePanel={onToggleSidePanel}
-            isExpandedOverlayOpen={isExpandedOverlayOpen}
-            onToggleExpandedOverlay={onToggleExpandedOverlay}
-            onCloseExpandedOverlay={onCloseExpandedOverlay}
+        {/* Sizes to its content and only shrinks (then scrolls inside) once the
+            sections outgrow the column. */}
+        <div className="mx-1 mb-1 flex min-h-0 flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default pl-2">
+          <SessionActivityPanel
+            scope={scope}
+            agentHeaderAction={
+              mode === SessionMode.WORKFORCE ? (
+                <WorkforceHeaderAction
+                  isExpandedOverlayOpen={isExpandedOverlayOpen}
+                  onToggleExpandedOverlay={onToggleExpandedOverlay}
+                />
+              ) : undefined
+            }
           />
-        ) : (
-          <SingleAgentSidePanel />
-        )}
+        </div>
       </div>
+
+      {mode === SessionMode.WORKFORCE ? (
+        <ExpandedOverlay
+          open={isExpandedOverlayOpen}
+          onClose={onCloseExpandedOverlay}
+          workforcePanelKey={workforcePanelKey}
+          onToggleSidePanel={onToggleSidePanel}
+          isSidePanelVisible={isSidePanelVisible}
+        />
+      ) : null}
 
       {isFolded && (
         <TooltipSimple

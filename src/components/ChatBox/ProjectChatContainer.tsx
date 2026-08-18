@@ -254,63 +254,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     };
   }, [chatStores, scrollContainerRef]);
 
-  // Turn viewport observer — updates which turn is visible in the side panel tabs
-  const setSidePanelViewedTurn = usePageTabStore(
-    (s) => s.setSidePanelViewedTurn
-  );
-  const turnObserverRef = useRef<IntersectionObserver | null>(null);
-  const visibleTurnScoresRef = useRef(new Map<string, number>());
-  const turnIdsKey = taskSections.map(({ taskId }) => taskId).join('|');
-
-  useEffect(() => {
-    const root = scrollContainerRef.current;
-    if (!root || !activeProjectId) return;
-
-    turnObserverRef.current?.disconnect();
-    visibleTurnScoresRef.current.clear();
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const taskId = entry.target.getAttribute('data-turn-id');
-          if (!taskId) continue;
-          if (!entry.isIntersecting) {
-            visibleTurnScoresRef.current.delete(taskId);
-            continue;
-          }
-          const visibleHeight = entry.intersectionRect.height;
-          const availableHeight = Math.min(
-            entry.boundingClientRect.height,
-            root.clientHeight
-          );
-          visibleTurnScoresRef.current.set(
-            taskId,
-            availableHeight > 0 ? visibleHeight / availableHeight : 0
-          );
-        }
-        let bestTaskId: string | null = null;
-        let bestScore = 0;
-        for (const [taskId, score] of visibleTurnScoresRef.current) {
-          if (score > bestScore) {
-            bestTaskId = taskId;
-            bestScore = score;
-          }
-        }
-        if (bestTaskId) {
-          setSidePanelViewedTurn(activeProjectId, bestTaskId);
-        }
-      },
-      { root, threshold: [0, 0.01, 0.25, 0.5, 0.75, 1] }
-    );
-
-    turnObserverRef.current = observer;
-    root
-      .querySelectorAll('[data-turn-id]')
-      .forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, [turnIdsKey, scrollContainerRef, activeProjectId, setSidePanelViewedTurn]);
-
   // Scroll to a specific query group when triggered from the sidebar
   const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
@@ -332,7 +275,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     setScrollToQueryId(null);
   }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
 
-  // Scroll to a specific turn when triggered from TurnTabs
+  // Scroll to a historical Run when requested by the Session side panel.
   const scrollToTurnRequest = usePageTabStore((s) => s.scrollToTurnRequest);
   const setScrollToTurnRequest = usePageTabStore(
     (s) => s.setScrollToTurnRequest

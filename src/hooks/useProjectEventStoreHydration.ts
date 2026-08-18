@@ -33,7 +33,11 @@ export type UseProjectEventStoreHydrationOptions = {
 
 export type ProjectEventStoreHydrationState = {
   status: 'idle' | 'loading' | 'retrying' | 'ready' | 'error';
-  errorCode: ProjectEventStoreHydrationError['code'] | 'request_failed' | null;
+  errorCode:
+    | ProjectEventStoreHydrationError['code']
+    | 'request_failed'
+    | 'unsupported'
+    | null;
   eventsTruncated: boolean;
   /**
    * Starts a fresh attempt, including after a non-retryable failure that has
@@ -51,20 +55,36 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
-function isNonRetryable(
+function requestStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
+  const candidate = error as {
+    status?: unknown;
+    response?: { status?: unknown };
+  };
+  const status = candidate.status ?? candidate.response?.status;
+  return typeof status === 'number' && Number.isInteger(status) ? status : null;
+}
+
+function nonRetryableErrorCode(
   error: unknown
-): error is ProjectEventStoreHydrationError {
-  return (
+): ProjectEventStoreHydrationState['errorCode'] {
+  if (
     error instanceof ProjectEventStoreHydrationError &&
     (error.code === 'invalid_response' || error.code === 'limit_exceeded')
-  );
+  ) {
+    return error.code;
+  }
+  // Older/local Brain deployments may not expose the event replay API yet.
+  // Retrying an unsupported capability forever cannot make it appear.
+  if (requestStatus(error) === 404) return 'unsupported';
+  return null;
 }
 
 /**
  * Own one authoritative initial snapshot per fresh store and later fail-closed
  * rebuilds. Live-only projection does not mark that checkpoint complete. The
- * hook is mounted only for the feature-flagged ChatBox path and reuses its
- * existing SSE ingest owner; it never opens another live connection.
+ * shared Project runtime owns this hook and reuses the existing SSE ingest
+ * owner; it never opens another live connection.
  */
 export function useProjectEventStoreHydration({
   projectId,
@@ -161,11 +181,12 @@ export function useProjectEventStoreHydration({
         .catch((error: unknown) => {
           if (!mounted || isAbortError(error)) return;
           consecutiveFailures += 1;
-          if (isNonRetryable(error)) {
+          const nonRetryableCode = nonRetryableErrorCode(error);
+          if (nonRetryableCode) {
             blockedIncarnation = requestIncarnation;
             setHydrationState({
               status: 'error',
-              errorCode: error.code,
+              errorCode: nonRetryableCode,
               eventsTruncated: false,
             });
           } else {

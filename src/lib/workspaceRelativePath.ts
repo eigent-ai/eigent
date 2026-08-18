@@ -17,19 +17,49 @@ function normalizeRelativePath(value: string): string {
 }
 
 /**
+ * Normalize a backend-owned workspace-relative file identity.
+ *
+ * This deliberately rejects absolute paths, URLs and traversal instead of
+ * guessing a relative path from a local machine path or basename.
+ */
+export function normalizeWorkspaceRelativePath(
+  value: string | null | undefined
+): string | null {
+  const normalized = normalizeRelativePath((value || '').trim());
+  if (!normalized || normalized.startsWith('/')) return null;
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(normalized)) return null;
+
+  const segments: string[] = [];
+  for (const segment of normalized.split('/')) {
+    if (!segment || segment === '.') continue;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      return null;
+    }
+    if (
+      decoded === '.' ||
+      decoded === '..' ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      decoded.includes('\0')
+    ) {
+      return null;
+    }
+    segments.push(segment);
+  }
+  return segments.length > 0 ? segments.join('/') : null;
+}
+
+/**
  * Return a display path scoped to the current workspace root.
  * Absolute local paths and remote preview URLs are intentionally never shown.
  */
 export function getWorkspaceRelativeFilePath(file: FileInfo): string {
-  const relativePath = normalizeRelativePath((file.relativePath || '').trim());
-  const relativeSegments = relativePath.split('/').filter(Boolean);
-  if (
-    relativePath &&
-    !relativePath.startsWith('/') &&
-    !/^[A-Za-z]:\//.test(relativePath) &&
-    !relativePath.includes('://') &&
-    !relativeSegments.includes('..')
-  ) {
+  const relativePath = normalizeWorkspaceRelativePath(file.relativePath);
+  if (relativePath) {
+    const relativeSegments = relativePath.split('/');
     const normalizedName = normalizeRelativePath((file.name || '').trim());
     const basename = relativeSegments.at(-1);
     return normalizedName && basename !== normalizedName

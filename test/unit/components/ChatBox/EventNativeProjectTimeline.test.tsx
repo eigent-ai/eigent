@@ -27,6 +27,7 @@ import {
   isChatTimelineNearBottom,
   prepareEventNativeTimelineWindow,
 } from '@/components/ChatBox/EventNativeProjectTimeline';
+import { usePageTabStore } from '@/store/pageTabStore';
 
 const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
@@ -39,11 +40,12 @@ const mocks = vi.hoisted(() => ({
   } as ProjectEventStoreHydrationState,
 }));
 
-vi.mock('@/hooks/useProjectEventView', () => ({
-  useProjectChatProjection: () => mocks.projection,
-}));
-vi.mock('@/hooks/useProjectEventStoreHydration', () => ({
-  useProjectEventStoreHydration: () => mocks.hydration,
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: () => ({
+    projectId: 'project-1',
+    hydration: mocks.hydration,
+    snapshot: mocks.projection ? { chat: mocks.projection } : null,
+  }),
 }));
 vi.mock('framer-motion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('framer-motion')>();
@@ -167,6 +169,7 @@ describe('EventNativeProjectTimeline', () => {
       eventsTruncated: false,
       retry: mocks.retry,
     };
+    usePageTabStore.getState().setScrollToTurnRequest(null);
     if (!globalThis.ResizeObserver) {
       globalThis.ResizeObserver = class {
         observe() {}
@@ -470,5 +473,42 @@ describe('EventNativeProjectTimeline', () => {
     );
 
     expect(scrollContainer.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('consumes a missed scroll-to-run request only once', () => {
+    const scrollContainer = createScrollContainer();
+    const scrollContainerRef = { current: scrollContainer };
+    mocks.projection = projection([messageNode(0)]);
+    usePageTabStore.getState().setScrollToTurnRequest({
+      projectId: 'project-1',
+      taskId: 'run-not-mounted',
+    });
+
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(usePageTabStore.getState().scrollToTurnRequest).toBeNull();
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+
+    mocks.projection = projection([
+      messageNode(0),
+      { ...messageNode(1), runId: 'run-not-mounted' },
+    ]);
+    rerender(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(scrollContainer.scrollTo).not.toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' })
+    );
   });
 });

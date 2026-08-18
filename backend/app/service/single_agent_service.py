@@ -44,6 +44,7 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    write_file_event_payload,
 )
 from app.utils.agent_memory import (
     build_memory_context,
@@ -345,13 +346,7 @@ def _action_to_sse(item: ActionData) -> str | None:
     if item.action == Action.deactivate_toolkit:
         return sse_json("deactivate_toolkit", item.data)
     if item.action == Action.write_file:
-        return sse_json(
-            "write_file",
-            {
-                "file_path": item.data,
-                "process_task_id": item.process_task_id,
-            },
-        )
+        return sse_json("write_file", write_file_event_payload(item))
     if item.action == Action.ask:
         return sse_json("ask", item.data)
     if item.action == Action.notice:
