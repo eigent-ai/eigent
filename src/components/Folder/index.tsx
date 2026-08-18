@@ -73,8 +73,10 @@ import {
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
 import {
+  collectPreviewRemoteOrigins,
   containsDangerousContent,
   injectPreviewContentSecurityPolicy,
+  repairGeneratedReportBraces,
 } from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
@@ -1950,99 +1952,6 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return baseParts.join('/');
 }
 
-function hasScriptSrcAttribute(script: HTMLScriptElement): boolean {
-  return script.hasAttribute('src');
-}
-
-function isClassicScriptElement(script: HTMLScriptElement): boolean {
-  const rawType = script.getAttribute('type')?.trim() ?? '';
-  const normalizedType = rawType.split(';', 1)[0].trim().toLowerCase();
-  if (!normalizedType) return true;
-
-  if (normalizedType === 'module' || normalizedType === 'application/ld+json') {
-    return false;
-  }
-
-  return new Set([
-    'text/javascript',
-    'application/javascript',
-    'text/ecmascript',
-    'application/ecmascript',
-    'application/x-javascript',
-    'text/x-javascript',
-    'application/x-ecmascript',
-    'text/x-ecmascript',
-    'text/jscript',
-    'text/livescript',
-  ]).has(normalizedType);
-}
-
-function canParseClassicScript(script: string): boolean {
-  try {
-    // Parse only. The generated function is never executed.
-    new Function(script);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function normalizeGeneratedDoubleBraces(source: string): string {
-  return source.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
-}
-
-function repairGeneratedReportBraces(html: string): string {
-  if (!html.includes('{{') && !html.includes('}}')) {
-    return html;
-  }
-
-  if (typeof DOMParser === 'undefined') {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
-  let repaired = false;
-
-  doc.querySelectorAll('style').forEach((style) => {
-    const content = style.textContent ?? '';
-    if (!content.includes('{{') && !content.includes('}}')) {
-      return;
-    }
-
-    const normalizedContent = normalizeGeneratedDoubleBraces(content);
-    if (normalizedContent !== content) {
-      style.textContent = normalizedContent;
-      repaired = true;
-    }
-  });
-
-  doc.querySelectorAll('script').forEach((script) => {
-    if (hasScriptSrcAttribute(script) || !isClassicScriptElement(script)) {
-      return;
-    }
-
-    const content = script.textContent ?? '';
-    if (!content.includes('{{') && !content.includes('}}')) {
-      return;
-    }
-
-    const normalizedContent = normalizeGeneratedDoubleBraces(content);
-    if (
-      !canParseClassicScript(content) &&
-      canParseClassicScript(normalizedContent)
-    ) {
-      script.textContent = normalizedContent;
-      repaired = true;
-    }
-  });
-
-  return repaired
-    ? `${doctype}${doc.documentElement?.outerHTML || html}`
-    : html;
-}
-
 function getUrlBasename(url: string): string {
   const pathWithoutQuery = url.split(/[?#]/, 1)[0] ?? '';
   return pathWithoutQuery.replace(/\\/g, '/').split('/').pop() ?? '';
@@ -2565,14 +2474,26 @@ function HtmlRenderer({
   projectFiles: FileInfo[];
 }) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  const [authorizedRemotePreviewPath, setAuthorizedRemotePreviewPath] =
+    useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
+  const remoteOrigins = useMemo(
+    () => collectPreviewRemoteOrigins(selectedFile.content || ''),
+    [selectedFile.content]
+  );
+  const remoteContentAllowed =
+    authorizedRemotePreviewPath === selectedFile.path;
 
   useEffect(() => {
     const processHtml = async () => {
       if (!selectedFile.content) {
+        setProcessedHtml('');
+        return;
+      }
+      if (remoteOrigins.length && !remoteContentAllowed) {
         setProcessedHtml('');
         return;
       }
@@ -2625,9 +2546,13 @@ function HtmlRenderer({
         );
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
+        const htmlWithPreviewFonts = remoteContentAllowed
+          ? deferInlineScriptsUntilLoad(htmlWithStorageShim)
+          : injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim));
         setProcessedHtml(
           injectPreviewContentSecurityPolicy(
-            injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+            htmlWithPreviewFonts,
+            remoteOrigins
           )
         );
         return;
@@ -2721,24 +2646,37 @@ function HtmlRenderer({
       const htmlWithDeferredScripts = deferInlineScriptsUntilLoad(
         injectSandboxStorageShim(processedHtmlContent)
       );
+      const htmlWithPreviewFonts = remoteContentAllowed
+        ? htmlWithDeferredScripts
+        : injectFontStyles(htmlWithDeferredScripts);
 
-      // Set the processed HTML with font styles - iframe sandbox provides security
+      // Authorized remote reports retain their declared fonts; offline reports
+      // keep Eigent's deterministic system-font fallback.
       setProcessedHtml(
-        injectPreviewContentSecurityPolicy(
-          injectFontStyles(htmlWithDeferredScripts)
-        )
+        injectPreviewContentSecurityPolicy(htmlWithPreviewFonts, remoteOrigins)
       );
     };
 
     processHtml().catch((error) => {
       console.error('[HtmlRenderer] Failed to process HTML:', error);
+      const fallbackHtml = remoteContentAllowed
+        ? selectedFile.content || ''
+        : injectFontStyles(selectedFile.content || '');
       setProcessedHtml(
         injectPreviewContentSecurityPolicy(
-          injectFontStyles(selectedFile.content || '')
+          fallbackHtml,
+          remoteContentAllowed ? remoteOrigins : []
         )
       );
     });
-  }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
+  }, [
+    selectedFile,
+    projectFiles,
+    ipcRenderer,
+    electronAPI,
+    remoteContentAllowed,
+    remoteOrigins,
+  ]);
 
   // Zoom state and controls
   const [zoom, setZoom] = useState(100);
@@ -2755,6 +2693,49 @@ function HtmlRenderer({
       setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
     }
   };
+
+  if (remoteOrigins.length && !remoteContentAllowed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-code-surface p-6">
+        <div className="max-w-xl rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <h3 className="text-body-md font-bold">
+                This HTML uses external content
+              </h3>
+              <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+                Loading it gives remote code access to this report&apos;s
+                rendered content. Access applies only to this preview session.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {remoteOrigins.map((origin) => (
+                  <code
+                    key={origin}
+                    className="rounded-md bg-ds-bg-neutral-default-default px-2 py-1 text-body-xs"
+                  >
+                    {origin}
+                  </code>
+                ))}
+              </div>
+              <Button
+                type="button"
+                className="mt-4"
+                onClick={() =>
+                  setAuthorizedRemotePreviewPath(selectedFile.path)
+                }
+              >
+                Load external content
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (selectedFile.content && !processedHtml) {
     return (

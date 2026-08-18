@@ -198,7 +198,7 @@ describe('HumanInteractionCard', () => {
     );
   });
 
-  it('shows the durable API rejection inline and allows retrying', async () => {
+  it('shows a durable API rejection inline and re-enables retry', async () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
