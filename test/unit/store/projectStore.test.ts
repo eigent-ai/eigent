@@ -633,7 +633,8 @@ describe('projectStore runtime shape', () => {
         'long-running prompt',
         0,
         'project_local',
-        'local_durable'
+        'local_durable',
+        { detachAfterCatchUp: false }
       );
       const project = useProjectStore.getState().projects.project_local;
       const task =
@@ -646,6 +647,152 @@ describe('projectStore runtime shape', () => {
           serverUpdatedAt: 200,
           localCanonicalUpdatedAt: 300,
           taskIds: ['task_local'],
+        })
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('continues a running durable replay from its canonical attempt duration', async () => {
+    fetchGetMock.mockResolvedValue({
+      runs: [
+        {
+          run_id: 'task_running',
+          status: 'running',
+          created_at: 100,
+          updated_at: 300,
+          total_attempt_elapsed_ms: 1_908_000,
+        },
+      ],
+    });
+    let releaseReplay: (() => void) | undefined;
+    replayMock.mockImplementationOnce((taskId: string) => {
+      const project = useProjectStore.getState().projects.project_running;
+      const chatStore = project.chatStores[project.activeChatId];
+      const chatState = chatStore.getState();
+      chatState.create(taskId, 'replay');
+      chatState.setStatus(taskId, 'running');
+      // Mirror the replay TODO reducer that previously restarted the clock.
+      chatState.setTaskTime(taskId, Date.now());
+      return new Promise<void>((resolve) => {
+        releaseReplay = resolve;
+      });
+    });
+
+    const beforeLoad = Date.now();
+    const loadPromise = useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_running'],
+        'long-running prompt',
+        'project_running',
+        'history_running',
+        'Running project',
+        'space_test',
+        { task_running: 'long-running prompt' },
+        200
+      );
+
+    await vi.waitFor(() => expect(releaseReplay).toBeDefined());
+    const project = useProjectStore.getState().projects.project_running;
+    const chatState = project.chatStores[project.activeChatId].getState();
+    const task = chatState.tasks.task_running;
+    expect(task.elapsed).toBe(1_908_000);
+    expect(task.taskTime).toBeGreaterThanOrEqual(beforeLoad);
+    expect(task.taskTime).toBeLessThanOrEqual(Date.now());
+    const [hours, minutes, seconds] = chatState
+      .getFormattedTaskTime('task_running')
+      .split(':')
+      .map(Number);
+    expect(hours * 3600 + minutes * 60 + seconds).toBeGreaterThanOrEqual(1_908);
+    expect(replayMock).toHaveBeenCalledWith(
+      'task_running',
+      'long-running prompt',
+      0,
+      'project_running',
+      'local_durable',
+      { detachAfterCatchUp: true }
+    );
+
+    releaseReplay?.();
+    await loadPromise;
+  });
+
+  it('reanchors a cached running clock without counting the offline gap', async () => {
+    const { useAuthStore } = await import('@/store/authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_cached_running',
+            status: 'running',
+            updated_at: 300,
+            total_attempt_elapsed_ms: 1_908_000,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: PROJECT_CACHE_SCHEMA_VERSION,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_cached_running'],
+        tasks: {
+          task_cached_running: {
+            taskState: {
+              status: 'running',
+              durableRunStatus: 'running',
+              elapsed: 12_000,
+              taskTime: 100,
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      const beforeLoad = Date.now();
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cached_running'],
+          'cached prompt',
+          'project_cached_running',
+          'history_cached_running',
+          'Cached running project',
+          'space_test',
+          { task_cached_running: 'cached prompt' },
+          200
+        );
+
+      expect(replayMock).not.toHaveBeenCalled();
+      const project =
+        useProjectStore.getState().projects.project_cached_running;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_cached_running;
+      expect(task.elapsed).toBe(1_908_000);
+      expect(task.taskTime).toBeGreaterThanOrEqual(beforeLoad);
+      expect(task.taskTime).toBeLessThanOrEqual(Date.now());
+      expect(putCachedProjectMock).toHaveBeenCalledWith(
+        { userId: 10, projectId: 'project_cached_running' },
+        expect.objectContaining({
+          tasks: expect.objectContaining({
+            task_cached_running: {
+              taskState: expect.objectContaining({
+                elapsed: 1_908_000,
+                taskTime: 0,
+                durableRunStatus: 'running',
+              }),
+            },
+          }),
         })
       );
     } finally {
@@ -870,7 +1017,8 @@ describe('projectStore runtime shape', () => {
         'approval prompt',
         0,
         'project_incomplete_cache',
-        'local_durable'
+        'local_durable',
+        { detachAfterCatchUp: true }
       );
     } finally {
       useAuthStore.setState({ user_id: previousUserId });
@@ -947,7 +1095,8 @@ describe('projectStore runtime shape', () => {
         'cached prompt',
         0,
         'project_partial_completed_cache',
-        'local_durable'
+        'local_durable',
+        { detachAfterCatchUp: false }
       );
       const project =
         useProjectStore.getState().projects.project_partial_completed_cache;
@@ -1023,7 +1172,8 @@ describe('projectStore runtime shape', () => {
         'cached prompt',
         0,
         'project_partial_failed_cache',
-        'local_durable'
+        'local_durable',
+        { detachAfterCatchUp: false }
       );
     } finally {
       useAuthStore.setState({ user_id: previousUserId });

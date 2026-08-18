@@ -1152,6 +1152,16 @@ export interface StartTaskOptions {
   replaySource?: 'cloud' | 'local_durable';
   /** Resolve only after Brain has accepted the initial SSE request. */
   awaitAdmission?: boolean;
+  /**
+   * Resolve a local durable replay once its persisted backlog is projected,
+   * while keeping the live stream attached in the background.
+   */
+  detachReplayAfterCatchUp?: boolean;
+}
+
+export interface ReplayTaskOptions {
+  /** Keep a non-terminal durable Run streaming after history is ready. */
+  detachAfterCatchUp?: boolean;
 }
 
 export interface ChatStore {
@@ -1181,7 +1191,8 @@ export interface ChatStore {
     question: string,
     time: number,
     projectId?: string,
-    source?: 'cloud' | 'local_durable'
+    source?: 'cloud' | 'local_durable',
+    options?: ReplayTaskOptions
   ) => Promise<void>;
   startTask: (
     taskId: string,
@@ -2988,6 +2999,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               rejectResumeStreamOpen = reject;
             })
           : null;
+      let replayCaughtUp = false;
+      let resolveReplayCaughtUp: (() => void) | undefined;
+      const replayCaughtUpPromise =
+        type === 'replay' &&
+        startOptions.replaySource === 'local_durable' &&
+        startOptions.detachReplayAfterCatchUp
+          ? new Promise<void>((resolve) => {
+              resolveReplayCaughtUp = resolve;
+            })
+          : null;
 
       const ssePromise = sseTransport({
         url: api,
@@ -3000,6 +3021,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             ? { Authorization: `Bearer ${token}` }
             : undefined,
         async onmessage(event: any) {
+          if (replayCaughtUpPromise && event?.event === 'replay_caught_up') {
+            replayCaughtUp = true;
+            resolveReplayCaughtUp?.();
+            return;
+          }
           let agentMessages: AgentMessage;
 
           try {
@@ -5590,6 +5616,35 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           console.error(`SSE stream failed for task ${newTaskId}:`, error);
         });
       }
+      if (replayCaughtUpPromise) {
+        try {
+          await Promise.race([
+            replayCaughtUpPromise,
+            ssePromise.then(() => {
+              if (!replayCaughtUp) {
+                throw new Error(
+                  `Canonical Run ${newTaskId} stream closed before replay caught up`
+                );
+              }
+            }),
+          ]);
+          if (localDurableLegacyEventCount === 0) {
+            throw new Error(
+              `Canonical Run ${newTaskId} contained no legacy UI events`
+            );
+          }
+        } catch (error) {
+          abortController.abort();
+          await ssePromise.catch(() => undefined);
+          throw error;
+        }
+        // History is now complete enough to render. The same transport keeps
+        // reducing subsequently committed events until this Run terminates.
+        void ssePromise.catch((error) => {
+          console.error(`SSE stream failed for task ${newTaskId}:`, error);
+        });
+        return;
+      }
       if (!resumeStreamOpenPromise && type !== 'replay') {
         // Live starts intentionally return after admission scheduling. Always
         // observe the transport promise so a typed 4xx admission response is
@@ -5634,7 +5689,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       question: string,
       time: number,
       projectId?: string,
-      source: 'cloud' | 'local_durable' = 'cloud'
+      source: 'cloud' | 'local_durable' = 'cloud',
+      options?: ReplayTaskOptions
     ) => {
       const {
         create,
@@ -5675,7 +5731,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           undefined,
           project_id,
           undefined,
-          { replaySource }
+          {
+            replaySource,
+            detachReplayAfterCatchUp:
+              replaySource === 'local_durable' &&
+              options?.detachAfterCatchUp === true,
+          }
         );
 
       resetReplayTask();
@@ -6053,8 +6114,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         );
       }
 
-      // record task start time
-      setTaskTime(taskId, Date.now());
+      // Live confirmation starts a new execution clock. Replay clocks are
+      // reconstructed from persisted event/canonical Attempt timestamps;
+      // resetting them here would make a restored long Run appear newly
+      // started after its backlog finishes loading.
+      if (type !== 'replay') {
+        setTaskTime(taskId, Date.now());
+      }
       // Filter out empty tasks from the user-edited taskInfo
       const taskInfo = task.taskInfo.filter((task) => task.content !== '');
       setTaskInfo(taskId, taskInfo);

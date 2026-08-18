@@ -226,7 +226,7 @@ export default function ProjectPageSidebar({
     activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
 
   const ensureProjectLoaded = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, onHydrationStarted?: () => void) => {
       const project = projectStore.getProjectById(projectId);
       const needsRemoteHistoryHydration =
         project?.metadata?.remoteHistoryHydrationPending === true;
@@ -268,14 +268,16 @@ export default function ProjectPageSidebar({
         const firstTask = historyProject.tasks[0];
         const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
         if (needsRemoteHistoryHydration) {
-          await projectStore.mergeProjectHistory(
+          const mergePromise = projectStore.mergeProjectHistory(
             projectId,
             historyProject.tasks,
             firstTask?.question || historyProject.last_prompt || ''
           );
+          onHydrationStarted?.();
+          await mergePromise;
           return;
         }
-        await projectStore.loadProjectFromHistory(
+        const loadPromise = projectStore.loadProjectFromHistory(
           taskIdsList,
           firstTask?.question || historyProject.last_prompt || '',
           projectId,
@@ -286,6 +288,11 @@ export default function ProjectPageSidebar({
           computeProjectFreshnessAnchor(historyProject),
           { requireActiveSelection: true }
         );
+        // loadProjectFromHistory synchronously creates the replay shell and
+        // marks it as loading before its first await. Enter that shell now so
+        // a long-lived durable stream cannot make a valid click look inert.
+        onHydrationStarted?.();
+        await loadPromise;
       } catch (error) {
         console.error(
           `Failed to load Project ${projectId} from history:`,
@@ -316,10 +323,14 @@ export default function ProjectPageSidebar({
         return;
       }
 
-      // Load history first, then choose the right shell. Avoids briefly
-      // showing 'project' while empty (which the Session redirect bounces
-      // to 'workforce', producing a flicker on slow loads).
-      await ensureProjectLoaded(projectId);
+      // Enter the replay shell as soon as hydration has synchronously marked
+      // it loading. Session keeps loading history shells stable, while the
+      // durable stream continues projecting its backlog in the background.
+      await ensureProjectLoaded(projectId, () => {
+        if (useProjectRuntimeStore.getState().activeProjectId === projectId) {
+          setActiveWorkspaceTab('project');
+        }
+      });
 
       // A slower, older click may finish after the user selected another
       // Project. It must not change the shared shell for the newer selection.

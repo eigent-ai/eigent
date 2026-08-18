@@ -1481,6 +1481,84 @@ describe('ChatStore - Core Functionality', () => {
       expect(fetchEventSource).toHaveBeenCalled();
     });
 
+    it('returns after a durable replay catches up while its live stream stays attached', async () => {
+      let emitMessage:
+        | ((message: { event?: string; id?: string; data: string }) => unknown)
+        | undefined;
+      let closeStream: (() => void) | undefined;
+      let streamSettled = false;
+      vi.mocked(fetchEventSource).mockImplementation((_url, opts) => {
+        emitMessage = opts.onmessage as typeof emitMessage;
+        return new Promise<void>((resolve) => {
+          closeStream = () => {
+            streamSettled = true;
+            resolve();
+          };
+        });
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+
+      const replayPromise = result.current
+        .getState()
+        .startTask(
+          taskId,
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'proj-replay',
+          undefined,
+          {
+            replaySource: 'local_durable',
+            detachReplayAfterCatchUp: true,
+          }
+        );
+      await vi.waitFor(() => expect(emitMessage).toBeDefined());
+
+      await emitMessage?.({
+        event: 'run_event',
+        id: '1',
+        data: JSON.stringify({
+          event_id: 'event-1',
+          event_type: 'chat.step',
+          legacy_step: 'todo_state',
+          payload: { agent_id: 'single-agent', todos: [] },
+          project_id: 'proj-replay',
+          run_id: taskId,
+          sequence: 1,
+          run_version: 1,
+          created_at: 100,
+        }),
+      });
+      await emitMessage?.({
+        event: 'replay_caught_up',
+        data: JSON.stringify({ run_id: taskId, after_sequence: 1 }),
+      });
+
+      await expect(replayPromise).resolves.toBeUndefined();
+      expect(streamSettled).toBe(false);
+      expect(result.current.getState().tasks[taskId].status).toBe(
+        ChatTaskStatus.RUNNING
+      );
+
+      closeStream?.();
+    });
+
+    it('does not restart a replay clock during synthetic confirmation', async () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      result.current.getState().setTaskTime(taskId, 123_456);
+
+      await result.current
+        .getState()
+        .handleConfirmTask('proj-replay', taskId, 'replay');
+
+      expect(result.current.getState().tasks[taskId].taskTime).toBe(123_456);
+    });
+
     it('replays a recorded human reply without leaving an active wait', async () => {
       vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
         for (const event of [

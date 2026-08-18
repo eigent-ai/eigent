@@ -1655,14 +1655,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               // built from the current Run rows, but it does not prove that
               // every derived UI field was projected correctly. Older
               // renderer code could persist elapsed=0 even though SQLite
-              // already held the terminal attempt duration. Always overlay
-              // canonical Run status/duration on the disposable IDB view so
-              // a bad projection cannot remain trusted forever.
+              // already held the attempt duration. Always overlay canonical
+              // terminal duration, and re-anchor a running clock from the
+              // current attempt aggregate, so a bad projection cannot remain
+              // trusted forever.
               const localRun = localRunsById.get(cachedTaskId);
               if (localRun) {
                 const canonicalElapsed =
-                  localRun.status &&
-                  TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status)
+                  localRun.status === 'running' ||
+                  (localRun.status &&
+                    TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(localRun.status))
                     ? resolveHistoricalRunElapsedMs({
                         totalAttemptElapsedMs: localRun.totalAttemptElapsedMs,
                         createdAt: localRun.createdAt,
@@ -1672,8 +1674,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 const chatState = chatStore.getState();
                 chatState.setDurableRunStatus(cachedTaskId, localRun.status);
                 if (canonicalElapsed !== undefined) {
-                  chatState.setTaskTime(cachedTaskId, 0);
                   chatState.setElapsed(cachedTaskId, canonicalElapsed);
+                  chatState.setTaskTime(
+                    cachedTaskId,
+                    localRun.status === 'running' ? Date.now() : 0
+                  );
                 }
 
                 const cachedTaskState =
@@ -1785,11 +1790,33 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                   taskQuestionsById?.[taskId] || question,
                   0,
                   loadProjectId,
-                  'local_durable'
+                  'local_durable',
+                  {
+                    detachAfterCatchUp: Boolean(
+                      localRun?.status &&
+                      !TERMINAL_DURABLE_RUN_DISPLAY_STATUSES.has(
+                        localRun.status
+                      )
+                    ),
+                  }
                 );
                 chatStore
                   .getState()
                   .setDurableRunStatus(taskId, localRun?.status);
+                if (
+                  localRun?.status === 'running' &&
+                  localRun.totalAttemptElapsedMs !== undefined &&
+                  chatStore.getState().tasks[taskId]
+                ) {
+                  // `/runs` measures the active Attempt up to the history
+                  // request. Continue from that canonical baseline while the
+                  // attached stream is still open; otherwise replay's first
+                  // TODO event restarts the visible clock at Date.now().
+                  chatStore
+                    .getState()
+                    .setElapsed(taskId, localRun.totalAttemptElapsedMs);
+                  chatStore.getState().setTaskTime(taskId, Date.now());
+                }
                 await replayPromise;
                 const canonicalElapsed =
                   localRun?.status &&
@@ -1811,6 +1838,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                   // the replayed events. Prefer SQLite's attempt aggregate:
                   // it excludes the offline gap before an explicit Resume.
                   chatStore.getState().setElapsed(taskId, canonicalElapsed);
+                  chatStore.getState().setTaskTime(taskId, 0);
                 }
               } else {
                 await replay(
