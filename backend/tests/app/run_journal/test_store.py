@@ -72,6 +72,8 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "run_attempts",
         "run_events",
         "run_event_sync_outbox",
+        "model_invocations",
+        "model_invocation_events",
         "tool_calls",
         "approvals",
         "workspace_config_revisions",

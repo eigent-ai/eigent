@@ -33,6 +33,7 @@ from app.model.subscription_runtime import (
     apply_subscription_runtime,
     is_subscription_auth,
 )
+from app.run_journal.model_capture import instrument_model_backend
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -258,11 +259,13 @@ def agent_model(
             ):
                 model_config[effort_parameter] = effort_value
 
-        # Azure GPT-5.6 rejects function tools + reasoning_effort on
-        # /chat/completions. CAMEL's Azure adapter supports /responses, so
-        # select that transport only for the incompatible combination. This is
-        # runtime-owned: an explicit chat-completions value cannot make this
-        # request shape valid.
+        # Direct Azure GPT-5.6 endpoints reject function tools plus
+        # reasoning_effort on /chat/completions, so use Responses there. Cloud
+        # proxy requests deliberately stay on Chat Completions: eigent_server
+        # owns their compatibility policy and can safely omit the incompatible
+        # effort field without requiring a Desktop release for every future
+        # model family. This also avoids known Azure/LiteLLM Responses proxy
+        # failures while preserving Responses for user-managed endpoints.
         has_function_tools = bool(
             tools or tool_names or toolkits_to_register_agent
         )
@@ -274,6 +277,7 @@ def agent_model(
                 model_platform=str(effective_config["model_platform"]),
                 model_type=str(effective_config["model_type"]),
             )
+            and not is_effective_cloud
         ):
             reasoning_effort = model_config.pop("reasoning_effort")
             model_config["reasoning"] = {"effort": reasoning_effort}
@@ -330,7 +334,7 @@ def agent_model(
             if isinstance(stream_options, dict):
                 stream_options.setdefault("include_usage", True)
 
-        return ModelFactory.create(
+        model_backend = ModelFactory.create(
             model_platform=effective_config["model_platform"],
             model_type=effective_config["model_type"],
             api_key=effective_config["api_key"],
@@ -338,6 +342,12 @@ def agent_model(
             model_config_dict=model_config or None,
             timeout=600,  # 10 minutes
             **init_params,
+        )
+        return instrument_model_backend(
+            model_backend,
+            agent_id=agent_id,
+            provider=str(effective_config["model_platform"]),
+            model_name=str(effective_config["model_type"]),
         )
 
     model = build_model()

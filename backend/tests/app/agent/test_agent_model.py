@@ -279,16 +279,54 @@ class TestAgentFactoryFunctions:
         "model_type",
         ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
     )
-    def test_azure_gpt_5_6_reasoning_with_tools_uses_responses_api(
+    def test_cloud_azure_gpt_5_6_uses_server_managed_chat_compatibility(
         self, sample_chat_data, model_type
     ):
-        """The rejected chat-completions request shape uses Responses."""
+        """Cloud transport remains server-controlled for future models."""
         options = Chat(
             **{
                 **sample_chat_data,
                 "model_platform": "azure",
                 "model_type": model_type,
                 "api_url": "https://proxy.eigent.ai",
+                "extra_params": {"api_mode": "chat_completions"},
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = "high"
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model(
+                "TestAgent",
+                "You are helpful",
+                options,
+                [MagicMock()],
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["api_mode"] == "chat_completions"
+        assert kwargs["model_config_dict"]["reasoning_effort"] == "high"
+        assert "reasoning" not in kwargs["model_config_dict"]
+
+    def test_direct_azure_gpt_5_6_reasoning_with_tools_uses_responses_api(
+        self, sample_chat_data
+    ):
+        """A user-managed Azure endpoint keeps its native Responses support."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": "gpt-5.6-sol",
+                "api_url": "https://customer-resource.openai.azure.com",
                 "extra_params": {"api_mode": "chat_completions"},
             }
         )
