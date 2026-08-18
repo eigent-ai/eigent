@@ -20,12 +20,6 @@ import type {
   SelectChatNodesOptions,
 } from './types';
 
-// These legacy frames coordinate transport/accounting and were explicitly
-// deferred from the ChatTimeline. Future unknown domain events remain visible
-// through the payload-safe fallback so the event-driven UI never fails
-// silently when a renderer has not shipped yet.
-const NON_DISPLAY_LEGACY_STEPS = new Set(['request_usage', 'sync']);
-
 export function selectChatNodes(
   state: ChatProjectionState,
   options: SelectChatNodesOptions = {}
@@ -43,12 +37,7 @@ export function selectRenderableChatNodes(
   state: ChatProjectionState,
   runId?: string
 ): ChatProjectionNode[] {
-  return selectChatNodes(state, { runId, includeUnknown: true }).filter(
-    (node) =>
-      node.kind !== 'unknown' ||
-      !node.legacyStep ||
-      !NON_DISPLAY_LEGACY_STEPS.has(node.legacyStep)
-  );
+  return selectChatNodes(state, { runId, includeUnknown: true });
 }
 
 export function selectLatestRunStatus(

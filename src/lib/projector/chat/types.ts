@@ -30,10 +30,7 @@ export type ChatMessageRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'streaming' | 'complete';
 export type ChatNoticeSeverity = 'info' | 'warning' | 'error';
 export type ChatInteractionStatus =
-  | 'requested'
-  | 'responded'
-  | 'cancelled'
-  | 'expired';
+  'requested' | 'responded' | 'cancelled' | 'expired';
 export type ChatPlanTaskStatus =
   | 'pending'
   | 'running'
@@ -43,23 +40,18 @@ export type ChatPlanTaskStatus =
   | 'blocked'
   | 'unknown';
 export type ChatActivityType =
-  | 'agent'
-  | 'tool'
-  | 'terminal'
-  | 'task'
-  | 'work_log';
+  'agent' | 'tool' | 'terminal' | 'task' | 'work_log';
 export type ChatActivityStatus =
   | 'pending'
   | 'running'
   | 'completed'
   | 'failed'
+  | 'timed_out'
+  | 'outcome_unknown'
   | 'cancelled'
   | 'unknown';
 export type ChatArtifactOperation =
-  | 'created'
-  | 'updated'
-  | 'deleted'
-  | 'unknown';
+  'created' | 'updated' | 'deleted' | 'unknown';
 export type ChatRunStatus =
   | 'pending'
   | 'running'
@@ -74,9 +66,9 @@ export type ChatRunStatus =
 /**
  * Shared, transport-independent metadata for every semantic ChatBox node.
  *
- * Timeline identity is always the immutable source event identity. Entity IDs
- * such as message_id or interaction_id belong to their owning domain
- * projections and never cause Timeline nodes to be replaced or correlated.
+ * Timeline identity is always the immutable source event identity. Stable
+ * entity IDs may be used by presentation policies to fold immutable receipts
+ * without mutating or replacing the source ledger.
  */
 export interface ChatProjectionNodeBase {
   id: string;
@@ -95,6 +87,8 @@ export interface ChatMessageNode extends ChatProjectionNodeBase {
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
+  /** Stable typed-message identity used only for presentation folding. */
+  messageId?: string;
   agentId?: string;
   agentName?: string;
   /**
@@ -174,6 +168,7 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
 export interface ChatArtifactNode extends ChatProjectionNodeBase {
   kind: 'artifact';
   operation: ChatArtifactOperation;
+  artifactId?: string;
   path: string;
   name?: string;
   mimeType?: string;
@@ -206,6 +201,19 @@ export type ChatProjectionNode =
   | ChatArtifactNode
   | ChatRunStatusNode
   | ChatUnknownNode;
+
+/**
+ * Explicit single-event presentation classification.
+ *
+ * Every outcome is still recorded in `seenEventIds`; only displayable
+ * semantic nodes and genuinely unsupported future events enter the retained
+ * Timeline node list.
+ */
+export type ChatProjectionDecision =
+  | { kind: 'display'; node: ChatProjectionNode }
+  | { kind: 'receipt'; receiptType: string }
+  | { kind: 'hidden'; reason: string }
+  | { kind: 'unsupported'; node: ChatUnknownNode };
 
 export interface ChatProjectionState {
   projectId: string;

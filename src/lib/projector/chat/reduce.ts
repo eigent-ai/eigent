@@ -76,7 +76,9 @@ export function reduceChatProjection(
   const nodes = [...state.nodes];
   const nodeById = { ...state.nodeById };
   const nodeIndexById = { ...projectionIndex(state) };
-  appendProjectedNode(nodes, nodeById, nodeIndexById, projected);
+  if (projected.kind === 'display' || projected.kind === 'unsupported') {
+    appendProjectedNode(nodes, nodeById, nodeIndexById, projected.node);
+  }
 
   return {
     ...state,
@@ -120,7 +122,9 @@ export function projectChatEvents(
     }
 
     const projected = adaptChatProjectionEvent(input);
-    appendProjectedNode(nodes, nodeById, nodeIndexById, projected);
+    if (projected.kind === 'display' || projected.kind === 'unsupported') {
+      appendProjectedNode(nodes, nodeById, nodeIndexById, projected.node);
+    }
     seenEventIds[input.eventId] = true;
   }
 

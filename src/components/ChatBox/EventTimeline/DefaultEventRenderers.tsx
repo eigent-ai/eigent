@@ -36,7 +36,12 @@ function displayStatus(status: string): string {
 
 /** Status colour matches RepeatedToolCallGroup so one status reads the same everywhere. */
 function statusClassName(status: string): string {
-  if (status === 'failed') return 'text-ds-text-error-default-default';
+  if (status === 'failed' || status === 'outcome_unknown') {
+    return 'text-ds-text-error-default-default';
+  }
+  if (status === 'timed_out') {
+    return 'text-ds-text-warning-default-default';
+  }
   if (status === 'running' || status === 'pending') {
     return 'text-ds-text-information-default-default';
   }
@@ -45,7 +50,8 @@ function statusClassName(status: string): string {
 }
 
 function statusIcon(status: string): LucideIcon {
-  if (status === 'failed') return CircleAlert;
+  if (status === 'failed' || status === 'outcome_unknown') return CircleAlert;
+  if (status === 'timed_out') return Clock;
   if (status === 'running') return Loader;
   if (status === 'pending') return Clock;
   if (status === 'completed') return CircleCheck;
@@ -215,6 +221,7 @@ export function PlanEventRenderer({
 export function ActivityEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'activity'>>) {
+  const { t } = useTranslation();
   return (
     <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -226,6 +233,17 @@ export function ActivityEventRenderer({
       {node.detail ? (
         <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
           {node.detail}
+        </span>
+      ) : null}
+      {node.status === 'outcome_unknown' ? (
+        <span
+          className="mt-2 block text-label-sm font-medium text-ds-text-error-default-default"
+          role="alert"
+        >
+          {t('chat.tool-outcome-unknown-warning', {
+            defaultValue:
+              'Result unknown. The external action may have already happened; do not retry automatically.',
+          })}
         </span>
       ) : null}
     </section>

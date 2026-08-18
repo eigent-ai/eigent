@@ -26,6 +26,7 @@ import type {
   ChatPlanNode,
   ChatPlanTask,
   ChatPlanTaskStatus,
+  ChatProjectionDecision,
   ChatProjectionInput,
   ChatProjectionNode,
   ChatProjectionNodeBase,
@@ -61,6 +62,25 @@ const NOTICE_STEP_SEVERITY: Record<string, ChatNoticeNode['severity']> = {
   error: 'error',
   failed: 'error',
 };
+
+const RECEIPT_ONLY_EVENT_TYPES = new Set([
+  'run.environment_resolved',
+  'run.timeout_policy_configured',
+  'run.attempt_environment_bound',
+  'run.forked',
+  'approval.expiry_observed',
+  'artifact.manifest.finalized',
+  'artifact.uploaded',
+]);
+
+const RECEIPT_ONLY_EVENT_PREFIXES = [
+  'permission.action.',
+  'admission.',
+  'execution.',
+  'model.invocation.',
+] as const;
+
+const HIDDEN_LEGACY_STEPS = new Set(['request_usage', 'sync']);
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -212,6 +232,18 @@ function explicitInteractionId(payload: JsonRecord): string | undefined {
   );
 }
 
+function explicitMessageId(payload: JsonRecord): string | undefined {
+  const message = asRecord(payload.message);
+  return (
+    firstText(
+      payload.message_id,
+      payload.messageId,
+      message.message_id,
+      message.messageId
+    ) || undefined
+  );
+}
+
 /**
  * Retain only backend option identifiers from a decision. Option values can be
  * opaque objects (and may contain data that is not intended for Timeline
@@ -311,6 +343,7 @@ function messageNode(
     role,
     content: messageContent(base, messagePayload, data),
     status: eventIsStreaming ? 'streaming' : 'complete',
+    messageId: explicitMessageId(messagePayload),
     agentId:
       firstText(messagePayload.agent_id, messagePayload.agentId) || undefined,
     agentName:
@@ -511,9 +544,9 @@ function normalizeActivityStatus(
   ) {
     return 'completed';
   }
-  if (['failed', 'error', 'timed_out', 'outcome_unknown'].includes(status)) {
-    return 'failed';
-  }
+  if (['failed', 'error'].includes(status)) return 'failed';
+  if (status === 'timed_out') return 'timed_out';
+  if (status === 'outcome_unknown') return 'outcome_unknown';
   if (['cancelled', 'canceled'].includes(status)) return 'cancelled';
   return 'unknown';
 }
@@ -711,14 +744,19 @@ function artifactNode(
   fallbackOperation: ChatArtifactOperation
 ): ChatArtifactNode {
   const payload = asRecord(data);
-  const path = firstText(
-    payload.file_path,
-    payload.filePath,
-    payload.path,
-    payload.relative_path,
-    payload.relativePath,
-    payload.name
-  );
+  const isTypedArtifact = !base.eventType.startsWith('legacy.');
+  // Shared typed projections carry only portable identity. A Desktop-local
+  // absolute path belongs in the resolver/transport layer, never in this node.
+  const path = isTypedArtifact
+    ? firstText(payload.relative_path, payload.relativePath, payload.name)
+    : firstText(
+        payload.file_path,
+        payload.filePath,
+        payload.path,
+        payload.relative_path,
+        payload.relativePath,
+        payload.name
+      );
   return {
     ...base,
     kind: 'artifact',
@@ -726,6 +764,7 @@ function artifactNode(
       payload.operation ?? payload.action ?? payload.artifactChange,
       fallbackOperation
     ),
+    artifactId: firstText(payload.artifact_id, payload.artifactId) || undefined,
     path,
     name:
       firstText(payload.name, path.split('/').filter(Boolean).at(-1)) ||
@@ -775,6 +814,13 @@ function typedNode(
   const runStatus = RUN_STATUS_BY_EVENT[eventType];
   if (runStatus) return runStatusNode(base, data, runStatus);
 
+  if (eventType === 'user.message') {
+    return messageNode(base, data, 'user');
+  }
+  if (eventType === 'assistant.final') {
+    return messageNode(base, data, 'assistant');
+  }
+
   if (
     ['message.created', 'message.delta', 'message.completed'].includes(
       eventType
@@ -816,14 +862,22 @@ function typedNode(
     return planNode(base, data);
   }
 
-  if (eventType.startsWith('artifact.') || eventType === 'file.written') {
+  if (
+    [
+      'artifact.created',
+      'artifact.modified',
+      'artifact.updated',
+      'artifact.deleted',
+      'file.written',
+    ].includes(eventType)
+  ) {
     const suffix = eventType.split('.').at(-1);
     return artifactNode(
       base,
       data,
       suffix === 'deleted'
         ? 'deleted'
-        : suffix === 'updated'
+        : suffix === 'updated' || suffix === 'modified'
           ? 'updated'
           : 'created'
     );
@@ -953,13 +1007,40 @@ function legacyNode(
   return unknownNode(base);
 }
 
-/** Convert one durable or projected legacy event into one immutable node. */
+function displayDecision(node: ChatProjectionNode): ChatProjectionDecision {
+  return { kind: 'display', node };
+}
+
+function unsupportedDecision(
+  base: ChatProjectionNodeBase
+): ChatProjectionDecision {
+  return { kind: 'unsupported', node: unknownNode(base) };
+}
+
+/** Classify one durable or projected legacy event for semantic presentation. */
 export function adaptChatProjectionEvent(
   input: ChatProjectionInput
-): ChatProjectionNode {
+): ChatProjectionDecision {
   const { base, data } = normalizeInput(input);
-  const typed = !base.eventType.startsWith('legacy.')
-    ? typedNode(base, data)
-    : null;
-  return typed || legacyNode(base, data);
+  if (!base.eventType.startsWith('legacy.')) {
+    if (
+      RECEIPT_ONLY_EVENT_TYPES.has(base.eventType) ||
+      RECEIPT_ONLY_EVENT_PREFIXES.some((prefix) =>
+        base.eventType.startsWith(prefix)
+      )
+    ) {
+      return { kind: 'receipt', receiptType: base.eventType };
+    }
+
+    const typed = typedNode(base, data);
+    return typed ? displayDecision(typed) : unsupportedDecision(base);
+  }
+
+  if (base.legacyStep && HIDDEN_LEGACY_STEPS.has(base.legacyStep)) {
+    return { kind: 'hidden', reason: `legacy.${base.legacyStep}` };
+  }
+  const legacy = legacyNode(base, data);
+  return legacy.kind === 'unknown'
+    ? { kind: 'unsupported', node: legacy }
+    : displayDecision(legacy);
 }

@@ -45,13 +45,16 @@ describe('chat activity projection', () => {
     );
 
     expect(node).toMatchObject({
-      kind: 'activity',
-      activityType: 'tool',
-      status: 'running',
-      toolkitName: 'WebFetchToolkit',
-      methodName: 'Web_fetch_and_analyze',
-      toolName: 'web_fetch',
-      toolCallId: 'call-10',
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        activityType: 'tool',
+        status: 'running',
+        toolkitName: 'WebFetchToolkit',
+        methodName: 'Web_fetch_and_analyze',
+        toolName: 'web_fetch',
+        toolCallId: 'call-10',
+      },
     });
   });
 
@@ -68,11 +71,14 @@ describe('chat activity projection', () => {
     );
 
     expect(node).toMatchObject({
-      kind: 'activity',
-      toolkitName: 'FileToolkit',
-      methodName: 'read_file',
-      toolName: 'read',
-      toolCallId: 'read-1',
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        toolkitName: 'FileToolkit',
+        methodName: 'read_file',
+        toolName: 'read',
+        toolCallId: 'read-1',
+      },
     });
   });
 });

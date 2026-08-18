@@ -63,6 +63,8 @@ const ACTIVE_TOOL_STATUSES = new Set<ChatActivityStatus>([
 const TERMINAL_TOOL_STATUSES = new Set<ChatActivityStatus>([
   'completed',
   'failed',
+  'timed_out',
+  'outcome_unknown',
   'cancelled',
 ]);
 
@@ -174,7 +176,9 @@ function aggregateStatus(
   calls: readonly PresentedToolCall[]
 ): ChatActivityStatus {
   const statuses = calls.map((call) => call.presentedNode.status);
+  if (statuses.includes('outcome_unknown')) return 'outcome_unknown';
   if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('timed_out')) return 'timed_out';
   if (statuses.includes('running')) return 'running';
   if (statuses.includes('pending')) return 'pending';
   if (statuses.every((status) => status === 'completed')) return 'completed';
@@ -194,7 +198,7 @@ export function groupRepeatedToolCalls(
 ): ChatTimelineDisplayRow[] {
   const rows: ChatTimelineDisplayRow[] = [];
 
-  for (let index = 0; index < nodes.length; ) {
+  for (let index = 0; index < nodes.length;) {
     const node = nodes[index]!;
     const identity = toolIdentity(node);
     if (!identity || node.kind !== 'activity') {

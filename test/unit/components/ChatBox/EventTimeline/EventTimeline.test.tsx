@@ -993,6 +993,24 @@ describe('EventTimeline', () => {
     expect(fallback).not.toHaveTextContent('must-not-leak');
   });
 
+  it('warns that an unknown tool outcome must not be retried automatically', () => {
+    render(
+      <EventTimeline
+        nodes={[
+          activityNode('unknown-outcome', 'Send external message', {
+            eventType: 'tool.outcome_unknown',
+            status: 'outcome_unknown',
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The external action may have already happened'
+    );
+    expect(screen.getByText('outcome unknown')).toBeInTheDocument();
+  });
+
   it('renders only a safe artifact name without exposing its full path', () => {
     render(<EventTimeline nodes={[artifactNode()]} />);
 
