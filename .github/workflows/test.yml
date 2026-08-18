@@ -64,6 +64,9 @@ jobs:
       - name: Run type check
         run: npm run type-check
 
+      - name: Run frontend unit tests
+        run: npm test
+
       - name: Check Electron Access Guard
         run: bash scripts/check-electron-access.sh
 

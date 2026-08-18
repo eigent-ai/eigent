@@ -709,7 +709,7 @@ describe('projectStore runtime shape', () => {
   });
 
   it('rejects a freshness-anchored cache whose task message projection is empty', async () => {
-    const { useAuthStore } = await import('./authStore');
+    const { useAuthStore } = await import('@/store/authStore');
     const previousUserId = useAuthStore.getState().user_id;
     useAuthStore.setState({ user_id: 10 });
     try {
@@ -773,7 +773,7 @@ describe('projectStore runtime shape', () => {
   });
 
   it('replays a completed local Run when its cache contains only the seeded user prompt', async () => {
-    const { useAuthStore } = await import('./authStore');
+    const { useAuthStore } = await import('@/store/authStore');
     const previousUserId = useAuthStore.getState().user_id;
     useAuthStore.setState({ user_id: 10 });
     try {
@@ -860,7 +860,7 @@ describe('projectStore runtime shape', () => {
   });
 
   it('replays a failed local Run when its cache contains only the seeded user prompt', async () => {
-    const { useAuthStore } = await import('./authStore');
+    const { useAuthStore } = await import('@/store/authStore');
     const previousUserId = useAuthStore.getState().user_id;
     useAuthStore.setState({ user_id: 10 });
     try {
