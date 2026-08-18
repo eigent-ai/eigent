@@ -47,6 +47,7 @@ import {
   ToolCallsDialog,
 } from '@/components/Session/SidePanel/sections/SessionSidePanelDialogs';
 import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/useProjectOutputFiles';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -57,6 +58,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import {
+  AlertTriangle,
   Bot,
   Boxes,
   ExternalLink,
@@ -480,7 +482,16 @@ function FilesSection({
         <SidePanelListRow
           key={item.id}
           leading={<FileText size={16} aria-hidden />}
-          onClick={() => onSelect(item)}
+          trailing={
+            !item.previewable ? (
+              <span className="text-label-xs text-ds-text-neutral-muted-default">
+                {t('layout.session-panel-file-unavailable', {
+                  defaultValue: 'Preview unavailable',
+                })}
+              </span>
+            ) : null
+          }
+          onClick={item.previewable ? () => onSelect(item) : undefined}
         >
           {item.file.name || item.file.path}
         </SidePanelListRow>
@@ -495,8 +506,18 @@ function FilesSection({
       titleSuffix={<CountPill count={primary.length} />}
       headerAction={headerAction}
     >
-      {rows(primary)}
-      <EarlierItems count={earlier.length}>{rows(earlier)}</EarlierItems>
+      {items.length === 0 ? (
+        <div className="px-3 py-3 text-body-sm text-ds-text-neutral-muted-default">
+          {t('layout.session-panel-files-empty', {
+            defaultValue: 'No output files yet.',
+          })}
+        </div>
+      ) : (
+        <>
+          {rows(primary)}
+          <EarlierItems count={earlier.length}>{rows(earlier)}</EarlierItems>
+        </>
+      )}
     </SidePanelAccordionBox>
   );
 }
@@ -512,11 +533,16 @@ export function SessionActivityPanel({
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
-  const { projectId } = useProjectEventRuntime();
+  const { hydration, projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
   const scopedChatStore =
     projectId && projectStore.activeProjectId === projectId ? chatStore : null;
   const activeTaskId = scopedChatStore?.activeTaskId ?? null;
+  const composerTaskId =
+    activeTaskId &&
+    (!overview.currentRun || overview.currentRun.runId === activeTaskId)
+      ? activeTaskId
+      : null;
   const activeTask = activeTaskId
     ? scopedChatStore?.tasks[activeTaskId]
     : undefined;
@@ -538,6 +564,27 @@ export function SessionActivityPanel({
   const [selectedContext, setSelectedContext] =
     useState<SessionContextItem | null>(null);
   const [addingFiles, setAddingFiles] = useState(false);
+  const addFilesOperationRef = useRef(0);
+  const attachmentScopeRef = useRef({
+    projectId,
+    chatStore: scopedChatStore,
+    taskId: composerTaskId,
+  });
+
+  useEffect(() => {
+    attachmentScopeRef.current = {
+      projectId,
+      chatStore: scopedChatStore,
+      taskId: composerTaskId,
+    };
+  }, [composerTaskId, projectId, scopedChatStore]);
+
+  useEffect(() => {
+    addFilesOperationRef.current += 1;
+    setSelectedAgent(null);
+    setSelectedContext(null);
+    setAddingFiles(false);
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -571,35 +618,39 @@ export function SessionActivityPanel({
     () => panelData.agents.filter((agent) => agent.subagent),
     [panelData.agents]
   );
+  // Compatibility boundary: legacy ChatStore file-list changes still trigger
+  // resolver refreshes, but mergeProjectFiles may only enrich durable rows.
   const projectFiles = useProjectOutputFiles(
     projectId,
     activeTask,
     activeTaskId
   );
   const files = useMemo(
-    () =>
-      mergeProjectFiles(
-        panelData.files,
-        projectFiles,
-        overview.currentRun?.taskId ?? '',
-        overview.currentRun?.createdAt ?? 0,
-        overview.currentRun?.updatedAt ?? 0
-      ),
-    [
-      overview.currentRun?.taskId,
-      overview.currentRun?.createdAt,
-      overview.currentRun?.updatedAt,
-      panelData.files,
-      projectFiles,
-    ]
+    () => mergeProjectFiles(panelData.files, projectFiles),
+    [panelData.files, projectFiles]
   );
 
-  const attachToRun = (selectedFiles: File[]) => {
-    if (selectedFiles.length === 0 || !scopedChatStore || !activeTaskId) return;
+  const attachToRun = (
+    target: {
+      projectId: string;
+      chatStore: NonNullable<typeof scopedChatStore>;
+      taskId: string;
+    },
+    selectedFiles: File[]
+  ) => {
+    const current = attachmentScopeRef.current;
+    if (
+      selectedFiles.length === 0 ||
+      current.projectId !== target.projectId ||
+      current.chatStore !== target.chatStore ||
+      current.taskId !== target.taskId
+    ) {
+      return;
+    }
     // Read attaches at merge time so files added while the picker was open
     // are not clobbered.
-    const existingFiles = scopedChatStore.tasks[activeTaskId]?.attaches ?? [];
-    scopedChatStore.setAttaches(activeTaskId, [
+    const existingFiles = target.chatStore.tasks[target.taskId]?.attaches ?? [];
+    target.chatStore.setAttaches(target.taskId, [
       ...existingFiles,
       ...selectedFiles.filter(
         (selected) =>
@@ -611,7 +662,24 @@ export function SessionActivityPanel({
   };
 
   const addFiles = async () => {
-    if (!scopedChatStore || !activeTaskId || addingFiles) return;
+    if (!projectId || !scopedChatStore || !composerTaskId || addingFiles) {
+      return;
+    }
+    const target = {
+      projectId,
+      chatStore: scopedChatStore,
+      taskId: composerTaskId,
+    };
+    const operationId = ++addFilesOperationRef.current;
+    const isCurrentOperation = () => {
+      const current = attachmentScopeRef.current;
+      return (
+        addFilesOperationRef.current === operationId &&
+        current.projectId === target.projectId &&
+        current.chatStore === target.chatStore &&
+        current.taskId === target.taskId
+      );
+    };
 
     if (isWeb()) {
       // A dismissed file dialog has no dependable signal (`cancel` is not
@@ -622,13 +690,15 @@ export function SessionActivityPanel({
       input.multiple = true;
       input.onchange = async () => {
         const picked = Array.from(input.files ?? []);
-        if (picked.length === 0) return;
+        if (picked.length === 0 || !isCurrentOperation()) return;
         setAddingFiles(true);
         try {
           const uploads: File[] = [];
           for (const file of picked) {
+            if (!isCurrentOperation()) break;
             try {
               const result = await uploadFileToBrain(file);
+              if (!isCurrentOperation()) break;
               uploads.push({
                 fileName: result.filename,
                 filePath: result.file_id,
@@ -645,9 +715,9 @@ export function SessionActivityPanel({
               );
             }
           }
-          attachToRun(uploads);
+          attachToRun(target, uploads);
         } finally {
-          setAddingFiles(false);
+          if (isCurrentOperation()) setAddingFiles(false);
         }
       };
       input.click();
@@ -661,18 +731,24 @@ export function SessionActivityPanel({
         filters: [{ name: t('chat.all-files'), extensions: ['*'] }],
       });
       if (result?.success && Array.isArray(result.files)) {
-        attachToRun(result.files);
+        attachToRun(target, result.files);
       }
     } catch (error) {
       console.error('Select session files failed:', error);
     } finally {
-      setAddingFiles(false);
+      if (isCurrentOperation()) setAddingFiles(false);
     }
   };
 
-  const addFilesLabel = t('chat.input-attach-add-files-or-photos', {
-    defaultValue: 'Add files',
+  const addFilesLabel = t('layout.session-panel-attach-files', {
+    defaultValue: 'Attach files to the current run',
   });
+  const canAddFiles = Boolean(scopedChatStore && composerTaskId);
+  const addFilesTooltip = canAddFiles
+    ? addFilesLabel
+    : t('layout.session-panel-add-files-unavailable', {
+        defaultValue: 'Files can only be attached to the current run input.',
+      });
 
   return (
     <>
@@ -681,6 +757,52 @@ export function SessionActivityPanel({
           the sections outgrow the column. */}
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden">
+          {projectId && hydration.status === 'error' ? (
+            <div className="px-3 pt-3">
+              <Alert tone="warning">
+                <AlertTriangle className="size-4" aria-hidden />
+                <AlertDescription className="flex flex-col items-start gap-2">
+                  <span>
+                    {t(
+                      hydration.errorCode === 'unsupported'
+                        ? 'layout.session-panel-history-unsupported'
+                        : 'layout.session-panel-history-unavailable',
+                      {
+                        defaultValue:
+                          hydration.errorCode === 'unsupported'
+                            ? 'This backend does not support session history yet.'
+                            : 'Some session history could not be loaded.',
+                      }
+                    )}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    buttonRadius="full"
+                    onClick={hydration.retry}
+                  >
+                    {t('chat.timeline-history-retry', {
+                      defaultValue: 'Try again',
+                    })}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : projectId &&
+            (hydration.status === 'loading' ||
+              hydration.status === 'retrying') ? (
+            <div
+              className="px-3 pt-3 text-body-sm text-ds-text-neutral-muted-default"
+              role="status"
+            >
+              {t(
+                hydration.status === 'retrying'
+                  ? 'chat.timeline-history-reconnecting'
+                  : 'chat.timeline-history-loading'
+              )}
+            </div>
+          ) : null}
           <SectionList>
             {agents.length > 0 ? (
               <AgentCategorySection
@@ -745,31 +867,35 @@ export function SessionActivityPanel({
                 }}
               />
             ) : null}
-            {files.length > 0 ? (
+            {projectId ? (
               <FilesSection
                 items={files}
                 scope={scope}
                 onSelect={(item) => openFilePreview(item.file)}
                 headerAction={
                   <TooltipSimple
-                    content={addFilesLabel}
+                    content={addFilesTooltip}
                     variant="instant"
                     side="bottom"
                   >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      buttonContent="icon-only"
-                      buttonRadius="lg"
-                      disabled={
-                        addingFiles || !scopedChatStore || !activeTaskId
-                      }
-                      aria-label={addFilesLabel}
-                      onClick={() => void addFiles()}
+                    <span
+                      className="inline-flex"
+                      tabIndex={!canAddFiles ? 0 : undefined}
+                      aria-label={!canAddFiles ? addFilesTooltip : undefined}
                     >
-                      <Plus className="size-4" aria-hidden />
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        buttonContent="icon-only"
+                        buttonRadius="lg"
+                        disabled={addingFiles || !canAddFiles}
+                        aria-label={addFilesLabel}
+                        onClick={() => void addFiles()}
+                      >
+                        <Plus className="size-4" aria-hidden />
+                      </Button>
+                    </span>
                   </TooltipSimple>
                 }
               />
@@ -780,7 +906,8 @@ export function SessionActivityPanel({
           panelData.contextItems.length === 0 &&
           panelData.environments.length === 0 &&
           panelData.resources.length === 0 &&
-          files.length === 0 ? (
+          files.length === 0 &&
+          !projectId ? (
             <div className="px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
               {t('layout.session-activity-empty', {
                 defaultValue:

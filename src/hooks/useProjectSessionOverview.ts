@@ -49,12 +49,14 @@ function timestamp(value: string | null | undefined): number {
 }
 
 function compareNodes(left: ChatProjectionNode, right: ChatProjectionNode) {
-  const byTime = timestamp(left.createdAt) - timestamp(right.createdAt);
-  if (byTime !== 0) return byTime;
-  if (left.runId === right.runId && left.runSequence !== right.runSequence) {
-    return left.runSequence - right.runSequence;
-  }
-  return left.eventId.localeCompare(right.eventId);
+  // Callers sort one Run at a time. Its durable sequence is the canonical
+  // fact order; wall-clock timestamps are display metadata and may tie or
+  // arrive skewed after restore/import.
+  return (
+    left.runSequence - right.runSequence ||
+    timestamp(left.createdAt) - timestamp(right.createdAt) ||
+    left.eventId.localeCompare(right.eventId)
+  );
 }
 
 function compareRuns(left: ProjectSessionRun, right: ProjectSessionRun) {

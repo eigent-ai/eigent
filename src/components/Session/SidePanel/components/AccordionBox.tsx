@@ -29,8 +29,7 @@ const LAYOUT_TRANSITION = {
 export type SidePanelAccordionRenderArgs = { open: boolean };
 
 export type SidePanelAccordionChildren =
-  | ReactNode
-  | ((state: SidePanelAccordionRenderArgs) => ReactNode);
+  ReactNode | ((state: SidePanelAccordionRenderArgs) => ReactNode);
 
 export function SidePanelAccordionBox({
   title,

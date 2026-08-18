@@ -19,6 +19,7 @@ import type {
   ChatProjectionNode,
 } from '@/lib/projector/chat';
 import { httpUrlOrNull } from '@/lib/richText';
+import { normalizeWorkspaceRelativePath } from '@/lib/workspaceRelativePath';
 import { TaskStatus, type TaskStatusType } from '@/types/constants';
 import {
   extractLoadedSkillNames,
@@ -29,7 +30,6 @@ import {
   type ContextItem,
   type ContextSkill,
 } from './buildContextItems';
-import { mergeSidePanelOutputFiles } from './collectSidePanelOutputFiles';
 
 export interface SessionProgressItem {
   key: string;
@@ -90,6 +90,8 @@ export interface SessionResourceItem {
 export interface SessionFileItem {
   id: string;
   file: FileInfo;
+  /** True only after a workspace resolver has supplied an openable location. */
+  previewable: boolean;
   taskId: string;
   historical: boolean;
   createdAt: number;
@@ -386,7 +388,16 @@ function planStatus(status: ChatPlanTaskStatus): TaskStatusType {
 }
 
 function activityTaskStatus(node: ChatActivityNode): TaskStatusType {
-  return planStatus(node.status === 'cancelled' ? 'skipped' : node.status);
+  switch (node.status) {
+    case 'cancelled':
+      return TaskStatus.SKIPPED;
+    case 'timed_out':
+      return TaskStatus.FAILED;
+    case 'outcome_unknown':
+      return TaskStatus.BLOCKED;
+    default:
+      return planStatus(node.status);
+  }
 }
 
 function isLegacyTodoState(node: ChatProjectionNode): boolean {
@@ -647,12 +658,13 @@ function fileInfoFromArtifact(
 ): FileInfo {
   const name =
     node.name || node.path.split('/').filter(Boolean).at(-1) || node.path;
-  const isRelative = !/^(?:[a-z]+:|\/|[a-z]:[\\/])/i.test(node.path);
+  const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
   return {
     name,
     type: name.includes('.') ? name.split('.').at(-1) || '' : '',
     path: node.path,
-    relativePath: isRelative ? node.path : undefined,
+    relativePath: relativePath || undefined,
+    artifactId: node.artifactId,
     artifactChange:
       node.operation === 'created'
         ? 'generated'
@@ -663,6 +675,16 @@ function fileInfoFromArtifact(
   };
 }
 
+function artifactIdentity(
+  node: Extract<ChatProjectionNode, { kind: 'artifact' }>
+): string | null {
+  const artifactId = node.artifactId?.trim();
+  if (artifactId) return `artifact:${artifactId}`;
+  const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
+  if (relativePath) return `relative:${relativePath}`;
+  return null;
+}
+
 function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
   const files = new Map<string, SessionFileItem>();
   for (const run of [...runs].reverse()) {
@@ -670,16 +692,24 @@ function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
       if (node.kind !== 'artifact' || !node.path || httpUrlOrNull(node.path)) {
         continue;
       }
-      const key = node.path;
+      const key = artifactIdentity(node);
+      // A display-only basename must never become Run identity or an openable
+      // workspace path. Wait for an artifact id or resolver-owned relative path.
+      if (!key) continue;
       if (node.operation === 'deleted') {
         files.delete(key);
         continue;
       }
       const time = nodeTime(node, run.createdAt);
       const existing = files.get(key);
+      const id =
+        node.artifactId?.trim() ||
+        normalizeWorkspaceRelativePath(node.relativePath) ||
+        node.eventId;
       files.set(key, {
-        id: key,
+        id,
         file: fileInfoFromArtifact(node),
+        previewable: false,
         taskId: run.runId,
         historical: existing?.historical === false ? false : !run.isCurrent,
         createdAt: existing?.createdAt ?? time,
@@ -759,25 +789,75 @@ export function buildProjectSessionPanelData(
 
 export function mergeProjectFiles(
   items: SessionFileItem[],
-  projectFiles: FileInfo[],
-  fallbackTaskId: string,
-  fallbackCreatedAt = 0,
-  fallbackUpdatedAt = 0
+  projectFiles: FileInfo[]
 ): SessionFileItem[] {
-  const knownFiles = items.map((item) => item.file);
-  const merged = mergeSidePanelOutputFiles(knownFiles, projectFiles);
-  return merged.map((file) => {
-    const id = file.relativePath || file.path || file.name;
-    return (
-      items.find((item) => item.id === id || item.file.path === file.path) ?? {
-        id,
-        file,
-        taskId: fallbackTaskId,
-        historical: false,
-        createdAt: fallbackCreatedAt,
-        updatedAt: fallbackUpdatedAt,
-      }
+  type UniqueFile = FileInfo | null;
+  const byArtifactId = new Map<string, UniqueFile>();
+  const byRelativePath = new Map<string, UniqueFile>();
+
+  const addUnique = (
+    index: Map<string, UniqueFile>,
+    key: string | null | undefined,
+    file: FileInfo
+  ) => {
+    if (!key) return;
+    const existing = index.get(key);
+    if (existing === undefined) {
+      index.set(key, file);
+      return;
+    }
+    if (existing?.path !== file.path) index.set(key, null);
+  };
+
+  for (const file of projectFiles) {
+    addUnique(byArtifactId, file.artifactId?.trim(), file);
+    addUnique(
+      byRelativePath,
+      normalizeWorkspaceRelativePath(file.relativePath),
+      file
     );
+  }
+
+  return items.map((item) => {
+    const artifactId = item.file.artifactId?.trim();
+    const relativePath = normalizeWorkspaceRelativePath(item.file.relativePath);
+    const idMatch = artifactId ? byArtifactId.get(artifactId) : undefined;
+    const pathMatch = relativePath
+      ? byRelativePath.get(relativePath)
+      : undefined;
+
+    // Conflicting or ambiguous resolver identities must fail closed.
+    if (idMatch === null || pathMatch === null) return item;
+    if (idMatch && pathMatch && idMatch.path !== pathMatch.path) return item;
+
+    const match = idMatch || pathMatch;
+    if (!match) return item;
+    if (
+      artifactId &&
+      match.artifactId &&
+      artifactId !== match.artifactId.trim()
+    ) {
+      return item;
+    }
+
+    return {
+      ...item,
+      previewable: true,
+      file: {
+        ...item.file,
+        ...match,
+        name: item.file.name || match.name,
+        type: item.file.type || match.type,
+        path: match.path || item.file.path,
+        relativePath:
+          relativePath ||
+          normalizeWorkspaceRelativePath(match.relativePath) ||
+          undefined,
+        artifactId: artifactId || match.artifactId,
+        artifactChange: item.file.artifactChange,
+        mimeType: item.file.mimeType || match.mimeType,
+      },
+    };
   });
 }
 

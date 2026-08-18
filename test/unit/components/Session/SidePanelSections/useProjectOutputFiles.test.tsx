@@ -186,5 +186,34 @@ describe('useProjectOutputFiles', () => {
         isRemote: true,
       })
     );
+    expect(result.current[0].relativePath).toBeUndefined();
+  });
+
+  it('preserves only explicit remote artifact identities', async () => {
+    invokeMock.mockRejectedValue(new Error('IPC unavailable'));
+    fetchGetMock.mockResolvedValue([
+      {
+        artifact_id: 'artifact-1',
+        filename: 'remote-report.md',
+        relative_path: 'reports/remote-report.md',
+        url: '/files/remote-report.md',
+      },
+    ]);
+
+    const { result } = renderHook(
+      () =>
+        useProjectOutputFiles(
+          'project_one',
+          { status: ChatTaskStatus.FINISHED, taskAssigning: [] },
+          'task_one'
+        ),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    expect(result.current[0]).toMatchObject({
+      artifactId: 'artifact-1',
+      relativePath: 'reports/remote-report.md',
+    });
   });
 });

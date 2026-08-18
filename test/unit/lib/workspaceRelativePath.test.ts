@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
+import {
+  getWorkspaceRelativeFilePath,
+  normalizeWorkspaceRelativePath,
+} from '@/lib/workspaceRelativePath';
 import { describe, expect, it } from 'vitest';
 
 describe('getWorkspaceRelativeFilePath', () => {
@@ -78,5 +81,17 @@ describe('getWorkspaceRelativeFilePath', () => {
         path: 'https://example.com/files/stream?path=reports%2Fdata.csv',
       })
     ).toBe('stream');
+  });
+
+  it('normalizes only safe workspace-relative identities', () => {
+    expect(normalizeWorkspaceRelativePath('./reports\\final.md')).toBe(
+      'reports/final.md'
+    );
+    expect(normalizeWorkspaceRelativePath('/workspace/final.md')).toBeNull();
+    expect(
+      normalizeWorkspaceRelativePath('https://example.test/final.md')
+    ).toBeNull();
+    expect(normalizeWorkspaceRelativePath('%2e%2e/secret.txt')).toBeNull();
+    expect(normalizeWorkspaceRelativePath('reports/%2fsecret.txt')).toBeNull();
   });
 });

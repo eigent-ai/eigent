@@ -104,4 +104,31 @@ describe('ProjectEventRuntimeProvider', () => {
       })
     );
   });
+
+  it('rebinds hydration and streams when the active Project changes', () => {
+    const { rerender } = render(
+      <ProjectEventRuntimeProvider projectId="project-1">
+        <Consumer />
+      </ProjectEventRuntimeProvider>
+    );
+
+    rerender(
+      <ProjectEventRuntimeProvider projectId="project-2">
+        <Consumer />
+      </ProjectEventRuntimeProvider>
+    );
+
+    expect(screen.getByText('project-2:0:ready')).toBeInTheDocument();
+    expect(mocks.hydration).toHaveBeenLastCalledWith({
+      projectId: 'project-2',
+      enabled: true,
+    });
+    expect(mocks.streams).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        projectId: 'project-2',
+        enabled: true,
+        snapshot: expect.objectContaining({ revision: 0 }),
+      })
+    );
+  });
 });

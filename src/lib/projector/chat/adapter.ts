@@ -776,17 +776,21 @@ function artifactNode(
   const isTypedArtifact = !base.eventType.startsWith('legacy.');
   // Shared typed projections carry only portable identity. A Desktop-local
   // absolute path belongs in the resolver/transport layer, never in this node.
+  const explicitRelativePath = firstText(
+    payload.relative_path,
+    payload.relativePath
+  );
   const rawPath = isTypedArtifact
-    ? firstText(payload.relative_path, payload.relativePath)
+    ? explicitRelativePath
     : firstText(
-        payload.relative_path,
-        payload.relativePath,
+        explicitRelativePath,
         payload.file_path,
         payload.filePath,
         payload.path
       );
+  const portablePath = portableRelativePath(rawPath);
   const name = safeArtifactBasename(payload.name, rawPath);
-  const path = portableRelativePath(rawPath) || name;
+  const path = portablePath || name;
   return {
     ...base,
     kind: 'artifact',
@@ -797,6 +801,8 @@ function artifactNode(
     artifactId: firstText(payload.artifact_id, payload.artifactId) || undefined,
     path,
     name: name || safeArtifactBasename(path) || undefined,
+    relativePath:
+      portableRelativePath(explicitRelativePath) || portablePath || undefined,
     mimeType: firstText(payload.mime_type, payload.mimeType) || undefined,
     agentId: firstText(payload.agent_id, payload.agentId) || undefined,
     taskId:

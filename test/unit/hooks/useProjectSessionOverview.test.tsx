@@ -24,13 +24,17 @@ import {
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { describe, expect, it } from 'vitest';
 
-function message(runId: string, sequence: number): ChatMessageNode {
+function message(
+  runId: string,
+  sequence: number,
+  createdAt = new Date(sequence * 1_000).toISOString()
+): ChatMessageNode {
   return {
     id: `${runId}:${sequence}`,
     eventId: `${runId}:${sequence}`,
     projectId: 'project-1',
     runId,
-    createdAt: new Date(sequence * 1_000).toISOString(),
+    createdAt,
     runSequence: sequence,
     cloudCursor: null,
     eventType: 'message.completed',
@@ -113,6 +117,27 @@ describe('buildProjectSessionOverview', () => {
     expect(
       overview.runs.find((run) => run.runId === 'run-complete')?.nodes
     ).toMatchObject([{ content: 'run-complete' }]);
+  });
+
+  it('keeps canonical Run sequence order when timestamps are reversed', () => {
+    const input = snapshot();
+    const nodes = [
+      message('run-live', 2, new Date(1_000).toISOString()),
+      message('run-live', 1, new Date(2_000).toISOString()),
+    ];
+    input.chat.nodes = nodes;
+    input.chat.nodeById = Object.fromEntries(
+      nodes.map((node) => [node.id, node])
+    );
+    input.chat.seenEventIds = Object.fromEntries(
+      nodes.map((node) => [node.eventId, true as const])
+    );
+
+    const overview = buildProjectSessionOverview(input);
+
+    expect(overview.currentRun?.nodes.map((node) => node.runSequence)).toEqual([
+      1, 2,
+    ]);
   });
 
   it('returns an empty view before durable hydration has a snapshot', () => {

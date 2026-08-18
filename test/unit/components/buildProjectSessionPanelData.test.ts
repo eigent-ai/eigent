@@ -16,6 +16,7 @@ import {
   buildProjectSessionPanelData,
   collectSessionToolCalls,
   extractHttpUrls,
+  mergeProjectFiles,
 } from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
 import type { ProjectSessionRun } from '@/hooks/useProjectSessionOverview';
 import { normalizeLegacyChatStep } from '@/lib/projector';
@@ -361,6 +362,7 @@ describe('buildProjectSessionPanelData', () => {
       kind: 'artifact',
       operation: 'created',
       path: 'outputs/report.md',
+      relativePath: 'outputs/report.md',
       name: 'report.md',
     };
     const current = makeRun('run-current', true, [plan, artifact]);
@@ -386,6 +388,7 @@ describe('buildProjectSessionPanelData', () => {
     expect(data.files).toMatchObject([
       {
         id: 'outputs/report.md',
+        previewable: false,
         taskId: 'run-current',
         historical: false,
         file: { name: 'report.md', artifactChange: 'generated' },
@@ -394,6 +397,169 @@ describe('buildProjectSessionPanelData', () => {
     expect(data.resources).toMatchObject([
       { taskId: 'run-old', historical: true },
     ]);
+  });
+
+  it('maps terminal task activity statuses into side-panel task statuses', () => {
+    const nodes = (
+      [
+        ['timed-out', 'timed_out'],
+        ['unknown-outcome', 'outcome_unknown'],
+        ['cancelled', 'cancelled'],
+      ] as const
+    ).map(([taskId, status], index): ChatActivityNode => ({
+      ...baseNode('run-current', `task-${taskId}`, index + 1),
+      kind: 'activity',
+      activityType: 'task',
+      status,
+      title: taskId,
+      taskId,
+    }));
+
+    expect(
+      buildProjectSessionPanelData(
+        [makeRun('run-current', true, nodes)],
+        []
+      ).progress.map((item) => item.task.status)
+    ).toEqual(['failed', 'blocked', 'skipped']);
+  });
+
+  it('uses durable artifact identity and only enriches matching project files', () => {
+    const created: ChatArtifactNode = {
+      ...baseNode('run-current', 'artifact-created', 1),
+      kind: 'artifact',
+      operation: 'created',
+      artifactId: 'artifact-1',
+      relativePath: 'outputs/report.md',
+      path: '/private/workspace/outputs/report.md',
+      name: 'report.md',
+    };
+    const updated: ChatArtifactNode = {
+      ...baseNode('run-current', 'artifact-updated', 2),
+      kind: 'artifact',
+      operation: 'updated',
+      artifactId: 'artifact-1',
+      relativePath: './outputs\\report.md',
+      path: '/different-machine/workspace/outputs/report.md',
+      name: 'report.md',
+    };
+    const data = buildProjectSessionPanelData(
+      [makeRun('run-current', true, [created, updated])],
+      []
+    );
+
+    const merged = mergeProjectFiles(data.files, [
+      {
+        name: 'report.md',
+        type: 'md',
+        path: 'https://files.example.test/outputs/report.md',
+        relativePath: 'outputs/report.md',
+        artifactId: 'artifact-1',
+        isRemote: true,
+      },
+      {
+        name: 'unrelated.txt',
+        type: 'txt',
+        path: '/workspace/unrelated.txt',
+        relativePath: 'unrelated.txt',
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      id: 'artifact-1',
+      previewable: true,
+      taskId: 'run-current',
+      file: {
+        artifactId: 'artifact-1',
+        relativePath: 'outputs/report.md',
+        path: 'https://files.example.test/outputs/report.md',
+        artifactChange: 'changed',
+      },
+    });
+  });
+
+  it('does not enrich by basename or an unsafe relative path', () => {
+    const item = buildProjectSessionPanelData(
+      [
+        makeRun('run-current', true, [
+          {
+            ...baseNode('run-current', 'artifact', 1),
+            kind: 'artifact',
+            operation: 'created',
+            path: 'reports/quarterly/report.md',
+            relativePath: 'reports/quarterly/report.md',
+            name: 'report.md',
+          },
+        ]),
+      ],
+      []
+    ).files[0];
+
+    const merged = mergeProjectFiles(
+      [item],
+      [
+        {
+          name: 'report.md',
+          type: 'md',
+          path: '/workspace/archive/report.md',
+          relativePath: 'archive/report.md',
+        },
+        {
+          name: 'report.md',
+          type: 'md',
+          path: '/outside/report.md',
+          relativePath: '../report.md',
+        },
+      ]
+    );
+
+    expect(merged).toEqual([item]);
+  });
+
+  it('does not turn a display-only basename into durable file identity', () => {
+    const decision = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'write_file',
+          data: {
+            file_path: '/Users/me/eigent/proj/reports/summary.md',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-current',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+    expect(decision).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'artifact',
+        path: 'summary.md',
+        relativePath: undefined,
+      },
+    });
+    if (decision.kind !== 'display') throw new Error('Expected artifact node');
+
+    const data = buildProjectSessionPanelData(
+      [makeRun('run-current', true, [decision.node])],
+      []
+    );
+
+    expect(data.files).toEqual([]);
+    expect(
+      mergeProjectFiles(data.files, [
+        {
+          name: 'summary.md',
+          type: 'md',
+          path: '/workspace/summary.md',
+          relativePath: 'summary.md',
+        },
+      ])
+    ).toEqual([]);
   });
 
   it('quarantines workspace-loaded todo state without a todo_write call', () => {
@@ -509,8 +675,8 @@ describe('buildProjectSessionPanelData', () => {
         },
       },
     ];
-    const nodes = rawSteps.map((raw, index) =>
-      adaptChatProjectionEvent(
+    const nodes = rawSteps.flatMap((raw, index) => {
+      const decision = adaptChatProjectionEvent(
         normalizeLegacyChatStep(raw, {
           projectId: 'project-1',
           runId: 'run-current',
@@ -518,8 +684,9 @@ describe('buildProjectSessionPanelData', () => {
           sourceId: 'test-stream',
           createdAt: (index + 1) * 1_000,
         })
-      )
-    );
+      );
+      return decision.kind === 'display' ? [decision.node] : [];
+    });
 
     expect(
       nodes.map((node) => ('status' in node ? node.status : undefined))
