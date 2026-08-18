@@ -17,9 +17,11 @@ import os
 import signal
 import threading
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
+import app.agent.toolkit.terminal_toolkit as terminal_toolkit_module
 from app.agent.toolkit.terminal_toolkit import (
     BaseTerminalToolkit,
     TerminalToolkit,
@@ -203,6 +205,36 @@ class TestTerminalToolkit:
         assert "> python3 report.py\n" in restored
         assert "os.setsid" not in restored
         assert "sys.executable" not in restored
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX process groups only")
+    def test_process_group_force_kill_reaps_direct_child(self, monkeypatch):
+        toolkit = TerminalToolkit.__new__(TerminalToolkit)
+        process = MagicMock(pid=4321)
+        sent_signals: list[signal.Signals] = []
+        monkeypatch.setattr(
+            terminal_toolkit_module,
+            "_LOCAL_PROCESS_GROUP_GRACE_SECONDS",
+            0,
+        )
+        monkeypatch.setattr(
+            os,
+            "killpg",
+            lambda _process_group, sent_signal: sent_signals.append(
+                sent_signal
+            ),
+        )
+        monkeypatch.setattr(
+            toolkit,
+            "_process_group_exists",
+            lambda _process_group: True,
+        )
+
+        toolkit._terminate_local_session(
+            {"process": process, "eigent_process_group": process.pid}
+        )
+
+        assert sent_signals == [signal.SIGTERM, signal.SIGKILL]
+        process.wait.assert_called_once_with(timeout=0)
 
     @pytest.mark.skipif(os.name == "nt", reason="POSIX process groups only")
     def test_kill_process_terminates_descendants_without_stream_deadlock(
