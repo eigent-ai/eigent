@@ -277,6 +277,21 @@ describe('remote command durable ACK replay', () => {
     window.localStorage.clear();
   });
 
+  it('treats a device owner mismatch as a terminal bridge error', () => {
+    expect(
+      __remoteControlBridgeTestHooks.serverBridgeError({
+        type: 'error',
+        code: 'device_owner_mismatch',
+        message: 'Desktop device belongs to another user',
+        retryable: false,
+      })
+    ).toEqual({
+      code: 'device_owner_mismatch',
+      message: 'Desktop device belongs to another user',
+      retryable: false,
+    });
+  });
+
   it('replays the canonical completed outcome without executing again', () => {
     expect(
       ackFromDurableExecution('command-1', {
