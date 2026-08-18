@@ -576,9 +576,7 @@ class LocalMemoryStore:
             ):
                 continue
             started_at = (
-                existing.started_at
-                if existing is not None
-                else ended_at or ""
+                existing.started_at if existing is not None else ended_at or ""
             )
             _atomic_write_json(
                 path,

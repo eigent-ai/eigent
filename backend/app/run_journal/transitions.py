@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Set
 
-
 RUN_TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 ATTEMPT_ACTIVE_STATES = frozenset({"pending", "running", "waiting_for_user"})
 ATTEMPT_TERMINAL_STATES = frozenset(
@@ -58,7 +57,14 @@ RUN_TRANSITIONS: Mapping[str, Set[str]] = {
 ATTEMPT_TRANSITIONS: Mapping[str | None, Set[str]] = {
     None: frozenset({"pending", "running"}),
     "pending": frozenset(
-        {"running", "completed", "failed", "cancelled", "interrupted", "timed_out"}
+        {
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "timed_out",
+        }
     ),
     "running": frozenset(
         {
@@ -71,7 +77,14 @@ ATTEMPT_TRANSITIONS: Mapping[str | None, Set[str]] = {
         }
     ),
     "waiting_for_user": frozenset(
-        {"running", "completed", "failed", "cancelled", "interrupted", "timed_out"}
+        {
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+            "timed_out",
+        }
     ),
     "completed": frozenset(),
     "failed": frozenset(),

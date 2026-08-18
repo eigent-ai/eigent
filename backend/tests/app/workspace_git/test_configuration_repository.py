@@ -152,9 +152,7 @@ def test_sidecar_bootstrap_commits_verified_bundle_assets(tmp_path, journal):
                 },
                 {
                     "ref": "bundle://images/icon.bin",
-                    "digest": hashlib.sha256(
-                        b"\x00\x01\x02"
-                    ).hexdigest(),
+                    "digest": hashlib.sha256(b"\x00\x01\x02").hexdigest(),
                 },
             ],
             "skills": [],
@@ -165,7 +163,9 @@ def test_sidecar_bootstrap_commits_verified_bundle_assets(tmp_path, journal):
     assert (
         result.configuration_repository_root / "images/icon.bin"
     ).read_bytes() == b"\x00\x01\x02"
-    assert set(backend.show_commit_paths(result.configuration_repository_root)) == {
+    assert set(
+        backend.show_commit_paths(result.configuration_repository_root)
+    ) == {
         "images/icon.bin",
         "instructions/coordinator.md",
         "workspace.lock",
@@ -585,7 +585,9 @@ def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
             "mcpPackages": [],
         },
     )
-    edited_path = first.configuration_repository_root / "instructions/coordinator.md"
+    edited_path = (
+        first.configuration_repository_root / "instructions/coordinator.md"
+    )
     edited_path.write_text("user edit\n", encoding="utf-8")
     second_manifest = parse_workspace_manifest(
         MANIFEST.replace("revision: 1", "revision: 2")
@@ -598,7 +600,9 @@ def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
         "assets": [
             {
                 "ref": "bundle://instructions/coordinator.md",
-                "digest": hashlib.sha256(second_assets["instructions/coordinator.md"]).hexdigest(),
+                "digest": hashlib.sha256(
+                    second_assets["instructions/coordinator.md"]
+                ).hexdigest(),
             }
         ],
         "skills": [],
@@ -634,15 +638,28 @@ def test_bundle_upgrade_preserves_user_edits_and_removes_only_clean_old_assets(
     assert not (
         upgraded.configuration_repository_root / "assets/obsolete.txt"
     ).exists()
-    assert backend.changed_paths(
-        upgraded.configuration_repository_root,
-        (
-            upgraded.manifest_path,
-            upgraded.lock_path,
-            edited_path,
-        ),
-    ) == ()
-    assert int(_git(upgraded.configuration_repository_root, "rev-list", "--count", "HEAD")) == 2
+    assert (
+        backend.changed_paths(
+            upgraded.configuration_repository_root,
+            (
+                upgraded.manifest_path,
+                upgraded.lock_path,
+                edited_path,
+            ),
+        )
+        == ()
+    )
+    assert (
+        int(
+            _git(
+                upgraded.configuration_repository_root,
+                "rev-list",
+                "--count",
+                "HEAD",
+            )
+        )
+        == 2
+    )
 
 
 def test_revision_conflict_is_detected_before_git_mutation(

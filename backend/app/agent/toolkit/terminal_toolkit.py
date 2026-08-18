@@ -979,6 +979,21 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     # Popen leader proves there is no live root left to manage.
                     if process is None or process.poll() is None:
                         raise
+            if process is not None:
+                try:
+                    # The Popen leader is our direct child. On Linux an
+                    # unreaped zombie keeps its process-group id alive, so a
+                    # successful killpg() alone is not complete cleanup.
+                    process.wait(timeout=_LOCAL_PROCESS_GROUP_GRACE_SECONDS)
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "Terminal process-group leader was not reaped after "
+                        "force kill",
+                        extra={
+                            "pid": process.pid,
+                            "process_group": process_group,
+                        },
+                    )
             return
 
         if process is None or process.poll() is not None:

@@ -85,7 +85,9 @@ async def require_local_control_principal(
                     "message": "A valid Desktop control capability is required.",
                 },
             )
-        principal = LocalControlPrincipal(kind="desktop_renderer", user_id="local")
+        principal = LocalControlPrincipal(
+            kind="desktop_renderer", user_id="local"
+        )
         request.state.local_control_principal = principal
         return principal
 

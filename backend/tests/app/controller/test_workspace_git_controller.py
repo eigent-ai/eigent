@@ -319,7 +319,9 @@ def test_advanced_git_api_previews_confirms_and_lists_history(git_api):
         },
     )
     assert rejected.status_code == 409
-    assert rejected.json()["detail"]["code"] == "advanced_git_approval_required"
+    assert (
+        rejected.json()["detail"]["code"] == "advanced_git_approval_required"
+    )
 
     executed = client.post(
         "/api/v1/spaces/space-1/git/operations",

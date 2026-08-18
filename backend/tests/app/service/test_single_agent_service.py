@@ -36,7 +36,12 @@ def _parse_sse(line: str) -> tuple[str, object]:
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (type("StatusError", (RuntimeError,), {"status_code": 499})("closed"), True),
+        (
+            type("StatusError", (RuntimeError,), {"status_code": 499})(
+                "closed"
+            ),
+            True,
+        ),
         (RuntimeError("Client Closed Request"), True),
         (RuntimeError("invalid model configuration"), False),
     ],
@@ -315,7 +320,9 @@ async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
         ),
         patch(
             "app.service.single_agent_service._response_content",
-            new=AsyncMock(side_effect=[("first result", 1), ("second result", 1)]),
+            new=AsyncMock(
+                side_effect=[("first result", 1), ("second result", 1)]
+            ),
         ),
     ):
         stream = single_agent_solve(options, MagicMock(), task_lock)
@@ -335,8 +342,14 @@ async def test_follow_up_rebuilds_agent_when_environment_spec_changes():
         await stream.aclose()
 
     assert create_agent.await_count == 2
-    assert create_agent.await_args_list[0].kwargs["runtime_environment"] is runtime_a
-    assert create_agent.await_args_list[1].kwargs["runtime_environment"] is runtime_b
+    assert (
+        create_agent.await_args_list[0].kwargs["runtime_environment"]
+        is runtime_a
+    )
+    assert (
+        create_agent.await_args_list[1].kwargs["runtime_environment"]
+        is runtime_b
+    )
     stale_toolkit.disconnect.assert_awaited_once()
     release_stale_browser.assert_called_once_with(agent_a)
     assert agent_a._cdp_release_callback is None

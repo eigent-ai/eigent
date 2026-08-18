@@ -101,4 +101,3 @@ def test_public_headers_are_disclosed_by_name_and_digest_only():
         }
     ]
     assert "public-workspace" not in repr(destination)
-
