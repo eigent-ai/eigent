@@ -16,11 +16,15 @@ import logoBlack from '@/assets/logo/logo_black.png';
 import logoWhite from '@/assets/logo/logo_white.png';
 import { Button } from '@/components/ui/button';
 import useAppVersion from '@/hooks/use-app-version';
+import {
+  installDesktopUpdate,
+  startDesktopUpdateDownload,
+} from '@/hooks/useDesktopUpdater';
 import { useHost } from '@/host';
 import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
-import { Download, ExternalLink, TagIcon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useDesktopUpdateStore } from '@/store/updateStore';
+import { Download, ExternalLink, RefreshCw, TagIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Appearance from '../Appearance';
 import General from '../General';
@@ -28,54 +32,113 @@ import Privacy from '../Privacy';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
 
-function AboutSettings() {
+export function AboutSettings() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
   const logoSrc = appearance === 'dark' ? logoWhite : logoBlack;
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const version = useAppVersion();
-  const [packageUpdateAvailable, setPackageUpdateAvailable] = useState(false);
-  const [packageNewVersion, setPackageNewVersion] = useState<string | null>(
-    null
-  );
+  const phase = useDesktopUpdateStore((state) => state.phase);
+  const progress = useDesktopUpdateStore((state) => state.progress);
+  const packageNewVersion = useDesktopUpdateStore((state) => state.newVersion);
+  const errorMessage = useDesktopUpdateStore((state) => state.errorMessage);
 
-  useEffect(() => {
-    if (!ipcRenderer) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPackageUpdateAvailable(Boolean(info.update));
-      setPackageNewVersion(info.newVersion ?? null);
-    };
-    const onUpdateDownloaded = () => {
-      setPackageUpdateAvailable(false);
-      setPackageNewVersion(null);
-    };
-
-    ipcRenderer.on('update-can-available', onUpdateCanAvailable);
-    ipcRenderer.on('update-downloaded', onUpdateDownloaded);
-    void ipcRenderer.invoke('check-update');
-
-    return () => {
-      ipcRenderer.off('update-can-available', onUpdateCanAvailable);
-      ipcRenderer.off('update-downloaded', onUpdateDownloaded);
-    };
-  }, [ipcRenderer]);
-
-  const handleVersionAction = useCallback(() => {
-    if (packageUpdateAvailable) {
-      void ipcRenderer?.invoke('start-download');
-      return;
+  const renderVersionAction = () => {
+    if (!ipcRenderer || phase === 'idle' || phase === 'checking') {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            window.open(
+              'https://github.com/eigent-ai/eigent',
+              '_blank',
+              'noopener,noreferrer'
+            )
+          }
+          aria-label={t('setting.version', { defaultValue: 'Version' })}
+          title={version}
+        >
+          <TagIcon
+            className="h-4 w-4 text-ds-text-success-default-default"
+            aria-hidden
+          />
+          {version || t('setting.version', { defaultValue: 'Version' })}
+        </Button>
+      );
     }
-    window.open(
-      'https://github.com/eigent-ai/eigent',
-      '_blank',
-      'noopener,noreferrer'
+
+    if (phase === 'downloading') {
+      const percent = Math.round(progress);
+      const label = t('update.downloading', {
+        defaultValue: 'Downloading update',
+      });
+      return (
+        <div
+          className="flex min-w-32 items-center gap-2"
+          role="progressbar"
+          aria-label={label}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+        >
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
+            <div
+              className="h-full origin-left rounded-full bg-ds-bg-brand-default-default transition-transform duration-200 motion-reduce:transition-none"
+              style={{ transform: `scaleX(${percent / 100})` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums">{percent}%</span>
+        </div>
+      );
+    }
+
+    if (phase === 'downloaded' || phase === 'installing') {
+      const label = t('update.launch-new-version', {
+        defaultValue: 'Launch new version',
+      });
+      return (
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          disabled={phase === 'installing'}
+          onClick={() => void installDesktopUpdate(ipcRenderer)}
+          aria-label={label}
+        >
+          {label}
+        </Button>
+      );
+    }
+
+    const failed = phase === 'error';
+    const label = failed
+      ? t('update.update-failed-retry', {
+          defaultValue: 'Update failed — click to retry',
+        })
+      : t('update.update', { defaultValue: 'Update' });
+    return (
+      <Button
+        type="button"
+        variant="primary"
+        size="sm"
+        onClick={() => void startDesktopUpdateDownload(ipcRenderer)}
+        aria-label={label}
+        title={failed ? (errorMessage ?? label) : (packageNewVersion ?? label)}
+      >
+        {failed ? (
+          <RefreshCw className="h-4 w-4" aria-hidden />
+        ) : (
+          <Download className="h-4 w-4" aria-hidden />
+        )}
+        {failed
+          ? t('layout.retry', { defaultValue: 'Retry' })
+          : [label, packageNewVersion].filter(Boolean).join(' ')}
+      </Button>
     );
-  }, [ipcRenderer, packageUpdateAvailable]);
+  };
 
   return (
     <SettingsSectionPage>
@@ -103,41 +166,7 @@ function AboutSettings() {
           description={t('setting.version-description', {
             defaultValue: 'Current version and available updates.',
           })}
-          action={
-            <Button
-              type="button"
-              variant={packageUpdateAvailable ? 'primary' : 'outline'}
-              size="sm"
-              onClick={handleVersionAction}
-              aria-label={
-                packageUpdateAvailable
-                  ? t('update.update', { defaultValue: 'Update' })
-                  : t('setting.version', { defaultValue: 'Version' })
-              }
-              title={
-                packageUpdateAvailable
-                  ? (packageNewVersion ?? undefined)
-                  : version
-              }
-            >
-              {packageUpdateAvailable ? (
-                <Download className="h-4 w-4" aria-hidden />
-              ) : (
-                <TagIcon
-                  className="h-4 w-4 text-ds-text-success-default-default"
-                  aria-hidden
-                />
-              )}
-              {packageUpdateAvailable
-                ? [
-                    t('update.update', { defaultValue: 'Update' }),
-                    packageNewVersion,
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                : version || t('setting.version', { defaultValue: 'Version' })}
-            </Button>
-          }
+          action={renderVersionAction()}
         />
       </SettingsRowGroup>
     </SettingsSectionPage>

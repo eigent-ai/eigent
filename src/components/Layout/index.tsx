@@ -15,6 +15,7 @@
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
@@ -109,6 +110,7 @@ const Layout = () => {
   } = useInstallationUI();
 
   useInstallationSetup();
+  useDesktopUpdater();
 
   useEffect(() => {
     if (!host?.ipcRenderer?.invoke) return;
