@@ -408,9 +408,10 @@ export function WorkspaceDispatch() {
 
   // Cleanup all timers on unmount
   useEffect(() => {
+    const timers = expiryTimersRef.current;
     return () => {
-      expiryTimersRef.current.forEach((t) => clearTimeout(t));
-      expiryTimersRef.current.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
   const [stoppingSessionId, setStoppingSessionId] = useState<string | null>(
@@ -506,7 +507,6 @@ export function WorkspaceDispatch() {
   }, [
     activeProjectId,
     activeSpace,
-    activeSpace?.name,
     activeSpaceId,
     addRemoteControlSession,
     addRemoteControlLog,
@@ -547,56 +547,6 @@ export function WorkspaceDispatch() {
     },
     [removeRemoteControlSession, addRemoteControlLog]
   );
-
-  const handleStopAllRemoteControl = useCallback(async () => {
-    const toStop = activeSessions;
-    if (toStop.length === 0) return;
-    setStoppingSessionId(toStop[0].sessionId);
-    const results = await Promise.allSettled(
-      toStop.map(async (session) => {
-        const linkToken =
-          session.linkToken || parseRemoteControlLinkToken(session.url);
-        if (!linkToken) {
-          throw new Error('Remote control link token is missing.');
-        }
-        try {
-          await revokeRemoteControlSession(session.sessionId, linkToken);
-        } catch (err: any) {
-          // Already revoked or expired server-side; treat it as stopped so the
-          // entry is cleaned up locally.
-          if (!isRemoteControlAlreadyGoneError(err)) {
-            throw err;
-          }
-        }
-        return session;
-      })
-    );
-    let stoppedCount = 0;
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return;
-      }
-      stoppedCount += 1;
-      removeRemoteControlSession(result.value.sessionId);
-      addRemoteControlLog({ name: result.value.title, status: 'stopped' });
-    });
-    const failedCount = results.length - stoppedCount;
-    if (stoppedCount > 0) {
-      toast.success(
-        stoppedCount === 1
-          ? 'Remote control link revoked'
-          : `${stoppedCount} remote control links revoked`
-      );
-    }
-    if (failedCount > 0) {
-      toast.error(
-        failedCount === 1
-          ? 'Failed to revoke 1 remote control link.'
-          : `Failed to revoke ${failedCount} remote control links.`
-      );
-    }
-    setStoppingSessionId(null);
-  }, [activeSessions, removeRemoteControlSession, addRemoteControlLog]);
 
   const handleCopySession = useCallback(
     (url: string) => {

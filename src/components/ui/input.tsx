@@ -30,12 +30,7 @@ export type InputSize = 'default' | 'sm';
 /** Primary: default surface. Secondary: subtle surface for nested settings fields. */
 export type InputVariant = 'primary' | 'secondary';
 export type InputState =
-  | 'default'
-  | 'hover'
-  | 'input'
-  | 'error'
-  | 'success'
-  | 'disabled';
+  'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
 
 type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   size?: InputSize;

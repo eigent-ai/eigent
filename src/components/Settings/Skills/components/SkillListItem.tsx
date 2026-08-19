@@ -62,8 +62,7 @@ interface SkillListItemPlaceholderProps {
 }
 
 type SkillListItemProps =
-  | SkillListItemDefaultProps
-  | SkillListItemPlaceholderProps;
+  SkillListItemDefaultProps | SkillListItemPlaceholderProps;
 
 function selectedAgentsInclude(
   selectedAgents: string[],

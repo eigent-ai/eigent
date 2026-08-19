@@ -23,10 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
-import {
-  useTriggerCacheInvalidation,
-  useUserTriggerCountQuery,
-} from '@/hooks/queries/useTriggerQueries';
+import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   proxyActivateTrigger,
@@ -99,7 +96,6 @@ export default function Overview({
     deleteTrigger,
     duplicateTrigger,
     updateTrigger,
-    addTrigger,
     setTriggers,
   } = useTriggerStore();
 
@@ -108,8 +104,6 @@ export default function Overview({
 
   const { addLog } = useActivityLogStore();
 
-  // User trigger count query (cached, across all projects)
-  const { data: userTriggerCount = 0 } = useUserTriggerCountQuery();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
   // Fetch triggers from API on mount
@@ -128,7 +122,7 @@ export default function Overview({
     };
 
     fetchTriggers();
-  }, [projectStore.activeProjectId]);
+  }, [projectStore, projectStore.activeProjectId, setTriggers, t]);
 
   // Update hasTriggers based on the trigger list
   useEffect(() => {

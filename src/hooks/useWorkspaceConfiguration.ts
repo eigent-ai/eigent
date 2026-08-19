@@ -22,11 +22,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type WorkspaceConfigurationSaveState =
-  | 'idle'
-  | 'loading'
-  | 'saving'
-  | 'saved'
-  | 'needs_attention';
+  'idle' | 'loading' | 'saving' | 'saved' | 'needs_attention';
 
 interface UseWorkspaceConfigurationInput {
   spaceId: string | null;

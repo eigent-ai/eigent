@@ -965,6 +965,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
     Set<string>
   >(() => new Set());
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
+  const hasNoFiles = fileGroups.every((group) => group.files.length === 0);
 
   const rememberSelectedFile = (file: FileInfo) => {
     if (spaceId) return;
@@ -1707,7 +1708,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
               <div className="h-full pl-1.5">
-                {filesLoading && fileListRef.current.length === 0 ? (
+                {filesLoading && hasNoFiles ? (
                   <div
                     role="status"
                     aria-label="Loading files"
@@ -1749,7 +1750,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
           emptyState={
-            filesLoading && fileListRef.current.length === 0 ? (
+            filesLoading && hasNoFiles ? (
               <div className="flex h-full min-h-64 w-full flex-1 flex-col gap-3 p-4">
                 <Skeleton className="h-3 w-48" />
                 <Skeleton className="h-3 w-full" />

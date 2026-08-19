@@ -232,7 +232,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
     };
 
     fetchData();
-  }, [triggerId]);
+  }, [t, triggerId]);
 
   // Listen to activity logs for real-time updates
   useEffect(() => {

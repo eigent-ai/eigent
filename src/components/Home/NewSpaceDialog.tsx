@@ -44,10 +44,7 @@ const AgentPluginImportWizard = lazy(() =>
 );
 
 export type NewSpaceDialogPage =
-  | 'options'
-  | 'import-options'
-  | 'workspace-bundle'
-  | 'agent-plugin';
+  'options' | 'import-options' | 'workspace-bundle' | 'agent-plugin';
 type PendingOption = 'scratch' | 'folder' | null;
 
 export interface NewSpaceDialogProps {

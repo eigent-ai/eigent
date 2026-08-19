@@ -103,19 +103,16 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
   const [showKeys, setShowKeys] = useState<{ [key: string]: boolean }>({});
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const { t } = useTranslation();
-  useEffect(() => {
-    initializeEnvValues(activeMcp);
-  }, [activeMcp]);
 
-  const initializeEnvValues = (mcp: any) => {
-    if (mcp?.install_command?.env) {
+  useEffect(() => {
+    if (activeMcp?.install_command?.env) {
       const initialValues: { [key: string]: EnvValue } = {};
-      Object.keys(mcp.install_command.env).forEach((key) => {
+      Object.keys(activeMcp.install_command.env).forEach((key) => {
         initialValues[key] = {
           value: '',
           required: true,
           tip:
-            mcp.install_command?.env?.[key]
+            activeMcp.install_command?.env?.[key]
               ?.replace(/{{/g, '')
               ?.replace(/}}/g, '') || '',
         };
@@ -128,7 +125,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
       });
       setEnvValues(initialValues);
     }
-  };
+  }, [activeMcp]);
 
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)

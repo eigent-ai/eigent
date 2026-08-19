@@ -287,7 +287,7 @@ export default function Workspace({
     }
   }, [host, t]);
 
-  const buildComposerInputProps = () => ({
+  const composerInputProps = {
     value: message,
     onChange: setMessage,
     onSend: handleSend,
@@ -304,7 +304,7 @@ export default function Workspace({
             'Legacy Spaces are read-only. Create a new Space to start a Project.',
         })
       : t('layout.project-task-placeholder'),
-  });
+  };
 
   const taskAssigning =
     chatStore?.activeTaskId != null
@@ -336,9 +336,9 @@ export default function Workspace({
     [chatStore, host]
   );
 
-  const onEditWorkerFromMenu = useCallback((agent: Agent) => {
+  const onEditWorkerFromMenu = (agent: Agent) => {
     setEditingWorkerAgent(agent);
-  }, []);
+  };
 
   const onDuplicateUserAgent = useCallback(
     (agent: Agent) => {
@@ -452,7 +452,7 @@ export default function Workspace({
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
           onSelectModel={() => openSettings('models')}
-          inputProps={buildComposerInputProps()}
+          inputProps={composerInputProps}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive

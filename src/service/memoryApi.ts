@@ -17,12 +17,7 @@ import { fetchDelete, fetchGet, fetchPatch, fetchPost } from '@/api/http';
 
 export type MemoryScopeType = 'project' | 'space' | 'user';
 export type MemoryKind =
-  | 'fact'
-  | 'decision'
-  | 'constraint'
-  | 'preference'
-  | 'todo'
-  | 'lesson';
+  'fact' | 'decision' | 'constraint' | 'preference' | 'todo' | 'lesson';
 export type MemorySyncScope = 'full_memory';
 
 export interface MemoryScopeState {

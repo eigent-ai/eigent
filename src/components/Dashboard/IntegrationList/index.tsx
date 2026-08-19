@@ -201,9 +201,9 @@ export default function IntegrationList({
           '[IntegrationList onConnect] Starting OAuth status polling'
         );
 
-        const start = Date.now();
-        const timeoutMs = 5 * 60 * 1000; // 5 minutes
-        while (Date.now() - start < timeoutMs) {
+        // 200 attempts × 1.5 seconds preserves the five-minute timeout
+        // without reading the wall clock from the component callback.
+        for (let attempt = 0; attempt < 200; attempt += 1) {
           try {
             const statusRes: any = await fetchGet(
               '/oauth/status/google_calendar'
