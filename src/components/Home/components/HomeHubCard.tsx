@@ -22,7 +22,9 @@ import {
   ListChecks,
   Loader2,
   MessageCircle,
+  Pause,
   Pencil,
+  Play,
   Power,
   Share2,
   Trash2,
@@ -420,6 +422,9 @@ function TaskItemContent({
   project,
   onDelete,
   onShare,
+  controlAction,
+  controlPending,
+  onControl,
   layout,
 }: HomeHubTaskItemProps) {
   const { t } = useTranslation();
@@ -429,6 +434,24 @@ function TaskItemContent({
   const projectName =
     project?.project_name?.trim() || task.project_name?.trim() || '';
   const menuItems = [
+    ...(controlAction && onControl
+      ? [
+          {
+            label:
+              controlAction === 'pause'
+                ? t('layout.pause', { defaultValue: 'Pause' })
+                : t('layout.resume', { defaultValue: 'Resume' }),
+            icon:
+              controlAction === 'pause' ? (
+                <Pause className="h-4 w-4" aria-hidden />
+              ) : (
+                <Play className="h-4 w-4" aria-hidden />
+              ),
+            onSelect: onControl,
+            disabled: controlPending,
+          },
+        ]
+      : []),
     {
       label: t('layout.share', { defaultValue: 'Share' }),
       icon: <Share2 className="h-4 w-4" aria-hidden />,

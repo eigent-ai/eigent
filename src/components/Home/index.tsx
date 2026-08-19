@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchPut, proxyFetchDelete } from '@/api/http';
+import { proxyFetchDelete } from '@/api/http';
 import AlertDialog from '@/components/ui/alertDialog';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { share } from '@/lib/share';
-import { ChatTaskStatus } from '@/types/constants';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import {
   type ReactNode,
   useCallback,
@@ -138,25 +138,11 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
     share(taskId);
   };
 
-  const handleTakeControl = (type: 'pause' | 'resume', taskId: string) => {
-    if (!chatStore?.tasks?.[taskId]) return;
-
-    if (type === 'pause') {
-      let { taskTime, elapsed } = chatStore.tasks[taskId];
-      const now = Date.now();
-      elapsed += now - taskTime;
-      chatStore.setElapsed(taskId, elapsed);
-      chatStore.setTaskTime(taskId, 0);
-    } else {
-      chatStore.setTaskTime(taskId, Date.now());
-    }
-    fetchPut(`/task/${taskId}/take-control`, { action: type });
-    if (type === 'pause') {
-      chatStore.setStatus(taskId, ChatTaskStatus.PAUSE);
-    } else {
-      chatStore.setStatus(taskId, ChatTaskStatus.RUNNING);
-    }
-  };
+  const handleTakeControl = useCallback(
+    (type: 'pause' | 'resume', taskId: string) =>
+      takeControlOfTask({ chatStore, action: type, taskId }),
+    [chatStore]
+  );
 
   const hubContextValue = useMemo(
     () => ({
@@ -180,10 +166,12 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       onProjectDelete: handleProjectDelete,
       onProjectRename: handleProjectRename,
       activeTaskId: chatStore?.activeTaskId || undefined,
-      onOngoingTaskPause: (taskId: string) =>
-        handleTakeControl('pause', taskId),
-      onOngoingTaskResume: (taskId: string) =>
-        handleTakeControl('resume', taskId),
+      onOngoingTaskPause: async (taskId: string) => {
+        await handleTakeControl('pause', taskId);
+      },
+      onOngoingTaskResume: async (taskId: string) => {
+        await handleTakeControl('resume', taskId);
+      },
     }),
     // `handle*` callbacks aren't memoized themselves and the parent re-renders
     // are infrequent; include only the data dependencies React tracks here.
@@ -201,6 +189,7 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       reloadTriggers,
       chatStore?.tasks,
       chatStore?.activeTaskId,
+      handleTakeControl,
     ]
   );
 

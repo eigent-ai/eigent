@@ -554,7 +554,6 @@ export function HomeHubProjectCardBody({
   title,
   taskCount,
   triggerCount,
-  tokenCount,
   spaceLabel,
   runtimeStatus,
   updatedAt,
@@ -589,7 +588,6 @@ export function HomeHubProjectBoardCardBody({
   title,
   taskCount,
   triggerCount,
-  tokenCount,
   spaceLabel,
   runtimeStatus,
   menuItems,
@@ -632,13 +630,11 @@ type HomeHubTaskCardBodyProps = {
 
 export function HomeHubTaskCardBody({
   title,
-  tokenCount,
   projectName,
   spaceLabel,
   updatedAt,
   menuItems,
 }: HomeHubTaskCardBodyProps) {
-  const { t } = useTranslation();
   const statItems = [...(projectName?.trim() ? [projectName.trim()] : [])];
 
   return (
@@ -655,7 +651,6 @@ export function HomeHubTaskCardBody({
 
 export function HomeHubTaskBoardCardBody({
   title,
-  tokenCount,
   projectName,
   spaceLabel,
   menuItems,
@@ -892,6 +887,9 @@ export type HomeHubTaskItemProps = {
   project?: ProjectGroupType;
   onDelete: () => void;
   onShare: () => void;
+  controlAction?: 'pause' | 'resume' | null;
+  controlPending?: boolean;
+  onControl?: () => void;
 };
 
 export type HomeHubTriggerItemProps = {

@@ -14,7 +14,7 @@
 
 import { HistoryTask, ProjectGroup as ProjectGroupType } from '@/types/history';
 import { ListChecks } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HomeHubBoard from './components/HomeHubBoard';
 import HomeHubBoardCard from './components/HomeHubBoardCard';
@@ -30,7 +30,12 @@ import {
   compareHubByTimestamp,
   matchesHubNameSearch,
 } from './utils';
-import { getTaskBoardColumn, groupByBoardColumn } from './utils/boardStatus';
+import {
+  getTaskBoardColumn,
+  getTaskRuntimeControlAction,
+  groupByBoardColumn,
+  type TaskRuntimeControlAction,
+} from './utils/boardStatus';
 
 type TaskWithContext = HistoryTask & { projectName?: string };
 
@@ -40,12 +45,18 @@ function TaskRow({
   project,
   onDelete,
   onShare,
+  controlAction,
+  controlPending,
+  onControl,
 }: {
   task: TaskWithContext;
   viewMode: 'grid' | 'list' | 'board';
   project?: ProjectGroupType;
   onDelete: () => void;
   onShare: () => void;
+  controlAction: TaskRuntimeControlAction | null;
+  controlPending: boolean;
+  onControl: () => void;
 }) {
   const spaceLabel = useSpaceLabel(task.space_id);
   const sharedProps = {
@@ -55,6 +66,9 @@ function TaskRow({
     project,
     onDelete,
     onShare,
+    controlAction,
+    controlPending,
+    onControl,
   };
 
   return viewMode === 'list' ? (
@@ -86,7 +100,13 @@ export default function Tasks({
     onTaskDelete,
     onTaskShare,
     chatTasks,
+    onOngoingTaskPause,
+    onOngoingTaskResume,
   } = useHomeHub();
+  const pendingTaskIdsRef = useRef(new Set<string>());
+  const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const projects = projectsOverride ?? homeProjects;
   const effectiveViewMode = presentation === 'space-detail' ? 'list' : viewMode;
   const effectiveSearchQuery =
@@ -105,6 +125,25 @@ export default function Tasks({
   const projectsById = useMemo(
     () => new Map(projects.map((project) => [project.project_id, project])),
     [projects]
+  );
+
+  const handleTaskControl = useCallback(
+    async (taskId: string, action: TaskRuntimeControlAction) => {
+      if (pendingTaskIdsRef.current.has(taskId)) return;
+      const callback =
+        action === 'pause' ? onOngoingTaskPause : onOngoingTaskResume;
+      if (!callback) return;
+
+      pendingTaskIdsRef.current.add(taskId);
+      setPendingTaskIds(new Set(pendingTaskIdsRef.current));
+      try {
+        await callback(taskId);
+      } finally {
+        pendingTaskIdsRef.current.delete(taskId);
+        setPendingTaskIds(new Set(pendingTaskIdsRef.current));
+      }
+    },
+    [onOngoingTaskPause, onOngoingTaskResume]
   );
 
   const filteredTasks = useMemo(() => {
@@ -139,17 +178,34 @@ export default function Tasks({
   }, [effectiveSearchQuery, sortBy, sortDirection, t, tasks]);
 
   const renderTaskRow = useCallback(
-    (task: TaskWithContext, mode: 'grid' | 'list' | 'board') => (
-      <TaskRow
-        key={task.id}
-        task={task}
-        viewMode={mode}
-        project={projectsById.get(task.project_id)}
-        onDelete={() => onTaskDelete(String(task.id))}
-        onShare={() => onTaskShare(task.task_id)}
-      />
-    ),
-    [onTaskDelete, onTaskShare, projectsById]
+    (task: TaskWithContext, mode: 'grid' | 'list' | 'board') => {
+      const controlAction = getTaskRuntimeControlAction(task, chatTasks);
+      return (
+        <TaskRow
+          key={task.id}
+          task={task}
+          viewMode={mode}
+          project={projectsById.get(task.project_id)}
+          onDelete={() => onTaskDelete(String(task.id))}
+          onShare={() => onTaskShare(task.task_id)}
+          controlAction={controlAction}
+          controlPending={pendingTaskIds.has(task.task_id)}
+          onControl={() => {
+            if (controlAction) {
+              void handleTaskControl(task.task_id, controlAction);
+            }
+          }}
+        />
+      );
+    },
+    [
+      chatTasks,
+      handleTaskControl,
+      onTaskDelete,
+      onTaskShare,
+      pendingTaskIds,
+      projectsById,
+    ]
   );
 
   const boardColumns = useMemo(() => {

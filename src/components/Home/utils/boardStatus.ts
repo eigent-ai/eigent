@@ -20,11 +20,13 @@ import {
 } from '@/lib/sessionNavLead';
 import type { ChatStore } from '@/store/chatStore';
 import { ExecutionStatus, type Trigger } from '@/types';
+import { ChatTaskStatus } from '@/types/constants';
 import type { HistoryTask, ProjectGroup } from '@/types/history';
 
 export type HomeBoardColumn = 'default' | 'running' | 'awaiting_review';
 
 export type HomeHubRuntimeStatus = 'running' | 'success' | 'error';
+export type TaskRuntimeControlAction = 'pause' | 'resume';
 
 const SESSION_NAV_KIND_PRIORITY: Record<SessionNavLeadKind, number> = {
   error: 8,
@@ -124,6 +126,17 @@ function isLiveTaskRunning(task: LiveTask): boolean {
 function resolveLiveTask(taskId: string | undefined, chatTasks?: ChatTasksMap) {
   if (!taskId || !chatTasks) return undefined;
   return chatTasks[taskId];
+}
+
+/** Runtime state is authoritative; stale history alone must not expose a no-op. */
+export function getTaskRuntimeControlAction(
+  task: Pick<HistoryTask, 'task_id'>,
+  chatTasks?: ChatTasksMap
+): TaskRuntimeControlAction | null {
+  const liveTask = resolveLiveTask(task.task_id, chatTasks);
+  if (liveTask?.status === ChatTaskStatus.PAUSE) return 'resume';
+  if (liveTask?.status === ChatTaskStatus.RUNNING) return 'pause';
+  return null;
 }
 
 export function getTaskBoardColumn(
