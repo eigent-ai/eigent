@@ -332,7 +332,11 @@ export async function loadFilePreview(
     };
   }
 
-  if (decision.mode === 'stream-media') return baseFile;
+  if (decision.mode === 'stream-media') {
+    return isRemote
+      ? baseFile
+      : { ...baseFile, content: toLocalPreviewUrl(file.path) };
+  }
 
   if (decision.mode === 'bounded-csv') {
     let preview: CsvFilePreview;

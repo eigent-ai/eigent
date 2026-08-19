@@ -66,7 +66,7 @@ import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
-import { loadFilePreview } from '@/lib/filePreviewLoader';
+import { loadFilePreview, toLocalPreviewUrl } from '@/lib/filePreviewLoader';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
@@ -1797,46 +1797,6 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   );
 }
 
-function toFileUrl(filePath: string): string {
-  if (
-    filePath.startsWith('file://') ||
-    filePath.startsWith('localfile://') ||
-    filePath.startsWith('http://') ||
-    filePath.startsWith('https://') ||
-    filePath.startsWith('blob:') ||
-    filePath.startsWith('data:')
-  ) {
-    return filePath;
-  }
-
-  const normalizedPath = filePath.replace(/\\/g, '/');
-
-  // Windows UNC path: //server/share/path/to/file
-  if (normalizedPath.startsWith('//')) {
-    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
-    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
-    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
-    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
-  }
-
-  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
-  if (hasWindowsDrive) {
-    const [drive, ...pathSegments] = normalizedPath.split('/');
-    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
-    return encodedPath
-      ? `file:///${drive}/${encodedPath}`
-      : `file:///${drive}/`;
-  }
-
-  const encodedPath = normalizedPath
-    .split('/')
-    .map((segment, index) =>
-      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
-    )
-    .join('/');
-  return `file://${encodedPath}`;
-}
-
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
   const [src, setSrc] = useState('');
 
@@ -1866,8 +1826,12 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
         cancelled = true;
       };
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    // The privileged protocol streams workspace-scoped files without exposing
+    // a raw file:// URL, which Chromium blocks from the renderer origin.
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
     return () => {
       cancelled = true;
     };
@@ -1900,8 +1864,10 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
   }, [selectedFile]);
 
   return (
@@ -1930,8 +1896,10 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
   }, [selectedFile]);
 
   return (

@@ -79,6 +79,27 @@ describe('loadFilePreview', () => {
     expect(result.preview).toMatchObject({ kind: 'range-pdf', size: 1024 });
   });
 
+  it('uses the workspace-scoped protocol for local media previews', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      size: 1024,
+      mimeType: 'image/png',
+      supportsRanges: true,
+    });
+
+    const result = await loadFilePreview(
+      { name: 'preview.png', type: 'png', path: '/workspace/preview.png' },
+      { ipcRenderer: { invoke } }
+    );
+
+    expect(invoke).toHaveBeenCalledWith(
+      'get-file-preview-metadata',
+      '/workspace/preview.png'
+    );
+    expect(result.content).toBe(
+      'localfile://preview/?path=%2Fworkspace%2Fpreview.png'
+    );
+  });
+
   it('does not invoke any content reader for an oversized PDF', async () => {
     const invoke = vi.fn().mockResolvedValue({
       size: FILE_PREVIEW_LIMITS.pdfBytes + 1,
