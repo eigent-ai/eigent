@@ -49,6 +49,7 @@ import {
 } from '@/lib/spaceLabel';
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -177,14 +178,16 @@ function HeaderWin() {
   );
 
   const openHome = useCallback(() => {
-    // Home is project-independent, but the active Space remains selected so
-    // its name and destination stay available in the top bar.
-    projectStore.setActiveProject(null);
-    closeSettings();
-    navigate('/home?section=spaces', {
-      state: isHomePage
-        ? location.state
-        : shellBackState(`${location.pathname}${location.search}`),
+    void runAfterWorkspaceConfigurationSave(() => {
+      // Home is project-independent, but the active Space remains selected so
+      // its name and destination stay available in the top bar.
+      projectStore.setActiveProject(null);
+      closeSettings();
+      navigate('/home?section=spaces', {
+        state: isHomePage
+          ? location.state
+          : shellBackState(`${location.pathname}${location.search}`),
+      });
     });
   }, [
     closeSettings,
@@ -199,16 +202,18 @@ function HeaderWin() {
   const openActiveSpaceHomeTab = useCallback(
     (spaceTab: 'memory' | 'workspace-profile') => {
       if (!activeSpaceId) return;
-      projectStore.setActiveProject(null);
-      closeSettings();
-      navigate(
-        `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=${spaceTab}`,
-        {
-          state: isHomePage
-            ? location.state
-            : shellBackState(`${location.pathname}${location.search}`),
-        }
-      );
+      void runAfterWorkspaceConfigurationSave(() => {
+        projectStore.setActiveProject(null);
+        closeSettings();
+        navigate(
+          `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=${spaceTab}`,
+          {
+            state: isHomePage
+              ? location.state
+              : shellBackState(`${location.pathname}${location.search}`),
+          }
+        );
+      });
     },
     [
       activeSpaceId,
@@ -223,8 +228,10 @@ function HeaderWin() {
   );
 
   const openWorkspace = useCallback(() => {
-    closeSettings();
-    navigate('/');
+    void runAfterWorkspaceConfigurationSave(() => {
+      closeSettings();
+      navigate('/');
+    });
   }, [closeSettings, navigate]);
 
   const ensureProjectLoaded = useCallback(

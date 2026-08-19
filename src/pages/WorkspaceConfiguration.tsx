@@ -48,6 +48,7 @@ import {
 import { WorkspaceResourceListItem } from '@/components/WorkspaceConfiguration/WorkspaceResourceListItem';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 import { cn } from '@/lib/utils';
+import { registerWorkspaceConfigurationNavigationGuard } from '@/lib/workspaceConfigurationNavigationGuard';
 import {
   workspaceEnvironmentVariables,
   type ThinkingEffort,
@@ -392,12 +393,43 @@ export function WorkspaceConfigurationEditor({
     () => (email ? { email, userId } : null),
     [email, userId]
   );
-  const { draft, document, setDocument, saveState, error, reload, retrySave } =
-    useWorkspaceConfiguration({
-      spaceId: targetSpaceId,
-      spaceName: targetSpace?.name,
-      identity,
+  const {
+    draft,
+    document,
+    setDocument,
+    saveState,
+    error,
+    hasPendingChanges,
+    flushSave,
+    reload,
+    retrySave,
+  } = useWorkspaceConfiguration({
+    spaceId: targetSpaceId,
+    spaceName: targetSpace?.name,
+    identity,
+  });
+  const hasPendingChangesRef = useRef(hasPendingChanges);
+
+  useEffect(() => {
+    hasPendingChangesRef.current = hasPendingChanges;
+  }, [hasPendingChanges]);
+
+  useEffect(() => {
+    const unregister = registerWorkspaceConfigurationNavigationGuard({
+      hasPendingChanges: () => hasPendingChangesRef.current,
+      flushSave,
     });
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasPendingChangesRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      unregister();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [flushSave]);
 
   const update = useCallback(
     (mutate: (current: WorkspaceConfigurationDocument) => void) => {
@@ -1063,9 +1095,7 @@ export function WorkspaceConfigurationEditor({
                     onValueChange={(value) =>
                       update((next) => {
                         next.spec.git.remotePolicy = value as
-                          | 'deny'
-                          | 'prompt'
-                          | 'allow';
+                          'deny' | 'prompt' | 'allow';
                       })
                     }
                   >

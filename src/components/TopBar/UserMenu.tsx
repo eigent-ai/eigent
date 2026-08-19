@@ -36,6 +36,7 @@ import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { cn } from '@/lib/utils';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import {
@@ -193,10 +194,12 @@ export function UserMenu() {
   };
 
   const handleOpenSettings = () => {
-    navigate('/home?section=settings&tab=settings', {
-      state: isSettingsRoutePath(location.pathname)
-        ? location.state
-        : shellBackState(`${location.pathname}${location.search}`),
+    void runAfterWorkspaceConfigurationSave(() => {
+      navigate('/home?section=settings&tab=settings', {
+        state: isSettingsRoutePath(location.pathname)
+          ? location.state
+          : shellBackState(`${location.pathname}${location.search}`),
+      });
     });
   };
 

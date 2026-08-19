@@ -18,6 +18,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -43,24 +44,26 @@ function SettingsRouteBridge() {
 
   useEffect(() => {
     if (!isOpen) return;
-    closeSettings();
-    if (isSettingsRoutePath(location.pathname)) {
-      const searchParams = new URLSearchParams(location.search);
-      if (
-        searchParams.get('section') !== 'settings' ||
-        searchParams.get('tab') !== activeSection
-      ) {
-        navigate(`/home?section=settings&tab=${activeSection}`, {
-          replace: true,
-          state: location.state,
-        });
+    void runAfterWorkspaceConfigurationSave(() => {
+      closeSettings();
+      if (isSettingsRoutePath(location.pathname)) {
+        const searchParams = new URLSearchParams(location.search);
+        if (
+          searchParams.get('section') !== 'settings' ||
+          searchParams.get('tab') !== activeSection
+        ) {
+          navigate(`/home?section=settings&tab=${activeSection}`, {
+            replace: true,
+            state: location.state,
+          });
+        }
+        return;
       }
-      return;
-    }
-    // Record the origin so the route layout can retain Workspace state while
-    // the full-page Home / Settings surface is active.
-    navigate(`/home?section=settings&tab=${activeSection}`, {
-      state: shellBackState(`${location.pathname}${location.search}`),
+      // Record the origin so the route layout can retain Workspace state while
+      // the full-page Home / Settings surface is active.
+      navigate(`/home?section=settings&tab=${activeSection}`, {
+        state: shellBackState(`${location.pathname}${location.search}`),
+      });
     });
   }, [
     closeSettings,

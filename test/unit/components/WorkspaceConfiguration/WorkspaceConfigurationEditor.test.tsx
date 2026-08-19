@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  flushWorkspaceConfigurationBeforeNavigation,
+  hasPendingWorkspaceConfigurationChanges,
+} from '@/lib/workspaceConfigurationNavigationGuard';
 import { WorkspaceConfigurationEditor } from '@/pages/WorkspaceConfiguration';
 import {
   fireEvent,
@@ -58,12 +62,10 @@ const mocks = vi.hoisted(() => {
     document,
     reducedMotion: false,
     saveState: 'saved' as
-      | 'idle'
-      | 'loading'
-      | 'saving'
-      | 'saved'
-      | 'needs_attention',
+      'idle' | 'loading' | 'saving' | 'saved' | 'needs_attention',
     setDocument: vi.fn(),
+    hasPendingChanges: false,
+    flushSave: vi.fn(),
     reload: vi.fn(),
     retrySave: vi.fn(),
   };
@@ -119,6 +121,8 @@ vi.mock('@/hooks/useWorkspaceConfiguration', () => ({
     setDocument: mocks.setDocument,
     saveState: mocks.saveState,
     error: null,
+    hasPendingChanges: mocks.hasPendingChanges,
+    flushSave: mocks.flushSave,
     reload: mocks.reload,
     retrySave: mocks.retrySave,
   }),
@@ -133,10 +137,31 @@ describe('WorkspaceConfigurationEditor', () => {
   beforeEach(() => {
     mocks.reducedMotion = false;
     mocks.saveState = 'saved';
+    mocks.hasPendingChanges = false;
     mocks.setDocument.mockClear();
+    mocks.flushSave.mockReset();
+    mocks.flushSave.mockResolvedValue(true);
     mocks.reload.mockClear();
     mocks.retrySave.mockClear();
     mocks.document.spec.environment.variables.splice(0);
+  });
+
+  it('registers pending changes with the shared navigation guard', async () => {
+    mocks.hasPendingChanges = true;
+    const { unmount } = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+
+    await waitFor(() =>
+      expect(hasPendingWorkspaceConfigurationChanges()).toBe(true)
+    );
+    await expect(flushWorkspaceConfigurationBeforeNavigation()).resolves.toBe(
+      true
+    );
+    expect(mocks.flushSave).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(hasPendingWorkspaceConfigurationChanges()).toBe(false);
   });
 
   it('removes animated section travel when reduced motion is requested', () => {

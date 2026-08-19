@@ -29,6 +29,7 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
 import { usePageTabStore } from '@/store/pageTabStore';
 import {
@@ -337,7 +338,9 @@ function HomeSettingsPageContent() {
   );
 
   const handleHomeSectionChange = useCallback(() => {
-    navigateHome('?section=spaces');
+    void runAfterWorkspaceConfigurationSave(() => {
+      navigateHome('?section=spaces');
+    });
   }, [navigateHome]);
 
   useEffect(() => {
@@ -348,17 +351,21 @@ function HomeSettingsPageContent() {
 
   const handleSettingsSectionChange = useCallback(
     (section: SettingsSectionId) => {
-      setActiveSection(section);
-      navigateHome(`?section=settings&tab=${section}`);
+      void runAfterWorkspaceConfigurationSave(() => {
+        setActiveSection(section);
+        navigateHome(`?section=settings&tab=${section}`);
+      });
     },
     [navigateHome, setActiveSection]
   );
 
   const handleSelectSpace = useCallback(
     (nextSpaceId: string) => {
-      navigateHome(
-        `?section=spaces&spaceId=${encodeURIComponent(nextSpaceId)}&spaceTab=${activeSpaceTab}`
-      );
+      void runAfterWorkspaceConfigurationSave(() => {
+        navigateHome(
+          `?section=spaces&spaceId=${encodeURIComponent(nextSpaceId)}&spaceTab=${activeSpaceTab}`
+        );
+      });
     },
     [activeSpaceTab, navigateHome]
   );
@@ -366,9 +373,11 @@ function HomeSettingsPageContent() {
   const handleSpaceTabChange = useCallback(
     (tab: SpaceDetailTab) => {
       if (!spaceId) return;
-      navigateHome(
-        `?section=spaces&spaceId=${encodeURIComponent(spaceId)}&spaceTab=${tab}`
-      );
+      void runAfterWorkspaceConfigurationSave(() => {
+        navigateHome(
+          `?section=spaces&spaceId=${encodeURIComponent(spaceId)}&spaceTab=${tab}`
+        );
+      });
     },
     [navigateHome, spaceId]
   );
