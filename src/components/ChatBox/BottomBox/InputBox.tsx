@@ -24,8 +24,8 @@ import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
+  Cable,
   FileText,
-  Hammer,
   Image,
   Paperclip,
   UploadCloud,
@@ -560,7 +560,7 @@ export const Inputbox = ({
                 )}
                 onClick={onToggleConnectorPanel}
               >
-                <Hammer />
+                <Cable />
               </Button>
             </TooltipSimple>
           )}

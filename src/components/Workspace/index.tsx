@@ -14,50 +14,37 @@
 
 import { AddWorker } from '@/components/AddWorker';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
-import { Button } from '@/components/ui/button';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
-import { WorkspaceAllSessions } from '@/components/Workspace/WorkspaceAllSessions';
-import { WorkspaceCoworkPanel } from '@/components/Workspace/WorkspaceCoworkPanel';
-import { WorkspaceExamplePrompts } from '@/components/Workspace/WorkspaceExamplePrompts';
-import { WorkspaceInstructionMd } from '@/components/Workspace/WorkspaceInstructionMd';
 import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
-import { WorkspaceRecentSessions } from '@/components/Workspace/WorkspaceRecentSessions';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
-import { useProjectMemorySetting } from '@/hooks/useProjectMemorySetting';
 import { useHost } from '@/host';
-import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { cn } from '@/lib/utils';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import {
-  getVisibleProjectMetasForSpace,
-  useSpaceStore,
-} from '@/store/spaceStore';
+import { openSettings } from '@/store/settingsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   ChatTaskStatus,
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
+const WORKSPACE_COWORK_TEXT_CLASS =
+  'inline-flex shrink-0 items-center font-display text-heading-lg font-semibold text-ds-text-neutral-default-default';
 
 interface WorkspaceProps {
   /**
-   * `'workspace'` (default): full landing — header, composer, recent runs,
-   * and the docked instructions panel.
+   * `'workspace'` (default): management landing with a top-aligned composer.
    * `'new-project'`: composer-first layout; use with `embedded` inside Session.
    */
   variant?: 'workspace' | 'new-project';
@@ -80,7 +67,6 @@ export default function Workspace({
 }: WorkspaceProps) {
   const { t } = useTranslation();
   const isNewProjectVariant = variant === 'new-project';
-  const navigate = useNavigate();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
@@ -96,31 +82,13 @@ export default function Workspace({
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
-  const projectsBySpaceId = useSpaceStore((s) => s.projectsBySpaceId);
-  const navLeadByProjectId = useProjectRuntimeStore(
-    (s) => s.navLeadByProjectId
-  );
   const activeProjectMetadata =
     activeProjectMeta?.metadata ?? activeProject?.metadata;
-  const isEmptyProject = useProjectRuntimeStore((s) => s.isEmptyProject);
   const customAgentFolderPath = usePageTabStore((s) =>
     activeProjectId
       ? s.customAgentFolderPathByProjectId[activeProjectId]
       : undefined
   );
-  const showWorkspaceExamplePrompts = useMemo(() => {
-    if (!activeProject) return false;
-    if (customAgentFolderPath) return false;
-    if (!isEmptyProject(activeProject)) return false;
-    if (activeProjectMetadata?.historyId) return false;
-    if (activeProjectMetadata?.tags?.includes('replay')) return false;
-    return true;
-  }, [
-    activeProject,
-    activeProjectMetadata,
-    customAgentFolderPath,
-    isEmptyProject,
-  ]);
   /**
    * True when the home workspace has no explicitly selected project (default
    * "new project" shell). New Project keeps the interactive project picker in
@@ -145,41 +113,6 @@ export default function Workspace({
     chatStore?.tasks,
     customAgentFolderPath,
   ]);
-  const navProjects = useMemo(() => {
-    if (!activeSpaceId) return [];
-    return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId)
-      .filter((project) => {
-        if (project.metadata?.historyId) return true;
-        const historyDisplayName =
-          typeof project.metadata?.historyDisplayName === 'string'
-            ? project.metadata.historyDisplayName.trim()
-            : '';
-        if (historyDisplayName) return true;
-        const normalizedName = (project.name ?? '').trim().toLowerCase();
-        return (
-          Boolean(normalizedName) &&
-          normalizedName !== 'new project' &&
-          normalizedName !== 'new space'
-        );
-      })
-      .map((project) => ({
-        id: project.id,
-        title:
-          project.name && project.name !== 'new project'
-            ? project.name
-            : t('layout.new-project'),
-        sessionLead: resolveProjectNavLeadPresentation({
-          cachedLead: navLeadByProjectId[project.id],
-          isHistoryLoading: false,
-        }),
-      }));
-  }, [activeSpaceId, navLeadByProjectId, projectsBySpaceId, t]);
-
-  const handleSelectProject = useCallback((projectId: string) => {
-    useProjectRuntimeStore.getState().setActiveProject(projectId);
-    usePageTabStore.getState().setActiveWorkspaceTab('project');
-  }, []);
-
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const workspaceChatFocusRequestId = usePageTabStore(
@@ -213,14 +146,7 @@ export default function Workspace({
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
     null
   );
-  type WorkspaceSubPage = 'all-sessions' | 'instruction-md' | null;
-  const [workspaceSubPage, setWorkspaceSubPage] =
-    useState<WorkspaceSubPage>(null);
-  const SUB_PAGE_TITLES: Record<NonNullable<WorkspaceSubPage>, string> = {
-    'all-sessions': t('layout.projects'),
-    'instruction-md': t('layout.instructions-rules-tone'),
-  };
-  const projectMemory = useProjectMemorySetting(activeProjectId);
+
   const textareaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -255,7 +181,7 @@ export default function Workspace({
 
     if (!hasModel) {
       toast.error(t('layout.please-select-model-first'));
-      navigate('/history?tab=agents');
+      openSettings('models');
       return;
     }
 
@@ -410,12 +336,9 @@ export default function Workspace({
     [chatStore, host]
   );
 
-  const onEditWorkerFromMenu = useCallback(
-    (agent: Agent) => {
-      setEditingWorkerAgent(agent);
-    },
-    [setEditingWorkerAgent]
-  );
+  const onEditWorkerFromMenu = (agent: Agent) => {
+    setEditingWorkerAgent(agent);
+  };
 
   const onDuplicateUserAgent = useCallback(
     (agent: Agent) => {
@@ -467,6 +390,22 @@ export default function Workspace({
     ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
     : undefined;
 
+  const renderAgentList = (alignment: 'center' | 'start' = 'center') =>
+    effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
+      <SingleAgentList />
+    ) : (
+      <WorkforceAgentList
+        sortedAgents={sortedAgents}
+        activeAgentId={activeAgentId}
+        onSelectAgent={onSelectAgent}
+        onEditWorkerFromMenu={onEditWorkerFromMenu}
+        onDuplicateUserAgent={onDuplicateUserAgent}
+        onDeleteUserAgent={onDeleteUserAgent}
+        onAddWorker={() => setAddWorkerDialogOpen(true)}
+        alignment={alignment}
+      />
+    );
+
   const composerTop = (
     <>
       <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
@@ -476,32 +415,43 @@ export default function Workspace({
           : t('layout.workspace-cowork-workforce')}
       </span>
       <div className="mb-8 flex w-full justify-center px-5">
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <SingleAgentList />
-        ) : (
-          <WorkforceAgentList
-            sortedAgents={sortedAgents}
-            activeAgentId={activeAgentId}
-            onSelectAgent={onSelectAgent}
-            onEditWorkerFromMenu={onEditWorkerFromMenu}
-            onDuplicateUserAgent={onDuplicateUserAgent}
-            onDeleteUserAgent={onDeleteUserAgent}
-            onAddWorker={() => setAddWorkerDialogOpen(true)}
-          />
-        )}
+        {renderAgentList()}
       </div>
     </>
   );
 
+  const workspaceComposerTop = (
+    <div
+      data-workspace-cowork-row
+      className="mb-3 flex min-h-[46px] w-full min-w-0 items-center justify-start gap-3"
+    >
+      <span className={WORKSPACE_COWORK_TEXT_CLASS}>Cowork with</span>
+      <div
+        data-workspace-agent-list
+        className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
+      >
+        {renderAgentList('start')}
+        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
+          <span
+            data-workspace-single-agent-label
+            className={WORKSPACE_COWORK_TEXT_CLASS}
+          >
+            Single Agent
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+
   const composerInput = (
     <>
-      <div className="w-full">
+      <div data-workspace-bottom-box className="w-full">
         <BottomBox
           state="input"
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
           noModelOverlay={!hasModel}
-          onSelectModel={() => navigate('/history?tab=agents')}
+          onSelectModel={() => openSettings('models')}
           inputProps={composerInputProps}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
@@ -534,12 +484,6 @@ export default function Workspace({
     </div>
   );
 
-  const showBottomExamplePrompts =
-    !embedded &&
-    (isNewProjectVariant ||
-      !chatStore?.activeTaskId ||
-      showWorkspaceExamplePrompts);
-
   if (embedded && isNewProjectVariant) {
     return (
       <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
@@ -553,149 +497,30 @@ export default function Workspace({
     );
   }
 
-  const sidePanel =
-    workspaceSubPage === null ? (
-      <div className="shrink-0 overflow-hidden">
-        <div
-          className={cn(
-            'flex h-full flex-col overflow-hidden',
-            SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
-          )}
-        >
-          <WorkspaceCoworkPanel
-            memoryOn={projectMemory.enabled}
-            memoryAvailable={projectMemory.available}
-            memoryLoading={projectMemory.loading}
-            onMemoryToggle={() => {
-              void projectMemory.toggle().catch((caught) => {
-                toast.error(
-                  caught instanceof Error ? caught.message : String(caught)
-                );
-              });
-            }}
-            onMemoryManage={() =>
-              navigate('/history?tab=agents&section=memory')
-            }
-          />
-        </div>
-      </div>
-    ) : null;
-
   return (
     <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
-      {/* Center section: header + content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Header toolbar */}
-        <div
-          className={cn(
-            'relative flex h-[44px] w-full shrink-0 flex-row items-center justify-start gap-1',
-            !isNewProjectVariant && 'px-3'
-          )}
-        >
-          {!isNewProjectVariant && workspaceSubPage !== null && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              buttonContent="text"
-              onClick={() => setWorkspaceSubPage(null)}
-              className="no-drag shrink-0"
-              aria-label={t('layout.back-to-workspace-tooltip')}
-            >
-              <ArrowLeft aria-hidden />
-              {t('layout.back')}
-            </Button>
-          )}
-          {!isNewProjectVariant && workspaceSubPage !== null && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="block max-w-[60vw] truncate text-center !text-label-sm font-semibold text-ds-text-neutral-default-default">
-                {SUB_PAGE_TITLES[workspaceSubPage]}
-              </span>
-            </div>
-          )}
-          <div className="flex-1" />
-          {!isNewProjectVariant &&
-            workspaceSubPage === 'instruction-md' &&
-            activeProjectId && (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                buttonContent="text"
-                className="no-drag shrink-0"
-                onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent('workspace-instruction-md-save', {
-                      detail: { projectId: activeProjectId },
-                    })
-                  );
-                }}
-              >
-                Save
-              </Button>
-            )}
+      {isNewProjectVariant ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
+          {composer}
         </div>
-
-        {/* Content */}
-        <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-          {/* Sub-pages */}
-          {!isNewProjectVariant && workspaceSubPage === 'all-sessions' && (
-            <WorkspaceAllSessions
-              projects={navProjects}
-              activeProjectId={activeProjectId}
-              onProjectClick={(id) => {
-                handleSelectProject(id);
-                setWorkspaceSubPage(null);
-              }}
-            />
-          )}
-          {!isNewProjectVariant &&
-            workspaceSubPage === 'instruction-md' &&
-            activeProjectId && (
-              <WorkspaceInstructionMd
-                key={activeProjectId}
-                projectId={activeProjectId}
-              />
-            )}
-
-          {/* Main content (hidden when a sub-page is active) */}
-          {workspaceSubPage === null && (
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col items-stretch overflow-hidden">
-              <div
-                className={cn(
-                  'flex min-h-0 w-full flex-1 flex-col',
-                  !isNewProjectVariant && 'px-3'
-                )}
-              >
-                {composer}
-
-                <div
-                  className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
-                  id="workspace-bottom-group"
-                >
-                  {showBottomExamplePrompts ? (
-                    <WorkspaceExamplePrompts
-                      onSelectPrompt={setMessage}
-                      disabled={!hasModel}
-                    />
-                  ) : navProjects.length > 0 ? (
-                    <WorkspaceRecentSessions
-                      projects={navProjects}
-                      activeProjectId={activeProjectId}
-                      onProjectClick={handleSelectProject}
-                      onOpenAllProjects={() =>
-                        setWorkspaceSubPage('all-sessions')
-                      }
-                    />
-                  ) : null}
-                </div>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <section
+            aria-label="Workspace header"
+            className="flex min-h-0 w-full flex-1 items-center gap-0"
+          >
+            <div
+              data-workspace-input-section
+              className="flex min-w-0 flex-1 items-center justify-center p-4"
+            >
+              <div className="flex w-full min-w-0 max-w-[600px] flex-col">
+                {workspaceComposerTop}
+                {composerInput}
               </div>
             </div>
-          )}
+          </section>
         </div>
-      </div>
-
-      {sidePanel}
+      )}
     </div>
   );
 }

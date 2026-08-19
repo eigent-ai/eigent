@@ -55,5 +55,11 @@
   "create-skill-default-name": "Neue Fähigkeit",
   "create-skill-default-description": "Beschreiben Sie, was diese Fähigkeit tut.",
   "save-skill": "Fähigkeit speichern",
-  "compose-skill-hint": "Bearbeiten Sie SKILL.md (YAML-Frontmatter mit Name und Beschreibung ist erforderlich), dann speichern."
+  "compose-skill-hint": "Bearbeiten Sie SKILL.md (YAML-Frontmatter mit Name und Beschreibung ist erforderlich), dann speichern.",
+  "try-skill-prompt": "Ich habe gerade den Skill {{name}} zu Eigent hinzugefügt. Kannst du damit etwas Großartiges erstellen?",
+  "select-agent-access": "Agentenzugriff auswählen",
+  "all-agents": "Alle Agenten",
+  "replace-skill-title": "Skill „{{name}}“ ersetzen?",
+  "replace-skill-message": "Ein Skill mit demselben Namen ist bereits vorhanden. Durch das Hochladen wird er ersetzt; die vorhandene Version kann nicht wiederhergestellt werden.",
+  "update-and-replace": "Aktualisieren und ersetzen"
 }

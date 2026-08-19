@@ -833,7 +833,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           aria-describedby={undefined}
         >
           <DialogHeader
-            className="!rounded-t-xl border-b border-ds-border-neutral-default-default !bg-ds-bg-neutral-strong-default p-md"
+            className="!rounded-t-xl border-b border-ds-border-neutral-default-default p-md"
             title={t('triggers.webhook-created-title')}
           />
 

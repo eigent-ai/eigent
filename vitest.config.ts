@@ -24,9 +24,10 @@ export default defineConfig({
   test: {
     root: __dirname,
     environment: 'jsdom',
-    // Tests live under test/ only, mirroring the src/ tree. src/ stays
-    // production source, so it is deliberately not globbed here.
-    include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    include: [
+      'test/**/*.{test,spec}.?(c|m)[jt]s?(x)',
+      'src/**/*.{test,spec}.?(c|m)[jt]s?(x)',
+    ],
     exclude: ['test/e2e/**', 'test/performance/**'],
     testTimeout: 1000 * 29,
     globals: true,

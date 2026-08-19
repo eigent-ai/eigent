@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -84,84 +85,89 @@ export default function TriggerPanel({
         className
       )}
     >
-      <div className="border-b-1 flex w-full shrink-0 items-center justify-between gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 py-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-body-md font-bold text-ds-text-neutral-muted-default">
-          <span className="truncate">{t('triggers.title')}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+      <ContentHeader
+        title={t('layout.scheduled-tab')}
+        actions={
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  buttonContent="text"
+                  size="sm"
+                  className="rounded-lg"
+                >
+                  {triggerSortLabel}
+                  <ArrowUpDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onSortByChange('createdAt')}>
+                  {t('triggers.created-time')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onSortByChange('lastExecutionTime')}
+                >
+                  {t('triggers.last-execution-label')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="primary"
+              size="sm"
+              buttonContent="text"
+              className="items-center justify-center rounded-lg"
+              onClick={() => onDialogOpenChange(true)}
+            >
+              <Plus />
+              {t('triggers.create')}
+            </Button>
+            <TooltipSimple
+              content={
+                isExecutionLogsOpen
+                  ? t('triggers.fold-execution-logs')
+                  : t('triggers.open-execution-logs')
+              }
+              variant="instant"
+              side="bottom"
+            >
               <Button
                 variant="ghost"
-                buttonContent="text"
                 size="sm"
-                className="rounded-lg"
+                buttonContent="icon-only"
+                className="rounded-lg opacity-70"
+                disabled={sortedTriggersForHeader.length === 0}
+                onClick={() => {
+                  if (isExecutionLogsOpen) {
+                    onExecutionLogsOpenChange(false);
+                    return;
+                  }
+
+                  if (
+                    !selectedTriggerId &&
+                    sortedTriggersForHeader.length > 0
+                  ) {
+                    onSelectedTriggerIdChange(sortedTriggersForHeader[0].id);
+                  }
+
+                  onExecutionLogsOpenChange(true);
+                }}
               >
-                {triggerSortLabel}
-                <ArrowUpDown />
+                {isExecutionLogsOpen ? (
+                  <SquareChevronRight className="h-4 w-4" />
+                ) : (
+                  <SquareCode className="h-4 w-4" />
+                )}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onSortByChange('createdAt')}>
-                {t('triggers.created-time')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onSortByChange('lastExecutionTime')}
-              >
-                {t('triggers.last-execution-label')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="primary"
-            size="sm"
-            className="items-center justify-center rounded-lg"
-            onClick={() => onDialogOpenChange(true)}
-          >
-            <Plus />
-            {t('triggers.create')}
-          </Button>
-          <TooltipSimple
-            content={
-              isExecutionLogsOpen
-                ? t('triggers.fold-execution-logs')
-                : t('triggers.open-execution-logs')
-            }
-            variant="instant"
-            side="bottom"
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="opacity-70"
-              disabled={sortedTriggersForHeader.length === 0}
-              onClick={() => {
-                if (isExecutionLogsOpen) {
-                  onExecutionLogsOpenChange(false);
-                  return;
-                }
-
-                if (!selectedTriggerId && sortedTriggersForHeader.length > 0) {
-                  onSelectedTriggerIdChange(sortedTriggersForHeader[0].id);
-                }
-
-                onExecutionLogsOpenChange(true);
-              }}
-            >
-              {isExecutionLogsOpen ? (
-                <SquareChevronRight className="h-4 w-4" />
-              ) : (
-                <SquareCode className="h-4 w-4" />
-              )}
-            </Button>
-          </TooltipSimple>
-          <TriggerDialog
-            selectedTrigger={null}
-            isOpen={isDialogOpen}
-            onOpenChange={onDialogOpenChange}
-          />
-        </div>
-      </div>
+            </TooltipSimple>
+            <TriggerDialog
+              selectedTrigger={null}
+              isOpen={isDialogOpen}
+              onOpenChange={onDialogOpenChange}
+            />
+          </>
+        }
+      />
       <div
         className={cn(
           'min-h-0 w-full flex-1',

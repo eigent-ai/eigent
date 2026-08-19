@@ -299,13 +299,15 @@ interface PageTabState {
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;
+  /**
+   * Workspace rail visibility, toggled from the title bar. Only the workspace
+   * shell honours this — Home and Settings always show their rail.
+   */
+  workspaceSidebarHidden: boolean;
+  toggleWorkspaceSidebar: () => void;
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
-  /** Project page left sidebar: icon-only rail (labels fade + width collapse). Persisted. */
-  projectSidebarFolded: boolean;
-  toggleProjectSidebarFolded: () => void;
-  setProjectSidebarFolded: (folded: boolean) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -511,15 +513,13 @@ export const usePageTabStore = create<PageTabState>()(
             inboxUnviewedForProjects: nextInboxProjects,
           };
         }),
+      workspaceSidebarHidden: false,
+      toggleWorkspaceSidebar: () =>
+        set((state) => ({
+          workspaceSidebarHidden: !state.workspaceSidebarHidden,
+        })),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
-      projectSidebarFolded: false,
-      toggleProjectSidebarFolded: () =>
-        set((state) => ({
-          projectSidebarFolded: !state.projectSidebarFolded,
-        })),
-      setProjectSidebarFolded: (folded) =>
-        set({ projectSidebarFolded: folded }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -891,23 +891,27 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 1,
+      version: 2,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
+      // v2: Project sidebar fold was removed; drop persisted fold state.
       migrate: (persistedState, version) => {
         if (
-          version < 1 &&
+          version < 2 &&
           persistedState &&
           typeof persistedState === 'object'
         ) {
           const next = { ...(persistedState as Record<string, unknown>) };
-          delete next.sessionSidePanelMode;
+          if (version < 1) {
+            delete next.sessionSidePanelMode;
+          }
+          delete next.projectSidebarFolded;
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
-        projectSidebarFolded: state.projectSidebarFolded,
+        workspaceSidebarHidden: state.workspaceSidebarHidden,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(

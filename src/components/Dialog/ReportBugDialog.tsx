@@ -212,14 +212,14 @@ export default function ReportBugDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         size="md"
-        className="gap-0 !rounded-xl border border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[560px]"
+        className="gap-0 !rounded-xl border border-ds-border-neutral-default-default p-0 shadow-sm sm:max-w-[560px]"
       >
-        <div className="w-full rounded-t-xl bg-ds-bg-neutral-strong-default pb-2 pl-md pr-12 pt-md text-left">
+        <div className="w-full rounded-t-xl pb-2 pl-md pr-12 pt-md text-left">
           <DialogTitle className="m-0 block w-full text-left text-body-md font-bold text-ds-text-neutral-default-default">
             {t('layout.support', { defaultValue: 'Support' })}
           </DialogTitle>
         </div>
-        <div className="flex max-h-[min(70vh,520px)] flex-col gap-md bg-ds-bg-neutral-strong-default px-md pb-md pt-2 text-left">
+        <div className="flex max-h-[min(70vh,520px)] flex-col gap-md px-md pb-md pt-2 text-left">
           {meta && (
             <p className="m-0 text-body-sm text-ds-text-neutral-subtle-default">
               {t('layout.report-bug-meta', {

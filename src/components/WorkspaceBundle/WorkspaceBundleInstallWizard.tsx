@@ -40,9 +40,9 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
-import { useSpaceStore } from '@/store/spaceStore';
+import { openSettings } from '@/store/settingsStore';
+import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
 import {
-  ArrowLeft,
   Check,
   ExternalLink,
   FolderOpen,
@@ -51,7 +51,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 type RetryMode = 'review' | 'resume' | 'start' | 'materialize' | null;
@@ -60,6 +60,11 @@ interface InstallSeed {
   proposalId: string;
   requestId: string;
   spaceId: string;
+}
+
+interface ActiveInstall {
+  proposalId: string;
+  handle: string;
 }
 
 const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
@@ -391,6 +396,42 @@ function clearInstallSeed(revisionId: string, actorId: string): void {
   window.localStorage.removeItem(installSeedKey(revisionId, actorId));
 }
 
+const activeInstallKey = (actorId: string): string =>
+  `eigent:workspace-bundle-active-install:v1:${actorId}`;
+
+function readActiveInstall(actorId: string): ActiveInstall | null {
+  if (!actorId) return null;
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(activeInstallKey(actorId)) || 'null'
+    ) as Partial<ActiveInstall> | null;
+    if (
+      !value ||
+      typeof value.proposalId !== 'string' ||
+      typeof value.handle !== 'string' ||
+      !parseWorkspaceBundleHandle(value.handle)
+    ) {
+      return null;
+    }
+    return value as ActiveInstall;
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveInstall(actorId: string, install: ActiveInstall): void {
+  if (!actorId) return;
+  window.localStorage.setItem(
+    activeInstallKey(actorId),
+    JSON.stringify(install)
+  );
+}
+
+function clearActiveInstall(actorId: string): void {
+  if (!actorId) return;
+  window.localStorage.removeItem(activeInstallKey(actorId));
+}
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error
     ? error.message
@@ -487,11 +528,19 @@ function LocalValueRow({
 export interface WorkspaceBundleInstallWizardProps {
   initialHandle?: string;
   initialProposalId?: string;
+  targetSpaceId?: string;
+  showHeader?: boolean;
+  onProposalChange?: (proposalId: string | null, handle: string | null) => void;
+  onWorkspaceOpen?: () => void;
 }
 
 export function WorkspaceBundleInstallWizard({
   initialHandle = '',
   initialProposalId = '',
+  targetSpaceId,
+  showHeader = true,
+  onProposalChange,
+  onWorkspaceOpen,
 }: WorkspaceBundleInstallWizardProps) {
   const navigate = useNavigate();
   const host = useHost();
@@ -500,6 +549,9 @@ export function WorkspaceBundleInstallWizard({
   const actorId = String(userId ?? email ?? '');
   const createSpaceOnServer = useSpaceStore(
     (state) => state.createSpaceOnServer
+  );
+  const updateSpaceOnServer = useSpaceStore(
+    (state) => state.updateSpaceOnServer
   );
   const deleteSpaceOnServer = useSpaceStore(
     (state) => state.deleteSpaceOnServer
@@ -526,9 +578,14 @@ export function WorkspaceBundleInstallWizard({
   const [error, setError] = useState<string | null>(null);
   const [retryMode, setRetryMode] = useState<RetryMode>(null);
   const [installSeed, setInstallSeed] = useState<InstallSeed | null>(null);
+  const requestedProposalIdRef = useRef('');
+  const requestedHandleRef = useRef('');
 
   const proposal = snapshot?.proposal;
-  const mcpDestinations = proposal?.install_plan.mcp_destinations ?? [];
+  const mcpDestinations = useMemo(
+    () => proposal?.install_plan.mcp_destinations ?? [],
+    [proposal]
+  );
   const mcpDestinationActionIds = useMemo(
     () =>
       new Set(
@@ -589,6 +646,12 @@ export function WorkspaceBundleInstallWizard({
         setHandle(parsed);
         setReview(next);
         setInstallSeed(readInstallSeed(parsed.coordinate, actorId));
+        requestedHandleRef.current = parsed.coordinate;
+        writeActiveInstall(actorId, {
+          proposalId: '',
+          handle: parsed.coordinate,
+        });
+        onProposalChange?.(null, parsed.coordinate);
         setRetryMode(null);
       } catch (nextError) {
         setError(errorMessage(nextError));
@@ -597,7 +660,7 @@ export function WorkspaceBundleInstallWizard({
         setBusyKey(null);
       }
     },
-    [actorId]
+    [actorId, onProposalChange]
   );
 
   const resumeProposal = useCallback(async (proposalId: string) => {
@@ -622,11 +685,37 @@ export function WorkspaceBundleInstallWizard({
 
   useEffect(() => {
     if (initialProposalId) {
+      if (requestedProposalIdRef.current === initialProposalId) return;
+      requestedProposalIdRef.current = initialProposalId;
       void resumeProposal(initialProposalId);
       return;
     }
-    if (initialHandle) void loadReview(initialHandle);
-  }, [initialHandle, initialProposalId, loadReview, resumeProposal]);
+    if (initialHandle) {
+      if (requestedHandleRef.current === initialHandle) return;
+      requestedHandleRef.current = initialHandle;
+      void loadReview(initialHandle);
+      return;
+    }
+    const activeInstall = readActiveInstall(actorId);
+    if (activeInstall) {
+      requestedProposalIdRef.current = activeInstall.proposalId;
+      requestedHandleRef.current = activeInstall.handle;
+      setHandleInput(activeInstall.handle);
+      onProposalChange?.(activeInstall.proposalId, activeInstall.handle);
+      if (activeInstall.proposalId) {
+        void resumeProposal(activeInstall.proposalId);
+      } else {
+        void loadReview(activeInstall.handle);
+      }
+    }
+  }, [
+    actorId,
+    initialHandle,
+    initialProposalId,
+    loadReview,
+    onProposalChange,
+    resumeProposal,
+  ]);
 
   useEffect(() => {
     if (
@@ -646,6 +735,9 @@ export function WorkspaceBundleInstallWizard({
     setError(null);
     try {
       let seed = installSeed;
+      if (seed && targetSpaceId && seed.spaceId !== targetSpaceId) {
+        seed = null;
+      }
       if (!seed) {
         const proposalId = newInstallId('bundleinstall');
         const requestId = newInstallId('bundlerequest');
@@ -653,24 +745,52 @@ export function WorkspaceBundleInstallWizard({
           review.bundle?.name ||
           review.revision.manifest.metadata.name ||
           'Imported workspace';
-        const spaceId = await createSpaceOnServer({
-          name,
-          sourceType: 'blank',
-          setActive: false,
-          metadata: {
-            createdFrom: 'workspace_bundle_install',
-            bundleRevision: handle.coordinate,
-            bundleInstallProposalId: proposalId,
-            bundleInstallRequestId: requestId,
-          },
-        });
+        const spaceStore = useSpaceStore.getState();
+        const targetSpace = targetSpaceId
+          ? spaceStore.getSpaceById(targetSpaceId)
+          : null;
+        const reuseTargetSpace = isDisposableBlankSpace(
+          targetSpace,
+          spaceStore.projectsBySpaceId
+        );
+        const metadata = {
+          ...targetSpace?.metadata,
+          createdFrom: 'workspace_bundle_install',
+          autoCreatedPlaceholder: false,
+          bundleRevision: handle.coordinate,
+          bundleInstallProposalId: proposalId,
+          bundleInstallRequestId: requestId,
+        };
+        const spaceId = reuseTargetSpace
+          ? targetSpace!.id
+          : await createSpaceOnServer({
+              name,
+              sourceType: 'blank',
+              setActive: false,
+              metadata,
+            });
+        if (reuseTargetSpace) {
+          await updateSpaceOnServer(spaceId, { name, metadata });
+        }
         seed = { proposalId, requestId, spaceId };
         setInstallSeed(seed);
         try {
           writeInstallSeed(handle.coordinate, actorId, seed);
         } catch {
           setInstallSeed(null);
-          await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          if (reuseTargetSpace && targetSpace) {
+            await updateSpaceOnServer(spaceId, {
+              name: targetSpace.name,
+              description: targetSpace.description,
+              sourceType: targetSpace.sourceType,
+              rootPath: targetSpace.rootPath,
+              rootFingerprint: targetSpace.rootFingerprint,
+              status: targetSpace.status,
+              metadata: targetSpace.metadata,
+            }).catch(() => undefined);
+          } else {
+            await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          }
           throw new Error(
             'Eigent could not save the recoverable installation intent.'
           );
@@ -684,7 +804,19 @@ export function WorkspaceBundleInstallWizard({
         if (!root) {
           clearInstallSeed(handle.coordinate, actorId);
           setInstallSeed(null);
-          await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          if (reuseTargetSpace && targetSpace) {
+            await updateSpaceOnServer(spaceId, {
+              name: targetSpace.name,
+              description: targetSpace.description,
+              sourceType: targetSpace.sourceType,
+              rootPath: targetSpace.rootPath,
+              rootFingerprint: targetSpace.rootFingerprint,
+              status: targetSpace.status,
+              metadata: targetSpace.metadata,
+            }).catch(() => undefined);
+          } else {
+            await deleteSpaceOnServer(spaceId).catch(() => undefined);
+          }
           throw new Error(
             'Eigent could not create the local Workspace folder.'
           );
@@ -699,10 +831,12 @@ export function WorkspaceBundleInstallWizard({
         version: handle.version,
       });
       clearInstallSeed(handle.coordinate, actorId);
-      navigate(
-        `/workspace-bundles/install?proposal=${encodeURIComponent(seed.proposalId)}&handle=${encodeURIComponent(handle.coordinate)}`,
-        { replace: true }
-      );
+      requestedProposalIdRef.current = seed.proposalId;
+      writeActiveInstall(actorId, {
+        proposalId: seed.proposalId,
+        handle: handle.coordinate,
+      });
+      onProposalChange?.(seed.proposalId, handle.coordinate);
       // Persisting the proposal is not user consent. Keep the installation in
       // `proposed` until the review card below receives a separate click.
       setSnapshot(proposed);
@@ -720,8 +854,10 @@ export function WorkspaceBundleInstallWizard({
     email,
     handle,
     installSeed,
-    navigate,
+    onProposalChange,
     review,
+    targetSpaceId,
+    updateSpaceOnServer,
     userId,
   ]);
 
@@ -963,6 +1099,8 @@ export function WorkspaceBundleInstallWizard({
     setActiveSpace(proposal.space_id);
     projectStore.setActiveProject(null);
     setActiveWorkspaceTab('workforce');
+    clearActiveInstall(actorId);
+    onWorkspaceOpen?.();
     navigate('/');
   };
 
@@ -972,6 +1110,18 @@ export function WorkspaceBundleInstallWizard({
       void resumeProposal(initialProposalId);
     if (retryMode === 'start') void startInstall();
     if (retryMode === 'materialize') void materialize();
+  };
+
+  const resetInstall = () => {
+    setHandleInput('');
+    setHandle(null);
+    setReview(null);
+    setSnapshot(null);
+    setError(null);
+    setRetryMode(null);
+    setInstallSeed(null);
+    clearActiveInstall(actorId);
+    onProposalChange?.(null, null);
   };
 
   if (proposal?.state === 'rejected') {
@@ -984,11 +1134,7 @@ export function WorkspaceBundleInstallWizard({
           <p className="text-body-sm text-ds-text-neutral-muted-default">
             This durable proposal was rejected and cannot be reused.
           </p>
-          <Button
-            className="mt-5"
-            variant="secondary"
-            onClick={() => navigate('/workspace-bundles/install')}
-          >
+          <Button className="mt-5" variant="secondary" onClick={resetInstall}>
             Import another Bundle
           </Button>
         </CardContent>
@@ -998,23 +1144,17 @@ export function WorkspaceBundleInstallWizard({
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 text-body-sm text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default"
-        onClick={() => navigate('/history?tab=home&section=spaces')}
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Back to Spaces
-      </button>
-
-      <header>
-        <h1 className="text-heading-2xl font-semibold">
-          Install Workspace Bundle
-        </h1>
-        <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
-          Review what the workspace environment can access, then configure
-          required values and connections locally.
-        </p>
-      </header>
+      {showHeader ? (
+        <header>
+          <h1 className="text-heading-2xl font-semibold">
+            Install Workspace Bundle
+          </h1>
+          <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
+            Review what the workspace environment can access, then configure
+            required values and connections locally.
+          </p>
+        </header>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-body-sm text-ds-text-error-strong-default">
@@ -1040,11 +1180,11 @@ export function WorkspaceBundleInstallWizard({
       ) : null}
 
       {!review && !snapshot ? (
-        <Card>
-          <CardHeader>
+        <Card className={showHeader ? undefined : 'space-y-3 !border-0'}>
+          <CardHeader className={showHeader ? undefined : '!p-0'}>
             <CardTitle>Import by share handle</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className={showHeader ? undefined : '!p-0'}>
             <form
               className="flex gap-2"
               onSubmit={(event) => {
@@ -1411,9 +1551,7 @@ export function WorkspaceBundleInstallWizard({
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() =>
-                                navigate('/history?tab=connectors')
-                              }
+                              onClick={() => openSettings('connectors')}
                             >
                               <ExternalLink className="h-4 w-4" /> Connect
                             </Button>

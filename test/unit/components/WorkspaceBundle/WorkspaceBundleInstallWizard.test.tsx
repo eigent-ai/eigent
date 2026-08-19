@@ -33,11 +33,13 @@ const mocks = vi.hoisted(() => ({
   secretDelete: vi.fn(),
   selectFile: vi.fn(),
   createSpace: vi.fn(),
+  updateSpace: vi.fn(),
   deleteSpace: vi.fn(),
   ensureScratch: vi.fn(),
   setActiveSpace: vi.fn(),
   setActiveProject: vi.fn(),
   setActiveWorkspaceTab: vi.fn(),
+  openSettings: vi.fn(),
 }));
 
 vi.mock('@/service/workspaceBundleInstallApi', () => ({
@@ -93,20 +95,34 @@ vi.mock('@/store/authStore', () => ({
 
 vi.mock('@/store/spaceStore', () => {
   const state = {
+    spaces: {} as Record<string, Record<string, unknown>>,
+    projectsBySpaceId: {} as Record<string, Record<string, unknown>>,
     createSpaceOnServer: mocks.createSpace,
+    updateSpaceOnServer: mocks.updateSpace,
     deleteSpaceOnServer: mocks.deleteSpace,
     setActiveSpace: mocks.setActiveSpace,
-    getSpaceById: (spaceId: string) => ({
-      id: spaceId,
-      name: 'Imported',
-      sourceType: 'blank',
-    }),
+    getSpaceById: (spaceId: string) =>
+      state.spaces[spaceId] ?? {
+        id: spaceId,
+        name: 'Imported',
+        sourceType: 'blank',
+      },
   };
   const useSpaceStore = Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state }
   );
-  return { useSpaceStore };
+  return {
+    isDisposableBlankSpace: (space: Record<string, unknown> | null) =>
+      Boolean(
+        space &&
+        space.name === 'Untitled Space' &&
+        space.sourceType === 'blank' &&
+        (space.metadata as { autoCreatedPlaceholder?: boolean } | undefined)
+          ?.autoCreatedPlaceholder === true
+      ),
+    useSpaceStore,
+  };
 });
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: () => ({ setActiveProject: mocks.setActiveProject }),
@@ -115,9 +131,13 @@ vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: (state: object) => unknown) =>
     selector({ setActiveWorkspaceTab: mocks.setActiveWorkspaceTab }),
 }));
+vi.mock('@/store/settingsStore', () => ({
+  openSettings: mocks.openSettings,
+}));
 
 import { WorkspaceBundleInstallWizard } from '@/components/WorkspaceBundle/WorkspaceBundleInstallWizard';
 import type { WorkspaceBundleInstallSnapshot } from '@/service/workspaceBundleInstallApi';
+import { useSpaceStore } from '@/store/spaceStore';
 
 const manifest = {
   apiVersion: 'eigent.ai/v1alpha1',
@@ -240,6 +260,8 @@ const snapshot = (
 function renderWizard(props: {
   initialHandle?: string;
   initialProposalId?: string;
+  targetSpaceId?: string;
+  showHeader?: boolean;
 }) {
   return render(
     <MemoryRouter>
@@ -261,6 +283,93 @@ describe('WorkspaceBundleInstallWizard', () => {
       proposal: { ...snapshot(false).proposal, state: 'proposed', version: 1 },
     });
     mocks.decide.mockResolvedValue(snapshot(false));
+    const spaceStore = useSpaceStore.getState();
+    spaceStore.spaces = {};
+    spaceStore.projectsBySpaceId = {};
+  });
+
+  it('renders without standalone page navigation', () => {
+    renderWizard({});
+
+    expect(
+      screen.queryByRole('button', { name: 'Back to Spaces' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Install Workspace Bundle' })
+    ).toBeInTheDocument();
+  });
+
+  it('removes the share-handle card border and padding when embedded', () => {
+    renderWizard({ showHeader: false });
+
+    const title = screen.getByText('Import by share handle');
+    const cardHeader = title.parentElement;
+    const card = cardHeader?.parentElement;
+    const input = screen.getByRole('textbox', {
+      name: 'Workspace Bundle share handle',
+    });
+
+    expect(card).toHaveClass('space-y-3', '!border-0');
+    expect(cardHeader).toHaveClass('!p-0');
+    expect(input.closest('form')?.parentElement).toHaveClass('!p-0');
+  });
+
+  it('resumes an in-progress embedded import without a page URL', async () => {
+    window.localStorage.setItem(
+      'eigent:workspace-bundle-active-install:v1:user-1',
+      JSON.stringify({
+        proposalId: 'proposal-1',
+        handle: '@verified-publisher/research@1',
+      })
+    );
+    mocks.fetchProposal.mockResolvedValue(snapshot(false));
+
+    renderWizard({});
+
+    await waitFor(() =>
+      expect(mocks.fetchProposal).toHaveBeenCalledWith('proposal-1')
+    );
+    expect(await screen.findByText('1. Local values')).toBeInTheDocument();
+  });
+
+  it('restores a reviewed handle before a proposal exists', async () => {
+    mocks.fetchReview.mockResolvedValue(review);
+    const first = renderWizard({
+      initialHandle: '@verified-publisher/research@1',
+    });
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
+    first.unmount();
+    mocks.fetchReview.mockClear();
+
+    renderWizard({});
+
+    await waitFor(() =>
+      expect(mocks.fetchReview).toHaveBeenCalledWith({
+        publisherNamespace: 'verified-publisher',
+        slug: 'research',
+        version: 1,
+        coordinate: '@verified-publisher/research@1',
+      })
+    );
+    expect(await screen.findByText('Research workspace')).toBeInTheDocument();
+  });
+
+  it('opens the Connectors settings section for a missing connection', async () => {
+    const pendingConnection = snapshot(false);
+    pendingConnection.proposal.install_plan.connector_slots = [
+      {
+        slot_id: 'research-connector',
+        connector_id: 'github',
+        required_grants: [],
+      },
+    ];
+    mocks.fetchProposal.mockResolvedValue(pendingConnection);
+    const user = userEvent.setup();
+    renderWizard({ initialProposalId: 'proposal-1' });
+
+    await user.click(await screen.findByRole('button', { name: 'Connect' }));
+
+    expect(mocks.openSettings).toHaveBeenCalledWith('connectors');
   });
 
   it('requires a separate approval after persisting the install proposal', async () => {
@@ -295,6 +404,43 @@ describe('WorkspaceBundleInstallWizard', () => {
     );
 
     await waitFor(() => expect(mocks.decide).toHaveBeenCalledTimes(1));
+  });
+
+  it('installs into the selected placeholder Space instead of creating another Space', async () => {
+    const placeholder = {
+      id: 'empty-space',
+      name: 'Untitled Space',
+      sourceType: 'blank',
+      status: 'active',
+      metadata: {
+        createdFrom: 'initial_hydrate',
+        autoCreatedPlaceholder: true,
+      },
+    };
+    const spaceStore = useSpaceStore.getState();
+    spaceStore.spaces = { 'empty-space': placeholder };
+    spaceStore.projectsBySpaceId = { 'empty-space': {} };
+    mocks.fetchReview.mockResolvedValue(review);
+    const user = userEvent.setup();
+    renderWizard({
+      initialHandle: '@verified-publisher/research@1',
+      targetSpaceId: 'empty-space',
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /confirm and create/i })
+    );
+
+    await waitFor(() => expect(mocks.createProposal).toHaveBeenCalledTimes(1));
+    expect(mocks.createSpace).not.toHaveBeenCalled();
+    expect(mocks.updateSpace).toHaveBeenCalledWith(
+      'empty-space',
+      expect.objectContaining({ name: 'Research workspace' })
+    );
+    expect(mocks.createProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ spaceId: 'empty-space' })
+    );
+    expect(mocks.deleteSpace).not.toHaveBeenCalled();
   });
 
   it('stores plaintext only through the Electron vault and binds an opaque ref', async () => {

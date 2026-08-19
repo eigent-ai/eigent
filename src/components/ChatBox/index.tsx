@@ -47,6 +47,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -59,7 +60,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
@@ -152,6 +153,10 @@ interface UsageLimitBannerState {
   message: string;
   actionLabel: string;
   severity: 'warning' | 'danger';
+}
+
+function getCurrentTimestamp() {
+  return Date.now();
 }
 
 const runActionRequestId = (action: 'resume' | 'cancel', runId: string) => {
@@ -496,11 +501,9 @@ export default function ChatBox(): JSX.Element {
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
 
-  const navigate = useNavigate();
-
   const handleSelectModel = useCallback(() => {
-    navigate('/history?tab=agents');
-  }, [navigate]);
+    openSettings('models');
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
@@ -553,76 +556,66 @@ export default function ChatBox(): JSX.Element {
     setLegacyApprovalSubmitting(false);
   }, [activeInteraction?.interaction_id]);
 
-  const handleLegacyApprovalDecision = useCallback(
-    async (
-      decision: 'approved' | 'rejected',
-      scope: BottomBoxApprovalScope
-    ) => {
-      const interaction = activeInteraction;
-      const taskId = activeTaskId;
-      if (
-        !interaction ||
-        interaction.interaction_type !== 'approval' ||
-        !taskId ||
-        legacyApprovalSubmitting
-      ) {
-        return;
-      }
+  const handleLegacyApprovalDecision = async (
+    decision: 'approved' | 'rejected',
+    scope: BottomBoxApprovalScope
+  ) => {
+    const interaction = activeInteraction;
+    const taskId = activeTaskId;
+    if (
+      !interaction ||
+      interaction.interaction_type !== 'approval' ||
+      !taskId ||
+      legacyApprovalSubmitting
+    ) {
+      return;
+    }
 
-      setLegacyApprovalSubmitting(true);
-      try {
-        await decideHumanInteraction(interaction, {
-          decisionRequestId: [
-            'desktop-approval',
-            encodeURIComponent(interaction.interaction_id),
-            String(interaction.version ?? 0),
-            decision,
-            scope,
-          ].join(':'),
-          decision: { decision, scope },
-          actorId: user_id,
-        });
+    setLegacyApprovalSubmitting(true);
+    try {
+      await decideHumanInteraction(interaction, {
+        decisionRequestId: [
+          'desktop-approval',
+          encodeURIComponent(interaction.interaction_id),
+          String(interaction.version ?? 0),
+          decision,
+          scope,
+        ].join(':'),
+        decision: { decision, scope },
+        actorId: user_id,
+      });
 
-        const activeStore = projectStore.getActiveChatStore();
-        if (!activeStore) return;
-        const state = activeStore.getState();
-        if (!state || state.activeTaskId !== taskId) return;
+      const activeStore = projectStore.getActiveChatStore();
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (!state || state.activeTaskId !== taskId) return;
 
-        state.markHumanInteractionResolved(taskId, interaction.interaction_id);
-        const current = activeStore.getState().tasks[taskId];
-        if (!current) return;
-        const [nextAsk, ...remainingAsks] = current.askList;
-        state.setActiveAskList(taskId, remainingAsks);
-        state.setActiveAsk(taskId, nextAsk?.agent_name || '');
-        state.setIsPending(taskId, false);
-        state.setDurableRunStatus(
-          taskId,
-          nextAsk ? 'waiting_for_user' : 'running'
-        );
-        state.setStatus(taskId, ChatTaskStatus.RUNNING);
-        if (nextAsk) state.addMessages(taskId, nextAsk);
-      } catch (error: any) {
-        const message =
-          error?.response?.data?.detail?.message ||
-          error?.response?.data?.detail ||
-          error?.message ||
-          t('chat.control-decision-failed');
-        toast.error(
-          typeof message === 'string' ? message : JSON.stringify(message)
-        );
-      } finally {
-        setLegacyApprovalSubmitting(false);
-      }
-    },
-    [
-      activeInteraction,
-      activeTaskId,
-      legacyApprovalSubmitting,
-      projectStore,
-      t,
-      user_id,
-    ]
-  );
+      state.markHumanInteractionResolved(taskId, interaction.interaction_id);
+      const current = activeStore.getState().tasks[taskId];
+      if (!current) return;
+      const [nextAsk, ...remainingAsks] = current.askList;
+      state.setActiveAskList(taskId, remainingAsks);
+      state.setActiveAsk(taskId, nextAsk?.agent_name || '');
+      state.setIsPending(taskId, false);
+      state.setDurableRunStatus(
+        taskId,
+        nextAsk ? 'waiting_for_user' : 'running'
+      );
+      state.setStatus(taskId, ChatTaskStatus.RUNNING);
+      if (nextAsk) state.addMessages(taskId, nextAsk);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail?.message ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        t('chat.control-decision-failed');
+      toast.error(
+        typeof message === 'string' ? message : JSON.stringify(message)
+      );
+    } finally {
+      setLegacyApprovalSubmitting(false);
+    }
+  };
 
   const handleDurableHumanControlResolved = useCallback(
     (resolved: { interactionId: string; runId: string }) => {
@@ -798,7 +791,7 @@ export default function ChatBox(): JSX.Element {
           return;
         }
         toast.error('Please select a model first.');
-        navigate('/history?tab=agents');
+        openSettings('models');
         return;
       }
 
@@ -836,7 +829,6 @@ export default function ChatBox(): JSX.Element {
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
-      navigate,
       t,
     ]
   );
@@ -900,7 +892,7 @@ export default function ChatBox(): JSX.Element {
         return;
       }
       toast.error('Please select a model first.');
-      navigate('/history?tab=agents');
+      openSettings('models');
       return;
     }
 
@@ -980,7 +972,7 @@ export default function ChatBox(): JSX.Element {
         task_id: requestId,
         run_id: requestId,
         content: displayContent,
-        timestamp: Date.now(),
+        timestamp: getCurrentTimestamp(),
         attaches: queuedFiles,
         source: 'local',
       });
@@ -1466,7 +1458,7 @@ export default function ChatBox(): JSX.Element {
           error
         );
       });
-  }, [projectStore.activeProjectId]);
+  }, [projectStore, projectStore.activeProjectId]);
 
   useEffect(() => {
     const projectId = projectStore.activeProjectId;

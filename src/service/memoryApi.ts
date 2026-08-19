@@ -191,11 +191,12 @@ const transitionMemoryEntry = (
   return fetchPost(`${path}/${operation}`, body);
 };
 
-export const deleteMemoryEntry = (entry: MemoryEntry) =>
-  transitionMemoryEntry(entry, 'delete', 'Deleted in Memory Center');
+export const archiveMemoryEntry = (entry: MemoryEntry) =>
+  transitionMemoryEntry(entry, 'delete', 'Archived in Memory Center');
 export const restoreMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'restore', 'Restored in Memory Center');
 export const confirmMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'confirm', 'Confirmed in Memory Center');
+/** The `pin` mutation only sets the flag; there is no un-pin transition yet. */
 export const pinMemoryEntry = (entry: MemoryEntry) =>
   transitionMemoryEntry(entry, 'pin', 'Pinned in Memory Center');

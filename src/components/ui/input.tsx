@@ -27,16 +27,14 @@ import { formControlTokenAliases } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type InputSize = 'default' | 'sm';
+/** Primary: default surface. Secondary: subtle surface for nested settings fields. */
+export type InputVariant = 'primary' | 'secondary';
 export type InputState =
-  | 'default'
-  | 'hover'
-  | 'input'
-  | 'error'
-  | 'success'
-  | 'disabled';
+  'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
 
 type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   size?: InputSize;
+  variant?: InputVariant;
   state?: InputState;
   title?: string;
   tooltip?: string;
@@ -56,6 +54,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       className,
       type,
       size = 'default',
+      variant = 'primary',
       state = 'default',
       title,
       tooltip,
@@ -117,7 +116,9 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             // After field base so hover / focus background wins; subtle surface on interaction
             state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-ds-bg-neutral-subtle-default',
+                variant === 'secondary'
+                  ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-hover'
+                  : 'hover:bg-ds-bg-neutral-subtle-default',
                 'focus-within:bg-ds-bg-neutral-subtle-default',
                 'focus-within:ring-ds-ring-brand-default-focus hover:ring-ds-ring-neutral-strong-default',
                 'focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',

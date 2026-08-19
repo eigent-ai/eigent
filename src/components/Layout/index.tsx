@@ -15,20 +15,73 @@
 import { InstallDependencies } from '@/components/InstallStep/InstallDependencies';
 import TopBar from '@/components/TopBar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import CloseNoticeDialog from '../Dialog/CloseNotice';
-import HistorySidebar from '../HistorySidebar';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
+
+/**
+ * Settings used to be a modal, and `openSettings(section)` is still the
+ * call every feature uses to jump into a section. Settings is now a page in
+ * the app shell, so translate that request into a route change and clear the
+ * flag; `activeSection` stays in the store and drives the page.
+ */
+function SettingsRouteBridge() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isOpen = useSettingsStore((state) => state.isOpen);
+  const activeSection = useSettingsStore((state) => state.activeSection);
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void runAfterWorkspaceConfigurationSave(() => {
+      closeSettings();
+      if (isSettingsRoutePath(location.pathname)) {
+        const searchParams = new URLSearchParams(location.search);
+        if (
+          searchParams.get('section') !== 'settings' ||
+          searchParams.get('tab') !== activeSection
+        ) {
+          navigate(`/home?section=settings&tab=${activeSection}`, {
+            replace: true,
+            state: location.state,
+          });
+        }
+        return;
+      }
+      // Record the origin so the route layout can retain Workspace state while
+      // the full-page Home / Settings surface is active.
+      navigate(`/home?section=settings&tab=${activeSection}`, {
+        state: shellBackState(`${location.pathname}${location.search}`),
+      });
+    });
+  }, [
+    closeSettings,
+    activeSection,
+    isOpen,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ]);
+
+  return null;
+}
 
 const Layout = () => {
   const host = useHost();
+  const location = useLocation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const {
     initState,
@@ -50,7 +103,6 @@ const Layout = () => {
     latestLog,
     error,
     backendError,
-    isInstalling,
     isBackendReady,
     shouldShowInstallScreen,
     retryInstallation,
@@ -58,6 +110,7 @@ const Layout = () => {
   } = useInstallationUI();
 
   useInstallationSetup();
+  useDesktopUpdater();
 
   useEffect(() => {
     if (!host?.ipcRenderer?.invoke) return;
@@ -112,9 +165,11 @@ const Layout = () => {
     !isBackendReady ||
     (isFirstLaunch && !onboardingCompleted);
   const shouldShowMainContent = !actualShouldShowInstallScreen;
+  const showTopBar =
+    location.pathname === '/' || isSettingsRoutePath(location.pathname);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-muted-default">
+    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
       <div
         className={
           actualShouldShowInstallScreen
@@ -122,19 +177,15 @@ const Layout = () => {
             : undefined
         }
       >
-        <TopBar />
+        {showTopBar ? <TopBar /> : null}
       </div>
+      <SettingsRouteBridge />
       <div className="relative h-full min-h-0 flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}
 
         {/* Main app content */}
-        {shouldShowMainContent && (
-          <>
-            <Outlet />
-            <HistorySidebar />
-          </>
-        )}
+        {shouldShowMainContent && <Outlet />}
 
         {(backendError || (error && installationState === 'error')) && (
           <InstallationErrorDialog

@@ -47,6 +47,7 @@ client_secret_*.json
 
 .claude/
 .cursor
+.agents/
 
 # Public directory (large media files)
 public/

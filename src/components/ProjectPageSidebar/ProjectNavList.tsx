@@ -12,13 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { NavTab, SidebarScrollArea } from '@/components/Layout/AppSidebar';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
-import { ChevronDown, Plus } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { NavTab } from './NavTab';
 import { ProjectNavListRows, type ProjectNavItem } from './ProjectNavListRows';
+import { SidebarAccordionSection } from './SidebarAccordionSection';
 
 export {
   NAV_LIST_PROJECTS_RECENT_MAX,
@@ -39,57 +38,7 @@ export interface ProjectNavListProps {
   onNewProject: () => void;
   /** Selected state for the New Project row. */
   newProjectActive?: boolean;
-  /** Icon-only rail: match other sidebar `NavTab`s. */
-  folded: boolean;
   className?: string;
-}
-
-/**
- * Collapsible section with a label header.
- * Chevron is always visible when collapsed; only visible on hover when expanded.
- */
-function AccordionSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  const [expanded, setExpanded] = useState(true);
-
-  return (
-    <div className="mt-3 flex flex-col">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className={cn(
-          'group/section-header flex w-full items-center gap-1 rounded-lg px-3 py-0.5 text-left'
-        )}
-        aria-expanded={expanded}
-      >
-        <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default">
-          {label}
-        </span>
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 shrink-0 !text-ds-icon-neutral-muted-default transition-[opacity,transform] duration-200',
-            !expanded && '-rotate-90',
-            expanded && 'opacity-0 group-hover/section-header:opacity-100'
-          )}
-          aria-hidden
-        />
-      </button>
-
-      <motion.div
-        initial={false}
-        animate={{ height: expanded ? 'auto' : 0 }}
-        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-        style={{ overflow: 'hidden' }}
-      >
-        <div className="flex flex-col gap-0.5 pt-0.5">{children}</div>
-      </motion.div>
-    </div>
-  );
 }
 
 /** New Project row, optional Pinned section, and Projects section. */
@@ -102,29 +51,9 @@ export function ProjectNavList({
   onPinProject,
   onNewProject,
   newProjectActive = false,
-  folded,
   className,
 }: ProjectNavListProps) {
   const { t } = useTranslation();
-  const projectListRef = useRef<HTMLDivElement>(null);
-  const [projectListOverflow, setProjectListOverflow] = useState(false);
-
-  useEffect(() => {
-    const el = projectListRef.current;
-    if (!el) return;
-
-    const checkOverflow = () => {
-      setProjectListOverflow(el.scrollHeight > el.clientHeight + 1);
-    };
-
-    checkOverflow();
-
-    const observer = new ResizeObserver(checkOverflow);
-    observer.observe(el);
-    Array.from(el.children).forEach((child) => observer.observe(child));
-
-    return () => observer.disconnect();
-  }, [projects, folded]);
 
   const newProjectLabel = t('layout.new');
   const pinnedLabel = t('layout.pinned', { defaultValue: 'Pinned' });
@@ -141,7 +70,7 @@ export function ProjectNavList({
     onDeleteProject,
     onAchieveProject,
     onPinProject,
-    folded,
+    folded: false as const,
   };
 
   return (
@@ -158,66 +87,27 @@ export function ProjectNavList({
           onClick={onNewProject}
           leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
           label={newProjectLabel}
-          tooltip={newProjectLabel}
-          tooltipEnabledWhenCollapsed={!folded}
-          folded={folded}
           ariaLabel={newProjectLabel}
           ariaCurrentPage={newProjectActive}
         />
       </div>
 
       {/* Scrollable section list */}
-      <div
-        ref={projectListRef}
-        className={cn(
-          'm-0 mt-1 flex min-h-0 min-w-0 flex-1 flex-col p-0 pb-1',
-          folded
-            ? projectListOverflow
-              ? 'scrollbar-hide gap-0.5 overflow-y-auto'
-              : 'gap-0.5 overflow-hidden'
-            : projectListOverflow
-              ? 'scrollbar overflow-y-auto'
-              : 'overflow-hidden'
+      <SidebarScrollArea className="m-0 mt-1 p-0 pb-1">
+        {hasPinned && (
+          <SidebarAccordionSection label={pinnedLabel}>
+            <ProjectNavListRows {...sharedRowProps} projects={pinnedProjects} />
+          </SidebarAccordionSection>
         )}
-      >
-        {folded ? (
-          // Icon-only rail: flat list, no section headers
-          <>
-            {hasPinned && (
-              <ProjectNavListRows
-                {...sharedRowProps}
-                projects={pinnedProjects}
-              />
-            )}
-            {hasUnpinned && (
-              <ProjectNavListRows
-                {...sharedRowProps}
-                projects={unpinnedProjects}
-              />
-            )}
-          </>
-        ) : (
-          // Expanded: accordion sections
-          <>
-            {hasPinned && (
-              <AccordionSection label={pinnedLabel}>
-                <ProjectNavListRows
-                  {...sharedRowProps}
-                  projects={pinnedProjects}
-                />
-              </AccordionSection>
-            )}
-            {hasUnpinned && (
-              <AccordionSection label={projectsLabel}>
-                <ProjectNavListRows
-                  {...sharedRowProps}
-                  projects={unpinnedProjects}
-                />
-              </AccordionSection>
-            )}
-          </>
+        {hasUnpinned && (
+          <SidebarAccordionSection label={projectsLabel}>
+            <ProjectNavListRows
+              {...sharedRowProps}
+              projects={unpinnedProjects}
+            />
+          </SidebarAccordionSection>
         )}
-      </div>
+      </SidebarScrollArea>
     </div>
   );
 }
@@ -229,7 +119,6 @@ export interface NavListProps {
   onDeleteSession?: (sessionId: string) => void;
   onNewSession: () => void;
   newSessionActive?: boolean;
-  folded: boolean;
   className?: string;
 }
 

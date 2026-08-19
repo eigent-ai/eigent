@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -83,8 +84,12 @@ export function WorkspaceProjectPicker({
   const refreshProjectOnServer = useSpaceStore((s) => s.refreshProjectOnServer);
   const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const [pendingOverlays, setPendingOverlays] = useState<SpaceOverlay[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
@@ -301,18 +306,24 @@ export function WorkspaceProjectPicker({
       });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
       navigate('/');
       setMenuOpen(false);
+      return true;
     } catch (error) {
       console.error('Failed to create Space:', error);
       toast.error(t('layout.spaces-create-failed'));
+      return false;
     }
   }, [
     createSpaceOnServer,
     email,
     navigate,
     projectStore,
+    requestWorkspaceChatFocus,
     setActiveSpace,
+    setActiveWorkspaceTab,
     t,
     userId,
   ]);
@@ -527,15 +538,19 @@ export function WorkspaceProjectPicker({
         createdFrom: 'workspace_folder_space_picker',
         onUnavailable: openAgentFolderTab,
       });
-      if (!spaceId) return;
+      if (!spaceId) return false;
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
       navigate('/');
       setMenuOpen(false);
+      return true;
     } catch (error) {
       console.warn(
         '[WorkspaceProjectPicker] Failed to create folder Space:',
         error
       );
       toast.error(getFolderSpaceErrorMessage(error, t));
+      return false;
     }
   };
 
@@ -583,6 +598,12 @@ export function WorkspaceProjectPicker({
         email={email}
         userId={userId}
         actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={handleNewSpace}
+        onUseLocalFolder={handleCreateSpaceFromFolder}
       />
       <AlertDialog
         isOpen={discardConfirmOpen}
@@ -664,10 +685,7 @@ export function WorkspaceProjectPicker({
         activeSpaceId={activeSpaceId}
         switchingSpaceId={switchingSpaceId}
         canRenameActiveSpace={canRenameActiveSpace}
-        createSpaceMenu={{
-          onStartFromScratch: handleNewSpace,
-          onSelectFolder: handleCreateSpaceFromFolder,
-        }}
+        onOpenCreateSpace={() => setNewSpaceDialogOpen(true)}
         onRenameSpace={openRenameDialog}
         onSpaceSelect={activateSpace}
         pendingChangesMenu={

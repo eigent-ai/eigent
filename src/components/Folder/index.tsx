@@ -14,6 +14,10 @@
 
 import cursorIcon from '@/assets/icon/cursor.svg';
 import vsCodeIcon from '@/assets/icon/vs-code.svg';
+import {
+  CONTENT_HEADER_BORDER_CLASS,
+  CONTENT_HEADER_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +27,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
@@ -78,6 +83,7 @@ import {
   repairGeneratedReportBraces,
 } from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { cn } from '@/lib/utils';
 import {
   formatFileSize,
   type FilePreviewPayload,
@@ -891,17 +897,22 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   await downloadFromUrl(file.path, filename);
 }
 
-export default function Folder({ data: _data }: { data?: Agent }) {
+interface FolderProps {
+  data?: Agent;
+  spaceId?: string;
+}
+
+export default function Folder({ data: _data, spaceId }: FolderProps) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const authStore = useAuthStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
-  const activeProjectId = projectStore.activeProjectId;
+  const activeProjectId = spaceId ? null : projectStore.activeProjectId;
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const resolvedSpaceId =
-    activeProjectMeta?.spaceId || activeSpaceId || undefined;
+    spaceId || activeProjectMeta?.spaceId || activeSpaceId || undefined;
   const activeSpace = useSpaceStore((s) => {
     return resolvedSpaceId ? (s.spaces[resolvedSpaceId] ?? null) : null;
   });
@@ -918,6 +929,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
@@ -953,8 +965,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     Set<string>
   >(() => new Set());
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
+  const hasNoFiles = fileGroups.every((group) => group.files.length === 0);
 
   const rememberSelectedFile = (file: FileInfo) => {
+    if (spaceId) return;
     if (!chatStore?.activeTaskId) return;
     chatStore.setSelectedFile(chatStore.activeTaskId, file);
   };
@@ -1052,7 +1066,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const activeTaskId = chatStore?.activeTaskId ?? undefined;
+  const activeTaskId = spaceId
+    ? undefined
+    : (chatStore?.activeTaskId ?? undefined);
   const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
   const projectedFileRevision = useMemo(
     () => getSidePanelOutputFilesRevision(activeTask),
@@ -1128,7 +1144,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         setWorkingFolderPath(activeSpace.rootPath);
         return;
       }
-      if (!authStore.email || !projectStore.activeProjectId) {
+      if (!authStore.email || !activeProjectId) {
         setWorkingFolderPath(null);
         return;
       }
@@ -1139,7 +1155,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       try {
         const folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId as string,
+          activeProjectId,
           authStore.user_id
         );
         if (!cancelled) setWorkingFolderPath(folderPath || null);
@@ -1155,7 +1171,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     activeSpace?.rootPath,
     authStore.email,
     authStore.user_id,
-    projectStore.activeProjectId,
+    activeProjectId,
     electronAPI,
   ]);
 
@@ -1182,6 +1198,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       !projectFetchTargetsRef.current.length ||
       !authStore.email
     ) {
+      setFilesLoading(false);
       return;
     }
 
@@ -1401,10 +1418,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             inFlightController = null;
             inFlightMode = null;
           }
+          if (mode === 'full' && !cancelled) setFilesLoading(false);
         });
     };
 
     if (shouldFetch) {
+      setFilesLoading(true);
       debounceTimer = setTimeout(() => {
         lastFetchKey.current = fetchKey;
         runFileList(projectFetchTargetsRef.current, { merge: false });
@@ -1483,12 +1502,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       let folderPath = activeSpace?.rootPath || '';
       if (
         !folderPath &&
-        projectStore.activeProjectId &&
+        activeProjectId &&
         typeof electronAPI.getProjectFolderPath === 'function'
       ) {
         folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId,
+          activeProjectId,
           authStore.user_id
         );
       }
@@ -1527,7 +1546,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default p-2">
+      <div className={cn(CONTENT_HEADER_CLASS, CONTENT_HEADER_BORDER_CLASS)}>
         <div className="flex min-w-0 max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
@@ -1689,16 +1708,34 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
               <div className="h-full pl-1.5">
-                <FileTree
-                  node={sidebarFileTree}
-                  selectedFile={selectedFile}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={toggleFolder}
-                  onSelectFile={(file) =>
-                    selectedFileChange(file, isShowSourceCode)
-                  }
-                  isShowSourceCode={isShowSourceCode}
-                />
+                {filesLoading && hasNoFiles ? (
+                  <div
+                    role="status"
+                    aria-label="Loading files"
+                    className="space-y-3 px-2 py-3"
+                  >
+                    {Array.from({ length: 7 }, (_, index) => (
+                      <Skeleton
+                        key={index}
+                        className={cn(
+                          'h-3',
+                          index % 3 === 0 ? 'w-40' : 'ml-4 w-32'
+                        )}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <FileTree
+                    node={sidebarFileTree}
+                    selectedFile={selectedFile}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={toggleFolder}
+                    onSelectFile={(file) =>
+                      selectedFileChange(file, isShowSourceCode)
+                    }
+                    isShowSourceCode={isShowSourceCode}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1712,6 +1749,16 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           breadcrumbSegments={fileBreadcrumbSegments}
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          emptyState={
+            filesLoading && hasNoFiles ? (
+              <div className="flex h-full min-h-64 w-full flex-1 flex-col gap-3 p-4">
+                <Skeleton className="h-3 w-48" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-[82%]" />
+                <Skeleton className="h-3 w-[68%]" />
+              </div>
+            ) : undefined
+          }
           onRevealFile={() => {
             if (!selectedFile) return;
             // if file is remote, don't call reveal-in-folder
@@ -2758,7 +2805,7 @@ function HtmlRenderer({
         onWheel={handleWheel}
       >
         <div
-          className="h-full origin-top-left transition-transform duration-150"
+          className="h-full origin-top-left transition-transform duration-150 motion-reduce:transition-none"
           style={{
             transform: `scale(${zoom / 100})`,
             width: `${10000 / zoom}%`,

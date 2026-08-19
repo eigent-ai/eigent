@@ -97,9 +97,9 @@ export default function InviteCodeDialog({
       <DialogContent
         size="sm"
         overlayClassName="pointer-events-none invisible backdrop-blur-none"
-        className="min-h-[360px] gap-0 !rounded-xl border border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[360px]"
+        className="min-h-[360px] gap-0 !rounded-xl border border-ds-border-neutral-default-default p-0 shadow-sm sm:max-w-[360px]"
       >
-        <div className="mt-10 flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-md bg-ds-bg-neutral-strong-default px-md pb-md pt-2 text-center">
+        <div className="mt-10 flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-md px-md pb-md pt-2 text-center">
           <span className="m-0 text-heading-sm font-bold text-ds-text-neutral-default-default">
             {t('layout.invitation-code-copied-title')}
           </span>
@@ -114,7 +114,7 @@ export default function InviteCodeDialog({
               />
             ) : (
               inviteCode && (
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-ds-bg-neutral-subtle-default px-8 py-4">
+                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-ds-bg-neutral-default-default px-8 py-4">
                   <p
                     className="m-0 font-mono text-heading-base font-bold tracking-wide text-ds-text-brand-muted-default"
                     aria-label={t('layout.invitation-code-label')}

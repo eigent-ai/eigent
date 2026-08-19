@@ -37,7 +37,7 @@ const tabsTriggerClassName =
   'ring-offset-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-brand-default-focus gap-1 rounded-xl bg-ds-bg-neutral-strong-default px-2 py-1 text-body-sm font-semibold text-ds-text-neutral-default-default data-[state=active]:bg-ds-bg-neutral-subtle-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-sm inline-flex items-center justify-center whitespace-nowrap transition-[background-color,color,box-shadow,opacity] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
 
 /**
- * Transparent triggers + hover chip (HistoryTabsNav); active selection is shown
+ * Transparent triggers with a hover chip; active selection is shown
  * by the animated bar under the tab row (TabsList), not a border on the trigger.
  */
 const tabsTriggerBorderClassName =
@@ -47,7 +47,7 @@ const tabsTriggerBorderClassName =
 const tabsTriggerGhostClassName =
   'ring-offset-ds-bg-neutral-default-default focus-visible:ring-ds-ring-brand-default-focus inline-flex w-full items-center justify-start gap-2 rounded-xl border-0 bg-transparent px-3 py-1.5 text-body-sm font-semibold text-ds-text-neutral-muted-default shadow-none ring-0 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none data-[state=inactive]:bg-transparent data-[state=inactive]:opacity-70 data-[state=inactive]:hover:bg-ds-bg-neutral-default-hover data-[state=inactive]:hover:opacity-100 data-[state=active]:bg-ds-bg-neutral-default-default data-[state=active]:text-ds-text-neutral-default-default data-[state=active]:shadow-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:text-ds-icon-neutral-default-default';
 
-/** Gap (px) between tab row and underline — matches HistoryTabsNav. */
+/** Gap (px) between the tab row and its underline. */
 const BORDER_TAB_UNDERLINE_GAP_PX = 8;
 
 const Tabs = TabsPrimitive.Root;
@@ -82,7 +82,7 @@ const TabsList = React.forwardRef<
       width: 0,
     });
 
-    // Update underline position when active tab changes (outline: inside list; border: below row, HistoryTabsNav-style)
+    // Update underline position when the active tab changes.
     React.useLayoutEffect(() => {
       if (
         !tabsListRef.current ||

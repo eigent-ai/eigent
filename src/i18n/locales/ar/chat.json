@@ -200,7 +200,7 @@
   "timeline-question": "السؤال",
   "timeline-answer": "الإجابة",
   "timeline-plan": "الخطة",
-  "timeline-plan-task-count-one": "مهمة واحدة",
+  "timeline-plan-task-count-one": "{{count}} مهمة",
   "timeline-plan-task-count-other": "{{count}} مهام",
   "timeline-run-status": "التشغيل {{status}}",
   "timeline-artifact": "ملف",
