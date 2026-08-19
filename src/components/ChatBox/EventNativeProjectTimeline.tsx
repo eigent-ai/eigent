@@ -18,7 +18,13 @@ import {
   selectRenderableChatNodes,
   type ChatProjectionNode,
 } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  reconcileTimelineRuns,
+  type TimelineRunView,
+} from '@/lib/projector/chat/presentation';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
 import {
   useEffect,
   useLayoutEffect,
@@ -32,8 +38,8 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
-import { EventTimeline, type ChatTimelineDetailLevel } from './EventTimeline';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import { TimelineModeRenderer } from './TimelineModes';
 
 /** Temporary DOM window until the event timeline has variable-height virtualization. */
 const MAX_MOUNTED_EVENT_NODES = 250;
@@ -117,8 +123,8 @@ interface EventNativeProjectTimelineProps {
 /**
  * Production integration boundary for the event-native read path. Raw durable
  * events and legacy AgentStep values never reach this component: it consumes
- * semantic projection nodes and delegates component selection to the renderer
- * registry owned by EventTimeline.
+ * semantic projection nodes, composes complete Run models, and delegates to a
+ * mode-owned renderer. Timeline style never changes control authority.
  */
 export function EventNativeProjectTimeline({
   detailLevel = 'detailed',
@@ -140,6 +146,41 @@ export function EventNativeProjectTimeline({
     [allNodes]
   );
   const { hiddenNodeCount, nodes: visibleNodes } = timelineWindow;
+  const projectedRunsById =
+    runtime.projectId === projectId ? runtime.snapshot?.view?.runs : undefined;
+  const allRuns = useMemo(
+    () =>
+      reconcileTimelineRuns(
+        composeTimelineRuns(presentChatSemanticEntities(allNodes)),
+        projectedRunsById
+      ),
+    [allNodes, projectedRunsById]
+  );
+  const visibleRuns = useMemo(() => {
+    const fullRunById = new Map(allRuns.map((run) => [run.runId, run]));
+    return composeTimelineRuns(visibleNodes).map((windowedRun) => {
+      const fullRun = fullRunById.get(windowedRun.runId);
+      if (!fullRun) return windowedRun;
+      const fullTraceById = new Map(
+        fullRun.traceRows.map((row) => [row.id, row])
+      );
+      // Aggregate before applying the temporary DOM window. Detailed retains
+      // only its bounded trace rows, while summary/final/file data stay whole.
+      // A tool completion inside the window still receives its safe request
+      // from the matching full lifecycle outside the window.
+      return {
+        ...fullRun,
+        nodes: windowedRun.nodes,
+        traceRows: windowedRun.traceRows.map(
+          (row) => fullTraceById.get(row.id) || row
+        ),
+      } satisfies TimelineRunView;
+    });
+  }, [allRuns, visibleNodes]);
+  const projectedArtifactsByRun =
+    runtime.projectId === projectId
+      ? runtime.snapshot?.view?.artifactsByRun
+      : undefined;
   const previousScrollHeightRef = useRef(0);
   const previousLatestUserEventIdRef = useRef<string | undefined>(undefined);
   const previousProjectIdRef = useRef(projectId);
@@ -343,47 +384,46 @@ export function EventNativeProjectTimeline({
             </Button>
           </div>
         ) : null}
-        <EventTimeline
-          ariaLabel={t('chat.timeline-label')}
-          detailLevel={detailLevel}
-          emptyState={
-            hydration.status === 'error' ? (
-              <div
-                className="flex flex-col items-center gap-2 px-4 py-6"
-                role="alert"
-              >
-                <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
-                  {t('chat.timeline-history-error')}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  buttonRadius="full"
-                  onClick={hydration.retry}
-                >
-                  {t('chat.timeline-history-retry')}
-                </Button>
-              </div>
-            ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
-              <span
-                className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
-                role="status"
-              >
-                {t('chat.timeline-empty')}
-              </span>
-            ) : (
-              <ChatTimelineSkeleton
-                label={
-                  hydration.status === 'retrying'
-                    ? t('chat.timeline-history-reconnecting')
-                    : t('chat.timeline-history-loading')
-                }
-              />
-            )
-          }
-          nodes={visibleNodes}
-        />
+        {visibleRuns.length > 0 ? (
+          <TimelineModeRenderer
+            detailLevel={detailLevel}
+            projectedArtifactsByRun={projectedArtifactsByRun}
+            runs={visibleRuns}
+          />
+        ) : hydration.status === 'error' ? (
+          <div
+            className="flex flex-col items-center gap-2 px-4 py-6"
+            role="alert"
+          >
+            <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+              {t('chat.timeline-history-error')}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              buttonRadius="full"
+              onClick={hydration.retry}
+            >
+              {t('chat.timeline-history-retry')}
+            </Button>
+          </div>
+        ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
+          <span
+            className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
+            role="status"
+          >
+            {t('chat.timeline-empty')}
+          </span>
+        ) : (
+          <ChatTimelineSkeleton
+            label={
+              hydration.status === 'retrying'
+                ? t('chat.timeline-history-reconnecting')
+                : t('chat.timeline-history-loading')
+            }
+          />
+        )}
       </div>
     </div>
   );

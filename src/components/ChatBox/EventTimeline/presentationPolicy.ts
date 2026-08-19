@@ -13,11 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
+import {
+  chatTimelineDetailLevels,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
 
 type InteractionNode = Extract<ChatProjectionNode, { kind: 'interaction' }>;
 type MessageNode = Extract<ChatProjectionNode, { kind: 'message' }>;
 type InteractionResolutionNode =
-  InteractionNode | Extract<ChatProjectionNode, { kind: 'message' }>;
+  | InteractionNode
+  | Extract<ChatProjectionNode, { kind: 'message' }>;
 
 interface PresentableInteractionReceipt {
   request: InteractionNode;
@@ -31,10 +36,6 @@ interface PresentableInteractionRequest {
   request: InteractionNode;
   suppressedRequestEventIds: ReadonlySet<string>;
 }
-
-const chatTimelineDetailLevels = ['detailed', 'compact', 'summarized'] as const;
-
-type ChatTimelineDetailLevel = (typeof chatTimelineDetailLevels)[number];
 
 interface ChatTimelinePresentationPolicyContext {
   requestedDetailLevel: ChatTimelineDetailLevel;
@@ -57,6 +58,60 @@ interface ResolvedChatTimelinePresentation {
 
 const detailedPresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
   nodes;
+
+const IMPORTANT_ACTIVITY_STATUSES = new Set([
+  'failed',
+  'timed_out',
+  'outcome_unknown',
+]);
+
+const IMPORTANT_RUN_STATUSES = new Set(['failed', 'cancelled', 'interrupted']);
+
+/**
+ * The product-default “Normal” view keeps the useful work log while removing
+ * migration diagnostics and verbose successful tool payloads.
+ */
+const normalPresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
+  nodes.flatMap((node): ChatProjectionNode[] => {
+    if (node.kind === 'unknown') return [];
+    if (
+      node.kind === 'run_status' &&
+      ['pending', 'running'].includes(node.status)
+    ) {
+      return [];
+    }
+    if (
+      node.kind === 'activity' &&
+      !IMPORTANT_ACTIVITY_STATUSES.has(node.status)
+    ) {
+      return [{ ...node, detail: undefined }];
+    }
+    return [node];
+  });
+
+/**
+ * Summarized view preserves the conversation, decisions, deliverables, and
+ * exceptional outcomes while hiding routine execution chatter.
+ */
+const summarizedPresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
+  nodes.filter((node) => {
+    if (
+      node.kind === 'message' ||
+      node.kind === 'interaction' ||
+      node.kind === 'plan' ||
+      node.kind === 'artifact'
+    ) {
+      return true;
+    }
+    if (node.kind === 'notice') return node.severity !== 'info';
+    if (node.kind === 'activity') {
+      return IMPORTANT_ACTIVITY_STATUSES.has(node.status);
+    }
+    if (node.kind === 'run_status') {
+      return IMPORTANT_RUN_STATUSES.has(node.status);
+    }
+    return false;
+  });
 
 function interactionCorrelationKey(
   node: Pick<InteractionNode, 'interactionId' | 'runId'>
@@ -389,13 +444,14 @@ function presentChatSemanticEntities(
 }
 
 const defaultChatTimelinePresentationPolicyRegistry = Object.freeze({
+  normal: normalPresentationPolicy,
   detailed: detailedPresentationPolicy,
+  summarized: summarizedPresentationPolicy,
 }) satisfies ChatTimelinePresentationPolicyRegistry;
 
 /**
  * Adds product-owned timeline presentation policies without coupling them to
- * transport events. Compact and summarized are intentionally reserved until a
- * caller supplies a policy for them.
+ * transport events.
  */
 function createChatTimelinePresentationPolicyRegistry(
   overrides: ChatTimelinePresentationPolicyRegistry = {}

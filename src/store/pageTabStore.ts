@@ -15,6 +15,10 @@
 import { createHost } from '@/host';
 import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
+import {
+  DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -308,6 +312,9 @@ interface PageTabState {
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
+  /** Event-native ChatBox presentation density. Persisted across Projects. */
+  chatTimelineDetailLevel: ChatTimelineDetailLevel;
+  setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -520,6 +527,9 @@ export const usePageTabStore = create<PageTabState>()(
         })),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
+      chatTimelineDetailLevel: DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+      setChatTimelineDetailLevel: (level) =>
+        set({ chatTimelineDetailLevel: level }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -896,22 +906,25 @@ export const usePageTabStore = create<PageTabState>()(
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
       migrate: (persistedState, version) => {
-        if (
-          version < 2 &&
-          persistedState &&
-          typeof persistedState === 'object'
-        ) {
+        if (persistedState && typeof persistedState === 'object') {
           const next = { ...(persistedState as Record<string, unknown>) };
           if (version < 1) {
             delete next.sessionSidePanelMode;
           }
-          delete next.projectSidebarFolded;
+          if (version < 2) {
+            delete next.projectSidebarFolded;
+            // “Normal” is a dedicated renderer rather than a compact filter.
+            if (next.chatTimelineDetailLevel === 'compact') {
+              next.chatTimelineDetailLevel = 'normal';
+            }
+          }
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
         workspaceSidebarHidden: state.workspaceSidebarHidden,
+        chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(

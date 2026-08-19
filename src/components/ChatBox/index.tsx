@@ -50,6 +50,7 @@ import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
+import { DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL } from '@/types/chatTimeline';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
   useCallback,
@@ -63,6 +64,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
@@ -75,6 +77,7 @@ import {
   InterruptedRunBanner,
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
+import { hasCompleteLegacyNormalRunCoverage } from './normalTimelineSourceArbitration';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   isEventNativeRunActionable,
@@ -312,6 +315,9 @@ export default function ChatBox(): JSX.Element {
   const textareaRef = useRef<HTMLDivElement>(null);
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
+  );
+  const chatTimelineDetailLevel = usePageTabStore(
+    (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
@@ -683,6 +689,34 @@ export default function ChatBox(): JSX.Element {
       );
     });
   }, [chatStore, getAllChatStoresMemoized]);
+
+  const legacyNormalRunIds = useMemo(() => {
+    const runIds = new Set<string>();
+    const addRenderableTaskIds = (tasks: typeof chatStore.tasks) => {
+      for (const [runId, task] of Object.entries(tasks)) {
+        if ((task.messages?.length || 0) > 0 || task.hasMessages) {
+          runIds.add(runId);
+        }
+      }
+    };
+
+    addRenderableTaskIds(chatStore.tasks);
+    for (const { chatStore: store } of getAllChatStoresMemoized) {
+      addRenderableTaskIds(store.getState().tasks);
+    }
+    return runIds;
+  }, [chatStore, getAllChatStoresMemoized]);
+  const canonicalTimelineRunIds = useMemo(
+    () =>
+      new Set(
+        (eventNativeProjectSnapshot?.chat.nodes || []).map((node) => node.runId)
+      ),
+    [eventNativeProjectSnapshot?.chat.nodes]
+  );
+  const hasCompleteLegacyNormalCoverage = hasCompleteLegacyNormalRunCoverage(
+    canonicalTimelineRunIds,
+    legacyNormalRunIds
+  );
 
   // With the event-native read path enabled, typed-only durable events can be
   // the first visible records. Timeline presence must not depend on whether a
@@ -1953,13 +1987,30 @@ export default function ChatBox(): JSX.Element {
           },
         }
       : 'input';
-  const bottomBoxVariant = eventNativeTimelineEnabled
-    ? (eventNativeHumanControl.variant ??
-      eventNativeRunControlVariant ??
-      'input')
-    : (legacyApprovalVariant ?? legacyHumanInputVariant);
-  const hasControlledBottomBoxVariant =
-    bottomBoxVariant !== 'input' && bottomBoxVariant.kind !== 'input';
+  // Timeline density is presentation-only. Select one shared BottomBox control
+  // from the active authority before rendering Normal, Detailed, or Summarised.
+  const bottomBoxControl = selectBottomBoxControl({
+    humanInteractionVariant: eventNativeTimelineEnabled
+      ? eventNativeHumanControl.variant
+      : legacyApprovalVariant,
+    runControlVariant: eventNativeTimelineEnabled
+      ? eventNativeRunControlVariant
+      : null,
+    composerVariant: eventNativeTimelineEnabled
+      ? 'input'
+      : legacyHumanInputVariant,
+  });
+  const bottomBoxVariant = bottomBoxControl.variant;
+  const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  // Normal is the migration parity gate. While the legacy projection remains
+  // populated by the compatibility lane, render the exact designed timeline
+  // instead of approximating it with generic event cards. Event-native Normal
+  // remains the fallback for canonical-only histories.
+  const useLegacyNormalTimeline =
+    eventNativeTimelineEnabled &&
+    chatTimelineDetailLevel === 'normal' &&
+    hasAnyMessages &&
+    hasCompleteLegacyNormalCoverage;
 
   const chatColumn = (
     <>
@@ -1971,8 +2022,10 @@ export default function ChatBox(): JSX.Element {
         >
           {shouldRenderChatTimeline &&
           eventNativeTimelineEnabled &&
-          activeProjectId ? (
+          activeProjectId &&
+          !useLegacyNormalTimeline ? (
             <EventNativeProjectTimeline
+              detailLevel={chatTimelineDetailLevel}
               projectId={activeProjectId}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}

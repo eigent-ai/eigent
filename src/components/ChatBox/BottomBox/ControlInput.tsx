@@ -15,7 +15,6 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, TriangleAlert } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -107,11 +106,6 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
   const approve = (scope: BottomBoxApprovalScope) => {
     if (!variant.disabled && !variant.submitting) variant.onApprove(scope);
   };
-  // Scope descriptions explain a persistent permission grant, so they stay
-  // visible instead of hiding behind a hover-only tooltip.
-  const scopeDescriptions = variant.options.filter(
-    (option) => option.description
-  );
 
   return (
     <div
@@ -119,21 +113,11 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
       data-approval-surface
       className={controlSurfaceClassName}
     >
-      <BoxHeaderDisplay {...variant.header} className="px-0 pb-0 pt-0" />
-      {scopeDescriptions.length > 0 ? (
-        <ul className="m-0 flex list-none flex-col gap-1 p-0">
-          {scopeDescriptions.map((option) => (
-            <li
-              key={`scope-description-${option.scope}`}
-              className="text-body-xs font-normal text-ds-text-neutral-muted-default"
-            >
-              <span className="font-medium">{option.label}</span>
-              {' — '}
-              {option.description}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <BoxHeaderDisplay
+        {...variant.header}
+        eyebrow={undefined}
+        className="px-0 pb-0 pt-0"
+      />
       <div data-approval-actions className="flex w-full justify-end">
         <ControlActions>
           <Button
@@ -146,29 +130,20 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => {
-            const button = (
-              <Button
-                key={option.scope}
-                type="button"
-                variant="primary"
-                tone="success"
-                size="sm"
-                buttonRadius="full"
-                disabled={variant.disabled || variant.submitting}
-                onClick={() => approve(option.scope)}
-              >
-                {option.label}
-              </Button>
-            );
-            return option.description ? (
-              <TooltipSimple key={option.scope} content={option.description}>
-                {button}
-              </TooltipSimple>
-            ) : (
-              button
-            );
-          })}
+          {variant.options.map((option) => (
+            <Button
+              key={option.scope}
+              type="button"
+              variant="primary"
+              tone="success"
+              size="sm"
+              buttonRadius="full"
+              disabled={variant.disabled || variant.submitting}
+              onClick={() => approve(option.scope)}
+            >
+              {option.label}
+            </Button>
+          ))}
         </ControlActions>
       </div>
     </div>

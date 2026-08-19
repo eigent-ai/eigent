@@ -913,34 +913,71 @@ describe('EventTimeline', () => {
     );
   });
 
-  it('falls back to detailed presentation for a reserved detail level', () => {
+  it('uses the normal presentation policy for the normal timeline style', () => {
     render(
       <EventTimeline
-        detailLevel="compact"
-        nodes={[messageNode('message-1', 'assistant', 'Detailed for now')]}
+        detailLevel="normal"
+        nodes={[
+          messageNode('message-1', 'assistant', 'Normal response'),
+          activityNode('activity-1', 'Routine tool call', {
+            detail: '{"internal":"payload"}',
+          }),
+          unknownNode(),
+        ]}
       />
     );
 
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-requested-detail-level', 'compact');
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
+    expect(timeline).toHaveAttribute('data-requested-detail-level', 'normal');
+    expect(timeline).toHaveAttribute('data-effective-detail-level', 'normal');
     expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
-      'Detailed for now'
+      'Normal response'
     );
+    expect(screen.getByText('Routine tool call')).toBeInTheDocument();
+    expect(screen.queryByText('{"internal":"payload"}')).toBeNull();
+    expect(screen.queryByText('future.super_event')).toBeNull();
+  });
+
+  it('uses summarized presentation to keep outcomes and hide routine activity', () => {
+    render(
+      <EventTimeline
+        detailLevel="summarized"
+        nodes={[
+          messageNode('message-1', 'assistant', 'Summary response'),
+          noticeNode('notice-1', 'Routine progress notice'),
+          activityNode('activity-1', 'Routine tool call'),
+          activityNode('activity-2', 'Tool call failed', {
+            status: 'failed',
+          }),
+        ]}
+      />
+    );
+
+    const timeline = screen.getByRole('list', {
+      name: 'Chat event timeline',
+    });
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'summarized'
+    );
+    expect(screen.getByText('Summary response')).toBeInTheDocument();
+    expect(screen.getByText('Tool call failed')).toBeInTheDocument();
+    expect(screen.queryByText('Routine progress notice')).toBeNull();
+    expect(screen.queryByText('Routine tool call')).toBeNull();
   });
 
   it('applies a registered detail-level presentation policy', () => {
     const presentationPolicies = createChatTimelinePresentationPolicyRegistry({
-      compact: (nodes) => nodes.filter((node) => node.kind === 'notice'),
+      normal: (nodes) => nodes.filter((node) => node.kind === 'notice'),
     });
 
     render(
       <EventTimeline
-        detailLevel="compact"
+        detailLevel="normal"
         nodes={[
-          messageNode('message-1', 'assistant', 'Hidden by compact policy'),
+          messageNode('message-1', 'assistant', 'Hidden by normal policy'),
           noticeNode('notice-1', 'Compact milestone'),
         ]}
         presentationPolicies={presentationPolicies}
@@ -950,8 +987,8 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'compact');
-    expect(screen.queryByText('Hidden by compact policy')).toBeNull();
+    expect(timeline).toHaveAttribute('data-effective-detail-level', 'normal');
+    expect(screen.queryByText('Hidden by normal policy')).toBeNull();
     expect(screen.getByText('Compact milestone')).toBeInTheDocument();
   });
 

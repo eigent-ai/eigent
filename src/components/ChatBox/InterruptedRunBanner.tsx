@@ -1,3 +1,17 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 import { RotateCcw, TriangleAlert, X } from 'lucide-react';
 
 export type InterruptedRunBannerAction = 'resuming' | 'cancelling' | null;
@@ -43,14 +57,16 @@ export function InterruptedRunBanner({
         <TriangleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold">{title}</div>
+            <span className="block text-body-sm font-semibold">{title}</span>
             {attemptNumber != null && (
-              <span className="shrink-0 text-[11px] opacity-60">
+              <span className="shrink-0 text-label-xs font-normal opacity-60">
                 #{attemptNumber}
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs leading-5 opacity-80">{description}</p>
+          <span className="mt-1 block text-body-xs font-normal opacity-80">
+            {description}
+          </span>
           {!readOnly && (
             <div className="mt-3 flex items-center gap-2">
               <button
@@ -60,7 +76,9 @@ export function InterruptedRunBanner({
                 className="text-white inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-900 px-3 text-xs font-medium disabled:opacity-50 dark:bg-amber-100 dark:text-amber-950"
               >
                 <RotateCcw className="size-3.5" aria-hidden="true" />
-                {action === 'resuming' ? resumingLabel : resumeLabel}
+                <span>
+                  {action === 'resuming' ? resumingLabel : resumeLabel}
+                </span>
               </button>
               <button
                 type="button"
@@ -69,7 +87,9 @@ export function InterruptedRunBanner({
                 className="dark:hover:bg-amber-900/50 inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium opacity-75 hover:bg-amber-100 disabled:opacity-40"
               >
                 <X className="size-3.5" aria-hidden="true" />
-                {action === 'cancelling' ? cancellingLabel : cancelLabel}
+                <span>
+                  {action === 'cancelling' ? cancellingLabel : cancelLabel}
+                </span>
               </button>
             </div>
           )}

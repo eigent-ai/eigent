@@ -148,8 +148,8 @@
   "control-arguments-unavailable": "Аргументы недоступны.",
   "control-approve-once": "Разрешить один раз",
   "control-approve-run": "Разрешить для этого запуска",
-  "control-approve-space": "Всегда разрешать в этом Space",
-  "control-approve-space-tool": "Всегда разрешать этот инструмент в этом Space",
+  "control-approve-space": "Всегда разрешать",
+  "control-approve-space-tool": "Всегда разрешать",
   "control-approve-once-description": "Разрешить это действие только один раз.",
   "control-approve-run-description": "Разрешить это действие до конца запуска и больше не спрашивать.",
   "control-approve-space-description": "Разрешать это действие в этом Space и дальше, включая будущие запуски.",
@@ -215,5 +215,9 @@
   "timeline-history-reconnecting": "Переподключение…",
   "timeline-history-retry": "Повторить",
   "timeline-empty": "Сообщений пока нет. Отправьте сообщение, чтобы начать.",
+  "timeline-style-tooltip": "Стиль хронологии чата",
+  "timeline-style-normal": "Обычный",
+  "timeline-style-detailed": "Подробный",
+  "timeline-style-summarized": "Сводный",
   "files-changed": "Изменённые файлы"
 }

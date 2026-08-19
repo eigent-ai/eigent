@@ -148,8 +148,8 @@
   "control-arguments-unavailable": "Gli argomenti non sono disponibili.",
   "control-approve-once": "Consenti una volta",
   "control-approve-run": "Consenti per questa esecuzione",
-  "control-approve-space": "Consenti sempre in questo Space",
-  "control-approve-space-tool": "Consenti sempre questo strumento in questo Space",
+  "control-approve-space": "Consenti sempre",
+  "control-approve-space-tool": "Consenti sempre",
   "control-approve-once-description": "Consenti questa azione una sola volta.",
   "control-approve-run-description": "Consenti questa azione per il resto di questa esecuzione senza chiedere di nuovo.",
   "control-approve-space-description": "Consenti questa azione in questo Space d’ora in poi, comprese le esecuzioni future.",
@@ -215,5 +215,9 @@
   "timeline-history-reconnecting": "Riconnessione…",
   "timeline-history-retry": "Riprova",
   "timeline-empty": "Ancora nessun messaggio. Inviane uno per iniziare.",
+  "timeline-style-tooltip": "Stile della cronologia chat",
+  "timeline-style-normal": "Normale",
+  "timeline-style-detailed": "Dettagliato",
+  "timeline-style-summarized": "Riepilogato",
   "files-changed": "File modificati"
 }

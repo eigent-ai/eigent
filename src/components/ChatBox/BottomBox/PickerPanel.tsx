@@ -24,6 +24,7 @@ import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
+  RICH_TAG_BASE_STYLE_CLASSES,
   connectorNameToToken,
   hashSkillLabel,
 } from '@/lib/richText';
@@ -96,11 +97,11 @@ export function PickerPanel({
     <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
       {/* Header */}
       <div className="flex items-center gap-1 px-3 pb-1 pt-2">
-        <span className="text-xs font-bold text-ds-text-neutral-muted-default">
+        <span className="text-label-xs font-bold text-ds-text-neutral-muted-default">
           {title}
         </span>
         {totalItems > 0 && (
-          <span className="text-xs font-bold text-ds-text-neutral-muted-default">
+          <span className="text-label-xs font-bold text-ds-text-neutral-muted-default">
             {totalItems}
           </span>
         )}
@@ -119,7 +120,7 @@ export function PickerPanel({
           </>
         ) : totalItems === 0 ? (
           <div className="flex w-full items-center justify-between gap-2 px-2 py-2">
-            <span className="text-xs font-normal text-ds-text-neutral-muted-default">
+            <span className="text-label-xs font-normal text-ds-text-neutral-muted-default">
               {emptyLabel}
             </span>
             <Button
@@ -135,9 +136,9 @@ export function PickerPanel({
           nonEmptyGroups.map((group) => (
             <Fragment key={group.id}>
               {group.label && (
-                <div className="px-2 pb-0.5 pt-1.5 text-xs font-bold text-ds-text-neutral-muted-default">
+                <span className="block px-2 pb-0.5 pt-1.5 text-label-xs font-bold text-ds-text-neutral-muted-default">
                   {group.label}
-                </div>
+                </span>
               )}
               {group.items.map((item) => (
                 <PickerPanelItem
@@ -184,7 +185,7 @@ function PickerPanelItem({
           {logo}
         </span>
       )}
-      <span className="min-w-0 flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap text-sm font-medium text-ds-text-neutral-default-default">
+      <span className="min-w-0 flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap text-body-sm font-medium text-ds-text-neutral-default-default">
         {item.name}
       </span>
       <span className="max-w-[45%] shrink-0 overflow-hidden whitespace-nowrap">
@@ -349,7 +350,7 @@ export function ConnectorPickerPanel({
       renderTag={(item) => (
         <span
           className={cn(
-            'rounded px-1 py-[1px] text-xs font-medium',
+            RICH_TAG_BASE_STYLE_CLASSES,
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -416,7 +417,7 @@ export function SkillPickerPanel({
         return (
           <span
             className={cn(
-              'rounded px-1 py-[1px] text-xs font-medium',
+              RICH_TAG_BASE_STYLE_CLASSES,
               RICH_SKILL_STYLE_CLASSES[clsIdx]
             )}
           >

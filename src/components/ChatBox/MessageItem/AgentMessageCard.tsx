@@ -138,12 +138,12 @@ export function AgentMessageCard({
               >
                 <FileText size={24} className="flex-shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-bold text-ds-text-neutral-default-default">
+                  <span className="block max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[0]}
-                  </div>
-                  <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
+                  </span>
+                  <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
                     {file?.fileName?.split('.')[1]}
-                  </div>
+                  </span>
                 </div>
               </div>
             );

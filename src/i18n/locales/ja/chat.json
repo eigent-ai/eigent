@@ -148,8 +148,8 @@
   "control-arguments-unavailable": "引数を表示できません。",
   "control-approve-once": "今回だけ許可",
   "control-approve-run": "この実行の間は許可",
-  "control-approve-space": "この Space では常に許可",
-  "control-approve-space-tool": "この Space ではこのツールを常に許可",
+  "control-approve-space": "常に許可",
+  "control-approve-space-tool": "常に許可",
   "control-approve-once-description": "この操作を 1 回だけ許可します。",
   "control-approve-run-description": "この実行が終わるまで、確認なしでこの操作を許可します。",
   "control-approve-space-description": "今後の実行を含め、この Space でこの操作を常に許可します。",
@@ -215,5 +215,9 @@
   "timeline-history-reconnecting": "再接続中…",
   "timeline-history-retry": "再試行",
   "timeline-empty": "まだメッセージがありません。メッセージを送信して始めましょう。",
+  "timeline-style-tooltip": "チャットタイムラインの表示",
+  "timeline-style-normal": "標準",
+  "timeline-style-detailed": "詳細",
+  "timeline-style-summarized": "要約",
   "files-changed": "変更されたファイル"
 }

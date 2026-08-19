@@ -64,9 +64,9 @@ export default function NotificationPanel({
           >
             {t('layout.notifications')}
           </span>
-          <p className="mt-3 text-body-sm text-ds-text-neutral-muted-default">
+          <span className="mt-3 block text-body-sm font-normal text-ds-text-neutral-muted-default">
             {t('layout.notifications-empty')}
-          </p>
+          </span>
         </div>
       </div>
     </>,

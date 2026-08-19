@@ -343,9 +343,9 @@ export const Inputbox = ({
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm">
           <UploadCloud className="h-8 w-8" />
-          <div className="text-sm font-semibold">
+          <span className="block text-body-sm font-semibold">
             {t('chat.drop-files-to-attach')}
-          </div>
+          </span>
         </div>
       )}
       {/* Layer 1: Input-required question / details */}

@@ -41,11 +41,16 @@ const USER_MESSAGE_FOLD_FADE_STYLE = {
   WebkitMaskRepeat: 'no-repeat',
 } as const;
 
+export interface UserMessageAttachment {
+  fileName: string;
+  filePath: string;
+}
+
 interface UserMessageCardProps {
   id: string;
   content: string;
   className?: string;
-  attaches?: File[];
+  attaches?: readonly UserMessageAttachment[];
 }
 
 export function UserMessageCard({
@@ -133,6 +138,7 @@ export function UserMessageCard({
     <div
       key={id}
       className={cn('group/msg relative w-full pl-16', className)}
+      data-message-role="user"
       data-user-query-anchor
     >
       <div className="w-full overflow-visible rounded-xl rounded-br-sm bg-ds-bg-neutral-strong-default px-4 py-2">
@@ -176,14 +182,14 @@ export function UserMessageCard({
                         </div>
 
                         {/* File Name */}
-                        <p
+                        <span
                           className={cn(
-                            "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                            "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-label-xs font-bold text-ds-text-neutral-default-default"
                           )}
                           title={file.fileName}
                         >
                           {file.fileName}
-                        </p>
+                        </span>
                       </div>
                     );
                   })}
@@ -241,9 +247,9 @@ export function UserMessageCard({
                                 <div className="flex h-6 w-6 items-center justify-center rounded-md">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                                <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-label-xs font-bold text-ds-text-neutral-default-default">
                                   {file.fileName}
-                                </p>
+                                </span>
                               </div>
                             );
                           })}

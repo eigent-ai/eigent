@@ -28,9 +28,26 @@ export type ChatProjectionNodeKind =
 
 export type ChatMessageRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'streaming' | 'complete';
+export type ChatMessagePurpose =
+  | 'query'
+  | 'narration'
+  | 'agent_result'
+  | 'final'
+  | 'interaction_response'
+  | 'unknown';
+
+export interface ChatMessageAttachment {
+  fileName: string;
+  filePath: string;
+  fileId?: string;
+  source?: 'local' | 'upload';
+}
 export type ChatNoticeSeverity = 'info' | 'warning' | 'error';
 export type ChatInteractionStatus =
-  'requested' | 'responded' | 'cancelled' | 'expired';
+  | 'requested'
+  | 'responded'
+  | 'cancelled'
+  | 'expired';
 export type ChatPlanTaskStatus =
   | 'pending'
   | 'running'
@@ -40,7 +57,11 @@ export type ChatPlanTaskStatus =
   | 'blocked'
   | 'unknown';
 export type ChatActivityType =
-  'agent' | 'tool' | 'terminal' | 'task' | 'work_log';
+  | 'agent'
+  | 'tool'
+  | 'terminal'
+  | 'task'
+  | 'work_log';
 export type ChatActivityStatus =
   | 'pending'
   | 'running'
@@ -50,8 +71,19 @@ export type ChatActivityStatus =
   | 'outcome_unknown'
   | 'cancelled'
   | 'unknown';
+export type ChatActivityPhase =
+  | 'requested'
+  | 'started'
+  | 'progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'unknown';
 export type ChatArtifactOperation =
-  'created' | 'updated' | 'deleted' | 'unknown';
+  | 'created'
+  | 'updated'
+  | 'deleted'
+  | 'unknown';
 export type ChatRunStatus =
   | 'pending'
   | 'running'
@@ -87,6 +119,10 @@ export interface ChatMessageNode extends ChatProjectionNodeBase {
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
+  /** Semantic role used by Run presenters; independent from transport names. */
+  purpose?: ChatMessagePurpose;
+  /** Explicit display-safe file metadata; typed events never use raw attachments. */
+  attachments?: ChatMessageAttachment[];
   /** Stable typed-message identity used only for presentation folding. */
   messageId?: string;
   agentId?: string;
@@ -152,8 +188,16 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   kind: 'activity';
   activityType: ChatActivityType;
   status: ChatActivityStatus;
+  /** Lifecycle phase for pairing one invocation without relying on adjacency. */
+  phase?: ChatActivityPhase;
   title: string;
   detail?: string;
+  /** Redacted, presentation-safe request text. Typed events must opt in. */
+  input?: string;
+  /** Redacted, presentation-safe response text. Typed events must opt in. */
+  output?: string;
+  /** Duration supplied by the backend when it is safe and authoritative. */
+  durationMs?: number;
   agentId?: string;
   agentName?: string;
   taskId?: string;

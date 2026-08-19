@@ -105,7 +105,7 @@ export function MessageEventRenderer({
       )}
       data-message-role={node.role}
     >
-      {node.content}
+      <span className="block">{node.content}</span>
     </article>
   );
 
@@ -134,7 +134,7 @@ export function NoticeEventRenderer({
       data-notice-severity={node.severity}
       role={node.severity === 'error' ? 'alert' : 'status'}
     >
-      {node.content}
+      <span className="block">{node.content}</span>
     </aside>
   );
 }
@@ -293,11 +293,13 @@ export function RunStatusEventRenderer({
       role="status"
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
-      {t('chat.timeline-run-status', {
-        status: t(`chat.tool-status-${node.status}`, {
-          defaultValue: displayStatus(node.status),
-        }),
-      })}
+      <span className="block">
+        {t('chat.timeline-run-status', {
+          status: t(`chat.tool-status-${node.status}`, {
+            defaultValue: displayStatus(node.status),
+          }),
+        })}
+      </span>
     </div>
   );
 }

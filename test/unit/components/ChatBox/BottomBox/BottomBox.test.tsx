@@ -228,7 +228,7 @@ describe('BottomBox structure', () => {
 
     expect(approvalSurface).toBeInTheDocument();
     expect(approvalHeader).toBeInTheDocument();
-    expect(approvalHeader).toHaveTextContent('Permission required');
+    expect(approvalHeader).not.toHaveTextContent('Permission required');
     expect(approvalHeader).toHaveTextContent('Allow todo_write?');
     expect(approvalSurface).toContainElement(approvalActions as HTMLElement);
     expect(container.querySelector('[data-approval-actions]')).toHaveClass(
@@ -251,6 +251,50 @@ describe('BottomBox structure', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
+  });
+
+  it('renders a concise approval without eyebrow or scope descriptions', () => {
+    render(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'approval',
+          header: {
+            eyebrow: 'Input required',
+            title: 'The agent wants to run send_message_to_user.',
+          },
+          options: [
+            {
+              scope: 'once',
+              label: 'Approve once',
+              description: 'Allow this action one time only.',
+            },
+            {
+              scope: 'space',
+              label: 'Always allow',
+              description: 'Allow this action in this Space from now on.',
+            },
+          ],
+          onApprove: vi.fn(),
+          onReject: vi.fn(),
+        }}
+        {...footerProps}
+      />
+    );
+
+    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Allow this action one time only.')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Allow this action in this Space from now on.')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Approve once' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Always allow' })
+    ).toBeInTheDocument();
   });
 
   it('animates from the composer into a three-action approval variant', () => {
@@ -303,7 +347,7 @@ describe('BottomBox structure', () => {
       'data-layout-motion',
       'instant'
     );
-    expect(screen.getByText('Input required')).toBeInTheDocument();
+    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
     expect(
       screen.getByText('The agent wants to publish the report.')
     ).toBeInTheDocument();

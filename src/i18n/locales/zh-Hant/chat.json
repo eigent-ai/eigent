@@ -148,8 +148,8 @@
   "control-arguments-unavailable": "參數無法使用。",
   "control-approve-once": "僅允許這一次",
   "control-approve-run": "本次任務內允許",
-  "control-approve-space": "在此 Space 中一律允許",
-  "control-approve-space-tool": "在此 Space 中一律允許該工具",
+  "control-approve-space": "一律允許",
+  "control-approve-space-tool": "一律允許",
   "control-approve-once-description": "僅允許執行這一次。",
   "control-approve-run-description": "在本次任務的剩餘過程中允許該操作，不再詢問。",
   "control-approve-space-description": "從現在起在此 Space 中一律允許該操作，包含日後的任務。",
@@ -215,5 +215,9 @@
   "timeline-history-reconnecting": "正在重新連線…",
   "timeline-history-retry": "重試",
   "timeline-empty": "尚無訊息。傳送一則訊息即可開始。",
+  "timeline-style-tooltip": "聊天時間軸樣式",
+  "timeline-style-normal": "一般",
+  "timeline-style-detailed": "詳細",
+  "timeline-style-summarized": "摘要",
   "files-changed": "變更的檔案"
 }

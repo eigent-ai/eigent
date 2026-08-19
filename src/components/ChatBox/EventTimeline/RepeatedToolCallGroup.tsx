@@ -54,9 +54,17 @@ function groupStatusLabel(
 }
 
 function statusClassName(status: string): string {
-  if (status === 'failed') return 'text-ds-text-error-default-default';
+  if (status === 'failed' || status === 'outcome_unknown') {
+    return 'text-ds-text-error-default-default';
+  }
+  if (status === 'timed_out') {
+    return 'text-ds-text-warning-default-default';
+  }
   if (status === 'running' || status === 'pending') {
     return 'text-ds-text-information-default-default';
+  }
+  if (status === 'completed') {
+    return 'text-ds-text-success-default-default';
   }
   return 'text-ds-text-neutral-muted-default';
 }
@@ -136,9 +144,9 @@ export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
                     </span>
                   </div>
                   {node.detail ? (
-                    <p className="m-0 mt-1 whitespace-pre-wrap break-words text-label-sm text-ds-text-neutral-subtle-default">
+                    <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
                       {node.detail}
-                    </p>
+                    </span>
                   ) : null}
                 </li>
               );

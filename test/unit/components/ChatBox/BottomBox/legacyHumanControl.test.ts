@@ -76,7 +76,7 @@ describe('legacy BottomBox human control', () => {
       },
       {
         scope: 'space',
-        label: 'Always allow in this Space',
+        label: 'Always allow',
         description:
           'Allow this action in this Space from now on, including future Runs.',
       },

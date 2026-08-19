@@ -29,4 +29,25 @@ describe('UserMessageCard', () => {
     expect(root).toHaveClass('pl-16');
     expect(bubble).toHaveClass('rounded-xl', 'rounded-br-sm');
   });
+
+  it('keeps rendered skill and connector tags on the body-text baseline', () => {
+    const { container } = render(
+      <UserMessageCard
+        id="user-message-tags"
+        content="Use #browser with @github"
+      />
+    );
+
+    for (const token of ['#browser', '@github']) {
+      const tag = [...container.querySelectorAll('span')].find(
+        (element) => element.textContent === token
+      );
+
+      expect(tag).toHaveClass(
+        'align-baseline',
+        '!text-body-sm',
+        '!font-normal'
+      );
+    }
+  });
 });

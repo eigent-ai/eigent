@@ -35,7 +35,7 @@ import {
   TaskStatus,
   type AgentStepType,
 } from '@/types/constants';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({
@@ -137,7 +137,7 @@ describe('groupConsecutiveToolItems', () => {
     );
   });
 
-  it('treats messages and human-input receipts as chronology boundaries', () => {
+  it('treats messages and Human Toolkit receipts as chronology boundaries', () => {
     const message: TimelineItem = {
       kind: 'message',
       id: 'message-1',
@@ -152,6 +152,19 @@ describe('groupConsecutiveToolItems', () => {
     expect(groupConsecutiveToolItems([first, message, second])).toEqual([
       first,
       message,
+      second,
+    ]);
+
+    const humanTool = makeToolItem('human-call', {
+      humanInput: {
+        kind: 'human-input',
+        id: 'human-input-1',
+        question: 'Which output tone?',
+        response: null,
+      },
+    });
+    expect(groupConsecutiveToolItems([humanTool, second])).toEqual([
+      humanTool,
       second,
     ]);
   });
@@ -305,6 +318,116 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
         name: 'Browser Toolkit · Browser visit page',
       })
     ).toHaveLength(2);
+  });
+});
+
+describe('TaskWorkLogAccordion human-tool detail', () => {
+  function createHumanQuestionStore(answer?: string): VanillaChatStore {
+    const interactionId = 'interaction-human-1';
+    const messages: Message[] = [
+      {
+        id: 'ask-1',
+        role: 'agent',
+        content: 'Which output tone should I use: concise or detailed?',
+        step: AgentStep.ASK,
+        agent_name: 'Researcher',
+        interaction: {
+          interaction_id: interactionId,
+          interaction_type: 'question',
+          run_id: 'task-1',
+          question: 'Which output tone should I use: concise or detailed?',
+        },
+      },
+    ];
+    if (answer) {
+      messages.push({
+        id: 'answer-1',
+        role: 'user',
+        content: answer,
+        interactionResponseTo: interactionId,
+      });
+    }
+
+    const state = {
+      tasks: {
+        'task-1': {
+          status: ChatTaskStatus.RUNNING,
+          sessionMode: SessionMode.WORKFORCE,
+          taskTime: 0,
+          elapsed: 0,
+          messages,
+          askList: [],
+          taskAssigning: [
+            {
+              agent_id: 'agent-1',
+              type: 'browser',
+              name: 'Researcher',
+              tasks: [],
+              log: [
+                mk(AgentStep.ACTIVATE_AGENT),
+                mk(AgentStep.ACTIVATE_TOOLKIT, {
+                  toolkit_name: 'Human Toolkit',
+                  method_name: 'Ask human via gui',
+                  message: '{"question":"Which output tone?"}',
+                }),
+                mk(AgentStep.DEACTIVATE_TOOLKIT, {
+                  toolkit_name: 'Human Toolkit',
+                  method_name: 'Ask human via gui',
+                  message: 'null',
+                }),
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    return {
+      getState: () => state,
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+  }
+
+  it('owns the question inside the Human Toolkit accordion and folds after answer', async () => {
+    const scrollTo = vi
+      .spyOn(window, 'scrollTo')
+      .mockImplementation(() => undefined);
+    const { rerender } = render(
+      <TaskWorkLogAccordion
+        chatStore={createHumanQuestionStore()}
+        taskId="task-1"
+      />
+    );
+
+    const pendingTool = screen.getByRole('button', {
+      name: 'Human Toolkit · Ask human via gui',
+    });
+    expect(pendingTool).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByText('Which output tone should I use: concise or detailed?')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Input required')).toHaveClass('!text-label-xs');
+    expect(screen.getByText('Question')).toHaveClass('!text-label-xs');
+
+    rerender(
+      <TaskWorkLogAccordion
+        chatStore={createHumanQuestionStore('detailed')}
+        taskId="task-1"
+      />
+    );
+
+    const completedTool = screen.getByRole('button', {
+      name: 'Human Toolkit · Ask human via gui',
+    });
+    expect(completedTool).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() =>
+      expect(screen.queryByText('detailed')).not.toBeInTheDocument()
+    );
+
+    fireEvent.click(completedTool);
+    expect(screen.getByText('Answer')).toHaveClass('!text-label-xs');
+    expect(screen.getByText('detailed')).toHaveClass('!text-label-xs');
+    scrollTo.mockRestore();
   });
 });
 

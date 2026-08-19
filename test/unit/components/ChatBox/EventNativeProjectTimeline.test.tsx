@@ -14,12 +14,14 @@
 
 import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
 import type {
+  ChatActivityNode,
   ChatInteractionNode,
   ChatMessageNode,
   ChatProjectionState,
   ChatUnknownNode,
 } from '@/lib/projector/chat';
-import { render, screen } from '@testing-library/react';
+import type { ProjectedRun } from '@/lib/projector/types';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -31,6 +33,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 
 const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
+  projectedRuns: undefined as Record<string, ProjectedRun> | undefined,
   retry: vi.fn(),
   hydration: {
     status: 'ready',
@@ -44,7 +47,14 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
   useProjectEventRuntime: () => ({
     projectId: 'project-1',
     hydration: mocks.hydration,
-    snapshot: mocks.projection ? { chat: mocks.projection } : null,
+    snapshot: mocks.projection
+      ? {
+          chat: mocks.projection,
+          view: mocks.projectedRuns
+            ? { runs: mocks.projectedRuns, artifactsByRun: {} }
+            : undefined,
+        }
+      : null,
   }),
 }));
 vi.mock('framer-motion', async (importOriginal) => {
@@ -140,6 +150,31 @@ function interactionNode(
   };
 }
 
+function toolNode(
+  eventId: string,
+  sequence: number,
+  status: ChatActivityNode['status'],
+  fields: Pick<ChatActivityNode, 'input' | 'output' | 'phase'>
+): ChatActivityNode {
+  return {
+    id: eventId,
+    eventId,
+    projectId: 'project-1',
+    runId: 'run-1',
+    createdAt: null,
+    runSequence: sequence,
+    cloudCursor: null,
+    eventType: `tool.${fields.phase}`,
+    legacyStep: null,
+    kind: 'activity',
+    activityType: 'tool',
+    toolCallId: 'windowed-tool-call',
+    title: 'Search Toolkit',
+    status,
+    ...fields,
+  };
+}
+
 function projection(nodes: ChatProjectionState['nodes']): ChatProjectionState {
   return {
     projectId: 'project-1',
@@ -162,6 +197,7 @@ describe('isChatTimelineNearBottom', () => {
 describe('EventNativeProjectTimeline', () => {
   beforeEach(() => {
     mocks.projection = projection([]);
+    mocks.projectedRuns = undefined;
     mocks.retry.mockClear();
     mocks.hydration = {
       status: 'ready',
@@ -199,11 +235,42 @@ describe('EventNativeProjectTimeline', () => {
       'durable-events'
     );
     expect(screen.getByText('Message 1')).toBeInTheDocument();
+    const unsupportedRow = container.querySelector(
+      '[data-event-node-id="message-2"]'
+    ) as HTMLElement;
+    expect(unsupportedRow).toHaveAttribute('data-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: /Unsupported event/i }));
     expect(
-      screen.getByText(
+      within(unsupportedRow).getByText(
         "This part of the conversation can't be shown in this version of Eigent."
       )
     ).toBeInTheDocument();
+  });
+
+  it('uses the authoritative projected Run lifecycle in Summarised mode', () => {
+    mocks.projection = projection([messageNode(1)]);
+    mocks.projectedRuns = {
+      'run-1': {
+        runId: 'run-1',
+        status: 'completed',
+        lastSequence: 1,
+        runVersion: 1,
+        updatedAt: '2026-08-19T00:00:05Z',
+        totalAttemptElapsedMs: 5_000,
+      },
+    };
+
+    render(
+      <EventNativeProjectTimeline
+        detailLevel="summarized"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByText('Run completed')).toBeInTheDocument();
+    expect(screen.getByText('5s')).toBeInTheDocument();
+    expect(screen.getByText('Files changed')).toBeInTheDocument();
   });
 
   it('shows a durable request and resolution as one interaction receipt', () => {
@@ -229,6 +296,8 @@ describe('EventNativeProjectTimeline', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(card).toHaveTextContent('Input required');
     expect(card).toHaveTextContent('Choose a format');
+    expect(card).not.toHaveTextContent('PDF document');
+    fireEvent.click(within(card).getByRole('button'));
     expect(card).toHaveTextContent('PDF document');
     expect(card).toHaveAttribute(
       'data-interaction-request-event-id',
@@ -310,12 +379,43 @@ describe('EventNativeProjectTimeline', () => {
       'data-interaction-resolution-event-id',
       'window-format-resolved'
     );
-    expect(screen.getByLabelText('Agent request')).toHaveTextContent(
-      'PDF document'
-    );
+    const interaction = screen.getByLabelText('Agent request');
+    expect(interaction).not.toHaveTextContent('PDF document');
+    fireEvent.click(within(interaction).getByRole('button'));
+    expect(interaction).toHaveTextContent('PDF document');
     expect(
       screen.queryByText(/Older messages aren't shown here/)
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps safe tool input when its start receipt falls outside the DOM window', () => {
+    const start = toolNode('tool-start', 1, 'running', {
+      input: '{"query":"ISS modules"}',
+      phase: 'started',
+    });
+    const interveningMessages = Array.from({ length: 249 }, (_, index) =>
+      messageNode(index + 1)
+    );
+    const completion = toolNode('tool-completed', 251, 'completed', {
+      output: 'Found 4 sources',
+      phase: 'completed',
+    });
+    mocks.projection = projection([start, ...interveningMessages, completion]);
+
+    render(
+      <EventNativeProjectTimeline
+        detailLevel="detailed"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Search Toolkit/i }));
+    expect(screen.getByText('{"query":"ISS modules"}')).toBeInTheDocument();
+    expect(screen.getByText('Found 4 sources')).toBeInTheDocument();
+    expect(
+      screen.getByText("Older messages aren't shown here.")
+    ).toBeInTheDocument();
   });
 
   it('surfaces a fail-closed hydration error instead of waiting forever', () => {
