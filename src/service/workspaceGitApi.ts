@@ -63,6 +63,9 @@ export interface WorkspaceGitBranch {
   committed_at: number;
   subject: string;
   archived: boolean;
+  project_id?: string | null;
+  run_id?: string | null;
+  agent_id?: string | null;
 }
 
 export interface WorkspaceGitCommit {
@@ -71,6 +74,19 @@ export interface WorkspaceGitCommit {
   author: string;
   committed_at: number;
   subject: string;
+  kind: 'save_point' | 'merge' | 'checkpoint' | 'commit';
+  initiated_by: 'user' | 'agent';
+  actor_id?: string | null;
+  trigger?: string | null;
+}
+
+export interface WorkspaceGitOperation {
+  operation_id: string;
+  kind: 'push';
+  initiated_by: 'user';
+  occurred_at: number;
+  head_oid?: string | null;
+  remote_name?: string | null;
 }
 
 export interface WorkspaceGitHistory {
@@ -78,6 +94,7 @@ export interface WorkspaceGitHistory {
   repo_state_digest: string;
   branches: WorkspaceGitBranch[];
   commits: WorkspaceGitCommit[];
+  operations: WorkspaceGitOperation[];
   remotes: string[];
   large_repository: {
     estimated_object_bytes: number;
@@ -118,6 +135,7 @@ export interface AdvancedGitResult {
   stdout_truncated: boolean;
   stderr_truncated: boolean;
   repo_state_digest: string;
+  head_oid?: string | null;
   replayed: boolean;
   publish_scan?: {
     head_oid: string;

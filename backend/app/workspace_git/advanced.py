@@ -1069,10 +1069,12 @@ class AdvancedGitService:
         root = Path(repository.root_path)
         if classification.safety_class is ToolSafetyClass.SAFE_READ:
             result = self.git.run_advanced_argv(root, argv)
+            current = self.git.repo_state_token(root)
             return self._result_payload(
                 result=result,
                 preview=preview,
-                repo_state_digest=self.git.repo_state_token(root).digest,
+                repo_state_digest=current.digest,
+                head_oid=current.head_oid,
                 replayed=False,
             )
         if expected_repo_state_digest is None:
@@ -1249,6 +1251,7 @@ class AdvancedGitService:
                 result=result,
                 preview=preview,
                 repo_state_digest=observed.digest,
+                head_oid=observed.head_oid,
                 replayed=False,
             )
             if publish_scan is not None:
@@ -1301,11 +1304,138 @@ class AdvancedGitService:
             object_stats.get("size", 0) + object_stats.get("size-pack", 0)
         ) * 1024
         policy = DEFAULT_GIT_RETENTION_POLICY
+        parsed_branches = self._parse_branches(branches.stdout)
+        branch_owners = {
+            project.integration_ref: {"project_id": project.project_id}
+            for project in self.journal.list_project_git_states()
+            if project.repository_id == repository_id
+            and project.integration_ref is not None
+        }
+        runs = {
+            run.run_id: run
+            for run in self.journal.list_run_git_materializations()
+            if run.repository_id == repository_id
+        }
+        for run in runs.values():
+            if run.run_ref is not None:
+                branch_owners[run.run_ref] = {
+                    "project_id": run.project_id,
+                    "run_id": run.run_id,
+                }
+        for agent in self.journal.list_git_agent_workspaces():
+            run = runs.get(agent.run_id)
+            if agent.repository_id != repository_id or run is None:
+                continue
+            owner = {
+                "project_id": run.project_id,
+                "run_id": run.run_id,
+                "agent_id": agent.agent_id,
+            }
+            branch_owners[agent.agent_ref] = owner
+            if agent.state == "archived":
+                archive_ref = (
+                    "refs/eigent/archive/runs/"
+                    + canonical_digest(
+                        {
+                            "repository_id": repository_id,
+                            "run_id": run.run_id,
+                        }
+                    )[:32]
+                    + "/agents/"
+                    + canonical_digest({"agent_id": agent.agent_id})[:24]
+                )
+                branch_owners[archive_ref] = owner
+        for branch in parsed_branches:
+            branch.update(branch_owners.get(branch["ref"], {}))
+        parsed_commits = self._parse_commits(commits.stdout)
+        checkpoints_by_oid = {
+            checkpoint.commit_oid: checkpoint
+            for checkpoint in self.journal.list_git_checkpoints(
+                repository_id,
+                limit=max(limit * 4, 100),
+            )
+        }
+        completed_advanced_operations = [
+            operation
+            for operation in self.journal.list_git_operations(
+                statuses=("completed",)
+            )
+            if operation.repository_id == repository_id
+            and operation.operation_type.startswith("advanced.")
+            and operation.result is not None
+        ]
+        user_commit_oids = tuple(
+            head_oid
+            for operation in completed_advanced_operations
+            if operation.result.get("subcommand") == "commit"
+            and (head_oid := self._operation_head_oid(operation.result))
+            is not None
+        )
+        for commit in parsed_commits:
+            checkpoint = checkpoints_by_oid.get(commit["oid"])
+            if checkpoint is not None:
+                commit["actor_id"] = checkpoint.actor_id
+                commit["trigger"] = checkpoint.trigger
+                commit["kind"] = (
+                    "save_point"
+                    if checkpoint.trigger == "user.save_point"
+                    else "checkpoint"
+                )
+                commit["initiated_by"] = (
+                    "user"
+                    if checkpoint.trigger == "user.save_point"
+                    else "agent"
+                )
+            elif any(
+                commit["oid"].startswith(user_commit_oid)
+                for user_commit_oid in user_commit_oids
+            ):
+                commit.update(
+                    {
+                        "actor_id": None,
+                        "trigger": "user.advanced_git",
+                        "kind": "commit",
+                        "initiated_by": "user",
+                    }
+                )
+            else:
+                commit.update(
+                    {
+                        "actor_id": None,
+                        "trigger": None,
+                        "kind": (
+                            "merge"
+                            if len(commit["parent_oids"]) > 1
+                            else "commit"
+                        ),
+                        "initiated_by": "agent",
+                    }
+                )
+        user_operations = []
+        for operation in completed_advanced_operations:
+            result = operation.result
+            if result.get("subcommand") != "push":
+                continue
+            publish_scan = result.get("publish_scan") or {}
+            user_operations.append(
+                {
+                    "operation_id": operation.operation_id,
+                    "kind": "push",
+                    "initiated_by": "user",
+                    "occurred_at": int(operation.updated_at),
+                    "head_oid": self._operation_head_oid(result),
+                    "remote_name": publish_scan.get("remote_name"),
+                }
+            )
+        user_operations.sort(
+            key=lambda operation: operation["occurred_at"], reverse=True
+        )
         return {
             "repository_id": repository_id,
             "repo_state_digest": self.git.repo_state_token(root).digest,
-            "branches": self._parse_branches(branches.stdout),
-            "commits": self._parse_commits(commits.stdout),
+            "branches": parsed_branches,
+            "commits": parsed_commits,
+            "operations": user_operations,
             "remotes": [
                 value for value in remotes.stdout.splitlines() if value
             ],
@@ -1373,6 +1503,7 @@ class AdvancedGitService:
         result,
         preview,
         repo_state_digest: str,
+        head_oid: str | None,
         replayed: bool,
     ) -> dict:
         return {
@@ -1385,8 +1516,29 @@ class AdvancedGitService:
             "stdout_truncated": result.stdout_truncated,
             "stderr_truncated": result.stderr_truncated,
             "repo_state_digest": repo_state_digest,
+            "head_oid": head_oid,
             "replayed": replayed,
         }
+
+    @staticmethod
+    def _operation_head_oid(result: dict) -> str | None:
+        head_oid = result.get("head_oid")
+        if isinstance(head_oid, str) and re.fullmatch(
+            r"[0-9a-f]{40}", head_oid
+        ):
+            return head_oid
+        publish_scan = result.get("publish_scan")
+        if isinstance(publish_scan, dict):
+            head_oid = publish_scan.get("head_oid")
+            if isinstance(head_oid, str) and re.fullmatch(
+                r"[0-9a-f]{40}", head_oid
+            ):
+                return head_oid
+        stdout = result.get("stdout")
+        if not isinstance(stdout, str):
+            return None
+        match = re.search(r"\[[^\]]+ ([0-9a-f]{7,40})\]", stdout)
+        return match.group(1) if match else None
 
     def _audit(
         self,

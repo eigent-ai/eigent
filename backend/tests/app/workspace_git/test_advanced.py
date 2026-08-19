@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -299,7 +300,7 @@ def test_mutation_requires_exact_confirmation_and_is_idempotent(advanced_git):
     )
     assert result["returncode"] == 0
     assert result["replayed"] is False
-    assert backend.current_head(root)
+    assert result["head_oid"] == backend.current_head(root)
 
     replayed = service.execute(
         space_id="space-1",
@@ -407,9 +408,9 @@ def test_remote_timeout_becomes_outcome_unknown_and_never_replays(
 
 
 def test_history_is_metadata_only_and_declares_conservative_retention(
-    advanced_git,
+    advanced_git, monkeypatch
 ):
-    service, _, backend, _, repository, root = advanced_git
+    service, journal, backend, _, repository, root = advanced_git
     expected = backend.repo_state_token(root).digest
     argv = ("commit", "--allow-empty", "-m", "history subject")
     preview = service.preview(
@@ -427,16 +428,126 @@ def test_history_is_metadata_only_and_declares_conservative_retention(
         confirmed_action_digest=preview.action_digest,
         actor_id="user-1",
     )
+    backend.run_advanced_argv(root, ("branch", "eigent/project/project-1"))
+    monkeypatch.setattr(
+        journal,
+        "list_project_git_states",
+        lambda: [
+            SimpleNamespace(
+                repository_id=repository.repository_id,
+                integration_ref="refs/heads/eigent/project/project-1",
+                project_id="project-1",
+            )
+        ],
+    )
 
     history = service.history(repository_id=repository.repository_id)
 
     assert history["commits"][0]["subject"] == "history subject"
+    assert history["commits"][0]["kind"] == "commit"
+    assert history["commits"][0]["initiated_by"] == "user"
     assert history["branches"][0]["ref"].startswith("refs/heads/")
+    project_branch = next(
+        branch
+        for branch in history["branches"]
+        if branch["ref"] == "refs/heads/eigent/project/project-1"
+    )
+    assert project_branch["project_id"] == "project-1"
     assert history["retention_policy"]["automatic_object_gc"] is False
     assert (
         history["retention_policy"]["automatic_archive_ref_deletion"] is False
     )
     assert history["backup"]["configured"] is False
+
+
+def test_history_uses_checkpoint_provenance_for_strict_initiator_labels(
+    advanced_git,
+):
+    service, _, backend, content, repository, root = advanced_git
+    report = root / "report.md"
+    report.write_text("user save\n", encoding="utf-8")
+    user_checkpoint = content.checkpoint(
+        repository.repository_id,
+        operation_request_id="user-save",
+        expected_repo_state_digest=backend.repo_state_token(root).digest,
+        paths=(report,),
+        path_sources={"report.md": "user_selected"},
+        target_role="user",
+        target_id="space-1",
+        actor_id="user-1",
+        trigger="user.save_point",
+        message="Save progress",
+    )
+    report.write_text("agent update\n", encoding="utf-8")
+    agent_checkpoint = content.checkpoint(
+        repository.repository_id,
+        operation_request_id="agent-checkpoint",
+        expected_repo_state_digest=backend.repo_state_token(root).digest,
+        paths=(report,),
+        path_sources={"report.md": "agent_modified"},
+        target_role="user",
+        target_id="space-1",
+        actor_id="Agents.single_agent",
+        trigger="terminal.execute",
+        message="Checkpoint bounded workspace process delta",
+    )
+
+    history = service.history(repository_id=repository.repository_id)
+    commits = {commit["oid"]: commit for commit in history["commits"]}
+
+    assert commits[user_checkpoint.commit_oid]["kind"] == "save_point"
+    assert commits[user_checkpoint.commit_oid]["initiated_by"] == "user"
+    assert commits[user_checkpoint.commit_oid]["actor_id"] == "user-1"
+    assert commits[agent_checkpoint.commit_oid]["kind"] == "checkpoint"
+    assert commits[agent_checkpoint.commit_oid]["initiated_by"] == "agent"
+    assert (
+        commits[agent_checkpoint.commit_oid]["actor_id"]
+        == "Agents.single_agent"
+    )
+
+
+def test_history_includes_completed_user_pushes(advanced_git):
+    service, journal, backend, _, repository, root = advanced_git
+    state = backend.repo_state_token(root)
+    operation = journal.begin_git_operation(
+        operation_id="gitop_user_push",
+        repository_id=repository.repository_id,
+        request_id="user-push",
+        operation_type="advanced.git.remote_write",
+        payload_digest="a" * 64,
+        expected_repo_state_digest=state.digest,
+    )
+    journal.mark_git_operation_dispatched(
+        operation.operation_id,
+        observed_repo_state_digest=state.digest,
+    )
+    journal.complete_git_operation(
+        operation.operation_id,
+        result={
+            "subcommand": "push",
+            "head_oid": state.head_oid,
+            "publish_scan": {
+                "head_oid": state.head_oid,
+                "remote_name": "origin",
+            },
+        },
+        observed_repo_state_digest=state.digest,
+    )
+
+    history = service.history(repository_id=repository.repository_id)
+
+    assert history["operations"] == [
+        {
+            "operation_id": "gitop_user_push",
+            "kind": "push",
+            "initiated_by": "user",
+            "occurred_at": int(
+                journal.get_git_operation("gitop_user_push").updated_at
+            ),
+            "head_oid": state.head_oid,
+            "remote_name": "origin",
+        }
+    ]
 
 
 def test_advanced_output_is_bounded_while_process_is_drained(tmp_path: Path):
