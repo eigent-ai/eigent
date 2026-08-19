@@ -57,21 +57,25 @@ import { useSpaceStore } from '@/store/spaceStore';
 import {
   Archive,
   ArchiveRestore,
+  Brain,
   Check,
   Ellipsis,
+  Lightbulb,
   ListChevronsDownUp,
   ListChevronsUpDown,
   Pencil,
   Plus,
   RefreshCw,
   Save,
+  Share2,
+  Sparkles,
   Star,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
-import { MemoryScopeNotice } from './MemoryScopeNotice';
+import { MemoryScopeDirectory } from './MemoryScopeNotice';
 
 const KINDS: MemoryKind[] = [
   'fact',
@@ -283,6 +287,84 @@ export default function Memory({
           ? 'Needs attention'
           : 'Unavailable';
   const initialLoading = loading && !scopeState;
+  const automaticCaptureSupported = scopeType === 'project';
+  const activeEntryCount = entries.filter((entry) => !entry.deleted_at).length;
+  const scopePresentation =
+    scopeType === 'space'
+      ? {
+          icon: Share2,
+          eyebrow: 'Shared scope',
+          title: 'Shared across this Space',
+          description:
+            'Add stable notes here when every Project in this Space should reuse them. Automatic learning is configured inside each Project, and Project notes stay there unless you add them here.',
+          useTitle: 'Use Space Memory',
+          useDescription:
+            'Include these shared notes in future Agent context for Projects in this Space.',
+          collectionTitle: 'Shared Space Memory',
+          collectionDescription:
+            'Only notes saved here are shared. Project Memory remains inside its Project.',
+          composerPlaceholder:
+            'Add a decision, constraint, preference, or fact to share across this Space',
+          emptyTitle: 'No shared Memory yet',
+          emptyDescription:
+            'Add a stable note above when you want every Project in this Space to remember it.',
+        }
+      : scopeType === 'project'
+        ? {
+            icon: Sparkles,
+            eyebrow: 'Project-specific',
+            title: 'Remembered for this Project',
+            description:
+              'Eigent can learn a small set of stable notes from this Project. These notes stay with the Project and are separate from its full task history.',
+            useTitle: 'Use Project Memory',
+            useDescription:
+              'Include these notes in future Agent context for this Project.',
+            collectionTitle: fixedScopeLabel
+              ? 'Saved Project Memory'
+              : 'Project Memory',
+            collectionDescription:
+              'Review, confirm, and manage the stable notes saved for this Project.',
+            composerPlaceholder:
+              'Add a decision, constraint, preference, or fact for this Project',
+            emptyTitle: 'No Project Memory yet',
+            emptyDescription:
+              'Add a note above, or turn on Auto Memory so Eigent can learn stable details as this Project runs.',
+          }
+        : {
+            icon: Brain,
+            eyebrow: 'Personal',
+            title: 'Available across your account',
+            description:
+              'Save a small set of preferences and stable facts you want Eigent to reuse across your work. Task history remains separate.',
+            useTitle: 'Use Personal Memory',
+            useDescription:
+              'Include these personal notes in future Agent context.',
+            collectionTitle: 'Personal Memory',
+            collectionDescription:
+              'Review and manage the stable notes saved for your account.',
+            composerPlaceholder:
+              'Add a preference, constraint, or fact for Eigent to remember',
+            emptyTitle: 'No Personal Memory yet',
+            emptyDescription:
+              'Add a stable preference or fact above when you want Eigent to remember it across your work.',
+          };
+  const ScopeIcon = scopePresentation.icon;
+  const showEntryControls =
+    entries.length > 0 || search.trim().length > 0 || showArchived;
+  const emptyStateCopy = search.trim()
+    ? {
+        title: 'No matching Memory',
+        description: 'Try a different search or clear the current filters.',
+      }
+    : showArchived
+      ? {
+          title: 'No archived Memory',
+          description: 'Archived notes will appear here when you have them.',
+        }
+      : {
+          title: scopePresentation.emptyTitle,
+          description: scopePresentation.emptyDescription,
+        };
 
   return (
     <SettingsSectionPage>
@@ -324,7 +406,8 @@ export default function Memory({
       ) : null}
 
       {showScopeDirectory ? (
-        <MemoryScopeNotice
+        <MemoryScopeDirectory
+          key={scopeType}
           scopeType={scopeType === 'space' ? 'space' : 'project'}
         />
       ) : !scopeId ? (
@@ -346,6 +429,27 @@ export default function Memory({
               />
             </SettingsRowGroup>
           ) : null}
+          <div
+            data-memory-scope-summary={scopeType}
+            className="flex flex-col gap-3 rounded-2xl bg-ds-bg-information-subtle-default p-4 sm:flex-row sm:items-start"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-bg-neutral-default-default text-ds-icon-information-default-default">
+              <ScopeIcon className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+                  {scopePresentation.title}
+                </div>
+                <span className="rounded-full bg-ds-bg-neutral-default-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                  {scopePresentation.eyebrow}
+                </span>
+              </div>
+              <p className="mt-1 max-w-3xl text-body-sm text-ds-text-neutral-muted-default">
+                {scopePresentation.description}
+              </p>
+            </div>
+          </div>
           {reconciliationItems.length > 0 && (
             <SettingsRowGroup>
               <SettingsRow
@@ -417,30 +521,31 @@ export default function Memory({
           )}
 
           <SettingsRowGroup>
+            {automaticCaptureSupported ? (
+              <SettingsRow
+                title="Auto Memory"
+                description="Learn a few stable notes from this Project as it runs. Full task history is stored separately."
+                action={
+                  initialLoading ? (
+                    <Skeleton
+                      aria-label="Loading Auto Memory setting"
+                      className="h-6 w-11 rounded-full"
+                    />
+                  ) : (
+                    <Switch
+                      aria-label="Auto Memory"
+                      checked={scopeState?.capture_enabled ?? false}
+                      onCheckedChange={(value) =>
+                        updateSettings({ captureEnabled: value })
+                      }
+                    />
+                  )
+                }
+              />
+            ) : null}
             <SettingsRow
-              title="Auto Memory"
-              description="Incrementally learn a few stable notes."
-              action={
-                initialLoading ? (
-                  <Skeleton
-                    aria-label="Loading Auto Memory setting"
-                    className="h-6 w-11 rounded-full"
-                  />
-                ) : (
-                  <Switch
-                    aria-label="Auto Memory"
-                    checked={scopeState?.capture_enabled ?? false}
-                    disabled={scopeType !== 'project'}
-                    onCheckedChange={(value) =>
-                      updateSettings({ captureEnabled: value })
-                    }
-                  />
-                )
-              }
-            />
-            <SettingsRow
-              title="Use Memory"
-              description="Include saved notes in future Agent context."
+              title={scopePresentation.useTitle}
+              description={scopePresentation.useDescription}
               action={
                 initialLoading ? (
                   <Skeleton
@@ -449,7 +554,7 @@ export default function Memory({
                   />
                 ) : (
                   <Switch
-                    aria-label="Use Memory"
+                    aria-label={scopePresentation.useTitle}
                     checked={scopeState?.use_enabled ?? false}
                     onCheckedChange={(value) =>
                       updateSettings({ useEnabled: value })
@@ -464,7 +569,11 @@ export default function Memory({
                 initialLoading ? (
                   <Skeleton className="h-3 w-52" />
                 ) : syncStatus === 'synced' ? (
-                  'Synced to your Eigent account'
+                  activeEntryCount === 0 ? (
+                    'Up to date — no saved notes to sync yet'
+                  ) : (
+                    'Up to date on your Eigent account'
+                  )
                 ) : syncStatus === 'pending' ? (
                   'Waiting to sync automatically'
                 ) : syncStatus === 'blocked' ? (
@@ -476,13 +585,19 @@ export default function Memory({
               action={
                 initialLoading ? (
                   <Skeleton className="h-7 w-24 rounded-full" />
+                ) : syncStatus === 'synced' ? (
+                  <span
+                    role="status"
+                    className="inline-flex items-center gap-1 rounded-full border border-solid border-ds-border-neutral-default-default px-3 py-1 text-label-sm font-medium text-ds-text-neutral-muted-default"
+                  >
+                    <Check className="h-3.5 w-3.5" aria-hidden /> Synced
+                  </span>
                 ) : (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     buttonRadius="full"
-                    disabled={syncStatus === 'synced'}
                     onClick={() => void reload()}
                   >
                     {syncStatusLabel}
@@ -491,8 +606,8 @@ export default function Memory({
               }
             />
             <SettingsRow
-              title="Memory storage"
-              description="Storage used by saved Memory for this scope."
+              title="Capacity"
+              description={`Space used by saved ${scopeType === 'space' ? 'shared' : scopeType} Memory.`}
               actionClassName="w-[280px]"
               action={
                 initialLoading ? (
@@ -524,7 +639,11 @@ export default function Memory({
             />
             <SettingsRow
               title="Organise Memory"
-              description="At 75%, Eigent safely consolidates exact machine-created duplicates. History is never changed."
+              description={
+                activeEntryCount < 2
+                  ? 'Available when there are multiple saved notes to consolidate.'
+                  : 'Consolidate exact machine-created duplicates without changing task history.'
+              }
               action={
                 initialLoading ? (
                   <Skeleton className="h-7 w-24 rounded-full" />
@@ -533,7 +652,7 @@ export default function Memory({
                     size="sm"
                     variant="outline"
                     buttonRadius="full"
-                    disabled={loading}
+                    disabled={loading || activeEntryCount < 2}
                     onClick={() =>
                       void runAndReload(() =>
                         consolidateMemoryScope(scopeType, scopeId)
@@ -549,8 +668,17 @@ export default function Memory({
 
           <SettingsRowGroup>
             <SettingsRow
-              title="Saved Memory"
-              description={`Add, search, and manage notes for this ${scopeType}.`}
+              title={
+                <span className="flex items-center gap-2">
+                  <span>{scopePresentation.collectionTitle}</span>
+                  {!initialLoading ? (
+                    <span className="rounded-full bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                      {activeEntryCount}
+                    </span>
+                  ) : null}
+                </span>
+              }
+              description={scopePresentation.collectionDescription}
             >
               <div
                 data-memory-composer
@@ -560,7 +688,7 @@ export default function Memory({
                   aria-label="New Memory"
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Add a short Memory note"
+                  placeholder={scopePresentation.composerPlaceholder}
                   maxLength={8192}
                   className="min-h-24 resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0"
                 />
@@ -575,11 +703,17 @@ export default function Memory({
                       variant="primary"
                       wrapperClassName="w-40"
                     >
-                      <SelectValue />
+                      <SelectValue>
+                        {draftKind[0].toUpperCase() + draftKind.slice(1)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {KINDS.map((kind) => (
-                        <SelectItem key={kind} value={kind}>
+                        <SelectItem
+                          key={kind}
+                          value={kind}
+                          className="capitalize"
+                        >
                           {kind}
                         </SelectItem>
                       ))}
@@ -605,63 +739,65 @@ export default function Memory({
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-2">
-                <Input
-                  size="sm"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search Memory"
-                  aria-label="Search Memory"
-                  className="min-w-52 flex-1"
-                />
-                <Select
-                  value={sortBy}
-                  onValueChange={(value) =>
-                    setSortBy(value as 'added-time' | 'type')
-                  }
-                >
-                  <SelectTrigger
-                    aria-label="Order Memory"
+              {showEntryControls ? (
+                <div className="mt-4 flex items-center gap-2">
+                  <Input
                     size="sm"
-                    variant="secondary"
-                    wrapperClassName="w-44"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="added-time">Added time</SelectItem>
-                    <SelectItem value="type">Type</SelectItem>
-                  </SelectContent>
-                </Select>
-                <TooltipSimple
-                  content={showArchived ? 'Hide archived' : 'Show archived'}
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="md"
-                    buttonContent="icon-only"
-                    textWeight="bold"
-                    buttonRadius="lg"
-                    aria-label={
-                      showArchived ? 'Hide archived' : 'Show archived'
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search Memory"
+                    aria-label="Search Memory"
+                    className="min-w-52 flex-1"
+                  />
+                  <Select
+                    value={sortBy}
+                    onValueChange={(value) =>
+                      setSortBy(value as 'added-time' | 'type')
                     }
-                    aria-pressed={showArchived}
-                    className={
-                      showArchived
-                        ? 'bg-ds-bg-neutral-strong-default'
-                        : undefined
-                    }
-                    onClick={() => setShowArchived((current) => !current)}
                   >
-                    {showArchived ? (
-                      <ListChevronsDownUp aria-hidden />
-                    ) : (
-                      <ListChevronsUpDown aria-hidden />
-                    )}
-                  </Button>
-                </TooltipSimple>
-              </div>
+                    <SelectTrigger
+                      aria-label="Order Memory"
+                      size="sm"
+                      variant="secondary"
+                      wrapperClassName="w-44"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="added-time">Added time</SelectItem>
+                      <SelectItem value="type">Type</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <TooltipSimple
+                    content={showArchived ? 'Hide archived' : 'Show archived'}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="md"
+                      buttonContent="icon-only"
+                      textWeight="bold"
+                      buttonRadius="lg"
+                      aria-label={
+                        showArchived ? 'Hide archived' : 'Show archived'
+                      }
+                      aria-pressed={showArchived}
+                      className={
+                        showArchived
+                          ? 'bg-ds-bg-neutral-strong-default'
+                          : undefined
+                      }
+                      onClick={() => setShowArchived((current) => !current)}
+                    >
+                      {showArchived ? (
+                        <ListChevronsDownUp aria-hidden />
+                      ) : (
+                        <ListChevronsUpDown aria-hidden />
+                      )}
+                    </Button>
+                  </TooltipSimple>
+                </div>
+              ) : null}
               {error && (
                 <div className="mt-4 text-body-sm text-ds-text-error-default-default">
                   {error}
@@ -678,9 +814,34 @@ export default function Memory({
                   ))}
                 </div>
               ) : visibleEntries.length === 0 ? (
-                <div className="py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
-                  No saved Memory for this {scopeType}. That is okay—History
-                  remains available to the Agent.
+                <div className="mt-4 flex flex-col items-center rounded-2xl bg-ds-bg-neutral-subtle-default px-6 py-8 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ds-bg-neutral-default-default text-ds-icon-neutral-muted-default">
+                    <Lightbulb className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="mt-3 text-body-sm font-semibold text-ds-text-neutral-default-default">
+                    {emptyStateCopy.title}
+                  </div>
+                  <p className="mt-1 max-w-xl text-body-sm text-ds-text-neutral-muted-default">
+                    {emptyStateCopy.description}
+                  </p>
+                  {!search.trim() && !showArchived ? (
+                    <>
+                      <p className="mt-3 text-label-xs text-ds-text-neutral-muted-default">
+                        Full task history stays available to the Agent and is
+                        not stored here.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        buttonRadius="full"
+                        className="mt-2"
+                        onClick={() => setShowArchived(true)}
+                      >
+                        <Archive aria-hidden /> View archived
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               ) : (
                 <div className="mt-4 flex flex-col gap-3">

@@ -77,6 +77,13 @@ export interface MemoryListResponse {
   };
 }
 
+export interface MemoryScopeSummary {
+  scope_type: MemoryScopeType;
+  scope_id: string;
+  entry_count: number;
+  scope_state: MemoryScopeState;
+}
+
 export interface MemoryReconciliationItem {
   reconciliation_id: string;
   account_owner_id: string;
@@ -102,6 +109,16 @@ export const listMemoryEntries = (
     scope_type: scopeType,
     scope_id: scopeId,
     include_deleted: includeDeleted,
+  });
+
+export const listMemoryScopeSummaries = (
+  scopes: Array<{ scopeType: MemoryScopeType; scopeId: string }>
+): Promise<{ items: MemoryScopeSummary[] }> =>
+  fetchPost('/memory/scopes/summaries', {
+    scopes: scopes.map((scope) => ({
+      scope_type: scope.scopeType,
+      scope_id: scope.scopeId,
+    })),
   });
 
 export const listMemoryReconciliation = (

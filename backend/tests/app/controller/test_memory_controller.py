@@ -45,6 +45,7 @@ def test_memory_routes_are_local_authenticated_and_support_user_crud(
         }
         assert ("GET", "/memory/entries") in routes
         assert ("POST", "/memory/entries") in routes
+        assert ("POST", "/memory/scopes/summaries") in routes
         assert not any(path.startswith("/api/v1/memory") for _, path in routes)
 
         with TestClient(app) as client:
@@ -62,10 +63,37 @@ def test_memory_routes_are_local_authenticated_and_support_user_crud(
                 "/memory/entries",
                 params={"scope_type": "project", "scope_id": "project-1"},
             )
+            summaries = client.post(
+                "/memory/scopes/summaries",
+                json={
+                    "scopes": [
+                        {
+                            "scope_type": "project",
+                            "scope_id": "project-1",
+                        },
+                        {
+                            "scope_type": "space",
+                            "scope_id": "space-1",
+                        },
+                        {
+                            "scope_type": "project",
+                            "scope_id": "project-1",
+                        },
+                    ]
+                },
+            )
 
         assert created.status_code == 200
         assert created.json()["entry"]["source_trust"] == "user_confirmed"
         assert listed.status_code == 200
         assert [item["content"] for item in listed.json()["items"]] == [
             "Use ISO dates."
+        ]
+        assert summaries.status_code == 200
+        assert [
+            (item["scope_type"], item["scope_id"], item["entry_count"])
+            for item in summaries.json()["items"]
+        ] == [
+            ("project", "project-1", 1),
+            ("space", "space-1", 0),
         ]

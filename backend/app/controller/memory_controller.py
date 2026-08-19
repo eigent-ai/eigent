@@ -72,6 +72,15 @@ class MemoryScopeSettingsBody(BaseModel):
     use_enabled: bool | None = None
 
 
+class MemoryScopeSummaryRef(BaseModel):
+    scope_type: ScopeType
+    scope_id: str = Field(min_length=1, max_length=200)
+
+
+class MemoryScopeSummariesBody(BaseModel):
+    scopes: list[MemoryScopeSummaryRef] = Field(max_length=250)
+
+
 class ConsolidateMemoryBody(BaseModel):
     request_id: str = Field(min_length=1, max_length=128)
     reason: str = Field(min_length=1, max_length=1000)
@@ -103,6 +112,34 @@ def _translate_error(exc: Exception) -> HTTPException:
 async def get_memory_scope(scope_type: ScopeType, scope_id: str):
     service = get_lightweight_memory_service()
     return asdict(service.scope(scope_type, scope_id))
+
+
+@router.post("/memory/scopes/summaries")
+async def list_memory_scope_summaries(body: MemoryScopeSummariesBody):
+    """Return lightweight counts for the local Memory Center directory."""
+
+    service = get_lightweight_memory_service()
+    items: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    try:
+        for requested_scope in body.scopes:
+            key = (requested_scope.scope_type, requested_scope.scope_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            state = service.scope(*key)
+            entries = service.list_entries(*key)
+            items.append(
+                {
+                    "scope_type": requested_scope.scope_type,
+                    "scope_id": requested_scope.scope_id,
+                    "entry_count": len(entries),
+                    "scope_state": asdict(state),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate_error(exc) from exc
+    return {"items": items}
 
 
 @router.patch("/memory/scopes/{scope_type}/{scope_id}/settings")

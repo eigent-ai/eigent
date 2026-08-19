@@ -32,6 +32,7 @@ import {
   archiveMemoryEntry,
   createMemoryEntry,
   listMemoryEntries,
+  listMemoryScopeSummaries,
   updateMemoryScopeSettings,
 } from '@/service/memoryApi';
 
@@ -47,6 +48,10 @@ describe('local Memory API contract', () => {
     http.patch.mockResolvedValue({});
 
     await listMemoryEntries('project', 'project-1');
+    await listMemoryScopeSummaries([
+      { scopeType: 'space', scopeId: 'space-1' },
+      { scopeType: 'project', scopeId: 'project-1' },
+    ]);
     await createMemoryEntry('project', 'project-1', {
       kind: 'fact',
       content: 'Use ISO dates.',
@@ -66,7 +71,16 @@ describe('local Memory API contract', () => {
       scope_id: 'project-1',
       include_deleted: false,
     });
-    expect(http.post.mock.calls[0][0]).toBe(
+    expect(http.post.mock.calls[0]).toEqual([
+      '/memory/scopes/summaries',
+      {
+        scopes: [
+          { scope_type: 'space', scope_id: 'space-1' },
+          { scope_type: 'project', scope_id: 'project-1' },
+        ],
+      },
+    ]);
+    expect(http.post.mock.calls[1][0]).toBe(
       '/memory/entries?scope_type=project&scope_id=project-1'
     );
     expect(http.patch.mock.calls[0][0]).toBe(

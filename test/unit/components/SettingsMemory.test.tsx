@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({
   list: vi.fn(),
+  listSummaries: vi.fn(),
   listReconciliation: vi.fn(),
   resolveReconciliation: vi.fn(),
   create: vi.fn(),
@@ -63,6 +64,7 @@ const spaceStoreState = vi.hoisted(() => ({
 vi.mock('@/service/memoryApi', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   listMemoryEntries: api.list,
+  listMemoryScopeSummaries: api.listSummaries,
   listMemoryReconciliation: api.listReconciliation,
   resolveMemoryReconciliation: api.resolveReconciliation,
   createMemoryEntry: api.create,
@@ -134,6 +136,21 @@ describe('Memory Center', () => {
       },
     });
     api.create.mockResolvedValue({});
+    api.listSummaries.mockImplementation(
+      (scopes: Array<{ scopeType: 'space' | 'project'; scopeId: string }>) =>
+        Promise.resolve({
+          items: scopes.map((scope) => ({
+            scope_type: scope.scopeType,
+            scope_id: scope.scopeId,
+            entry_count: 1,
+            scope_state: {
+              ...scopeState,
+              scope_type: scope.scopeType,
+              scope_id: scope.scopeId,
+            },
+          })),
+        })
+    );
     api.settings.mockResolvedValue({
       ...scopeState,
       revision: 2,
@@ -146,10 +163,18 @@ describe('Memory Center', () => {
   });
 
   it('offers bounded organization without exposing a sync chooser', async () => {
+    api.list.mockResolvedValue({
+      scope_state: scopeState,
+      items: [
+        { memory_id: 'one', deleted_at: null },
+        { memory_id: 'two', deleted_at: null },
+      ],
+      sync_status: { state: 'synced' },
+    });
     const user = userEvent.setup();
     render(<Memory />);
 
-    await screen.findByText(/Synced to your Eigent account/);
+    await screen.findByText(/Up to date on your Eigent account/);
     expect(screen.queryByRole('combobox', { name: /sync/i })).toBeNull();
     const organize = screen.getByRole('button', { name: /Organise/ });
     await waitFor(() => expect(organize).toBeEnabled());
@@ -222,7 +247,9 @@ describe('Memory Center', () => {
     );
 
     await user.type(
-      screen.getByPlaceholderText('Add a short Memory note'),
+      screen.getByPlaceholderText(
+        'Add a preference, constraint, or fact for Eigent to remember'
+      ),
       'Use ISO dates.'
     );
     await user.click(screen.getByRole('button', { name: /Add/ }));
@@ -236,6 +263,31 @@ describe('Memory Center', () => {
   });
 
   it('uses scope pills, one-row controls, and saved Memory tools', async () => {
+    api.list.mockResolvedValue({
+      scope_state: scopeState,
+      items: [
+        {
+          memory_id: 'memory-visible',
+          scope_type: 'user',
+          scope_id: 'user-1',
+          kind: 'fact',
+          content: 'Visible note',
+          priority: 'normal',
+          version: 1,
+          token_count: 2,
+          pinned_by_user: false,
+          confirmed_by_user: true,
+          created_by: 'user',
+          source_trust: 'user_confirmed',
+          sensitivity: 'normal',
+          source_refs: [],
+          deleted_at: null,
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+      sync_status: { state: 'synced' },
+    });
     render(<Memory />);
 
     await screen.findByText('Synced');
@@ -252,13 +304,13 @@ describe('Memory Center', () => {
       'data-state',
       'active'
     );
+    expect(screen.queryByRole('switch', { name: 'Auto Memory' })).toBeNull();
     expect(
-      screen.getByRole('switch', { name: 'Auto Memory' })
+      screen.getByRole('switch', { name: 'Use Personal Memory' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: 'Use Memory' })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Synced' })).toBeDisabled();
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent(
+      'Synced'
+    );
     const storageProgress = screen.getByRole('progressbar', {
       name: 'Memory storage used',
     });
@@ -280,7 +332,7 @@ describe('Memory Center', () => {
     ).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('shows one Space and Project Memory notice with an editor CTA', async () => {
+  it('shows searchable Space and Project Memory directories', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/home?section=settings&tab=memory']}>
@@ -304,31 +356,25 @@ describe('Memory Center', () => {
     const listCallCount = api.list.mock.calls.length;
 
     await user.click(screen.getByRole('tab', { name: 'Space' }));
-    expect(
-      screen.getByText(
-        'Manage Space Memory from the Memory tab on a Space detail page.'
-      )
-    ).toBeVisible();
-    expect(screen.queryByText('Design Space')).not.toBeInTheDocument();
+    expect(await screen.findByText('Design Space')).toBeVisible();
+    expect(screen.getByText('1 Project')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'New Memory' })
     ).not.toBeInTheDocument();
     expect(api.list).toHaveBeenCalledTimes(listCallCount);
-    await user.click(screen.getByRole('button', { name: 'Open Space Memory' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Manage Memory for Design Space' })
+    );
     expect(screen.getByTestId('memory-location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=memory'
     );
 
     await user.click(screen.getByRole('tab', { name: 'Project' }));
-    expect(
-      screen.getByText(
-        'Manage Project Memory from the Memory tab on its Space detail page.'
-      )
-    ).toBeVisible();
-    expect(screen.queryByText('Launch Plan')).not.toBeInTheDocument();
+    expect(await screen.findByText('Launch Plan')).toBeVisible();
+    expect(screen.getByText('Space: Design Space')).toBeVisible();
     expect(api.list).toHaveBeenCalledTimes(listCallCount);
     await user.click(
-      screen.getByRole('button', { name: 'Open Project Memory' })
+      screen.getByRole('button', { name: 'Manage Memory for Launch Plan' })
     );
     expect(screen.getByTestId('memory-location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=memory&memoryScope=project&projectId=project-1'
@@ -356,12 +402,14 @@ describe('Memory Center', () => {
     render(<Memory />);
 
     await screen.findByText('Synced');
-    const autoMemory = screen.getByRole('switch', { name: 'Auto Memory' });
-    expect(autoMemory).toBeChecked();
-    expect(autoMemory).toBeDisabled();
+    expect(screen.queryByRole('switch', { name: 'Auto Memory' })).toBeNull();
 
     await user.click(screen.getByRole('tab', { name: 'Project' }));
-    await waitFor(() => expect(autoMemory).toBeEnabled());
+    const autoMemory = await screen.findByRole('switch', {
+      name: 'Auto Memory',
+    });
+    expect(autoMemory).toBeEnabled();
+    expect(autoMemory).toBeChecked();
 
     await user.click(autoMemory);
 
@@ -403,7 +451,9 @@ describe('Memory Center', () => {
     const user = userEvent.setup();
     render(<Memory />);
 
-    await user.click(screen.getByRole('button', { name: 'Show archived' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'View archived' })
+    );
     expect(
       screen.getByRole('button', { name: 'Hide archived' })
     ).toBeInTheDocument();
