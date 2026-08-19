@@ -51,6 +51,7 @@ export default function Spaces() {
   } = useHomeHub();
   const spacesById = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const spaceSections = useMemo(
     () =>
       Object.values(spacesById)
@@ -76,14 +77,19 @@ export default function Spaces() {
     if (spaceIds.length === 0) return;
 
     const store = useSpaceStore.getState();
-    for (const spaceId of spaceIds) {
-      const space = store.getSpaceById(spaceId);
-      if (!space) continue;
-      if (isLegacySpace(space) || store.shouldSyncProjects(space.id)) {
-        void store.syncProjectsFromServer(space.id);
-      }
-    }
-  }, [spaceIdsKey]);
+    const pendingSpaceIds = spaceIds
+      .filter((spaceId) => {
+        const space = store.getSpaceById(spaceId);
+        return (
+          space && (isLegacySpace(space) || store.shouldSyncProjects(space.id))
+        );
+      })
+      .sort(
+        (left, right) =>
+          Number(right === activeSpaceId) - Number(left === activeSpaceId)
+      );
+    void store.syncProjectsForSpaces(pendingSpaceIds);
+  }, [activeSpaceId, spaceIdsKey]);
 
   const getSubtitle = useCallback(
     (space: Space) => {

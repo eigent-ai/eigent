@@ -409,4 +409,52 @@ describe('spaceStore user scoping', () => {
     expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledTimes(1);
     expect(proxyFetchGet).toHaveBeenCalledTimes(1);
   });
+
+  it('bounds background Space syncs and shares one lightweight history read', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const { proxyFetchGet } = await import('@/api/http');
+    const pendingResolvers: Array<() => void> = [];
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+
+    vi.mocked(spaceApi.proxyFetchSpaceProjects).mockImplementation(
+      () =>
+        new Promise<ServerProject[]>((resolve) => {
+          activeRequests += 1;
+          maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+          pendingResolvers.push(() => {
+            activeRequests -= 1;
+            resolve([]);
+          });
+        })
+    );
+    useSpaceStore.setState({ projectsSyncedAt: {} });
+
+    const sync = useSpaceStore
+      .getState()
+      .syncProjectsForSpaces([
+        'queued_space_1',
+        'queued_space_2',
+        'queued_space_3',
+        'queued_space_4',
+      ]);
+
+    await vi.waitFor(() => {
+      expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledTimes(2);
+    });
+    expect(maxActiveRequests).toBe(2);
+    expect(proxyFetchGet).toHaveBeenCalledTimes(1);
+    expect(proxyFetchGet).toHaveBeenCalledWith(
+      '/api/v1/chat/histories/grouped?include_tasks=false'
+    );
+
+    pendingResolvers.splice(0, 2).forEach((resolve) => resolve());
+    await vi.waitFor(() => {
+      expect(spaceApi.proxyFetchSpaceProjects).toHaveBeenCalledTimes(4);
+    });
+    expect(maxActiveRequests).toBe(2);
+
+    pendingResolvers.splice(0).forEach((resolve) => resolve());
+    await sync;
+  });
 });

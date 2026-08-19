@@ -110,16 +110,21 @@ export default function SpacesHub() {
     if (spaceIds.length === 0) return;
 
     const store = useSpaceStore.getState();
-    for (const spaceId of spaceIds) {
-      const space = store.getSpaceById(spaceId);
-      if (!space) continue;
-      if (isLegacySpace(space) || store.shouldSyncProjects(space.id)) {
-        void store.syncProjectsFromServer(space.id);
-      }
-    }
+    const pendingSpaceIds = spaceIds
+      .filter((spaceId) => {
+        const space = store.getSpaceById(spaceId);
+        return (
+          space && (isLegacySpace(space) || store.shouldSyncProjects(space.id))
+        );
+      })
+      .sort(
+        (left, right) =>
+          Number(right === activeSpaceId) - Number(left === activeSpaceId)
+      );
+    void store.syncProjectsForSpaces(pendingSpaceIds);
     // `spaceIdsKey` keeps this effect from re-running on every project metadata
     // update while still syncing newly visible Spaces.
-  }, [spaceIdsKey]);
+  }, [activeSpaceId, spaceIdsKey]);
 
   const openSpace = useCallback(
     (spaceId: string) => {

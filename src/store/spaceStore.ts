@@ -25,7 +25,11 @@ import {
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
-import type { ServerProject } from '@/service/spaceApi';
+import {
+  proxyEnsureLegacySpace,
+  proxyFetchSpaceProjects,
+  type ServerProject,
+} from '@/service/spaceApi';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -42,6 +46,7 @@ const SPACE_STORE_PERSIST_VERSION = 3;
 export const DEFAULT_LOCAL_USER_ID = 'local';
 const PROJECT_SYNC_TTL_MS = 5 * 60 * 1000;
 const PROJECT_PLACEHOLDER_RESYNC_MS = 10 * 1000;
+const BACKGROUND_PROJECT_SYNC_CONCURRENCY = 2;
 const PROJECT_DISPLAY_NAME_MAX = 80;
 const INITIAL_BLANK_SPACE_NAME = 'Untitled Space';
 const INITIAL_BLANK_SPACE_CREATED_FROM = 'initial_hydrate';
@@ -125,7 +130,11 @@ interface SpaceStore {
   resetForUser: (userId?: string | number | null) => void;
   ensureLegacySpace: (userId?: string | number | null) => string;
   hydrateFromServer: (userId?: string | number | null) => Promise<void>;
-  syncProjectsFromServer: (spaceId: string) => Promise<void>;
+  syncProjectsFromServer: (
+    spaceId: string,
+    historyProjects?: ProjectGroup[] | null
+  ) => Promise<void>;
+  syncProjectsForSpaces: (spaceIds: string[]) => Promise<void>;
   upsertProjectMetas: (
     projects: SpaceProjectMeta[],
     options?: UpsertProjectMetaOptions
@@ -444,11 +453,23 @@ const projectDisplayNameFromHistory = (project: ProjectGroup) => {
   return prompt ? truncateProjectDisplayName(prompt) : null;
 };
 
-const fetchHistoryProjectSidebarMetaMap = async (spaceId: string) => {
-  const projects = await fetchGroupedHistoryProjects({
-    includeTasks: true,
-    spaceId,
-  });
+const projectBelongsToSpace = (project: ProjectGroup, spaceId: string) =>
+  project.space_id === spaceId ||
+  project.tasks?.some((task) => task.space_id === spaceId);
+
+const fetchHistoryProjectSidebarMetaMap = async (
+  spaceId: string,
+  historyProjects?: ProjectGroup[] | null
+) => {
+  const projects =
+    historyProjects === undefined
+      ? await fetchGroupedHistoryProjects({
+          includeTasks: false,
+          spaceId,
+        })
+      : historyProjects?.filter((project) =>
+          projectBelongsToSpace(project, spaceId)
+        );
   const metaByProjectId = new Map<
     string,
     { displayName?: string; navLead: SessionNavLeadPresentation }
@@ -872,7 +893,7 @@ export const useSpaceStore = create<SpaceStore>()(
         return spaceId;
       },
 
-      syncProjectsFromServer: async (spaceId) => {
+      syncProjectsFromServer: async (spaceId, historyProjects) => {
         if (!spaceId) return;
 
         const syncKey = `${getAuthEnvironmentKey()}::${spaceId}`;
@@ -884,13 +905,7 @@ export const useSpaceStore = create<SpaceStore>()(
 
         const syncOperation = (async () => {
           try {
-            const [
-              { proxyEnsureLegacySpace, proxyFetchSpaceProjects },
-              projectModule,
-            ] = await Promise.all([
-              import('@/service/spaceApi'),
-              import('./projectRuntimeStore'),
-            ]);
+            const projectModule = await import('./projectRuntimeStore');
             let targetSpaceId = spaceId;
 
             if (spaceId.startsWith('legacy_')) {
@@ -926,21 +941,22 @@ export const useSpaceStore = create<SpaceStore>()(
 
             const [serverProjects, historyMetaByProjectId] = await Promise.all([
               proxyFetchSpaceProjects(targetSpaceId),
-              fetchHistoryProjectSidebarMetaMap(targetSpaceId).catch(
-                (error) => {
-                  console.warn(
-                    `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
-                    error
-                  );
-                  return new Map<
-                    string,
-                    {
-                      displayName?: string;
-                      navLead: SessionNavLeadPresentation;
-                    }
-                  >();
-                }
-              ),
+              fetchHistoryProjectSidebarMetaMap(
+                targetSpaceId,
+                historyProjects
+              ).catch((error) => {
+                console.warn(
+                  `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
+                  error
+                );
+                return new Map<
+                  string,
+                  {
+                    displayName?: string;
+                    navLead: SessionNavLeadPresentation;
+                  }
+                >();
+              }),
             ]);
             const namedProjects = withHistoryProjectNames(
               serverProjects,
@@ -983,6 +999,46 @@ export const useSpaceStore = create<SpaceStore>()(
             projectSyncInFlight.delete(syncKey);
           }
         }
+      },
+
+      syncProjectsForSpaces: async (spaceIds) => {
+        const pendingSpaceIds = [...new Set(spaceIds)].filter(
+          (spaceId) =>
+            spaceId &&
+            (spaceId.startsWith('legacy_') || get().shouldSyncProjects(spaceId))
+        );
+        if (pendingSpaceIds.length === 0) return;
+
+        // One summaries-only history read supplies display metadata for every
+        // Space. The previous per-Space include_tasks=true fan-out could issue
+        // dozens of large requests at once and starve the interactive UI.
+        const historyProjects = await fetchGroupedHistoryProjects({
+          includeTasks: false,
+        }).catch((error) => {
+          console.warn(
+            '[spaceStore] Failed to fetch shared history project metadata:',
+            error
+          );
+          return null;
+        });
+
+        let nextIndex = 0;
+        const workers = Array.from(
+          {
+            length: Math.min(
+              BACKGROUND_PROJECT_SYNC_CONCURRENCY,
+              pendingSpaceIds.length
+            ),
+          },
+          async () => {
+            while (nextIndex < pendingSpaceIds.length) {
+              const spaceId = pendingSpaceIds[nextIndex];
+              nextIndex += 1;
+              await get().syncProjectsFromServer(spaceId, historyProjects);
+            }
+          }
+        );
+        await Promise.all(workers);
       },
 
       upsertProjectMetas: (projects, options) =>
