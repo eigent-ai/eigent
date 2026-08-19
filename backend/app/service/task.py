@@ -271,9 +271,13 @@ class ActionTimeoutData(BaseModel):
     action: Literal[Action.timeout] = Action.timeout
     data: dict[
         Literal[
-            "message", "in_flight_tasks", "pending_tasks", "timeout_seconds"
+            "message",
+            "in_flight_tasks",
+            "pending_tasks",
+            "timeout_seconds",
+            "timeout_scope",
         ],
-        str | int,
+        str | int | float,
     ]
 
 
@@ -381,6 +385,8 @@ class TaskLock:
     so stale or duplicate HTTP requests cannot leak into a future question."""
     created_at: datetime
     last_accessed: datetime
+    execution_progress_revision: int
+    """Monotonic producer-side progress marker for long-running execution."""
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
     registered_toolkits: list[Any]
@@ -456,6 +462,7 @@ class TaskLock:
         self.human_input_waiters = {}
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
+        self.execution_progress_revision = 0
         self.background_tasks = set()
         self.registered_toolkits = []
 
@@ -500,6 +507,7 @@ class TaskLock:
 
     async def put_queue(self, data: ActionData):
         self.last_accessed = datetime.now()
+        self.execution_progress_revision += 1
         logger.debug(
             "Adding item to task queue",
             extra={"task_id": self.id, "action": data.action},

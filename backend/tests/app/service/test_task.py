@@ -201,6 +201,7 @@ class TestTaskLock:
         assert task_lock.human_input is human_input
         assert isinstance(task_lock.created_at, datetime)
         assert isinstance(task_lock.last_accessed, datetime)
+        assert task_lock.execution_progress_revision == 0
         assert len(task_lock.background_tasks) == 0
         assert task_lock.local_history_degraded is False
         assert task_lock.local_history_last_error is None
@@ -229,6 +230,7 @@ class TestTaskLock:
 
         # Should update last_accessed time
         assert task_lock.last_accessed > initial_time
+        assert task_lock.execution_progress_revision == 1
 
         # Should be able to get the data from queue
         retrieved_data = await task_lock.get_queue()
@@ -245,11 +247,15 @@ class TestTaskLock:
         await queue.put(data)
 
         initial_time = task_lock.last_accessed
+        initial_progress_revision = task_lock.execution_progress_revision
         await asyncio.sleep(0.001)  # Small delay to ensure time difference
         retrieved_data = await task_lock.get_queue()
 
         # Should update last_accessed time
         assert task_lock.last_accessed > initial_time
+        assert (
+            task_lock.execution_progress_revision == initial_progress_revision
+        )
         assert retrieved_data == data
 
     @pytest.mark.asyncio

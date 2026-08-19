@@ -18,6 +18,7 @@ import json
 import logging
 import threading
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from threading import Event
 from typing import Any
 
@@ -37,12 +38,18 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
-from app.component.environment import env
 from app.permission_policy import (
     ToolPermissionRejectedError,
     authorize_tool_checkpoint,
 )
-from app.run_runtime.active_timeout import ActiveExecutionTimeout
+from app.run_runtime.active_timeout import (
+    ActiveExecutionTimeout,
+    refresh_active_execution_timeout,
+)
+from app.run_runtime.timeout_config import (
+    normalize_optional_timeout_seconds,
+    optional_timeout_seconds_from_env,
+)
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
     ToolInvocationNotDispatchedError,
@@ -70,22 +77,25 @@ from app.utils.event_loop_utils import _schedule_async_task
 logger = logging.getLogger("agent")
 
 
-# Default 30 minutes; long agent turns (e.g. writing many chapters in one
-# run) can legitimately exceed it, so allow tuning without a rebuild.
-# A non-positive value disables the per-step timeout entirely.
+# One CAMEL "step" contains the entire progressing model/tool loop. It must
+# not impose a default total duration ceiling on a durable Run. A separate
+# sliding stall watchdog still bounds execution that stops making progress.
 _MALFORMED_MODEL_JSON_RETRIES = 2
 
 
 def default_step_timeout() -> float | None:
-    raw = env("AGENT_STEP_TIMEOUT_SECONDS", "1800")
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        logger.warning(
-            "Invalid AGENT_STEP_TIMEOUT_SECONDS value %r; using 1800", raw
-        )
-        return 1800.0
-    return value if value > 0 else None
+    """Return the opt-in hard cap for a complete CAMEL step."""
+
+    return optional_timeout_seconds_from_env("AGENT_STEP_TIMEOUT_SECONDS")
+
+
+def default_agent_stall_timeout() -> float | None:
+    """Return the sliding no-progress timeout for one Agent activity."""
+
+    return optional_timeout_seconds_from_env(
+        "AGENT_STALL_TIMEOUT_SECONDS",
+        default=1800,
+    )
 
 
 def _reported_tool_error(result: Any) -> RuntimeError | None:
@@ -176,6 +186,7 @@ class ListenChatAgent(ChatAgent):
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
         step_timeout: float | None = None,
+        stall_timeout: float | None = None,
         model_reload_callback: (
             Callable[[], BaseModelBackend | ModelManager] | None
         ) = None,
@@ -189,6 +200,13 @@ class ListenChatAgent(ChatAgent):
 
         if step_timeout is None:
             step_timeout = default_step_timeout()
+        else:
+            step_timeout = normalize_optional_timeout_seconds(step_timeout)
+        if stall_timeout is None:
+            stall_timeout = default_agent_stall_timeout()
+        else:
+            stall_timeout = normalize_optional_timeout_seconds(stall_timeout)
+        self.stall_timeout = stall_timeout
         super().__init__(
             system_message=system_message,
             model=model,
@@ -263,14 +281,17 @@ class ListenChatAgent(ChatAgent):
         retry_messages = openai_messages
         for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
             try:
-                return super()._get_model_response(
+                response = super()._get_model_response(
                     retry_messages,
                     current_iteration=current_iteration,
                     response_format=response_format,
                     tool_schemas=tool_schemas,
                     prev_num_openai_messages=prev_num_openai_messages,
                 )
+                refresh_active_execution_timeout()
+                return response
             except json.JSONDecodeError as error:
+                refresh_active_execution_timeout()
                 if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
                     raise
                 next_retry = retry_number + 1
@@ -303,14 +324,17 @@ class ListenChatAgent(ChatAgent):
         retry_messages = openai_messages
         for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
             try:
-                return await super()._aget_model_response(
+                response = await super()._aget_model_response(
                     retry_messages,
                     current_iteration=current_iteration,
                     response_format=response_format,
                     tool_schemas=tool_schemas,
                     prev_num_openai_messages=prev_num_openai_messages,
                 )
+                refresh_active_execution_timeout()
+                return response
             except json.JSONDecodeError as error:
+                refresh_active_execution_timeout()
                 if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
                     raise
                 next_retry = retry_number + 1
@@ -335,31 +359,51 @@ class ListenChatAgent(ChatAgent):
         input_message: BaseMessage | str,
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
-        """Run CAMEL while excluding durable human waits from its timeout.
+        """Run CAMEL under opt-in hard and sliding no-progress guards.
 
         CAMEL's built-in non-streaming ``astep`` wraps the entire tool loop in
-        one ``asyncio.wait_for``.  That timer cannot be paused from the
-        permission gate, so call the same internal task under our pause-aware
-        timeout. Streaming steps retain CAMEL's native path (which does not
-        apply ``step_timeout`` around the returned stream).
+        one cumulative timeout. That is unsuitable for long-running Runs, so
+        the cumulative guard defaults off while the stall guard is refreshed
+        after each model response and tool completion. Durable human waits
+        pause both guards. Streaming steps retain CAMEL's native path.
         """
 
         stream = self.model_backend.model_config_dict.get("stream", False)
         if stream:
             return await super().astep(input_message, response_format)
-        if self.step_timeout is None:
+        if self.step_timeout is None and self.stall_timeout is None:
             return await super()._astep_non_streaming_task(
                 input_message, response_format
             )
+        hard_timeout: ActiveExecutionTimeout | None = None
+        stall_timeout: ActiveExecutionTimeout | None = None
         try:
-            async with ActiveExecutionTimeout(self.step_timeout):
+            async with AsyncExitStack() as stack:
+                if self.step_timeout is not None:
+                    hard_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(self.step_timeout)
+                    )
+                if self.stall_timeout is not None:
+                    stall_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(
+                            self.stall_timeout,
+                            refresh_on_progress=True,
+                        )
+                    )
                 return await super()._astep_non_streaming_task(
                     input_message, response_format
                 )
         except TimeoutError as error:
-            raise TimeoutError(
-                f"Async step timed out after {self.step_timeout}s"
-            ) from error
+            if hard_timeout is not None and hard_timeout.expired:
+                raise TimeoutError(
+                    f"Async step timed out after {self.step_timeout}s"
+                ) from error
+            if stall_timeout is not None and stall_timeout.expired:
+                raise TimeoutError(
+                    "Agent activity made no progress for "
+                    f"{self.stall_timeout}s"
+                ) from error
+            raise
 
     def _reset_tool_checkpoint_error(self) -> None:
         with self._tool_checkpoint_error_lock:
@@ -621,40 +665,70 @@ class ListenChatAgent(ChatAgent):
         """
         accumulated_content = ""
         last_chunk = None
+        hard_timeout: ActiveExecutionTimeout | None = None
+        stall_timeout: ActiveExecutionTimeout | None = None
 
         try:
-            try:
-                async for chunk in response_gen:
-                    last_chunk = chunk
-                    if chunk.msg and chunk.msg.content:
-                        delta_content = chunk.msg.content
-                        accumulated_content += delta_content
-                    yield chunk
-            except ModelProcessingError as error:
-                can_retry = (
-                    auth_retry_available
-                    and input_message is not None
-                    and not accumulated_content
-                    and await self._areload_model_after_auth_error(error)
-                )
-                if not can_retry:
-                    raise
-
-                retry_response = await ChatAgent.astep(
-                    self, input_message, response_format
-                )
-                if isinstance(retry_response, AsyncStreamingChatAgentResponse):
-                    async for chunk in retry_response:
+            async with AsyncExitStack() as stack:
+                if self.step_timeout is not None:
+                    hard_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(self.step_timeout)
+                    )
+                if self.stall_timeout is not None:
+                    stall_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(
+                            self.stall_timeout,
+                            refresh_on_progress=True,
+                        )
+                    )
+                try:
+                    async for chunk in response_gen:
                         last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             delta_content = chunk.msg.content
                             accumulated_content += delta_content
+                        refresh_active_execution_timeout()
                         yield chunk
-                else:
-                    last_chunk = retry_response
-                    if retry_response.msg and retry_response.msg.content:
-                        accumulated_content += retry_response.msg.content
-                    yield retry_response
+                except ModelProcessingError as error:
+                    can_retry = (
+                        auth_retry_available
+                        and input_message is not None
+                        and not accumulated_content
+                        and await self._areload_model_after_auth_error(error)
+                    )
+                    if not can_retry:
+                        raise
+
+                    retry_response = await ChatAgent.astep(
+                        self, input_message, response_format
+                    )
+                    if isinstance(
+                        retry_response, AsyncStreamingChatAgentResponse
+                    ):
+                        async for chunk in retry_response:
+                            last_chunk = chunk
+                            if chunk.msg and chunk.msg.content:
+                                delta_content = chunk.msg.content
+                                accumulated_content += delta_content
+                            refresh_active_execution_timeout()
+                            yield chunk
+                    else:
+                        last_chunk = retry_response
+                        if retry_response.msg and retry_response.msg.content:
+                            accumulated_content += retry_response.msg.content
+                        refresh_active_execution_timeout()
+                        yield retry_response
+        except TimeoutError as error:
+            if hard_timeout is not None and hard_timeout.expired:
+                raise TimeoutError(
+                    f"Streaming step timed out after {self.step_timeout}s"
+                ) from error
+            if stall_timeout is not None and stall_timeout.expired:
+                raise TimeoutError(
+                    "Streaming Agent activity made no progress for "
+                    f"{self.stall_timeout}s"
+                ) from error
+            raise
         finally:
             total_tokens = self._extract_tokens(last_chunk)
             self._send_agent_deactivate(accumulated_content, total_tokens)
@@ -1315,6 +1389,7 @@ class ListenChatAgent(ChatAgent):
                     },
                 )
             )
+        refresh_active_execution_timeout()
         return self._record_tool_calling(
             func_name,
             args,
@@ -1475,6 +1550,7 @@ class ListenChatAgent(ChatAgent):
             prune_tool_calls_from_memory=self.prune_tool_calls_from_memory,
             enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
+            stall_timeout=self.stall_timeout,
             stream_accumulate=self.stream_accumulate,
             **clone_kwargs,
         )

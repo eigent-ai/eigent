@@ -43,6 +43,10 @@ from camel.tasks.task import Task, TaskState, validate_task_content
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.component import code
 from app.exception.exception import UserException
+from app.run_runtime.timeout_config import (
+    normalize_optional_timeout_seconds,
+    optional_timeout_seconds_from_env,
+)
 from app.service.task import (
     Action,
     ActionAssignTaskData,
@@ -51,6 +55,7 @@ from app.service.task import (
     ActionTimeoutData,
     get_camel_task,
     get_task_lock,
+    get_task_lock_if_exists,
 )
 from app.utils.event_loop_utils import _schedule_async_task
 from app.utils.single_agent_worker import SingleAgentWorker
@@ -59,6 +64,22 @@ from app.utils.telemetry.workforce_metrics import WorkforceMetricsCallback
 logger = logging.getLogger("workforce")
 
 _ANALYZE_TASK_MAX_RETRIES = 3
+_WORKFORCE_PROGRESS_POLL_SECONDS = 30.0
+
+
+def default_workforce_task_timeout() -> float | None:
+    """Return the opt-in hard cap for waiting on a worker task."""
+
+    return optional_timeout_seconds_from_env("WORKFORCE_TASK_TIMEOUT_SECONDS")
+
+
+def default_workforce_stall_timeout() -> float | None:
+    """Return the sliding no-progress limit for a worker task."""
+
+    return optional_timeout_seconds_from_env(
+        "WORKFORCE_STALL_TIMEOUT_SECONDS",
+        default=1800,
+    )
 
 
 class Workforce(BaseWorkforce):
@@ -73,6 +94,8 @@ class Workforce(BaseWorkforce):
         graceful_shutdown_timeout: float = 3,
         share_memory: bool = False,
         use_structured_output_handler: bool = True,
+        task_timeout_seconds: float | None = None,
+        stall_timeout_seconds: float | None = None,
     ) -> None:
         self.api_task_id = api_task_id
         logger.info("=" * 80)
@@ -86,6 +109,20 @@ class Workforce(BaseWorkforce):
             f"{graceful_shutdown_timeout}, share_memory={share_memory}"
         )
         logger.info("=" * 80)
+        if task_timeout_seconds is None:
+            task_timeout_seconds = default_workforce_task_timeout()
+        else:
+            task_timeout_seconds = normalize_optional_timeout_seconds(
+                task_timeout_seconds
+            )
+        if stall_timeout_seconds is None:
+            stall_timeout_seconds = default_workforce_stall_timeout()
+        else:
+            stall_timeout_seconds = normalize_optional_timeout_seconds(
+                stall_timeout_seconds
+            )
+        self.stall_timeout_seconds = stall_timeout_seconds
+
         super().__init__(
             description=description,
             children=children,
@@ -95,7 +132,7 @@ class Workforce(BaseWorkforce):
             graceful_shutdown_timeout=graceful_shutdown_timeout,
             share_memory=share_memory,
             use_structured_output_handler=use_structured_output_handler,
-            task_timeout_seconds=3600,  # 60 minutes
+            task_timeout_seconds=task_timeout_seconds,
             failure_handling_config=FailureHandlingConfig(
                 enabled_strategies=["retry", "replan"],
             ),
@@ -842,49 +879,86 @@ class Workforce(BaseWorkforce):
     async def _get_returned_task(self) -> Task | None:
         r"""Override to handle timeout and send notification to frontend.
 
-        Get the task that's published by this node and just get returned
-        from the assignee. Includes timeout handling to prevent indefinite
-        waiting.
+        A worker may legitimately make progress for hours or days, so the
+        cumulative wait cap defaults off. The sliding stall watchdog observes
+        TaskLock activity and only fails when the worker stops publishing any
+        progress for the configured interval.
 
         Raises:
-            asyncio.TimeoutError: If waiting for task exceeds timeout
+            asyncio.TimeoutError: If a configured hard or stall limit expires.
         """
-        try:
-            return await asyncio.wait_for(
-                self._channel.get_returned_task_by_publisher(self.node_id),
-                timeout=self.task_timeout_seconds,
-            )
-        except TimeoutError:
-            # Send timeout notification to frontend before re-raising
-            logger.warning(
-                f"⏰ [WF-TIMEOUT] Task timeout in workforce {self.node_id}. "
-                f"Timeout: {self.task_timeout_seconds}s, "
-                f"Pending tasks: {len(self._pending_tasks)}, "
-                f"In-flight tasks: {self._in_flight_tasks}"
-            )
+        returned_task = asyncio.create_task(
+            self._channel.get_returned_task_by_publisher(self.node_id)
+        )
+        hard_timeout = self.task_timeout_seconds
+        stall_timeout = self.stall_timeout_seconds
+        if hard_timeout is None and stall_timeout is None:
+            return await returned_task
 
-            # Try to notify frontend, but don't let
-            # notification failure mask the timeout
-            try:
-                task_lock = get_task_lock(self.api_task_id)
-                timeout_minutes = self.task_timeout_seconds // 60
-                await task_lock.put_queue(
-                    ActionTimeoutData(
-                        data={
-                            "message": (
-                                f"Task execution timeout: No response received "
-                                f"for {timeout_minutes} minutes"
-                            ),
-                            "in_flight_tasks": self._in_flight_tasks,
-                            "pending_tasks": len(self._pending_tasks),
-                            "timeout_seconds": self.task_timeout_seconds,
-                        }
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        last_progress_at = started_at
+        progress_marker = self._progress_marker()
+        try:
+            while True:
+                now = loop.time()
+                remaining = [_WORKFORCE_PROGRESS_POLL_SECONDS]
+                if hard_timeout is not None:
+                    remaining.append(
+                        max(0.0, hard_timeout - (now - started_at))
                     )
+                if stall_timeout is not None:
+                    remaining.append(
+                        max(0.0, stall_timeout - (now - last_progress_at))
+                    )
+                done, _ = await asyncio.wait(
+                    {returned_task},
+                    timeout=min(remaining),
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except Exception as notify_err:
-                logger.error(
-                    f"Failed to send timeout notification: {notify_err}"
-                )
+                if done:
+                    return returned_task.result()
+
+                now = loop.time()
+                current_marker = self._progress_marker()
+                if current_marker != progress_marker:
+                    progress_marker = current_marker
+                    last_progress_at = now
+                    continue
+
+                if hard_timeout is not None and (
+                    now - started_at >= hard_timeout
+                ):
+                    await self._report_wait_timeout(
+                        timeout_scope="workforce_hard_limit",
+                        timeout_seconds=hard_timeout,
+                        message=(
+                            "Task execution exceeded the configured Workforce "
+                            "hard limit"
+                        ),
+                    )
+                    raise TimeoutError(
+                        "Workforce task exceeded hard limit of "
+                        f"{hard_timeout}s"
+                    )
+                if stall_timeout is not None and (
+                    now - last_progress_at >= stall_timeout
+                ):
+                    await self._report_wait_timeout(
+                        timeout_scope="workforce_stall",
+                        timeout_seconds=stall_timeout,
+                        message="Task execution stopped reporting progress",
+                    )
+                    raise TimeoutError(
+                        f"Workforce task made no progress for {stall_timeout}s"
+                    )
+        except asyncio.CancelledError:
+            returned_task.cancel()
+            await asyncio.gather(returned_task, return_exceptions=True)
+            raise
+        except TimeoutError:
+            returned_task.cancel()
+            await asyncio.gather(returned_task, return_exceptions=True)
             raise
         except Exception as e:
             logger.error(
@@ -894,6 +968,48 @@ class Workforce(BaseWorkforce):
                 f"In-flight tasks: {self._in_flight_tasks}"
             )
             raise
+
+    def _progress_marker(self):
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        return (
+            task_lock.execution_progress_revision
+            if task_lock is not None
+            else None
+        )
+
+    async def _report_wait_timeout(
+        self,
+        *,
+        timeout_scope: str,
+        timeout_seconds: float,
+        message: str,
+    ) -> None:
+        logger.warning(
+            "⏰ [WF-TIMEOUT] %s in workforce %s. Timeout: %ss, "
+            "pending tasks: %s, in-flight tasks: %s",
+            timeout_scope,
+            self.node_id,
+            timeout_seconds,
+            len(self._pending_tasks),
+            self._in_flight_tasks,
+        )
+        try:
+            task_lock = get_task_lock(self.api_task_id)
+            await task_lock.put_queue(
+                ActionTimeoutData(
+                    data={
+                        "message": (
+                            f"{message} after {timeout_seconds:g} seconds"
+                        ),
+                        "in_flight_tasks": self._in_flight_tasks,
+                        "pending_tasks": len(self._pending_tasks),
+                        "timeout_seconds": timeout_seconds,
+                        "timeout_scope": timeout_scope,
+                    }
+                )
+            )
+        except Exception as notify_err:
+            logger.error("Failed to send timeout notification: %s", notify_err)
 
     def stop(self) -> None:
         logger.info("=" * 80)

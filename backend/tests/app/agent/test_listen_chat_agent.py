@@ -31,9 +31,14 @@ from app.agent.listen_chat_agent import (
     ListenChatAgent,
     _reported_tool_error,
     _tool_failure_outcome_known,
+    default_agent_stall_timeout,
+    default_step_timeout,
 )
 from app.model.chat import Chat
-from app.run_runtime.active_timeout import pause_active_execution_timeout
+from app.run_runtime.active_timeout import (
+    pause_active_execution_timeout,
+    refresh_active_execution_timeout,
+)
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointError,
     ToolInvocationNotDispatchedError,
@@ -75,12 +80,29 @@ def test_unrelated_post_dispatch_error_remains_outcome_unknown():
     )
 
 
+def test_long_running_defaults_have_no_hard_cap_and_keep_stall_watchdog():
+    def configured_value(name, default):
+        assert name in {
+            "AGENT_STEP_TIMEOUT_SECONDS",
+            "AGENT_STALL_TIMEOUT_SECONDS",
+        }
+        return default
+
+    with patch(
+        "app.run_runtime.timeout_config.env",
+        side_effect=configured_value,
+    ):
+        assert default_step_timeout() is None
+        assert default_agent_stall_timeout() == 1800
+
+
 @pytest.mark.asyncio
 async def test_agent_step_timeout_excludes_durable_human_wait():
     agent = object.__new__(ListenChatAgent)
     agent.model_backend = MagicMock()
     agent.model_backend.model_config_dict = {"stream": False}
     agent.step_timeout = 0.02
+    agent.stall_timeout = None
     response = MagicMock(spec=ChatAgentResponse)
 
     async def parent_step(_agent, _message, _response_format):
@@ -96,6 +118,91 @@ async def test_agent_step_timeout_excludes_durable_human_wait():
         result = await agent._astep_with_active_timeout("wait for approval")
 
     assert result is response
+
+
+@pytest.mark.asyncio
+async def test_agent_stall_watchdog_renews_after_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = None
+    agent.stall_timeout = 0.02
+    response = MagicMock(spec=ChatAgentResponse)
+
+    async def progressing_step(_agent, _message, _response_format):
+        for _ in range(3):
+            await asyncio.sleep(0.012)
+            refresh_active_execution_timeout()
+        return response
+
+    with patch.object(
+        ChatAgent,
+        "_astep_non_streaming_task",
+        new=progressing_step,
+    ):
+        result = await agent._astep_with_active_timeout("long task")
+
+    assert result is response
+
+
+@pytest.mark.asyncio
+async def test_agent_stall_watchdog_cancels_no_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.model_backend = MagicMock()
+    agent.model_backend.model_config_dict = {"stream": False}
+    agent.step_timeout = None
+    agent.stall_timeout = 0.01
+
+    async def stalled_step(_agent, _message, _response_format):
+        await asyncio.sleep(0.03)
+
+    with (
+        patch.object(
+            ChatAgent,
+            "_astep_non_streaming_task",
+            new=stalled_step,
+        ),
+        pytest.raises(TimeoutError, match="made no progress"),
+    ):
+        await agent._astep_with_active_timeout("stalled task")
+
+
+@pytest.mark.asyncio
+async def test_streaming_agent_stall_watchdog_renews_on_chunks():
+    agent = object.__new__(ListenChatAgent)
+    agent.step_timeout = None
+    agent.stall_timeout = 0.02
+    agent._send_agent_deactivate = MagicMock()
+
+    async def progressing_stream():
+        for index in range(3):
+            await asyncio.sleep(0.012)
+            yield SimpleNamespace(
+                msg=SimpleNamespace(content=str(index)),
+                info={},
+            )
+
+    chunks = [
+        chunk async for chunk in agent._astream_chunks(progressing_stream())
+    ]
+
+    assert [chunk.msg.content for chunk in chunks] == ["0", "1", "2"]
+
+
+@pytest.mark.asyncio
+async def test_streaming_agent_stall_watchdog_cancels_no_progress():
+    agent = object.__new__(ListenChatAgent)
+    agent.step_timeout = None
+    agent.stall_timeout = 0.01
+    agent._send_agent_deactivate = MagicMock()
+
+    async def stalled_stream():
+        await asyncio.sleep(0.03)
+        yield SimpleNamespace(msg=SimpleNamespace(content="late"), info={})
+
+    with pytest.raises(TimeoutError, match="made no progress"):
+        async for _chunk in agent._astream_chunks(stalled_stream()):
+            pass
 
 
 def _malformed_tool_arguments_error() -> json.JSONDecodeError:

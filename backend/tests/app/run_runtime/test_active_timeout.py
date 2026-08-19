@@ -15,12 +15,14 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
 from app.run_runtime.active_timeout import (
     ActiveExecutionTimeout,
     pause_active_execution_timeout,
+    refresh_active_execution_timeout,
 )
 
 
@@ -37,3 +39,39 @@ async def test_active_execution_still_times_out_without_pause():
     with pytest.raises(TimeoutError):
         async with ActiveExecutionTimeout(0.01):
             await asyncio.sleep(0.03)
+
+
+@pytest.mark.asyncio
+async def test_sliding_timeout_refreshes_while_execution_makes_progress():
+    async with ActiveExecutionTimeout(0.02, refresh_on_progress=True):
+        for _ in range(3):
+            await asyncio.sleep(0.012)
+            refresh_active_execution_timeout()
+
+
+@pytest.mark.asyncio
+async def test_refresh_does_not_extend_a_hard_execution_timeout():
+    with pytest.raises(TimeoutError):
+        async with ActiveExecutionTimeout(0.02):
+            await asyncio.sleep(0.012)
+            refresh_active_execution_timeout()
+            await asyncio.sleep(0.012)
+
+
+@pytest.mark.asyncio
+async def test_late_progress_cannot_resurrect_expired_sliding_timeout():
+    with pytest.raises(TimeoutError):
+        async with ActiveExecutionTimeout(0.01, refresh_on_progress=True):
+            time.sleep(0.02)
+            refresh_active_execution_timeout()
+            await asyncio.sleep(0.001)
+
+
+@pytest.mark.asyncio
+async def test_human_wait_pauses_nested_hard_and_sliding_timeouts():
+    async with ActiveExecutionTimeout(0.02):
+        async with ActiveExecutionTimeout(0.02, refresh_on_progress=True):
+            async with pause_active_execution_timeout():
+                await asyncio.sleep(0.04)
+            refresh_active_execution_timeout()
+            await asyncio.sleep(0.001)

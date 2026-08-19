@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,7 +35,12 @@ from app.service.task import (
     ActionTaskStateData,
     create_task_lock,
 )
-from app.utils.workforce import _ANALYZE_TASK_MAX_RETRIES, Workforce
+from app.utils.workforce import (
+    _ANALYZE_TASK_MAX_RETRIES,
+    Workforce,
+    default_workforce_stall_timeout,
+    default_workforce_task_timeout,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +63,91 @@ def test_workforce_initialization():
 
     assert workforce.api_task_id == api_task_id
     assert workforce.description == description
+
+
+@pytest.mark.unit
+def test_long_running_workforce_defaults_keep_only_stall_watchdog():
+    with patch(
+        "app.run_runtime.timeout_config.env",
+        side_effect=lambda _name, default: default,
+    ):
+        assert default_workforce_task_timeout() is None
+        assert default_workforce_stall_timeout() == 1800
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_has_no_cumulative_limit_when_disabled():
+    workforce = Workforce(
+        api_task_id="long-run",
+        description="Long task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0,
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        await asyncio.sleep(0.02)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+
+    assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_progress_renews_stall_watchdog():
+    workforce = Workforce(
+        api_task_id="progressing-run",
+        description="Progressing task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0.02,
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        await asyncio.sleep(0.035)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+    workforce._progress_marker = MagicMock(
+        side_effect=["started", "made-progress"]
+    )
+
+    assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_stall_watchdog_cancels_no_progress_wait():
+    workforce = Workforce(
+        api_task_id="stalled-run",
+        description="Stalled task",
+        task_timeout_seconds=0,
+        stall_timeout_seconds=0.01,
+    )
+
+    async def never_returns(_node_id):
+        await asyncio.Event().wait()
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        never_returns
+    )
+    workforce._progress_marker = MagicMock(return_value="unchanged")
+    workforce._report_wait_timeout = AsyncMock()
+
+    with pytest.raises(TimeoutError, match="made no progress"):
+        await workforce._get_returned_task()
+
+    workforce._report_wait_timeout.assert_awaited_once()
 
 
 @pytest.mark.unit
