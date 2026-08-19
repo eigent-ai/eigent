@@ -29,6 +29,17 @@ const mocks = vi.hoisted(() => ({
   hydration: {} as any,
   projectId: 'project-1' as string | null,
   projectFiles: [] as any[],
+  projectOutputResolver: vi.fn(),
+  spaceState: {
+    projectIdIndex: {
+      'project-1': 'space-1',
+      'project-2': 'space-2',
+    } as Record<string, string>,
+    spaces: {
+      'space-1': { rootPath: '/workspace/space-one' },
+      'space-2': { rootPath: '/workspace/space-two' },
+    } as Record<string, { rootPath: string }>,
+  },
   overviews: {} as Record<string, any>,
   selectFile: vi.fn(),
   setScrollToTurnRequest: vi.fn(),
@@ -79,6 +90,11 @@ vi.mock('@/store/skillsStore', () => ({
     selector({ skills: [] }),
 }));
 
+vi.mock('@/store/spaceStore', () => ({
+  useSpaceStore: (selector: (state: typeof mocks.spaceState) => unknown) =>
+    selector(mocks.spaceState),
+}));
+
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
@@ -91,7 +107,12 @@ vi.mock('@/store/pageTabStore', () => ({
 
 vi.mock(
   '@/components/Session/SidePanel/sections/useProjectOutputFiles',
-  () => ({ useProjectOutputFiles: () => mocks.projectFiles })
+  () => ({
+    useProjectOutputFiles: (...args: unknown[]) => {
+      mocks.projectOutputResolver(...args);
+      return mocks.projectFiles;
+    },
+  })
 );
 
 vi.mock('@/components/ui/tooltip', () => ({
@@ -221,6 +242,21 @@ describe('SessionActivityPanel project scope', () => {
     expect(screen.getByRole('heading', { name: 'Files' })).toBeInTheDocument();
     expect(screen.getByText('No output files yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Attach files/ })).toBeDisabled();
+  });
+
+  it('resolves SidePanel files against the Space that owns the Project', async () => {
+    render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+
+    expect(mocks.projectOutputResolver).toHaveBeenCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      []
+    );
   });
 
   it('shows unsupported history as degraded and exposes manual retry', async () => {

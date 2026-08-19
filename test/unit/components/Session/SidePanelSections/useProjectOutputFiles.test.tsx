@@ -110,6 +110,58 @@ describe('useProjectOutputFiles', () => {
     intervalSpy.mockRestore();
   });
 
+  it('resolves files from the owning Space workspace before legacy Project storage', async () => {
+    invokeMock.mockImplementation((channel: string) => {
+      if (channel === 'set-local-file-preview-roots') {
+        return Promise.resolve({ success: true, roots: 1 });
+      }
+      if (channel === 'get-workspace-file-list') {
+        return Promise.resolve([
+          {
+            name: 'report.md',
+            type: 'md',
+            path: '/workspace/space-one/report.md',
+            relativePath: 'report.md',
+          },
+        ]);
+      }
+      return Promise.reject(new Error(`Unexpected IPC channel: ${channel}`));
+    });
+
+    const { result } = renderHook(
+      () =>
+        useProjectOutputFiles(
+          'project_one',
+          { status: ChatTaskStatus.FINISHED, taskAssigning: [] },
+          'task_one',
+          '/workspace/space-one',
+          ['report.md']
+        ),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      1,
+      'set-local-file-preview-roots',
+      ['/workspace/space-one']
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      'get-workspace-file-list',
+      '/workspace/space-one',
+      ['report.md']
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'get-project-file-list',
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+    expect(result.current[0].path).toBe('/workspace/space-one/report.md');
+    expect(fetchGetMock).not.toHaveBeenCalled();
+  });
+
   it('does not reload files for agent-only live status changes', async () => {
     const { rerender } = renderHook(
       ({ agentStatus }) =>

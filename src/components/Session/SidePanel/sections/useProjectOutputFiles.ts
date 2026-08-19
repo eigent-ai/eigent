@@ -70,7 +70,11 @@ export function useProjectOutputFiles(
   projectId: string | null | undefined,
   activeTask: SidePanelTask | undefined,
   /** Optional task ID — when it changes, triggers an immediate re-fetch. */
-  taskId?: string | null
+  taskId?: string | null,
+  /** Authoritative root of the Space that owns this Project. */
+  workspaceRoot?: string | null,
+  /** Durable workspace-relative artifact identities to resolve. */
+  workspaceRelativePaths: readonly string[] = []
 ): FileInfo[] {
   const host = useHost();
   const email = useAuthStore((s) => s.email);
@@ -78,6 +82,7 @@ export function useProjectOutputFiles(
   const [files, setFiles] = useState<FileInfo[]>([]);
   const outputFilesRevision = getSidePanelOutputFilesRevision(activeTask);
   const taskFinished = activeTask?.status === ChatTaskStatus.FINISHED;
+  const workspaceRelativePathsKey = workspaceRelativePaths.join('\0');
 
   useEffect(() => {
     let cancelled = false;
@@ -93,22 +98,52 @@ export function useProjectOutputFiles(
       const ipcRenderer = host?.ipcRenderer;
 
       if (ipcRenderer?.invoke) {
-        try {
-          const localFiles = await ipcRenderer.invoke(
-            'get-project-file-list',
-            email,
-            projectId,
-            userId
-          );
-          if (Array.isArray(localFiles)) {
-            localLookupSucceeded = true;
-            nextFiles = localFiles;
+        if (workspaceRoot) {
+          try {
+            // Keep registration and enumeration ordered so switching between
+            // Spaces cannot race Layout's root-registration effect.
+            await ipcRenderer.invoke('set-local-file-preview-roots', [
+              workspaceRoot,
+            ]);
+            const workspaceFiles = await ipcRenderer.invoke(
+              'get-workspace-file-list',
+              workspaceRoot,
+              workspaceRelativePathsKey
+                ? workspaceRelativePathsKey.split('\0')
+                : []
+            );
+            if (Array.isArray(workspaceFiles)) {
+              localLookupSucceeded = true;
+              nextFiles = workspaceFiles;
+            }
+          } catch (error) {
+            console.warn(
+              '[SidePanel] Failed to resolve Space workspace files:',
+              error
+            );
           }
-        } catch (error) {
-          console.warn(
-            '[SidePanel] Failed to fetch local project files:',
-            error
-          );
+        }
+
+        // Compatibility fallback for Projects that still use the legacy
+        // ~/eigent/<identity>/project_<id> storage layout.
+        if (!localLookupSucceeded) {
+          try {
+            const localFiles = await ipcRenderer.invoke(
+              'get-project-file-list',
+              email,
+              projectId,
+              userId
+            );
+            if (Array.isArray(localFiles)) {
+              localLookupSucceeded = true;
+              nextFiles = localFiles;
+            }
+          } catch (error) {
+            console.warn(
+              '[SidePanel] Failed to fetch local project files:',
+              error
+            );
+          }
         }
       }
 
@@ -157,6 +192,8 @@ export function useProjectOutputFiles(
     taskFinished,
     taskId,
     userId,
+    workspaceRelativePathsKey,
+    workspaceRoot,
   ]);
 
   return files;

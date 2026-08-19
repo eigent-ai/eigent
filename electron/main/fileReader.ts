@@ -1342,21 +1342,84 @@ export class FileReader {
   ): FileInfo[] {
     const projectPath = this.resolveProjectPath(email, projectId, userId);
 
+    return this.getWorkspaceFileList(projectPath).map((file) => {
+      const taskMatch = file.relativePath.match(/^task_([^/\\]+)/);
+
+      return {
+        ...file,
+        task_id: taskMatch?.[1],
+        project_id: projectId,
+      };
+    });
+  }
+
+  /**
+   * Enumerate files from an already-authorized Space workspace root.
+   *
+   * The IPC boundary is responsible for authorizing the root against the
+   * renderer's active Space before this method is called.
+   */
+  public getWorkspaceFileList(
+    workspacePath: string,
+    requestedRelativePaths?: readonly string[]
+  ): FileInfo[] {
+    const rootPath = path.resolve(workspacePath);
+
     try {
-      if (!fs.existsSync(projectPath)) {
+      if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
         return [];
       }
 
-      const allFiles = this.getFilesRecursive(projectPath, projectPath)
+      if (requestedRelativePaths) {
+        const rootRealPath = fs.realpathSync(rootPath);
+        const files: FileInfo[] = [];
+        for (const relativePath of new Set(requestedRelativePaths)) {
+          if (!relativePath || path.isAbsolute(relativePath)) continue;
+          const candidatePath = path.resolve(rootRealPath, relativePath);
+          const relativeToRoot = path.relative(rootRealPath, candidatePath);
+          if (
+            relativeToRoot.startsWith('..') ||
+            path.isAbsolute(relativeToRoot)
+          ) {
+            continue;
+          }
+
+          try {
+            const stats = fs.lstatSync(candidatePath);
+            if (!stats.isFile() || stats.isSymbolicLink()) continue;
+            const realPath = fs.realpathSync(candidatePath);
+            const realRelativePath = path.relative(rootRealPath, realPath);
+            if (
+              realRelativePath.startsWith('..') ||
+              path.isAbsolute(realRelativePath)
+            ) {
+              continue;
+            }
+            const name = path.basename(realPath);
+            files.push({
+              path: realPath,
+              name,
+              type: name.split('.').pop()?.toLowerCase() || '',
+              isFolder: false,
+              relativePath: realRelativePath,
+              size: stats.size,
+              modifiedAt: stats.mtimeMs,
+              mimeType: mime.getType(realPath) || 'application/octet-stream',
+            });
+          } catch {
+            // A deleted, inaccessible or escaped candidate is not resolvable.
+          }
+        }
+        return files.sort((a, b) => a.path.localeCompare(b.path));
+      }
+
+      const allFiles = this.getFilesRecursive(rootPath, rootPath)
         .filter((file) => !file.isFolder)
         .map((file) => {
-          const relativePath = path.relative(projectPath, file.path);
-          const taskMatch = relativePath.match(/^task_([^/\\]+)/);
+          const relativePath = path.relative(rootPath, file.path);
 
           return {
             ...file,
-            task_id: taskMatch?.[1],
-            project_id: projectId,
             relativePath: relativePath === '.' ? '' : relativePath,
           };
         });
@@ -1365,7 +1428,7 @@ export class FileReader {
         return a.path.localeCompare(b.path);
       });
     } catch (err) {
-      console.error('Get project file list failed:', err);
+      console.error('Get workspace file list failed:', err);
       return [];
     }
   }

@@ -2472,6 +2472,29 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
+    'get-workspace-file-list',
+    async (event, workspaceRoot: string, requestedRelativePaths: unknown) => {
+      if (
+        typeof workspaceRoot !== 'string' ||
+        !Array.isArray(requestedRelativePaths) ||
+        requestedRelativePaths.length > 500 ||
+        requestedRelativePaths.some((value) => typeof value !== 'string')
+      ) {
+        throw new Error('Invalid workspace file resolver request');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedRoot = await requireAuthorizedPreviewFile(
+        event,
+        workspaceRoot
+      );
+      return manager.getWorkspaceFileList(
+        authorizedRoot,
+        requestedRelativePaths
+      );
+    }
+  );
+
+  ipcMain.handle(
     'get-project-file-list',
     async (
       _,

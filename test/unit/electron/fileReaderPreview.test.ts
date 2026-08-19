@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
-import { mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -51,6 +51,58 @@ describe('FileReader bounded preview', () => {
     expect(preview.rows).toHaveLength(FILE_PREVIEW_LIMITS.csvRows);
     expect(preview.truncated).toBe(true);
     expect(preview.totalBytes).toBeGreaterThan(0);
+  });
+
+  it('enumerates a Space workspace with file-relative identities', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(directory);
+    const reports = path.join(directory, 'reports');
+    await mkdir(reports);
+    await writeFile(path.join(directory, 'preview.png'), 'image');
+    await writeFile(path.join(reports, 'report.md'), '# report');
+
+    const reader = new FileReader(null as never);
+    const files = reader.getWorkspaceFileList(directory);
+
+    expect(files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'preview.png',
+          relativePath: 'preview.png',
+          path: path.join(directory, 'preview.png'),
+        }),
+        expect.objectContaining({
+          name: 'report.md',
+          relativePath: path.join('reports', 'report.md'),
+          path: path.join(reports, 'report.md'),
+        }),
+      ])
+    );
+  });
+
+  it('resolves only requested files and rejects traversal', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(directory);
+    const outsideFile = path.join(path.dirname(directory), 'outside.txt');
+    await writeFile(path.join(directory, 'preview.png'), 'image');
+    await writeFile(outsideFile, 'secret');
+
+    try {
+      const reader = new FileReader(null as never);
+      const files = reader.getWorkspaceFileList(directory, [
+        'preview.png',
+        '../outside.txt',
+        'missing.txt',
+      ]);
+
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        name: 'preview.png',
+        relativePath: 'preview.png',
+      });
+    } finally {
+      await rm(outsideFile, { force: true });
+    }
   });
 
   it('fails closed before fully reading oversized rich text', async () => {

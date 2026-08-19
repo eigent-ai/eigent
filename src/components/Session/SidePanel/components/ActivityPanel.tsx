@@ -57,6 +57,7 @@ import { useHost } from '@/host';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   AlertTriangle,
   Bot,
@@ -546,6 +547,11 @@ export function SessionActivityPanel({
   const activeTask = activeTaskId
     ? scopedChatStore?.tasks[activeTaskId]
     : undefined;
+  const workspaceRoot = useSpaceStore((state) => {
+    if (!projectId) return null;
+    const spaceId = state.projectIdIndex[projectId];
+    return spaceId ? state.spaces[spaceId]?.rootPath || null : null;
+  });
   const skills = useSkillsStore((state) => state.skills);
   const [connectors, setConnectors] = useState<ConnectorProvider[]>([]);
   const requestTaskBoxFocus = usePageTabStore(
@@ -618,12 +624,21 @@ export function SessionActivityPanel({
     () => panelData.agents.filter((agent) => agent.subagent),
     [panelData.agents]
   );
+  const workspaceRelativePaths = useMemo(
+    () =>
+      panelData.files.flatMap((item) =>
+        item.file.relativePath ? [item.file.relativePath] : []
+      ),
+    [panelData.files]
+  );
   // Compatibility boundary: legacy ChatStore file-list changes still trigger
   // resolver refreshes, but mergeProjectFiles may only enrich durable rows.
   const projectFiles = useProjectOutputFiles(
     projectId,
     activeTask,
-    activeTaskId
+    activeTaskId,
+    workspaceRoot,
+    workspaceRelativePaths
   );
   const files = useMemo(
     () => mergeProjectFiles(panelData.files, projectFiles),
