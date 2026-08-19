@@ -19,6 +19,7 @@ import pytest
 
 from app.run_journal.store import (
     _MODEL_INVOCATION_DOCUMENT_MAX_BYTES,
+    SCHEMA_VERSION,
     IdempotencyConflictError,
     InvalidRunTransitionError,
     SQLiteRunJournal,
@@ -272,7 +273,7 @@ def test_v29_database_adds_model_trajectory_tables(tmp_path: Path) -> None:
 
     upgraded = SQLiteRunJournal(path)
     try:
-        assert upgraded.schema_version == 30
+        assert upgraded.schema_version == SCHEMA_VERSION
         assert upgraded.get_run("run-before-upgrade") is not None
         tables = {
             row[0]

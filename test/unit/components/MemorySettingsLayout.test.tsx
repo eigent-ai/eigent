@@ -84,9 +84,9 @@ describe('Memory settings layout', () => {
     memoryApiMocks.listMemoryReconciliation.mockResolvedValue({ items: [] });
   });
 
-  it('explains the curated Space scope instead of showing a disabled Auto Memory switch', async () => {
+  it('offers automatic extraction for the shared Space scope', async () => {
     memoryApiMocks.listMemoryEntries.mockResolvedValue({
-      scope_state: scopeState('space', false),
+      scope_state: scopeState('space', true),
       items: [],
       sync_status: {
         state: 'synced',
@@ -107,11 +107,9 @@ describe('Memory settings layout', () => {
     expect(await screen.findByText('Shared across this Space')).toBeVisible();
     expect(screen.getByText('Shared scope')).toBeVisible();
     expect(
-      screen.getByText(/Automatic learning is configured inside each Project/)
+      screen.getByText(/learn stable notes explicitly meant for this Space/)
     ).toBeVisible();
-    expect(
-      screen.queryByRole('switch', { name: 'Auto Memory' })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Auto Memory' })).toBeChecked();
     expect(
       screen.getByRole('switch', { name: 'Use Space Memory' })
     ).toBeChecked();

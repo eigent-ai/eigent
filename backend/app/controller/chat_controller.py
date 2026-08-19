@@ -1177,6 +1177,12 @@ async def _prepare_chat_run(
             space_id=run_context.space_id,
             claimed_account_owner_id=run_context.user_id,
         )
+        await asyncio.to_thread(
+            journal.bind_memory_project_scopes,
+            project_id=run_context.project_id,
+            space_id=run_context.space_id,
+            user_id=run_context.user_id,
+        )
     is_resume = data.resume_request_id is not None
     if is_resume:
         request_id = str(data.resume_request_id)

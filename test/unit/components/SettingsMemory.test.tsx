@@ -304,7 +304,7 @@ describe('Memory Center', () => {
       'data-state',
       'active'
     );
-    expect(screen.queryByRole('switch', { name: 'Auto Memory' })).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Auto Memory' })).toBeChecked();
     expect(
       screen.getByRole('switch', { name: 'Use Personal Memory' })
     ).toBeInTheDocument();
@@ -402,9 +402,6 @@ describe('Memory Center', () => {
     render(<Memory />);
 
     await screen.findByText('Synced');
-    expect(screen.queryByRole('switch', { name: 'Auto Memory' })).toBeNull();
-
-    await user.click(screen.getByRole('tab', { name: 'Project' }));
     const autoMemory = await screen.findByRole('switch', {
       name: 'Auto Memory',
     });
@@ -414,7 +411,7 @@ describe('Memory Center', () => {
     await user.click(autoMemory);
 
     expect(autoMemory).not.toBeChecked();
-    expect(api.settings).toHaveBeenCalledWith('project', 'project-1', {
+    expect(api.settings).toHaveBeenCalledWith('user', 'user-1', {
       expectedRevision: 1,
       captureEnabled: false,
     });

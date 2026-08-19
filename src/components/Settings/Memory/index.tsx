@@ -287,7 +287,6 @@ export default function Memory({
           ? 'Needs attention'
           : 'Unavailable';
   const initialLoading = loading && !scopeState;
-  const automaticCaptureSupported = scopeType === 'project';
   const activeEntryCount = entries.filter((entry) => !entry.deleted_at).length;
   const scopePresentation =
     scopeType === 'space'
@@ -296,7 +295,9 @@ export default function Memory({
           eyebrow: 'Shared scope',
           title: 'Shared across this Space',
           description:
-            'Add stable notes here when every Project in this Space should reuse them. Automatic learning is configured inside each Project, and Project notes stay there unless you add them here.',
+            'Eigent can learn stable notes explicitly meant for this Space and reuse them across its Projects. Project-specific notes remain in their Project.',
+          autoDescription:
+            'Automatically learn explicit Space-wide facts, decisions, and preferences from Projects in this Space. You can edit or archive them here at any time.',
           useTitle: 'Use Space Memory',
           useDescription:
             'Include these shared notes in future Agent context for Projects in this Space.',
@@ -316,6 +317,8 @@ export default function Memory({
             title: 'Remembered for this Project',
             description:
               'Eigent can learn a small set of stable notes from this Project. These notes stay with the Project and are separate from its full task history.',
+            autoDescription:
+              'Automatically learn explicit stable details as this Project runs. You can edit or archive them here at any time.',
             useTitle: 'Use Project Memory',
             useDescription:
               'Include these notes in future Agent context for this Project.',
@@ -335,7 +338,9 @@ export default function Memory({
             eyebrow: 'Personal',
             title: 'Available across your account',
             description:
-              'Save a small set of preferences and stable facts you want Eigent to reuse across your work. Task history remains separate.',
+              'Eigent can learn personal preferences and stable facts you explicitly want reused across your work. Task history remains separate.',
+            autoDescription:
+              'Automatically learn explicit account-wide preferences and facts from your Projects. You can edit or archive them here at any time.',
             useTitle: 'Use Personal Memory',
             useDescription:
               'Include these personal notes in future Agent context.',
@@ -521,28 +526,26 @@ export default function Memory({
           )}
 
           <SettingsRowGroup>
-            {automaticCaptureSupported ? (
-              <SettingsRow
-                title="Auto Memory"
-                description="Learn a few stable notes from this Project as it runs. Full task history is stored separately."
-                action={
-                  initialLoading ? (
-                    <Skeleton
-                      aria-label="Loading Auto Memory setting"
-                      className="h-6 w-11 rounded-full"
-                    />
-                  ) : (
-                    <Switch
-                      aria-label="Auto Memory"
-                      checked={scopeState?.capture_enabled ?? false}
-                      onCheckedChange={(value) =>
-                        updateSettings({ captureEnabled: value })
-                      }
-                    />
-                  )
-                }
-              />
-            ) : null}
+            <SettingsRow
+              title="Auto Memory"
+              description={scopePresentation.autoDescription}
+              action={
+                initialLoading ? (
+                  <Skeleton
+                    aria-label="Loading Auto Memory setting"
+                    className="h-6 w-11 rounded-full"
+                  />
+                ) : (
+                  <Switch
+                    aria-label="Auto Memory"
+                    checked={scopeState?.capture_enabled ?? false}
+                    onCheckedChange={(value) =>
+                      updateSettings({ captureEnabled: value })
+                    }
+                  />
+                )
+              }
+            />
             <SettingsRow
               title={scopePresentation.useTitle}
               description={scopePresentation.useDescription}

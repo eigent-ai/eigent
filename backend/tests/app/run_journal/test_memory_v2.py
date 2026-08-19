@@ -157,6 +157,42 @@ def test_v21_events_receive_deterministic_cursor_backfill(tmp_path):
         }
 
 
+def test_v31_enables_shared_scope_capture_and_adds_source_watermarks(tmp_path):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        journal.ensure_memory_scope_state("space", "space-1")
+        journal.ensure_memory_scope_state("user", "user-1")
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE memory_scope_state SET capture_enabled = 0 "
+            "WHERE scope_type IN ('space', 'user')"
+        )
+        connection.execute("DROP TABLE memory_extraction_watermarks")
+        connection.execute("DROP TABLE memory_project_scope_bindings")
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 31"
+        )
+        connection.execute("PRAGMA user_version = 30")
+
+    with SQLiteRunJournal(path) as upgraded:
+        assert upgraded.get_memory_scope_state(
+            "space", "space-1"
+        ).capture_enabled
+        assert upgraded.get_memory_scope_state(
+            "user", "user-1"
+        ).capture_enabled
+        upgraded.bind_memory_project_scopes(
+            project_id="project-1",
+            space_id="space-1",
+            user_id="user-1",
+        )
+        assert upgraded.get_memory_project_scopes("project-1") == (
+            "space-1",
+            "user-1",
+        )
+
+
 def test_memory_mutations_enforce_capacity_cas_tombstone_and_idempotency(
     journal,
 ):

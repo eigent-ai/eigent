@@ -120,7 +120,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2030,6 +2030,52 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (30, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 30;
+COMMIT;
+"""
+
+_MIGRATION_V31 = """
+BEGIN IMMEDIATE;
+
+-- Automatic Memory extraction can target Space and User scopes.  A shared
+-- scope is fed by multiple independent Project History streams, so its
+-- extraction cursor must be keyed by the source Project rather than stored as
+-- one ambiguous scope-wide watermark.
+CREATE TABLE IF NOT EXISTS memory_project_scope_bindings(
+    project_id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    user_id TEXT,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_extraction_watermarks(
+    target_scope_type TEXT NOT NULL CHECK(
+        target_scope_type IN ('space', 'user')
+    ),
+    target_scope_id TEXT NOT NULL,
+    source_project_id TEXT NOT NULL,
+    processed_through_watermark TEXT,
+    watermark_kind TEXT CHECK(
+        watermark_kind IS NULL OR
+        watermark_kind IN ('journal_cursor', 'cloud_cursor')
+    ),
+    extractor_version TEXT NOT NULL DEFAULT 'memory-v2',
+    last_error TEXT,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(target_scope_type, target_scope_id, source_project_id)
+);
+CREATE INDEX IF NOT EXISTS memory_extraction_watermarks_source_idx
+ON memory_extraction_watermarks(source_project_id, target_scope_type,
+                                target_scope_id);
+
+-- Product policy: automatic extraction is available out of the box at every
+-- Memory scope. Users can still disable an individual scope and can edit or
+-- archive every extracted entry from Memory Center.
+UPDATE memory_scope_state SET capture_enabled = 1;
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (31, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 31;
 COMMIT;
 """
 
@@ -9239,6 +9285,149 @@ class SQLiteRunJournal:
                 account_owner_id=account_owner_id,
             )
 
+    def bind_memory_project_scopes(
+        self,
+        *,
+        project_id: str,
+        space_id: str,
+        user_id: str | None,
+        now: float | None = None,
+    ) -> None:
+        """Persist the shared Memory targets fed by one Project History.
+
+        This is routing metadata, not an ownership assertion. Cloud ownership
+        remains governed by ``memory_scope_owner_candidates`` and server-side
+        authorization.
+        """
+
+        self._validate_memory_scope("project", project_id)
+        self._validate_memory_scope("space", space_id)
+        normalized_user_id = (
+            str(user_id).strip() if user_id is not None else None
+        )
+        if normalized_user_id:
+            self._validate_memory_scope("user", normalized_user_id)
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO memory_project_scope_bindings(
+                    project_id, space_id, user_id, updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    space_id = excluded.space_id,
+                    user_id = excluded.user_id,
+                    updated_at = excluded.updated_at
+                """,
+                (project_id, space_id, normalized_user_id, timestamp),
+            )
+
+    def get_memory_project_scopes(
+        self, project_id: str
+    ) -> tuple[str | None, str | None]:
+        self._validate_memory_scope("project", project_id)
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT space_id, user_id
+                FROM memory_project_scope_bindings
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+        if row is None:
+            return None, None
+        return str(row["space_id"]), (
+            str(row["user_id"]) if row["user_id"] is not None else None
+        )
+
+    def get_memory_extraction_watermark(
+        self,
+        *,
+        target_scope_type: str,
+        target_scope_id: str,
+        source_project_id: str,
+    ) -> str | None:
+        if target_scope_type not in {"space", "user"}:
+            raise ValueError("shared Memory extraction target is required")
+        self._validate_memory_scope(target_scope_type, target_scope_id)
+        self._validate_memory_scope("project", source_project_id)
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT processed_through_watermark
+                FROM memory_extraction_watermarks
+                WHERE target_scope_type = ? AND target_scope_id = ?
+                  AND source_project_id = ?
+                """,
+                (target_scope_type, target_scope_id, source_project_id),
+            ).fetchone()
+        if row is None or row["processed_through_watermark"] is None:
+            return None
+        return str(row["processed_through_watermark"])
+
+    def record_memory_extraction_watermark(
+        self,
+        *,
+        target_scope_type: str,
+        target_scope_id: str,
+        source_project_id: str,
+        processed_through_watermark: str | None,
+        watermark_kind: str | None,
+        extractor_version: str,
+        last_error: str | None = None,
+        now: float | None = None,
+    ) -> None:
+        """Record one source Project's progress into a shared target scope."""
+
+        if target_scope_type not in {"space", "user"}:
+            raise ValueError("shared Memory extraction target is required")
+        self._validate_memory_scope(target_scope_type, target_scope_id)
+        self._validate_memory_scope("project", source_project_id)
+        if not extractor_version.strip():
+            raise ValueError("Memory extractor_version is required")
+        if last_error is None and (
+            processed_through_watermark is None or watermark_kind is None
+        ):
+            raise ValueError("successful maintenance requires a watermark")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO memory_extraction_watermarks(
+                    target_scope_type, target_scope_id, source_project_id,
+                    processed_through_watermark, watermark_kind,
+                    extractor_version, last_error, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    target_scope_type, target_scope_id, source_project_id
+                ) DO UPDATE SET
+                    processed_through_watermark = CASE
+                        WHEN excluded.processed_through_watermark IS NULL
+                        THEN memory_extraction_watermarks.processed_through_watermark
+                        ELSE excluded.processed_through_watermark
+                    END,
+                    watermark_kind = CASE
+                        WHEN excluded.watermark_kind IS NULL
+                        THEN memory_extraction_watermarks.watermark_kind
+                        ELSE excluded.watermark_kind
+                    END,
+                    extractor_version = excluded.extractor_version,
+                    last_error = excluded.last_error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    target_scope_type,
+                    target_scope_id,
+                    source_project_id,
+                    processed_through_watermark,
+                    watermark_kind,
+                    extractor_version,
+                    last_error[:2000] if last_error else None,
+                    timestamp,
+                ),
+            )
+
     def get_memory_scope_state(
         self, scope_type: str, scope_id: str
     ) -> MemoryScopeStateRecord | None:
@@ -9271,10 +9460,6 @@ class SQLiteRunJournal:
         self._validate_memory_scope(scope_type, scope_id)
         if sync_scope is not None and sync_scope != "full_memory":
             raise ValueError("Memory sync is fixed to full_memory")
-        if scope_type != "project" and capture_enabled:
-            raise ValueError(
-                "Automatic Memory capture is only supported for Project scope"
-            )
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
             row = self._ensure_memory_scope_state_in_transaction(
@@ -15977,6 +16162,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(_MIGRATION_V29)
         if version < 30:
             self._connection.executescript(_MIGRATION_V30)
+        if version < 31:
+            self._connection.executescript(_MIGRATION_V31)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -16903,7 +17090,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                 scope_type,
                 scope_id,
                 owner_kind,
-                int(scope_type == "project"),
+                1,
                 token_limit,
                 now,
             ),
