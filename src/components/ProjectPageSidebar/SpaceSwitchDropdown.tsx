@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { getActiveSpaceTriggerLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
@@ -465,11 +466,11 @@ export function SpaceSwitchDropdown({
                         : t('layout.workspace-enable-version-history')}
               </span>
               {savePointMenu.enabled ? (
-                <span className="text-body-xs text-ds-text-neutral-muted-default">
+                <ShortcutKeycap aria-hidden>
                   {navigator.platform.toLowerCase().includes('mac')
                     ? '⌘S'
                     : 'Ctrl+S'}
-                </span>
+                </ShortcutKeycap>
               ) : null}
             </DropdownMenuItem>
             {savePointMenu.enabled && savePointMenu.onOpenHistory ? (

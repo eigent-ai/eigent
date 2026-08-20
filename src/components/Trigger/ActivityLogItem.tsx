@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AlarmClockIcon } from '@/components/ui/animate-ui/icons/alarm-clock';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { formatRelativeTime } from '@/lib/utils';
 import { ActivityLog, ActivityType } from '@/store/activityLogStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -25,7 +26,6 @@ import {
   Globe,
   PlayCircle,
   Trash2,
-  Zap,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -35,7 +35,7 @@ const getStatusIcon = (activityType: ActivityType) => {
     case ActivityType.TriggerCreated:
     case ActivityType.TriggerUpdated:
     case ActivityType.TriggerActivated:
-      return Zap; // trigger created
+      return AUTOMATION_ICON;
     case ActivityType.TriggerDeleted:
     case ActivityType.TriggerDeactivated:
       return Trash2; // trigger deleted

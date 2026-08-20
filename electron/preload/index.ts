@@ -13,6 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import {
+  APP_COMMAND_CHANNEL,
+  isAppCommandId,
+  type AppCommandId,
+} from '../../src/shared/appCommands';
+import {
+  isWindowCloseRequest,
+  WINDOW_CLOSE_REQUEST_CHANNEL,
+  WINDOW_CLOSE_RESPONSE_CHANNEL,
+  type WindowCloseRequest,
+  type WindowCloseResponse,
+} from '../../src/shared/windowClose';
 import type {
   WorkspaceSecretLookup,
   WorkspaceSecretPutRequest,
@@ -56,10 +68,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savePastedFile: (fileName: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
-  triggerMenuAction: (action: string) =>
-    ipcRenderer.send('menu-action', action),
-  onExecuteAction: (callback: (action: string) => void) =>
-    ipcRenderer.on('execute-action', (event, action) => callback(action)),
+  onAppCommand: (callback: (command: AppCommandId) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, command: unknown) => {
+      if (isAppCommandId(command)) callback(command);
+    };
+    ipcRenderer.on(APP_COMMAND_CHANNEL, listener);
+    return () => ipcRenderer.off(APP_COMMAND_CHANNEL, listener);
+  },
+  onCloseRequest: (callback: (request: WindowCloseRequest) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+      if (isWindowCloseRequest(request)) callback(request);
+    };
+    ipcRenderer.on(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+    return () => ipcRenderer.off(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+  },
+  respondToCloseRequest: (response: WindowCloseResponse) =>
+    ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
   getPlatform: () => process.platform,
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
   createWebView: (id: string, url: string) =>

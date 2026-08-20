@@ -19,6 +19,7 @@ import {
   proxyFetchGet,
 } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
+import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
   NavTab,
   SidebarNavGroup,
@@ -28,27 +29,24 @@ import {
 } from '@/components/Layout/AppSidebar';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { useHost } from '@/host';
 import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
-import {
-  buildTaskQuestionsById,
-  computeProjectFreshnessAnchor,
-} from '@/lib/replay';
+import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
-import {
-  getSessionNavLeadFromHistoryProject,
-  resolveProjectNavLeadPresentation,
-} from '@/lib/sessionNavLead';
+import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
-  getContextTabBindingLabel,
+  getFilesTabBindingLabel,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
+import { AUTOMATION_ICON, AUTOMATION_OFF_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
+import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -60,15 +58,7 @@ import {
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import {
-  Cast,
-  Inbox,
-  LayoutGrid,
-  Plus,
-  ToolCase,
-  Zap,
-  ZapOff,
-} from 'lucide-react';
+import { Cast, Inbox, LayoutGrid, Plus, ToolCase } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -90,7 +80,8 @@ export default function ProjectPageSidebar({
   chatStore: _chatStore,
   className,
 }: ProjectPageSidebarProps) {
-  const contextTabDescriptionId = useId();
+  const executeAppCommand = useAppCommand();
+  const filesTabDescriptionId = useId();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const requestWorkspaceChatFocus = usePageTabStore(
@@ -100,8 +91,8 @@ export default function ProjectPageSidebar({
     (s) => s.requestOpenTriggerAddDialog
   );
   const unviewedTabs = usePageTabStore((s) => s.unviewedTabs);
-  const inboxUnviewedForProjects = usePageTabStore(
-    (s) => s.inboxUnviewedForProjects
+  const filesUnviewedForProjects = usePageTabStore(
+    (s) => s.filesUnviewedForProjects
   );
   const wsConnectionStatus = useTriggerStore((s) => s.wsConnectionStatus);
   const triggerReconnect = useTriggerStore((s) => s.triggerReconnect);
@@ -121,8 +112,8 @@ export default function ProjectPageSidebar({
     if (!activeSpaceId) return [];
     return getVisibleProjectMetasForSpace(projectsBySpaceId, activeSpaceId);
   }, [activeSpaceId, projectsBySpaceId]);
-  const folderTabHasUnviewedFiles =
-    !!activeProjectId && inboxUnviewedForProjects.has(activeProjectId);
+  const filesTabHasUnviewedFiles =
+    !!activeProjectId && filesUnviewedForProjects.has(activeProjectId);
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -174,8 +165,8 @@ export default function ProjectPageSidebar({
 
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
   const isActiveSpaceUnbound = isUnboundUntitledSpace(activeSpace, t);
-  const contextTabBinding = useMemo(
-    () => getContextTabBindingLabel(activeSpace, t),
+  const filesTabBinding = useMemo(
+    () => getFilesTabBindingLabel(activeSpace, t),
     [activeSpace, t]
   );
 
@@ -245,83 +236,11 @@ export default function ProjectPageSidebar({
     activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
 
   const ensureProjectLoaded = useCallback(
-    async (projectId: string, onHydrationStarted?: () => void) => {
-      const project = projectStore.getProjectById(projectId);
-      const needsRemoteHistoryHydration =
-        project?.metadata?.remoteHistoryHydrationPending === true;
-      if (
-        projectStore.peekActiveChatStore(projectId) &&
-        !projectStore.historyLoadIncompleteProjectIds[projectId] &&
-        !needsRemoteHistoryHydration
-      ) {
-        return;
-      }
-
-      try {
-        const historyProject = await proxyFetchGet(
-          `/api/v1/chat/histories/grouped/${projectId}`,
-          { include_tasks: true }
-        );
-        const taskIdsList = (historyProject?.tasks ?? [])
-          .map((task: { task_id?: string | null }) => task.task_id)
-          .filter((taskId: string | null | undefined): taskId is string =>
-            Boolean(taskId)
-          );
-
-        if (taskIdsList.length === 0) {
-          if (needsRemoteHistoryHydration) {
-            projectStore.updateProject(projectId, {
-              metadata: { remoteHistoryHydrationPending: false },
-            });
-            return;
-          }
-          projectStore.appendInitChatStore(projectId);
-          return;
-        }
-
-        projectStore.setProjectNavLead(
-          projectId,
-          getSessionNavLeadFromHistoryProject(historyProject)
-        );
-
-        const firstTask = historyProject.tasks[0];
-        const taskQuestionsById = buildTaskQuestionsById(historyProject?.tasks);
-        if (needsRemoteHistoryHydration) {
-          const mergePromise = projectStore.mergeProjectHistory(
-            projectId,
-            historyProject.tasks,
-            firstTask?.question || historyProject.last_prompt || ''
-          );
-          onHydrationStarted?.();
-          await mergePromise;
-          return;
-        }
-        const loadPromise = projectStore.loadProjectFromHistory(
-          taskIdsList,
-          firstTask?.question || historyProject.last_prompt || '',
-          projectId,
-          firstTask?.id != null ? String(firstTask.id) : undefined,
-          historyProject.project_name,
-          undefined,
-          taskQuestionsById,
-          computeProjectFreshnessAnchor(historyProject),
-          { requireActiveSelection: true }
-        );
-        // loadProjectFromHistory synchronously creates the replay shell and
-        // marks it as loading before its first await. Enter that shell now so
-        // a long-lived durable stream cannot make a valid click look inert.
-        onHydrationStarted?.();
-        await loadPromise;
-      } catch (error) {
-        console.error(
-          `Failed to load Project ${projectId} from history:`,
-          error
-        );
-        if (!projectStore.peekActiveChatStore(projectId)) {
-          projectStore.appendInitChatStore(projectId);
-        }
-      }
-    },
+    (projectId: string, onHydrationStarted?: () => void) =>
+      ensureProjectRuntimeLoaded(projectStore, projectId, {
+        onHydrationStarted,
+        requireActiveSelection: true,
+      }),
     [projectStore]
   );
 
@@ -450,10 +369,8 @@ export default function ProjectPageSidebar({
   );
 
   const handleNewProject = useCallback(() => {
-    projectStore.setActiveProject(null);
-    setActiveWorkspaceTab('new-project');
-    requestWorkspaceChatFocus();
-  }, [projectStore, requestWorkspaceChatFocus, setActiveWorkspaceTab]);
+    executeAppCommand(APP_COMMAND.newProject);
+  }, [executeAppCommand]);
 
   const isConfigurationActive = useMemo(() => {
     if (!activeSpaceId || !isSettingsRoutePath(location.pathname)) {
@@ -486,7 +403,7 @@ export default function ProjectPageSidebar({
     navigate,
   ]);
 
-  const openInboxTab = useCallback(() => {
+  const openFilesTab = useCallback(() => {
     let projectId = activeProjectId;
 
     if (!projectId && activeSpaceId) {
@@ -515,8 +432,8 @@ export default function ProjectPageSidebar({
       projectChatStore?.getState().setNuwFileNum(taskId, 0);
     }
 
-    setActiveWorkspaceTab('inbox', {
-      clearInboxForProjectId: projectId,
+    setActiveWorkspaceTab('files', {
+      clearFilesForProjectId: projectId,
     });
 
     const needsRemoteHistoryHydration =
@@ -783,17 +700,25 @@ export default function ProjectPageSidebar({
                   <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
                 }
                 label={t('layout.workspace-tab')}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={t('layout.workspace-tab')}
+                    shortcutId="navigate-workspace"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
                 ariaLabel={t('layout.workspace-tab')}
                 ariaCurrentPage={activeWorkspaceTab === 'workforce'}
               />
               <NavTab
-                active={activeWorkspaceTab === 'inbox'}
-                onClick={openInboxTab}
+                active={activeWorkspaceTab === 'files'}
+                onClick={openFilesTab}
                 disabled={isActiveSpaceUnbound}
                 leading={
                   <span className="relative inline-flex h-4 w-4 shrink-0">
                     <Inbox className="h-4 w-4 shrink-0" aria-hidden />
-                    {folderTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
+                    {filesTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                       <span
                         className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                         aria-hidden
@@ -801,56 +726,65 @@ export default function ProjectPageSidebar({
                     ) : null}
                   </span>
                 }
-                label={t('layout.context-tab')}
-                tooltip={contextTabBinding?.tooltip}
+                label={t('layout.files-tab')}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={t('layout.files-tab')}
+                    description={filesTabBinding?.tooltip}
+                    shortcutId="navigate-files"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
                 trailing={
-                  contextTabBinding ? (
+                  filesTabBinding ? (
                     <>
                       <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5">
                         <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
-                          {contextTabBinding.label}
+                          {filesTabBinding.label}
                         </span>
                       </div>
-                      {contextTabBinding.tooltip ? (
-                        <span id={contextTabDescriptionId} className="sr-only">
-                          {contextTabBinding.tooltip}
+                      {filesTabBinding.tooltip ? (
+                        <span id={filesTabDescriptionId} className="sr-only">
+                          {filesTabBinding.tooltip}
                         </span>
                       ) : null}
                     </>
                   ) : undefined
                 }
-                ariaLabel={t('layout.context-tab')}
+                ariaLabel={t('layout.files-tab')}
                 ariaDescribedBy={
-                  contextTabBinding?.tooltip
-                    ? contextTabDescriptionId
-                    : undefined
+                  filesTabBinding?.tooltip ? filesTabDescriptionId : undefined
                 }
-                ariaCurrentPage={activeWorkspaceTab === 'inbox'}
+                ariaCurrentPage={activeWorkspaceTab === 'files'}
               />
               <NavTab
                 layout="split"
                 active={activeWorkspaceTab === 'triggers'}
                 onClick={() => setActiveWorkspaceTab('triggers')}
-                leading={
-                  triggersListenerConnected ? (
-                    <Zap
+                leading={(() => {
+                  const ListenerIcon = triggersListenerConnected
+                    ? AUTOMATION_ICON
+                    : AUTOMATION_OFF_ICON;
+                  return (
+                    <ListenerIcon
                       className={cn(
                         'h-4 w-4 shrink-0',
                         triggerListenerLeadIconClass(wsConnectionStatus)
                       )}
                       aria-hidden
                     />
-                  ) : (
-                    <ZapOff
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        triggerListenerLeadIconClass(wsConnectionStatus)
-                      )}
-                      aria-hidden
-                    />
-                  )
-                }
+                  );
+                })()}
                 label={scheduledTabLabel}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={scheduledTabLabel}
+                    shortcutId="navigate-scheduled"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
                 showNotificationDot={unviewedTabs.has('triggers')}
                 notificationDotTone="attention"
                 notificationDotClassName="h-2 w-2"
@@ -892,6 +826,14 @@ export default function ProjectPageSidebar({
                 onClick={() => setActiveWorkspaceTab('dispatch')}
                 leading={<Cast className="h-4 w-4 shrink-0" aria-hidden />}
                 label={t('layout.dispatch-tab')}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={t('layout.dispatch-tab')}
+                    shortcutId="navigate-dispatch"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
                 ariaLabel={t('layout.dispatch-tab')}
                 ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
               />
@@ -901,6 +843,14 @@ export default function ProjectPageSidebar({
                 disabled={!activeSpaceId}
                 leading={<ToolCase className="h-4 w-4 shrink-0" aria-hidden />}
                 label={t('layout.configuration-tab')}
+                tooltip={
+                  <ShortcutTooltipContent
+                    label={t('layout.configuration-tab')}
+                    shortcutId="navigate-configuration"
+                  />
+                }
+                tooltipCompact
+                tooltipVariant="delayed"
                 ariaLabel={t('layout.configuration-tab')}
                 ariaCurrentPage={isConfigurationActive}
               />

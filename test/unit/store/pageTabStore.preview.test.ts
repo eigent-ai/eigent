@@ -72,6 +72,30 @@ describe('pageTabStore session preview', () => {
     expect(slice().tabs.map((tab) => tab.type)).toEqual(['browser', 'canvas']);
   });
 
+  it('opens browser and terminal tabs directly, reusing an existing kind', () => {
+    const store = usePageTabStore.getState();
+
+    store.openPreviewTab('browser');
+    const browserId = slice().activeTabId;
+    expect(slice()).toMatchObject({ open: true });
+    expect(slice().tabs.map((tab) => tab.type)).toEqual(['browser']);
+
+    store.closeSessionPreview();
+    store.openPreviewTab('browser');
+    expect(slice().activeTabId).toBe(browserId);
+    expect(slice().tabs).toHaveLength(1);
+
+    store.openPreviewTab('terminal');
+    expect(slice().tabs.map((tab) => tab.type)).toEqual([
+      'browser',
+      'terminal',
+    ]);
+    expect(slice().tabs[1]).toMatchObject({
+      type: 'terminal',
+      title: 'Terminal',
+    });
+  });
+
   it('exposes every content kind via choosePreviewTabType', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
@@ -134,6 +158,30 @@ describe('pageTabStore session preview', () => {
     expect(slice().tabs.filter((tab) => tab.type === 'terminal')).toHaveLength(
       2
     );
+  });
+
+  it('does not reuse a read-only agent stream as the interactive terminal', () => {
+    const store = usePageTabStore.getState();
+    store.openAgentTerminalPreview('chat-1:turn-1:sub-1', 'Developer Agent');
+    const agentTabId = slice().activeTabId;
+
+    store.openPreviewTab('terminal');
+
+    const localTerminal = slice().tabs.find(
+      (tab) => tab.type === 'terminal' && !tab.agentSourceId
+    );
+    expect(slice().tabs).toHaveLength(2);
+    expect(localTerminal).toMatchObject({
+      type: 'terminal',
+      title: 'Terminal',
+    });
+    expect(slice().activeTabId).toBe(localTerminal?.id);
+    expect(slice().activeTabId).not.toBe(agentTabId);
+
+    store.closeSessionPreview();
+    store.openPreviewTab('terminal');
+    expect(slice().tabs).toHaveLength(2);
+    expect(slice().activeTabId).toBe(localTerminal?.id);
   });
 
   it('reuses the chooser tab when a file is opened', () => {

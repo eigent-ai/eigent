@@ -20,6 +20,8 @@ import { StackProvider, StackTheme } from '@stackframe/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AppCommandProvider } from './components/Layout/AppCommandProvider';
+import { WindowCloseProvider } from './components/Layout/WindowCloseProvider';
 import { Toaster } from './components/ui/sonner';
 import { useBackgroundTaskProcessor } from './hooks/useBackgroundTaskProcessor';
 import { useExecutionSubscription } from './hooks/useExecutionSubscription';
@@ -104,7 +106,13 @@ function App() {
     );
   };
 
-  return renderWrapper(<AppRoutes />);
+  return renderWrapper(
+    <AppCommandProvider>
+      <WindowCloseProvider>
+        <AppRoutes />
+      </WindowCloseProvider>
+    </AppCommandProvider>
+  );
 }
 
 export default App;

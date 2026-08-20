@@ -39,7 +39,7 @@ const TAB_DEFAULT_WIDTH = 176;
 const TAB_MIN_WIDTH = 92;
 
 export interface PreviewPanelProps {
-  onJumpToContext?: (file: FileInfo | null) => void;
+  onJumpToFiles?: (file: FileInfo | null) => void;
   /**
    * False while the display panel's open animation is still running. Browser
    * tabs hold their fixed-position webview guest parked until it settles so
@@ -55,7 +55,7 @@ export interface PreviewPanelProps {
  * this panel only renders their chrome via BrowserTab.
  */
 export function PreviewPanel({
-  onJumpToContext,
+  onJumpToFiles,
   displaySettled = true,
 }: PreviewPanelProps) {
   const { t } = useTranslation();
@@ -177,7 +177,7 @@ export function PreviewPanel({
           />
         );
       case 'file':
-        return <FileTab tab={activeTab} onJumpToContext={onJumpToContext} />;
+        return <FileTab tab={activeTab} onJumpToFiles={onJumpToFiles} />;
       case 'review':
         return <ReviewTab />;
       case 'terminal':

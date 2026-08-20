@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import i18n from '@/i18n';
 import { createFollowUpRequest } from '@/service/followUpQueueApi';
 import {
   ProjectType,
@@ -26,6 +27,16 @@ import {
 } from '@/store/triggerTaskStore';
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+
+function automationProjectName(task: TriggeredTask): string {
+  return i18n.t('triggers.automation-project-name', { name: task.triggerName });
+}
+
+function automationProjectDescription(task: TriggeredTask): string {
+  return i18n.t('triggers.automation-project-description', {
+    type: task.triggerType,
+  });
+}
 
 /**
  * Hook that routes triggered tasks directly to project queuedMessages.
@@ -86,7 +97,7 @@ export function useTriggerTaskExecutor() {
         const question =
           historyProject.last_prompt ||
           historyProject.tasks[0]?.question ||
-          'Triggered task';
+          i18n.t('triggers.trigger-label');
         const historyId = String(historyProject.tasks[0]?.id || '');
 
         console.log('[TriggerTaskExecutor] Loading project from history:', {
@@ -98,7 +109,7 @@ export function useTriggerTaskExecutor() {
         // Use replayProject to load the project from history
         // store.replayProject(taskIdsList, question, projectId, historyId);
         store.createProject(
-          `Trigger Project ${question}`,
+          i18n.t('triggers.automation-project-name', { name: question }),
           `No tasks to replay`,
           projectId,
           ProjectType.NORMAL,
@@ -133,18 +144,19 @@ export function useTriggerTaskExecutor() {
       );
 
       // Show toast when execution starts
-      toast.info(`Execution started: ${task.triggerName}`, {
-        description: 'Processing trigger task...',
-      });
+      toast.info(
+        i18n.t('triggers.execution-started-toast', { name: task.triggerName }),
+        { description: i18n.t('triggers.execution-started-description') }
+      );
 
       try {
         const store = projectStoreRef.current;
         let targetProjectId = task.projectId;
 
         if (!targetProjectId) {
-          // No project specified, create a new project for this trigger
-          const projectName = `Trigger: ${task.triggerName}`;
-          const projectDescription = `Auto-created project for ${task.triggerType} trigger execution`;
+          // No project specified, create a new project for this automation.
+          const projectName = automationProjectName(task);
+          const projectDescription = automationProjectDescription(task);
           targetProjectId = store.createProject(
             projectName,
             projectDescription,
@@ -171,8 +183,8 @@ export function useTriggerTaskExecutor() {
                 '[TriggerTaskExecutor] Creating new project for specified ID:',
                 targetProjectId
               );
-              const projectName = `Trigger: ${task.triggerName}`;
-              const projectDescription = `Auto-created project for ${task.triggerType} trigger execution`;
+              const projectName = automationProjectName(task);
+              const projectDescription = automationProjectDescription(task);
               targetProjectId = store.createProject(
                 projectName,
                 projectDescription,
@@ -230,9 +242,10 @@ export function useTriggerTaskExecutor() {
         );
       } catch (error: any) {
         console.error('[TriggerTaskExecutor] Task queueing failed:', error);
-        toast.error(`Trigger failed: ${task.triggerName}`, {
-          description: error?.message || 'Unknown error',
-        });
+        toast.error(
+          i18n.t('triggers.execution-failed-toast', { name: task.triggerName }),
+          { description: error?.message || 'Unknown error' }
+        );
       }
     },
     [activeSpaceId, loadProjectFromHistory]

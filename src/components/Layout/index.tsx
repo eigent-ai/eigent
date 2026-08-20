@@ -21,13 +21,11 @@ import { useHost } from '@/host';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
-import { hasAnyActiveRun } from '@/store/chatStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import CloseNoticeDialog from '../Dialog/CloseNotice';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 /**
@@ -36,7 +34,7 @@ import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/Inst
  * the app shell, so translate that request into a route change and clear the
  * flag; `activeSection` stays in the store and drives the page.
  */
-function SettingsRouteBridge() {
+export function SettingsRouteBridge() {
   const navigate = useNavigate();
   const location = useLocation();
   const isOpen = useSettingsStore((state) => state.isOpen);
@@ -45,7 +43,8 @@ function SettingsRouteBridge() {
 
   useEffect(() => {
     if (!isOpen) return;
-    void runAfterWorkspaceConfigurationSave(() => {
+    let cancelled = false;
+    const routeRequest = runAfterWorkspaceConfigurationSave(() => {
       closeSettings();
       if (isSettingsRoutePath(location.pathname)) {
         const searchParams = new URLSearchParams(location.search);
@@ -66,6 +65,16 @@ function SettingsRouteBridge() {
         state: shellBackState(`${location.pathname}${location.search}`),
       });
     });
+    void routeRequest.then((completed) => {
+      // A rejected guarded save keeps the user on the editor. Clear this
+      // consumed request so invoking Settings again produces a fresh edge and
+      // retries the guard instead of leaving `isOpen` permanently sticky.
+      if (!completed && !cancelled) closeSettings();
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     closeSettings,
     activeSection,
@@ -82,14 +91,13 @@ function SettingsRouteBridge() {
 const Layout = () => {
   const host = useHost();
   const location = useLocation();
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const { projectStore } = useChatStoreAdapter();
   const {
     initState,
     isFirstLaunch,
     onboardingCompleted,
     setInitState: _setInitState,
   } = useAuthStore();
-  const [noticeOpen, setNoticeOpen] = useState(false);
   const activeWorkspaceRoot = useSpaceStore((state) => {
     const projectSpaceId = projectStore.activeProjectId
       ? state.projectIdIndex[projectStore.activeProjectId]
@@ -126,33 +134,6 @@ const Layout = () => {
         );
       });
   }, [activeWorkspaceRoot, host]);
-
-  useEffect(() => {
-    if (!host?.ipcRenderer || !host?.electronAPI) return;
-
-    const handleBeforeClose = () => {
-      // Closing the window severs every run's SSE stream and the backend
-      // aborts the in-flight work, so check all Projects' live runs --
-      // checking only the active task missed runs streaming in other
-      // Projects and let the window close without any warning.
-      const currentStatus = chatStore?.activeTaskId
-        ? chatStore.tasks[chatStore.activeTaskId]?.status
-        : undefined;
-      const activeTaskBusy = Boolean(
-        currentStatus && ['running', 'pause'].includes(currentStatus)
-      );
-      if (activeTaskBusy || hasAnyActiveRun()) {
-        setNoticeOpen(true);
-      } else {
-        host.electronAPI.closeWindow(true);
-      }
-    };
-
-    host.ipcRenderer.on('before-close', handleBeforeClose);
-    return () => {
-      host.ipcRenderer?.removeAllListeners('before-close');
-    };
-  }, [chatStore, host]);
 
   // Show install screen if: installation UI is active, user hasn't finished setup,
   // or backend hasn't passed health check yet.
@@ -197,8 +178,6 @@ const Layout = () => {
             retryBackend={retryBackend}
           />
         )}
-
-        <CloseNoticeDialog onOpenChange={setNoticeOpen} open={noticeOpen} />
       </div>
     </div>
   );

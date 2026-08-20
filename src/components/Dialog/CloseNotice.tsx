@@ -13,26 +13,23 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import AlertDialog from '@/components/ui/alertDialog';
-import { useHost } from '@/host';
-import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
 }
 
 // Confirming closes the window and terminates the running task, so this uses
 // the shared AlertDialog (destructive confirm) for consistency with the
 // end/delete-project confirmations.
-export default function CloseNoticeDialog({ open, onOpenChange }: Props) {
-  const host = useHost();
-  const electronAPI = host?.electronAPI;
+export default function CloseNoticeDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: Props) {
   const { t } = useTranslation();
-
-  const onConfirm = useCallback(() => {
-    electronAPI?.closeWindow(true);
-  }, [electronAPI]);
 
   return (
     <AlertDialog

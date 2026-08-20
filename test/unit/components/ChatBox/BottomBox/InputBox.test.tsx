@@ -19,13 +19,17 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/components/ChatBox/BottomBox/RichChatInput', async () => {
   const { forwardRef } = await import('react');
   return {
-    RichChatInput: forwardRef<HTMLDivElement, { value?: string }>(
-      ({ value }, ref) => (
-        <div ref={ref} data-testid="rich-chat-input">
-          {value}
-        </div>
-      )
-    ),
+    RichChatInput: forwardRef<
+      HTMLDivElement,
+      {
+        value?: string;
+        onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+      }
+    >(({ value, onKeyDown }, ref) => (
+      <div ref={ref} data-testid="rich-chat-input" onKeyDown={onKeyDown}>
+        {value}
+      </div>
+    )),
   };
 });
 
@@ -135,5 +139,25 @@ describe('Inputbox primary action', () => {
     fireEvent.click(primaryAction(container));
     expect(onSend).toHaveBeenCalledTimes(2);
     expect(onPauseTask).not.toHaveBeenCalled();
+  });
+
+  it('sends a running-task follow-up with Return but not Shift+Return', () => {
+    const onSend = vi.fn();
+    const { getByTestId } = render(
+      <Inputbox
+        value="A follow-up"
+        taskControlState="running"
+        onSend={onSend}
+      />
+    );
+
+    fireEvent.keyDown(getByTestId('rich-chat-input'), {
+      key: 'Enter',
+      shiftKey: true,
+    });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(getByTestId('rich-chat-input'), { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledOnce();
   });
 });

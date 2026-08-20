@@ -30,7 +30,7 @@ import { persist } from 'zustand/middleware';
  */
 export const WorkspaceTab = {
   Workforce: 'workforce',
-  Inbox: 'inbox',
+  Files: 'files',
   Triggers: 'triggers',
   Runs: 'runs',
   Project: 'project',
@@ -317,8 +317,8 @@ interface PageTabState {
   activeWorkspaceTab: WorkspaceTabId;
   setActiveWorkspaceTab: (
     tab: WorkspaceTabId,
-    /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
-    options?: { clearInboxForProjectId?: string | null }
+    /** When switching to Files, pass the active project id to clear its unread-files dot. */
+    options?: { clearFilesForProjectId?: string | null }
   ) => void;
   /**
    * Workspace rail visibility, toggled from the title bar. Only the workspace
@@ -332,6 +332,9 @@ interface PageTabState {
   /** Event-native ChatBox presentation density. Persisted across Projects. */
   chatTimelineDetailLevel: ChatTimelineDetailLevel;
   setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
+  /** One-shot request consumed by the active Project session panel. */
+  sessionSidePanelToggleRequestId: number;
+  requestToggleSessionSidePanel: () => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -339,18 +342,18 @@ interface PageTabState {
   hasAgentFiles: boolean;
   setHasAgentFiles: (value: boolean) => void;
   // Track unviewed tabs with new content (for red dot indicator)
-  unviewedTabs: Set<'triggers' | 'inbox'>;
-  /** Projects with new agent-folder files not yet “seen” on the folder tab (dot on Folder nav). */
-  inboxUnviewedForProjects: Set<string>;
+  unviewedTabs: Set<'triggers' | 'files'>;
+  /** Projects with new agent-folder files not yet seen on the Files tab. */
+  filesUnviewedForProjects: Set<string>;
   markTabAsViewed: (
-    tab: 'triggers' | 'inbox',
-    /** For inbox: project to clear from the folder dot (optional). */
-    inboxProjectId?: string | null
+    tab: 'triggers' | 'files',
+    /** For Files: project to clear from the unread-files dot (optional). */
+    filesProjectId?: string | null
   ) => void;
   markTabAsUnviewed: (
-    tab: 'triggers' | 'inbox',
-    /** For inbox: required — project that received the new file(s). */
-    inboxProjectId?: string
+    tab: 'triggers' | 'files',
+    /** For Files: required — project that received the new file(s). */
+    filesProjectId?: string
   ) => void;
   /** Set by the sidebar to tell the chat container to scroll to a specific query group */
   scrollToQueryId: string | null;
@@ -420,6 +423,8 @@ interface PageTabState {
   setPreviewBrowserViewport: (rect: PreviewBrowserViewport | null) => void;
   /** Toggle the unified preview panel (opens onto the chooser tab). */
   toggleSessionPreview: () => void;
+  /** Open and select a preview tab of the requested kind. */
+  openPreviewTab: (kind: PreviewTabKind) => void;
   /** Add and activate a blank chooser tab (the "+" button). */
   addChooserPreviewTab: () => void;
   /**
@@ -512,29 +517,29 @@ export const usePageTabStore = create<PageTabState>()(
       setActiveWorkspaceTab: (tab, options) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
-          let nextInboxProjects = state.inboxUnviewedForProjects;
+          let nextFilesProjects = state.filesUnviewedForProjects;
 
           if (tab === 'triggers') {
             newUnviewedTabs.delete('triggers');
           }
 
-          if (tab === 'inbox') {
-            const pid = options?.clearInboxForProjectId ?? undefined;
+          if (tab === 'files') {
+            const pid = options?.clearFilesForProjectId ?? undefined;
             if (pid) {
-              nextInboxProjects = new Set(state.inboxUnviewedForProjects);
-              nextInboxProjects.delete(pid);
+              nextFilesProjects = new Set(state.filesUnviewedForProjects);
+              nextFilesProjects.delete(pid);
             }
-            if (nextInboxProjects.size === 0) {
-              newUnviewedTabs.delete('inbox');
+            if (nextFilesProjects.size === 0) {
+              newUnviewedTabs.delete('files');
             } else {
-              newUnviewedTabs.add('inbox');
+              newUnviewedTabs.add('files');
             }
           }
 
           return {
             activeWorkspaceTab: tab,
             unviewedTabs: newUnviewedTabs,
-            inboxUnviewedForProjects: nextInboxProjects,
+            filesUnviewedForProjects: nextFilesProjects,
           };
         }),
       workspaceSidebarHidden: false,
@@ -549,39 +554,45 @@ export const usePageTabStore = create<PageTabState>()(
         set({
           chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
         }),
+      sessionSidePanelToggleRequestId: 0,
+      requestToggleSessionSidePanel: () =>
+        set((state) => ({
+          sessionSidePanelToggleRequestId:
+            state.sessionSidePanelToggleRequestId + 1,
+        })),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
       setHasAgentFiles: (value) => set({ hasAgentFiles: value }),
-      unviewedTabs: new Set<'triggers' | 'inbox'>(),
-      inboxUnviewedForProjects: new Set<string>(),
-      markTabAsViewed: (tab, inboxProjectId) =>
+      unviewedTabs: new Set<'triggers' | 'files'>(),
+      filesUnviewedForProjects: new Set<string>(),
+      markTabAsViewed: (tab, filesProjectId) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
           newUnviewedTabs.delete(tab);
-          if (tab === 'inbox' && inboxProjectId) {
-            const nextInbox = new Set(state.inboxUnviewedForProjects);
-            nextInbox.delete(inboxProjectId);
-            if (nextInbox.size === 0) newUnviewedTabs.delete('inbox');
-            else newUnviewedTabs.add('inbox');
+          if (tab === 'files' && filesProjectId) {
+            const nextFiles = new Set(state.filesUnviewedForProjects);
+            nextFiles.delete(filesProjectId);
+            if (nextFiles.size === 0) newUnviewedTabs.delete('files');
+            else newUnviewedTabs.add('files');
             return {
               unviewedTabs: newUnviewedTabs,
-              inboxUnviewedForProjects: nextInbox,
+              filesUnviewedForProjects: nextFiles,
             };
           }
           return { unviewedTabs: newUnviewedTabs };
         }),
-      markTabAsUnviewed: (tab, inboxProjectId) =>
+      markTabAsUnviewed: (tab, filesProjectId) =>
         set((state) => {
-          if (tab === 'inbox') {
-            if (!inboxProjectId) return state;
+          if (tab === 'files') {
+            if (!filesProjectId) return state;
             const newUnviewedTabs = new Set(state.unviewedTabs);
-            newUnviewedTabs.add('inbox');
-            const nextInbox = new Set(state.inboxUnviewedForProjects);
-            nextInbox.add(inboxProjectId);
+            newUnviewedTabs.add('files');
+            const nextFiles = new Set(state.filesUnviewedForProjects);
+            nextFiles.add(filesProjectId);
             return {
               unviewedTabs: newUnviewedTabs,
-              inboxUnviewedForProjects: nextInbox,
+              filesUnviewedForProjects: nextFiles,
             };
           }
           const newUnviewedTabs = new Set(state.unviewedTabs);
@@ -670,6 +681,30 @@ export const usePageTabStore = create<PageTabState>()(
             tabs: initial.tabs,
             activeTabId: initial.activeTabId,
           };
+        }),
+      openPreviewTab: (kind) =>
+        setSessionPreviewSlice(set, (slice, state) => {
+          const existing = slice.tabs.find(
+            (tab) =>
+              tab.type === kind &&
+              (kind !== 'terminal' ||
+                (tab.type === 'terminal' && !tab.agentSourceId))
+          );
+          if (existing) {
+            return { ...slice, open: true, activeTabId: existing.id };
+          }
+
+          const reusableIndex = slice.tabs.findIndex(
+            (tab) => tab.type === 'chooser'
+          );
+          const tab = createPreviewTabOfKind(
+            kind,
+            state.sessionPreviewProjectId
+          );
+          const tabs = [...slice.tabs];
+          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+          else tabs.push(tab);
+          return { open: true, tabs, activeTabId: tab.id };
         }),
       addChooserPreviewTab: () =>
         setSessionPreviewSlice(set, (slice) => {
