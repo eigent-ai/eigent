@@ -12,12 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+
+vi.mock('@/host', () => ({
+  useHost: () => ({ ipcRenderer: { invoke: invokeMock } }),
+}));
 
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 
 describe('UserMessageCard', () => {
+  beforeEach(() => invokeMock.mockReset());
+
   it('renders as a right-aligned chat bubble with a tighter tail corner', () => {
     const { container } = render(
       <UserMessageCard id="user-message-1" content="Hello from the user" />
@@ -49,5 +57,43 @@ describe('UserMessageCard', () => {
         '!font-normal'
       );
     }
+  });
+
+  it('keeps durable attachment names display-only', () => {
+    render(
+      <UserMessageCard
+        id="display-only-attachment"
+        content="Restored message"
+        attaches={[{ fileName: 'report.pdf' }]}
+      />
+    );
+
+    const attachment = screen.getByTitle('report.pdf').closest('div');
+    expect(attachment).toHaveAttribute(
+      'data-attachment-capability',
+      'display-only'
+    );
+    fireEvent.click(attachment!);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('reveals only a trusted legacy local attachment path', () => {
+    render(
+      <UserMessageCard
+        id="local-attachment"
+        content="Local message"
+        attaches={[
+          { fileName: 'report.pdf', filePath: '/workspace/report.pdf' },
+        ]}
+      />
+    );
+
+    const attachment = screen.getByTitle('report.pdf').closest('div');
+    expect(attachment).toHaveAttribute('data-attachment-capability', 'reveal');
+    fireEvent.click(attachment!);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'reveal-in-folder',
+      '/workspace/report.pdf'
+    );
   });
 });

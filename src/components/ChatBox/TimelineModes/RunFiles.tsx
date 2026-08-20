@@ -29,7 +29,12 @@ function fileInfoFromProjectedArtifact(artifact: ProjectedArtifact): FileInfo {
   return {
     name: artifact.name,
     type: extension(artifact.name),
-    path: artifact.relativePath,
+    // A portable identity is not a local path capability. Cloud assets are
+    // resolved lazily; local files stay display-only until a scoped workspace
+    // resolver can enrich them.
+    // TODO(CAMEL): resolve local Artifact identity against the owning
+    // Space/Attempt workspace lease and return a trusted local file handle.
+    path: '',
     relativePath: artifact.relativePath,
     artifactId: artifact.artifactId,
     artifactChange: artifact.changeType,
@@ -55,7 +60,7 @@ function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
   return {
     name,
     type: extension(name),
-    path: artifact.path,
+    path: '',
     relativePath: artifact.relativePath,
     artifactId: artifact.artifactId,
     artifactChange:
@@ -71,10 +76,17 @@ function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
 function uniqueFiles(files: readonly FileInfo[]): FileInfo[] {
   const byIdentity = new Map<string, FileInfo>();
   for (const file of files) {
-    const key = file.artifactId || file.relativePath || file.path;
+    const key = file.artifactId || file.relativePath || file.path || file.name;
     byIdentity.set(key, file);
   }
   return [...byIdentity.values()];
+}
+
+export function isRunFilePreviewable(file: FileInfo): boolean {
+  return (
+    file.localPathAvailable === false &&
+    typeof file.assetRef?.chatFileId === 'number'
+  );
 }
 
 export interface RunFilesProps {
@@ -103,7 +115,13 @@ export function RunFilesGroup(props: RunFilesProps) {
   const files = useRunFileInfo(props);
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
 
-  return <ArtifactChangeList files={files} onOpen={openFilePreview} />;
+  return (
+    <ArtifactChangeList
+      files={files}
+      onOpen={openFilePreview}
+      canOpenFile={isRunFilePreviewable}
+    />
+  );
 }
 
 export function FilesChangedSummaryRow({

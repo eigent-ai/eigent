@@ -166,7 +166,6 @@ describe('chat activity projection', () => {
         attachments: [
           {
             fileName: 'brief.pdf',
-            filePath: 'uploads/brief.pdf',
             fileId: 'file-1',
             source: 'upload',
           },
@@ -218,16 +217,15 @@ describe('chat activity projection', () => {
         attachments: [
           {
             fileName: 'right_hemisphere.glb',
-            filePath: 'right_hemisphere.glb',
           },
           {
             fileName: 'left_hemisphere.glb',
-            filePath: 'left_hemisphere.glb',
           },
         ],
       },
     });
     expect(JSON.stringify(node)).not.toContain('/Users/alice');
+    expect(JSON.stringify(node)).not.toContain('filePath');
   });
 
   it('keeps legacy activate and deactivate messages as input and output', () => {

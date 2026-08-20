@@ -43,7 +43,8 @@ const USER_MESSAGE_FOLD_FADE_STYLE = {
 
 export interface UserMessageAttachment {
   fileName: string;
-  filePath: string;
+  /** Trusted local path. Durable display-only attachments intentionally omit it. */
+  filePath?: string;
 }
 
 interface UserMessageCardProps {
@@ -156,25 +157,37 @@ export function UserMessageCard({
               return (
                 <>
                   {visibleFiles.map((file) => {
+                    const canReveal = Boolean(file.filePath);
                     return (
                       <div
-                        key={'attache-' + file.fileName}
+                        key={`attache-${file.filePath || file.fileName}`}
+                        data-attachment-capability={
+                          canReveal ? 'reveal' : 'display-only'
+                        }
                         className={cn(
-                          'relative box-border flex h-auto max-w-24 cursor-pointer items-center gap-0.5 rounded-lg bg-ds-bg-neutral-default-default transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover'
+                          'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-lg bg-ds-bg-neutral-default-default',
+                          canReveal &&
+                            'cursor-pointer transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover'
                         )}
-                        onMouseEnter={() => setHoveredFilePath(file.filePath)}
+                        onMouseEnter={() => {
+                          if (file.filePath) setHoveredFilePath(file.filePath);
+                        }}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
                             prev === file.filePath ? null : prev
                           )
                         }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          ipcRenderer?.invoke(
-                            'reveal-in-folder',
-                            file.filePath
-                          );
-                        }}
+                        onClick={
+                          file.filePath
+                            ? (e) => {
+                                e.stopPropagation();
+                                ipcRenderer?.invoke(
+                                  'reveal-in-folder',
+                                  file.filePath
+                                );
+                              }
+                            : undefined
+                        }
                       >
                         {/* File icon */}
                         <div className="flex h-6 w-6 items-center justify-center rounded-md">
@@ -226,23 +239,35 @@ export function UserMessageCard({
                       >
                         <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
                           {attaches.slice(maxVisibleFiles).map((file) => {
+                            const canReveal = Boolean(file.filePath);
                             return (
                               <div
-                                key={file.filePath}
-                                className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                                key={file.filePath || file.fileName}
+                                data-attachment-capability={
+                                  canReveal ? 'reveal' : 'display-only'
+                                }
+                                className={cn(
+                                  'flex items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default py-0.5',
+                                  canReveal &&
+                                    'cursor-pointer transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover'
+                                )}
                                 onMouseLeave={() =>
                                   setHoveredFilePath((prev) =>
                                     prev === file.filePath ? null : prev
                                   )
                                 }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  ipcRenderer?.invoke(
-                                    'reveal-in-folder',
-                                    file.filePath
-                                  );
-                                  setIsRemainingOpen(false);
-                                }}
+                                onClick={
+                                  file.filePath
+                                    ? (e) => {
+                                        e.stopPropagation();
+                                        ipcRenderer?.invoke(
+                                          'reveal-in-folder',
+                                          file.filePath
+                                        );
+                                        setIsRemainingOpen(false);
+                                      }
+                                    : undefined
+                                }
                               >
                                 <div className="flex h-6 w-6 items-center justify-center rounded-md">
                                   {getFileIcon(file.fileName)}

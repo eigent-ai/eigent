@@ -193,6 +193,22 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
   };
 }
 
+function filePreviewIdentity(file: FileInfo): string | null {
+  const artifactId = file.artifactId?.trim();
+  if (artifactId) return `artifact:${artifactId}`;
+  const chatFileId = file.assetRef?.chatFileId;
+  if (typeof chatFileId === 'number') return `chat-file:${chatFileId}`;
+  const path = file.path?.trim();
+  if (path) return `path:${path}`;
+  const relativePath = file.relativePath?.trim();
+  return relativePath ? `relative:${relativePath}` : null;
+}
+
+function isSameFilePreview(left: FileInfo, right: FileInfo): boolean {
+  const leftIdentity = filePreviewIdentity(left);
+  return leftIdentity !== null && leftIdentity === filePreviewIdentity(right);
+}
+
 function createChooserPreviewTab(): SessionChooserTab {
   return {
     id: nextSessionPreviewTabId('chooser'),
@@ -689,7 +705,9 @@ export const usePageTabStore = create<PageTabState>()(
           const matchingTab = targetFile
             ? previewTabs.find(
                 (tab) =>
-                  tab.type === 'file' && tab.file?.path === targetFile.path
+                  tab.type === 'file' &&
+                  tab.file !== null &&
+                  isSameFilePreview(tab.file, targetFile)
               )
             : previewTabs.find(
                 (tab) => tab.type === 'file' && tab.file === null

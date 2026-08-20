@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { cn } from '@/lib/utils';
 import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
 import { ChevronDown, FileText } from 'lucide-react';
 import { useState } from 'react';
@@ -20,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 export interface ArtifactChangeListProps {
   files?: FileInfo[];
   onOpen: (file: FileInfo) => void;
+  canOpenFile?: (file: FileInfo) => boolean;
   scanStatus?: string;
   truncated?: boolean;
 }
@@ -28,6 +30,7 @@ export interface ArtifactChangeListProps {
 export function ArtifactChangeList({
   files,
   onOpen,
+  canOpenFile = () => true,
   scanStatus = 'complete',
   truncated = false,
 }: ArtifactChangeListProps) {
@@ -72,27 +75,49 @@ export function ArtifactChangeList({
       <div className="flex flex-col">
         {visibleFiles.map((file, fileIndex) => {
           const detail = getWorkspaceRelativeFilePath(file);
+          const canOpen = canOpenFile(file);
           const changeLabel =
             file.artifactChange === 'generated'
               ? 'Generated'
               : file.artifactChange === 'changed'
                 ? 'Changed'
                 : file.type || 'File';
-          return (
-            <button
-              type="button"
-              key={`artifact-${detail}-${fileIndex}`}
-              title={detail}
-              onClick={() => onOpen(file)}
-              className="group flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
-            >
-              <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
+          const contents = (
+            <>
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default',
+                  canOpen && 'group-hover:underline'
+                )}
+              >
                 {detail}
               </span>
               <span className="shrink-0 text-body-xs font-semibold text-ds-text-success-default-default">
                 {changeLabel}
               </span>
+            </>
+          );
+          return canOpen ? (
+            <button
+              type="button"
+              key={`artifact-${detail}-${fileIndex}`}
+              title={detail}
+              data-artifact-preview="available"
+              onClick={() => onOpen(file)}
+              className="group flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
+            >
+              {contents}
             </button>
+          ) : (
+            <div
+              aria-disabled="true"
+              key={`artifact-${detail}-${fileIndex}`}
+              title={detail}
+              data-artifact-preview="unavailable"
+              className="flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left"
+            >
+              {contents}
+            </div>
           );
         })}
         {hiddenCount > 0 ? (

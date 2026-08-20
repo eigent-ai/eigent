@@ -216,7 +216,8 @@ function messageAttachments(
   base: ChatProjectionNodeBase,
   payload: JsonRecord
 ): ChatMessageAttachment[] | undefined {
-  const source = base.eventType.startsWith('legacy.')
+  const isLegacy = base.eventType.startsWith('legacy.');
+  const source = isLegacy
     ? (payload.attaches ?? payload.attachments)
     : (payload.display_attachments ?? payload.displayAttachments);
   if (Array.isArray(source)) {
@@ -233,12 +234,12 @@ function messageAttachments(
         attachment.relative_path,
         attachment.relativePath
       );
-      if (!fileName || !filePath) return [];
+      if (!fileName || (isLegacy && !filePath)) return [];
       const rawSource = firstText(attachment.source);
       return [
         {
           fileName,
-          filePath,
+          ...(isLegacy && filePath ? { filePath } : {}),
           fileId: firstText(attachment.file_id, attachment.fileId) || undefined,
           source:
             rawSource === 'local' || rawSource === 'upload'
@@ -250,12 +251,12 @@ function messageAttachments(
     if (attachments.length > 0) return attachments;
   }
 
-  if (base.eventType.startsWith('legacy.')) return undefined;
+  if (isLegacy) return undefined;
   const durableNames = payload.attachment_names ?? payload.attachmentNames;
   if (!Array.isArray(durableNames)) return undefined;
   const attachments = durableNames.flatMap<ChatMessageAttachment>((value) => {
     const fileName = safeArtifactBasename(value);
-    return fileName ? [{ fileName, filePath: fileName }] : [];
+    return fileName ? [{ fileName }] : [];
   });
   return attachments.length > 0 ? attachments : undefined;
 }

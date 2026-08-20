@@ -23,7 +23,8 @@ type ArtifactDownloadResponse = {
 export async function resolveArtifactAssetFile(
   file: FileInfo
 ): Promise<FileInfo> {
-  if (file.path || file.localPathAvailable !== false) return file;
+  if (file.localPathAvailable !== false) return file;
+  if (/^https?:\/\//i.test(file.path)) return file;
   const chatFileId = file.assetRef?.chatFileId;
   if (typeof chatFileId !== 'number') {
     throw new Error('This Artifact has not finished uploading yet.');

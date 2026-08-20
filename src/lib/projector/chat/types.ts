@@ -38,16 +38,14 @@ export type ChatMessagePurpose =
 
 export interface ChatMessageAttachment {
   fileName: string;
-  filePath: string;
+  /** Present only after a trusted local attachment resolver grants reveal. */
+  filePath?: string;
   fileId?: string;
   source?: 'local' | 'upload';
 }
 export type ChatNoticeSeverity = 'info' | 'warning' | 'error';
 export type ChatInteractionStatus =
-  | 'requested'
-  | 'responded'
-  | 'cancelled'
-  | 'expired';
+  'requested' | 'responded' | 'cancelled' | 'expired';
 export type ChatPlanTaskStatus =
   | 'pending'
   | 'running'
@@ -57,11 +55,7 @@ export type ChatPlanTaskStatus =
   | 'blocked'
   | 'unknown';
 export type ChatActivityType =
-  | 'agent'
-  | 'tool'
-  | 'terminal'
-  | 'task'
-  | 'work_log';
+  'agent' | 'tool' | 'terminal' | 'task' | 'work_log';
 export type ChatActivityStatus =
   | 'pending'
   | 'running'
@@ -80,10 +74,7 @@ export type ChatActivityPhase =
   | 'cancelled'
   | 'unknown';
 export type ChatArtifactOperation =
-  | 'created'
-  | 'updated'
-  | 'deleted'
-  | 'unknown';
+  'created' | 'updated' | 'deleted' | 'unknown';
 export type ChatRunStatus =
   | 'pending'
   | 'running'

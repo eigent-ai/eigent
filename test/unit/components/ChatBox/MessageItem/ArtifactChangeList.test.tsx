@@ -70,6 +70,25 @@ describe('ArtifactChangeList', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders unresolved Artifact identity without an open capability', () => {
+    const onOpen = vi.fn();
+    const unresolved = file('display-only.ts', 'generated');
+    render(
+      <ArtifactChangeList
+        files={[unresolved]}
+        onOpen={onOpen}
+        canOpenFile={() => false}
+      />
+    );
+
+    const row = screen.getByTitle('src/display-only.ts');
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveAttribute('data-artifact-preview', 'unavailable');
+    expect(row.tagName).toBe('DIV');
+    fireEvent.click(row);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it('renders nothing for an empty complete manifest', () => {
     const { container } = render(
       <ArtifactChangeList files={[]} onOpen={() => {}} />

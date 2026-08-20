@@ -167,6 +167,38 @@ describe('pageTabStore session preview', () => {
     expect(slice().activeTabId).toBe(fileTabs[0].id);
   });
 
+  it('deduplicates pathless Artifacts by durable identity', () => {
+    const store = usePageTabStore.getState();
+    const first = {
+      name: 'first.txt',
+      type: 'txt',
+      path: '',
+      artifactId: 'artifact-1',
+      localPathAvailable: false,
+      assetRef: { chatFileId: 1, key: 'first.txt' },
+    } as FileInfo;
+    const second = {
+      name: 'second.txt',
+      type: 'txt',
+      path: '',
+      artifactId: 'artifact-2',
+      localPathAvailable: false,
+      assetRef: { chatFileId: 2, key: 'second.txt' },
+    } as FileInfo;
+
+    store.openFilePreview(first);
+    store.openFilePreview(second);
+    store.openFilePreview({ ...first });
+
+    const fileTabs = slice().tabs.filter((tab) => tab.type === 'file');
+    expect(fileTabs).toHaveLength(2);
+    expect(fileTabs.map((tab) => tab.title)).toEqual([
+      'first.txt',
+      'second.txt',
+    ]);
+    expect(slice().activeTabId).toBe(fileTabs[0].id);
+  });
+
   it('opens chat links in a browser tab of the current project preview', () => {
     const store = usePageTabStore.getState();
     store.openBrowserPreview('https://example.com/docs');
