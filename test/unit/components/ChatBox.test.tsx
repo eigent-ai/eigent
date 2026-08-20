@@ -28,6 +28,11 @@ import {
 import ChatBox from '../../../src/components/ChatBox/index';
 import { useAuthStore } from '../../../src/store/authStore';
 
+const eventNativeHarness = vi.hoisted(() => ({
+  enabled: false,
+  snapshot: null as any,
+}));
+
 // Mock dependencies (use the same relative paths as the imports above)
 vi.mock('../../../src/store/authStore', () => ({
   useAuthStore: vi.fn(),
@@ -54,6 +59,43 @@ vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn(),
   proxyFetchDelete: vi.fn(),
 }));
+vi.mock('@/store/chatEventProjectionBridge', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/store/chatEventProjectionBridge')>();
+  return {
+    ...actual,
+    isChatEventTimelineEnabled: () => eventNativeHarness.enabled,
+  };
+});
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: () => ({
+    hydration: {
+      status: 'ready',
+      errorCode: null,
+      eventsTruncated: false,
+      retry: vi.fn(),
+    },
+    projectId: 'test-project-id',
+    snapshot: eventNativeHarness.snapshot,
+  }),
+}));
+vi.mock('../../../src/components/ChatBox/EventNativeProjectTimeline', () => ({
+  EventNativeProjectTimeline: ({ floatingControl }: any) => (
+    <div data-testid="event-native-timeline">{floatingControl}</div>
+  ),
+}));
+vi.mock(
+  '../../../src/components/ChatBox/BottomBox/useEventNativeHumanControl',
+  () => ({
+    useEventNativeHumanControl: () => ({
+      interaction: null,
+      variant: null,
+      pendingCount: 0,
+      phase: 'idle',
+      submitError: null,
+    }),
+  })
+);
 vi.mock('../../../src/lib', () => ({
   generateUniqueId: vi.fn(() => 'test-unique-id'),
   replayActiveTask: vi.fn(),
@@ -243,8 +285,8 @@ describe('ChatBox Component', async () => {
     setTaskSessionMode: vi.fn(),
     setTaskSource: vi.fn(),
     setExecutionId: vi.fn(),
-    removeMessage: vi.fn(),
     removeTask: vi.fn(),
+    stopTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
     setStatus: vi.fn(),
@@ -301,9 +343,70 @@ describe('ChatBox Component', async () => {
     modelType: 'cloud',
   };
 
+  const runningEventNativeSnapshot = (runId = 'test-task-id') => ({
+    view: {
+      projectId: 'test-project-id',
+      mode: 'live',
+      seenEventIds: {},
+      currentCursor: 1,
+      eventsTruncated: false,
+      lastSyncedAt: null,
+      needsResync: false,
+      resyncReason: null,
+      resyncTargetCursor: null,
+      runs: {
+        [runId]: {
+          runId,
+          status: 'running',
+          lastSequence: 1,
+          runVersion: 1,
+          updatedAt: '2026-08-20T00:00:00Z',
+          origin: 'local',
+          resumeBlockedReason: null,
+        },
+      },
+      artifactsByRun: {},
+      legacySteps: [],
+      unknownEvents: [],
+    },
+    chat: {
+      projectId: 'test-project-id',
+      nodes: [
+        {
+          id: `${runId}:started`,
+          eventId: `${runId}:started`,
+          projectId: 'test-project-id',
+          runId,
+          createdAt: '2026-08-20T00:00:00Z',
+          runSequence: 1,
+          cloudCursor: 1,
+          eventType: 'run.attempt_started',
+          legacyStep: null,
+          kind: 'run_status',
+          status: 'running',
+        },
+      ],
+      nodeById: {},
+      seenEventIds: {},
+    },
+    control: {
+      projectId: 'test-project-id',
+      orderedInteractionIds: [],
+      interactionById: {},
+      seenEventIds: {},
+    },
+    revision: 1,
+    hasHydratedSnapshot: true,
+    overflowed: false,
+    lastEffects: [],
+  });
+
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    window.sessionStorage.clear();
+    eventNativeHarness.enabled = false;
+    eventNativeHarness.snapshot = null;
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -668,6 +771,88 @@ describe('ChatBox Component', async () => {
       await user.click(sendButton);
 
       expect(defaultChatStoreState.addMessages).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Event-native floating Stop', () => {
+    const setRunningEventNativeStore = () => {
+      const runningTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        status: 'running',
+        hasMessages: true,
+        messages: [{ id: '1', role: 'user', content: 'Start', attaches: [] }],
+      };
+      const runningStore = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': runningTask },
+        stopTask: vi.fn(),
+        setIsPending: vi.fn(),
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: runningStore as any,
+      });
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      return runningStore;
+    };
+
+    it('fails closed when the rendered Run loses control ownership before click', async () => {
+      const user = userEvent.setup();
+      setRunningEventNativeStore();
+      renderChatBox();
+      const stopButton = await screen.findByRole('button', {
+        name: 'Stop Task',
+      });
+
+      const snapshot = eventNativeHarness.snapshot;
+      snapshot.view.runs['typed-run'] = {
+        ...snapshot.view.runs['test-task-id'],
+        runId: 'typed-run',
+      };
+      snapshot.control.orderedInteractionIds.push('typed-request');
+      snapshot.control.interactionById['typed-request'] = {
+        interactionId: 'typed-request',
+        runId: 'typed-run',
+        status: 'requested',
+        requestSource: 'canonical',
+        requestEventType: 'interaction.requested',
+      };
+
+      await user.click(stopButton);
+
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^\/runs\//),
+        expect.anything()
+      );
+    });
+
+    it('reuses the request id after failure and never closes the legacy SSE', async () => {
+      const user = userEvent.setup();
+      const runningStore = setRunningEventNativeStore();
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      _mockFetchPost.mockRejectedValue(new Error('offline'));
+      renderChatBox();
+      const stopButton = await screen.findByRole('button', {
+        name: 'Stop Task',
+      });
+
+      await user.click(stopButton);
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(stopButton).not.toBeDisabled());
+      await user.click(stopButton);
+      await waitFor(() => expect(_mockFetchPost).toHaveBeenCalledTimes(2));
+
+      const [firstUrl, firstBody] = _mockFetchPost.mock.calls[0];
+      const [secondUrl, secondBody] = _mockFetchPost.mock.calls[1];
+      expect(firstUrl).toBe('/runs/test-task-id/cancel');
+      expect(secondUrl).toBe(firstUrl);
+      expect(secondBody.request_id).toBe(firstBody.request_id);
+      expect(runningStore.stopTask).not.toHaveBeenCalled();
+      expect(runningStore.setIsPending).not.toHaveBeenCalled();
+      consoleError.mockRestore();
     });
   });
 

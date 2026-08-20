@@ -12,13 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet } from '@/api/http';
-import { fetchProjectRuns } from '@/service/projectRunsApi';
+import { fetchGet, fetchPost } from '@/api/http';
+import { cancelProjectRun, fetchProjectRuns } from '@/service/projectRunsApi';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/api/http', () => ({ fetchGet: vi.fn() }));
+vi.mock('@/api/http', () => ({ fetchGet: vi.fn(), fetchPost: vi.fn() }));
 
 const fetchGetMock = vi.mocked(fetchGet);
+const fetchPostMock = vi.mocked(fetchPost);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -28,8 +29,11 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-describe('fetchProjectRuns', () => {
-  beforeEach(() => fetchGetMock.mockReset());
+describe('project Runs API', () => {
+  beforeEach(() => {
+    fetchGetMock.mockReset();
+    fetchPostMock.mockReset();
+  });
 
   it('shares concurrent reads and clears the request after it settles', async () => {
     const firstResponse = deferred<{ project_id: string; runs: never[] }>();
@@ -68,5 +72,23 @@ describe('fetchProjectRuns', () => {
     response.resolve(payload);
     await expect(remaining).resolves.toBe(payload);
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the exact encoded Run with the caller-owned request id', async () => {
+    fetchPostMock.mockResolvedValue(undefined);
+
+    await cancelProjectRun(
+      'run/with scope',
+      'cancel:run-1:stable',
+      'explicit_stop_from_event_native_chatbox'
+    );
+
+    expect(fetchPostMock).toHaveBeenCalledWith(
+      '/runs/run%2Fwith%20scope/cancel',
+      {
+        request_id: 'cancel:run-1:stable',
+        reason: 'explicit_stop_from_event_native_chatbox',
+      }
+    );
   });
 });

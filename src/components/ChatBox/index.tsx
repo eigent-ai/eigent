@@ -42,6 +42,7 @@ import {
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
 import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
@@ -83,6 +84,7 @@ import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   isEventNativeRunActionable,
   selectActionableInterruptedRun,
+  selectComposerTaskControlState,
   selectEventNativeActiveRunId,
 } from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
@@ -1879,6 +1881,40 @@ export default function ChatBox(): JSX.Element {
     void handleCancelInterruptedRun();
   };
 
+  const handleEventNativeStopRun = async (runId: string) => {
+    const currentRunId = selectEventNativeActiveRunId(
+      eventNativeProjectSnapshot,
+      eligibleLegacyActiveRunId
+    );
+    const currentRun = currentRunId
+      ? eventNativeProjectSnapshot?.view.runs[currentRunId]
+      : undefined;
+    if (
+      runId !== currentRunId ||
+      currentRun?.status !== 'running' ||
+      isPauseResumeLoading
+    ) {
+      return;
+    }
+
+    setIsPauseResumeLoading(true);
+    try {
+      await cancelProjectRun(
+        runId,
+        runActionRequestId('cancel', runId),
+        'explicit_stop_from_event_native_chatbox'
+      );
+      clearRunActionRequestId('cancel', runId);
+      if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
+      toast.success('Run stopped successfully', { closeButton: true });
+    } catch (error: any) {
+      console.error('[RunControl] Failed to stop Run', error);
+      toast.error(error?.message || 'Failed to stop this Run.');
+    } finally {
+      setIsPauseResumeLoading(false);
+    }
+  };
+
   let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
   if (
     eventNativeTimelineEnabled &&
@@ -1966,13 +2002,12 @@ export default function ChatBox(): JSX.Element {
   });
   const bottomBoxVariant = bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
-  const composerTaskControlState =
-    activeTask?.status === ChatTaskStatus.PAUSE
-      ? 'paused'
-      : activeTask?.status === ChatTaskStatus.RUNNING ||
-          eventNativeActiveProjectedRun?.status === 'running'
-        ? 'running'
-        : 'idle';
+  const composerTaskControlState = selectComposerTaskControlState({
+    eventNativeTimelineEnabled,
+    legacyControlRunId: eligibleLegacyActiveRunId,
+    activeTaskStatus: activeTask?.status,
+    eventNativeActiveRunId,
+  });
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
@@ -1991,7 +2026,11 @@ export default function ChatBox(): JSX.Element {
                 eventNativeActiveProjectedRun?.status === 'running' ? (
                   <FloatingAction
                     status={ChatTaskStatus.RUNNING}
-                    onSkip={handleSkip}
+                    onSkip={() =>
+                      void handleEventNativeStopRun(
+                        eventNativeActiveProjectedRun.runId
+                      )
+                    }
                     loading={isPauseResumeLoading}
                   />
                 ) : null
