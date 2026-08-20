@@ -23,13 +23,16 @@ import {
   reconcileTimelineRuns,
   type TimelineRunView,
 } from '@/lib/projector/chat/presentation';
+import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
+import type { SessionModeType } from '@/types/constants';
 import {
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  type ReactNode,
   type RefObject,
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -57,6 +60,38 @@ export function isChatTimelineNearBottom(
 interface EventNativeTimelineWindow {
   hiddenNodeCount: number;
   nodes: readonly ChatProjectionNode[];
+}
+
+/**
+ * Apply the temporary DOM window to already-composed semantic Runs.
+ *
+ * Re-composing the visible input is unsafe because the visible slice may
+ * contain transport receipts that the full semantic pass intentionally
+ * suppressed (for example an approval decision or a legacy ASK mirror). Keep
+ * the full Run's collapsed rows and select them only by the semantic event
+ * identities that survived the window instead.
+ */
+export function selectWindowedTimelineRuns(
+  allRuns: readonly TimelineRunView[],
+  visibleNodes: readonly ChatProjectionNode[]
+): TimelineRunView[] {
+  const visibleEventIds = new Set(visibleNodes.map((node) => node.eventId));
+
+  return allRuns.flatMap((run): TimelineRunView[] => {
+    const nodes = run.nodes.filter((node) => visibleEventIds.has(node.eventId));
+    if (nodes.length === 0) return [];
+
+    const traceRows = run.traceRows.filter((row) =>
+      row.kind === 'node'
+        ? visibleEventIds.has(row.node.eventId)
+        : row.invocation.nodes.some((node) => visibleEventIds.has(node.eventId))
+    );
+
+    // Summary/final/file data stay whole. Tool rows also retain their complete
+    // lifecycle so a visible completion can show the safe request that began
+    // outside the mounted window.
+    return [{ ...run, nodes, traceRows }];
+  });
 }
 
 /**
@@ -115,7 +150,11 @@ function ChatTimelineSkeleton({ label }: { label: string }) {
 
 interface EventNativeProjectTimelineProps {
   detailLevel?: ChatTimelineDetailLevel;
+  /** The user has taken control; timers and progress animations hold. */
+  paused?: boolean;
+  floatingControl?: ReactNode;
   projectId: string;
+  sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
 }
@@ -127,8 +166,11 @@ interface EventNativeProjectTimelineProps {
  * mode-owned renderer. Timeline style never changes control authority.
  */
 export function EventNativeProjectTimeline({
-  detailLevel = 'detailed',
+  detailLevel = 'trajectory',
+  paused = false,
+  floatingControl,
   projectId,
+  sessionMode,
   scrollContainerRef,
   scrollBottomInsetPx,
 }: EventNativeProjectTimelineProps) {
@@ -156,27 +198,10 @@ export function EventNativeProjectTimeline({
       ),
     [allNodes, projectedRunsById]
   );
-  const visibleRuns = useMemo(() => {
-    const fullRunById = new Map(allRuns.map((run) => [run.runId, run]));
-    return composeTimelineRuns(visibleNodes).map((windowedRun) => {
-      const fullRun = fullRunById.get(windowedRun.runId);
-      if (!fullRun) return windowedRun;
-      const fullTraceById = new Map(
-        fullRun.traceRows.map((row) => [row.id, row])
-      );
-      // Aggregate before applying the temporary DOM window. Detailed retains
-      // only its bounded trace rows, while summary/final/file data stay whole.
-      // A tool completion inside the window still receives its safe request
-      // from the matching full lifecycle outside the window.
-      return {
-        ...fullRun,
-        nodes: windowedRun.nodes,
-        traceRows: windowedRun.traceRows.map(
-          (row) => fullTraceById.get(row.id) || row
-        ),
-      } satisfies TimelineRunView;
-    });
-  }, [allRuns, visibleNodes]);
+  const visibleRuns = useMemo(
+    () => selectWindowedTimelineRuns(allRuns, visibleNodes),
+    [allRuns, visibleNodes]
+  );
   const projectedArtifactsByRun =
     runtime.projectId === projectId
       ? runtime.snapshot?.view?.artifactsByRun
@@ -346,7 +371,11 @@ export function EventNativeProjectTimeline({
     >
       <div
         ref={contentRef}
-        className="mx-auto w-full max-w-[600px] pt-0"
+        className={cn(
+          'mx-auto w-full pt-0',
+          detailLevel !== 'trajectory' && 'max-w-[600px]'
+        )}
+        data-chat-timeline-content
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         {hiddenNodeCount > 0 ? (
@@ -387,8 +416,10 @@ export function EventNativeProjectTimeline({
         {visibleRuns.length > 0 ? (
           <TimelineModeRenderer
             detailLevel={detailLevel}
+            paused={paused}
             projectedArtifactsByRun={projectedArtifactsByRun}
             runs={visibleRuns}
+            sessionMode={sessionMode}
           />
         ) : hydration.status === 'error' ? (
           <div
@@ -424,6 +455,7 @@ export function EventNativeProjectTimeline({
             }
           />
         )}
+        {floatingControl}
       </div>
     </div>
   );

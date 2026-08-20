@@ -14,4 +14,6 @@
 
 export * from './composeTimelineRuns';
 export * from './reconcileProjectedRuns';
+export * from './segmentTimeline';
+export * from './timelineCalls';
 export * from './types';

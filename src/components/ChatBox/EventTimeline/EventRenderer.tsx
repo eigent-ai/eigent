@@ -37,7 +37,7 @@ interface EventRendererProps {
 }
 
 export function EventRenderer({
-  detailLevel = 'detailed',
+  detailLevel = 'trajectory',
   eventTypeRegistry = defaultEventTypeRendererRegistry,
   node,
   onRendererError,

@@ -33,6 +33,7 @@ import {
 } from '@/lib/projectAchievement';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import {
   cancelFollowUpRequest,
   createFollowUpRequest,
@@ -77,7 +78,7 @@ import {
   InterruptedRunBanner,
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
-import { hasCompleteLegacyNormalRunCoverage } from './normalTimelineSourceArbitration';
+import { FloatingAction } from './MessageItem/FloatingAction';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   isEventNativeRunActionable,
@@ -690,34 +691,6 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
-  const legacyNormalRunIds = useMemo(() => {
-    const runIds = new Set<string>();
-    const addRenderableTaskIds = (tasks: typeof chatStore.tasks) => {
-      for (const [runId, task] of Object.entries(tasks)) {
-        if ((task.messages?.length || 0) > 0 || task.hasMessages) {
-          runIds.add(runId);
-        }
-      }
-    };
-
-    addRenderableTaskIds(chatStore.tasks);
-    for (const { chatStore: store } of getAllChatStoresMemoized) {
-      addRenderableTaskIds(store.getState().tasks);
-    }
-    return runIds;
-  }, [chatStore, getAllChatStoresMemoized]);
-  const canonicalTimelineRunIds = useMemo(
-    () =>
-      new Set(
-        (eventNativeProjectSnapshot?.chat.nodes || []).map((node) => node.runId)
-      ),
-    [eventNativeProjectSnapshot?.chat.nodes]
-  );
-  const hasCompleteLegacyNormalCoverage = hasCompleteLegacyNormalRunCoverage(
-    canonicalTimelineRunIds,
-    legacyNormalRunIds
-  );
-
   // With the event-native read path enabled, typed-only durable events can be
   // the first visible records. Timeline presence must not depend on whether a
   // legacy ChatStore message happened to be created for the same event.
@@ -916,7 +889,14 @@ export default function ChatBox(): JSX.Element {
     queuedRequestId?: string
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (message.trim() === '' && !messageStr) return;
+    const composerAttachments =
+      queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (
+      message.trim() === '' &&
+      !messageStr &&
+      (composerAttachments?.length || 0) === 0
+    )
+      return;
 
     if (!hasModel) {
       if (isCloudUsageLimited) {
@@ -943,6 +923,11 @@ export default function ChatBox(): JSX.Element {
 
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
+    if (!tempMessageContent.trim() && (composerAttachments?.length || 0) > 0) {
+      tempMessageContent = t('chat.attachment-only-message', {
+        defaultValue: 'Please use the attached file(s).',
+      });
+    }
     const displayContent = tempMessageContent;
     const preserveComposer = queuedAttaches !== undefined;
 
@@ -1700,6 +1685,30 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleTaskControl = async (action: 'pause' | 'resume') => {
+    const taskId = chatStore.activeTaskId;
+    const projectId = projectStore.activeProjectId;
+    if (!taskId || !projectId || isPauseResumeLoading) return;
+    setIsPauseResumeLoading(true);
+    try {
+      const changed = await takeControlOfTask({
+        chatStore,
+        action,
+        projectId,
+        taskId,
+      });
+      if (!changed) {
+        toast.error(
+          t(`chat.${action}-task-failed`, {
+            defaultValue: `Failed to ${action} the task.`,
+          })
+        );
+      }
+    } finally {
+      setIsPauseResumeLoading(false);
+    }
+  };
+
   const handleSendQueuedMessageNow = async (taskId: string) => {
     const projectId = projectStore.activeProjectId;
     if (!projectId) return;
@@ -1860,30 +1869,6 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  const handleEventNativeStopRun = async (runId: string) => {
-    const currentRunId = selectEventNativeActiveRunId(
-      eventNativeProjectSnapshot,
-      eligibleLegacyActiveRunId
-    );
-    if (runId !== currentRunId) return;
-
-    setIsPauseResumeLoading(true);
-    try {
-      await fetchPost(`/runs/${encodeURIComponent(runId)}/cancel`, {
-        request_id: runActionRequestId('cancel', runId),
-        reason: 'explicit_stop_from_event_native_chatbox',
-      });
-      clearRunActionRequestId('cancel', runId);
-      if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
-      toast.success('Run stopped successfully', { closeButton: true });
-    } catch (error: any) {
-      console.error('[RunControl] Failed to stop Run', error);
-      toast.error(error?.message || 'Failed to stop this Run.');
-    } finally {
-      setIsPauseResumeLoading(false);
-    }
-  };
-
   const handleEventNativeResumeRun = (runId: string) => {
     if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
     void handleResumeInterruptedRun();
@@ -1941,27 +1926,6 @@ export default function ChatBox(): JSX.Element {
         ? t('chat.run-cloud-restored-description')
         : undefined,
     };
-  } else if (
-    eventNativeTimelineEnabled &&
-    eventNativeActiveRunId &&
-    (eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]?.status ===
-      'running' ||
-      (eventNativeActiveRunId === activeTaskId &&
-        activeTask?.status === ChatTaskStatus.RUNNING))
-  ) {
-    eventNativeRunControlVariant = {
-      kind: 'run_control',
-      header: {
-        title:
-          (eventNativeActiveRunId === activeTaskId
-            ? activeTask?.summaryTask
-            : undefined) || t('layout.stop-task'),
-      },
-      runId: eventNativeActiveRunId,
-      state: isPauseResumeLoading ? 'stopping' : 'running',
-      stopLabel: t('layout.stop-task'),
-      onStop: (runId) => void handleEventNativeStopRun(runId),
-    };
   }
 
   const legacyApprovalVariant =
@@ -2002,16 +1966,13 @@ export default function ChatBox(): JSX.Element {
   });
   const bottomBoxVariant = bottomBoxControl.variant;
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
-  // Normal is the migration parity gate. While the legacy projection remains
-  // populated by the compatibility lane, render the exact designed timeline
-  // instead of approximating it with generic event cards. Event-native Normal
-  // remains the fallback for canonical-only histories.
-  const useLegacyNormalTimeline =
-    eventNativeTimelineEnabled &&
-    chatTimelineDetailLevel === 'normal' &&
-    hasAnyMessages &&
-    hasCompleteLegacyNormalCoverage;
-
+  const composerTaskControlState =
+    activeTask?.status === ChatTaskStatus.PAUSE
+      ? 'paused'
+      : activeTask?.status === ChatTaskStatus.RUNNING ||
+          eventNativeActiveProjectedRun?.status === 'running'
+        ? 'running'
+        : 'idle';
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
@@ -2022,11 +1983,21 @@ export default function ChatBox(): JSX.Element {
         >
           {shouldRenderChatTimeline &&
           eventNativeTimelineEnabled &&
-          activeProjectId &&
-          !useLegacyNormalTimeline ? (
+          activeProjectId ? (
             <EventNativeProjectTimeline
               detailLevel={chatTimelineDetailLevel}
+              paused={composerTaskControlState === 'paused'}
+              floatingControl={
+                eventNativeActiveProjectedRun?.status === 'running' ? (
+                  <FloatingAction
+                    status={ChatTaskStatus.RUNNING}
+                    onSkip={handleSkip}
+                    loading={isPauseResumeLoading}
+                  />
+                ) : null
+              }
               projectId={activeProjectId}
+              sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
             />
@@ -2077,6 +2048,10 @@ export default function ChatBox(): JSX.Element {
                     value: message,
                     onChange: setMessage,
                     onSend: handleSend,
+                    taskControlState: composerTaskControlState,
+                    onPauseTask: () => void handleTaskControl('pause'),
+                    onResumeTask: () => void handleTaskControl('resume'),
+                    taskControlLoading: isPauseResumeLoading,
                     files:
                       chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
                         (f) => ({
@@ -2183,6 +2158,10 @@ export default function ChatBox(): JSX.Element {
                   value: message,
                   onChange: setMessage,
                   onSend: handleSend,
+                  taskControlState: composerTaskControlState,
+                  onPauseTask: () => void handleTaskControl('pause'),
+                  onResumeTask: () => void handleTaskControl('resume'),
+                  taskControlLoading: isPauseResumeLoading,
                   files:
                     activeTask?.attaches?.map((f) => ({
                       fileName: f.fileName,

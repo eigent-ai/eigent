@@ -13,24 +13,31 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
+import type { SessionModeType } from '@/types/constants';
 
-import { DetailedTimeline } from './DetailedTimeline';
-import { NormalTimeline, type TimelineModeProps } from './NormalTimeline';
-import { SummarizedTimeline } from './SummarizedTimeline';
+import { NarrativeTimeline } from './NarrativeTimeline';
+import type { TimelineModeProps } from './shared';
+import { TrajectoryTimeline } from './TrajectoryTimeline';
 
 export interface TimelineModeRendererProps extends TimelineModeProps {
   detailLevel: ChatTimelineDetailLevel;
+  sessionMode?: SessionModeType;
 }
 
+/**
+ * Only the work band differs between modes. The user query, plan, interrupts,
+ * artifacts, and final response are rendered identically by both renderers so
+ * toggling never moves the row the reader was looking at.
+ */
 export function TimelineModeRenderer({
   detailLevel,
+  sessionMode: _sessionMode,
   ...props
 }: TimelineModeRendererProps) {
-  if (detailLevel === 'detailed') return <DetailedTimeline {...props} />;
-  if (detailLevel === 'summarized') return <SummarizedTimeline {...props} />;
-  return <NormalTimeline {...props} />;
+  if (detailLevel === 'trajectory') return <TrajectoryTimeline {...props} />;
+  return <NarrativeTimeline {...props} />;
 }
 
-export { DetailedTimeline } from './DetailedTimeline';
-export { NormalTimeline } from './NormalTimeline';
-export { SummarizedTimeline } from './SummarizedTimeline';
+export { CallRow } from './CallRow';
+export { NarrativeTimeline } from './NarrativeTimeline';
+export { TrajectoryTimeline } from './TrajectoryTimeline';

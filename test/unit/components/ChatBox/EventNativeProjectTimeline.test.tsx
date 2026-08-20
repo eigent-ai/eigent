@@ -18,8 +18,13 @@ import type {
   ChatInteractionNode,
   ChatMessageNode,
   ChatProjectionState,
+  ChatRunStatusNode,
   ChatUnknownNode,
 } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  segmentTimelineRows,
+} from '@/lib/projector/chat/presentation';
 import type { ProjectedRun } from '@/lib/projector/types';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,8 +33,11 @@ import {
   EventNativeProjectTimeline,
   isChatTimelineNearBottom,
   prepareEventNativeTimelineWindow,
+  selectWindowedTimelineRuns,
 } from '@/components/ChatBox/EventNativeProjectTimeline';
+import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { SessionMode } from '@/types/constants';
 
 const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
@@ -215,6 +223,100 @@ describe('EventNativeProjectTimeline', () => {
     }
   });
 
+  it('uses full width only for the trajectory timeline', () => {
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    const timelineContent = () =>
+      container.querySelector('[data-chat-timeline-content]');
+
+    expect(timelineContent()).toHaveClass('max-w-[600px]');
+
+    rerender(
+      <EventNativeProjectTimeline
+        detailLevel="trajectory"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(timelineContent()).not.toHaveClass('max-w-[600px]');
+    expect(timelineContent()).toHaveClass('w-full');
+  });
+
+  it('renders a floating run control inside the timeline content', () => {
+    const { container } = render(
+      <EventNativeProjectTimeline
+        floatingControl={<button type="button">Stop Task</button>}
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    const timelineContent = container.querySelector(
+      '[data-chat-timeline-content]'
+    );
+    expect(timelineContent).toContainElement(
+      screen.getByRole('button', { name: 'Stop Task' })
+    );
+  });
+
+  it('attributes narrative work to the agent that produced it', () => {
+    const alpha = {
+      ...messageNode(1),
+      purpose: 'narration' as const,
+      agentName: 'Alpha Agent',
+    };
+    const beta = {
+      ...messageNode(2),
+      purpose: 'narration' as const,
+      agentName: 'Beta Agent',
+    };
+    const running: ChatRunStatusNode = {
+      ...messageNode(3),
+      kind: 'run_status',
+      eventType: 'run.running',
+      status: 'running',
+    };
+    mocks.projection = projection([alpha, beta, running]);
+
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.SINGLE_AGENT}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toBeInTheDocument();
+
+    rerender(
+      <EventNativeProjectTimeline
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    // Narrative has no per-agent accordion; identity rides on the segment
+    // where the actor changes, so the same rows serve both session modes.
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toBeInTheDocument();
+    expect(
+      [...container.querySelectorAll('[data-narrative-segment-agent]')].map(
+        (element) => element.getAttribute('data-narrative-segment-agent')
+      )
+    ).toEqual(['Alpha Agent', 'Beta Agent']);
+  });
+
   it('renders semantic event nodes through the event timeline', () => {
     const unknown: ChatUnknownNode = {
       ...messageNode(2),
@@ -247,7 +349,79 @@ describe('EventNativeProjectTimeline', () => {
     ).toBeInTheDocument();
   });
 
-  it('uses the authoritative projected Run lifecycle in Summarised mode', () => {
+  it('renders current Run and agent lifecycle statuses instead of stale transitions', () => {
+    const runStatus = (
+      eventId: string,
+      sequence: number,
+      status: ChatRunStatusNode['status']
+    ): ChatRunStatusNode => ({
+      ...messageNode(sequence),
+      id: eventId,
+      eventId,
+      runSequence: sequence,
+      kind: 'run_status',
+      eventType: `run.${status}`,
+      status,
+    });
+    const agent = (
+      eventId: string,
+      sequence: number,
+      status: ChatActivityNode['status'],
+      legacyStep: 'activate_agent' | 'deactivate_agent'
+    ): ChatActivityNode => ({
+      ...messageNode(sequence),
+      id: eventId,
+      eventId,
+      runSequence: sequence,
+      kind: 'activity',
+      eventType: `legacy.${legacyStep}`,
+      legacyStep,
+      activityType: 'agent',
+      agentId: 'agent-1',
+      agentName: 'single_agent',
+      taskId: 'task-1',
+      title: 'single_agent',
+      phase: status === 'completed' ? 'completed' : 'started',
+      status,
+    });
+    mocks.projection = projection([
+      runStatus('run-pending', 1, 'pending'),
+      runStatus('run-running', 2, 'running'),
+      agent('agent-started', 3, 'running', 'activate_agent'),
+      agent('agent-completed', 4, 'completed', 'deactivate_agent'),
+    ]);
+    mocks.projectedRuns = {
+      'run-1': {
+        runId: 'run-1',
+        status: 'completed',
+        lastSequence: 4,
+        runVersion: 1,
+        updatedAt: '2026-08-19T00:00:04Z',
+        totalAttemptElapsedMs: 3_000,
+      },
+    };
+
+    const { container } = render(
+      <EventNativeProjectTimeline
+        detailLevel="trajectory"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-detailed-status="pending"]')
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-detailed-status="running"]')
+    ).toBeNull();
+    expect(
+      container.querySelectorAll('[data-detailed-status="completed"]')
+    ).toHaveLength(2);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('uses the authoritative projected Run lifecycle for elapsed time', () => {
     mocks.projection = projection([messageNode(1)]);
     mocks.projectedRuns = {
       'run-1': {
@@ -262,15 +436,14 @@ describe('EventNativeProjectTimeline', () => {
 
     render(
       <EventNativeProjectTimeline
-        detailLevel="summarized"
+        detailLevel="narrative"
         projectId="project-1"
         scrollBottomInsetPx={128}
       />
     );
 
-    expect(screen.getByText('Run completed')).toBeInTheDocument();
+    expect(screen.getByText(/Worked for/)).toBeInTheDocument();
     expect(screen.getByText('5s')).toBeInTheDocument();
-    expect(screen.getByText('Files changed')).toBeInTheDocument();
   });
 
   it('shows a durable request and resolution as one interaction receipt', () => {
@@ -388,6 +561,93 @@ describe('EventNativeProjectTimeline', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('does not resurrect suppressed dual-write approval receipts while windowing Runs', () => {
+    const toolStart = toolNode('approval-tool-start', 1, 'running', {
+      phase: 'started',
+    });
+    const approvalRequest: ChatInteractionNode = {
+      ...interactionNode('approval-requested', 'requested', 2),
+      eventType: 'approval.requested',
+      interactionId: 'approval:windowed-tool-call',
+      interactionType: 'approval',
+      prompt: 'Allow File Toolkit to inspect the mesh files?',
+    };
+    const legacyAskMirror: ChatInteractionNode = {
+      ...approvalRequest,
+      id: 'approval-legacy-ask',
+      eventId: 'approval-legacy-ask',
+      eventType: 'legacy.ask',
+      legacyStep: 'ask',
+      runSequence: 3,
+    };
+    const approvalDecision: ChatInteractionNode = {
+      ...interactionNode('approval-decided', 'responded', 4),
+      eventType: 'approval.decided',
+      interactionId: 'approval:windowed-tool-call',
+      interactionType: 'approval',
+      response: 'approved',
+    };
+    const toolCompletion = toolNode('approval-tool-completed', 5, 'completed', {
+      phase: 'completed',
+    });
+    const rawVisibleNodes = [
+      toolStart,
+      approvalRequest,
+      legacyAskMirror,
+      approvalDecision,
+      toolCompletion,
+    ];
+    const semanticRuns = composeTimelineRuns(
+      presentChatSemanticEntities(rawVisibleNodes)
+    );
+
+    // The visible slice can still be transport-shaped. Selection must retain
+    // only the full semantic Run rows instead of rebuilding raw receipts.
+    const [windowedRun] = selectWindowedTimelineRuns(
+      semanticRuns,
+      rawVisibleNodes
+    );
+    const interactionRows = windowedRun!.traceRows.filter(
+      (row) => row.kind === 'node' && row.node.kind === 'interaction'
+    );
+
+    expect(interactionRows).toHaveLength(1);
+    expect(interactionRows[0]).toMatchObject({
+      id: 'approval-requested',
+      node: {
+        interactionId: 'approval:windowed-tool-call',
+        requestEventId: 'approval-requested',
+        resolutionEventId: 'approval-decided',
+        response: 'approved',
+        status: 'responded',
+      },
+    });
+    expect(windowedRun!.nodes.map((node) => node.eventId)).not.toContain(
+      'approval-legacy-ask'
+    );
+    expect(windowedRun!.nodes.map((node) => node.eventId)).not.toContain(
+      'approval-decided'
+    );
+
+    // The approval is a human-executed call, so it closes the tool segment
+    // and stands on its own rather than folding in with the toolkit work.
+    const narrativeItems = segmentTimelineRows(windowedRun!.traceRows);
+    expect(narrativeItems).toHaveLength(2);
+    expect(narrativeItems[0]).toMatchObject({
+      kind: 'segment',
+      calls: [{ executor: 'toolkit', toolCallId: 'windowed-tool-call' }],
+    });
+    expect(narrativeItems[1]).toMatchObject({
+      kind: 'interrupt',
+      call: {
+        executor: 'human',
+        interactionId: 'approval:windowed-tool-call',
+        output: 'approved',
+        title: 'You · Allowed',
+      },
+    });
+  });
+
   it('keeps safe tool input when its start receipt falls outside the DOM window', () => {
     const start = toolNode('tool-start', 1, 'running', {
       input: '{"query":"ISS modules"}',
@@ -404,7 +664,7 @@ describe('EventNativeProjectTimeline', () => {
 
     render(
       <EventNativeProjectTimeline
-        detailLevel="detailed"
+        detailLevel="trajectory"
         projectId="project-1"
         scrollBottomInsetPx={128}
       />

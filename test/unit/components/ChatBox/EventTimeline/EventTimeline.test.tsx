@@ -913,10 +913,10 @@ describe('EventTimeline', () => {
     );
   });
 
-  it('uses the normal presentation policy for the normal timeline style', () => {
+  it('uses the narrative presentation policy for the narrative mode', () => {
     render(
       <EventTimeline
-        detailLevel="normal"
+        detailLevel="narrative"
         nodes={[
           messageNode('message-1', 'assistant', 'Normal response'),
           activityNode('activity-1', 'Routine tool call', {
@@ -930,8 +930,14 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-requested-detail-level', 'normal');
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'normal');
+    expect(timeline).toHaveAttribute(
+      'data-requested-detail-level',
+      'narrative'
+    );
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'narrative'
+    );
     expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Normal response'
     );
@@ -940,44 +946,16 @@ describe('EventTimeline', () => {
     expect(screen.queryByText('future.super_event')).toBeNull();
   });
 
-  it('uses summarized presentation to keep outcomes and hide routine activity', () => {
-    render(
-      <EventTimeline
-        detailLevel="summarized"
-        nodes={[
-          messageNode('message-1', 'assistant', 'Summary response'),
-          noticeNode('notice-1', 'Routine progress notice'),
-          activityNode('activity-1', 'Routine tool call'),
-          activityNode('activity-2', 'Tool call failed', {
-            status: 'failed',
-          }),
-        ]}
-      />
-    );
-
-    const timeline = screen.getByRole('list', {
-      name: 'Chat event timeline',
-    });
-    expect(timeline).toHaveAttribute(
-      'data-effective-detail-level',
-      'summarized'
-    );
-    expect(screen.getByText('Summary response')).toBeInTheDocument();
-    expect(screen.getByText('Tool call failed')).toBeInTheDocument();
-    expect(screen.queryByText('Routine progress notice')).toBeNull();
-    expect(screen.queryByText('Routine tool call')).toBeNull();
-  });
-
   it('applies a registered detail-level presentation policy', () => {
     const presentationPolicies = createChatTimelinePresentationPolicyRegistry({
-      normal: (nodes) => nodes.filter((node) => node.kind === 'notice'),
+      narrative: (nodes) => nodes.filter((node) => node.kind === 'notice'),
     });
 
     render(
       <EventTimeline
-        detailLevel="normal"
+        detailLevel="narrative"
         nodes={[
-          messageNode('message-1', 'assistant', 'Hidden by normal policy'),
+          messageNode('message-1', 'assistant', 'Hidden by narrative policy'),
           noticeNode('notice-1', 'Compact milestone'),
         ]}
         presentationPolicies={presentationPolicies}
@@ -987,21 +965,24 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'normal');
-    expect(screen.queryByText('Hidden by normal policy')).toBeNull();
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'narrative'
+    );
+    expect(screen.queryByText('Hidden by narrative policy')).toBeNull();
     expect(screen.getByText('Compact milestone')).toBeInTheDocument();
   });
 
   it('falls back safely when a presentation policy fails', () => {
     const presentationPolicies = createChatTimelinePresentationPolicyRegistry({
-      summarized: () => {
-        throw new Error('summary policy failed');
+      narrative: () => {
+        throw new Error('narrative policy failed');
       },
     });
 
     render(
       <EventTimeline
-        detailLevel="summarized"
+        detailLevel="narrative"
         nodes={[messageNode('message-1', 'assistant', 'Preserved output')]}
         presentationPolicies={presentationPolicies}
       />
@@ -1010,7 +991,10 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'trajectory'
+    );
     expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Preserved output'
     );

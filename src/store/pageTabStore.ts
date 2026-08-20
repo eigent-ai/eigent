@@ -17,6 +17,7 @@ import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  normalizeChatTimelineDetailLevel,
   type ChatTimelineDetailLevel,
 } from '@/types/chatTimeline';
 import { create } from 'zustand';
@@ -529,7 +530,9 @@ export const usePageTabStore = create<PageTabState>()(
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
       chatTimelineDetailLevel: DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
       setChatTimelineDetailLevel: (level) =>
-        set({ chatTimelineDetailLevel: level }),
+        set({
+          chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
+        }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -901,7 +904,7 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 2,
+      version: 3,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
@@ -913,10 +916,13 @@ export const usePageTabStore = create<PageTabState>()(
           }
           if (version < 2) {
             delete next.projectSidebarFolded;
-            // “Normal” is a dedicated renderer rather than a compact filter.
-            if (next.chatTimelineDetailLevel === 'compact') {
-              next.chatTimelineDetailLevel = 'normal';
-            }
+          }
+          if (version < 3) {
+            // Summarised was retired; the density knob became a two-mode
+            // switch between the narrative and trajectory renderers.
+            next.chatTimelineDetailLevel = normalizeChatTimelineDetailLevel(
+              next.chatTimelineDetailLevel
+            );
           }
           return next as unknown as PageTabState;
         }

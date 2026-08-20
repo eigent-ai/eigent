@@ -17,13 +17,7 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -34,17 +28,27 @@ import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   type ChatTimelineDetailLevel,
 } from '@/types/chatTimeline';
-import { ArrowLeft, Captions, GalleryThumbnails } from 'lucide-react';
-import { useState } from 'react';
+import {
+  AlignLeft,
+  ArrowLeft,
+  GalleryThumbnails,
+  ListTree,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const TIMELINE_STYLE_LABEL_KEYS: Record<
-  ChatTimelineDetailLevel,
-  'normal' | 'detailed' | 'summarized'
-> = {
-  normal: 'normal',
-  detailed: 'detailed',
-  summarized: 'summarized',
+/**
+ * Narrative reads as prose, trajectory reads as an indented trace. The icons
+ * carry the distinction on their own so the toggle needs no visible text.
+ */
+const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
+  narrative: AlignLeft,
+  trajectory: ListTree,
+};
+
+const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
+  narrative: 'Narrative',
+  trajectory: 'Trajectory',
 };
 
 export interface HeaderBoxProps {
@@ -65,7 +69,6 @@ export function HeaderBox({
   empty = false,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
-  const [timelineStyleMenuOpen, setTimelineStyleMenuOpen] = useState(false);
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionPreviewOpen = usePageTabStore(
@@ -90,18 +93,16 @@ export function HeaderBox({
     defaultValue: 'Chat timeline style',
   });
   const timelineStyleLabel = (level: ChatTimelineDetailLevel) =>
-    t(`chat.timeline-style-${TIMELINE_STYLE_LABEL_KEYS[level]}`, {
-      defaultValue:
-        level === 'normal'
-          ? 'Normal'
-          : level === 'detailed'
-            ? 'Detailed'
-            : 'Summarised',
+    t(`chat.timeline-style-${level}`, {
+      defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
     });
-  const handleTimelineStyleChange = (value: string) => {
-    if (chatTimelineDetailLevels.includes(value as ChatTimelineDetailLevel)) {
-      setChatTimelineDetailLevel(value as ChatTimelineDetailLevel);
-    }
+  const timelineModeOptions = chatTimelineDetailLevels.map((level) => ({
+    value: level,
+    label: timelineStyleLabel(level),
+    icon: TIMELINE_MODE_ICONS[level],
+  }));
+  const handleTimelineStyleChange = (value: ChatTimelineDetailLevel) => {
+    setChatTimelineDetailLevel(value);
   };
 
   if (empty) {
@@ -141,7 +142,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count + unified preview toggle */}
-      <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
+      <div className="flex items-center gap-1 text-ds-text-neutral-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
@@ -150,52 +151,17 @@ export function HeaderBox({
           </span>
         </div>
         {eventNativeTimelineEnabled ? (
-          <DropdownMenu
-            open={timelineStyleMenuOpen}
-            onOpenChange={setTimelineStyleMenuOpen}
-          >
-            <TooltipSimple
-              content={timelineStyleTooltip}
-              enabled={!timelineStyleMenuOpen}
-              variant="instant"
-            >
-              <span className="inline-flex shrink-0">
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    buttonContent="icon-only"
-                    className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:text-ds-text-neutral-default-default"
-                    aria-label={`${timelineStyleTooltip}: ${timelineStyleLabel(chatTimelineDetailLevel)}`}
-                  >
-                    <Captions className="h-4 w-4" aria-hidden />
-                  </Button>
-                </DropdownMenuTrigger>
-              </span>
-            </TooltipSimple>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={4}
-              collisionPadding={12}
-              className="w-[160px]"
-            >
-              <DropdownMenuRadioGroup
-                value={chatTimelineDetailLevel}
+          <TooltipSimple content={timelineStyleTooltip} variant="instant">
+            <span className="no-drag inline-flex shrink-0">
+              <IconPillToggle
+                aria-label={timelineStyleTooltip}
+                layoutId="chat-timeline-mode"
                 onValueChange={handleTimelineStyleChange}
-              >
-                {chatTimelineDetailLevels.map((level) => (
-                  <DropdownMenuRadioItem
-                    key={level}
-                    value={level}
-                    className="!text-body-sm"
-                  >
-                    {timelineStyleLabel(level)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                options={timelineModeOptions}
+                value={chatTimelineDetailLevel}
+              />
+            </span>
+          </TooltipSimple>
         ) : null}
         <TooltipSimple
           content={windowPreviewTooltip}

@@ -24,8 +24,7 @@ import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { TimelineModeProps } from './NormalTimeline';
-import { StatusInline } from './shared';
+import { statusIcon, statusLabel, type TimelineModeProps } from './shared';
 
 type NodeTraceRow = Extract<TimelineTraceRow, { kind: 'node' }>;
 type TraceCategory =
@@ -38,19 +37,110 @@ type TraceCategory =
   | 'FILE';
 
 function categoryTone(category: TraceCategory): string {
-  if (category === 'USER') {
-    return 'bg-ds-bg-information-subtle-default text-ds-text-information-default-default';
+  switch (category) {
+    case 'USER':
+      return 'bg-ds-category-blue-background-default text-ds-category-blue-text-strong';
+    case 'CONTEXT':
+      return 'bg-ds-category-slate-background-default text-ds-category-slate-text-strong';
+    case 'ASSISTANT':
+      return 'bg-ds-category-indigo-background-default text-ds-category-indigo-text-strong';
+    case 'AGENT':
+      return 'bg-ds-category-purple-background-default text-ds-category-purple-text-strong';
+    case 'TOOL':
+      return 'bg-ds-category-teal-background-default text-ds-category-teal-text-strong';
+    case 'INPUT REQUIRED':
+      return 'bg-ds-category-amber-background-default text-ds-category-amber-text-strong';
+    case 'FILE':
+      return 'bg-ds-category-green-background-default text-ds-category-green-text-strong';
   }
-  if (category === 'INPUT REQUIRED') {
-    return 'bg-ds-bg-warning-subtle-default text-ds-text-warning-default-default';
+}
+
+interface DetailedStatusTone {
+  iconClassName: string;
+  labelClassName: string;
+}
+
+function detailedStatusTone(status: string): DetailedStatusTone {
+  if (
+    status === 'completed' ||
+    status === 'complete' ||
+    status === 'responded'
+  ) {
+    return {
+      iconClassName: '!text-ds-text-status-completed-default-default',
+      labelClassName: 'text-ds-text-status-completed-default-default',
+    };
   }
-  if (category === 'TOOL') {
-    return 'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default';
+  if (status === 'running') {
+    return {
+      iconClassName: '!text-ds-text-status-running-default-default',
+      labelClassName: 'text-ds-text-status-running-default-default',
+    };
   }
-  if (category === 'FILE') {
-    return 'bg-ds-bg-success-subtle-default text-ds-text-success-default-default';
+  if (
+    status === 'failed' ||
+    status === 'error' ||
+    status === 'outcome_unknown'
+  ) {
+    return {
+      iconClassName: '!text-ds-text-status-error-default-default',
+      labelClassName: 'text-ds-text-status-error-default-default',
+    };
   }
-  return 'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-subtle-default';
+  if (
+    status === 'pending' ||
+    status === 'requested' ||
+    status === 'waiting_for_user' ||
+    status === 'timed_out' ||
+    status === 'interrupted' ||
+    status === 'expired' ||
+    status === 'alert' ||
+    status === 'input_required'
+  ) {
+    return {
+      iconClassName: '!text-ds-text-status-pending-default-default',
+      labelClassName: 'text-ds-text-status-pending-default-default',
+    };
+  }
+  if (status === 'cancelling' || status === 'cancelled') {
+    return {
+      iconClassName: '!text-ds-text-status-cancelled-default-default',
+      labelClassName: 'text-ds-text-status-cancelled-default-default',
+    };
+  }
+  return {
+    iconClassName: '!text-ds-text-neutral-muted-default',
+    labelClassName: 'text-ds-text-neutral-muted-default',
+  };
+}
+
+function DetailedStatusInline({
+  status,
+  paused = false,
+}: {
+  status: string;
+  paused?: boolean;
+}) {
+  const Icon = statusIcon(status);
+  const tone = detailedStatusTone(status);
+  // A paused Run has stopped making progress, so its spinner stops too.
+  const animated = !paused && (status === 'running' || status === 'cancelling');
+
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 !text-label-xs font-normal capitalize',
+        tone.labelClassName
+      )}
+      data-detailed-status={status}
+    >
+      <Icon
+        aria-hidden
+        className={cn('size-3', tone.iconClassName, animated && 'animate-spin')}
+      />
+      <span className={tone.labelClassName}>{statusLabel(status)}</span>
+    </span>
+  );
 }
 
 function TraceRow({
@@ -94,7 +184,7 @@ function TraceRow({
   return (
     <li
       aria-label={ariaLabel}
-      className="min-w-0 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default bg-transparent last:border-b-0 hover:bg-ds-bg-neutral-default-default"
+      className="min-w-0 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default last:border-b-0 hover:bg-ds-bg-neutral-default-default"
       data-detailed-trace-row={rowId}
       data-event-node-id={rowId}
       data-expanded={open ? 'true' : 'false'}
@@ -240,14 +330,14 @@ function nodeSummary(row: NodeTraceRow): string {
   return 'Unsupported event';
 }
 
-function nodeStatus(row: NodeTraceRow): ReactNode {
+function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
   const node = row.node;
   if (
     node.kind === 'interaction' ||
     node.kind === 'activity' ||
     node.kind === 'run_status'
   ) {
-    return <StatusInline status={node.status} className="!text-label-xs" />;
+    return <DetailedStatusInline paused={paused} status={node.status} />;
   }
   if (node.kind === 'artifact') {
     return (
@@ -379,7 +469,13 @@ function NodeTraceDetails({ row }: { row: NodeTraceRow }) {
   );
 }
 
-function DetailedRun({ run }: { run: TimelineRunView }) {
+function DetailedRun({
+  run,
+  paused,
+}: {
+  run: TimelineRunView;
+  paused: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <section data-run-id={run.runId}>
@@ -393,9 +489,9 @@ function DetailedRun({ run }: { run: TimelineRunView }) {
                 rowId={row.id}
                 summary={row.invocation.title}
                 status={
-                  <StatusInline
+                  <DetailedStatusInline
+                    paused={paused}
                     status={row.invocation.status}
-                    className="!text-label-xs"
                   />
                 }
               >
@@ -435,7 +531,7 @@ function DetailedRun({ run }: { run: TimelineRunView }) {
               category={category}
               role={role}
               rowId={row.id}
-              status={nodeStatus(row)}
+              status={nodeStatus(row, paused)}
               summary={nodeSummary(row)}
             >
               <NodeTraceDetails row={row} />
@@ -447,11 +543,14 @@ function DetailedRun({ run }: { run: TimelineRunView }) {
   );
 }
 
-export function DetailedTimeline({ runs }: TimelineModeProps) {
+export function TrajectoryTimeline({
+  runs,
+  paused = false,
+}: TimelineModeProps) {
   return (
-    <div className="flex w-full flex-col gap-3" data-timeline-mode="detailed">
+    <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
       {runs.map((run) => (
-        <DetailedRun key={run.id} run={run} />
+        <DetailedRun key={run.id} paused={paused} run={run} />
       ))}
     </div>
   );

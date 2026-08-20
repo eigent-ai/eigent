@@ -23,53 +23,67 @@ vi.mock('@/store/authStore', () => ({
   useAuthStore: vi.fn(() => ({ appearance: 'light' })),
 }));
 
-describe('HeaderBox chat timeline style', () => {
+describe('HeaderBox chat timeline mode', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
-    usePageTabStore.setState({ chatTimelineDetailLevel: 'normal' });
+    usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('places the captions menu between token usage and preview controls', () => {
+  it('places the mode toggle between token usage and preview controls', () => {
     render(<HeaderBox totalTokens={42} projectName="Timeline project" />);
 
     const tokenLabel = screen.getByText(/Total:/);
-    const timelineButton = screen.getByRole('button', {
-      name: 'Chat timeline style: Normal',
+    const toggle = screen.getByRole('radiogroup', {
+      name: 'Chat timeline style',
     });
     const previewButton = screen.getByRole('button', {
       name: 'Open preview',
     });
 
     expect(
-      tokenLabel.compareDocumentPosition(timelineButton) &
+      tokenLabel.compareDocumentPosition(toggle) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      timelineButton.compareDocumentPosition(previewButton) &
+      toggle.compareDocumentPosition(previewButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 
-  it('updates the event timeline presentation from the dropdown', async () => {
+  it('offers exactly the two timeline modes as a segmented control', () => {
+    render(<HeaderBox totalTokens={42} />);
+
+    const options = screen.getAllByRole('radio');
+    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
+      'Narrative',
+      'Trajectory',
+    ]);
+    expect(screen.getByRole('radio', { name: 'Narrative' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+  });
+
+  it('switches the event timeline presentation from the toggle', async () => {
     const user = userEvent.setup();
     render(<HeaderBox totalTokens={42} />);
 
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Chat timeline style: Normal',
-      })
-    );
-    await user.click(screen.getByRole('menuitemradio', { name: 'Detailed' }));
+    await user.click(screen.getByRole('radio', { name: 'Trajectory' }));
 
-    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe('detailed');
-    expect(
-      screen.getByRole('button', {
-        name: 'Chat timeline style: Detailed',
-      })
-    ).toBeInTheDocument();
+    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
+      'trajectory'
+    );
+    expect(screen.getByRole('radio', { name: 'Trajectory' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+    expect(screen.getByRole('radio', { name: 'Narrative' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
   });
 });

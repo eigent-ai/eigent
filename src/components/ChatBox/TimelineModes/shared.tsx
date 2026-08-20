@@ -14,6 +14,7 @@
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
+import type { ProjectedArtifact } from '@/lib/projector/types';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -108,21 +109,55 @@ function safeTimestamp(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function useRunElapsedMs(run: TimelineRunView): number {
-  const active = isActiveRunStatus(run.status);
+/**
+ * Wall-clock time the Run has spent paused.
+ *
+ * Pause is a user action the frontend owns; the durable Run journal keeps
+ * accumulating real time regardless. Subtracting the paused span keeps the
+ * displayed timer frozen while paused and continuing from the same value on
+ * resume, instead of jumping forward by however long the user waited.
+ */
+function usePausedOffsetMs(paused: boolean, now: number): number {
+  const [settledOffsetMs, setSettledOffsetMs] = useState(0);
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!paused) return;
+    const startedAt = Date.now();
+    setPausedAt(startedAt);
+    return () => {
+      setPausedAt(null);
+      setSettledOffsetMs(
+        (total) => total + Math.max(0, Date.now() - startedAt)
+      );
+    };
+  }, [paused]);
+
+  const openSpanMs = pausedAt === null ? 0 : Math.max(0, now - pausedAt);
+  return settledOffsetMs + openSpanMs;
+}
+
+export function useRunElapsedMs(run: TimelineRunView, paused = false): number {
+  const active = isActiveRunStatus(run.status) && !paused;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!active) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [active]);
+
+  const pausedOffsetMs = usePausedOffsetMs(paused, now);
 
   if (run.timestamps.durationMs !== null) return run.timestamps.durationMs;
   const elapsedAnchor = run.timestamps.elapsedAnchor;
   if (elapsedAnchor) {
     const anchoredAt = safeTimestamp(elapsedAnchor.anchoredAt);
-    const liveDelta = active && anchoredAt !== null ? now - anchoredAt : 0;
+    const liveDelta =
+      anchoredAt !== null && (active || paused)
+        ? Math.max(0, now - anchoredAt - pausedOffsetMs)
+        : 0;
     return Math.max(0, elapsedAnchor.accumulatedMs + liveDelta);
   }
   const startedAt = safeTimestamp(
@@ -130,14 +165,89 @@ export function useRunElapsedMs(run: TimelineRunView): number {
   );
   if (startedAt === null) return 0;
   const endedAt = safeTimestamp(run.timestamps.endedAt);
-  return Math.max(0, (endedAt ?? now) - startedAt);
+  return Math.max(0, (endedAt ?? now) - startedAt - pausedOffsetMs);
 }
 
-export function RunElapsed({ run }: { run: TimelineRunView }) {
-  const elapsedMs = useRunElapsedMs(run);
+export function RunElapsed({
+  run,
+  paused = false,
+}: {
+  run: TimelineRunView;
+  paused?: boolean;
+}) {
+  const elapsedMs = useRunElapsedMs(run, paused);
   return (
     <span className="tabular-nums text-ds-text-neutral-subtle-default">
       {formatSplittingElapsed(elapsedMs)}
     </span>
   );
+}
+
+const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
+const HEIGHT_MOTION = {
+  height: { duration: 0.22, ease: CONTENT_EASE },
+  opacity: { duration: 0.16, ease: CONTENT_EASE },
+} as const;
+const EVENT_ENTER_TRANSITION = {
+  duration: 0.18,
+  ease: [0.32, 0.72, 0, 1],
+} as const;
+const REDUCED_EVENT_ENTER_TRANSITION = {
+  duration: 0.12,
+  ease: [0.32, 0.72, 0, 1],
+} as const;
+const EVENT_LAYOUT_TRANSITION = {
+  duration: 0.22,
+  ease: [0.32, 0.72, 0, 1],
+} as const;
+
+export function eventEntryMotion(reducedMotion: boolean) {
+  if (reducedMotion) {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      layout: false,
+      transition: { opacity: REDUCED_EVENT_ENTER_TRANSITION },
+    } as const;
+  }
+
+  return {
+    initial: { opacity: 0, transform: 'translateY(6px)' },
+    animate: { opacity: 1, transform: 'translateY(0px)' },
+    layout: 'position',
+    transition: {
+      opacity: EVENT_ENTER_TRANSITION,
+      transform: EVENT_ENTER_TRANSITION,
+      layout: EVENT_LAYOUT_TRANSITION,
+    },
+  } as const;
+}
+
+export function disclosureMotion(reducedMotion: boolean) {
+  if (reducedMotion) {
+    return {
+      initial: { height: 'auto', opacity: 0 },
+      animate: { height: 'auto', opacity: 1 },
+      exit: { height: 'auto', opacity: 0 },
+      transition: { opacity: REDUCED_EVENT_ENTER_TRANSITION },
+    } as const;
+  }
+
+  return {
+    initial: { height: 0, opacity: 0 },
+    animate: { height: 'auto', opacity: 1 },
+    exit: { height: 0, opacity: 0 },
+    transition: HEIGHT_MOTION,
+  } as const;
+}
+
+export interface TimelineModeProps {
+  runs: readonly TimelineRunView[];
+  projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
+  /**
+   * The user has taken control of the Run. Elapsed time and the running
+   * shimmer both hold until it resumes; the work log stays open because a
+   * pause is not an ending.
+   */
+  paused?: boolean;
 }
