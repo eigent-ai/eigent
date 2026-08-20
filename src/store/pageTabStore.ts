@@ -71,11 +71,25 @@ export interface SessionChooserTab {
   title: string;
 }
 
-/** Code/diff review surface (content wired up later). */
+export interface SessionReviewTarget {
+  scope: 'project' | 'run';
+  runId?: string;
+  focusPath?: string;
+  focusRequestId: number;
+}
+
+/** Code/diff review surface for a Project aggregate or one finalized Run. */
 export interface SessionReviewTab {
   id: string;
   type: 'review';
   title: string;
+  /** Optional only for tabs restored from storage before Run review existed. */
+  reviewTarget?: SessionReviewTarget;
+}
+
+export interface OpenReviewPreviewInput {
+  runId?: string;
+  path?: string;
 }
 
 export interface SessionTerminalTab {
@@ -217,6 +231,37 @@ function createChooserPreviewTab(): SessionChooserTab {
   };
 }
 
+function normalizeReviewPath(path: string | undefined): string | undefined {
+  const normalized = path?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  return normalized || undefined;
+}
+
+function createReviewTarget(
+  input?: OpenReviewPreviewInput
+): SessionReviewTarget {
+  const runId = input?.runId?.trim();
+  return {
+    scope: runId ? 'run' : 'project',
+    ...(runId ? { runId } : {}),
+    ...(normalizeReviewPath(input?.path)
+      ? { focusPath: normalizeReviewPath(input?.path) }
+      : {}),
+    focusRequestId: 0,
+  };
+}
+
+function createReviewPreviewTab(
+  input?: OpenReviewPreviewInput
+): SessionReviewTab {
+  const reviewTarget = createReviewTarget(input);
+  return {
+    id: nextSessionPreviewTabId('review'),
+    type: 'review',
+    title: reviewTarget.scope === 'run' ? 'Run review' : 'Review',
+    reviewTarget,
+  };
+}
+
 /** Placeholder tab title for a URL until the page reports its real one. */
 function browserTabTitleForUrl(url: string): string {
   try {
@@ -237,11 +282,7 @@ function createPreviewTabOfKind(
     case 'file':
       return createFilePreviewTab();
     case 'review':
-      return {
-        id: nextSessionPreviewTabId('review'),
-        type: 'review',
-        title: 'Review',
-      };
+      return createReviewPreviewTab();
     case 'terminal': {
       const id = nextSessionPreviewTabId('terminal');
       return {
@@ -429,6 +470,8 @@ interface PageTabState {
   choosePreviewTabType: (tabId: string, kind: PreviewTabKind) => void;
   /** Open a file in a deduplicated file tab (reuses a blank starter tab). */
   openFilePreview: (file?: FileInfo | null) => void;
+  /** Open Project/Run Git review and optionally focus one changed path. */
+  openReviewPreview: (input?: OpenReviewPreviewInput) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -745,6 +788,44 @@ export const usePageTabStore = create<PageTabState>()(
             tabs: [...previewTabs, tab],
             activeTabId: tab.id,
           };
+        }),
+      openReviewPreview: (input) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const requestedTarget = createReviewTarget(input);
+          const sameScope = (tab: SessionPreviewTab) => {
+            if (tab.type !== 'review') return false;
+            const currentTarget = tab.reviewTarget ?? createReviewTarget();
+            return (
+              currentTarget.scope === requestedTarget.scope &&
+              currentTarget.runId === requestedTarget.runId
+            );
+          };
+          const existingIndex = slice.tabs.findIndex(sameScope);
+          if (existingIndex >= 0) {
+            const current = slice.tabs[existingIndex] as SessionReviewTab;
+            const currentTarget = current.reviewTarget ?? createReviewTarget();
+            const tabs = [...slice.tabs];
+            tabs[existingIndex] = {
+              ...current,
+              reviewTarget: {
+                ...currentTarget,
+                ...(requestedTarget.focusPath
+                  ? { focusPath: requestedTarget.focusPath }
+                  : {}),
+                focusRequestId: currentTarget.focusRequestId + 1,
+              },
+            };
+            return { open: true, tabs, activeTabId: current.id };
+          }
+
+          const tab = createReviewPreviewTab(input);
+          const reusableIndex = slice.tabs.findIndex(
+            (candidate) => candidate.type === 'chooser'
+          );
+          const tabs = [...slice.tabs];
+          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+          else tabs.push(tab);
+          return { open: true, tabs, activeTabId: tab.id };
         }),
       openBrowserPreview: (url) =>
         setSessionPreviewSlice(set, (slice, state) => {

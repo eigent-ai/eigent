@@ -14,15 +14,28 @@
 
 import { ReviewTab } from '@/components/Session/PreviewPanel/tabs/ReviewTab';
 import type { ReviewChangesState } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
+import type {
+  SessionReviewTab,
+  SessionReviewTarget,
+} from '@/store/pageTabStore';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockUseReviewChanges = vi.fn<() => ReviewChangesState>();
+const mockUseReviewChanges =
+  vi.fn<(target: SessionReviewTarget) => ReviewChangesState>();
+
+const reviewTab: SessionReviewTab = {
+  id: 'review-1',
+  type: 'review',
+  title: 'Review',
+  reviewTarget: { scope: 'project', focusRequestId: 0 },
+};
 
 vi.mock(
   '@/components/Session/PreviewPanel/tabs/review/useReviewChanges',
   () => ({
-    useReviewChanges: () => mockUseReviewChanges(),
+    useReviewChanges: (target: SessionReviewTarget) =>
+      mockUseReviewChanges(target),
   })
 );
 
@@ -34,15 +47,19 @@ vi.mock('@/store/authStore', () => ({
 vi.mock('@/components/Session/PreviewPanel/tabs/review/DiffFileCard', () => ({
   DiffFileCard: ({
     file,
+    selected,
     foldAll,
     foldNonce,
   }: {
     file: { id: string };
+    selected?: boolean;
     foldAll?: boolean;
     foldNonce?: number;
   }) => (
     <div
       data-testid={`diff:${file.id}`}
+      data-review-id={file.id}
+      data-selected={String(selected)}
       data-fold-all={String(foldAll)}
       data-fold-nonce={String(foldNonce)}
     />
@@ -68,7 +85,7 @@ describe('ReviewTab', () => {
       refresh: vi.fn(),
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     expect(
       screen.getByText('Change review is available in the desktop app.')
@@ -88,7 +105,7 @@ describe('ReviewTab', () => {
       refresh: vi.fn(),
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     expect(
       screen.getByText('Could not load the changes for this project.')
@@ -117,7 +134,7 @@ describe('ReviewTab', () => {
       ],
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     expect(
       screen.getByTestId('diff:file:/outside/src/example.ts')
@@ -143,7 +160,7 @@ describe('ReviewTab', () => {
       ],
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     expect(screen.getByText('+42')).toBeInTheDocument();
     expect(screen.getByText('−7')).toBeInTheDocument();
@@ -167,7 +184,7 @@ describe('ReviewTab', () => {
       ],
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     expect(screen.queryByText(/^\+\d/)).not.toBeInTheDocument();
   });
@@ -190,7 +207,7 @@ describe('ReviewTab', () => {
       ],
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
     const card = () => screen.getByTestId('diff:file:/outside/src/example.ts');
 
     // Nonce starts at zero so cards keep their own state until asked.
@@ -224,7 +241,7 @@ describe('ReviewTab', () => {
       ],
     });
 
-    render(<ReviewTab />);
+    render(<ReviewTab tab={reviewTab} />);
 
     const hide = screen.getByRole('button', {
       name: 'Hide file tree',
@@ -241,5 +258,45 @@ describe('ReviewTab', () => {
 
     fireEvent.click(show);
     expect(screen.getByTestId('review-tree')).toBeInTheDocument();
+  });
+
+  it('loads a Run-scoped review and focuses its requested path', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 1, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'run-git:run-1:src/example.ts',
+          path: 'src/example.ts',
+          status: 'modified',
+          absPath: '',
+          bakPath: null,
+        },
+      ],
+    });
+    const runTarget: SessionReviewTarget = {
+      scope: 'run',
+      runId: 'run-1',
+      focusPath: './src/example.ts',
+      focusRequestId: 1,
+    };
+
+    render(
+      <ReviewTab
+        tab={{
+          ...reviewTab,
+          title: 'Run review',
+          reviewTarget: runTarget,
+        }}
+      />
+    );
+
+    expect(mockUseReviewChanges).toHaveBeenCalledWith(runTarget);
+    expect(
+      screen.getByTestId('diff:run-git:run-1:src/example.ts')
+    ).toHaveAttribute('data-selected', 'true');
   });
 });

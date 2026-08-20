@@ -428,6 +428,14 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
         (run_seed, note, binary),
         message="review changes",
     )
+    response = client.get(
+        "/api/v1/runs/run-review/git/changes",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Run changes are not finalized yet"
+
     promoted = coordinator.promote_run(
         run_id="run-review",
         operation_request_id="promote-review",
@@ -457,6 +465,21 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     assert files["image.bin"]["binary"] is True
     assert str(space) not in response.text
 
+    run_response = client.get(
+        "/api/v1/runs/run-review/git/changes",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    assert run_payload["run_id"] == "run-review"
+    assert run_payload["project_id"] == "project-review"
+    assert run_payload["base_commit"] == admission.run.workspace_base_commit
+    assert run_payload["target_commit"] == run_head
+    assert run_payload["files"] == payload["files"]
+    assert run_payload["totals"] == payload["totals"]
+    assert str(space) not in run_response.text
+
     response = client.get(
         "/api/v1/projects/project-review/git/changes/content",
         params={
@@ -472,6 +495,24 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     assert response.json()["before"]["content"] == "seed\n"
     assert response.json()["after"]["content"] == "updated\n"
     assert str(space) not in response.text
+
+    run_response = client.get(
+        "/api/v1/runs/run-review/git/changes/content",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "seed.txt",
+            "base_commit": run_payload["base_commit"],
+            "target_commit": run_payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert run_response.status_code == 200
+    assert run_response.json()["run_id"] == "run-review"
+    assert run_response.json()["project_id"] == "project-review"
+    assert run_response.json()["before"]["content"] == "seed\n"
+    assert run_response.json()["after"]["content"] == "updated\n"
+    assert str(space) not in run_response.text
 
     response = client.get(
         "/api/v1/projects/project-review/git/changes/content",

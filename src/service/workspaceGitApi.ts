@@ -147,6 +147,15 @@ export interface ProjectGitChangeContent {
   after: ProjectGitChangeSide;
 }
 
+export interface RunGitChanges extends ProjectGitChanges {
+  run_id: string;
+}
+
+export interface RunGitChangeContent extends ProjectGitChangeContent {
+  run_id: string;
+  project_id: string;
+}
+
 export interface AdvancedGitPreview {
   classification: string;
   subcommand: string;
@@ -255,6 +264,30 @@ export const fetchProjectGitChangeContent = async (
   input: { path: string; baseCommit: string; targetCommit: string }
 ): Promise<ProjectGitChangeContent> =>
   fetchGet(`/projects/${encodeURIComponent(projectId)}/git/changes/content`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+    path: input.path,
+    base_commit: input.baseCommit,
+    target_commit: input.targetCommit,
+  });
+
+export const fetchRunGitChanges = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<RunGitChanges> =>
+  fetchGet(`/runs/${encodeURIComponent(runId)}/git/changes`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+  });
+
+export const fetchRunGitChangeContent = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: { path: string; baseCommit: string; targetCommit: string }
+): Promise<RunGitChangeContent> =>
+  fetchGet(`/runs/${encodeURIComponent(runId)}/git/changes/content`, {
     ...identityParams(identity),
     space_id: spaceId,
     path: input.path,

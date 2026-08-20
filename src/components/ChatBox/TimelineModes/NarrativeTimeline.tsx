@@ -414,6 +414,7 @@ export function NarrativeTimeline({
                   <RunFilesGroup
                     artifactNodes={run.artifacts}
                     projectedArtifacts={projectedArtifacts}
+                    runId={run.runId}
                   />
                 }
                 id={run.finalAssistantResponse.id}
@@ -423,6 +424,7 @@ export function NarrativeTimeline({
               <RunFilesGroup
                 artifactNodes={run.artifacts}
                 projectedArtifacts={projectedArtifacts}
+                runId={run.runId}
               />
             ) : null}
           </section>

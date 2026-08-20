@@ -20,6 +20,8 @@ const {
   mockFetchOverlays,
   mockFetchGitChanges,
   mockFetchGitChangeContent,
+  mockFetchRunGitChanges,
+  mockFetchRunGitChangeContent,
   mockReviewListBackups,
   mockHost,
   mockProjectRuntime,
@@ -29,6 +31,8 @@ const {
     mockFetchOverlays: vi.fn(),
     mockFetchGitChanges: vi.fn(),
     mockFetchGitChangeContent: vi.fn(),
+    mockFetchRunGitChanges: vi.fn(),
+    mockFetchRunGitChangeContent: vi.fn(),
     mockReviewListBackups: reviewListBackups,
     mockHost: {
       electronAPI: {
@@ -59,6 +63,8 @@ vi.mock('@/service/spaceApi', () => ({
 vi.mock('@/service/workspaceGitApi', () => ({
   fetchProjectGitChanges: mockFetchGitChanges,
   fetchProjectGitChangeContent: mockFetchGitChangeContent,
+  fetchRunGitChanges: mockFetchRunGitChanges,
+  fetchRunGitChangeContent: mockFetchRunGitChangeContent,
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -105,6 +111,8 @@ describe('useReviewChanges', () => {
     mockFetchOverlays.mockReset();
     mockFetchGitChanges.mockReset();
     mockFetchGitChangeContent.mockReset();
+    mockFetchRunGitChanges.mockReset();
+    mockFetchRunGitChangeContent.mockReset();
     const missingGitState = Object.assign(new Error('Git state not found'), {
       status: 404,
     });
@@ -185,6 +193,85 @@ describe('useReviewChanges', () => {
         path: 'src/example.ts',
         baseCommit: 'a'.repeat(40),
         targetCommit: 'b'.repeat(40),
+      }
+    );
+  });
+
+  it('uses a finalized Run Git range without falling back to Project data', async () => {
+    mockFetchRunGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      run_id: 'run-1',
+      base_commit: 'c'.repeat(40),
+      target_commit: 'd'.repeat(40),
+      files: [
+        {
+          path: 'src/run-only.ts',
+          status: 'added',
+          before_size: null,
+          after_size: 8,
+          binary: false,
+          added_lines: 1,
+          removed_lines: 0,
+        },
+      ],
+      totals: { added: 1, removed: 0 },
+      truncated: false,
+    });
+    mockFetchRunGitChangeContent.mockResolvedValue({
+      run_id: 'run-1',
+      project_id: 'project-1',
+      path: 'src/run-only.ts',
+      base_commit: 'c'.repeat(40),
+      target_commit: 'd'.repeat(40),
+      before: {
+        content: null,
+        size: null,
+        binary: false,
+        too_large: false,
+      },
+      after: {
+        content: 'created\n',
+        size: 8,
+        binary: false,
+        too_large: false,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useReviewChanges({
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/run-only.ts',
+        focusRequestId: 1,
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockFetchRunGitChanges).toHaveBeenCalledWith('run-1', 'space-1', {
+      email: 'user@example.com',
+      userId: 42,
+    });
+    expect(mockFetchGitChanges).not.toHaveBeenCalled();
+    expect(mockFetchOverlays).not.toHaveBeenCalled();
+    expect(result.current.files[0]).toMatchObject({
+      id: 'run-git:run-1:src/run-only.ts',
+      path: 'src/run-only.ts',
+      status: 'added',
+    });
+
+    await expect(result.current.files[0].loadContent?.()).resolves.toEqual({
+      original: '',
+      modified: 'created\n',
+    });
+    expect(mockFetchRunGitChangeContent).toHaveBeenCalledWith(
+      'run-1',
+      'space-1',
+      { email: 'user@example.com', userId: 42 },
+      {
+        path: 'src/run-only.ts',
+        baseCommit: 'c'.repeat(40),
+        targetCommit: 'd'.repeat(40),
       }
     );
   });

@@ -21,9 +21,14 @@ import {
 import {
   fetchProjectGitChangeContent,
   fetchProjectGitChanges,
+  fetchRunGitChangeContent,
+  fetchRunGitChanges,
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
-import { usePageTabStore } from '@/store/pageTabStore';
+import {
+  usePageTabStore,
+  type SessionReviewTarget,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -181,11 +186,18 @@ function reviewFileFlags(
  * projects use their authoritative pending overlays; direct-write projects
  * fall back to WRITE_FILE history and the toolkit's on-disk backups.
  */
-export function useReviewChanges(): ReviewChangesState {
+export function useReviewChanges(
+  reviewTarget: SessionReviewTarget = {
+    scope: 'project',
+    focusRequestId: 0,
+  }
+): ReviewChangesState {
   const host = useHost();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const reviewScope = reviewTarget.scope;
+  const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const projectMeta = useSpaceStore((state) =>
@@ -257,7 +269,11 @@ export function useReviewChanges(): ReviewChangesState {
   const fixtureEnabled = reviewFixtureEnabled();
   const api = host?.electronAPI;
   const gitEligible = Boolean(
-    projectId && spaceId && email && !spaceId.startsWith('legacy_')
+    projectId &&
+    spaceId &&
+    email &&
+    !spaceId.startsWith('legacy_') &&
+    (reviewScope === 'project' || runId)
   );
 
   useEffect(() => {
@@ -387,15 +403,15 @@ export function useReviewChanges(): ReviewChangesState {
     const loadFiles = async (): Promise<LoadedReviewFiles> => {
       if (gitEligible && projectId && spaceId && email) {
         try {
-          const response = await fetchProjectGitChanges(projectId, spaceId, {
-            email,
-            userId,
-          });
+          const identity = { email, userId };
+          const response = runId
+            ? await fetchRunGitChanges(runId, spaceId, identity)
+            : await fetchProjectGitChanges(projectId, spaceId, identity);
           const files = response.files.map((file): ReviewFile => {
             const baseCommit = response.base_commit;
             const targetCommit = response.target_commit;
             return {
-              id: `git:${file.path}`,
+              id: `${runId ? `run-git:${runId}` : 'git'}:${file.path}`,
               path: file.path,
               status: file.status,
               absPath: '',
@@ -407,16 +423,24 @@ export function useReviewChanges(): ReviewChangesState {
               loadContent:
                 baseCommit && targetCommit
                   ? async () => {
-                      const content = await fetchProjectGitChangeContent(
-                        projectId,
-                        spaceId,
-                        { email, userId },
-                        {
-                          path: file.path,
-                          baseCommit,
-                          targetCommit,
-                        }
-                      );
+                      const input = {
+                        path: file.path,
+                        baseCommit,
+                        targetCommit,
+                      };
+                      const content = runId
+                        ? await fetchRunGitChangeContent(
+                            runId,
+                            spaceId,
+                            identity,
+                            input
+                          )
+                        : await fetchProjectGitChangeContent(
+                            projectId,
+                            spaceId,
+                            identity,
+                            input
+                          );
                       if (content.before.too_large || content.after.too_large) {
                         throw new Error('too_large');
                       }
@@ -438,8 +462,16 @@ export function useReviewChanges(): ReviewChangesState {
             desktopOnly: false,
           };
         } catch (cause: unknown) {
-          if ((cause as { status?: number })?.status !== 404) throw cause;
+          if (
+            reviewScope === 'run' ||
+            (cause as { status?: number })?.status !== 404
+          ) {
+            throw cause;
+          }
         }
+      }
+      if (reviewScope === 'run') {
+        throw new Error('Run Git state not found');
       }
       return loadLegacyFiles();
     };
@@ -477,6 +509,8 @@ export function useReviewChanges(): ReviewChangesState {
     gitEligible,
     overlayBacked,
     projectId,
+    reviewScope,
+    runId,
     spaceId,
     spaceRootPath,
     userId,

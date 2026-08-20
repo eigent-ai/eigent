@@ -15,6 +15,10 @@
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
+import type {
+  SessionReviewTab,
+  SessionReviewTarget,
+} from '@/store/pageTabStore';
 import {
   FileDiff,
   FolderClosed,
@@ -23,7 +27,7 @@ import {
   ListChevronsUpDown,
   RefreshCw,
 } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DiffFileCard } from './review/DiffFileCard';
 import { ReviewFileTree } from './review/ReviewFileTree';
@@ -35,11 +39,21 @@ import { useReviewChanges } from './review/useReviewChanges';
  * right is the changed-file tree. This is not an approval surface — undoing
  * changes is a separate (future) rewind feature.
  */
-export function ReviewTab() {
+const DEFAULT_REVIEW_TARGET: SessionReviewTarget = {
+  scope: 'project',
+  focusRequestId: 0,
+};
+
+function normalizedReviewPath(path: string): string {
+  return path.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
+  const reviewTarget = tab.reviewTarget ?? DEFAULT_REVIEW_TARGET;
   const { loading, files, desktopOnly, error, totals, truncated, refresh } =
-    useReviewChanges();
+    useReviewChanges(reviewTarget);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Collapsing the rail gives the diffs the full panel width, which matters on
   // a narrow preview panel. Resets per mount — this is a per-look preference,
@@ -66,10 +80,29 @@ export function ReviewTab() {
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
-    stackRef.current
-      ?.querySelector(`[data-review-id=${CSS.escape(id)}]`)
-      ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const card = stackRef.current?.querySelector(
+      `[data-review-id=${CSS.escape(id)}]`
+    );
+    card?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }, []);
+
+  useEffect(() => {
+    const focusPath = reviewTarget.focusPath
+      ? normalizedReviewPath(reviewTarget.focusPath)
+      : null;
+    if (!focusPath) return;
+    const file = files.find(
+      (candidate) => normalizedReviewPath(candidate.path) === focusPath
+    );
+    if (file) handleSelect(file.id);
+  }, [
+    files,
+    handleSelect,
+    reviewTarget.focusPath,
+    reviewTarget.focusRequestId,
+  ]);
+
+  const runScoped = reviewTarget.scope === 'run';
 
   // Diffing real changes reads files from disk, which needs the desktop
   // host. Inline (fixture) diffs render anywhere.
@@ -101,7 +134,9 @@ export function ReviewTab() {
     return (
       <CenteredNotice
         message={t('layout.review-scan-failed', {
-          defaultValue: 'Could not load the changes for this project.',
+          defaultValue: runScoped
+            ? 'Could not load the changes for this task.'
+            : 'Could not load the changes for this project.',
         })}
         detail={error}
         action={
@@ -117,11 +152,14 @@ export function ReviewTab() {
     return (
       <CenteredNotice
         message={t('layout.review-empty', {
-          defaultValue: 'No file changes in this project yet.',
+          defaultValue: runScoped
+            ? 'No file changes in this task.'
+            : 'No file changes in this project yet.',
         })}
         detail={t('layout.review-empty-hint', {
-          defaultValue:
-            'Files written by agents will appear here as before / after diffs.',
+          defaultValue: runScoped
+            ? 'This view contains only the files changed by the selected task.'
+            : 'Files written by agents will appear here as before / after diffs.',
         })}
         action={
           <Button type="button" variant="outline" size="sm" onClick={refresh}>
