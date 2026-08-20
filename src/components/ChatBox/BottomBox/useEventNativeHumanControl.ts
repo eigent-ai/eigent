@@ -728,8 +728,7 @@ export function useEventNativeHumanControl({
       interaction.interactionType === 'feedback' ||
       interaction.interactionType === 'human_feedback'
     ) {
-      const questionPresentation =
-        interaction.interactionType === 'question';
+      const questionPresentation = interaction.interactionType === 'question';
       return {
         kind: 'feedback',
         header: questionPresentation

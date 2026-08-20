@@ -25,9 +25,7 @@ type ControlledBottomBoxVariant = Exclude<
 >;
 
 export type BottomBoxControlSource =
-  | 'human_interaction'
-  | 'run_control'
-  | 'composer';
+  'human_interaction' | 'run_control' | 'composer';
 
 export interface BottomBoxControlSelectionInput {
   /**

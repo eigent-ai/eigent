@@ -14,8 +14,8 @@
 
 import { sseTransport, type SSETransportOptions } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
-import { runEventIngressRegistry } from '@/lib/runEvents';
 import type { ProjectedRun } from '@/lib/projector/types';
+import { runEventIngressRegistry } from '@/lib/runEvents';
 import {
   getProjectEventStore,
   type ProjectEventStore,

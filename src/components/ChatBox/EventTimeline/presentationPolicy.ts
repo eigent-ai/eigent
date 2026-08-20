@@ -23,8 +23,7 @@ type MessageNode = Extract<ChatProjectionNode, { kind: 'message' }>;
 type ActivityNode = Extract<ChatProjectionNode, { kind: 'activity' }>;
 type RunStatusNode = Extract<ChatProjectionNode, { kind: 'run_status' }>;
 type InteractionResolutionNode =
-  | InteractionNode
-  | Extract<ChatProjectionNode, { kind: 'message' }>;
+  InteractionNode | Extract<ChatProjectionNode, { kind: 'message' }>;
 
 interface PresentableInteractionReceipt {
   request: InteractionNode;

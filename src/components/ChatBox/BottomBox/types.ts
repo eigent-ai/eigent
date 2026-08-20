@@ -139,10 +139,7 @@ export interface BottomBoxBlockedVariant extends ControlledVariantBase {
 }
 
 export type BottomBoxRunControlState =
-  | 'interrupted'
-  | 'resuming'
-  | 'cancelling'
-  | 'read_only';
+  'interrupted' | 'resuming' | 'cancelling' | 'read_only';
 
 /**
  * Display-only Run lifecycle controls. The owner performs every command and

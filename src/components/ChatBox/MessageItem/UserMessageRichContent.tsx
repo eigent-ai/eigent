@@ -35,8 +35,7 @@ export const USER_MESSAGE_BODY_STYLE = {
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
 type ContentNode =
-  | { type: 'text'; value: string }
-  | { type: 'skill'; name: string };
+  { type: 'text'; value: string } | { type: 'skill'; name: string };
 
 function parseContentWithTags(content: string): ContentNode[] {
   const nodes: ContentNode[] = [];

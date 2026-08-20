@@ -302,7 +302,7 @@ export function groupConsecutiveToolItems(
 ): WorkLogDisplayItem[] {
   const grouped: WorkLogDisplayItem[] = [];
 
-  for (let index = 0; index < items.length; ) {
+  for (let index = 0; index < items.length;) {
     const item = items[index]!;
     if (item.kind !== 'tool') {
       grouped.push(item);

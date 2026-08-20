@@ -487,10 +487,12 @@ describe('injectHumanInputReceipts permission approvals', () => {
 
     expect(result[0]?.items).toEqual(tools);
     expect(
-      result.flatMap((entry) => entry.items).filter((item) => {
-        if (item.kind === 'human-input') return true;
-        return item.kind === 'tool' && Boolean(item.humanInput);
-      })
+      result
+        .flatMap((entry) => entry.items)
+        .filter((item) => {
+          if (item.kind === 'human-input') return true;
+          return item.kind === 'tool' && Boolean(item.humanInput);
+        })
     ).toHaveLength(0);
   });
 });
