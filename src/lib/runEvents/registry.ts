@@ -107,7 +107,6 @@ export class RunEventIngressRegistry {
         const projectEvent = normalizeLocalRunEvent(raw, projectId);
         getProjectEventStore(projectId).enqueue({
           ...projectEvent,
-          origin: projectEvent.origin ?? 'local',
           raw: null,
         });
       },

@@ -25,13 +25,13 @@ vi.mock('@/api/http', () => ({
   sseTransport: sseTransportMock,
 }));
 
-import { runDomainEventHub } from './eventHub';
-import { runProjectionStore } from './projectionStore';
-import { RunEventIngressRegistry } from './registry';
 import {
   getProjectEventStore,
   resetProjectEventStoresForTests,
 } from '@/store/projectEventStore';
+import { runDomainEventHub } from './eventHub';
+import { runProjectionStore } from './projectionStore';
+import { RunEventIngressRegistry } from './registry';
 
 describe('RunEventIngressRegistry', () => {
   beforeEach(() => {
@@ -217,7 +217,62 @@ describe('RunEventIngressRegistry', () => {
     ]);
     expect(
       projectEventStore.getSnapshot().view.runs['run-chat']?.origin
-    ).toBe('local');
+    ).toBeNull();
+    registry.clear();
+  });
+
+  it('does not let origin-less registry delivery overwrite snapshot provenance', async () => {
+    let transportOptions!: {
+      onmessage: (message: { event: string; data: string }) => Promise<void>;
+      signal: AbortSignal;
+    };
+    sseTransportMock.mockImplementation((options) => {
+      transportOptions = options;
+      return new Promise<void>((resolve) => {
+        options.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+      });
+    });
+    const projectEventStore = getProjectEventStore('project-cloud');
+    projectEventStore.replaceSnapshot({
+      project_id: 'project-cloud',
+      current_cursor: 0,
+      runs: [
+        {
+          run_id: 'run-cloud',
+          status: 'running',
+          expected_next_run_sequence: 1,
+          run_version: 0,
+          updated_at: '2026-08-20T00:00:00Z',
+          origin: 'cloud_restore',
+        },
+      ],
+      recent_events: [],
+    });
+    const registry = new RunEventIngressRegistry();
+    registry.ensureLocal('project-cloud', 'run-cloud');
+
+    await transportOptions.onmessage({
+      event: 'run_event',
+      data: JSON.stringify({
+        schema_version: 1,
+        event_id: 'cloud-event-1',
+        project_id: 'project-cloud',
+        run_id: 'run-cloud',
+        run_sequence: 1,
+        run_version: 1,
+        event_type: 'run.attempt_started',
+        payload: {},
+        created_at: 1,
+      }),
+    });
+    projectEventStore.flushNow();
+
+    expect(projectEventStore.getSnapshot().view.runs['run-cloud']?.origin).toBe(
+      'cloud_restore'
+    );
+    expect(projectEventStore.getSnapshot().view.needsResync).toBe(false);
     registry.clear();
   });
 

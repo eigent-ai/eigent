@@ -210,6 +210,21 @@ export function reduceProjectView(
   }
   const previousRun = state.runs[event.runId];
   if (
+    previousRun?.origin &&
+    event.origin &&
+    previousRun.origin !== event.origin
+  ) {
+    // Run provenance is immutable control authority, not a last-writer-wins
+    // presentation field. Reject conflicting delivery and require an
+    // authoritative snapshot before controls can be issued again.
+    return {
+      ...state,
+      needsResync: true,
+      resyncReason: `run_origin_conflict:${event.runId}:${previousRun.origin}:${event.origin}`,
+      resyncTargetCursor: event.cloudCursor,
+    };
+  }
+  if (
     event.source === 'canonical' &&
     previousRun &&
     event.runSequence <= previousRun.lastSequence
@@ -291,7 +306,7 @@ export function reduceProjectView(
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
     updatedAt: event.createdAt,
-    origin: event.origin ?? previousRun?.origin ?? null,
+    origin: previousRun?.origin ?? event.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
   };
   const legacyStepId =
