@@ -18,6 +18,11 @@ import {
   proxyFetchSpaceProjectOverlays,
   type SpaceOverlay,
 } from '@/service/spaceApi';
+import {
+  fetchProjectGitChangeContent,
+  fetchProjectGitChanges,
+} from '@/service/workspaceGitApi';
+import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -56,6 +61,8 @@ export interface ReviewFile {
    * uncompared instead of diffing it against nothing.
    */
   beforeUnavailable?: boolean;
+  /** Git reported a binary path; no text content request is needed. */
+  binary?: boolean;
   /** Either side exceeds `MAX_DIFF_BYTES`; the card skips reading it. */
   tooLarge?: boolean;
   /**
@@ -63,6 +70,8 @@ export interface ReviewFile {
    * strings instead of reading files from disk.
    */
   inline?: { original: string; modified: string };
+  /** Lazily loads authoritative Git content for this one visible card. */
+  loadContent?: () => Promise<{ original: string; modified: string }>;
 }
 
 export interface ReviewChangesState {
@@ -82,7 +91,16 @@ export interface ReviewChangesState {
    * before-side) contribute nothing.
    */
   totals: LineCounts | null;
+  /** More files changed than the bounded list returned by the backend. */
+  truncated?: boolean;
   refresh: () => void;
+}
+
+interface LoadedReviewFiles {
+  files: ReviewFile[];
+  totals: LineCounts | null;
+  truncated: boolean;
+  desktopOnly: boolean;
 }
 
 /** Shape returned by the `review-list-backups` IPC (electron/main/reviewChanges.ts). */
@@ -165,6 +183,8 @@ function reviewFileFlags(
  */
 export function useReviewChanges(): ReviewChangesState {
   const host = useHost();
+  const email = useAuthStore((state) => state.email);
+  const userId = useAuthStore((state) => state.user_id);
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
@@ -226,6 +246,9 @@ export function useReviewChanges(): ReviewChangesState {
   const [files, setFiles] = useState<ReviewFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [desktopOnly, setDesktopOnly] = useState(false);
+  const [gitTotals, setGitTotals] = useState<LineCounts | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
   const refresh = useCallback(() => {
     setLoading(true);
@@ -233,19 +256,16 @@ export function useReviewChanges(): ReviewChangesState {
   }, []);
   const fixtureEnabled = reviewFixtureEnabled();
   const api = host?.electronAPI;
-  const desktopOnly = Boolean(
-    !fixtureEnabled && (!api?.reviewListBackups || !api?.readFile)
+  const gitEligible = Boolean(
+    projectId && spaceId && email && !spaceId.startsWith('legacy_')
   );
 
   useEffect(() => {
     if (fixtureEnabled) {
       setFiles(REVIEW_FIXTURE_FILES);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-    if (desktopOnly || !api?.reviewListBackups) {
-      setFiles([]);
+      setGitTotals(null);
+      setTruncated(false);
+      setDesktopOnly(false);
       setError(null);
       setLoading(false);
       return;
@@ -253,10 +273,28 @@ export function useReviewChanges(): ReviewChangesState {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setDesktopOnly(false);
+    setGitTotals(null);
+    setTruncated(false);
 
-    const loadFiles = async (): Promise<ReviewFile[]> => {
+    const loadLegacyFiles = async (): Promise<LoadedReviewFiles> => {
+      if (!api?.reviewListBackups || !api?.readFile) {
+        return {
+          files: [],
+          totals: null,
+          truncated: false,
+          desktopOnly: true,
+        };
+      }
       if (overlayBacked) {
-        if (!spaceId) return [];
+        if (!spaceId) {
+          return {
+            files: [],
+            totals: null,
+            truncated: false,
+            desktopOnly: false,
+          };
+        }
         const response = await proxyFetchSpaceProjectOverlays(
           spaceId,
           projectId ?? ''
@@ -278,7 +316,7 @@ export function useReviewChanges(): ReviewChangesState {
           entries.map((entry) => [entry.path.replace(/\\/g, '/'), entry])
         );
 
-        return overlays.map((overlay): ReviewFile => {
+        const files = overlays.map((overlay): ReviewFile => {
           const sourcePath = overlaySourcePath(overlay);
           const entry = sourcePath ? entriesByPath.get(sourcePath) : undefined;
           const status = overlay.status as ReviewFileStatus;
@@ -306,13 +344,21 @@ export function useReviewChanges(): ReviewChangesState {
             ),
           };
         });
+        return { files, totals: null, truncated: false, desktopOnly: false };
       }
 
-      if (changedPaths.length === 0) return [];
+      if (changedPaths.length === 0) {
+        return {
+          files: [],
+          totals: null,
+          truncated: false,
+          desktopOnly: false,
+        };
+      }
       const entries = (await api.reviewListBackups(
         changedPaths
       )) as ReviewBackupEntry[];
-      return entries.map((entry): ReviewFile => {
+      const files = entries.map((entry): ReviewFile => {
         const status: ReviewFileStatus = entry.exists
           ? entry.backups.length > 0
             ? 'modified'
@@ -335,16 +381,81 @@ export function useReviewChanges(): ReviewChangesState {
           ),
         };
       });
+      return { files, totals: null, truncated: false, desktopOnly: false };
+    };
+
+    const loadFiles = async (): Promise<LoadedReviewFiles> => {
+      if (gitEligible && projectId && spaceId && email) {
+        try {
+          const response = await fetchProjectGitChanges(projectId, spaceId, {
+            email,
+            userId,
+          });
+          const files = response.files.map((file): ReviewFile => {
+            const baseCommit = response.base_commit;
+            const targetCommit = response.target_commit;
+            return {
+              id: `git:${file.path}`,
+              path: file.path,
+              status: file.status,
+              absPath: '',
+              bakPath: null,
+              binary: file.binary,
+              tooLarge:
+                (file.before_size ?? 0) > MAX_DIFF_BYTES ||
+                (file.after_size ?? 0) > MAX_DIFF_BYTES,
+              loadContent:
+                baseCommit && targetCommit
+                  ? async () => {
+                      const content = await fetchProjectGitChangeContent(
+                        projectId,
+                        spaceId,
+                        { email, userId },
+                        {
+                          path: file.path,
+                          baseCommit,
+                          targetCommit,
+                        }
+                      );
+                      if (content.before.too_large || content.after.too_large) {
+                        throw new Error('too_large');
+                      }
+                      if (content.before.binary || content.after.binary) {
+                        throw new Error('binary');
+                      }
+                      return {
+                        original: content.before.content ?? '',
+                        modified: content.after.content ?? '',
+                      };
+                    }
+                  : undefined,
+            };
+          });
+          return {
+            files,
+            totals: response.totals,
+            truncated: response.truncated,
+            desktopOnly: false,
+          };
+        } catch (cause: unknown) {
+          if ((cause as { status?: number })?.status !== 404) throw cause;
+        }
+      }
+      return loadLegacyFiles();
     };
 
     loadFiles()
-      .then((next) => {
+      .then((result) => {
         if (cancelled) return;
+        const next = result.files;
         next.sort(
           (a: ReviewFile, b: ReviewFile) =>
             a.path.localeCompare(b.path) || a.id.localeCompare(b.id)
         );
         setFiles(next);
+        setGitTotals(result.totals);
+        setTruncated(result.truncated);
+        setDesktopOnly(result.desktopOnly);
         setLoading(false);
       })
       .catch((cause: unknown) => {
@@ -360,13 +471,15 @@ export function useReviewChanges(): ReviewChangesState {
   }, [
     api,
     changedPaths,
-    desktopOnly,
+    email,
     fetchNonce,
     fixtureEnabled,
+    gitEligible,
     overlayBacked,
     projectId,
     spaceId,
     spaceRootPath,
+    userId,
   ]);
 
   // Totals are computed here rather than gathered from the cards: a card only
@@ -377,6 +490,10 @@ export function useReviewChanges(): ReviewChangesState {
   useEffect(() => {
     let cancelled = false;
     setTotals(null);
+    if (gitTotals) {
+      setTotals(gitTotals);
+      return;
+    }
     if (files.length === 0) {
       setTotals({ added: 0, removed: 0 });
       return;
@@ -396,7 +513,7 @@ export function useReviewChanges(): ReviewChangesState {
       for (const file of files) {
         if (cancelled) return;
         // Nothing trustworthy to count: no baseline, or never diffed at all.
-        if (file.tooLarge || file.beforeUnavailable) continue;
+        if (file.binary || file.tooLarge || file.beforeUnavailable) continue;
         let sides: { original: string; modified: string } | null = null;
         if (file.inline) {
           sides = file.inline;
@@ -422,7 +539,15 @@ export function useReviewChanges(): ReviewChangesState {
     return () => {
       cancelled = true;
     };
-  }, [api, files]);
+  }, [api, files, gitTotals]);
 
-  return { loading, files, desktopOnly, error, totals, refresh };
+  return {
+    loading,
+    files,
+    desktopOnly,
+    error,
+    totals,
+    truncated,
+    refresh,
+  };
 }

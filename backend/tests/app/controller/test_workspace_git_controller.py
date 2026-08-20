@@ -383,6 +383,110 @@ def test_workspace_git_rejects_escaping_checkpoint_path(git_api):
     assert response.status_code == 422
 
 
+def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
+    client, service, _, space = git_api
+    response = client.post(
+        "/api/v1/spaces/space-1/git/bootstrap",
+        headers=_headers(),
+        json={"email": "user@example.com", "allow_init": True},
+    )
+    assert response.status_code == 200
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    service.git.commit_paths(space, (seed,), message="seed")
+    service.journal.ensure_run(
+        run_id="run-review",
+        project_id="project-review",
+        status="pending",
+    )
+    coordinator = WorkspaceGitCoordinator(
+        service.journal,
+        state_root=service.state_root,
+        git_backend=service.git,
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-review",
+        run_id="run-review",
+    )
+    assert admission is not None
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-review",
+        operation_request_id="materialize-review",
+        expected_repo_state_digest=service.git.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=admission.project.integration_head,
+    )
+    run_seed = workspace.run_worktree / "seed.txt"
+    run_seed.write_text("updated\n", encoding="utf-8")
+    note = workspace.run_worktree / "note.md"
+    note.write_text("new note\n", encoding="utf-8")
+    binary = workspace.run_worktree / "image.bin"
+    binary.write_bytes(b"\x00\x01\x02")
+    run_head = service.git.commit_paths(
+        workspace.run_worktree,
+        (run_seed, note, binary),
+        message="review changes",
+    )
+    promoted = coordinator.promote_run(
+        run_id="run-review",
+        operation_request_id="promote-review",
+        expected_run_state_digest=service.git.repo_state_token(
+            workspace.run_worktree
+        ).digest,
+        expected_project_version=workspace.project.version,
+        expected_project_head=str(workspace.project.integration_head),
+        expected_run_head=run_head,
+    )
+    assert promoted.project.integration_head == run_head
+
+    response = client.get(
+        "/api/v1/projects/project-review/git/changes",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["base_commit"] == admission.run.workspace_base_commit
+    assert payload["target_commit"] == run_head
+    assert payload["totals"] == {"added": 2, "removed": 1}
+    assert payload["truncated"] is False
+    files = {item["path"]: item for item in payload["files"]}
+    assert files["seed.txt"]["status"] == "modified"
+    assert files["note.md"]["status"] == "added"
+    assert files["image.bin"]["binary"] is True
+    assert str(space) not in response.text
+
+    response = client.get(
+        "/api/v1/projects/project-review/git/changes/content",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "seed.txt",
+            "base_commit": payload["base_commit"],
+            "target_commit": payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["before"]["content"] == "seed\n"
+    assert response.json()["after"]["content"] == "updated\n"
+    assert str(space) not in response.text
+
+    response = client.get(
+        "/api/v1/projects/project-review/git/changes/content",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "not-changed.txt",
+            "base_commit": payload["base_commit"],
+            "target_commit": payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert response.status_code == 404
+
+
 def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
     client, service, _, space = git_api
     response = client.post(

@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockFetchOverlays,
+  mockFetchGitChanges,
+  mockFetchGitChangeContent,
   mockReviewListBackups,
   mockHost,
   mockProjectRuntime,
@@ -25,6 +27,8 @@ const {
   const reviewListBackups = vi.fn();
   return {
     mockFetchOverlays: vi.fn(),
+    mockFetchGitChanges: vi.fn(),
+    mockFetchGitChangeContent: vi.fn(),
     mockReviewListBackups: reviewListBackups,
     mockHost: {
       electronAPI: {
@@ -50,6 +54,17 @@ vi.mock('@/host', () => ({
 
 vi.mock('@/service/spaceApi', () => ({
   proxyFetchSpaceProjectOverlays: mockFetchOverlays,
+}));
+
+vi.mock('@/service/workspaceGitApi', () => ({
+  fetchProjectGitChanges: mockFetchGitChanges,
+  fetchProjectGitChangeContent: mockFetchGitChangeContent,
+}));
+
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (
+    selector: (state: { email: string; user_id: number }) => unknown
+  ) => selector({ email: 'user@example.com', user_id: 42 }),
 }));
 
 vi.mock('@/store/pageTabStore', () => ({
@@ -88,6 +103,12 @@ describe('useReviewChanges', () => {
   beforeEach(() => {
     localStorage.removeItem('eigent-review-fixture');
     mockFetchOverlays.mockReset();
+    mockFetchGitChanges.mockReset();
+    mockFetchGitChangeContent.mockReset();
+    const missingGitState = Object.assign(new Error('Git state not found'), {
+      status: 404,
+    });
+    mockFetchGitChanges.mockRejectedValue(missingGitState);
     mockReviewListBackups.mockReset();
     mockReviewListBackups.mockResolvedValue([
       {
@@ -99,6 +120,73 @@ describe('useReviewChanges', () => {
         ],
       },
     ]);
+  });
+
+  it('uses Git as the primary source and lazily reads visible content', async () => {
+    mockFetchGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      base_commit: 'a'.repeat(40),
+      target_commit: 'b'.repeat(40),
+      files: [
+        {
+          path: 'src/example.ts',
+          status: 'modified',
+          before_size: 8,
+          after_size: 9,
+          binary: false,
+          added_lines: 2,
+          removed_lines: 1,
+        },
+      ],
+      totals: { added: 2, removed: 1 },
+      truncated: false,
+    });
+    mockFetchGitChangeContent.mockResolvedValue({
+      path: 'src/example.ts',
+      base_commit: 'a'.repeat(40),
+      target_commit: 'b'.repeat(40),
+      before: {
+        content: 'before\n',
+        size: 8,
+        binary: false,
+        too_large: false,
+      },
+      after: {
+        content: 'after\n',
+        size: 7,
+        binary: false,
+        too_large: false,
+      },
+    });
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockFetchOverlays).not.toHaveBeenCalled();
+    expect(result.current.totals).toEqual({ added: 2, removed: 1 });
+    expect(result.current.files[0]).toMatchObject({
+      id: 'git:src/example.ts',
+      path: 'src/example.ts',
+      status: 'modified',
+      binary: false,
+      tooLarge: false,
+    });
+
+    await expect(result.current.files[0].loadContent?.()).resolves.toEqual({
+      original: 'before\n',
+      modified: 'after\n',
+    });
+    expect(mockFetchGitChangeContent).toHaveBeenCalledWith(
+      'project-1',
+      'space-1',
+      { email: 'user@example.com', userId: 42 },
+      {
+        path: 'src/example.ts',
+        baseCommit: 'a'.repeat(40),
+        targetCommit: 'b'.repeat(40),
+      }
+    );
   });
 
   it('uses authoritative overlays and removes applied entries on refresh', async () => {

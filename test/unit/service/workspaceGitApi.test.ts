@@ -27,6 +27,8 @@ vi.mock('@/api/http', () => ({
 import {
   bootstrapWorkspaceGit,
   executeAdvancedGit,
+  fetchProjectGitChangeContent,
+  fetchProjectGitChanges,
   fetchWorkspaceGitHistory,
   previewAdvancedGit,
 } from '@/service/workspaceGitApi';
@@ -73,6 +75,42 @@ describe('workspace Git advanced API', () => {
         user_id: 42,
         allow_init: true,
         eigent_owned_space: true,
+      }
+    );
+  });
+
+  it('loads a Project change summary and pinned file content', async () => {
+    fetchGetMock
+      .mockResolvedValueOnce({ project_id: 'project/1', files: [] })
+      .mockResolvedValueOnce({ path: 'src/app.ts' });
+    const identity = { email: 'user@example.com', userId: 42 };
+
+    await fetchProjectGitChanges('project/1', 'space-1', identity);
+    await fetchProjectGitChangeContent('project/1', 'space-1', identity, {
+      path: 'src/app.ts',
+      baseCommit: 'a'.repeat(40),
+      targetCommit: 'b'.repeat(40),
+    });
+
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      1,
+      '/projects/project%2F1/git/changes',
+      {
+        email: 'user@example.com',
+        user_id: 42,
+        space_id: 'space-1',
+      }
+    );
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      2,
+      '/projects/project%2F1/git/changes/content',
+      {
+        email: 'user@example.com',
+        user_id: 42,
+        space_id: 'space-1',
+        path: 'src/app.ts',
+        base_commit: 'a'.repeat(40),
+        target_commit: 'b'.repeat(40),
       }
     );
   });

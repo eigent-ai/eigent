@@ -173,9 +173,27 @@ export function DiffFileCard({
       setLoadError('too_large');
       return;
     }
+    if (file.binary) {
+      setLoadError('binary');
+      return;
+    }
+    let cancelled = false;
+    if (file.loadContent) {
+      file
+        .loadContent()
+        .then((content) => {
+          if (!cancelled) setSides(content);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setLoadError(err instanceof Error ? err.message : String(err));
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     const api = host?.electronAPI;
     if (!api?.readFile) return;
-    let cancelled = false;
 
     const readSide = async (path: string | null): Promise<string> => {
       if (!path) return '';

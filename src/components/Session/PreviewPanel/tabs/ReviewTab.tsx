@@ -38,7 +38,7 @@ import { useReviewChanges } from './review/useReviewChanges';
 export function ReviewTab() {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
-  const { loading, files, desktopOnly, error, totals, refresh } =
+  const { loading, files, desktopOnly, error, totals, truncated, refresh } =
     useReviewChanges();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Collapsing the rail gives the diffs the full panel width, which matters on
@@ -149,6 +149,13 @@ export function ReviewTab() {
             <span className="text-ds-text-error-default-default">
               −{totals.removed}
             </span>
+          </span>
+        )}
+        {truncated && (
+          <span className="text-xs text-ds-text-neutral-muted-default">
+            {t('layout.review-truncated', {
+              defaultValue: 'Showing the first 500 files',
+            })}
           </span>
         )}
         <div className="flex-1" />

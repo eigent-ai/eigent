@@ -70,8 +70,12 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab />);
 
-    expect(screen.getByText('layout.review-desktop-only')).toBeInTheDocument();
-    expect(screen.queryByText('layout.review-empty')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Change review is available in the desktop app.')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No file changes in this project yet.')
+    ).not.toBeInTheDocument();
   });
 
   it('reports a failed scan instead of claiming there are no changes', () => {
@@ -86,9 +90,13 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab />);
 
-    expect(screen.getByText('layout.review-scan-failed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not load the changes for this project.')
+    ).toBeInTheDocument();
     expect(screen.getByText('overlay service down')).toBeInTheDocument();
-    expect(screen.queryByText('layout.review-empty')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No file changes in this project yet.')
+    ).not.toBeInTheDocument();
   });
 
   it('renders review files by their stable identity', () => {
@@ -189,15 +197,11 @@ describe('ReviewTab', () => {
     expect(card()).toHaveAttribute('data-fold-all', 'false');
     expect(card()).toHaveAttribute('data-fold-nonce', '0');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'layout.review-collapse-all' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all files' }));
     expect(card()).toHaveAttribute('data-fold-all', 'true');
     expect(card()).toHaveAttribute('data-fold-nonce', '1');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'layout.review-expand-all' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all files' }));
     expect(card()).toHaveAttribute('data-fold-all', 'false');
     expect(card()).toHaveAttribute('data-fold-nonce', '2');
   });
@@ -223,7 +227,7 @@ describe('ReviewTab', () => {
     render(<ReviewTab />);
 
     const hide = screen.getByRole('button', {
-      name: 'layout.review-hide-tree',
+      name: 'Hide file tree',
     });
     expect(hide).toHaveAttribute('aria-pressed', 'false');
 
@@ -231,7 +235,7 @@ describe('ReviewTab', () => {
     expect(screen.queryByTestId('review-tree')).not.toBeInTheDocument();
 
     const show = screen.getByRole('button', {
-      name: 'layout.review-show-tree',
+      name: 'Show file tree',
     });
     expect(show).toHaveAttribute('aria-pressed', 'true');
 

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { collectSidePanelOutputFiles } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
+import { collectSidePanelOutputFiles } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 
 /** The slice of a chat store's state the collector needs. */
 export interface ReviewChatEntry {
