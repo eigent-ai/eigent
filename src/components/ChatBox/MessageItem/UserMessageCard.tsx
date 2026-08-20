@@ -184,7 +184,7 @@ export function UserMessageCard({
                         {/* File Name */}
                         <span
                           className={cn(
-                            "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-label-xs font-bold text-ds-text-neutral-default-default"
+                            "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] !text-label-xs font-bold text-ds-text-neutral-default-default"
                           )}
                           title={file.fileName}
                         >
@@ -212,7 +212,7 @@ export function UserMessageCard({
                             e.stopPropagation();
                           }}
                         >
-                          <span className="whitespace-nowrap font-['Inter'] text-label-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                          <span className="whitespace-nowrap font-['Inter'] !text-label-xs font-bold leading-tight text-ds-text-neutral-default-default">
                             {remainingCount}+
                           </span>
                         </Button>
@@ -247,7 +247,7 @@ export function UserMessageCard({
                                 <div className="flex h-6 w-6 items-center justify-center rounded-md">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-label-xs font-bold text-ds-text-neutral-default-default">
+                                <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] !text-label-xs font-bold text-ds-text-neutral-default-default">
                                   {file.fileName}
                                 </span>
                               </div>

@@ -99,6 +99,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string) => {
       const translations: Record<string, string> = {
         'chat.ask-placeholder': 'Type your message...',
+        'chat.attachment-only-message': 'Please use the attached file(s).',
         'layout.by-messaging-eigent': 'By messaging Eigent, you agree to our',
         'layout.terms-of-use': 'Terms of Use',
         'layout.and': 'and',
@@ -113,6 +114,16 @@ vi.mock('react-i18next', () => ({
 vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
   default: vi.fn(({ inputProps }: any) => {
     if (!inputProps) return null;
+    const hasContent =
+      (inputProps.value || '').trim().length > 0 ||
+      inputProps.files?.length > 0;
+    const primaryAction = hasContent
+      ? 'send'
+      : inputProps.taskControlState === 'running'
+        ? 'pause'
+        : inputProps.taskControlState === 'paused'
+          ? 'resume'
+          : 'idle';
     return (
       <div data-testid="bottom-box">
         <input
@@ -121,8 +132,17 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
           value={inputProps.value}
           onChange={(e) => inputProps.onChange(e.target.value)}
         />
-        <button data-testid="send-button" onClick={() => inputProps.onSend()}>
-          Send
+        <button
+          data-testid="send-button"
+          data-composer-primary-action={primaryAction}
+          disabled={primaryAction === 'idle'}
+          onClick={() => {
+            if (primaryAction === 'send') inputProps.onSend();
+            if (primaryAction === 'pause') inputProps.onPauseTask();
+            if (primaryAction === 'resume') inputProps.onResumeTask();
+          }}
+        >
+          {primaryAction}
         </button>
       </div>
     );
@@ -309,6 +329,7 @@ describe('ChatBox Component', async () => {
     });
 
     _mockFetchPost.mockResolvedValue({ success: true });
+    _mockFetchPut.mockResolvedValue({ success: true });
 
     // Mock import.meta.env
     Object.defineProperty(import.meta, 'env', {
@@ -408,6 +429,95 @@ describe('ChatBox Component', async () => {
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
+    it.each([
+      ['running', 'pause'],
+      ['pause', 'resume'],
+    ] as const)(
+      'routes the empty composer %s state through the %s task control',
+      async (status, action) => {
+        const user = userEvent.setup();
+        const controlledTask = {
+          ...defaultChatStoreState.tasks['test-task-id'],
+          status,
+          hasMessages: true,
+          messages: [{ id: '1', role: 'user', content: 'Start', attaches: [] }],
+          elapsed: 100,
+          taskTime: 1_000,
+        };
+        const controlledStore = {
+          ...defaultChatStoreState,
+          tasks: { 'test-task-id': controlledTask },
+          setElapsed: vi.fn(),
+          setTaskTime: vi.fn(),
+          setStatus: vi.fn(),
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: controlledStore as any,
+        });
+
+        renderChatBox();
+
+        const actionButton = screen.getByTestId('send-button');
+        expect(actionButton).toHaveAttribute(
+          'data-composer-primary-action',
+          action
+        );
+        await user.click(actionButton);
+
+        await waitFor(() => {
+          expect(_mockFetchPut).toHaveBeenCalledWith(
+            '/task/test-project-id/take-control',
+            { action }
+          );
+        });
+      }
+    );
+
+    it('sends an attachment-only draft with a usable instruction', async () => {
+      const user = userEvent.setup();
+      const attachment = {
+        fileName: 'brief.pdf',
+        filePath: '/tmp/brief.pdf',
+      };
+      const attachmentStore = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            attaches: [attachment],
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: attachmentStore as any,
+      });
+
+      renderChatBox();
+
+      const actionButton = screen.getByTestId('send-button');
+      expect(actionButton).toHaveAttribute(
+        'data-composer-primary-action',
+        'send'
+      );
+      await user.click(actionButton);
+
+      await waitFor(() => {
+        expect(attachmentStore.startTask).toHaveBeenCalledWith(
+          'test-task-id',
+          undefined,
+          undefined,
+          undefined,
+          'Please use the attached file(s).',
+          [attachment],
+          undefined,
+          'test-project-id',
+          'single-agent'
+        );
+      });
+    });
+
     it('should handle message sending', async () => {
       const user = userEvent.setup();
 
@@ -482,6 +592,71 @@ describe('ChatBox Component', async () => {
         '/chat/test-project-id',
         expect.objectContaining({ task_id: nextTaskId })
       );
+    });
+
+    it('keeps the composer available and queues a second task while running', async () => {
+      const user = userEvent.setup();
+      const runningChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              {
+                id: 'running-query',
+                role: 'user',
+                content: 'First task',
+                attaches: [],
+              },
+            ],
+            hasMessages: true,
+            status: 'running',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: runningChatState as any,
+      });
+      _mockFetchPost.mockResolvedValueOnce({
+        request_id: 'test-unique-id',
+        project_id: 'test-project-id',
+        content: 'Second task',
+        attachment_paths: [],
+        delivery_mode: 'wait',
+        status: 'pending',
+        source: 'local',
+        created_at: 1,
+        updated_at: 1,
+      });
+
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Second task');
+      await user.click(screen.getByTestId('send-button'));
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/projects/test-project-id/follow-ups',
+          {
+            request_id: 'test-unique-id',
+            content: 'Second task',
+            attachment_paths: [],
+            delivery_mode: 'wait',
+            source: 'local',
+            source_command_id: undefined,
+          }
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).toHaveBeenCalledWith(
+          'test-project-id',
+          expect.objectContaining({
+            task_id: 'test-unique-id',
+            content: 'Second task',
+            source: 'local',
+          })
+        );
+      });
     });
 
     it('should not send empty messages', async () => {

@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { hasCompleteLegacyNormalRunCoverage } from '@/components/ChatBox/normalTimelineSourceArbitration';
+import {
+  hasCanonicalPermissionApproval,
+  hasCompleteLegacyNormalRunCoverage,
+} from '@/components/ChatBox/normalTimelineSourceArbitration';
 import { describe, expect, it } from 'vitest';
 
 describe('Normal timeline source arbitration', () => {
@@ -37,6 +40,35 @@ describe('Normal timeline source arbitration', () => {
         ['legacy-run', 'canonical-only-run'],
         ['legacy-run']
       )
+    ).toBe(false);
+  });
+
+  it('requires canonical Normal when a permission approval has a durable request', () => {
+    expect(
+      hasCanonicalPermissionApproval([
+        {
+          kind: 'interaction',
+          interactionType: 'approval',
+          eventType: 'legacy.ask',
+        },
+        {
+          kind: 'interaction',
+          interactionType: 'approval',
+          eventType: 'approval.requested',
+        },
+      ])
+    ).toBe(true);
+  });
+
+  it('does not cut over for a legacy-only ASK mirror', () => {
+    expect(
+      hasCanonicalPermissionApproval([
+        {
+          kind: 'interaction',
+          interactionType: 'approval',
+          eventType: 'legacy.ask',
+        },
+      ])
     ).toBe(false);
   });
 });

@@ -197,6 +197,39 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('restores durable attachment names without exposing local paths', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          content: 'Compare these files',
+          attachment_names: [
+            'right_hemisphere.glb',
+            '/Users/alice/private/left_hemisphere.glb',
+          ],
+        },
+        'user.message'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'message',
+        attachments: [
+          {
+            fileName: 'right_hemisphere.glb',
+            filePath: 'right_hemisphere.glb',
+          },
+          {
+            fileName: 'left_hemisphere.glb',
+            filePath: 'left_hemisphere.glb',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(node)).not.toContain('/Users/alice');
+  });
+
   it('keeps legacy activate and deactivate messages as input and output', () => {
     const activate = adaptChatProjectionEvent(
       normalizeLegacyChatStep(

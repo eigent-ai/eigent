@@ -20,6 +20,9 @@ interface ToolInputOutputDetailsProps {
   output?: string;
   inputLabel?: string;
   outputLabel?: string;
+  showEmptyFields?: boolean;
+  emptyInputText?: string;
+  emptyOutputText?: string;
   children?: ReactNode;
   className?: string;
 }
@@ -34,10 +37,13 @@ export function ToolInputOutputDetails({
   output,
   inputLabel = 'Request',
   outputLabel = 'Response',
+  showEmptyFields = false,
+  emptyInputText = 'No request was recorded for this event.',
+  emptyOutputText = 'No response was recorded for this event.',
   children,
   className,
 }: ToolInputOutputDetailsProps) {
-  if (!input && !output && children == null) return null;
+  if (!showEmptyFields && !input && !output && children == null) return null;
 
   const labelClassName =
     'mb-1 block !text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-subtle-default';
@@ -46,24 +52,44 @@ export function ToolInputOutputDetails({
 
   return (
     <div className={`flex w-full flex-col gap-1.5 ${className || ''}`}>
-      {input ? (
-        <div className={surfaceClassName} data-tool-input>
+      {input || showEmptyFields ? (
+        <div
+          className={surfaceClassName}
+          data-tool-input
+          data-tool-input-empty={input ? undefined : true}
+        >
           <span className={labelClassName}>{inputLabel}</span>
-          <MarkDown
-            content={input}
-            enableTypewriter={false}
-            pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
-          />
+          {input ? (
+            <MarkDown
+              content={input}
+              enableTypewriter={false}
+              pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
+            />
+          ) : (
+            <span className="block whitespace-pre-wrap break-words !text-label-xs font-normal text-ds-text-neutral-subtle-default">
+              {emptyInputText}
+            </span>
+          )}
         </div>
       ) : null}
-      {output ? (
-        <div className={surfaceClassName} data-tool-output>
+      {output || showEmptyFields ? (
+        <div
+          className={surfaceClassName}
+          data-tool-output
+          data-tool-output-empty={output ? undefined : true}
+        >
           <span className={labelClassName}>{outputLabel}</span>
-          <MarkDown
-            content={output}
-            enableTypewriter={false}
-            pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
-          />
+          {output ? (
+            <MarkDown
+              content={output}
+              enableTypewriter={false}
+              pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
+            />
+          ) : (
+            <span className="block whitespace-pre-wrap break-words !text-label-xs font-normal text-ds-text-neutral-subtle-default">
+              {emptyOutputText}
+            </span>
+          )}
         </div>
       ) : null}
       {children}

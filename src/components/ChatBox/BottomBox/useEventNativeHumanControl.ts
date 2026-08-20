@@ -728,9 +728,21 @@ export function useEventNativeHumanControl({
       interaction.interactionType === 'feedback' ||
       interaction.interactionType === 'human_feedback'
     ) {
+      const questionPresentation =
+        interaction.interactionType === 'question';
       return {
         kind: 'feedback',
-        ...common,
+        header: questionPresentation
+          ? {
+              title: t('chat.timeline-question'),
+              description:
+                [interaction.prompt, activeSubmission.error]
+                  .filter(Boolean)
+                  .join(' ') || undefined,
+            }
+          : header,
+        presentation: questionPresentation ? 'question' : 'default',
+        submitting,
         value: activeDraft.feedback,
         placeholder: t('chat.control-response-placeholder'),
         onChange: (feedback) =>

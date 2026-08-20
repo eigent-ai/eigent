@@ -91,9 +91,22 @@ export function reconcileTimelineRun(
         anchoredAt: null,
       };
 
+  const nodes = run.nodes.map((node) =>
+    node.kind === 'run_status' ? { ...node, status } : node
+  );
+  const traceRows = run.traceRows.map((row) =>
+    row.kind === 'node' && row.node.kind === 'run_status'
+      ? { ...row, node: { ...row.node, status } }
+      : row
+  );
+  const runStatus = run.runStatus ? { ...run.runStatus, status } : null;
+
   return {
     ...run,
     status,
+    nodes,
+    traceRows,
+    runStatus,
     timestamps: {
       ...run.timestamps,
       updatedAt: authoritativeUpdatedAt || run.timestamps.updatedAt,

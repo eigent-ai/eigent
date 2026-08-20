@@ -116,6 +116,8 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
       <BoxHeaderDisplay
         {...variant.header}
         eyebrow={undefined}
+        contextItems={undefined}
+        details={undefined}
         className="px-0 pb-0 pt-0"
       />
       <div data-approval-actions className="flex w-full justify-end">
@@ -300,6 +302,10 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
         aria-label={t('chat.control-feedback-label')}
         value={variant.value}
         placeholder={variant.placeholder}
+        className={cn(
+          variant.presentation === 'question' &&
+            'border-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0'
+        )}
         disabled={variant.disabled || variant.submitting}
         onChange={(event) => variant.onChange(event.target.value)}
         onEnter={variant.value.trim() ? variant.onSubmit : undefined}
@@ -445,10 +451,7 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
   const { t } = useTranslation();
   const locked = Boolean(variant.disabled || variant.submitting);
   const loading =
-    variant.state === 'stopping' ||
-    variant.state === 'resuming' ||
-    variant.state === 'cancelling';
-  const showStop = variant.state === 'running' || variant.state === 'stopping';
+    variant.state === 'resuming' || variant.state === 'cancelling';
   const showInterruptedActions =
     variant.state === 'interrupted' ||
     variant.state === 'resuming' ||
@@ -469,24 +472,6 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
         >
           {variant.readOnlyLabel ?? t('chat.control-read-only')}
         </span>
-      ) : null}
-
-      {showStop ? (
-        <ControlActions>
-          <Button
-            type="button"
-            variant="secondary"
-            tone="error"
-            size="sm"
-            buttonRadius="full"
-            disabled={locked || variant.state === 'stopping' || !variant.onStop}
-            onClick={() => variant.onStop?.(variant.runId)}
-          >
-            {variant.state === 'stopping'
-              ? (variant.stoppingLabel ?? t('chat.control-stopping'))
-              : (variant.stopLabel ?? t('chat.control-stop'))}
-          </Button>
-        </ControlActions>
       ) : null}
 
       {showInterruptedActions ? (

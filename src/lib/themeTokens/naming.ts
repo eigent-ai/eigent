@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { TokenKey } from './types';
+import type { DesignTokenKey } from './types';
 
-export function tokenKeyToCssVarName(tokenKey: TokenKey): string {
+export function tokenKeyToCssVarName(tokenKey: DesignTokenKey): string {
   return `--ds-${tokenKey.replace(/\./g, '-')}`;
 }
 
-export function tokenKeyToCssVarValue(tokenKey: TokenKey): string {
+export function tokenKeyToCssVarValue(tokenKey: DesignTokenKey): string {
   return `var(${tokenKeyToCssVarName(tokenKey)})`;
 }

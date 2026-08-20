@@ -27,3 +27,29 @@ export function hasCompleteLegacyNormalRunCoverage(
   }
   return true;
 }
+
+type CanonicalApprovalNode = {
+  eventType?: string;
+  kind?: string;
+  interactionType?: string;
+};
+
+/**
+ * Permission approvals require the canonical Normal renderer. Only canonical
+ * approval.requested is sufficient: a legacy ASK mirror has no guarded
+ * toolCallId row and must not force an incomplete event-native presentation.
+ */
+export function hasCanonicalPermissionApproval(
+  nodes: Iterable<CanonicalApprovalNode>
+): boolean {
+  for (const node of nodes) {
+    if (
+      node.kind === 'interaction' &&
+      node.interactionType === 'approval' &&
+      node.eventType === 'approval.requested'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}

@@ -139,8 +139,8 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
   };
 
   const handleTakeControl = useCallback(
-    (type: 'pause' | 'resume', taskId: string) =>
-      takeControlOfTask({ chatStore, action: type, taskId }),
+    (type: 'pause' | 'resume', taskId: string, projectId: string) =>
+      takeControlOfTask({ chatStore, action: type, projectId, taskId }),
     [chatStore]
   );
 
@@ -166,11 +166,11 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       onProjectDelete: handleProjectDelete,
       onProjectRename: handleProjectRename,
       activeTaskId: chatStore?.activeTaskId || undefined,
-      onOngoingTaskPause: async (taskId: string) => {
-        await handleTakeControl('pause', taskId);
+      onOngoingTaskPause: async (taskId: string, projectId: string) => {
+        await handleTakeControl('pause', taskId, projectId);
       },
-      onOngoingTaskResume: async (taskId: string) => {
-        await handleTakeControl('resume', taskId);
+      onOngoingTaskResume: async (taskId: string, projectId: string) => {
+        await handleTakeControl('resume', taskId, projectId);
       },
     }),
     // `handle*` callbacks aren't memoized themselves and the parent re-renders

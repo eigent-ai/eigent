@@ -219,34 +219,43 @@ function messageAttachments(
   const source = base.eventType.startsWith('legacy.')
     ? (payload.attaches ?? payload.attachments)
     : (payload.display_attachments ?? payload.displayAttachments);
-  if (!Array.isArray(source)) return undefined;
+  if (Array.isArray(source)) {
+    const attachments = source.flatMap<ChatMessageAttachment>((value) => {
+      const attachment = asRecord(value);
+      const fileName = firstText(
+        attachment.file_name,
+        attachment.fileName,
+        attachment.name
+      );
+      const filePath = firstText(
+        attachment.file_path,
+        attachment.filePath,
+        attachment.relative_path,
+        attachment.relativePath
+      );
+      if (!fileName || !filePath) return [];
+      const rawSource = firstText(attachment.source);
+      return [
+        {
+          fileName,
+          filePath,
+          fileId: firstText(attachment.file_id, attachment.fileId) || undefined,
+          source:
+            rawSource === 'local' || rawSource === 'upload'
+              ? rawSource
+              : undefined,
+        },
+      ];
+    });
+    if (attachments.length > 0) return attachments;
+  }
 
-  const attachments = source.flatMap<ChatMessageAttachment>((value) => {
-    const attachment = asRecord(value);
-    const fileName = firstText(
-      attachment.file_name,
-      attachment.fileName,
-      attachment.name
-    );
-    const filePath = firstText(
-      attachment.file_path,
-      attachment.filePath,
-      attachment.relative_path,
-      attachment.relativePath
-    );
-    if (!fileName || !filePath) return [];
-    const rawSource = firstText(attachment.source);
-    return [
-      {
-        fileName,
-        filePath,
-        fileId: firstText(attachment.file_id, attachment.fileId) || undefined,
-        source:
-          rawSource === 'local' || rawSource === 'upload'
-            ? rawSource
-            : undefined,
-      },
-    ];
+  if (base.eventType.startsWith('legacy.')) return undefined;
+  const durableNames = payload.attachment_names ?? payload.attachmentNames;
+  if (!Array.isArray(durableNames)) return undefined;
+  const attachments = durableNames.flatMap<ChatMessageAttachment>((value) => {
+    const fileName = safeArtifactBasename(value);
+    return fileName ? [{ fileName, filePath: fileName }] : [];
   });
   return attachments.length > 0 ? attachments : undefined;
 }
@@ -534,9 +543,9 @@ function interactionNode(
         payload.content,
         payload.notice,
         payload.answer,
+        request.question,
         nestedText(payload.request),
-        nestedText(payload.prompt),
-        request.question
+        nestedText(payload.prompt)
       ) || undefined,
     response: responseText(decision) || undefined,
     responseOptionIds: responseOptionIds(decision),
@@ -782,6 +791,7 @@ function activityTitle(
   base: ChatProjectionNodeBase,
   payload: JsonRecord,
   isTypedActivity: boolean,
+  activityType: ChatActivityType,
   names: { methodName: string; toolName: string; toolkitName: string }
 ): string {
   const toolkitMethod =
@@ -802,6 +812,26 @@ function activityTitle(
       payload.task_name,
       payload.taskName,
       humanize(base.eventType)
+    );
+  }
+  if (activityType === 'tool') {
+    return firstText(
+      payload.title,
+      names.toolName,
+      toolkitMethod,
+      names.toolkitName,
+      payload.message,
+      payload.content,
+      humanize(base.legacyStep || base.eventType)
+    );
+  }
+  if (activityType === 'agent') {
+    return firstText(
+      payload.title,
+      payload.agent_name,
+      payload.agentName,
+      payload.message,
+      humanize(base.legacyStep || base.eventType)
     );
   }
   return firstText(
@@ -885,7 +915,7 @@ function activityNode(
   );
   const title = isHumanInputActivity
     ? 'Human Toolkit'
-    : activityTitle(base, payload, isTypedActivity, {
+    : activityTitle(base, payload, isTypedActivity, activityType, {
         methodName,
         toolName,
         toolkitName,

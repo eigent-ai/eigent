@@ -20,6 +20,7 @@ import {
   getTaskRunDisplayStatus,
   groupBlocksByAgent,
   groupConsecutiveToolItems,
+  injectHumanInputReceipts,
   terminalWorkLogI18nKey,
   type AgentBlock,
   type AgentGroup,
@@ -428,6 +429,69 @@ describe('TaskWorkLogAccordion human-tool detail', () => {
     expect(screen.getByText('Answer')).toHaveClass('!text-label-xs');
     expect(screen.getByText('detailed')).toHaveClass('!text-label-xs');
     scrollTo.mockRestore();
+  });
+});
+
+describe('injectHumanInputReceipts permission approvals', () => {
+  it('does not stack canonical permission approvals onto an unrelated legacy agent group', () => {
+    const tools = [
+      makeToolItem('todo-write', {
+        rowTitle: 'TodoToolkit · Todo_write',
+        toolkitName: 'TodoToolkit',
+        method: 'Todo_write',
+      }),
+      makeToolItem('skill-list', {
+        rowTitle: 'SkillToolkit · List_skills',
+        toolkitName: 'SkillToolkit',
+        method: 'List_skills',
+      }),
+      makeToolItem('memory-search', {
+        rowTitle: 'Memory Toolkit · Search',
+        toolkitName: 'Memory Toolkit',
+        method: 'Search',
+      }),
+    ];
+    const group: AgentGroup = {
+      kind: 'agent-group',
+      id: 'group-single-agent',
+      agentId: 'single-agent',
+      agentType: 'single_agent',
+      agentName: 'single_agent',
+      items: tools,
+      status: 'running',
+      doneToolCount: tools.length,
+      totalToolCount: tools.length,
+    };
+    const approval = (id: string, title: string): Message => ({
+      id: `ask-${id}`,
+      role: 'agent',
+      content: '',
+      step: AgentStep.ASK,
+      agent_name: 'single_agent',
+      interaction: {
+        interaction_id: `approval:${id}`,
+        interaction_type: 'approval',
+        run_id: 'task-1',
+        title,
+        question: `The agent wants to run ${title}.`,
+      },
+    });
+
+    const result = injectHumanInputReceipts(
+      [group],
+      [
+        approval('mcp-call-1', 'execute_action'),
+        approval('mcp-call-2', 'execute_action'),
+      ]
+    );
+
+    expect(result[0]?.items).toEqual(tools);
+    expect(
+      result.flatMap((entry) => entry.items).filter((item) => {
+        if (item.kind === 'human-input') return true;
+        return item.kind === 'tool' && Boolean(item.humanInput);
+      })
+    ).toHaveLength(0);
   });
 });
 

@@ -444,6 +444,35 @@ describe('event-native Timeline Run presentation', () => {
     });
   });
 
+  it('updates the presented Run status row from the authoritative aggregate', () => {
+    const started: ChatRunStatusNode = {
+      ...base('started', 'run-1', 1, '2026-08-19T00:00:01.000Z'),
+      kind: 'run_status',
+      status: 'running',
+    };
+    const composed = composeTimelineRun([started], 'run-1')!;
+    const projected: ProjectedRun = {
+      runId: 'run-1',
+      status: 'completed',
+      lastSequence: 2,
+      runVersion: 1,
+      updatedAt: '2026-08-19T00:00:05.000Z',
+      totalAttemptElapsedMs: 4_000,
+    };
+
+    const reconciled = reconcileTimelineRun(composed, projected);
+    const statusRow = reconciled.traceRows.find(
+      (row) => row.kind === 'node' && row.node.kind === 'run_status'
+    );
+
+    expect(reconciled.runStatus?.status).toBe('completed');
+    expect(reconciled.nodes[0]).toMatchObject({ status: 'completed' });
+    expect(statusRow).toMatchObject({
+      kind: 'node',
+      node: { status: 'completed' },
+    });
+  });
+
   it('reconciles a Run collection by id and preserves unmatched Runs', () => {
     const first = composeTimelineRun([message('first', 'run-1', 1)], 'run-1')!;
     const second = composeTimelineRun(

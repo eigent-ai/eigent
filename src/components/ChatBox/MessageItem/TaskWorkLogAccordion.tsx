@@ -831,7 +831,11 @@ export function injectHumanInputReceipts(
 ): GroupedEntry[] {
   const asks = messages
     .map((message, index) => ({ message, index }))
-    .filter(({ message }) => message.step === AgentStep.ASK);
+    .filter(
+      ({ message }) =>
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_type !== 'approval'
+    );
   if (!asks.length) return entries;
 
   const result = entries.map((entry) => ({

@@ -14,6 +14,7 @@
 
 import { sseTransport, type SSETransportOptions } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
+import { runEventIngressRegistry } from '@/lib/runEvents';
 import type { ProjectedRun } from '@/lib/projector/types';
 import {
   getProjectEventStore,
@@ -229,7 +230,14 @@ export class ProjectRunEventStreamOwner {
       return;
     }
 
-    const eligibleRuns = selectCanonicalLiveRuns(snapshot, this.maxStreams);
+    // The primary RunEventIngressRegistry already owns the live stream for
+    // Runs started by this desktop process and now forwards those envelopes to
+    // ProjectEventStore. Keep this companion only for hydrated local Runs that
+    // have no primary owner, otherwise one Run opens two identical SSEs.
+    const eligibleRuns = selectCanonicalLiveRuns(
+      snapshot,
+      this.maxStreams
+    ).filter((run) => !runEventIngressRegistry.has(run.runId));
     const eligibleIds = new Set(eligibleRuns.map((run) => run.runId));
 
     for (const [runId, stream] of this.streams) {

@@ -48,6 +48,34 @@ function event(
 }
 
 describe('chat projection presentation contract', () => {
+  it('uses the explicit approval question for the durable timeline receipt', () => {
+    const state = projectChatEvents('project-1', [
+      event(
+        'approval.requested',
+        {
+          approval_id: 'approval:call-1',
+          prompt: {
+            title: 'Allow brave_search.web_search?',
+            question:
+              'The agent wants to run brave_search.web_search (mcp.tool.write).',
+          },
+        },
+        1
+      ),
+    ]);
+
+    expect(selectRenderableChatNodes(state)).toEqual([
+      expect.objectContaining({
+        kind: 'interaction',
+        interactionId: 'approval:call-1',
+        interactionType: 'approval',
+        status: 'requested',
+        prompt:
+          'The agent wants to run brave_search.web_search (mcp.tool.write).',
+      }),
+    ]);
+  });
+
   it('classifies known receipts without rendering false unsupported cards', () => {
     const knownReceipts = [
       'run.environment_resolved',
@@ -245,6 +273,86 @@ describe('chat projection presentation contract', () => {
       messageId: 'message-1',
       content: 'Hello world',
       status: 'complete',
+    });
+    expect(presentChatSemanticEntities(presented)).toEqual(presented);
+  });
+
+  it('keeps only the latest Run lifecycle status for presentation', () => {
+    const state = projectChatEvents('project-1', [
+      event('run.attempt_created', {}, 1),
+      event('user.message', { content: 'Research this' }, 2),
+      event('run.attempt_started', {}, 3),
+      event('run.completed', {}, 4),
+    ]);
+
+    const presented = presentChatSemanticEntities(
+      selectRenderableChatNodes(state)
+    );
+    const statuses = presented.filter((node) => node.kind === 'run_status');
+
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toMatchObject({
+      eventId: 'event-4',
+      status: 'completed',
+    });
+    expect(presentChatSemanticEntities(presented)).toEqual(presented);
+  });
+
+  it('folds correlated agent activation and completion receipts', () => {
+    const state = projectChatEvents('project-1', [
+      event(
+        'legacy.activate_agent',
+        {
+          agent_name: 'single_agent',
+          agent_id: 'agent-1',
+          process_task_id: 'task-1',
+          message: '=== Lightweight Memory ===',
+        },
+        1,
+        { legacyStep: 'activate_agent' }
+      ),
+      event(
+        'legacy.deactivate_agent',
+        {
+          agent_name: 'single_agent',
+          agent_id: 'agent-1',
+          process_task_id: 'task-1',
+          message: 'Research complete',
+        },
+        2,
+        { legacyStep: 'deactivate_agent' }
+      ),
+      event(
+        'legacy.activate_agent',
+        {
+          agent_name: 'writer_agent',
+          agent_id: 'agent-2',
+          process_task_id: 'task-2',
+          message: 'Draft the report',
+        },
+        3,
+        { legacyStep: 'activate_agent' }
+      ),
+    ]);
+
+    const presented = presentChatSemanticEntities(
+      selectRenderableChatNodes(state)
+    );
+    const agents = presented.filter(
+      (node) => node.kind === 'activity' && node.activityType === 'agent'
+    );
+
+    expect(agents).toHaveLength(2);
+    expect(agents[0]).toMatchObject({
+      eventId: 'event-1',
+      status: 'completed',
+      phase: 'completed',
+      title: 'single_agent',
+    });
+    expect(agents[1]).toMatchObject({
+      eventId: 'event-3',
+      status: 'running',
+      phase: 'unknown',
     });
     expect(presentChatSemanticEntities(presented)).toEqual(presented);
   });

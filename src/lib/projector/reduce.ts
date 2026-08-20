@@ -278,7 +278,6 @@ export function reduceProjectView(
       : candidateStatus;
   const run: ProjectedRun = {
     ...previousRun,
-    ...(event.origin ? { origin: event.origin } : {}),
     runId: event.runId,
     status,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
@@ -292,7 +291,7 @@ export function reduceProjectView(
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
     updatedAt: event.createdAt,
-    origin: previousRun?.origin ?? null,
+    origin: event.origin ?? previousRun?.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
   };
   const legacyStepId =

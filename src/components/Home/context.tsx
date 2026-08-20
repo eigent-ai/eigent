@@ -49,8 +49,14 @@ export type HomeHubContextValue = {
   onProjectDelete: (projectId: string) => void;
   onProjectRename: (projectId: string, newName: string) => void;
   activeTaskId?: string;
-  onOngoingTaskPause?: (taskId: string) => void | Promise<void>;
-  onOngoingTaskResume?: (taskId: string) => void | Promise<void>;
+  onOngoingTaskPause?: (
+    taskId: string,
+    projectId: string
+  ) => void | Promise<void>;
+  onOngoingTaskResume?: (
+    taskId: string,
+    projectId: string
+  ) => void | Promise<void>;
 };
 
 const HomeHubContext = createContext<HomeHubContextValue | null>(null);
