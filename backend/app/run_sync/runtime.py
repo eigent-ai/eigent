@@ -112,6 +112,12 @@ def notify_default_cloud_sync_worker() -> None:
         loop.call_soon_threadsafe(_default_command_worker.notify)
 
 
+def is_default_cloud_history_bootstrap_pending() -> bool:
+    """Report whether Cloud history is still restoring in the background."""
+
+    return bool(_default_worker and _default_worker.bootstrap_pending)
+
+
 async def bootstrap_default_cloud_history() -> None:
     """Wait for the configured one-shot PG -> SQLite history repair."""
 

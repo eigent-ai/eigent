@@ -597,6 +597,12 @@ class CloudSyncWorker:
         self._memory_heartbeat_disabled = False
         self._artifact_tasks: set[asyncio.Task[int]] = set()
 
+    @property
+    def bootstrap_pending(self) -> bool:
+        """Whether the local Cloud history replica still needs repair."""
+
+        return self._bootstrap_pending
+
     def configure(self, configuration: CloudSyncConfiguration) -> None:
         if configuration != self._configuration:
             self._bootstrap_pending = True

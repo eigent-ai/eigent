@@ -110,13 +110,10 @@ describe('hydrateProjectEventStore', () => {
       pageCount: 2,
     });
 
-    expect(fetchGetMock).toHaveBeenNthCalledWith(
-      1,
-      '/runs',
-      { project_id: 'project-1', limit: 100 },
-      undefined,
-      { signal: controller.signal }
-    );
+    expect(fetchGetMock).toHaveBeenNthCalledWith(1, '/runs', {
+      project_id: 'project-1',
+      limit: 100,
+    });
     expect(fetchGetMock).toHaveBeenNthCalledWith(
       3,
       '/runs/run-1/events',
@@ -203,6 +200,22 @@ describe('hydrateProjectEventStore', () => {
 
     runList.resolve(runsResponse());
     await expect(hydration).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('retries instead of publishing empty history while Cloud restore is pending', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockResolvedValueOnce({
+      project_id: 'project-1',
+      runs: [],
+      cloud_restore_pending: true,
+    });
+
+    await expect(
+      hydrateProjectEventStore({ projectId: 'project-1', store })
+    ).rejects.toMatchObject({ code: 'cloud_restore_pending' });
+    expect(store.getSnapshot().hasHydratedSnapshot).toBe(false);
   });
 
   it('fails closed when concurrent append scanning exceeds its bounded race window', async () => {

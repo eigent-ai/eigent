@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet, proxyFetchGet } from '@/api/http';
+import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import {
   deleteCachedProject,
@@ -24,6 +24,7 @@ import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
+import { fetchProjectRuns } from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -1540,10 +1541,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
-        const localRuns = await fetchGet('/runs', {
-          project_id: loadProjectId,
-          limit: 100,
-        });
+        const localRuns = await fetchProjectRuns(loadProjectId, 100);
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (

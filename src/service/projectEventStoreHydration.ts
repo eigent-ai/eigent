@@ -19,6 +19,10 @@ import type {
 } from '@/lib/projector';
 import { normalizeLocalRunEvent } from '@/lib/projector';
 import {
+  fetchProjectRuns,
+  type ProjectRunsResponse,
+} from '@/service/projectRunsApi';
+import {
   getProjectEventStore,
   type ProjectEventStore,
 } from '@/store/projectEventStore';
@@ -34,12 +38,6 @@ const DEFAULT_MAX_EVENT_PAGES = 200;
 const DEFAULT_MAX_EVENTS = 2_000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_EVENT_BYTES = 256 * 1024;
-
-type ProjectRunsResponse = {
-  project_id?: unknown;
-  runs?: unknown;
-  has_more?: unknown;
-};
 
 type RunEventsResponse = {
   run_id?: unknown;
@@ -91,6 +89,7 @@ export class ProjectEventStoreHydrationError extends Error {
     readonly code:
       | 'invalid_response'
       | 'limit_exceeded'
+      | 'cloud_restore_pending'
       | 'replacement_busy'
       | 'replacement_invalidated'
   ) {
@@ -444,13 +443,22 @@ async function loadProjectSnapshot(
   runCount: number;
 }> {
   throwIfAborted(options.signal);
-  const response = (await fetchGet(
-    '/runs',
-    { project_id: projectId, limit: options.maxRuns },
-    undefined,
-    { signal: options.signal }
-  )) as ProjectRunsResponse;
+  const response = await fetchProjectRuns(
+    projectId,
+    options.maxRuns,
+    options.signal
+  );
   throwIfAborted(options.signal);
+  if (
+    response.cloud_restore_pending === true &&
+    Array.isArray(response.runs) &&
+    response.runs.length === 0
+  ) {
+    throw new ProjectEventStoreHydrationError(
+      'Cloud Project history is still restoring to the local replica',
+      'cloud_restore_pending'
+    );
+  }
 
   const parsedRuns = parseRunDescriptors(response, projectId, options.maxRuns);
   const { runs } = parsedRuns;

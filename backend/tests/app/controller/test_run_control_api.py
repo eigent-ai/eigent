@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -226,9 +240,23 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
         )
         journal.reconcile_startup(now=2)
         journal.ensure_run(run_id="other", project_id="project-2", now=3)
-        with patch(
-            "app.controller.run_controller.get_default_run_journal",
-            return_value=journal,
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.run_sync.runtime.notify_default_cloud_sync_worker"
+            ) as notify_sync,
+            patch(
+                "app.run_sync.runtime."
+                "is_default_cloud_history_bootstrap_pending",
+                return_value=True,
+            ),
+            patch(
+                "app.run_sync.runtime.bootstrap_default_cloud_history",
+                new_callable=AsyncMock,
+            ) as bootstrap_history,
         ):
             result = await list_project_runs(
                 project_id="project-1",
@@ -238,6 +266,9 @@ async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
 
     assert [run["run_id"] for run in result["runs"]] == ["older"]
     assert result["runs"][0]["status"] == "interrupted"
+    assert result["cloud_restore_pending"] is True
     # Startup recovery must not count the unobserved process-down interval as
     # active execution time. This attempt never persisted a later heartbeat.
     assert result["runs"][0]["total_attempt_elapsed_ms"] == 0
+    notify_sync.assert_called_once_with()
+    bootstrap_history.assert_not_awaited()

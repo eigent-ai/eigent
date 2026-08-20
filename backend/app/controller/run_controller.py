@@ -336,19 +336,17 @@ async def list_project_runs(
 ):
     """Return canonical Run state for the main Desktop Project UI."""
 
-    # Middleware has already handed the authenticated Cloud credentials to the
-    # worker. Waiting here closes the first-open race after local SQLite was
-    # deleted: the Project query sees restored canonical history immediately,
-    # rather than only after the next navigation.
-    try:
-        from app.run_sync.runtime import bootstrap_default_cloud_history
+    # Local SQLite is the Desktop read authority and must remain available
+    # while the independent CloudSyncWorker repairs its replica in the
+    # background. Awaiting the account-wide bootstrap here made the first
+    # Project open wait on every Cloud Project (often for many seconds), even
+    # when this Project was already fully durable on disk.
+    from app.run_sync.runtime import (
+        is_default_cloud_history_bootstrap_pending,
+        notify_default_cloud_sync_worker,
+    )
 
-        await bootstrap_default_cloud_history()
-    except Exception:
-        # Offline Cloud repair never makes locally durable history unavailable.
-        logger.exception(
-            "Cloud Run history bootstrap failed before Project read"
-        )
+    notify_default_cloud_sync_worker()
     journal = get_default_run_journal()
     runs = await asyncio.to_thread(
         journal.list_runs,
@@ -373,7 +371,13 @@ async def list_project_runs(
                 ),
             }
         )
-    return {"project_id": project_id, "runs": items}
+    return {
+        "project_id": project_id,
+        "runs": items,
+        "cloud_restore_pending": (
+            is_default_cloud_history_bootstrap_pending()
+        ),
+    }
 
 
 @router.get("/runs/{run_id}")
