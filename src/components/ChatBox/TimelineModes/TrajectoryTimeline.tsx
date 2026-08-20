@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import type {
@@ -24,7 +25,14 @@ import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { statusIcon, statusLabel, type TimelineModeProps } from './shared';
+import {
+  hasRunExecutionRows,
+  isActiveRunStatus,
+  statusIcon,
+  statusLabel,
+  type InteractiveTimelinePlan,
+  type TimelineModeProps,
+} from './shared';
 
 type NodeTraceRow = Extract<TimelineTraceRow, { kind: 'node' }>;
 type TraceCategory =
@@ -472,85 +480,116 @@ function NodeTraceDetails({ row }: { row: NodeTraceRow }) {
 function DetailedRun({
   run,
   paused,
+  interactivePlan,
 }: {
   run: TimelineRunView;
   paused: boolean;
+  interactivePlan?: InteractiveTimelinePlan;
 }) {
   const { t } = useTranslation();
   return (
     <section data-run-id={run.runId}>
-      <ol className="m-0 w-full list-none overflow-hidden rounded-xl border border-ds-border-neutral-subtle-default bg-transparent p-0">
-        {run.traceRows.map((row) => {
-          if (row.kind === 'tool') {
+      {run.traceRows.length > 0 ? (
+        <ol className="m-0 w-full list-none overflow-hidden rounded-xl border border-ds-border-neutral-subtle-default bg-transparent p-0">
+          {run.traceRows.map((row) => {
+            if (
+              row.kind === 'node' &&
+              row.node.eventId === interactivePlan?.eventId
+            ) {
+              return (
+                <li
+                  className="min-w-0 list-none bg-transparent py-2"
+                  data-event-node-id={row.id}
+                  data-interactive-plan-event
+                  key={row.id}
+                >
+                  {interactivePlan.content}
+                </li>
+              );
+            }
+            if (row.kind === 'tool') {
+              return (
+                <TraceRow
+                  key={row.id}
+                  category="TOOL"
+                  rowId={row.id}
+                  summary={row.invocation.title}
+                  status={
+                    <DetailedStatusInline
+                      paused={paused}
+                      status={row.invocation.status}
+                    />
+                  }
+                >
+                  <ToolTraceDetails invocation={row.invocation} />
+                </TraceRow>
+              );
+            }
+            const category = categoryForNode(row);
+            const role =
+              row.node.kind === 'message' ? row.node.role : undefined;
             return (
               <TraceRow
-                key={row.id}
-                category="TOOL"
-                rowId={row.id}
-                summary={row.invocation.title}
-                status={
-                  <DetailedStatusInline
-                    paused={paused}
-                    status={row.invocation.status}
-                  />
+                ariaLabel={
+                  row.node.kind === 'interaction'
+                    ? t('chat.control-region-label')
+                    : undefined
                 }
+                autoExpanded={
+                  row.node.kind === 'interaction' &&
+                  row.node.status === 'requested'
+                }
+                interactionId={
+                  row.node.kind === 'interaction'
+                    ? row.node.interactionId
+                    : undefined
+                }
+                interactionRequestEventId={
+                  row.node.kind === 'interaction'
+                    ? row.node.requestEventId || row.node.eventId
+                    : undefined
+                }
+                interactionResolutionEventId={
+                  row.node.kind === 'interaction'
+                    ? row.node.resolutionEventId
+                    : undefined
+                }
+                key={row.id}
+                category={category}
+                role={role}
+                rowId={row.id}
+                status={nodeStatus(row, paused)}
+                summary={nodeSummary(row)}
               >
-                <ToolTraceDetails invocation={row.invocation} />
+                <NodeTraceDetails row={row} />
               </TraceRow>
             );
-          }
-          const category = categoryForNode(row);
-          const role = row.node.kind === 'message' ? row.node.role : undefined;
-          return (
-            <TraceRow
-              ariaLabel={
-                row.node.kind === 'interaction'
-                  ? t('chat.control-region-label')
-                  : undefined
-              }
-              autoExpanded={
-                row.node.kind === 'interaction' &&
-                row.node.status === 'requested'
-              }
-              interactionId={
-                row.node.kind === 'interaction'
-                  ? row.node.interactionId
-                  : undefined
-              }
-              interactionRequestEventId={
-                row.node.kind === 'interaction'
-                  ? row.node.requestEventId || row.node.eventId
-                  : undefined
-              }
-              interactionResolutionEventId={
-                row.node.kind === 'interaction'
-                  ? row.node.resolutionEventId
-                  : undefined
-              }
-              key={row.id}
-              category={category}
-              role={role}
-              rowId={row.id}
-              status={nodeStatus(row, paused)}
-              summary={nodeSummary(row)}
-            >
-              <NodeTraceDetails row={row} />
-            </TraceRow>
-          );
-        })}
-      </ol>
+          })}
+        </ol>
+      ) : null}
+      {isActiveRunStatus(run.status) && !hasRunExecutionRows(run) ? (
+        <div className="px-3 py-2">
+          <PreparingToExecuteTasks />
+        </div>
+      ) : null}
     </section>
   );
 }
 
 export function TrajectoryTimeline({
   runs,
+  interactivePlansByRun = {},
   paused = false,
 }: TimelineModeProps) {
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
       {runs.map((run) => (
-        <DetailedRun key={run.id} paused={paused} run={run} />
+        <DetailedRun
+          interactivePlan={interactivePlansByRun[run.runId]}
+          key={run.id}
+          paused={paused}
+          run={run}
+        />
       ))}
     </div>
   );

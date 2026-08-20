@@ -307,6 +307,23 @@ describe('Workspace', () => {
     expect(coworkRow?.nextElementSibling).toBe(bottomBox);
   });
 
+  it('uses the same Cowork composer for the new-project variant', () => {
+    const { container } = renderWorkspace({
+      variant: 'new-project',
+      embedded: true,
+    });
+
+    expect(screen.getByText('Cowork with')).toBeInTheDocument();
+    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+    expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
+    expect(container.querySelector('#workspace-bottom-group')).toBeNull();
+    expect(screen.getByLabelText('Workspace header')).toHaveClass(
+      'flex-1',
+      'items-center',
+      'gap-0'
+    );
+  });
+
   it('keeps the agent-list height fixed across Single Agent and Workforce modes', () => {
     const singleAgentView = renderWorkspace({ sessionMode: 'single-agent' });
     const singleAgentList = singleAgentView.container.querySelector(
@@ -337,7 +354,8 @@ describe('Workspace', () => {
 
   it('guards against duplicate submissions while project creation is pending', async () => {
     let resolveCreation:
-      ((value: { projectId: string; spaceId: string }) => void) | undefined;
+      | ((value: { projectId: string; spaceId: string }) => void)
+      | undefined;
     vi.mocked(createSyncedProjectInSpace).mockImplementation(
       () =>
         new Promise((resolve) => {

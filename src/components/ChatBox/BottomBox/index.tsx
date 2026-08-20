@@ -157,6 +157,7 @@ export default function BottomBox({
     previousVariantKindRef.current = normalizedVariant.kind;
     if (
       normalizedVariant.kind === 'input' ||
+      normalizedVariant.kind === 'approval' ||
       previousKind === normalizedVariant.kind
     ) {
       return;
@@ -342,7 +343,22 @@ export default function BottomBox({
           transition={enterTransition}
         >
           {externalHeader && (
-            <BoxHeaderDisplay {...externalHeader} className="px-3" />
+            <BoxHeaderDisplay
+              {...externalHeader}
+              className="px-3"
+              descriptionAsTitle={
+                normalizedVariant.kind === 'feedback' &&
+                normalizedVariant.presentation === 'question'
+              }
+              descriptionAsMarkdown={
+                normalizedVariant.kind === 'feedback' &&
+                normalizedVariant.presentation === 'question'
+              }
+              showQuestionIcon={
+                normalizedVariant.kind === 'feedback' &&
+                normalizedVariant.presentation === 'question'
+              }
+            />
           )}
 
           {/* InputBox — controlled router selected by event-derived variant. */}

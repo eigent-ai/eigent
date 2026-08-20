@@ -119,7 +119,14 @@ export function FilePreview({
     }
     loadFileContent(file, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.path, file?.isRemote, file?.assetRef?.chatFileId, loadFileContent]);
+  }, [
+    file?.path,
+    file?.relativePath,
+    file?.artifactId,
+    file?.isRemote,
+    file?.assetRef?.chatFileId,
+    loadFileContent,
+  ]);
 
   // Breadcrumb is intentionally shallow: "Context > filename". The "Context"
   // root navigates to the Inbox/Context tab for this file.

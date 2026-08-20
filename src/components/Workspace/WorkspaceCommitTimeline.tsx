@@ -20,7 +20,10 @@ import { Bot, Upload, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export type WorkspaceCommitKind =
-  'save_point' | 'merge' | 'checkpoint' | 'commit';
+  | 'save_point'
+  | 'merge'
+  | 'checkpoint'
+  | 'commit';
 
 export const classifyWorkspaceCommit = (
   commit: Pick<WorkspaceGitCommit, 'parent_oids' | 'subject'> &
@@ -57,18 +60,22 @@ export const buildWorkspaceTimelineEvents = (
   operations: WorkspaceGitOperation[]
 ): WorkspaceTimelineEvent[] =>
   [
-    ...commits.map((commit): WorkspaceTimelineEvent => ({
-      type: 'commit',
-      id: `commit:${commit.oid}`,
-      occurredAt: commit.committed_at,
-      commit,
-    })),
-    ...operations.map((operation): WorkspaceTimelineEvent => ({
-      type: 'operation',
-      id: `operation:${operation.operation_id}`,
-      occurredAt: operation.occurred_at,
-      operation,
-    })),
+    ...commits.map(
+      (commit): WorkspaceTimelineEvent => ({
+        type: 'commit',
+        id: `commit:${commit.oid}`,
+        occurredAt: commit.committed_at,
+        commit,
+      })
+    ),
+    ...operations.map(
+      (operation): WorkspaceTimelineEvent => ({
+        type: 'operation',
+        id: `operation:${operation.operation_id}`,
+        occurredAt: operation.occurred_at,
+        operation,
+      })
+    ),
   ].sort((left, right) => right.occurredAt - left.occurredAt);
 
 export const resolveWorkspaceCommitInitiator = (
@@ -189,7 +196,7 @@ export function WorkspaceCommitTimeline({
                   </code>
                 )}
               </div>
-              <p className="mt-1.5 break-words text-body-sm font-semibold">
+              <span className="mt-1.5 block break-words text-body-sm font-semibold">
                 {commit ? (
                   commit.subject
                 ) : (
@@ -205,8 +212,8 @@ export function WorkspaceCommitTimeline({
                         })}
                   </span>
                 )}
-              </p>
-              <p className="mt-0.5 text-body-xs text-ds-text-neutral-muted-default">
+              </span>
+              <span className="mt-0.5 block text-body-xs text-ds-text-neutral-muted-default">
                 {commit
                   ? `${t('layout.workspace-git-author', {
                       defaultValue: 'Git author',
@@ -214,7 +221,7 @@ export function WorkspaceCommitTimeline({
                   : `${t('layout.workspace-user-action', {
                       defaultValue: 'User action',
                     })} · ${formatDate(operation?.occurred_at ?? 0)}`}
-              </p>
+              </span>
             </div>
           </li>
         );

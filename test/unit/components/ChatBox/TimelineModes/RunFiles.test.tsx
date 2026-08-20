@@ -91,10 +91,52 @@ describe('RunFiles capability boundary', () => {
       },
     } satisfies ProjectedArtifact;
     const { result } = renderHook(() =>
-      useRunFileInfo({ projectedArtifacts: [cloud] })
+      useRunFileInfo({
+        projectedArtifacts: [cloud],
+        workspaceRoot: '/Users/test/workspace',
+      })
     );
 
-    expect(result.current[0]?.path).toBe('');
+    expect(result.current[0]).toMatchObject({
+      path: '',
+      localPathAvailable: false,
+      isRemote: true,
+      assetRef: cloud.assetRef,
+    });
     expect(isRunFilePreviewable(result.current[0]!)).toBe(true);
+  });
+
+  it('resolves local workspace files so every changed file can open in preview', () => {
+    const changed = {
+      ...projectedArtifact,
+      artifactId: 'artifact-2',
+      name: 'notes.md',
+      relativePath: 'notes.md',
+      changeType: 'changed',
+    } satisfies ProjectedArtifact;
+    const { result } = renderHook(() =>
+      useRunFileInfo({
+        projectedArtifacts: [projectedArtifact, changed],
+        workspaceRoot: '/Users/test/workspace',
+      })
+    );
+
+    expect(result.current.map((file) => file.path)).toEqual([
+      '/Users/test/workspace/reports/report.csv',
+      '/Users/test/workspace/notes.md',
+    ]);
+    expect(result.current.every((file) => isRunFilePreviewable(file))).toBe(
+      true
+    );
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact, changed]}
+        workspaceRoot="/Users/test/workspace"
+      />
+    );
+
+    expect(screen.getByTitle('reports/report.csv').tagName).toBe('BUTTON');
+    expect(screen.getByTitle('notes.md').tagName).toBe('BUTTON');
   });
 });

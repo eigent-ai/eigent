@@ -15,8 +15,10 @@
 import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
 import type {
   ChatActivityNode,
+  ChatArtifactNode,
   ChatInteractionNode,
   ChatMessageNode,
+  ChatPlanNode,
   ChatProjectionState,
   ChatRunStatusNode,
   ChatUnknownNode,
@@ -26,7 +28,14 @@ import {
   segmentTimelineRows,
 } from '@/lib/projector/chat/presentation';
 import type { ProjectedRun } from '@/lib/projector/types';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { animate } from 'framer-motion';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -36,10 +45,12 @@ import {
   selectWindowedTimelineRuns,
 } from '@/components/ChatBox/EventNativeProjectTimeline';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import type { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { SessionMode } from '@/types/constants';
+import { ChatTaskStatus, SessionMode } from '@/types/constants';
 
 const mocks = vi.hoisted(() => ({
+  runtimeProjectId: 'project-1',
   projection: null as ChatProjectionState | null,
   projectedRuns: undefined as Record<string, ProjectedRun> | undefined,
   retry: vi.fn(),
@@ -53,17 +64,24 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useProjectEventRuntime', () => ({
   useProjectEventRuntime: () => ({
-    projectId: 'project-1',
+    projectId: mocks.runtimeProjectId,
     hydration: mocks.hydration,
     snapshot: mocks.projection
       ? {
           chat: mocks.projection,
-          view: mocks.projectedRuns
-            ? { runs: mocks.projectedRuns, artifactsByRun: {} }
-            : undefined,
+          view: {
+            projectId: mocks.runtimeProjectId,
+            runs: mocks.projectedRuns ?? {},
+            artifactsByRun: {},
+          },
         }
       : null,
   }),
+}));
+vi.mock('@/components/ChatBox/TaskBox/PlanTaskBox', () => ({
+  PlanTaskBox: ({ taskId }: { taskId: string }) => (
+    <div data-interactive-plan-card={taskId}>Interactive plan</div>
+  ),
 }));
 vi.mock('framer-motion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('framer-motion')>();
@@ -204,9 +222,11 @@ describe('isChatTimelineNearBottom', () => {
 
 describe('EventNativeProjectTimeline', () => {
   beforeEach(() => {
+    mocks.runtimeProjectId = 'project-1';
     mocks.projection = projection([]);
     mocks.projectedRuns = undefined;
     mocks.retry.mockClear();
+    vi.mocked(animate).mockClear();
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
@@ -221,6 +241,178 @@ describe('EventNativeProjectTimeline', () => {
         disconnect() {}
       } as unknown as typeof ResizeObserver;
     }
+  });
+
+  it('never renders stale nodes from a previously selected Project', () => {
+    const staleNode = {
+      ...messageNode(1),
+      projectId: 'project-previous',
+      content: 'Previous Project legacy text',
+    };
+    mocks.projection = projection([staleNode]);
+
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(
+      screen.queryByText('Previous Project legacy text')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('No messages yet. Send a message to get started.')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the submitted user turn and startup shimmer before the first durable event', () => {
+    const chatStore = {
+      getState: () => ({
+        activeTaskId: 'run-1',
+        tasks: {
+          'run-1': {
+            createdAt: Date.parse('2026-08-20T12:08:38Z'),
+            messages: [
+              {
+                id: 'legacy-user-1',
+                role: 'user',
+                content: 'Create customer package',
+                attaches: [],
+              },
+            ],
+            status: ChatTaskStatus.PENDING,
+            type: 'chat',
+          },
+        },
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByText('Create customer package')).toBeInTheDocument();
+    expect(screen.getByText('Preparing to start tasks')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No messages yet. Send a message to get started.')
+    ).not.toBeInTheDocument();
+
+    const durableUser = {
+      ...messageNode(0, 'user'),
+      content: 'Create customer package',
+      purpose: 'query' as const,
+    };
+    const narration = {
+      ...messageNode(1),
+      content: 'Reviewing the task requirements',
+      purpose: 'narration' as const,
+    };
+    const running: ChatRunStatusNode = {
+      ...messageNode(2),
+      kind: 'run_status',
+      eventType: 'run.running',
+      status: 'running',
+    };
+    mocks.projection = projection([durableUser, narration, running]);
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getAllByText('Create customer package')).toHaveLength(1);
+    expect(screen.queryByText('Preparing to start tasks')).toBeNull();
+    expect(
+      container.querySelector('[data-narrative-run-work-log]')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a terminal startup failure visible until durable events replace it', async () => {
+    const failure =
+      '❌ Backend service is not ready. Please wait a moment and try again.';
+    const chatStore = {
+      getState: () => ({
+        activeTaskId: 'run-1',
+        tasks: {
+          'run-1': {
+            createdAt: Date.parse('2026-08-20T12:08:38Z'),
+            messages: [
+              {
+                id: 'legacy-user-1',
+                role: 'user',
+                content: 'Create customer package',
+                attaches: [],
+              },
+              { id: 'legacy-failure-1', role: 'agent', content: failure },
+            ],
+            status: ChatTaskStatus.FINISHED,
+            type: 'chat',
+          },
+        },
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getByText('Create customer package')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.body).toHaveTextContent(
+        'Backend service is not ready. Please wait a moment and try again.'
+      )
+    );
+    expect(screen.queryByText('Preparing to start tasks')).toBeNull();
+
+    const durableUser = {
+      ...messageNode(0, 'user'),
+      content: 'Create customer package',
+      purpose: 'query' as const,
+    };
+    const durableFailure = {
+      ...messageNode(1),
+      content: failure,
+      purpose: 'final' as const,
+    };
+    const failed: ChatRunStatusNode = {
+      ...messageNode(2),
+      kind: 'run_status',
+      eventType: 'run.failed',
+      status: 'failed',
+    };
+    mocks.projection = projection([durableUser, durableFailure, failed]);
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.getAllByText('Create customer package')).toHaveLength(1);
+    await waitFor(() => {
+      const occurrences = (
+        document.body.textContent?.match(/Backend service is not ready/g) || []
+      ).length;
+      expect(occurrences).toBe(1);
+    });
   });
 
   it('uses full width only for the trajectory timeline', () => {
@@ -264,7 +456,7 @@ describe('EventNativeProjectTimeline', () => {
     );
   });
 
-  it('attributes narrative work to the agent that produced it', () => {
+  it('attributes narrative work to nested agent accordions only in workforce mode', () => {
     const alpha = {
       ...messageNode(1),
       purpose: 'narration' as const,
@@ -295,6 +487,12 @@ describe('EventNativeProjectTimeline', () => {
     expect(
       container.querySelector('[data-narrative-timeline]')
     ).toBeInTheDocument();
+    expect(container.querySelector('[data-narrative-agent-group]')).toBeNull();
+    expect(
+      container.querySelector('[data-narrative-segment-agent]')
+    ).toBeNull();
+    expect(screen.getByText('Message 1')).toBeInTheDocument();
+    expect(screen.getByText('Message 2')).toBeInTheDocument();
 
     rerender(
       <EventNativeProjectTimeline
@@ -305,16 +503,111 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    // Narrative has no per-agent accordion; identity rides on the segment
-    // where the actor changes, so the same rows serve both session modes.
+    const groups = [
+      ...container.querySelectorAll('[data-narrative-agent-group]'),
+    ].map((element) => element.getAttribute('data-narrative-agent-group'));
+    expect(groups).toEqual(['Alpha Agent', 'Beta Agent']);
+    expect(screen.queryByText('Message 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Message 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha Agent' }));
+    expect(screen.getByText('Message 1')).toBeInTheDocument();
+  });
+
+  it('restores the interactive card for the active unconfirmed workforce plan', () => {
+    const user = messageNode(0, 'user');
+    const plan: ChatPlanNode = {
+      ...messageNode(1),
+      kind: 'plan',
+      eventType: 'legacy.to_sub_tasks',
+      legacyStep: 'to_sub_tasks',
+      title: 'Research plan',
+      tasks: [
+        { id: 'task-1', title: 'Inspect the components', status: 'pending' },
+      ],
+    };
+    const pending: ChatRunStatusNode = {
+      ...messageNode(2),
+      kind: 'run_status',
+      eventType: 'run.created',
+      status: 'pending',
+    };
+    mocks.projection = projection([user, plan, pending]);
+    const chatStore = {
+      getState: () => ({
+        activeTaskId: 'run-1',
+        tasks: {
+          'run-1': {
+            messages: [
+              {
+                id: 'legacy-plan-message',
+                role: 'agent',
+                content: '',
+                step: 'to_sub_tasks',
+                isConfirm: false,
+              },
+            ],
+          },
+        },
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    const narrativePlanCard = container.querySelector(
+      '[data-interactive-plan-card="run-1"]'
+    ) as HTMLElement;
+    expect(narrativePlanCard).toBeInTheDocument();
     expect(
-      container.querySelector('[data-narrative-timeline]')
+      narrativePlanCard.closest('[data-narrative-run-work-log]')
     ).toBeInTheDocument();
     expect(
-      [...container.querySelectorAll('[data-narrative-segment-agent]')].map(
-        (element) => element.getAttribute('data-narrative-segment-agent')
-      )
-    ).toEqual(['Alpha Agent', 'Beta Agent']);
+      container.querySelector('[data-narrative-plan-interactive]')
+    ).toContainElement(narrativePlanCard);
+    expect(screen.queryByText('Research plan')).toBeNull();
+
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="trajectory"
+        projectId="project-1"
+        sessionMode={SessionMode.WORKFORCE}
+        scrollBottomInsetPx={128}
+      />
+    );
+    const trajectoryPlanRow = container.querySelector(
+      '[data-event-node-id="message-1"]'
+    ) as HTMLElement;
+    expect(trajectoryPlanRow).toHaveAttribute('data-interactive-plan-event');
+    expect(trajectoryPlanRow).toContainElement(
+      container.querySelector(
+        '[data-interactive-plan-card="run-1"]'
+      ) as HTMLElement
+    );
+    expect(screen.queryByText('Research plan')).toBeNull();
+
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        detailLevel="narrative"
+        projectId="project-1"
+        sessionMode={SessionMode.SINGLE_AGENT}
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
+    expect(
+      container.querySelector('[data-narrative-plan-id]')
+    ).toBeInTheDocument();
   });
 
   it('renders semantic event nodes through the event timeline', () => {
@@ -444,6 +737,60 @@ describe('EventNativeProjectTimeline', () => {
 
     expect(screen.getByText(/Worked for/)).toBeInTheDocument();
     expect(screen.getByText('5s')).toBeInTheDocument();
+  });
+
+  it('shows Files changed only after a final markdown response is terminal', async () => {
+    const finalResponse = {
+      ...messageNode(1),
+      purpose: 'final' as const,
+      content: '## Finished report',
+    };
+    const artifact: ChatArtifactNode = {
+      ...messageNode(2),
+      kind: 'artifact',
+      eventType: 'artifact.created',
+      operation: 'created',
+      path: 'reports/final.md',
+      relativePath: 'reports/final.md',
+      name: 'final.md',
+    };
+    const running: ChatRunStatusNode = {
+      ...messageNode(3),
+      kind: 'run_status',
+      eventType: 'run.running',
+      status: 'running',
+    };
+    mocks.projection = projection([finalResponse, artifact, running]);
+
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(screen.queryByText('Files changed')).not.toBeInTheDocument();
+
+    mocks.projectedRuns = {
+      'run-1': {
+        runId: 'run-1',
+        status: 'completed',
+        lastSequence: 3,
+        runVersion: 1,
+        updatedAt: '2026-08-20T00:00:03Z',
+        totalAttemptElapsedMs: 3_000,
+      },
+    };
+    rerender(
+      <EventNativeProjectTimeline
+        detailLevel="narrative"
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+
+    expect(await screen.findByText('Files changed')).toBeInTheDocument();
   });
 
   it('shows a durable request and resolution as one interaction receipt', () => {
@@ -785,7 +1132,13 @@ describe('EventNativeProjectTimeline', () => {
     mocks.projection = projection([
       messageNode(0, 'user'),
       messageNode(1, 'assistant'),
-      messageNode(2, 'user'),
+      {
+        ...messageNode(2, 'user'),
+        id: 'run-2-user',
+        eventId: 'run-2-user',
+        runId: 'run-2',
+        purpose: 'query',
+      },
     ]);
     rerender(
       <EventNativeProjectTimeline
@@ -800,6 +1153,81 @@ describe('EventNativeProjectTimeline', () => {
       top: 2000,
       behavior: 'auto',
     });
+  });
+
+  it('does not restart the anchor when an optimistic query becomes durable', () => {
+    const scrollContainer = createScrollContainer({
+      scrollTop: 500,
+      clientHeight: 400,
+      scrollHeight: 2000,
+    });
+    const scrollContainerRef = { current: scrollContainer };
+    const legacyState = {
+      activeTaskId: 'run-1',
+      tasks: {
+        'run-1': {
+          messages: [{ id: 'legacy-user-1', role: 'user', content: 'First' }],
+          status: ChatTaskStatus.RUNNING,
+          type: 'chat',
+        },
+      },
+    } as any;
+    const chatStore = {
+      getState: () => legacyState,
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+    const firstUser = {
+      ...messageNode(0, 'user'),
+      content: 'First',
+      purpose: 'query' as const,
+    };
+    mocks.projection = projection([firstUser, messageNode(1)]);
+
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={200}
+      />
+    );
+    vi.mocked(animate).mockClear();
+
+    legacyState.activeTaskId = 'run-2';
+    legacyState.tasks['run-2'] = {
+      messages: [{ id: 'legacy-user-2', role: 'user', content: 'Second' }],
+      status: ChatTaskStatus.PENDING,
+      type: 'chat',
+    };
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={200}
+      />
+    );
+    expect(animate).toHaveBeenCalledTimes(1);
+
+    const secondUser = {
+      ...messageNode(2, 'user'),
+      id: 'durable-user-2',
+      eventId: 'durable-user-2',
+      runId: 'run-2',
+      content: 'Second',
+      purpose: 'query' as const,
+    };
+    mocks.projection = projection([firstUser, messageNode(1), secondUser]);
+    rerender(
+      <EventNativeProjectTimeline
+        chatStore={chatStore}
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={200}
+      />
+    );
+
+    expect(animate).toHaveBeenCalledTimes(1);
   });
 
   it('does not follow a new assistant event when the user has scrolled up', () => {

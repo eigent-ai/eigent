@@ -12,9 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
 import { ChevronDown, InfoIcon } from 'lucide-react';
@@ -136,26 +139,7 @@ interface UserQueryGroupProps {
   taskId?: string;
 }
 
-export function isUserMessageReplyToAsk(
-  messages: any[],
-  userMessageId: string
-): boolean {
-  const userMessageIndex = messages.findIndex(
-    (message: any) => message.id === userMessageId
-  );
-  if (userMessageIndex <= 0) return false;
-  const userMessage = messages[userMessageIndex];
-  const previousMessage = messages[userMessageIndex - 1];
-  const followsAsk =
-    previousMessage?.role === 'agent' &&
-    previousMessage?.step === AgentStep.ASK;
-  if (!followsAsk) return false;
-  if (!userMessage?.interactionResponseTo) return true;
-  return (
-    previousMessage?.interaction?.interaction_id ===
-    userMessage.interactionResponseTo
-  );
-}
+export { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 
 export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   chatId,
@@ -171,14 +155,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const workspaceRoot = useSpaceStore((s) =>
+    activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
+  );
   const openFilePreviewInPanel = usePageTabStore(
     (state) => state.openFilePreview
   );
   const openFilePreview = useCallback(
     (file: FileInfo) => {
-      openFilePreviewInPanel(file);
+      const resolvedPath =
+        file.path?.trim() ||
+        resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
+      openFilePreviewInPanel(
+        resolvedPath && resolvedPath !== file.path
+          ? { ...file, path: resolvedPath, localPathAvailable: true }
+          : file
+      );
     },
-    [openFilePreviewInPanel]
+    [openFilePreviewInPanel, workspaceRoot]
   );
 
   // Subscribe to streaming decompose text separately for efficient updates

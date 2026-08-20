@@ -86,7 +86,7 @@ export function ArtifactChangeList({
             <>
               <span
                 className={cn(
-                  'min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default',
+                  'min-w-0 flex-1 truncate !text-body-sm font-medium text-ds-text-neutral-default-default',
                   canOpen && 'group-hover:underline'
                 )}
               >
@@ -97,6 +97,10 @@ export function ArtifactChangeList({
               </span>
             </>
           );
+          const rowClassName = cn(
+            'flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-default',
+            canOpen && 'group'
+          );
           return canOpen ? (
             <button
               type="button"
@@ -104,7 +108,7 @@ export function ArtifactChangeList({
               title={detail}
               data-artifact-preview="available"
               onClick={() => onOpen(file)}
-              className="group flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
+              className={rowClassName}
             >
               {contents}
             </button>
@@ -114,7 +118,7 @@ export function ArtifactChangeList({
               key={`artifact-${detail}-${fileIndex}`}
               title={detail}
               data-artifact-preview="unavailable"
-              className="flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left"
+              className={rowClassName}
             >
               {contents}
             </div>

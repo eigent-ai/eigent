@@ -29,21 +29,28 @@ import {
   type ChatTimelineDetailLevel,
 } from '@/types/chatTimeline';
 import {
-  AlignLeft,
   ArrowLeft,
+  createLucideIcon,
   GalleryThumbnails,
-  ListTree,
+  Logs,
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+const SquareText = createLucideIcon('square-text', [
+  ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
+  ['path', { d: 'M7 8h10' }],
+  ['path', { d: 'M7 12h10' }],
+  ['path', { d: 'M7 16h6' }],
+]);
+
 /**
- * Narrative reads as prose, trajectory reads as an indented trace. The icons
+ * Narrative reads as prose, trajectory reads as a log trace. The icons
  * carry the distinction on their own so the toggle needs no visible text.
  */
 const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
-  narrative: AlignLeft,
-  trajectory: ListTree,
+  narrative: SquareText,
+  trajectory: Logs,
 };
 
 const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {

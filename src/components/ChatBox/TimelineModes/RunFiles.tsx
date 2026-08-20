@@ -16,7 +16,9 @@ import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactCha
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
 import { cn } from '@/lib/utils';
+import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,16 +27,18 @@ function extension(name: string): string {
   return name.includes('.') ? name.split('.').at(-1) || '' : '';
 }
 
-function fileInfoFromProjectedArtifact(artifact: ProjectedArtifact): FileInfo {
+function fileInfoFromProjectedArtifact(
+  artifact: ProjectedArtifact,
+  workspaceRoot?: string | null
+): FileInfo {
+  const localPathAvailable = artifact.localPathAvailable;
+  const resolvedPath = localPathAvailable
+    ? resolveWorkspaceFilePath(workspaceRoot, artifact.relativePath)
+    : '';
   return {
     name: artifact.name,
     type: extension(artifact.name),
-    // A portable identity is not a local path capability. Cloud assets are
-    // resolved lazily; local files stay display-only until a scoped workspace
-    // resolver can enrich them.
-    // TODO(CAMEL): resolve local Artifact identity against the owning
-    // Space/Attempt workspace lease and return a trusted local file handle.
-    path: '',
+    path: resolvedPath,
     relativePath: artifact.relativePath,
     artifactId: artifact.artifactId,
     artifactChange: artifact.changeType,
@@ -45,22 +49,29 @@ function fileInfoFromProjectedArtifact(artifact: ProjectedArtifact): FileInfo {
       artifact.uploadPolicy === 'metadata_only'
         ? artifact.uploadPolicy
         : undefined,
-    localPathAvailable: artifact.localPathAvailable,
+    localPathAvailable,
     assetRef: artifact.assetRef,
-    isRemote: !artifact.localPathAvailable && Boolean(artifact.assetRef),
+    isRemote: !localPathAvailable && Boolean(artifact.assetRef),
   };
 }
 
-function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
+function fileInfoFromChatArtifact(
+  artifact: ChatArtifactNode,
+  workspaceRoot?: string | null
+): FileInfo {
   const name =
     artifact.name ||
     artifact.relativePath?.split('/').filter(Boolean).at(-1) ||
     artifact.path.split('/').filter(Boolean).at(-1) ||
     artifact.path;
+  const resolvedPath = resolveWorkspaceFilePath(
+    workspaceRoot,
+    artifact.relativePath || artifact.path
+  );
   return {
     name,
     type: extension(name),
-    path: '',
+    path: resolvedPath,
     relativePath: artifact.relativePath,
     artifactId: artifact.artifactId,
     artifactChange:
@@ -70,6 +81,7 @@ function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
           ? 'changed'
           : undefined,
     mimeType: artifact.mimeType,
+    localPathAvailable: Boolean(resolvedPath),
   };
 }
 
@@ -83,36 +95,47 @@ function uniqueFiles(files: readonly FileInfo[]): FileInfo[] {
 }
 
 export function isRunFilePreviewable(file: FileInfo): boolean {
-  return (
-    file.localPathAvailable === false &&
-    typeof file.assetRef?.chatFileId === 'number'
-  );
+  if (typeof file.assetRef?.chatFileId === 'number') return true;
+  return Boolean(file.path?.trim());
 }
 
 export interface RunFilesProps {
   artifactNodes?: readonly ChatArtifactNode[];
   projectedArtifacts?: readonly ProjectedArtifact[];
+  workspaceRoot?: string | null;
 }
 
 export function useRunFileInfo({
   artifactNodes = [],
   projectedArtifacts = [],
+  workspaceRoot = null,
 }: RunFilesProps): FileInfo[] {
   return useMemo(
     () =>
       uniqueFiles(
         projectedArtifacts.length > 0
-          ? projectedArtifacts.map(fileInfoFromProjectedArtifact)
+          ? projectedArtifacts.map((artifact) =>
+              fileInfoFromProjectedArtifact(artifact, workspaceRoot)
+            )
           : artifactNodes
               .filter((artifact) => artifact.operation !== 'deleted')
-              .map(fileInfoFromChatArtifact)
+              .map((artifact) =>
+                fileInfoFromChatArtifact(artifact, workspaceRoot)
+              )
       ),
-    [artifactNodes, projectedArtifacts]
+    [artifactNodes, projectedArtifacts, workspaceRoot]
   );
 }
 
 export function RunFilesGroup(props: RunFilesProps) {
-  const files = useRunFileInfo(props);
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const spaceRootPath = useSpaceStore((s) =>
+    activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
+  );
+  const files = useRunFileInfo({
+    ...props,
+    workspaceRoot: props.workspaceRoot ?? spaceRootPath ?? null,
+  });
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
 
   return (

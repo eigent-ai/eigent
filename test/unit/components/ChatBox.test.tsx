@@ -31,6 +31,7 @@ import { useAuthStore } from '../../../src/store/authStore';
 const eventNativeHarness = vi.hoisted(() => ({
   enabled: false,
   snapshot: null as any,
+  controlOptions: null as any,
 }));
 
 // Mock dependencies (use the same relative paths as the imports above)
@@ -87,13 +88,16 @@ vi.mock('../../../src/components/ChatBox/EventNativeProjectTimeline', () => ({
 vi.mock(
   '../../../src/components/ChatBox/BottomBox/useEventNativeHumanControl',
   () => ({
-    useEventNativeHumanControl: () => ({
-      interaction: null,
-      variant: null,
-      pendingCount: 0,
-      phase: 'idle',
-      submitError: null,
-    }),
+    useEventNativeHumanControl: (options: any) => {
+      eventNativeHarness.controlOptions = options;
+      return {
+        interaction: null,
+        variant: null,
+        pendingCount: 0,
+        phase: 'idle',
+        submitError: null,
+      };
+    },
   })
 );
 vi.mock('../../../src/lib', () => ({
@@ -290,6 +294,8 @@ describe('ChatBox Component', async () => {
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
     setStatus: vi.fn(),
+    setDurableRunStatus: vi.fn(),
+    markHumanInteractionResolved: vi.fn(),
   };
 
   const preparedRunState = {
@@ -407,6 +413,12 @@ describe('ChatBox Component', async () => {
     window.sessionStorage.clear();
     eventNativeHarness.enabled = false;
     eventNativeHarness.snapshot = null;
+    eventNativeHarness.controlOptions = null;
+    defaultProjectStoreState.activeProjectId = 'test-project-id';
+    defaultProjectStoreState.getActiveChatStore.mockImplementation(() => ({
+      getState: () => defaultChatStoreState,
+      subscribe: () => () => {},
+    }));
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -797,6 +809,16 @@ describe('ChatBox Component', async () => {
       return runningStore;
     };
 
+    it('keeps the plan overlay host mounted for the durable timeline', () => {
+      setRunningEventNativeStore();
+
+      renderChatBox();
+
+      expect(
+        document.getElementById('plan-task-overlay-root')
+      ).toBeInTheDocument();
+    });
+
     it('fails closed when the rendered Run loses control ownership before click', async () => {
       const user = userEvent.setup();
       setRunningEventNativeStore();
@@ -853,6 +875,81 @@ describe('ChatBox Component', async () => {
       expect(runningStore.stopTask).not.toHaveBeenCalled();
       expect(runningStore.setIsPending).not.toHaveBeenCalled();
       consoleError.mockRestore();
+    });
+  });
+
+  describe('Event-native human-control compatibility bridge', () => {
+    it('reconciles the initiating Project after the user switches Projects', () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      const projectAState = {
+        ...defaultChatStoreState,
+        activeTaskId: 'test-task-id',
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [],
+            askList: [],
+          },
+        },
+        setIsPending: vi.fn(),
+        setDurableRunStatus: vi.fn(),
+        setStatus: vi.fn(),
+        markHumanInteractionResolved: vi.fn(),
+        setActiveAskList: vi.fn(),
+        setActiveAsk: vi.fn(),
+        addMessages: vi.fn(),
+      };
+      const projectBState = {
+        ...projectAState,
+        setIsPending: vi.fn(),
+        setDurableRunStatus: vi.fn(),
+        setStatus: vi.fn(),
+        markHumanInteractionResolved: vi.fn(),
+        setActiveAskList: vi.fn(),
+        setActiveAsk: vi.fn(),
+        addMessages: vi.fn(),
+      };
+      const projectAStore = { getState: () => projectAState };
+      const projectBStore = { getState: () => projectBState };
+      defaultProjectStoreState.getActiveChatStore.mockImplementation(
+        (projectId?: string) =>
+          projectId === 'test-project-id' ? projectAStore : projectBStore
+      );
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: projectAState as any,
+      });
+
+      renderChatBox();
+      const initiatingCallbacks = eventNativeHarness.controlOptions;
+      defaultProjectStoreState.activeProjectId = 'project-b';
+      const interaction = {
+        interactionId: 'interaction-1',
+        runId: 'test-task-id',
+      };
+
+      initiatingCallbacks.onSubmissionStart(interaction);
+      initiatingCallbacks.onSubmissionFailure(interaction);
+      initiatingCallbacks.onDurableResolution(interaction);
+
+      expect(
+        defaultProjectStoreState.getActiveChatStore
+      ).toHaveBeenLastCalledWith('test-project-id');
+      expect(projectAState.setIsPending).toHaveBeenCalledWith(
+        'test-task-id',
+        true
+      );
+      expect(projectAState.setIsPending).toHaveBeenCalledWith(
+        'test-task-id',
+        false
+      );
+      expect(projectAState.markHumanInteractionResolved).toHaveBeenCalledWith(
+        'test-task-id',
+        'interaction-1'
+      );
+      expect(projectBState.setIsPending).not.toHaveBeenCalled();
+      expect(projectBState.markHumanInteractionResolved).not.toHaveBeenCalled();
     });
   });
 

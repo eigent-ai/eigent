@@ -12,12 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,6 +19,7 @@ import {
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   buildWorkspaceTimelineEvents,
@@ -72,6 +67,8 @@ interface WorkspaceVersionHistoryDialogProps {
 const formatDate = (seconds: number) =>
   seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '—';
 
+type VersionHistoryTab = 'projects' | 'tasks' | 'commits' | 'technical';
+
 export function WorkspaceVersionHistoryDialog({
   open,
   onOpenChange,
@@ -84,6 +81,7 @@ export function WorkspaceVersionHistoryDialog({
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const [history, setHistory] = useState<WorkspaceGitHistory | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<VersionHistoryTab>('projects');
   const [showAllTaskVersions, setShowAllTaskVersions] = useState(false);
   const [showAllCommits, setShowAllCommits] = useState(false);
   const [argvText, setArgvText] = useState('["status", "--short"]');
@@ -149,6 +147,7 @@ export function WorkspaceVersionHistoryDialog({
 
   useEffect(() => {
     if (open) {
+      setActiveTab('projects');
       setShowAllTaskVersions(false);
       setShowAllCommits(false);
       void load();
@@ -233,7 +232,7 @@ export function WorkspaceVersionHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" overlayVariant="dimmed">
+      <DialogContent size="lg" overlayVariant="dimmed" className="h-[90vh]">
         <DialogHeader
           title={t('layout.workspace-version-history', {
             defaultValue: 'Version history',
@@ -243,7 +242,7 @@ export function WorkspaceVersionHistoryDialog({
               'Browse saved Space and task versions. Technical Git details are available below.',
           })}
         />
-        <DialogContentSection className="scrollbar-overlay min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        <DialogContentSection className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden p-5">
           {loading && !history ? (
             <div className="flex min-h-40 items-center justify-center">
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
@@ -252,20 +251,20 @@ export function WorkspaceVersionHistoryDialog({
 
           {history && versionView ? (
             <>
-              <section className="space-y-2">
+              <section className="shrink-0 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-body-sm font-bold">
+                    <span className="block text-body-sm font-bold">
                       {t('layout.workspace-current-version', {
                         defaultValue: 'Current Space',
                       })}
-                    </h3>
-                    <p className="text-body-xs text-ds-text-neutral-muted-default">
+                    </span>
+                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
                       {t('layout.workspace-current-version-description', {
                         defaultValue:
                           'The latest save point for files visible in this Space.',
                       })}
-                    </p>
+                    </span>
                   </div>
                   <Button
                     variant="ghost"
@@ -289,18 +288,18 @@ export function WorkspaceVersionHistoryDialog({
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-body-sm font-semibold">
+                      <span className="block text-body-sm font-semibold">
                         {t('layout.workspace-latest-save-point', {
                           defaultValue: 'Latest save point',
                         })}
-                      </p>
-                      <p className="truncate text-body-xs text-ds-text-neutral-muted-default">
+                      </span>
+                      <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
                         {versionView.currentSpace.subject ||
                           t('layout.workspace-saved-version', {
                             defaultValue: 'Saved version',
                           })}{' '}
                         · {formatDate(versionView.currentSpace.committed_at)}
-                      </p>
+                      </span>
                     </div>
                     <code className="shrink-0 rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-2 py-1 text-body-xs text-ds-text-neutral-muted-default">
                       {versionView.currentSpace.oid.slice(0, 8)}
@@ -315,219 +314,8 @@ export function WorkspaceVersionHistoryDialog({
                 )}
               </section>
 
-              <section className="space-y-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-body-sm font-bold">
-                      {t('layout.workspace-project-versions', {
-                        defaultValue: 'Project versions',
-                      })}
-                    </h3>
-                    <span className="rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
-                      {versionView.projectVersions.length}
-                    </span>
-                  </div>
-                  <p className="text-body-xs text-ds-text-neutral-muted-default">
-                    {t('layout.workspace-project-versions-description', {
-                      defaultValue:
-                        'The latest retained version for each Project in this Space.',
-                    })}
-                  </p>
-                </div>
-                <div className="divide-y divide-ds-border-neutral-default-default rounded-xl border border-ds-border-neutral-default-default">
-                  {versionView.projectVersions.map((branch) => (
-                    <div
-                      key={branch.ref}
-                      className="flex items-center gap-3 px-3 py-3"
-                    >
-                      <FolderGit2
-                        className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
-                        aria-hidden
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-body-sm font-semibold">
-                          {(branch.project_id &&
-                            projectNames.get(branch.project_id)) ||
-                            t('layout.workspace-project-version', {
-                              defaultValue: 'Project version',
-                            })}
-                        </p>
-                        <p className="truncate text-body-xs text-ds-text-neutral-muted-default">
-                          {branch.subject.startsWith(
-                            'Initialize Eigent Project workspace'
-                          )
-                            ? t('layout.workspace-project-initialized', {
-                                defaultValue: 'Project initialized',
-                              })
-                            : t('layout.workspace-project-updated', {
-                                defaultValue: 'Project updated',
-                              })}{' '}
-                          · {formatDate(branch.committed_at)}
-                        </p>
-                      </div>
-                      <code className="shrink-0 rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-body-xs text-ds-text-neutral-muted-default">
-                        {branch.oid.slice(0, 8)}
-                      </code>
-                    </div>
-                  ))}
-                  {versionView.projectVersions.length === 0 ? (
-                    <p className="p-4 text-body-sm text-ds-text-neutral-muted-default">
-                      {t('layout.workspace-no-project-versions', {
-                        defaultValue: 'No Project versions are available yet.',
-                      })}
-                    </p>
-                  ) : null}
-                </div>
-              </section>
-
-              <section className="space-y-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-body-sm font-bold">
-                      {t('layout.workspace-task-versions', {
-                        defaultValue: 'Task versions',
-                      })}
-                    </h3>
-                    <span className="rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
-                      {versionView.taskVersions.length}
-                    </span>
-                  </div>
-                  <p className="text-body-xs text-ds-text-neutral-muted-default">
-                    {t('layout.workspace-task-versions-description', {
-                      defaultValue:
-                        'One saved entry per task. Internal execution branches are grouped automatically.',
-                    })}
-                  </p>
-                </div>
-                <div className="divide-y divide-ds-border-neutral-default-default rounded-xl border border-ds-border-neutral-default-default">
-                  {(showAllTaskVersions
-                    ? versionView.taskVersions
-                    : versionView.taskVersions.slice(0, 5)
-                  ).map((taskVersion) => {
-                    const projectName =
-                      (taskVersion.branch.project_id &&
-                        projectNames.get(taskVersion.branch.project_id)) ||
-                      projectNameByOid.get(taskVersion.branch.oid);
-                    return (
-                      <div
-                        key={taskVersion.id}
-                        className="flex items-center gap-3 px-3 py-3"
-                      >
-                        <History
-                          className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
-                          aria-hidden
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-body-sm font-semibold">
-                            {projectName ||
-                              t('layout.workspace-task-version', {
-                                defaultValue: 'Task version',
-                              })}
-                          </p>
-                          <p className="truncate text-body-xs text-ds-text-neutral-muted-default">
-                            {taskVersion.branch.subject.startsWith(
-                              'Initialize Eigent Project workspace'
-                            )
-                              ? t('layout.workspace-task-workspace-created', {
-                                  defaultValue: 'Task workspace created',
-                                })
-                              : t('layout.workspace-task-output-saved', {
-                                  defaultValue: 'Task output saved',
-                                })}{' '}
-                            · {formatDate(taskVersion.branch.committed_at)}
-                            {taskVersion.agentCount > 0
-                              ? ` · ${taskVersion.agentCount} ${
-                                  taskVersion.agentCount === 1
-                                    ? 'agent'
-                                    : 'agents'
-                                }`
-                              : ''}
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
-                          {taskVersion.archived
-                            ? t('layout.workspace-version-retained', {
-                                defaultValue: 'Retained',
-                              })
-                            : t('layout.workspace-version-active', {
-                                defaultValue: 'Active',
-                              })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {versionView.taskVersions.length === 0 ? (
-                    <p className="p-4 text-body-sm text-ds-text-neutral-muted-default">
-                      {t('layout.workspace-no-task-versions', {
-                        defaultValue: 'No task versions are available yet.',
-                      })}
-                    </p>
-                  ) : null}
-                </div>
-                {versionView.taskVersions.length > 5 ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAllTaskVersions((value) => !value)}
-                  >
-                    {showAllTaskVersions
-                      ? t('layout.workspace-show-recent-task-versions', {
-                          defaultValue: 'Show recent only',
-                        })
-                      : t('layout.workspace-show-all-task-versions', {
-                          count: versionView.taskVersions.length,
-                          defaultValue: `Show all ${versionView.taskVersions.length} task versions`,
-                        })}
-                  </Button>
-                ) : null}
-              </section>
-
-              <section className="space-y-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-body-sm font-bold">
-                      {t('layout.workspace-recent-commits', {
-                        defaultValue: 'Recent checkpoints and commits',
-                      })}
-                    </h3>
-                    <span className="rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
-                      {timelineEvents.length}
-                    </span>
-                  </div>
-                  <p className="text-body-xs text-ds-text-neutral-muted-default">
-                    {t('layout.workspace-recent-commits-description', {
-                      defaultValue:
-                        'A chronological Git view of save points, task checkpoints, and merges.',
-                    })}
-                  </p>
-                </div>
-                <WorkspaceCommitTimeline
-                  events={
-                    showAllCommits
-                      ? timelineEvents
-                      : timelineEvents.slice(0, 10)
-                  }
-                />
-                {timelineEvents.length > 10 ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAllCommits((value) => !value)}
-                  >
-                    {showAllCommits
-                      ? t('layout.workspace-show-recent-commits', {
-                          defaultValue: 'Show recent only',
-                        })
-                      : t('layout.workspace-show-all-commits', {
-                          count: timelineEvents.length,
-                          defaultValue: `Show all ${timelineEvents.length} events`,
-                        })}
-                  </Button>
-                ) : null}
-              </section>
-
               {history.large_repository.warning ? (
-                <div className="flex gap-2 rounded-xl border border-ds-border-warning-default-default p-3 text-body-sm">
+                <div className="flex shrink-0 gap-2 rounded-xl border border-ds-border-warning-default-default p-3 text-body-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
                   <span>
                     {t('layout.workspace-large-repository-warning', {
@@ -538,93 +326,335 @@ export function WorkspaceVersionHistoryDialog({
                 </div>
               ) : null}
 
-              <Accordion type="multiple" className="space-y-2">
-                <AccordionItem
-                  value="technical-details"
-                  className="rounded-xl border border-ds-border-neutral-default-default px-3"
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) =>
+                  setActiveTab(value as VersionHistoryTab)
+                }
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <TabsList
+                  appearance="default"
+                  aria-label={t('layout.workspace-version-history', {
+                    defaultValue: 'Version history',
+                  })}
+                  className="w-full shrink-0"
                 >
-                  <AccordionTrigger className="gap-3 py-3 hover:no-underline">
-                    <div className="flex min-w-0 items-center gap-3 text-left">
+                  <TabsTrigger
+                    value="projects"
+                    className="flex-1 gap-1.5 !text-body-sm"
+                  >
+                    {t('layout.workspace-project-versions', {
+                      defaultValue: 'Project versions',
+                    })}
+                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                      {versionView.projectVersions.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="tasks"
+                    className="flex-1 gap-1.5 !text-body-sm"
+                  >
+                    {t('layout.workspace-task-versions', {
+                      defaultValue: 'Task versions',
+                    })}
+                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                      {versionView.taskVersions.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="commits"
+                    className="flex-1 gap-1.5 !text-body-sm"
+                  >
+                    {t('layout.workspace-recent-commits', {
+                      defaultValue: 'Checkpoints',
+                    })}
+                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                      {timelineEvents.length}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="technical"
+                    className="flex-1 gap-1.5 !text-body-sm"
+                  >
+                    {t('layout.workspace-technical-details', {
+                      defaultValue: 'Technical',
+                    })}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent
+                  value="projects"
+                  className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
+                >
+                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    {t('layout.workspace-project-versions-description', {
+                      defaultValue:
+                        'The latest retained version for each Project in this Space.',
+                    })}
+                  </span>
+                  <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                    {versionView.projectVersions.map((branch) => (
+                      <div
+                        key={branch.ref}
+                        className="flex items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                      >
+                        <FolderGit2
+                          className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-body-sm font-semibold">
+                            {(branch.project_id &&
+                              projectNames.get(branch.project_id)) ||
+                              t('layout.workspace-project-version', {
+                                defaultValue: 'Project version',
+                              })}
+                          </span>
+                          <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                            {branch.subject.startsWith(
+                              'Initialize Eigent Project workspace'
+                            )
+                              ? t('layout.workspace-project-initialized', {
+                                  defaultValue: 'Project initialized',
+                                })
+                              : t('layout.workspace-project-updated', {
+                                  defaultValue: 'Project updated',
+                                })}{' '}
+                            · {formatDate(branch.committed_at)}
+                          </span>
+                        </div>
+                        <code className="shrink-0 rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-body-xs text-ds-text-neutral-muted-default">
+                          {branch.oid.slice(0, 8)}
+                        </code>
+                      </div>
+                    ))}
+                    {versionView.projectVersions.length === 0 ? (
+                      <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                        {t('layout.workspace-no-project-versions', {
+                          defaultValue:
+                            'No Project versions are available yet.',
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                </TabsContent>
+
+                <TabsContent
+                  value="tasks"
+                  className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
+                >
+                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    {t('layout.workspace-task-versions-description', {
+                      defaultValue:
+                        'One saved entry per task. Internal execution branches are grouped automatically.',
+                    })}
+                  </span>
+                  <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                    {(showAllTaskVersions
+                      ? versionView.taskVersions
+                      : versionView.taskVersions.slice(0, 5)
+                    ).map((taskVersion) => {
+                      const projectName =
+                        (taskVersion.branch.project_id &&
+                          projectNames.get(taskVersion.branch.project_id)) ||
+                        projectNameByOid.get(taskVersion.branch.oid);
+                      return (
+                        <div
+                          key={taskVersion.id}
+                          className="flex items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                        >
+                          <History
+                            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                            aria-hidden
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-body-sm font-semibold">
+                              {projectName ||
+                                t('layout.workspace-task-version', {
+                                  defaultValue: 'Task version',
+                                })}
+                            </span>
+                            <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                              {taskVersion.branch.subject.startsWith(
+                                'Initialize Eigent Project workspace'
+                              )
+                                ? t('layout.workspace-task-workspace-created', {
+                                    defaultValue: 'Task workspace created',
+                                  })
+                                : t('layout.workspace-task-output-saved', {
+                                    defaultValue: 'Task output saved',
+                                  })}{' '}
+                              · {formatDate(taskVersion.branch.committed_at)}
+                              {taskVersion.agentCount > 0
+                                ? ` · ${taskVersion.agentCount} ${
+                                    taskVersion.agentCount === 1
+                                      ? 'agent'
+                                      : 'agents'
+                                  }`
+                                : ''}
+                            </span>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
+                            {taskVersion.archived
+                              ? t('layout.workspace-version-retained', {
+                                  defaultValue: 'Retained',
+                                })
+                              : t('layout.workspace-version-active', {
+                                  defaultValue: 'Active',
+                                })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {versionView.taskVersions.length === 0 ? (
+                      <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                        {t('layout.workspace-no-task-versions', {
+                          defaultValue: 'No task versions are available yet.',
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                  {versionView.taskVersions.length > 5 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllTaskVersions((value) => !value)}
+                    >
+                      {showAllTaskVersions
+                        ? t('layout.workspace-show-recent-task-versions', {
+                            defaultValue: 'Show recent only',
+                          })
+                        : t('layout.workspace-show-all-task-versions', {
+                            count: versionView.taskVersions.length,
+                            defaultValue: `Show all ${versionView.taskVersions.length} task versions`,
+                          })}
+                    </Button>
+                  ) : null}
+                </TabsContent>
+
+                <TabsContent
+                  value="commits"
+                  className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
+                >
+                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    {t('layout.workspace-recent-commits-description', {
+                      defaultValue:
+                        'A chronological Git view of save points, task checkpoints, and merges.',
+                    })}
+                  </span>
+                  <WorkspaceCommitTimeline
+                    events={
+                      showAllCommits
+                        ? timelineEvents
+                        : timelineEvents.slice(0, 10)
+                    }
+                  />
+                  {timelineEvents.length > 10 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllCommits((value) => !value)}
+                    >
+                      {showAllCommits
+                        ? t('layout.workspace-show-recent-commits', {
+                            defaultValue: 'Show recent only',
+                          })
+                        : t('layout.workspace-show-all-commits', {
+                            count: timelineEvents.length,
+                            defaultValue: `Show all ${timelineEvents.length} events`,
+                          })}
+                    </Button>
+                  ) : null}
+                </TabsContent>
+
+                <TabsContent
+                  value="technical"
+                  className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
+                >
+                  <div className="space-y-2">
+                    <div className="flex min-w-0 items-center gap-3 py-2">
                       <GitBranch className="size-4 shrink-0" aria-hidden />
                       <div className="min-w-0">
-                        <p className="text-body-sm font-semibold">
+                        <span className="block text-body-sm font-semibold">
                           {t('layout.workspace-technical-details', {
                             defaultValue: 'Technical details',
                           })}
-                        </p>
-                        <p className="text-body-xs font-normal text-ds-text-neutral-muted-default">
+                        </span>
+                        <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
                           {t('layout.workspace-technical-details-description', {
                             count: versionView.technicalBranches.length,
                             defaultValue: `${versionView.technicalBranches.length} internal Git references and retention details`,
                           })}
-                        </p>
+                        </span>
                       </div>
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-4 pb-3">
-                    <div className="space-y-2">
-                      <h4 className="text-body-xs font-semibold">
-                        {t('layout.workspace-git-references', {
-                          defaultValue: 'Git references',
-                        })}
-                      </h4>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {versionView.technicalBranches.map((branch) => (
-                          <div
-                            key={branch.ref}
-                            className="min-w-0 rounded-lg bg-ds-bg-neutral-subtle-default p-2.5"
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <code className="min-w-0 flex-1 truncate text-body-xs">
-                                {technicalRefLabel(branch.ref)}
-                              </code>
-                              {branch.archived ? (
-                                <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-1.5 py-0.5 text-body-xs">
-                                  archived
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 truncate text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-body-xs font-semibold">
+                      {t('layout.workspace-git-references', {
+                        defaultValue: 'Git references',
+                      })}
+                    </span>
+                    <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                      {versionView.technicalBranches.map((branch) => (
+                        <div
+                          key={branch.ref}
+                          className="flex min-w-0 items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                        >
+                          <GitBranch
+                            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                            aria-hidden
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-body-sm font-semibold">
+                              {technicalRefLabel(branch.ref)}
+                            </span>
+                            <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
                               {branch.oid.slice(0, 8)} ·{' '}
                               {formatDate(branch.committed_at)}
-                            </p>
+                            </span>
                           </div>
-                        ))}
-                      </div>
+                          {branch.archived ? (
+                            <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
+                              archived
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                      {versionView.technicalBranches.length === 0 ? (
+                        <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                          {t('layout.workspace-no-git-references', {
+                            defaultValue:
+                              'No Git references are available yet.',
+                          })}
+                        </span>
+                      ) : null}
                     </div>
-                    <p className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
                       Automatic archive deletion and object GC are disabled.
                       Encrypted Space backup is not configured implicitly and
                       remains a separate, explicit product setup.
-                    </p>
-                  </AccordionContent>
-                </AccordionItem>
+                    </span>
+                  </div>
 
-                <AccordionItem
-                  value="advanced-git"
-                  className="rounded-xl border border-ds-border-neutral-default-default px-3"
-                >
-                  <AccordionTrigger className="gap-3 py-3 hover:no-underline">
-                    <div className="flex min-w-0 items-center gap-3 text-left">
+                  <div className="space-y-3">
+                    <div className="flex min-w-0 items-center gap-3 py-2">
                       <GitCommitHorizontal
                         className="size-4 shrink-0"
                         aria-hidden
                       />
                       <div className="min-w-0">
-                        <p className="text-body-sm font-semibold">
+                        <span className="block text-body-sm font-semibold">
                           Advanced Git
-                        </p>
-                        <p className="text-body-xs font-normal text-ds-text-neutral-muted-default">
+                        </span>
+                        <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
                           Preview and run policy-gated Git commands.
-                        </p>
+                        </span>
                       </div>
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-3 pb-3">
-                    <p className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
                       Enter argv as a JSON string array. No shell is used. The
                       exact classified action is reviewed before execution.
-                    </p>
+                    </span>
                     <Textarea
                       value={argvText}
                       onChange={(event) => {
@@ -637,17 +667,17 @@ export function WorkspaceVersionHistoryDialog({
                     />
                     {preview ? (
                       <div className="rounded-lg bg-ds-bg-neutral-strong-default p-3 text-body-xs">
-                        <p>
+                        <span className="block">
                           <strong>{preview.classification}</strong> ·{' '}
                           {preview.effect}
-                        </p>
-                        <p className="mt-1 break-all font-mono">
+                        </span>
+                        <span className="mt-1 block break-all font-mono">
                           {preview.display_argv.join(' ')}
-                        </p>
+                        </span>
                         {preview.requires_confirmation ? (
-                          <p className="mt-1 text-ds-text-warning-strong-default">
+                          <span className="mt-1 block text-ds-text-warning-strong-default">
                             Exact action confirmation required.
-                          </p>
+                          </span>
                         ) : null}
                       </div>
                     ) : null}
@@ -681,9 +711,9 @@ export function WorkspaceVersionHistoryDialog({
                         {commandOutput}
                       </pre>
                     ) : null}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </>
           ) : null}
         </DialogContentSection>
